@@ -8,7 +8,7 @@ env:
   PLOEG_TEAM_PLANS: Legacy Shift plans, replaced by `teams.<name>.plan` in the `PLOEG_CONFIG` file. A malformed plan stops ploegd at boot.
   PLOEG_TARGET_MAP: Legacy routing from tracker scope to repository, rendered from the org.yaml roster manifest. Replaced by `trackers.<tracker>.projects` in the `PLOEG_CONFIG` file.
   PLOEG_VIKUNJA_SECRET: Secret that verifies `X-Vikunja-Signature` on `POST /webhooks/tracker/vikunja`. The chart reads it from `webhook.existingSecret`. Unset rejects every Vikunja webhook.
-  PLOEG_VIKUNJA_URL: Vikunja API root (chart `tracker.url`). With `PLOEG_VIKUNJA_TOKEN` it enables comments on the ticket and the webhook registration check.
+  PLOEG_VIKUNJA_URL: Vikunja API root (chart `tracker.url`). With `PLOEG_VIKUNJA_TOKEN` it enables comments on the ticket and the webhook registration check. Ploeg links each Vikunja Work Item to `<root without /api/v1>/tasks/<id>` when the root is a public http(s) URL ending in `/api/v1`.
   PLOEG_VIKUNJA_TOKEN: Vikunja API token (chart `tracker.tokenSecret`). Unset keeps tracker write-backs a logged no-op.
   PLOEG_VIKUNJA_WEBHOOK_URL: Exact webhook target the registration check looks for. Unset means any target on the `/webhooks/tracker/vikunja` path counts.
   PLOEG_VIKUNJA_WEBHOOK_REGISTER: "`true` registers a signed webhook on each configured project that lacks one. Requires `PLOEG_VIKUNJA_WEBHOOK_URL` and the webhook secret, or ploegd refuses to start."

@@ -20,7 +20,7 @@ func (s *Server) handleOperatorCard(w http.ResponseWriter, r *http.Request) {
 	principal, _ := OperatorPrincipalFromContext(r.Context())
 	card, err := s.Store.OperatorCard(r.Context(), id, principal.Teams,
 		store.CardOptions{Bots: s.ForgeBots, ReleaseEnvironments: s.OperatorConfig.ReleaseEnvironments, Live: s.liveCardUsage(r.Context()),
-			HotfixLabels: s.cardHotfixLabels(), Rarity: s.cardRarity(), Flow: s.cardFlow()})
+			HotfixLabels: s.cardHotfixLabels(), Rarity: s.cardRarity(), Flow: s.cardFlow(), TaskURL: s.taskURL})
 	if err != nil {
 		operatorReadError(w, err)
 		return

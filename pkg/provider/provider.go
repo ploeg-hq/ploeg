@@ -90,6 +90,12 @@ type Scope struct {
 	Name string // human label for audit and logs — NEVER a routing key
 }
 
+// TaskLinker is implemented by a TrackerProvider that can name the page a
+// person opens for one of its items. TaskURL returns "" when it cannot.
+type TaskLinker interface {
+	TaskURL(externalID string) string
+}
+
 // TrackerProvider adapts one task-management system (reference: Vikunja).
 type TrackerProvider interface {
 	Name() string

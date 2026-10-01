@@ -20,6 +20,8 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -118,6 +120,7 @@ func (p *Provider) ParseWebhook(r *http.Request) ([]provider.TrackerEvent, error
 		Priority:      pl.Data.Task.Priority,
 		Title:         pl.Data.Task.Title,
 		Description:   pl.Data.Task.Description,
+		URL:           p.TaskURL(externalID),
 		ExternalScope: scope.ID,
 	}
 
@@ -217,6 +220,31 @@ func (p *Provider) FetchItem(ctx context.Context, externalID string) (work.WorkI
 
 func (p *Provider) TrackerAPIBaseURL() string { return strings.TrimRight(p.BaseURL, "/") }
 
+// TaskURL is the page a person opens for a task: the API root's prefix before
+// /api/v1, then /tasks/<id>. It is empty when BaseURL is unset, is not an
+// http(s) URL ending in /api/v1, names an in-cluster service host, or the id
+// is not a task number.
+func (p *Provider) TaskURL(externalID string) string {
+	if id, err := strconv.ParseInt(externalID, 10, 64); err != nil || id < 1 {
+		return ""
+	}
+	u, err := url.Parse(strings.TrimRight(p.BaseURL, "/"))
+	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		return ""
+	}
+	host := strings.ToLower(u.Hostname())
+	if strings.HasSuffix(host, ".svc") || strings.HasSuffix(host, ".cluster.local") {
+		return ""
+	}
+	prefix, ok := strings.CutSuffix(u.Path, "/api/v1")
+	if !ok {
+		return ""
+	}
+	u.Path = prefix + "/tasks/" + externalID
+	u.RawPath = ""
+	return u.String()
+}
+
 func (p *Provider) FetchExecutionItem(ctx context.Context, externalID string) (provider.ExecutionItem, error) {
 	if !p.configured() {
 		return provider.ExecutionItem{}, errors.New("vikunja: no API credentials configured (falling back to the webhook snapshot)")
@@ -256,6 +284,7 @@ func (p *Provider) FetchExecutionItem(ctx context.Context, externalID string) (p
 		Priority:         task.Priority,
 		Title:            task.Title,
 		Description:      task.Description,
+		URL:              p.TaskURL(fmt.Sprint(task.ID)),
 		ExternalScope:    scope,
 		Labels:           labels,
 		TrackerCreatedAt: createdAt(task.Created),
