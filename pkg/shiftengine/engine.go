@@ -435,18 +435,17 @@ func (e *Engine) EvaluateAll(ctx context.Context) {
 
 	// Pools that can no longer fund their pending work: park, don't retry —
 	// retrying cannot fix running out of money (shift-orchestration spec).
-	broke, err := e.Store.ShiftsBelowFloor(ctx)
+	broke, err := e.Store.ShiftsBelowFloor(ctx, unsettledHoldPatience)
 	if err != nil {
 		e.Log.Error("shift sweep: floor read failed", "err", err)
 		return
 	}
 	for _, b := range broke {
-		reason := fmt.Sprintf("%s: pool %.2f, spent %.2f, reserved %.2f",
-			reasonPoolExhausted, b.Ledger.Budget, b.Ledger.Spent, b.Ledger.Reserved)
+		reason, kind := floorCloseReason(b)
 		si := store.ShiftInfo{ID: b.ShiftID, WorkItemID: b.WorkItemID, Team: b.Team}
 		// Always needs_human: running out of money is never retryable, under
 		// either dispatch shape (shift-orchestration spec).
-		if err := e.close(ctx, si, reason, closeMessage(reasonPoolExhausted), false, nil); err != nil {
+		if err := e.close(ctx, si, reason, closeMessage(kind), false, nil); err != nil {
 			e.Log.Error("shift sweep: park failed", "shift", b.ShiftID, "err", err)
 		}
 	}
@@ -493,4 +492,15 @@ func (e *Engine) settleClosedInTracker(ctx context.Context) {
 			e.Log.Info("work item settled: its task was closed in the tracker", "work_item", d.WorkItemID, "provider", d.Provider)
 		}
 	}
+}
+
+const unsettledHoldPatience = 24 * time.Hour
+
+func floorCloseReason(b store.ShiftLedgerEntry) (reason, kind string) {
+	if b.SettlementCouldFund() {
+		return fmt.Sprintf("%s: pool %.2f, spent %.2f, held %.2f",
+			reasonPoolHeld, b.Ledger.Budget, b.Ledger.Spent, b.Unsettled), reasonPoolHeld
+	}
+	return fmt.Sprintf("%s: pool %.2f, spent %.2f, reserved %.2f",
+		reasonPoolExhausted, b.Ledger.Budget, b.Ledger.Spent, b.Ledger.Reserved), reasonPoolExhausted
 }

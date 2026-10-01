@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -345,7 +346,7 @@ func TestShiftsBelowFloor(t *testing.T) {
 	funded := mk("602", 10)   // fine
 	unmetered := mk("603", 0) // budget 0 = unmetered, never parked
 
-	parked, err := testStore.ShiftsBelowFloor(ctx)
+	parked, err := testStore.ShiftsBelowFloor(ctx, time.Hour)
 	if err != nil {
 		t.Fatalf("ShiftsBelowFloor: %v", err)
 	}
@@ -356,5 +357,125 @@ func TestShiftsBelowFloor(t *testing.T) {
 		}
 		t.Errorf("parked shifts = %v, want exactly [%d] (funded=%d unmetered=%d must not park)",
 			ids, broke, funded, unmetered)
+	}
+}
+
+func failInfraLLMWriter(t *testing.T, shiftID int64, round int) *ClaimedRun {
+	t.Helper()
+	ctx := context.Background()
+	run, err := testStore.ClaimRole(ctx, "silver", "builder", time.Minute, 2)
+	if err != nil {
+		t.Fatalf("ClaimRole: %v", err)
+	}
+	if err := testStore.ReserveLLMAccount(ctx, LLMAccount{RunToken: run.RunToken, Alias: "a-" + run.RunToken[:8], Authorized: 2, Models: []string{"model"}, TTLSeconds: 60}); err != nil {
+		t.Fatalf("ReserveLLMAccount: %v", err)
+	}
+	if _, err := testStore.BeginLLMMint(ctx, run.RunToken); err != nil {
+		t.Fatalf("BeginLLMMint: %v", err)
+	}
+	if err := testStore.RecordLLMIssued(ctx, run.RunToken, "key-"+run.RunToken[:8]); err != nil {
+		t.Fatalf("RecordLLMIssued: %v", err)
+	}
+	reason := string(work.FailureInfraLLM)
+	if _, err := testStore.ReportOutcome(ctx, run.RunToken, Report(work.OutcomeFailed, "model gateway failed", "", nil, nil, &reason)); err != nil {
+		t.Fatalf("ReportOutcome: %v", err)
+	}
+	if _, err := testStore.ReopenRound(ctx, shiftID, round, []Role{{Name: "builder", Writes: true, Cap: 2}}); err != nil {
+		t.Fatalf("ReopenRound: %v", err)
+	}
+	return run
+}
+
+func heldShift(t *testing.T) (int64, []*ClaimedRun) {
+	t.Helper()
+	ctx := context.Background()
+	_, shiftID := openShift(t, 8)
+	round, err := testStore.OpenRound(ctx, shiftID, 0, []Role{{Name: "builder", Writes: true, Cap: 2}})
+	if err != nil {
+		t.Fatalf("OpenRound: %v", err)
+	}
+	var runs []*ClaimedRun
+	for i := 0; i < 4; i++ {
+		runs = append(runs, failInfraLLMWriter(t, shiftID, round))
+	}
+	if _, err := testStore.ClaimRole(ctx, "silver", "builder", time.Minute, 2); !errors.Is(err, ErrBudgetExhausted) {
+		t.Fatalf("claim against a fully held pool = %v, want ErrBudgetExhausted", err)
+	}
+	return shiftID, runs
+}
+
+func settleRuns(t *testing.T, runs []*ClaimedRun, spend float64) {
+	t.Helper()
+	ctx := context.Background()
+	for _, run := range runs {
+		if err := testStore.RecordLLMBlocked(ctx, run.RunToken, &spend); err != nil {
+			t.Fatalf("RecordLLMBlocked: %v", err)
+		}
+		if err := testStore.ReconcileLLMAccount(ctx, run.RunToken, spend, "test-receipt"); err != nil {
+			t.Fatalf("ReconcileLLMAccount: %v", err)
+		}
+	}
+}
+
+func floorEntry(t *testing.T, shiftID int64, patience time.Duration) *ShiftLedgerEntry {
+	t.Helper()
+	parked, err := testStore.ShiftsBelowFloor(context.Background(), patience)
+	if err != nil {
+		t.Fatalf("ShiftsBelowFloor: %v", err)
+	}
+	for i := range parked {
+		if parked[i].ShiftID == shiftID {
+			return &parked[i]
+		}
+	}
+	return nil
+}
+
+func TestShiftsBelowFloorWaitsForHoldsAwaitingSettlement(t *testing.T) {
+	shiftID, runs := heldShift(t)
+
+	if e := floorEntry(t, shiftID, time.Hour); e != nil {
+		t.Fatalf("pool held only by unsettled finished Runs was returned for parking: %+v", *e)
+	}
+
+	settleRuns(t, runs, 0)
+	if e := floorEntry(t, shiftID, time.Hour); e != nil {
+		t.Fatalf("settled pool returned for parking: %+v", *e)
+	}
+	run, err := testStore.ClaimRole(context.Background(), "silver", "builder", time.Minute, 2)
+	if err != nil {
+		t.Fatalf("claim after settlement released the holds: %v", err)
+	}
+	if run.Authorized != 2 {
+		t.Errorf("authorized = %v, want 2", run.Authorized)
+	}
+}
+
+func TestShiftsBelowFloorParksHoldsUnsettledPastPatience(t *testing.T) {
+	shiftID, _ := heldShift(t)
+	if _, err := testStore.pool.Exec(context.Background(),
+		`UPDATE agent_runs SET finished_at = now() - interval '2 hours' WHERE shift_id = $1 AND state = 'finished'`, shiftID); err != nil {
+		t.Fatal(err)
+	}
+
+	e := floorEntry(t, shiftID, time.Hour)
+	if e == nil {
+		t.Fatal("holds unsettled past the patience never parked the Shift")
+	}
+	if !e.SettlementCouldFund() || e.Unsettled != 8 || e.Ledger.Spent != 0 || e.Ledger.Reserved != 8 {
+		t.Errorf("entry = %+v, want 8 held by unsettled Runs and settlement able to fund", *e)
+	}
+}
+
+func TestShiftsBelowFloorParksRealSpendAtOnce(t *testing.T) {
+	shiftID, runs := heldShift(t)
+	settleRuns(t, runs, 2)
+
+	e := floorEntry(t, shiftID, time.Hour)
+	if e == nil {
+		t.Fatal("pool spent in full was not returned for parking")
+	}
+	if e.SettlementCouldFund() || e.Unsettled != 0 || e.Ledger.Spent != 8 || e.Ledger.Reserved != 0 {
+		t.Errorf("entry = %+v, want spent 8 and nothing settlement could release", *e)
 	}
 }
