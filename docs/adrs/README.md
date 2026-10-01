@@ -122,6 +122,7 @@ fails otherwise.
 | [0045](0045-keep-run-usage-and-merge-facts.md) | Ploeg keeps every usage figure a harness reports and every merge and review fact a forge reports | proposed | 2026-10-01 |
 | [0046](0046-a-run-card-is-assembled-per-work-item-from-stored-facts.md) | A Run card is assembled per Work Item from stored facts | proposed | 2026-10-01 |
 | [0047](0047-ploeg-learns-where-a-merged-change-is-deployed-from-a-generic-deploy-endpoint.md) | Ploeg learns where a merged change is deployed from a generic deploy endpoint | proposed | 2026-10-01 |
+| [0048](0048-a-pool-held-by-unsettled-runs-waits-for-settlement-before-it-parks.md) | A pool held by unsettled Runs waits for settlement before it parks | proposed | 2026-10-01 |
 | [0049](0049-a-run-card-reads-the-gateway-for-usage-so-far-while-a-run-is-running.md) | A Run card reads the gateway for usage so far while a Run is running | proposed | 2026-10-01 |
 | [0050](0050-a-run-cards-grade-is-a-versioned-formula-over-stored-facts.md) | A Run card's grade is a versioned formula over stored facts | proposed | 2026-10-01 |
 | [0051](0051-delivery-gates-are-mapped-per-board-from-tracker-statuses.md) | Delivery gates are mapped per board from tracker statuses | proposed | 2026-10-01 |
@@ -163,6 +164,7 @@ triggers.
 | 2027-01-31 | [0045](0045-keep-run-usage-and-merge-facts.md) — or sooner, when a third forge provider is added, a harness changes its usage shape, or the first card or KPI query is built on these facts |
 | 2027-01-31 | [0046](0046-a-run-card-is-assembled-per-work-item-from-stored-facts.md) — or sooner, when the owner decides rarity, grade or finish, tracker assignees are ingested, or a card read passes 200 ms at p95 |
 | 2027-01-31 | [0047](0047-ploeg-learns-where-a-merged-change-is-deployed-from-a-generic-deploy-endpoint.md) — or sooner, when a GitOps controller should report deploys directly, deploys keep filling the 50-pull-request batch, or a third forge provider is added |
+| 2027-01-31 | [0048](0048-a-pool-held-by-unsettled-runs-waits-for-settlement-before-it-parks.md) — or sooner, when a fix round closes on unsettled holds or a Shift parks as held more than once a month |
 | 2027-01-31 | [0049](0049-a-run-card-reads-the-gateway-for-usage-so-far-while-a-run-is-running.md) — or sooner, when a card read during a Run passes 1 s at p95, LiteLLM offers a per-key token total, or the worker reports usage during a Run |
 | 2027-01-31 | [0050](0050-a-run-cards-grade-is-a-versioned-formula-over-stored-facts.md) — or sooner, when crack confirmation or revert detection lands, the owner asks for a frozen grade, or twenty cards are graded |
 | 2027-01-31 | [0051](0051-delivery-gates-are-mapped-per-board-from-tracker-statuses.md) — or sooner, when a lost webhook explains a missing gate stay, Ploeg registers ClickUp webhooks, or tracker users are linked to forge logins |
