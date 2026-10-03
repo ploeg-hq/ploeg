@@ -1,7 +1,9 @@
 package acp
 
 import (
+	"fmt"
 	"strings"
+	"time"
 
 	"github.com/ploeg-hq/ploeg/pkg/harness"
 	"github.com/ploeg-hq/ploeg/pkg/work"
@@ -30,8 +32,8 @@ type result struct {
 	err        error // transport/exec error, if any
 	exitCode   int
 	ctxErr     error // non-nil = the lease was lost and the run was cancelled
-	timedOut   bool  // idle or prompt watchdog fired
-	permStorm  bool  // permission-request cap tripped
+	watchdog   *watchdogFire
+	permStorm  bool // permission-request cap tripped
 	stderrTail string
 }
 
@@ -79,11 +81,14 @@ func Build(s *sessionState, r result) harness.OutcomeReport {
 
 	// A watchdog fired: the agent stopped producing events or ran past its
 	// wall. Retryable — a wedged process says nothing about the ticket.
-	if r.timedOut {
+	if w := r.watchdog; w != nil {
 		rep.Outcome = work.OutcomeFailed
-		rep.Summary = "acp agent stopped responding"
+		rep.Summary = "acp " + w.name() + " stopped the agent: " + w.cause()
 		rep.FailureReason = string(work.FailureAgentError)
-		rep.StuckReason = detail(r, s)
+		rep.StuckReason = w.reason()
+		if d := detail(r, s); d != "" {
+			rep.StuckReason += " | " + d
+		}
 		return rep
 	}
 
@@ -212,6 +217,40 @@ func classifyStartFailure(r result) string {
 		}
 	}
 	return string(work.FailureInfraNode)
+}
+
+type watchdogKind int
+
+const (
+	watchdogIdle watchdogKind = iota
+	watchdogPromptWall
+)
+
+type watchdogFire struct {
+	kind   watchdogKind
+	limit  time.Duration
+	events int
+}
+
+func (w watchdogFire) name() string {
+	if w.kind == watchdogPromptWall {
+		return "prompt wall"
+	}
+	return "idle watchdog"
+}
+
+func (w watchdogFire) cause() string {
+	if w.kind == watchdogPromptWall {
+		return "the turn ran past " + w.limit.String()
+	}
+	return "no protocol activity for " + w.limit.String()
+}
+
+func (w watchdogFire) reason() string {
+	if w.kind == watchdogPromptWall {
+		return w.name() + ": " + w.cause()
+	}
+	return fmt.Sprintf("%s: %s after %d events", w.name(), w.cause(), w.events)
 }
 
 func turnBudgetReason(s *sessionState) string {

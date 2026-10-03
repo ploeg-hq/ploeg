@@ -80,6 +80,38 @@ func TestRun_HungAgentTimesOutRetryable(t *testing.T) {
 	}
 }
 
+func TestRun_HungAgentNamesTheWatchdogThatStoppedIt(t *testing.T) {
+	tests := []struct {
+		name        string
+		idle, wall  time.Duration
+		wantSummary string
+	}{
+		{"idle watchdog", time.Second, time.Minute, "acp idle watchdog stopped the agent: no protocol activity for 1s"},
+		{"prompt wall", time.Minute, time.Second, "acp prompt wall stopped the agent: the turn ran past 1s"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			bin := writeScript(t, fakeAgentHangsDuringPrompt())
+			a, err := New("custom", ProfileOverrides{Argv: []string{bin}}, Options{
+				PromptTimeout: tc.wall, IdleTimeout: tc.idle,
+				CancelGrace: time.Second, TermGrace: time.Second,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			rep, _ := a.Run(ctx, testSpec(), testEnv(t))
+			if rep.FailureReason != string(work.FailureAgentError) {
+				t.Errorf("failureReason = %q, want agent_error", rep.FailureReason)
+			}
+			if rep.Summary != tc.wantSummary {
+				t.Errorf("summary = %q, want %q", rep.Summary, tc.wantSummary)
+			}
+		})
+	}
+}
+
 // Lease loss outranks everything the agent might be doing.
 func TestRun_CancelReportsLeaseLost(t *testing.T) {
 	bin := writeScript(t, `exec sleep 300`)
