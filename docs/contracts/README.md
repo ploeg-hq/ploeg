@@ -104,6 +104,19 @@ change either side and the test tells you.
   `code`, the `reason` sentence and the board's `allowedLabels`. A row
   recorded before codes existed answers `unclassified`. An older Ploeg
   answers 404.
+- Since [ADR-0040](../adrs/0040-a-conflicted-pull-request-becomes-a-priority-ticket-ploeg-resolves.md)
+  a Work Item's `pullRequest` carries `number`, `mergeState`, `baseBranch`
+  and `checkedAt`. `mergeState` is `clean`, `conflicted` or `unknown`: the
+  review poll reads the forge's `mergeable` flag for every `awaiting_review`
+  pull request, and `conflicted` needs two polls in a row at one head SHA
+  that report a conflict. A new head resets it to `unknown`, a forge that
+  does not report mergeability (GitLab today) leaves it `unknown`, and a
+  failed forge read leaves the state and `checkedAt` as they were. Entering
+  or leaving `conflicted` writes a `pull_request.conflicted` or
+  `pull_request.mergeable` audit row with the Work Item's id, so the item's
+  events show it. The merge state never changes the Work Item's state. The
+  four fields are optional, so a consumer of an older Ploeg sees them
+  absent and must read that as `unknown`, never as clean.
 - `deploy-api.v1` is the body of a pipeline's deploy report. It refuses
   unknown fields, unlike the response contracts, so a misspelled field fails
   the pipeline step instead of being dropped.

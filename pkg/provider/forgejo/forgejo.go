@@ -211,18 +211,26 @@ func (p *Provider) PullRequestState(ctx context.Context, repo string, pr int) (p
 // PullRequestFacts reads a pull request's lifecycle, head and merge facts
 // from the pulls endpoint.
 func (p *Provider) PullRequestFacts(ctx context.Context, repo string, pr int) (provider.PullRequestFacts, error) {
+	m, err := p.PullRequestMergeability(ctx, repo, pr)
+	return m.Facts, err
+}
+
+// PullRequestMergeability reads a pull request's facts, whether Forgejo
+// says it merges cleanly and its base branch, from one read of the pulls
+// endpoint.
+func (p *Provider) PullRequestMergeability(ctx context.Context, repo string, pr int) (provider.PullRequestMergeability, error) {
 	owner, name, ok := strings.Cut(repo, "/")
 	if !ok || owner == "" || name == "" {
-		return provider.PullRequestFacts{}, fmt.Errorf("forgejo: repo %q must be owner/name", repo)
+		return provider.PullRequestMergeability{}, fmt.Errorf("forgejo: repo %q must be owner/name", repo)
 	}
 	if pr <= 0 {
-		return provider.PullRequestFacts{}, fmt.Errorf("forgejo: pull request number must be positive, got %d", pr)
+		return provider.PullRequestMergeability{}, fmt.Errorf("forgejo: pull request number must be positive, got %d", pr)
 	}
 	url := fmt.Sprintf("%s/api/v1/repos/%s/%s/pulls/%d",
 		strings.TrimRight(p.BaseURL, "/"), owner, name, pr)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return provider.PullRequestFacts{}, err
+		return provider.PullRequestMergeability{}, err
 	}
 	req.Header.Set("Accept", "application/json")
 	if p.Token != "" {
@@ -230,16 +238,20 @@ func (p *Provider) PullRequestFacts(ctx context.Context, repo string, pr int) (p
 	}
 	resp, err := p.client().Do(req)
 	if err != nil {
-		return provider.PullRequestFacts{}, err
+		return provider.PullRequestMergeability{}, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return provider.PullRequestFacts{}, fmt.Errorf("forgejo: read %s#%d: HTTP %d: %s", repo, pr, resp.StatusCode, bytes.TrimSpace(snippet))
+		return provider.PullRequestMergeability{}, fmt.Errorf("forgejo: read %s#%d: HTTP %d: %s", repo, pr, resp.StatusCode, bytes.TrimSpace(snippet))
 	}
 	var body struct {
-		State          string `json:"state"`
-		Merged         bool   `json:"merged"`
+		State     string `json:"state"`
+		Merged    bool   `json:"merged"`
+		Mergeable *bool  `json:"mergeable"`
+		Base      struct {
+			Ref string `json:"ref"`
+		} `json:"base"`
 		MergeCommitSHA string `json:"merge_commit_sha"`
 		MergedAt       string `json:"merged_at"`
 		ClosedAt       string `json:"closed_at"`
@@ -259,7 +271,7 @@ func (p *Provider) PullRequestFacts(ctx context.Context, repo string, pr int) (p
 		} `json:"user"`
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&body); err != nil {
-		return provider.PullRequestFacts{}, fmt.Errorf("forgejo: read %s#%d: %w", repo, pr, err)
+		return provider.PullRequestMergeability{}, fmt.Errorf("forgejo: read %s#%d: %w", repo, pr, err)
 	}
 	facts := provider.PullRequestFacts{HeadSHA: body.Head.Sha,
 		Additions: nonNegative(body.Additions), Deletions: nonNegative(body.Deletions), ChangedFiles: nonNegative(body.ChangedFiles),
@@ -277,9 +289,9 @@ func (p *Provider) PullRequestFacts(ctx context.Context, repo string, pr int) (p
 	case body.State == "open":
 		facts.State = provider.PullRequestOpen
 	default:
-		return provider.PullRequestFacts{}, fmt.Errorf("forgejo: read %s#%d: unknown state %q", repo, pr, body.State)
+		return provider.PullRequestMergeability{}, fmt.Errorf("forgejo: read %s#%d: unknown state %q", repo, pr, body.State)
 	}
-	return facts, nil
+	return provider.PullRequestMergeability{Facts: facts, Mergeable: body.Mergeable, BaseBranch: body.Base.Ref}, nil
 }
 
 // CommitStatus reads the combined status of sha from the commit status
