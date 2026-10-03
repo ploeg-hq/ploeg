@@ -30,7 +30,7 @@ func TestFindOpenChangeRequestForgejo(t *testing.T) {
 	base, uri, hdr := forgeStub(t, body)
 
 	ref := harness.RepoRef{ForgeURL: base, Owner: "x", Name: "y", BaseBranch: "main"}
-	got, err := findOpenChangeRequest(ref, "tok", "ploeg/VIK-1")
+	got, err := findOpenChangeRequestURL(ref, "tok", "ploeg/VIK-1")
 	if err != nil {
 		t.Fatalf("findOpenChangeRequest: %v", err)
 	}
@@ -48,7 +48,7 @@ func TestFindOpenChangeRequestForgejo(t *testing.T) {
 func TestFindOpenChangeRequestUnsetDialectIsForgejo(t *testing.T) {
 	base, uri, _ := forgeStub(t, `[]`)
 	ref := harness.RepoRef{ForgeURL: base, Owner: "x", Name: "y"}
-	if _, err := findOpenChangeRequest(ref, "tok", "b"); err != nil {
+	if _, err := findOpenChangeRequestURL(ref, "tok", "b"); err != nil {
 		t.Fatalf("findOpenChangeRequest: %v", err)
 	}
 	if !strings.Contains(*uri, "/api/v1/repos/") {
@@ -65,7 +65,7 @@ func TestFindOpenChangeRequestGitLab(t *testing.T) {
 		Forge: harness.ForgeGitLab, ForgeURL: base,
 		Owner: "g", Name: "p", BaseBranch: "main",
 	}
-	got, err := findOpenChangeRequest(ref, "tok", "ploeg/VIK-1")
+	got, err := findOpenChangeRequestURL(ref, "tok", "ploeg/VIK-1")
 	if err != nil {
 		t.Fatalf("findOpenChangeRequest: %v", err)
 	}
@@ -89,7 +89,7 @@ func TestFindOpenChangeRequestGitLabEncodesSubgroupPath(t *testing.T) {
 		Forge: harness.ForgeGitLab, ForgeURL: base,
 		Owner: "acme", Name: "internal/widgets",
 	}
-	if _, err := findOpenChangeRequest(ref, "tok", "b"); err != nil {
+	if _, err := findOpenChangeRequestURL(ref, "tok", "b"); err != nil {
 		t.Fatalf("findOpenChangeRequest: %v", err)
 	}
 	want := "/api/v4/projects/acme%2Finternal%2Fwidgets/merge_requests"
@@ -106,7 +106,7 @@ func TestFindOpenChangeRequestRejectsWrongBase(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			base, _, _ := forgeStub(t, c.body)
 			ref := harness.RepoRef{Forge: c.forge, ForgeURL: base, Owner: "o", Name: "r", BaseBranch: "main"}
-			got, err := findOpenChangeRequest(ref, "tok", "b")
+			got, err := findOpenChangeRequestURL(ref, "tok", "b")
 			if err != nil {
 				t.Fatalf("findOpenChangeRequest: %v", err)
 			}
@@ -119,7 +119,7 @@ func TestFindOpenChangeRequestRejectsWrongBase(t *testing.T) {
 
 func TestFindOpenChangeRequestUnsupportedForge(t *testing.T) {
 	ref := harness.RepoRef{Forge: "bitbucket", ForgeURL: "http://unused", Owner: "o", Name: "r"}
-	_, err := findOpenChangeRequest(ref, "tok", "b")
+	_, err := findOpenChangeRequestURL(ref, "tok", "b")
 	if !errors.Is(err, errUnsupportedForge) {
 		t.Fatalf("err = %v, want errUnsupportedForge", err)
 	}
@@ -134,7 +134,7 @@ func TestFindOpenChangeRequestHTTPError(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 	ref := harness.RepoRef{Forge: harness.ForgeGitLab, ForgeURL: srv.URL, Owner: "o", Name: "r"}
-	if _, err := findOpenChangeRequest(ref, "tok", "b"); err == nil {
+	if _, err := findOpenChangeRequestURL(ref, "tok", "b"); err == nil {
 		t.Fatal("want an error for HTTP 401, got nil")
 	}
 }

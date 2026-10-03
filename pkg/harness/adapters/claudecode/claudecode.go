@@ -197,6 +197,7 @@ func (a *Adapter) ParseOutcome(_ harness.TaskSpec, res harness.ExecResult) (harn
 		return harness.OutcomeReport{}, err
 	}
 	box.Usage = nil
+	box = harness.MergeDropBox(harness.OutcomeReport{}, box)
 	if len(res.Stdout) == 0 {
 		return box, nil
 	}

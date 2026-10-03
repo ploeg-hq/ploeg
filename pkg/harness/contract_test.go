@@ -172,6 +172,21 @@ func TestOutcomeReport_MatchesSchema(t *testing.T) {
 		t.Errorf("OutcomeReport with a problem and solution does not validate: %v", err)
 	}
 
+	// ADR-0059: the worker's forge observation, in every state it can take.
+	for _, d := range []Delivery{
+		{Forge: "forgejo", Repository: "webgrip/example", Branch: "agent/vik-596", Observed: DeliveryOpened, Number: 7,
+			URL: "https://forgejo.example/webgrip/example/pulls/7", Base: "main", Head: "2222222222222222222222222222222222222222"},
+		{Repository: "webgrip/example", Branch: "agent/vik-596", Observed: DeliveryUpdated, Number: 7, URL: "https://forgejo.example/webgrip/example/pulls/7",
+			Base: "main", Head: "2222222222222222222222222222222222222222", HeadBefore: "1111111111111111111111111111111111111111"},
+		{Repository: "webgrip/example", Branch: "agent/vik-596", Observed: DeliveryNone},
+		{Repository: "webgrip/example", Branch: "agent/vik-596", Observed: DeliveryUnknown, Reason: "GET /api/v1/repos/webgrip/example/pulls: HTTP 500"},
+	} {
+		delivered := OutcomeReport{Outcome: work.OutcomeNoChangeNeeded, Summary: "x", Delivery: &d}
+		if err := validate(t, sch, delivered); err != nil {
+			t.Errorf("delivery %q does not validate: %v", d.Observed, err)
+		}
+	}
+
 	stuckOK := OutcomeReport{Outcome: work.OutcomeStuck, Summary: "blocked", StuckReason: "gate failed"}
 	if err := validate(t, sch, stuckOK); err != nil {
 		t.Errorf("stuck-with-reason does not validate: %v", err)
@@ -227,6 +242,17 @@ func TestOutcomeReport_SchemaRejectsInvalid(t *testing.T) {
 	} {
 		if err := validate(t, sch, map[string]any{"outcome": "no_change_needed", "summary": "x", "usage": usage}); err == nil {
 			t.Errorf("usage with %s validated", name)
+		}
+	}
+
+	for name, delivery := range map[string]map[string]any{
+		"invented observation": {"repository": "o/r", "branch": "b", "observed": "merged"},
+		"no repository":        {"branch": "b", "observed": "none"},
+		"short head":           {"repository": "o/r", "branch": "b", "observed": "opened", "number": 1, "head": "abc123"},
+		"unknown key":          {"repository": "o/r", "branch": "b", "observed": "none", "trusted": true},
+	} {
+		if err := validate(t, sch, map[string]any{"outcome": "no_change_needed", "summary": "x", "delivery": delivery}); err == nil {
+			t.Errorf("delivery with %s validated", name)
 		}
 	}
 

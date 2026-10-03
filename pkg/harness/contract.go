@@ -116,6 +116,46 @@ type OutcomeReport struct {
 	// writing Run's checkout. The worker sets it and discards any value an
 	// adapter or agent reported; absent on a payload from an older worker.
 	Verification *Verification `json:"verification,omitempty"`
+	// Delivery is what the worker read on the forge about the Run's pull
+	// request, before and after the harness ran (ADR-0059). Only the worker
+	// sets it; absent on a payload from an older worker.
+	Delivery *Delivery `json:"delivery,omitempty"`
+}
+
+// DeliveryObservation says what the worker's two forge reads showed about the
+// Run's pull request.
+type DeliveryObservation string
+
+// The values of DeliveryObservation.
+const (
+	// DeliveryOpened: no pull request before the harness ran, one after.
+	DeliveryOpened DeliveryObservation = "opened"
+	// DeliveryUpdated: the same pull request before and after, and its head
+	// commit changed during the Run.
+	DeliveryUpdated DeliveryObservation = "updated"
+	// DeliveryNone: no pull request after the Run, or the same one with the
+	// same head commit.
+	DeliveryNone DeliveryObservation = "none"
+	// DeliveryUnknown: a forge read failed, so nothing is known.
+	DeliveryUnknown DeliveryObservation = "unknown"
+)
+
+// Delivery binds a Run's pull request to the forge, repository and branch the
+// worker read it from. Number, URL, Head and Base describe the pull request
+// open after the Run, and are empty when there is none or the read failed.
+// HeadBefore is that pull request's head commit before the harness ran, when
+// it was already open then.
+type Delivery struct {
+	Forge      string              `json:"forge,omitempty"`
+	Repository string              `json:"repository"`
+	Branch     string              `json:"branch"`
+	Observed   DeliveryObservation `json:"observed"`
+	Number     int                 `json:"number,omitempty"`
+	URL        string              `json:"url,omitempty"`
+	Base       string              `json:"base,omitempty"`
+	Head       string              `json:"head,omitempty"`
+	HeadBefore string              `json:"headBefore,omitempty"`
+	Reason     string              `json:"reason,omitempty"`
 }
 
 // CreatedWorkItem is one Work Item a Run proposes. Team is a request, not a

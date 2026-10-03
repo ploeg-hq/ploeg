@@ -53,7 +53,7 @@ func TestFindOpenChangeRequestForgejoFindsAPullRequestOnPageTwo(t *testing.T) {
 		2: match,
 	}, 0)
 	ref := harness.RepoRef{ForgeURL: base, Owner: "x", Name: "y", BaseBranch: "main"}
-	got, err := findOpenChangeRequest(ref, "tok", "ploeg/VIK-1")
+	got, err := findOpenChangeRequestURL(ref, "tok", "ploeg/VIK-1")
 	if err != nil {
 		t.Fatalf("findOpenChangeRequest: %v", err)
 	}
@@ -72,7 +72,7 @@ func TestFindOpenChangeRequestForgejoPagesWithoutATotalCount(t *testing.T) {
 		2: match,
 	}, 0)
 	ref := harness.RepoRef{ForgeURL: base, Owner: "x", Name: "y"}
-	got, err := findOpenChangeRequest(ref, "tok", "b")
+	got, err := findOpenChangeRequestURL(ref, "tok", "b")
 	if err != nil || got != "https://forge/x/y/pulls/88" {
 		t.Fatalf("url = %q, err = %v; want the page-two pull request", got, err)
 	}
@@ -84,7 +84,7 @@ func TestFindOpenChangeRequestForgejoStopsWhenEveryPullRequestIsSeen(t *testing.
 		2: forgejoPulls(forgejoPullsPageSize+1, 3),
 	}, 0)
 	ref := harness.RepoRef{ForgeURL: base, Owner: "x", Name: "y"}
-	got, err := findOpenChangeRequest(ref, "tok", "absent")
+	got, err := findOpenChangeRequestURL(ref, "tok", "absent")
 	if err != nil || got != "" {
 		t.Fatalf("url = %q, err = %v; want no pull request and no error", got, err)
 	}
@@ -98,7 +98,7 @@ func TestFindOpenChangeRequestForgejoFailedPageIsAnError(t *testing.T) {
 		1: forgejoPulls(1, forgejoPullsPageSize),
 	}, 2)
 	ref := harness.RepoRef{ForgeURL: base, Owner: "x", Name: "y"}
-	if got, err := findOpenChangeRequest(ref, "tok", "b"); err == nil {
+	if got, err := findOpenChangeRequestURL(ref, "tok", "b"); err == nil {
 		t.Fatalf("url = %q, err = nil; want an error when a page fails", got)
 	}
 }
@@ -110,7 +110,7 @@ func TestFindOpenChangeRequestForgejoPageCapIsAnError(t *testing.T) {
 	}
 	base, requested := pagedForgejo(t, -1, pages, 0)
 	ref := harness.RepoRef{ForgeURL: base, Owner: "x", Name: "y"}
-	_, err := findOpenChangeRequest(ref, "tok", "b")
+	_, err := findOpenChangeRequestURL(ref, "tok", "b")
 	if !errors.Is(err, errTooManyOpenPullRequests) {
 		t.Fatalf("err = %v, want errTooManyOpenPullRequests", err)
 	}

@@ -60,5 +60,9 @@ func (a *Adapter) Prepare(spec harness.TaskSpec, env harness.RunEnv) (harness.In
 // the orchestrator's forge-poll and exit-code heuristics decide, exactly as
 // before.
 func (a *Adapter) ParseOutcome(_ harness.TaskSpec, res harness.ExecResult) (harness.OutcomeReport, error) {
-	return harness.ReadDropBox(res.OutcomeFile)
+	box, err := harness.ReadDropBox(res.OutcomeFile)
+	if err != nil {
+		return harness.OutcomeReport{}, err
+	}
+	return harness.MergeDropBox(harness.OutcomeReport{}, box), nil
 }

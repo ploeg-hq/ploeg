@@ -53,6 +53,41 @@ func Run(t *testing.T, fx Fixture) {
 	t.Run("ReadingRunFindingsSurviveTheAdapter", fx.readingRunFindingsSurviveTheAdapter)
 	t.Run("WritingRunProblemAndSolutionSurviveTheAdapter", fx.writingRunProblemAndSolutionSurviveTheAdapter)
 	t.Run("WritingRunAccountSurvivesGarbageOnStdout", fx.writingRunAccountSurvivesGarbageOnStdout)
+	t.Run("DeliveryClaimsNeverSurviveTheAdapter", fx.deliveryClaimsNeverSurviveTheAdapter)
+}
+
+// deliveryClaimsNeverSurviveTheAdapter: whether a Run opened or updated a pull
+// request is a fact the worker reads on the forge (ADR-0059). A drop box that
+// claims one loses the claim and keeps the agent's own account.
+func (fx Fixture) deliveryClaimsNeverSurviveTheAdapter(t *testing.T) {
+	const claimed = "https://forge.example/other/repo/pulls/123"
+	body, err := json.Marshal(map[string]any{
+		"outcome": "pr_opened", "summary": "opened PR #123", "links": []string{claimed},
+		"checkpoint":    map[string]string{"phase": "pr_opened", "branch": "elsewhere", "prUrl": claimed},
+		"failureReason": "budget", "verification": map[string]any{"result": "passed"},
+		"delivery": map[string]any{"repository": "other/repo", "branch": "elsewhere", "observed": "opened", "number": 123},
+		"problem":  "the bug", "solution": "the fix",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin := script(t, `[ -n "$PLOEG_OUTCOME_FILE" ] || { echo "PLOEG_OUTCOME_FILE unset" >&2; exit 3; }
+cat >"$PLOEG_OUTCOME_FILE" <<'JSON'
+`+string(body)+`
+JSON
+exit 0`)
+
+	got, err := fx.adapter(t, bin).Run(context.Background(), spec(), env(t))
+	if err != nil {
+		t.Logf("run returned %v (a session adapter may reject a non-protocol binary; the claims must not survive anyway)", err)
+	}
+	if got.Outcome.AssertsDelivery() || len(got.Links) != 0 || got.Checkpoint != nil ||
+		got.FailureReason == string(work.FailureBudget) || got.Verification != nil || got.Delivery != nil {
+		t.Errorf("the agent's delivery claims survived the adapter: %+v", got)
+	}
+	if got.Problem != "the bug" || got.Solution != "the fix" {
+		t.Errorf("the writer's account was lost with the claims: problem %q solution %q", got.Problem, got.Solution)
+	}
 }
 
 // adapter lifts whichever constructor the fixture supplied to harness.Adapter,

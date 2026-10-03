@@ -158,11 +158,10 @@ func TestResolveOutcome_Precedence(t *testing.T) {
 		},
 		// ...but never invents one, and never overwrites what the agent said.
 		{
-			name:        "a structured report with no PR keeps its own links",
+			name:        "a structured report with no PR keeps its outcome but never its own links (ADR-0059)",
 			report:      harness.OutcomeReport{Outcome: work.OutcomeFollowUpCreated, Summary: "opened a follow-up", Links: []string{"http://tracker/task/9"}},
 			wantOutcome: work.OutcomeFollowUpCreated,
 			wantSummary: "opened a follow-up",
-			wantLinks:   []string{"http://tracker/task/9"},
 		},
 		{
 			name:        "structured stuck without reason synthesizes one from the tail",
