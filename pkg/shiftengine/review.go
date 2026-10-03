@@ -159,6 +159,10 @@ func (w *ReviewWatch) recordFacts(ctx context.Context, t reviewTarget, facts pro
 			"work_item", t.item.WorkItemID, "repo", t.repo, "pr", t.pr, "err", err)
 		return
 	}
+	if err := forgefacts.RecordChangedPaths(ctx, w.Store, t.forge, pr, facts.HeadSHA); err != nil {
+		w.log().Warn("review reconcile: changed paths not recorded; they stay unknown",
+			"work_item", t.item.WorkItemID, "repo", t.repo, "pr", t.pr, "head", facts.HeadSHA, "err", err)
+	}
 	key := store.PullRequestKey{Forge: t.forge.Name(), Repo: t.repo, Number: t.pr}
 	if _, err := w.Store.RefreshPullRequestKPIs(ctx, key, time.Now(), w.Bots); err != nil {
 		w.log().Error("review reconcile: pull request figures not recomputed",

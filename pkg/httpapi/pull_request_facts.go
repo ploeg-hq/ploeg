@@ -39,6 +39,10 @@ func (s *Server) recordPullRequestFacts(ctx context.Context, fp provider.ForgePr
 		return
 	}
 	head := s.capturePullRequestFacts(ctx, fp, pr, ev.PullRequest)
+	if err := forgefacts.RecordChangedPaths(ctx, s.Store, fp, pr, head); err != nil {
+		s.Log.Warn("changed paths not recorded; they stay unknown", "provider", fp.Name(),
+			"repo", pr.Repo, "pr", pr.Number, "head", head, "err", err)
+	}
 	if ev.Kind == provider.ForgePRMerged {
 		s.captureMergedChange(ctx, fp, ev, true)
 	}

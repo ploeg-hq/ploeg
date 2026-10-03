@@ -104,6 +104,14 @@ change either side and the test tells you.
   `code`, the `reason` sentence and the board's `allowedLabels`. A row
   recorded before codes existed answers `unclassified`. An older Ploeg
   answers 404.
+- Since VIK-1698 each play may carry `changedPaths`, the paths the pull
+  request changes at its `headSha` (`cardChangedPath`: `path`, `status`
+  `added`, `modified`, `deleted`, `renamed` or `copied`, and `previousPath`
+  for a rename or copy), at most 300 in the forge's order, with
+  `changedPathsTruncated` when it changes more. Both are absent until the
+  paths at the current head were read, and stay absent after a failed read;
+  an empty array is a read list with no paths. See
+  [ADR-0046](../adrs/0046-a-run-card-is-assembled-per-work-item-from-stored-facts.md).
 - `deploy-api.v1` is the body of a pipeline's deploy report. It refuses
   unknown fields, unlike the response contracts, so a misspelled field fails
   the pipeline step instead of being dropped.

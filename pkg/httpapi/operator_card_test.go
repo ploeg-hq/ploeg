@@ -22,17 +22,30 @@ import (
 )
 
 type fakeForgejo struct {
-	mu        sync.Mutex
-	pull      string
-	status    string
-	pullReads int
-	statusAt  []string
+	mu         sync.Mutex
+	pull       string
+	status     string
+	pullReads  int
+	statusAt   []string
+	files      string
+	filesReads int
 }
 
 func (f *fakeForgejo) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	switch {
+	case strings.HasSuffix(r.URL.Path, "/pulls/18/files"):
+		f.filesReads++
+		if f.files == "" {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		if r.URL.Query().Get("page") != "1" {
+			_, _ = w.Write([]byte(`[]`))
+			return
+		}
+		_, _ = w.Write([]byte(f.files))
 	case strings.HasSuffix(r.URL.Path, "/pulls/18"):
 		f.pullReads++
 		_, _ = w.Write([]byte(f.pull))
