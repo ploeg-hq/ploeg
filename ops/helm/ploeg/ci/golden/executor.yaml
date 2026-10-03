@@ -83,8 +83,6 @@ spec:
     spec:
       serviceAccountName: ploeg
       automountServiceAccountToken: false
-      nodeSelector:
-        node.webgrip.io/pool: worker
       securityContext:
         runAsNonRoot: true
         runAsUser: 65532
@@ -110,11 +108,6 @@ spec:
                 secretKeyRef:
                   name: ploeg-db-app
                   key: uri
-            - name: PLOEG_VIKUNJA_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: ploeg-webhook-secret
-                  key: PLOEG_VIKUNJA_SECRET
             - name: PLOEG_TEAM_PLANS
               value: "{\"gold\":{\"maxFixRounds\":0,\"pool\":\"6\",\"rounds\":[{\"roles\":[{\"cap\":\"0.50\",\"harness\":{\"dind\":false},\"name\":\"analyst\",\"writes\":false},{\"cap\":\"0.50\",\"harness\":{\"dind\":false},\"name\":\"tests\",\"writes\":false}]},{\"roles\":[{\"cap\":\"3.00\",\"model\":\"litellm_proxy/claude-sonnet-5\",\"name\":\"builder\",\"writes\":true}]},{\"roles\":[{\"cap\":\"0.75\",\"harness\":{\"dind\":false},\"model\":\"litellm_proxy/claude-sonnet-5\",\"name\":\"reviewer\",\"writes\":false}]},{\"roles\":[{\"cap\":\"3.00\",\"model\":\"litellm_proxy/claude-sonnet-5\",\"name\":\"builder\",\"writes\":true}]}]}}"
             - name: PLOEG_TEAM_MAX_RUNNING
@@ -261,8 +254,6 @@ spec:
         # either way — a worker needs no Kubernetes API authority at all.
         serviceAccountName: ploeg-worker
         automountServiceAccountToken: false
-        nodeSelector:
-          node.webgrip.io/pool: worker
         securityContext:
           fsGroup: 1000
         initContainers:
@@ -293,7 +284,7 @@ spec:
           # Docker daemon. Requires the ploeg-worker PolicyException. Teams whose
           # harness needs no Docker set harness.dind: false.
           - name: dind
-            image: harbor.webgrip.dev/dockerhub/library/docker:29.8.2-dind@sha256:7dcdfc4a20246236f558175182ccace1eb15a41bd3eb119dd2284f393498b7c1
+            image: docker.io/library/docker:29.8.2-dind@sha256:7dcdfc4a20246236f558175182ccace1eb15a41bd3eb119dd2284f393498b7c1
             restartPolicy: Always
             securityContext:
               privileged: true
@@ -322,7 +313,7 @@ spec:
                 memory: 1536Mi
         containers:
           - name: worker
-            image: harbor.webgrip.dev/webgrip/agent-runner:1.3.0@sha256:ab0a56f12a33b2af542663e0f2079261f5b9aca5596a5d497583f211a284684f
+            image: registry.example/agent-runner:1.3.0
             command: ["/mnt/bin/ploeg-worker"]
             env:
               - name: PLOEG_API_URL
@@ -492,8 +483,6 @@ spec:
         # either way — a worker needs no Kubernetes API authority at all.
         serviceAccountName: ploeg-worker
         automountServiceAccountToken: false
-        nodeSelector:
-          node.webgrip.io/pool: worker
         securityContext:
           fsGroup: 1000
         initContainers:
@@ -693,8 +682,6 @@ spec:
         # either way — a worker needs no Kubernetes API authority at all.
         serviceAccountName: ploeg-worker
         automountServiceAccountToken: false
-        nodeSelector:
-          node.webgrip.io/pool: worker
         securityContext:
           fsGroup: 1000
         initContainers:
@@ -725,7 +712,7 @@ spec:
           # Docker daemon. Requires the ploeg-worker PolicyException. Teams whose
           # harness needs no Docker set harness.dind: false.
           - name: dind
-            image: harbor.webgrip.dev/dockerhub/library/docker:29.8.2-dind@sha256:7dcdfc4a20246236f558175182ccace1eb15a41bd3eb119dd2284f393498b7c1
+            image: docker.io/library/docker:29.8.2-dind@sha256:7dcdfc4a20246236f558175182ccace1eb15a41bd3eb119dd2284f393498b7c1
             restartPolicy: Always
             securityContext:
               privileged: true
@@ -754,7 +741,7 @@ spec:
                 memory: 1536Mi
         containers:
           - name: worker
-            image: harbor.webgrip.dev/webgrip/agent-runner:1.3.0@sha256:ab0a56f12a33b2af542663e0f2079261f5b9aca5596a5d497583f211a284684f
+            image: registry.example/agent-runner:1.3.0
             command: ["/mnt/bin/ploeg-worker"]
             env:
               - name: PLOEG_API_URL
@@ -941,8 +928,6 @@ spec:
         # either way — a worker needs no Kubernetes API authority at all.
         serviceAccountName: ploeg-worker
         automountServiceAccountToken: false
-        nodeSelector:
-          node.webgrip.io/pool: worker
         securityContext:
           fsGroup: 1000
         initContainers:
@@ -973,7 +958,7 @@ spec:
           # Docker daemon. Requires the ploeg-worker PolicyException. Teams whose
           # harness needs no Docker set harness.dind: false.
           - name: dind
-            image: harbor.webgrip.dev/dockerhub/library/docker:29.8.2-dind@sha256:7dcdfc4a20246236f558175182ccace1eb15a41bd3eb119dd2284f393498b7c1
+            image: docker.io/library/docker:29.8.2-dind@sha256:7dcdfc4a20246236f558175182ccace1eb15a41bd3eb119dd2284f393498b7c1
             restartPolicy: Always
             securityContext:
               privileged: true
@@ -1002,7 +987,7 @@ spec:
                 memory: 1536Mi
         containers:
           - name: worker
-            image: harbor.webgrip.dev/webgrip/agent-runner:1.3.0@sha256:ab0a56f12a33b2af542663e0f2079261f5b9aca5596a5d497583f211a284684f
+            image: registry.example/agent-runner:1.3.0
             command: ["/mnt/bin/ploeg-worker"]
             env:
               - name: PLOEG_API_URL
@@ -1184,8 +1169,6 @@ spec:
         # either way — a worker needs no Kubernetes API authority at all.
         serviceAccountName: ploeg-worker
         automountServiceAccountToken: false
-        nodeSelector:
-          node.webgrip.io/pool: worker
         securityContext:
           fsGroup: 1000
         initContainers:
@@ -1216,7 +1199,7 @@ spec:
           # Docker daemon. Requires the ploeg-worker PolicyException. Teams whose
           # harness needs no Docker set harness.dind: false.
           - name: dind
-            image: harbor.webgrip.dev/dockerhub/library/docker:29.8.2-dind@sha256:7dcdfc4a20246236f558175182ccace1eb15a41bd3eb119dd2284f393498b7c1
+            image: docker.io/library/docker:29.8.2-dind@sha256:7dcdfc4a20246236f558175182ccace1eb15a41bd3eb119dd2284f393498b7c1
             restartPolicy: Always
             securityContext:
               privileged: true
@@ -1416,8 +1399,6 @@ spec:
         # either way — a worker needs no Kubernetes API authority at all.
         serviceAccountName: ploeg-worker
         automountServiceAccountToken: false
-        nodeSelector:
-          node.webgrip.io/pool: worker
         securityContext:
           fsGroup: 1000
         initContainers:
@@ -1446,7 +1427,7 @@ spec:
                 memory: 64Mi
         containers:
           - name: worker
-            image: harbor.webgrip.dev/webgrip/agent-runner:1.3.0@sha256:ab0a56f12a33b2af542663e0f2079261f5b9aca5596a5d497583f211a284684f
+            image: registry.example/agent-runner:1.3.0
             command: ["/mnt/bin/ploeg-worker"]
             env:
               - name: PLOEG_API_URL
@@ -1608,8 +1589,6 @@ spec:
         # either way — a worker needs no Kubernetes API authority at all.
         serviceAccountName: ploeg-worker
         automountServiceAccountToken: false
-        nodeSelector:
-          node.webgrip.io/pool: worker
         securityContext:
           fsGroup: 1000
         initContainers:
@@ -1638,7 +1617,7 @@ spec:
                 memory: 64Mi
         containers:
           - name: worker
-            image: harbor.webgrip.dev/webgrip/agent-runner:1.3.0@sha256:ab0a56f12a33b2af542663e0f2079261f5b9aca5596a5d497583f211a284684f
+            image: registry.example/agent-runner:1.3.0
             command: ["/mnt/bin/ploeg-worker"]
             env:
               - name: PLOEG_API_URL
@@ -1812,8 +1791,6 @@ spec:
         # either way — a worker needs no Kubernetes API authority at all.
         serviceAccountName: ploeg-worker
         automountServiceAccountToken: false
-        nodeSelector:
-          node.webgrip.io/pool: worker
         securityContext:
           fsGroup: 1000
         initContainers:
@@ -1844,7 +1821,7 @@ spec:
           # Docker daemon. Requires the ploeg-worker PolicyException. Teams whose
           # harness needs no Docker set harness.dind: false.
           - name: dind
-            image: harbor.webgrip.dev/dockerhub/library/docker:29.8.2-dind@sha256:7dcdfc4a20246236f558175182ccace1eb15a41bd3eb119dd2284f393498b7c1
+            image: docker.io/library/docker:29.8.2-dind@sha256:7dcdfc4a20246236f558175182ccace1eb15a41bd3eb119dd2284f393498b7c1
             restartPolicy: Always
             securityContext:
               privileged: true
@@ -1873,7 +1850,7 @@ spec:
                 memory: 1536Mi
         containers:
           - name: worker
-            image: harbor.webgrip.dev/webgrip/agent-runner:1.3.0@sha256:ab0a56f12a33b2af542663e0f2079261f5b9aca5596a5d497583f211a284684f
+            image: registry.example/agent-runner:1.3.0
             command: ["/mnt/bin/ploeg-worker"]
             env:
               - name: PLOEG_API_URL
@@ -2048,8 +2025,6 @@ spec:
         # either way — a worker needs no Kubernetes API authority at all.
         serviceAccountName: ploeg-worker
         automountServiceAccountToken: false
-        nodeSelector:
-          node.webgrip.io/pool: worker
         securityContext:
           fsGroup: 1000
         initContainers:
@@ -2078,7 +2053,7 @@ spec:
                 memory: 64Mi
         containers:
           - name: worker
-            image: harbor.webgrip.dev/webgrip/agent-runner:1.3.0@sha256:ab0a56f12a33b2af542663e0f2079261f5b9aca5596a5d497583f211a284684f
+            image: registry.example/agent-runner:1.3.0
             command: ["/mnt/bin/ploeg-worker"]
             env:
               - name: PLOEG_API_URL

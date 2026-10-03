@@ -132,8 +132,6 @@ spec:
     spec:
       serviceAccountName: ploeg
       automountServiceAccountToken: false
-      nodeSelector:
-        node.webgrip.io/pool: worker
       securityContext:
         runAsNonRoot: true
         runAsUser: 65532
@@ -159,11 +157,6 @@ spec:
                 secretKeyRef:
                   name: ploeg-db-app
                   key: uri
-            - name: PLOEG_VIKUNJA_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: ploeg-webhook-secret
-                  key: PLOEG_VIKUNJA_SECRET
             - name: PLOEG_TEAM_PLANS
               value: "{\"gvisor\":{\"maxFixRounds\":0,\"pool\":\"4\",\"rounds\":[{\"roles\":[{\"cap\":\"3.00\",\"name\":\"builder\",\"writes\":true}]},{\"roles\":[{\"cap\":\"0.75\",\"harness\":{\"dind\":false},\"name\":\"reviewer\",\"sandbox\":{\"runtimeClassName\":\"gvisor-systrap\"},\"writes\":false}]}]}}"
             - name: PLOEG_FORGEJO_URL
@@ -312,7 +305,7 @@ spec:
           value: /certs/client
         - name: DOCKER_TLS_VERIFY
           value: "1"
-        image: harbor.webgrip.dev/webgrip/agent-runner:1.3.0@sha256:ab0a56f12a33b2af542663e0f2079261f5b9aca5596a5d497583f211a284684f
+        image: registry.example/agent-runner:1.3.0
         name: worker
         resources:
           limits:
@@ -360,7 +353,7 @@ spec:
       - env:
         - name: DOCKER_TLS_CERTDIR
           value: /certs
-        image: harbor.webgrip.dev/dockerhub/library/docker:29.8.2-dind@sha256:7dcdfc4a20246236f558175182ccace1eb15a41bd3eb119dd2284f393498b7c1
+        image: docker.io/library/docker:29.8.2-dind@sha256:7dcdfc4a20246236f558175182ccace1eb15a41bd3eb119dd2284f393498b7c1
         name: dind
         resources:
           limits:
@@ -385,8 +378,6 @@ spec:
           name: docker-storage
         - mountPath: /mnt/ci-shared
           name: ci-shared
-      nodeSelector:
-        node.webgrip.io/pool: worker
       restartPolicy: Never
       runtimeClassName: kata
       securityContext:
@@ -523,7 +514,7 @@ spec:
           value: /certs/client
         - name: DOCKER_TLS_VERIFY
           value: "1"
-        image: harbor.webgrip.dev/webgrip/agent-runner:1.3.0@sha256:ab0a56f12a33b2af542663e0f2079261f5b9aca5596a5d497583f211a284684f
+        image: registry.example/agent-runner:1.3.0
         name: worker
         resources:
           limits:
@@ -571,7 +562,7 @@ spec:
       - env:
         - name: DOCKER_TLS_CERTDIR
           value: /certs
-        image: harbor.webgrip.dev/dockerhub/library/docker:29.8.2-dind@sha256:7dcdfc4a20246236f558175182ccace1eb15a41bd3eb119dd2284f393498b7c1
+        image: docker.io/library/docker:29.8.2-dind@sha256:7dcdfc4a20246236f558175182ccace1eb15a41bd3eb119dd2284f393498b7c1
         name: dind
         resources:
           limits:
@@ -596,8 +587,6 @@ spec:
           name: docker-storage
         - mountPath: /mnt/ci-shared
           name: ci-shared
-      nodeSelector:
-        node.webgrip.io/pool: worker
       restartPolicy: Never
       runtimeClassName: gvisor
       securityContext:
@@ -727,7 +716,7 @@ spec:
               fieldPath: metadata.uid
         - name: WORK_DIR
           value: /mnt/ci-shared
-        image: harbor.webgrip.dev/webgrip/agent-runner:1.3.0@sha256:ab0a56f12a33b2af542663e0f2079261f5b9aca5596a5d497583f211a284684f
+        image: registry.example/agent-runner:1.3.0
         name: worker
         resources:
           limits:
@@ -769,8 +758,6 @@ spec:
         volumeMounts:
         - mountPath: /mnt/bin
           name: worker-bin
-      nodeSelector:
-        node.webgrip.io/pool: worker
       restartPolicy: Never
       runtimeClassName: gvisor-systrap
       securityContext:
@@ -916,8 +903,6 @@ spec:
         restartPolicy: Never
         serviceAccountName: ploeg-sandbox-launcher
         automountServiceAccountToken: true
-        nodeSelector:
-          node.webgrip.io/pool: worker
         containers:
           - name: launcher
             image: ghcr.io/ploeg-hq/ploegd:CHART-VERSION
@@ -1042,8 +1027,6 @@ spec:
         restartPolicy: Never
         serviceAccountName: ploeg-sandbox-launcher
         automountServiceAccountToken: true
-        nodeSelector:
-          node.webgrip.io/pool: worker
         containers:
           - name: launcher
             image: ghcr.io/ploeg-hq/ploegd:CHART-VERSION
@@ -1178,8 +1161,6 @@ spec:
         restartPolicy: Never
         serviceAccountName: ploeg-sandbox-launcher
         automountServiceAccountToken: true
-        nodeSelector:
-          node.webgrip.io/pool: worker
         containers:
           - name: launcher
             image: ghcr.io/ploeg-hq/ploegd:CHART-VERSION

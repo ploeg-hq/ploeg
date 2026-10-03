@@ -19,6 +19,27 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}
 {{- end -}}
 
+{{/*
+ploeg.requireIntegrations fails the render when an external service that
+ploegd or its workers need is unset.
+*/}}
+{{- define "ploeg.requireIntegrations" -}}
+{{- $e := .Values.executor -}}
+{{- $litellm := $e.litellm | default dict -}}
+{{- if and (ne $e.workerAuth.mode "legacy") (not $litellm.adminUrl) -}}
+{{- fail "executor.litellm.adminUrl is required while executor.workerAuth.mode is managed: ploegd refuses to start without the LiteLLM management URL, e.g. http://litellm.<namespace>.svc.cluster.local:4000" -}}
+{{- end -}}
+{{- if $e.enabled -}}
+{{- if not $litellm.baseUrl -}}
+{{- fail "executor.litellm.baseUrl is required when executor.enabled is true: the model gateway URL workers call, e.g. http://litellm.<namespace>.svc.cluster.local:4000/v1" -}}
+{{- end -}}
+{{- $forge := include "ploeg.forge" . | fromJson -}}
+{{- if not $forge.url -}}
+{{- fail (printf "executor.%s.url is required when executor.enabled is true: the forge URL workers clone from and push to" $forge.kind) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
 {{- define "ploeg.apiUrl" -}}
 {{ .Values.executor.apiUrl | default (printf "http://%s:%v" (include "ploeg.fullname" .) .Values.service.port) }}
 {{- end -}}
@@ -128,6 +149,9 @@ global executor.harness defaults field-by-field (explicit hasKey checks, so
 {{- $rh := $role.harness | default dict }}
 {{- $hName := $rh.name | default ($th.name | default ($gh.name | default "openhands")) }}
 {{- $hImage := $rh.image | default ($th.image | default ($gh.image | default $root.Values.executor.runnerImage)) }}
+{{- if not $hImage }}
+{{- fail (printf "team %s: no agent image; set executor.harness.image, or harness.image on the team or Role. Ploeg publishes no agent image" $team.name) }}
+{{- end }}
 {{- $hEntrypoint := $rh.entrypoint | default ($th.entrypoint | default $gh.entrypoint) }}
 {{- $hArgs := $rh.args | default ($th.args | default $gh.args) }}
 {{- $hOutcomeFile := $rh.outcomeFile | default ($th.outcomeFile | default $gh.outcomeFile) }}

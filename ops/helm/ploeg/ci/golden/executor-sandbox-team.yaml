@@ -132,8 +132,6 @@ spec:
     spec:
       serviceAccountName: ploeg
       automountServiceAccountToken: false
-      nodeSelector:
-        node.webgrip.io/pool: worker
       securityContext:
         runAsNonRoot: true
         runAsUser: 65532
@@ -159,11 +157,6 @@ spec:
                 secretKeyRef:
                   name: ploeg-db-app
                   key: uri
-            - name: PLOEG_VIKUNJA_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: ploeg-webhook-secret
-                  key: PLOEG_VIKUNJA_SECRET
             - name: PLOEG_FORGEJO_URL
               value: "http://forgejo-http.forgejo.svc.cluster.local:3000"
             - name: PLOEG_FORGEJO_TOKEN
@@ -299,7 +292,7 @@ spec:
               fieldPath: metadata.uid
         - name: WORK_DIR
           value: /mnt/ci-shared
-        image: harbor.webgrip.dev/webgrip/agent-runner:1.3.0@sha256:ab0a56f12a33b2af542663e0f2079261f5b9aca5596a5d497583f211a284684f
+        image: registry.example/agent-runner:1.3.0
         name: worker
         resources:
           limits:
@@ -341,8 +334,6 @@ spec:
         volumeMounts:
         - mountPath: /mnt/bin
           name: worker-bin
-      nodeSelector:
-        node.webgrip.io/pool: worker
       restartPolicy: Never
       securityContext:
         fsGroup: 1000
@@ -429,8 +420,6 @@ spec:
         # either way — a worker needs no Kubernetes API authority at all.
         serviceAccountName: ploeg-worker
         automountServiceAccountToken: false
-        nodeSelector:
-          node.webgrip.io/pool: worker
         securityContext:
           fsGroup: 1000
         initContainers:
@@ -459,7 +448,7 @@ spec:
                 memory: 64Mi
         containers:
           - name: worker
-            image: harbor.webgrip.dev/webgrip/agent-runner:1.3.0@sha256:ab0a56f12a33b2af542663e0f2079261f5b9aca5596a5d497583f211a284684f
+            image: registry.example/agent-runner:1.3.0
             command: ["/mnt/bin/ploeg-worker"]
             env:
               - name: PLOEG_API_URL
@@ -598,8 +587,6 @@ spec:
         restartPolicy: Never
         serviceAccountName: ploeg-sandbox-launcher
         automountServiceAccountToken: true
-        nodeSelector:
-          node.webgrip.io/pool: worker
         containers:
           - name: launcher
             image: ghcr.io/ploeg-hq/ploegd:CHART-VERSION

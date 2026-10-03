@@ -504,7 +504,7 @@
           "properties": {
             "url": {
               "type": "string",
-              "description": "The workers' forge URL (FORGE_URL): clone, push, pull-request API and the forge proxy upstream. An in-cluster URL keeps Run traffic off the public gateway."
+              "description": "The workers' forge URL (FORGE_URL): clone, push, pull-request API and the forge proxy upstream. An in-cluster URL keeps Run traffic off the public gateway. Required when the executor is enabled on this forge; empty with the executor off = ploegd has no forge provider."
             },
             "publicUrl": {
               "type": "string",
@@ -550,7 +550,7 @@
             "object",
             "null"
           ],
-          "description": "Node selector for WORKER pods, not ploegd (that is the top-level nodeSelector). Keeps agent Jobs off control-plane nodes (ADR-0002: no DinD beside etcd). The default label exists in the homelab and on no other cluster, so a different estate must override it with its own label or clear it with null \u2014 Helm deep-merges maps, so {} leaves the default in place and only null removes the block.",
+          "description": "Node selector for WORKER pods, not ploegd (that is the top-level nodeSelector). Empty by default, so workers schedule on any node. Set your own label to keep agent Jobs and their privileged DinD sidecar off control-plane nodes (ADR-0002: no DinD beside etcd).",
           "additionalProperties": {
             "type": "string"
           }

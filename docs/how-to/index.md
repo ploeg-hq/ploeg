@@ -29,7 +29,7 @@ For accounts whose final cost is uncertain, [Reconcile uncertainty](../ops/manag
 
 ## Before you start
 
-The commands assume the defaults of the [Helm chart](../../ops/helm/ploeg/values.yaml) and the current GitOps layout. If your deployment differs, substitute the names:
+The commands assume the names the current GitOps layout gives the [Helm chart](../../ops/helm/ploeg/README.md)'s release, database and gateway; the chart itself names no database or gateway. If your deployment differs, substitute the names:
 
 | Thing | Default name |
 | --- | --- |
