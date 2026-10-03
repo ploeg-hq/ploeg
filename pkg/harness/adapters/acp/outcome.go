@@ -248,9 +248,9 @@ func (w watchdogFire) cause() string {
 
 func (w watchdogFire) reason() string {
 	if w.kind == watchdogPromptWall {
-		return w.name() + ": " + w.cause()
+		return "prompt ran past " + w.limit.String()
 	}
-	return fmt.Sprintf("%s: %s after %d events", w.name(), w.cause(), w.events)
+	return fmt.Sprintf("no protocol activity for %s after %d events", w.limit, w.events)
 }
 
 func turnBudgetReason(s *sessionState) string {

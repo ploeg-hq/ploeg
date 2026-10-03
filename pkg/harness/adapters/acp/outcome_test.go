@@ -87,7 +87,7 @@ func TestBuild_StopReasonMatrix(t *testing.T) {
 			res:         result{phase: phasePrompt, watchdog: &watchdogFire{kind: watchdogIdle, limit: 10 * time.Minute, events: 29}},
 			wantOutcome: work.OutcomeFailed,
 			wantFailure: work.FailureAgentError,
-			reasonHas:   "idle watchdog",
+			reasonHas:   "no protocol activity",
 		},
 		{
 			name:        "prompt wall is retryable, not stuck",
@@ -95,7 +95,7 @@ func TestBuild_StopReasonMatrix(t *testing.T) {
 			res:         result{phase: phasePrompt, watchdog: &watchdogFire{kind: watchdogPromptWall, limit: 45 * time.Minute}},
 			wantOutcome: work.OutcomeFailed,
 			wantFailure: work.FailureAgentError,
-			reasonHas:   "prompt wall",
+			reasonHas:   "prompt ran past",
 		},
 		{
 			name:        "transport death mid-prompt is retryable",
@@ -455,13 +455,13 @@ func TestBuild_NamesTheWatchdogThatStoppedTheRun(t *testing.T) {
 			name:        "idle watchdog",
 			fire:        watchdogFire{kind: watchdogIdle, limit: 10 * time.Minute, events: 29},
 			wantSummary: "acp idle watchdog stopped the agent: no protocol activity for 10m0s",
-			wantReason:  "idle watchdog: no protocol activity for 10m0s after 29 events",
+			wantReason:  "no protocol activity for 10m0s after 29 events",
 		},
 		{
 			name:        "prompt wall",
 			fire:        watchdogFire{kind: watchdogPromptWall, limit: 45 * time.Minute},
 			wantSummary: "acp prompt wall stopped the agent: the turn ran past 45m0s",
-			wantReason:  "prompt wall: the turn ran past 45m0s",
+			wantReason:  "prompt ran past 45m0s",
 		},
 	}
 	for _, tc := range tests {
