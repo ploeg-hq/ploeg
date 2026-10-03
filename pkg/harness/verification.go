@@ -59,8 +59,12 @@ func (v Verification) FailedCheck() (VerificationCheck, bool) {
 	return VerificationCheck{}, false
 }
 
-// Validate checks the record against the contract: known results, a full
-// object name, and a Result that agrees with its checks.
+// Validate checks the record against the contract, and ploegd refuses an
+// outcome whose record fails it: known results, a full object name, start
+// and finish times in order, a passed check with exit code 0 and a failed one
+// without, each check that ran timed inside the record, a check that did not
+// run with no exit code or times, and a Result that agrees with its checks.
+// A passed record needs at least one check: a pass with no evidence is not one.
 func (v Verification) Validate() error {
 	switch v.Result {
 	case VerificationPassed, VerificationFailed, VerificationIncomplete:
@@ -70,15 +74,21 @@ func (v Verification) Validate() error {
 	if v.Commit != "" && !objectNameRe.MatchString(v.Commit) {
 		return errors.New("verification.commit must be a full lowercase hexadecimal object name")
 	}
+	if v.StartedAt.IsZero() || v.FinishedAt.IsZero() || v.FinishedAt.Before(v.StartedAt) {
+		return errors.New("verification.startedAt and finishedAt must both be set, in that order")
+	}
 	failed, notRun := false, false
 	for i, c := range v.Checks {
 		switch c.Result {
 		case VerificationPassed, VerificationFailed:
-			if c.ExitCode == nil {
-				return fmt.Errorf("verification.checks[%d] ran but has no exitCode", i)
+			if err := v.validateRanCheck(i, c); err != nil {
+				return err
 			}
 			failed = failed || c.Result == VerificationFailed
 		case VerificationCheckNotRun:
+			if c.ExitCode != nil || c.StartedAt != nil || c.FinishedAt != nil {
+				return fmt.Errorf("verification.checks[%d] did not run but has an exitCode or times", i)
+			}
 			notRun = true
 		default:
 			return fmt.Errorf("verification.checks[%d].result %q must be passed, failed or not_run", i, c.Result)
@@ -91,6 +101,24 @@ func (v Verification) Validate() error {
 		return errors.New("verification.result is failed but no check failed")
 	case !failed && notRun && v.Result == VerificationPassed:
 		return errors.New("verification.result is passed but a check did not run")
+	case v.Result == VerificationPassed && len(v.Checks) == 0:
+		return errors.New("verification.result is passed but no check ran")
+	}
+	return nil
+}
+
+func (v Verification) validateRanCheck(i int, c VerificationCheck) error {
+	switch {
+	case c.ExitCode == nil:
+		return fmt.Errorf("verification.checks[%d] ran but has no exitCode", i)
+	case c.Result == VerificationPassed && *c.ExitCode != 0:
+		return fmt.Errorf("verification.checks[%d] passed with exit code %d", i, *c.ExitCode)
+	case c.Result == VerificationFailed && *c.ExitCode == 0:
+		return fmt.Errorf("verification.checks[%d] failed with exit code 0", i)
+	case c.StartedAt == nil || c.FinishedAt == nil:
+		return fmt.Errorf("verification.checks[%d] ran but has no startedAt or finishedAt", i)
+	case c.FinishedAt.Before(*c.StartedAt) || c.StartedAt.Before(v.StartedAt) || v.FinishedAt.Before(*c.FinishedAt):
+		return fmt.Errorf("verification.checks[%d] times are out of order or outside the verification's", i)
 	}
 	return nil
 }

@@ -516,11 +516,13 @@ func (s *Store) ReportOutcome(ctx context.Context, runToken string, rep harnessR
 		    stuck_reason = $3, links = $4, usage = $5, failure_reason = $6, findings = $7,
 		    verdict = CASE WHEN writes THEN '' ELSE $8 END, outcome_digest = $10,
 		    problem = CASE WHEN writes THEN $11 ELSE '' END, solution = CASE WHEN writes THEN $12 ELSE '' END,
-		    verification = CASE WHEN writes THEN $13::jsonb ELSE NULL END
+		    verification = CASE WHEN writes THEN $13::jsonb ELSE NULL END,
+		    evidence_version = $14
 		WHERE run_token = $9 AND state = 'running'
 		RETURNING id, work_item_id, team, shift_id`,
 		string(rep.Outcome), rep.Summary, rep.StuckReason, rep.Links, rep.Usage,
-		rep.FailureReason, rep.Findings, rep.Verdict, runToken, digest, rep.Problem, rep.Solution, verification).Scan(&runID, &id, &team, &shiftID); err != nil {
+		rep.FailureReason, rep.Findings, rep.Verdict, runToken, digest, rep.Problem, rep.Solution, verification,
+		CurrentEvidenceVersion).Scan(&runID, &id, &team, &shiftID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			if err := tx.QueryRow(ctx, `SELECT work_item_id,shift_id FROM agent_runs
 				WHERE run_token=$1 AND state='finished' AND outcome_digest=$2
