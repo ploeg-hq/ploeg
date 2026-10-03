@@ -84,7 +84,7 @@ func NewCanaryRepo(t testing.TB, layout CanaryLayout) string {
 		for _, args := range [][]string{
 			{"init", "-q"},
 			{"add", "."},
-			{"-c", "user.name=canary", "-c", "user.email=canary@example.invalid", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "-q", "-m", "canary fixture"},
+			{"-c", "user.name=canary", "-c", "user.email=canary@example.invalid", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "-c", "maintenance.auto=false", "-c", "gc.auto=0", "commit", "-q", "-m", "canary fixture"},
 		} {
 			cmd := exec.Command("git", args...)
 			cmd.Dir = dir
