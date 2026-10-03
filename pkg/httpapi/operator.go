@@ -197,6 +197,7 @@ func (s *Server) operatorHandler() http.Handler {
 	mux.HandleFunc("GET /api/v1/operator/runs", s.handleOperatorRuns)
 	mux.HandleFunc("GET /api/v1/operator/runs/{id}", s.handleOperatorRun)
 	mux.HandleFunc("GET /api/v1/operator/events", s.handleOperatorEvents)
+	mux.HandleFunc("GET /api/v1/operator/route-refusals", s.handleOperatorRouteRefusals)
 	s.registerOperatorExecution(mux)
 	s.registerOperatorDelivery(mux)
 	s.registerOperatorProposed(mux)
@@ -318,6 +319,29 @@ func (s *Server) handleOperatorEvents(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	operatorJSON(w, 200, map[string]any{"schemaVersion": "1.0", "events": events, "nextCursor": cursor, "lastCursor": last, "hasMore": more, "consistency": "snapshot"})
+}
+
+const (
+	routeRefusalWindowDays = 14
+	routeRefusalLimit      = 50
+)
+
+func (s *Server) handleOperatorRouteRefusals(w http.ResponseWriter, r *http.Request) {
+	if !operatorGET(w, r) {
+		return
+	}
+	if r.URL.RawQuery != "" {
+		operatorError(w, 400, "invalid_request", "Route refusals does not accept query parameters.")
+		return
+	}
+	principal, _ := OperatorPrincipalFromContext(r.Context())
+	now := time.Now().UTC()
+	refusals, err := s.Store.RecentRouteRefusals(r.Context(), principal.Teams, now.AddDate(0, 0, -routeRefusalWindowDays), routeRefusalLimit)
+	if err != nil {
+		operatorReadError(w, err)
+		return
+	}
+	operatorJSON(w, 200, map[string]any{"schemaVersion": "1.0", "generatedAt": now, "windowDays": routeRefusalWindowDays, "refusals": refusals})
 }
 
 func operatorFilter(w http.ResponseWriter, r *http.Request, events bool) (store.OperatorFilter, bool) {

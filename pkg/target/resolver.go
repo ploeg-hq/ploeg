@@ -58,9 +58,33 @@ type Route struct {
 	Key string
 }
 
+// Refusal codes name why routing refused an item. They are stable: the
+// operator API returns them and front ends phrase each one.
+const (
+	// RefusalLabelsUnread: the tracker labels could not be read and the board routes by label.
+	RefusalLabelsUnread = "labels_unread"
+	// RefusalMultipleLabels: the item carries more than one distinct repo/ label.
+	RefusalMultipleLabels = "multiple_labels"
+	// RefusalLabelMissing: the board requires a repo/ label and the item has none.
+	RefusalLabelMissing = "label_missing"
+	// RefusalLabelUnregistered: the repo/ label names no registered target.
+	RefusalLabelUnregistered = "label_unregistered"
+	// RefusalNoBoardRule: the repo/ label names a target, but no board rule covers the item.
+	RefusalNoBoardRule = "no_board_rule"
+	// RefusalLabelNotAllowed: the repo/ label names a target the board does not allow.
+	RefusalLabelNotAllowed = "label_not_allowed"
+	// RefusalTargetNotReady: the selected target failed its readiness check at ingest.
+	RefusalTargetNotReady = "target_not_ready"
+)
+
 // Refusal is a routing failure that must not fall back to any repository.
 type Refusal struct {
+	// Code is one of the Refusal* constants.
+	Code   string
 	Reason string
+	// Allowed are the repo/ labels the matched board rule allows, sorted; empty
+	// and non-nil when no rule matched or the caller cannot know them.
+	Allowed []string
 }
 
 func (r *Refusal) Error() string { return r.Reason }
@@ -233,11 +257,11 @@ func (m *MapResolver) Route(req Request) (Route, bool, error) {
 		return Route{Target: rule.Target, Rule: rule.ID()}, true, nil
 	}
 	if matched && rule.selectsByLabel() && !req.LabelsRead {
-		return Route{}, false, refuse("its labels could not be read from the tracker, and board rule %q routes by label", rule.ID())
+		return Route{}, false, refuse(RefusalLabelsUnread, m.allowed(rule, matched), "its labels could not be read from the tracker, and board rule %q routes by label", rule.ID())
 	}
 	hints := hintLabels(req.Labels)
 	if len(hints) > 1 {
-		return Route{}, false, refuse("it carries more than one repository label (%s); keep exactly one", strings.Join(hints, ", "))
+		return Route{}, false, refuse(RefusalMultipleLabels, m.allowed(rule, matched), "it carries more than one repository label (%s); keep exactly one", strings.Join(hints, ", "))
 	}
 	if len(hints) == 1 {
 		return m.routeByHint(rule, matched, hints[0])
@@ -251,20 +275,22 @@ func (m *MapResolver) Route(req Request) (Route, bool, error) {
 	case rule.Target.Resolved():
 		return Route{Target: rule.Target, Rule: rule.ID()}, true, nil
 	default:
-		return Route{}, false, refuse("board rule %q requires a repository label and the item has none; add one of: %s", rule.ID(), m.allowedLabels(rule))
+		allowed := m.allowed(rule, matched)
+		return Route{}, false, refuse(RefusalLabelMissing, allowed, "board rule %q requires a repository label and the item has none; add one of: %s", rule.ID(), labelList(allowed))
 	}
 }
 
 func (m *MapResolver) routeByHint(rule Rule, matched bool, hint string) (Route, bool, error) {
 	key, registered := m.hints[hint]
 	if !registered {
-		return Route{}, false, refuse("label %q names no registered target", hint)
+		return Route{}, false, refuse(RefusalLabelUnregistered, m.allowed(rule, matched), "label %q names no registered target", hint)
 	}
 	if !matched {
-		return Route{}, false, refuse("label %q selects target %q, but no board rule covers this item, so it may select nothing", hint, key)
+		return Route{}, false, refuse(RefusalNoBoardRule, []string{}, "label %q selects target %q, but no board rule covers this item, so it may select nothing", hint, key)
 	}
 	if !m.allows(rule, key) {
-		return Route{}, false, refuse("label %q selects target %q, which board rule %q does not allow; allowed: %s", hint, key, rule.ID(), m.allowedLabels(rule))
+		allowed := m.allowed(rule, matched)
+		return Route{}, false, refuse(RefusalLabelNotAllowed, allowed, "label %q selects target %q, which board rule %q does not allow; allowed: %s", hint, key, rule.ID(), labelList(allowed))
 	}
 	return Route{Target: m.targets[key], Rule: rule.ID(), Hint: hint, Key: key}, true, nil
 }
@@ -281,13 +307,20 @@ func (m *MapResolver) allows(rule Rule, key string) bool {
 	return rule.Target.Resolved() && m.targets[key] == rule.Target
 }
 
-func (m *MapResolver) allowedLabels(rule Rule) string {
-	var labels []string
+func (m *MapResolver) allowed(rule Rule, matched bool) []string {
+	labels := []string{}
+	if !matched {
+		return labels
+	}
 	for _, key := range m.sortedKeys() {
 		if m.allows(rule, key) {
 			labels = append(labels, HintPrefix+key)
 		}
 	}
+	return labels
+}
+
+func labelList(labels []string) string {
 	if len(labels) == 0 {
 		return "none"
 	}
@@ -321,8 +354,8 @@ func hintLabels(labels []string) []string {
 	return hints
 }
 
-func refuse(format string, args ...any) *Refusal {
-	return &Refusal{Reason: fmt.Sprintf(format, args...)}
+func refuse(code string, allowed []string, format string, args ...any) *Refusal {
+	return &Refusal{Code: code, Reason: fmt.Sprintf(format, args...), Allowed: allowed}
 }
 
 func (m *MapResolver) match(scope, team string) (Rule, bool) {

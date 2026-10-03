@@ -399,7 +399,7 @@ func (s *Server) resolveTarget(ctx context.Context, item *work.WorkItem, labelsR
 			s.Log.Warn("target readiness unknown at ingest; the claim checks it again",
 				"external_id", ev.ExternalID, "target", route.Key, "reason", v.Reason)
 		case !v.Ready:
-			return &target.Refusal{Reason: fmt.Sprintf("target %q is not ready: %s", route.Key, v.Reason)}
+			return &target.Refusal{Code: target.RefusalTargetNotReady, Reason: fmt.Sprintf("target %q is not ready: %s", route.Key, v.Reason), Allowed: []string{}}
 		}
 	}
 	item.Target = &route.Target
@@ -414,7 +414,7 @@ func (s *Server) resolveTarget(ctx context.Context, item *work.WorkItem, labelsR
 func (s *Server) refuseRoute(ctx context.Context, tp provider.TrackerProvider, item work.WorkItem, refusal *target.Refusal) error {
 	s.Log.Warn("tracker item refused by routing; nothing queued", "provider", item.Provider,
 		"external_id", item.ExternalID, "scope", item.ExternalScope, "team", item.Team, "reason", refusal.Reason)
-	if err := s.Store.RefuseRoute(ctx, item, refusal.Reason); err != nil {
+	if err := s.Store.RefuseRoute(ctx, item, refusal.Code, refusal.Reason, refusal.Allowed); err != nil {
 		return err
 	}
 	if err := tp.Comment(ctx, item.ExternalID, routeRefusalComment(refusal)); err != nil {
