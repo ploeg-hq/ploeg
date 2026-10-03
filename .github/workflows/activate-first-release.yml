@@ -29,9 +29,7 @@ jobs:
           test "$(gh run view 37139268564 --repo ploeg-hq/ploeg --json headSha --jq .headSha)" = "$expected"
           gh run watch 37139268564 --repo ploeg-hq/ploeg --exit-status
           test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$expected"
-          test -z "$(git ls-remote origin refs/tags/v0.1.0)"
+          test "$(git rev-parse refs/tags/v0.1.0^{commit})" = "$expected"
           test "$(sed -n 's/^version: *//p' ops/helm/ploeg/Chart.yaml)" = 0.1.0
-          git -c user.name=github-actions[bot] -c user.email=41898282+github-actions[bot]@users.noreply.github.com tag -a v0.1.0 "$expected" -m 'Ploeg 0.1.0 — independent project baseline'
           gh auth setup-git
-          git push origin refs/tags/v0.1.0
           gh workflow run release.yml --repo ploeg-hq/ploeg --ref main -f tag=v0.1.0
