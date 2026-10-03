@@ -822,6 +822,9 @@ type RunReport struct {
 	// checks; nil when the Run reported none, as a Run from an older worker
 	// did.
 	Verification *harness.Verification
+	// FailureReason is why a failed Run failed (work.FailureReason); empty
+	// when the Run did not fail or recorded no reason.
+	FailureReason string
 }
 
 // RoundReports returns every finished Run's report for a Shift, in Round then
@@ -829,7 +832,8 @@ type RunReport struct {
 // the one being claimed, publication wants the round that just completed.
 func (s *Store) RoundReports(ctx context.Context, shiftID int64) ([]RunReport, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT role, round, writes, COALESCE(outcome, ''), summary, findings, links, verdict, verification
+		SELECT role, round, writes, COALESCE(outcome, ''), summary, findings, links, verdict, verification,
+		       COALESCE(failure_reason, '')
 		FROM agent_runs
 		WHERE shift_id = $1 AND state = 'finished'
 		ORDER BY round, id`, shiftID)
@@ -841,7 +845,8 @@ func (s *Store) RoundReports(ctx context.Context, shiftID int64) ([]RunReport, e
 	for rows.Next() {
 		var r RunReport
 		var verification []byte
-		if err := rows.Scan(&r.Role, &r.Round, &r.Writes, &r.Outcome, &r.Summary, &r.Findings, &r.Links, &r.Verdict, &verification); err != nil {
+		if err := rows.Scan(&r.Role, &r.Round, &r.Writes, &r.Outcome, &r.Summary, &r.Findings, &r.Links, &r.Verdict, &verification,
+			&r.FailureReason); err != nil {
 			return nil, err
 		}
 		if verification != nil {

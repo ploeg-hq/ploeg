@@ -7,16 +7,14 @@ import (
 	"github.com/ploeg-hq/ploeg/pkg/store"
 )
 
-// A failed writing Run re-opens its own Round, capped (ADR-0019).
+// A failed writing Run re-opens its own Round, capped (ADR-0019). A failed
+// reading Run does too, under the same budgets (ADR-0043, failedreader.go).
 //
-// The asymmetry between readers and writers is the whole of it. A Round that
-// loses a READER loses an opinion, and the shift-orchestration spec is right
-// that this must not stall the item. A Round that loses its WRITER loses the
-// work: the branch was never written, and every later Round is then reasoning
-// about something that does not exist. Left alone, the reviewer reviews
-// nothing, returns `approve`, and the Shift closes `review_approved` with no
-// pull request — the most reassuring close reason there is, for a Shift that
-// produced nothing.
+// A Round that loses its WRITER loses the work: the branch was never written,
+// and every later Round is then reasoning about something that does not
+// exist. Left alone, the reviewer reviews nothing, returns `approve`, and the
+// Shift closes `review_approved` with no pull request — the most reassuring
+// close reason there is, for a Shift that produced nothing.
 //
 // `failed` is not the agent's word. It is the sweeper's verdict on a pod that
 // stopped renewing (ExpireRuns), which is precisely what makes it retryable
@@ -34,34 +32,25 @@ const (
 	reasonInfraFailed = "writing_run_killed_repeatedly"
 )
 
+func (e *Engine) retryFailedRuns(ctx context.Context, si store.ShiftInfo, reports []store.RunReport) (bool, error) {
+	failed, err := e.Store.FailedRunsInRound(ctx, si.ID, si.Round)
+	if err != nil {
+		return false, err
+	}
+	for i := range failed {
+		if failed[i].Writes {
+			return e.retryFailedWriter(ctx, si, &failed[i], reports)
+		}
+	}
+	return e.retryFailedReaders(ctx, si, failed)
+}
+
 // retryFailedWriter re-opens the current Round when its writing Run failed and
 // attempts remain, or closes the Shift when they do not.
 //
 // Returns handled=true when it has taken the decision — the caller must not go
 // on to advance the plan.
-func (e *Engine) retryFailedWriter(ctx context.Context, si store.ShiftInfo, reports []store.RunReport) (bool, error) {
-	failed, err := e.Store.FailedRunsInRound(ctx, si.ID, si.Round)
-	if err != nil {
-		return false, err
-	}
-
-	var writer *store.FailedRun
-	for i := range failed {
-		if failed[i].Writes {
-			writer = &failed[i]
-			break
-		}
-	}
-	if writer == nil {
-		// Only readers failed, or nothing did. A missing opinion does not
-		// stall an item: the spec's swept-Run scenario, unchanged.
-		for _, f := range failed {
-			e.Log.Warn("a reading Run failed; its findings are missing from this Round",
-				"shift", si.ID, "round", si.Round, "role", f.Role, "attempts", f.Attempts)
-		}
-		return false, nil
-	}
-
+func (e *Engine) retryFailedWriter(ctx context.Context, si store.ShiftInfo, writer *store.FailedRun, reports []store.RunReport) (bool, error) {
 	// Infrastructure gets its own, larger budget. A pod the cluster killed
 	// says nothing about the work, so spending the Round's three attempts on
 	// evictions parks a ticket that was never actually tried — which is

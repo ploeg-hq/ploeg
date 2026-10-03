@@ -36,7 +36,7 @@ func TestBudgetExhaustedRecognisesBothCloseReasons(t *testing.T) {
 
 func TestTrackerMessage_BudgetExhaustionNamesTheAmounts(t *testing.T) {
 	l := store.ShiftLedger{Budget: 1, Spent: 0.984, Reserved: 0.01}
-	got := trackerMessage(work.StateNeedsHuman, closeMessage(reasonLoopBudget), "", 2, 2, &l)
+	got := trackerMessage(work.StateNeedsHuman, closeMessage(reasonLoopBudget), "", 2, 2, &l, false)
 	want := "**Budget exhausted:** the budget pool could not fund another Round. Spent $0.98, reserved $0.01, pool $1.00."
 	if !strings.Contains(got, want) {
 		t.Fatalf("message missing %q:\n%s", want, got)
