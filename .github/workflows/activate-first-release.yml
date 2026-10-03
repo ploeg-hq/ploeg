@@ -1,0 +1,37 @@
+name: Activate approved first release
+on:
+  push:
+    branches: [codex/activate-first-release]
+permissions:
+  contents: write
+  actions: write
+concurrency:
+  group: ploeg-release
+  cancel-in-progress: false
+jobs:
+  activate:
+    if: github.repository == 'ploeg-hq/ploeg'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require passing CI and create the approved immutable tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          expected=87f8dc45a0ea768c6ab95196d8b99d481df10c65
+          test "$(git rev-parse HEAD)" = "$expected"
+          test "$(gh run view 37139268564 --repo ploeg-hq/ploeg --json headSha --jq .headSha)" = "$expected"
+          gh run watch 37139268564 --repo ploeg-hq/ploeg --exit-status
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$expected"
+          test -z "$(git ls-remote origin refs/tags/v0.1.0)"
+          test "$(sed -n 's/^version: *//p' ops/helm/ploeg/Chart.yaml)" = 0.1.0
+          git -c user.name=github-actions[bot] -c user.email=41898282+github-actions[bot]@users.noreply.github.com tag -a v0.1.0 "$expected" -m 'Ploeg 0.1.0 — independent project baseline'
+          gh auth setup-git
+          git push origin refs/tags/v0.1.0
+          gh workflow run release.yml --repo ploeg-hq/ploeg --ref main -f tag=v0.1.0
