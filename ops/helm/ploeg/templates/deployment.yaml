@@ -1,0 +1,232 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ploeg.fullname" . }}
+  labels: {{- include "ploeg.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {{- include "ploeg.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "ploeg.selectorLabels" . | nindent 8 }}
+      {{- if .Values.config }}
+      annotations:
+        # Config is read once at boot, so a change has to restart the pod.
+        ploeg.webgrip.dev/config-checksum: {{ toYaml .Values.config | sha256sum | trunc 16 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "ploeg.fullname" . }}
+      automountServiceAccountToken: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: ploegd
+          image: {{ include "ploeg.image" . }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          ports:
+            - name: http
+              containerPort: 8080
+          {{- if .Values.config }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/ploeg
+              readOnly: true
+          {{- end }}
+          env:
+            {{- if .Values.config }}
+            - name: PLOEG_CONFIG
+              value: /etc/ploeg/ploeg.yaml
+            {{- end }}
+            - name: PLOEG_LISTEN
+              value: ":8080"
+            - name: PLOEG_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.database.existingSecret.name }}
+                  key: {{ .Values.database.existingSecret.key }}
+            - name: PLOEG_VIKUNJA_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.webhook.existingSecret.name }}
+                  key: {{ .Values.webhook.existingSecret.key }}
+            {{- /* Team plans (run-multi-agent-shifts): ploegd's shift engine
+                 reads the same plan the workload templates partition on, so
+                 there is exactly one source of truth — executor.teams[].plan.
+                 The pool is the team's budget value. Only planned teams are
+                 serialised; no plans, no env, and dispatch is unchanged. */}}
+            {{- $plans := dict }}
+            {{- range .Values.executor.teams }}
+            {{- if .plan }}
+            {{- $_ := set $plans .name (dict "pool" (.budget | default "0") "rounds" .plan "maxFixRounds" (.maxFixRounds | default 0)) }}
+            {{- end }}
+            {{- end }}
+            {{- if $plans }}
+            - name: PLOEG_TEAM_PLANS
+              value: {{ toJson $plans | quote }}
+            {{- end }}
+            {{- $maxRunning := dict }}
+            {{- range .Values.executor.teams }}
+            {{- if .maxRunning }}
+            {{- $_ := set $maxRunning .name (.maxRunning | int) }}
+            {{- end }}
+            {{- end }}
+            {{- if $maxRunning }}
+            - name: PLOEG_TEAM_MAX_RUNNING
+              value: {{ toJson $maxRunning | quote }}
+            {{- end }}
+            {{- /* The forge seam: ploegd publishes findings to the pull
+                 request as the same bot that opens them (ADR-0011). Commenting
+                 is not pushing, so no second credential — but without a URL
+                 there is no ForgeProvider and findings stay in the database. */}}
+            {{- with .Values.executor.forgejo }}
+            - name: PLOEG_FORGEJO_URL
+              value: {{ .publicUrl | default .url | quote }}
+            - name: PLOEG_FORGEJO_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .tokenSecret.name }}
+                  key: {{ .tokenSecret.key }}
+            {{- /* ADR-0013 tier 2: the bot's password MINTS per-run push
+                 tokens, each limited to the Run's repository. Held only by
+                 ploegd, never by a worker (R6). Forgejo creates tokens only
+                 for a password sign-in, so the admin token this chart once
+                 took never minted anything. Unset = nothing is minted and
+                 workers keep the shared token. */}}
+            {{- if .adminTokenSecret }}
+            {{- fail "executor.forgejo.adminTokenSecret is not supported: Forgejo refuses to create access tokens with a token. Set executor.forgejo.botPasswordSecret to a secret holding the bot user's password" }}
+            {{- end }}
+            {{- with .botPasswordSecret }}
+            - name: PLOEG_FORGEJO_BOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .name }}
+                  key: {{ .key }}
+            {{- end }}
+            {{- with .botUser }}
+            - name: PLOEG_FORGEJO_BOT
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .webhookSecret }}
+            - name: PLOEG_FORGEJO_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .name }}
+                  key: {{ .key }}
+            {{- end }}
+            {{- end }}
+            {{- with .Values.executor.gitlab }}
+            {{- if .url }}
+            - name: PLOEG_GITLAB_URL
+              value: {{ .publicUrl | default .url | quote }}
+            - name: PLOEG_GITLAB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .tokenSecret.name }}
+                  key: {{ .tokenSecret.key }}
+            {{- with .webhookSecret }}
+            - name: PLOEG_GITLAB_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .name }}
+                  key: {{ .key }}
+            {{- end }}
+            {{- end }}
+            {{- end }}
+            - name: PLOEG_TARGET_FORGE
+              value: {{ .Values.executor.forge | default "forgejo" | quote }}
+            {{- with .Values.tracker }}
+            {{- if .url }}
+            - name: PLOEG_VIKUNJA_URL
+              value: {{ .url | quote }}
+            {{- end }}
+            {{- if .tokenSecret }}
+            - name: PLOEG_VIKUNJA_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .tokenSecret.name }}
+                  key: {{ .tokenSecret.key }}
+            {{- end }}
+            {{- end }}
+            {{- with .Values.tracker.clickup }}
+            {{- with .webhookSecret }}
+            - name: PLOEG_CLICKUP_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .name }}
+                  key: {{ .key }}
+            {{- end }}
+            {{- with .tokenSecret }}
+            - name: PLOEG_CLICKUP_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .name }}
+                  key: {{ .key }}
+            {{- end }}
+            {{- if .url }}
+            - name: PLOEG_CLICKUP_URL
+              value: {{ .url | quote }}
+            {{- end }}
+            {{- if .doneStatus }}
+            - name: PLOEG_CLICKUP_DONE_STATUS
+              value: {{ .doneStatus | quote }}
+            {{- end }}
+            {{- end }}
+            {{- range $k, $v := .Values.env }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+            {{- with .Values.executor.litellm }}
+            - name: LITELLM_ADMIN_URL
+              value: {{ .adminUrl | quote }}
+            - name: LITELLM_MASTER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .masterKeySecret.name }}
+                  key: {{ .masterKeySecret.key }}
+            {{- end }}
+            {{- with .Values.deploys }}
+            {{- with .tokenSecret }}
+            - name: PLOEG_DEPLOY_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .name }}
+                  key: {{ .key }}
+            {{- end }}
+            {{- end }}
+            {{- include "ploeg.workerControlEnv" . | nindent 12 }}
+            {{- if .Values.operator.consumers }}
+            {{- include "ploeg.operatorControlEnv" . | nindent 12 }}
+            {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 20
+          resources: {{- toYaml .Values.resources | nindent 12 }}
+      {{- if .Values.config }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "ploeg.fullname" . }}-config
+      {{- end }}

@@ -1,0 +1,10 @@
+version = 1
+SPDX-PackageName = "Ploeg"
+SPDX-PackageSupplier = "Ryan Grippeling / WebGrip <ryan@webgrip.nl>"
+SPDX-PackageDownloadLocation = "https://forgejo.webgrip.dev/webgrip/ploeg"
+
+[[annotations]]
+path = "**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Ryan Grippeling / WebGrip"
+SPDX-License-Identifier = "Apache-2.0"

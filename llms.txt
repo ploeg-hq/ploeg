@@ -1,0 +1,11 @@
+# Ploeg
+
+> Self-hosted authorization and coordination for agent work.
+
+## Current documentation
+
+- [Start here](docs/index.md): human and agent reading path.
+- [Architecture](docs/architecture.md): implemented boundaries and limits.
+- [Contracts](docs/contracts/README.md): published schemas and integration requirements.
+- [Domain source](docs/domain/model.yaml): structured Ploeg vocabulary.
+- [Decisions](docs/adrs/README.md): check acceptance and supersession status.

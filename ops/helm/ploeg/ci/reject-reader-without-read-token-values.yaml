@@ -1,0 +1,15 @@
+# CI-only values that MUST fail to render (scripts/helm-golden.sh). A team with
+# a reading Role and no readTokenSecret would hand the reader the read-write
+# forge token; ADR-0013 tier 1 forbids that fallback, so the chart refuses it.
+executor:
+  enabled: true
+  teams:
+    - name: gold
+      model: litellm_proxy/deepseek-chat
+      budget: "1"
+      maxReplicaCount: 1
+      plan:
+        - roles:
+            - {name: reviewer, writes: false, harness: {dind: false}}
+        - roles:
+            - {name: builder, writes: true}

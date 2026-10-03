@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" fill="none" role="img" aria-label="Ploeg">
+<defs><clipPath id="knip-tegel"><path clip-rule="evenodd" d="M-8 -8H72V72H-8ZM13 24H26V53H13Z"/></clipPath></defs>
+<rect width="64" height="64" rx="14" fill="#141A1D"/>
+<path d="M19.5 46.5V17.5H29.5A14 14 0 0 1 43.5 31.5" stroke="#E4572E" stroke-width="11" stroke-linecap="round" stroke-linejoin="round" fill="none" clip-path="url(#knip-tegel)"/>
+<path d="M14 23H25V46.5A5.5 5.5 0 0 1 14 46.5Z" fill="#F4F6F2"/>
+</svg>

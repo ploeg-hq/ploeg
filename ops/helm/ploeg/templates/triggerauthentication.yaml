@@ -1,0 +1,12 @@
+{{- if and .Values.executor.enabled (has (.Values.executor.type | default "keda") (list "keda" "sandbox")) }}
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: {{ include "ploeg.fullname" . }}-scaler
+  labels: {{- include "ploeg.labels" . | nindent 4 }}
+spec:
+  secretTargetRef:
+    - parameter: password
+      name: {{ .Values.executor.scaler.passwordSecret.name }}
+      key: {{ .Values.executor.scaler.passwordSecret.key }}
+{{- end }}

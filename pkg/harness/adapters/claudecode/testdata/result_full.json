@@ -1,0 +1,40 @@
+{
+  "type": "result",
+  "subtype": "success",
+  "is_error": false,
+  "duration_ms": 412345,
+  "duration_api_ms": 301200,
+  "num_turns": 37,
+  "result": "Opened the pull request.",
+  "session_id": "4f1c2a9e-sess",
+  "total_cost_usd": 0.5812,
+  "usage": {
+    "input_tokens": 1200,
+    "cache_creation_input_tokens": 45210,
+    "cache_read_input_tokens": 812004,
+    "output_tokens": 9876,
+    "server_tool_use": {"web_search_requests": 0},
+    "service_tier": "standard"
+  },
+  "modelUsage": {
+    "claude-sonnet-5": {
+      "inputTokens": 1100,
+      "outputTokens": 9500,
+      "cacheReadInputTokens": 800000,
+      "cacheCreationInputTokens": 45000,
+      "webSearchRequests": 0,
+      "costUSD": 0.5501,
+      "contextWindow": 200000
+    },
+    "claude-haiku-5": {
+      "inputTokens": 100,
+      "outputTokens": 376,
+      "cacheReadInputTokens": 12004,
+      "cacheCreationInputTokens": 210,
+      "webSearchRequests": 0,
+      "costUSD": 0.0311,
+      "contextWindow": 200000
+    }
+  },
+  "permission_denials": []
+}

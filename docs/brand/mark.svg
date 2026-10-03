@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" fill="none" role="img" aria-label="Ploeg">
+<defs><clipPath id="knip-mark"><path clip-rule="evenodd" d="M-8 -8H72V72H-8ZM10 22H25V57H10Z"/></clipPath></defs>
+<path d="M17.5 49.5V14.5H29.5A17 17 0 0 1 46.5 31.5" stroke="#E4572E" stroke-width="13" stroke-linecap="round" stroke-linejoin="round" fill="none" clip-path="url(#knip-mark)"/>
+<path d="M11 21H24V49.5A6.5 6.5 0 0 1 11 49.5Z" fill="#141A1D"/>
+</svg>

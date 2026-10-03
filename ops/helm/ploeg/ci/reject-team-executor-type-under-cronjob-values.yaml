@@ -1,0 +1,10 @@
+# CI-only values the chart must refuse: a team's executorType chooses between
+# the two ScaledJob executors and means nothing under the CronJob executor.
+executor:
+  enabled: true
+  type: cronjob
+  teams:
+    - name: copper
+      model: litellm_proxy/deepseek-chat
+      budget: "1"
+      executorType: sandbox

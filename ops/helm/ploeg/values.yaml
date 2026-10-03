@@ -1,0 +1,505 @@
+image:
+  repository: ghcr.io/ploeg-hq/ploegd
+  tag: "" # empty = .Chart.AppVersion (kept in lockstep with the chart by the release train)
+imagePullSecrets: [] # homelab sets [{name: harbor-pull}]
+
+service:
+  port: 8080
+
+# Prometheus Operator objects for ploegd's GET /metrics. Both are off by
+# default: they need the monitoring.coreos.com CRDs. The alerts and what to do
+# about each are in docs/ops/alerts.md.
+monitoring:
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    scrapeTimeout: 10s
+    labels: {} # e.g. {release: kube-prometheus-stack}, whatever your Prometheus selects on
+  prometheusRule:
+    enabled: false
+    labels: {}
+    # PromQL label matchers every alert applies to ploegd's series. Empty =
+    # job="<release>",namespace="<release namespace>", which is what the
+    # ServiceMonitor above produces.
+    selector: ""
+    # Base URL of the rendered alerts page; each alert links to its anchor.
+    runbookBaseUrl: ""
+    alerts:
+      stuckShift:
+        enabled: true
+        idleHours: 6
+        for: 15m
+        severity: warning
+      expiredLease:
+        enabled: true
+        overdueSeconds: 300
+        for: 5m
+        severity: warning
+      leakedModelKey:
+        enabled: true
+        graceSeconds: 900
+        for: 5m
+        severity: critical
+      spendSpike:
+        enabled: true
+        usdPerHour: 20
+        for: 0m
+        severity: warning
+      trackerWebhookMissing:
+        enabled: true
+        for: 15m
+        severity: warning
+
+operator:
+  consumers: []
+  deliveryPolicies: []
+
+# ADR-0047: POST /api/v1/deploys, where a pipeline reports "commit X is live
+# in environment Y". tokenSecret names an existing Secret key holding the
+# bearer token (32+ bytes) and becomes PLOEG_DEPLOY_TOKEN on ploegd only.
+# Unset = the endpoint answers 404.
+deploys: {}
+#   tokenSecret:
+#     name: ploeg-deploy-token
+#     key: token
+
+# Plain PLOEG_* env rendered onto the deployment.
+env:
+  PLOEG_DEFAULT_TEAM: default
+  PLOEG_TEAM_MAP: ""
+  PLOEG_LEASE_TTL: 5m
+  PLOEG_SWEEP_INTERVAL: 15s
+  # The usage and evidence report Ploeg posts on every agent pull request
+  # (PLOEG_USAGE_REPORT). Default on; "false" is the kill switch. The two base
+  # URLs are where its links point — set them to the Grafana base and
+  # to Vloer. Either one unset omits its links, and both unset omits the links
+  # section while the report still renders.
+  PLOEG_USAGE_REPORT: "true"
+  PLOEG_REPORT_GRAFANA_URL: ""
+  # Vloer's base URL; the report links the Work Item page.
+  PLOEG_REPORT_VLOER_URL: ""
+
+database:
+  # CNPG auto-creates <cluster>-app with a `uri` key; ploegd consumes it whole.
+  existingSecret:
+    name: ploeg-db-app
+    key: uri
+
+webhook:
+  existingSecret:
+    name: ploeg-webhook-secret
+    key: PLOEG_VIKUNJA_SECRET
+
+# Guaranteed QoS: ploegd runs the sweeper — the self-heal backbone (lease
+# expiry, requeue, key revocation). It must survive the node pressure that
+# kills everything else, and only requests==limits keeps it out of the
+# burstable cgroup tree the Talos OOMController sweeps (ADR-0049).
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 100m
+    memory: 256Mi
+
+nodeSelector:
+  node.webgrip.io/pool: worker
+
+# Tracker write-backs (backlog #31): how a closed Shift reaches a person with
+# the pull request link. Unset = the Vikunja provider keeps its logging no-op —
+# runs still finish, the board simply is not updated. Ingest (the webhook) is
+# configured separately and needs no token.
+tracker:
+  # e.g. https://vikunja.example/api/v1
+  url: ""
+  # tokenSecret: {name: agent-vikunja-token, key: VIKUNJA_API_TOKEN}
+  tokenSecret: {}
+  # The ClickUp tracker (pkg/provider/clickup). Ingest and write-backs are
+  # independent: webhookSecret alone verifies deliveries, tokenSecret alone
+  # enables reads and write-backs, either without the other degrades rather
+  # than fails. ClickUp GENERATES the webhook secret on registration — capture
+  # it from the create-webhook response; there is nothing to invent.
+  clickup:
+    url: "" # empty = https://api.clickup.com/api/v2
+    # tokenSecret: {name: agent-clickup-token, key: CLICKUP_TOKEN}
+    tokenSecret: {}
+    # webhookSecret: {name: ploeg-clickup-webhook, key: PLOEG_CLICKUP_SECRET}
+    webhookSecret: {}
+    # Statuses are per-List custom strings, so the finished-status must be
+    # NAMED; empty leaves the board untouched.
+    doneStatus: ""
+
+executor:
+  # The executor (design §6, docs/contracts/executor.md). Disabled until the
+  # ingest path is verified in-cluster; flipping it on requires the LiteLLM +
+  # agent-builder secrets and (for dind harnesses) the privileged-DinD
+  # PolicyException in the namespace.
+  enabled: false
+  # keda (flagship: ScaledJob + Postgres scaler) | cronjob (KEDA-free polling
+  # executor) | sandbox (EXPERIMENTAL: the ScaledJob's pod becomes a launcher
+  # that runs each Run in a kubernetes-sigs/agent-sandbox v1beta1 Sandbox; needs
+  # agent-sandbox v1.0.x with extensions installed, ADR-0032). Any other
+  # launcher can implement docs/contracts/executor.md out-of-chart against the
+  # run API.
+  type: keda
+  forge: forgejo
+  # "proxy" keeps a writer's forge token inside ploeg-worker: git and the forge
+  # API reach only the Run's own repository through a loopback proxy that adds
+  # the token, and the harness sees a placeholder. "" hands the token over.
+  # Qualify per harness: one that pushes from inside DinD cannot reach it.
+  forgeTokenIsolation: ""
+  nodeSelector:
+    node.webgrip.io/pool: worker
+  # Global harness defaults; a team's optional `harness:` block overrides
+  # these field-by-field (see teams below).
+  harness:
+    name: openhands # openhands | exec | claude-code | acp (PLOEG_HARNESS)
+    image: ""       # agent image; "" = runnerImage below
+    entrypoint: ""  # binary override (PLOEG_HARNESS_ENTRYPOINT); "" = adapter default
+    args: []        # exec harness only: argv template with {taskspec}/{taskfile}
+    outcomeFile: "" # exec harness only: OutcomeReport JSON path override
+    dind: true      # privileged DinD sidecar + DOCKER_* wiring (OpenHands + gates need it)
+    timeout: 100m
+    idleTimeout: 15m
+    # Language toolchains mounted read-only at /opt/ploeg/toolchains/<name>
+    # as image volumes (Kubernetes >= 1.35), pulled by the kubelet, so a Run
+    # can run the target repository's checks without registry egress. `path`
+    # lists directories inside the image to put on PATH (default /bin); `env`
+    # is set in the harness environment (PLOEG_TOOLCHAINS).
+    # - name: go
+    #   image: harbor.webgrip.dev/dockerhub/library/golang:1.27-alpine@sha256:...
+    #   path: [/usr/local/go/bin]
+    #   env: {GOTOOLCHAIN: local}
+    toolchains: []
+    # Shell command lines a Run is told to run before it hands off, and that
+    # ploeg-worker runs itself after a writing Run that opened or updated a
+    # pull request; the result is posted on the pull request
+    # (PLOEG_VERIFY_COMMANDS). Write a formatter check so it fails on output,
+    # e.g. test -z "$(gofmt -l .)".
+    verify: []
+    verifyTimeout: "" # Go duration for the worker's own run; "" = 15m (PLOEG_VERIFY_TIMEOUT)
+    # acp harness only. One adapter speaks Zed's Agent CLIENT Protocol (stdio
+    # JSON-RPC, wire version 1) to any ACP-capable agent. Unrelated to IBM's
+    # former Agent COMMUNICATION Protocol, which merged into A2A — see ADR-0007.
+    acp:
+      profile: opencode  # opencode | qwen-code | goose | openhands | custom (PLOEG_ACP_PROFILE)
+      argv: []           # whole launch command; REQUIRED when profile is custom
+      permissionMode: "" # allow_always (default) | allow_read_only | deny_all
+      promptTimeout: ""  # Go duration; "" = adapter default (45m)
+      idleTimeout: ""    # Go duration; "" = adapter default (10m) with no protocol traffic
+      # Replaces the profile's generated agent config (opencode, qwen-code)
+      # wholesale, so a wrong provider block is a values edit rather than an
+      # agent image rebuild. goose is configured by environment and refuses it.
+      configJson: ""
+  # DEPRECATED in favor of harness.image (kept as the fallback so existing
+  # value overrides keep working).
+  # agent-runner >=1.0.1 only: 1.0.0 mints LiteLLM keys without key_alias (400).
+  runnerImage: harbor.webgrip.dev/webgrip/agent-runner:1.3.0@sha256:ab0a56f12a33b2af542663e0f2079261f5b9aca5596a5d497583f211a284684f
+  dindImage: harbor.webgrip.dev/dockerhub/library/docker:29.8.2-dind@sha256:7dcdfc4a20246236f558175182ccace1eb15a41bd3eb119dd2284f393498b7c1
+  workerImage: "" # empty = image.repository:tag (carries /usr/local/bin/ploeg-worker)
+  # ServiceAccount for the WORKER pods (not ploegd). Workers mount no token
+  # either way; this is an identity/audit fix, and what
+  # require-non-default-serviceaccount wants.
+  #
+  # create and name are separate questions ON PURPOSE. The first shape here
+  # inferred one from the other — a name meant "an external account exists, do
+  # not create one" — so naming the chart's own default suppressed the account
+  # the pods referenced and every Job died at admission. Set create: false
+  # only when something outside the chart really owns the account.
+  serviceAccount:
+    create: true
+    name: "" # empty = <fullname>-worker
+  apiUrl: ""      # empty = http://<fullname>:<service.port>
+  cronjob:
+    # type=cronjob only: how often each team polls for work. Idle ticks are
+    # free (empty-handed claim = exit 0).
+    schedule: "*/2 * * * *"
+  sandbox:
+    # type=sandbox only. Global fallback RuntimeClass for every team and role;
+    # a team's (or a Role's) own `sandbox.runtimeClassName` overrides it field
+    # by field. "" = the node's default runtime; set kata or gvisor only after
+    # qualifying it with the privileged DinD sidecar on your nodes.
+    # Place Kata on bare metal (its own kernel, no nested-virt requirement).
+    # Place gVisor systrap on VMs without nested virt, accepting its file-I/O
+    # penalty on clone-heavy runs.
+    runtimeClassName: ""
+    # A finished claim is deleted by its launcher; this TTL is the fallback.
+    ttlSecondsAfterFinished: 60
+    # The claim's shutdownTime is activeDeadlineSeconds plus this margin, and
+    # the launcher Job's own deadline matches it.
+    shutdownMarginSeconds: 600
+    # A claim that is not Ready this long after creation is deleted and its
+    # launcher fails with the controller's reason, instead of holding the
+    # Team's slot until the shutdown deadline. Covers a cold image pull.
+    startTimeoutSeconds: 600
+    # {} = Unmanaged: the cluster's own policies, selected by the worker's
+    # labels, apply. A NetworkPolicy spec here (ingress/egress rules) makes
+    # agent-sandbox manage one policy per template with exactly these rules.
+    # Allow at least DNS, ploegd, the model gateway and the forge; the
+    # controller's secure default is never used, because it blocks all three.
+    networkPolicy: {}
+    launcherResources:
+      requests: {cpu: 10m, memory: 32Mi}
+      limits: {cpu: 50m, memory: 32Mi}
+  # Fallback repository for teams that pin none. The repository belongs to the
+  # WORK ITEM — resolved at ingest from its tracker scope via ploegd's
+  # PLOEG_TARGET_MAP (rendered from the org.yaml roster manifest) and delivered
+  # on the claim (R11, ADR-0001). Leave empty once every team's work resolves a
+  # target: a run that resolves none then reports stuck instead of silently
+  # using a stale repo.
+  defaultTarget:
+    owner: ""
+    name: ""
+    baseBranch: ""
+  litellm:
+    baseUrl: http://litellm.ai.svc.cluster.local:4000/v1
+    adminUrl: http://litellm.ai.svc.cluster.local:4000
+    masterKeySecret:
+      name: agent-litellm-master
+      key: LITELLM_MASTER_KEY
+    keyDuration: 4h
+    # "proxy" keeps the per-Run key inside ploeg-worker: the harness gets a
+    # placeholder and a loopback URL, and the worker swaps in the real key on
+    # the way to LiteLLM. "" hands the key to the harness. Qualify it per
+    # harness first: one that calls the model from inside a DinD container
+    # cannot reach the worker's loopback.
+    keyIsolation: ""
+  workerAuth:
+    mode: managed
+    signingKeySecret:
+      name: ploeg-worker-signing
+      key: key
+    bootstrapSecret:
+      name: ploeg-worker-bootstrap
+      registryKey: registry.json
+    staticInferenceSecret: {}
+    additionalLLMPolicies: []
+  forgejo:
+    # The workers' forge URL (FORGE_URL): clone, push, pull-request API and
+    # the forge proxy upstream. An in-cluster URL keeps Run traffic off the
+    # public gateway.
+    url: http://forgejo-http.forgejo.svc.cluster.local:3000
+    # ploegd's forge URL (PLOEG_FORGEJO_URL). Empty = url. Set it to the
+    # public https URL when url is in-cluster: ploegd matches Vloer's https
+    # repository URLs against it and accepts only https or ssh ones.
+    publicUrl: ""
+    tokenSecret:
+      name: agent-builder-token
+      key: FORGEJO_TOKEN
+    # ADR-0013 tier 1: the credential handed to READING Roles, which must not
+    # be able to push to the branch they review. Enforcing the reader/writer
+    # split at the forge as well as in Ploeg's scheduling is the whole point —
+    # either alone is a single point of failure.
+    #
+    # REQUIRED as soon as any team has a reading Role: the render fails
+    # without it, because the only alternative is handing the reader the
+    # read-write builder token below. The repos are private, so "no
+    # credential" cannot clone; a read-only token is the honest tier 1. It is
+    # one OpenBao entry plus one ExternalSecret in homelab-cluster.
+    readTokenSecret: {}
+    #  name: agent-reader-token
+    #  key: FORGEJO_TOKEN
+    # ADR-0013 tier 2: ploegd mints a push credential per WRITING Run,
+    # limited to write:repository on that Run's repository alone, and revokes
+    # it when the Run settles or its Lease lapses. Holding the Lease and being
+    # able to push become one fact, and a Run cannot reach another repository
+    # the bot can see.
+    #
+    # Forgejo creates access tokens only for a user signed in with a password,
+    # so this is the password of botUser. It lives only in ploegd, never in a
+    # worker pod (R6). Unset = nothing is minted and every run uses the shared
+    # token above, which is the pre-tier-2 behaviour.
+    botPasswordSecret: {}
+    #  name: agent-builder-password
+    #  key: FORGEJO_BOT_PASSWORD
+    botUser: agent-builder
+    # Verifies X-Forgejo-Signature on POST /webhooks/forge/forgejo. Unset =
+    # every forge webhook is rejected.
+    webhookSecret: {}
+    #  name: ploeg-forge-webhook
+    #  key: PLOEG_FORGEJO_SECRET
+  gitlab:
+    url: ""
+    # As for forgejo: ploegd's URL when it differs from the workers' url.
+    publicUrl: ""
+    tokenSecret:
+      name: agent-builder-token
+      key: GITLAB_TOKEN
+    # As for forgejo: required once a team has a reading Role. On GitLab a
+    # project access token at read_repository scope.
+    readTokenSecret: {}
+    webhookSecret: {}
+  scaler:
+    # Empty = ploeg-db-rw.<release namespace>.svc.cluster.local. Must be a
+    # name the KEDA operator can resolve from its own namespace (FQDN).
+    host: ""
+    port: "5432"
+    dbName: app
+    sslmode: require
+    userName: ploeg_scaler
+    passwordSecret:
+      name: ploeg-scaler
+      key: password
+  pollingInterval: 30
+  # Backstop only: the DB lease always expires first, so Ploeg decides
+  # requeue/stale; this just guarantees the pod dies (backlog #52).
+  activeDeadlineSeconds: 7200
+  # Long enough for ploeg-worker to abort the harness, revoke the per-run key,
+  # settle its spend and POST the outcome — not long enough to be a hiding
+  # place. A worker that needs more than this is not shutting down, and the
+  # kubelet's SIGKILL is the right answer.
+  terminationGracePeriodSeconds: 90
+  # Guaranteed QoS (requests == limits on EVERY container): factory pods leave
+  # the /kubepods/burstable/ cgroup tree, which Talos's OOMController SIGKILLs
+  # wholesale under PSI memory pressure (killed runs 9+10 on 2026-07-25;
+  # ADR-0049 P1, VIK-595 S1). Under scarcity the scheduler now queues runs
+  # honestly (Pending holds no lease, burns no attempt, spends no money)
+  # instead of starting them into a death zone. Sized from run 8's measured
+  # peaks (worker 438Mi, dind 108Mi) with headroom for gate builds inside
+  # dind; a build exceeding dind's limit fails THAT build visibly, never the
+  # pod. Changing any of these away from requests==limits silently re-enters
+  # the burstable tree — don't.
+  # Worker CPU is 1 full core: at 500m the OpenHands CLI's single-threaded
+  # Python cold import alone took 2m20s before the agent did anything
+  # (measured, silver run 2026-07-27). More than 1 core buys that phase
+  # nothing; less throttles every runner-side step.
+  workerBinResources:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {cpu: 50m, memory: 64Mi}
+  workerResources:
+    requests: {cpu: "1", memory: 1Gi}
+    limits: {cpu: "1", memory: 1Gi}
+  dindResources:
+    requests: {cpu: "1", memory: 1536Mi}
+    limits: {cpu: "1", memory: 1536Mi}
+  teams: []
+  # - name: bronze
+  #   model: litellm_proxy/deepseek-chat
+  #   budget: "2"
+  #   # DEPRECATED per-team fallback. The repository belongs to the work item,
+  #   # resolved at ingest from its tracker scope (R11, ADR-0001) — omit these
+  #   # once the item's scope resolves a target, and onboarding a repo becomes
+  #   # one map entry plus a webhook instead of a whole new team.
+  #   repoOwner: webgrip
+  #   repoName: some-repo
+  #   # Branch the worker clones, branches from, and opens the PR against.
+  #   # Unset = the repo's default branch (which may be a stale stub — pin
+  #   # this to the repo's actual trunk; VIK-589).
+  #   baseBranch: main
+  #   # env = ignore the claim's target and use the fallback above. The
+  #   # per-team lever for rolling the decoupling forward or back.
+  #   targetSource: claim
+  #   maxReplicaCount: 1
+  #   # Optional: at most this many of the team's Runs run at once (0/unset =
+  #   # unlimited). ploegd refuses claims over it; every workload's
+  #   # maxReplicaCount is clamped to it.
+  #   maxRunning: 2
+  #   # Optional: keda or sandbox for this team only, while executor.type is
+  #   # one of those two; unset = executor.type. Trial the experimental sandbox
+  #   # executor on one low-risk team before moving the deployment.
+  #   executorType: sandbox
+  #   # Optional: override the executor.harness defaults for this team — the
+  #   # single axis of variation (harness AND agent image swap per team).
+  #   harness:
+  #     name: claude-code
+  #     image: harbor.webgrip.dev/webgrip/claude-runner:0.1.0
+  #     dind: false # claude-code needs no Docker daemon (PolicyException scope review!)
+  #   # Optional: this team's RuntimeClass under the sandbox executor; a Role's
+  #   # `sandbox.runtimeClassName` overrides it. Unset = executor.sandbox above.
+  #   sandbox:
+  #     runtimeClassName: gvisor
+  #   # Optional: a Shift plan (run-multi-agent-shifts). With one, this team
+  #   # runs each work item through ordered Rounds — a fan-out of readers or a
+  #   # single writer per round (ADR-0010) — and `budget` becomes the Shift
+  #   # POOL the rounds share (ADR-0012). Without one, dispatch is unchanged.
+  #   # The same plan is serialised to ploegd as PLOEG_TEAM_PLANS (validated at
+  #   # boot: a malformed plan refuses to start) and, in a later chart change,
+  #   # partitions the workloads per (team, role). Role caps are per-Run
+  #   # ceilings; a role recurring across rounds is ONE workload.
+  #   plan:
+  #     - roles:
+  #         - {name: analyst, writes: false, cap: "0.50", harness: {dind: false}}
+  #         - {name: tests,   writes: false, cap: "0.50", harness: {dind: false}}
+  #     - roles:
+  #         - {name: builder, writes: true, cap: "3.00", model: litellm_proxy/claude-sonnet-5}
+  #     - roles:
+  #         - {name: reviewer, writes: false, cap: "0.75", model: litellm_proxy/claude-sonnet-5, harness: {dind: false}}
+
+# ploegd's routing and roster as a FILE (rendered to a ConfigMap, mounted at
+# /etc/ploeg/ploeg.yaml). Empty = the legacy PLOEG_TARGET_MAP / PLOEG_TEAM_MAP /
+# PLOEG_TEAM_PLANS env vars still apply, so this migrates one deployment at a
+# time.
+#
+# Projects are NAMED, never numbered: ploegd asks the tracker for the id at
+# boot, logs what it resolved, and refuses to start if a name matches nothing.
+# A bare project id in cluster config cannot be reviewed and silently routes
+# work to the wrong repository the day the project is rebuilt.
+config: {}
+#   targets:                          # ADR-0038: repositories a `repo/<key>` label may select
+#     unfold:
+#       repo: webgrip/glide
+#       branch: development
+#       forge: forgejo
+#       cardStyle:                    # ADR-0046: Run card skin and theme; unset = vloer-native, no theme
+#         theme: acme
+#       release:                      # ADR-0047: the deploy environment that releases a merge; unset = production
+#         environment: production
+#       rarity:                       # ADR-0056: Run card rarity path rules; unset = the defaults
+#         attentionPaths: ["apps/ploeg/pkg/store/**"]  # more sensitive ground, on top of the defaults
+#         # sensitivePaths: [...]       # replaces the default sensitive paths; [] = none
+#         # sizeExclude: [...]          # replaces the default lockfile/generated/vendor list
+#       cardShape:                    # ADR-0058: which files a Run card counts as tests and docs; unset = the defaults
+#         testPaths: ["**/*_test.go", "apps/vloer/test/**"]  # replaces the default test paths; [] = none
+#         # docPaths: [...]             # replaces the default documentation paths
+#     homelab-cluster:
+#       repo: webgrip/homelab-cluster
+#       branch: main
+#       forge: forgejo
+#   trackers:
+#     vikunja:
+#       projects:
+#         - name: "Ploeg Test"        # or: id: "11" to pin, skipping resolution
+#           repo: webgrip/ploeg
+#           branch: development       # unset = the repo default, may be a stub
+#           team: bronze              # unset = the assignee decides
+#         - name: "Unfold"             # a board serving several repositories
+#           default: unfold            # a targets key, instead of repo/branch/forge
+#           allow: [homelab-cluster]  # what a repo/<key> label may select here
+#           gates:                    # ADR-0051: bucket titles (Vikunja) or statuses (ClickUp) per delivery gate
+#             development: ["Doing"]
+#             test: ["In test"]
+#             acceptance: ["Acceptance", "UAT"]
+#             done: ["Done"]
+#           statusKinds:              # ADR-0057: active/waiting/blocked/done per status for card flow; unset = the defaults
+#             active: ["UAT"]
+#             blocked: ["Parked"]
+#         - name: "Forgejo Migration" # no default: every ticket needs a repo/<key> label
+#           allow: [unfold, homelab-cluster]
+#   teams:
+#     bronze:
+#       assignees: [jake, bronze]     # replaces PLOEG_TEAM_MAP
+#       maxRunning: 2                 # concurrency cap; wins over executor.teams[].maxRunning
+#       plan:                         # replaces PLOEG_TEAM_PLANS; omit for one writer
+#         pool: "6"
+#         maxFixRounds: 2
+#         rounds:
+#           - roles:
+#               - {name: analyst, writes: false, cap: "0.50", harness: {dind: false}}
+#           - roles:
+#               - {name: builder, writes: true, cap: "3.00"}
+#           - roles:
+#               - {name: reviewer, writes: false, cap: "0.75", harness: {dind: false}}
+#       forgeFollowUps:               # omit = forge events are recorded only
+#         repairFailedChecks: true    # a failed check queues a repair Follow-Up
+#         maxRepairs: 2               # repair Follow-Ups per pull request; 0 = 2
+#         reworkOnChangesRequested: true  # a person's "request changes" sends it back
+#       cards:                        # ADR-0052, ADR-0055: Run card rules; omit = anyone uninvolved referees, "hotfix" marks a hotfix, no card comment
+#         referees: [anna, bram]      # the only people who resolve a disputed crack
+#         hotfixLabels: [hotfix]      # pull request labels that mark a fix as a hotfix
+#         prComment: false            # true = keep one card comment, with the card image, on merged pull requests
+#       workingHours:                 # ADR-0057: the calendar card working seconds count in; unset = Mon-Fri 09:00-17:00 Europe/Amsterdam
+#         timezone: Europe/Amsterdam
+#         days: [mon, tue, wed, thu, fri]
+#         start: "09:00"
+#         end: "17:00"
+#         holidays: ["2026-12-25"]    # none by default

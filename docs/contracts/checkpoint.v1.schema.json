@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webgrip.dev/ploeg/contracts/checkpoint.v1.schema.json",
+  "title": "Checkpoint",
+  "description": "The small durable progress record enabling resume (work.Checkpoint). Everything else is re-derived from git/forge state.",
+  "type": "object",
+  "properties": {
+    "workItemId": { "type": "string" },
+    "phase": {
+      "type": "string",
+      "description": "e.g. branch_created, changes_made, pr_opened"
+    },
+    "branch": { "type": "string" },
+    "prUrl": { "type": "string" },
+    "commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$",
+      "description": "The commit a reading Run had checked out from the branch under review. Absent when the Run reviewed the base branch."
+    },
+    "at": { "type": "string", "format": "date-time" },
+    "instructionFiles": {
+      "type": "array",
+      "description": "Agent instruction and configuration files the worker found in the clone before the harness ran (AGENTS.md and CLAUDE.md at any depth, .cursorrules, .mcp.json, and everything under .claude/, .agents/ and .openhands/), with the SHA-256 of the content it read.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "path": { "type": "string", "description": "Slash-separated path relative to the repository root" },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        },
+        "required": ["path", "sha256"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["phase"],
+  "additionalProperties": false
+}

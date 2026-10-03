@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webgrip.dev/ploeg/contracts/taskspec.v1.schema.json",
+  "title": "TaskSpec",
+  "description": "The harness contract input (design §5, harness.TaskSpec): everything a run needs to know about the work, the repo, and its identity. Credentials are delivered out-of-band (env, mounted secrets), never here (R8).",
+  "type": "object",
+  "properties": {
+    "workItem": { "$ref": "#/$defs/workItem" },
+    "role": { "type": "string", "description": "specialist role within the team" },
+    "checkpoint": { "$ref": "checkpoint.v1.schema.json" },
+    "repo": {
+      "type": "object",
+      "properties": {
+        "forge": {
+          "type": "string",
+          "enum": ["forgejo", "gitlab"],
+          "description": "API dialect the forge at forgeUrl speaks. Absent = forgejo, so every Task Spec written before this field keeps its meaning; additive and optional per docs/contracts/README.md."
+        },
+        "forgeUrl": { "type": "string", "description": "forge base URL" },
+        "owner": { "type": "string" },
+        "name": { "type": "string" },
+        "baseBranch": {
+          "type": "string",
+          "description": "branch to clone/branch from and open the PR against; absent = repo default branch (VIK-589)"
+        }
+      },
+      "required": ["forgeUrl", "owner", "name"],
+      "additionalProperties": false
+    },
+    "branch": { "type": "string", "description": "work branch, e.g. agent/vik-<id>" },
+    "traceId": {
+      "type": "string",
+      "pattern": "^ploeg-[0-9a-f]{12}$",
+      "description": "run trace id; doubles as the LiteLLM key alias Grafana joins on"
+    },
+    "briefing": { "$ref": "#/$defs/briefing" },
+    "openSpec": { "$ref": "#/$defs/openSpec" }
+  },
+  "required": ["workItem", "repo", "branch", "traceId"],
+  "additionalProperties": false,
+  "$defs": {
+    "openSpec": {
+      "type": "object",
+      "description": "The OpenSpec change the Work Item names on an `openspec: <change-id>` description line, located in the clone and rendered by the worker. Absent when the Work Item names none. The brief is the specification for the Work Item and ranks below the delivery contract.",
+      "properties": {
+        "change": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$", "maxLength": 100 },
+        "root": { "type": "string", "description": "repository-relative directory that holds the change's openspec/ directory; \".\" for the repository root" },
+        "source": { "type": "string", "enum": ["cli", "files"], "description": "cli = rendered from `openspec instructions apply --json`; files = read from the change's proposal, design and tasks" },
+        "brief": { "type": "string" }
+      },
+      "required": ["change", "root", "source", "brief"],
+      "additionalProperties": false
+    },
+    "briefing": {
+      "type": "array",
+      "description": "Earlier Rounds' findings, attributed per Role (ADR-0011). Ploeg injects them; the agent never fetches them itself (R6).",
+      "items": {
+        "type": "object",
+        "properties": {
+          "role": { "type": "string" },
+          "round": { "type": "integer", "minimum": 0 },
+          "findings": { "type": "string" }
+        },
+        "required": ["role", "round", "findings"],
+        "additionalProperties": false
+      }
+    },
+    "workItem": {
+      "type": "object",
+      "description": "Mirror of one tracker item (work.WorkItem).",
+      "properties": {
+        "id": { "type": "string" },
+        "provider": { "type": "string" },
+        "externalId": { "type": "string" },
+        "revision": { "type": "string" },
+        "team": { "type": "string" },
+        "state": {
+          "type": "string",
+          "enum": ["ingested", "proposed", "queued", "leased", "needs_human", "awaiting_review", "stale", "done", "withdrawn"]
+        },
+        "origin": { "type": "string", "enum": ["assignment", "follow_up"] },
+        "priority": { "type": "integer" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "url": { "type": "string" },
+        "externalScope": {
+          "type": "string",
+          "description": "the tracker's own container for this item (Vikunja project id); the input to Work Target resolution"
+        },
+        "target": {
+          "type": "object",
+          "description": "where this item's changes land. Belongs to the work item, never to the team (R11). Absent = unresolved; the worker falls back to its configured repo. Harness authors should read the top-level `repo`, which is the EFFECTIVE target for the run.",
+          "properties": {
+            "forge": { "type": "string", "description": "forge registry id; absent = the default forge" },
+            "owner": { "type": "string" },
+            "repo": { "type": "string" },
+            "baseBranch": { "type": "string" }
+          },
+          "required": ["owner", "repo"],
+          "additionalProperties": false
+        },
+        "routeRule": {
+          "type": "string",
+          "description": "id of the routing rule that decided team and target, for audit"
+        },
+        "routeHint": {
+          "type": "string",
+          "description": "the tracker label that selected the target among the registered targets (ADR-0038); absent when the board's default decided"
+        },
+        "sourceWorkItemId": {
+          "type": "string",
+          "description": "for a Follow-Up, the Work Item it was created from"
+        },
+        "sourceBranch": {
+          "type": "string",
+          "description": "for a Follow-Up, the pull request branch it works on instead of deriving its own"
+        },
+        "sourcePr": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "for a Follow-Up, the pull request number it refers to; absent when the forge event named none"
+        },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "provider", "externalId"],
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,11 @@
+-- Findings: what a reading Run has to say (ADR-0011, blackboard spec).
+--
+-- A reading Run returns findings in its OutcomeReport; Ploeg publishes them to
+-- the pull request and injects earlier Rounds' findings into the next Round's
+-- prompt. This column is the durable half of that trail — the one that must
+-- survive the pod (blackboard spec: "Findings survive the pod").
+--
+-- Markdown prose, deliberately unstructured: both consumers (a PR comment, a
+-- prompt section) want prose, and a schema for opinions is a larger claim than
+-- ADR-0011 makes — "the PR carries prose; the database carries numbers."
+ALTER TABLE agent_runs ADD COLUMN findings TEXT NOT NULL DEFAULT '';

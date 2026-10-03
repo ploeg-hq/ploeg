@@ -1,0 +1,68 @@
+# CI-only values: per-team and per-role RuntimeClass overrides under the
+# agent-sandbox executor. Team `kata` declares none, so its SandboxTemplate
+# takes the global fallback; team `gvisor` overrides it, and gvisor's reviewer
+# Role overrides once more. The render must show three distinct runtimeClassName
+# values (kata, gvisor, gvisor-systrap) and prove role -> team -> global
+# precedence, including `harness: {dind: false}` on the reading Role.
+executor:
+  enabled: true
+  type: sandbox
+  sandbox:
+    runtimeClassName: kata
+    # An egress allowlist: DNS, ploegd, the model gateway and the forge only.
+    networkPolicy:
+      ingress: []
+      egress:
+        - to:
+            - namespaceSelector: {}
+              podSelector:
+                matchLabels:
+                  k8s-app: kube-dns
+          ports:
+            - {protocol: UDP, port: 53}
+            - {protocol: TCP, port: 53}
+        - to:
+            - podSelector:
+                matchLabels:
+                  app.kubernetes.io/name: ploeg
+          ports:
+            - {protocol: TCP, port: 8080}
+        - to:
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: ai
+          ports:
+            - {protocol: TCP, port: 4000}
+        - to:
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: forgejo
+          ports:
+            - {protocol: TCP, port: 443}
+            - {protocol: TCP, port: 3000}
+  forgejo:
+    readTokenSecret:
+      name: agent-reader-token
+      key: FORGEJO_TOKEN
+  teams:
+    # No team-level runtimeClassName: the SandboxTemplate must render the
+    # global `kata`.
+    - name: kata
+      model: litellm_proxy/deepseek-chat
+      budget: "2"
+      repoOwner: webgrip
+      repoName: example
+      baseBranch: development
+      maxReplicaCount: 1
+    # A team-level override, and a reading Role that overrides again.
+    - name: gvisor
+      model: litellm_proxy/deepseek-chat
+      budget: "4"
+      maxReplicaCount: 1
+      sandbox:
+        runtimeClassName: gvisor
+      plan:
+        - roles:
+            - {name: builder, writes: true, cap: "3.00"}
+        - roles:
+            - {name: reviewer, writes: false, cap: "0.75", harness: {dind: false}, sandbox: {runtimeClassName: gvisor-systrap}}

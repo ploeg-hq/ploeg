@@ -1,0 +1,17 @@
+# CI-only values: render the optional ServiceMonitor and PrometheusRule with
+# every alert enabled and some thresholds changed from their defaults.
+monitoring:
+  serviceMonitor:
+    enabled: true
+    labels:
+      release: kube-prometheus-stack
+  prometheusRule:
+    enabled: true
+    labels:
+      release: kube-prometheus-stack
+    runbookBaseUrl: https://docs.example/ploeg/ops/alerts/
+    alerts:
+      stuckShift:
+        idleHours: 4
+      spendSpike:
+        usdPerHour: 12.5

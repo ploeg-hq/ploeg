@@ -1,0 +1,1 @@
+ALTER TABLE work_items ADD COLUMN description TEXT NOT NULL DEFAULT '';

@@ -1,0 +1,9 @@
+# CI-only values that MUST fail to render (scripts/helm-golden.sh). Forgejo refuses
+# to create access tokens with a token, so an admin token never minted anything;
+# the chart names botPasswordSecret instead of rendering a dead credential.
+executor:
+  enabled: true
+  forgejo:
+    adminTokenSecret:
+      name: agent-builder-admin-token
+      key: FORGEJO_ADMIN_TOKEN

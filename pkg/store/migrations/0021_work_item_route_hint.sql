@@ -1,0 +1,1 @@
+ALTER TABLE work_items ADD COLUMN route_hint TEXT NOT NULL DEFAULT '';

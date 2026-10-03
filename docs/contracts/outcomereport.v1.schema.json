@@ -1,0 +1,335 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webgrip.dev/ploeg/contracts/outcomereport.v1.schema.json",
+  "title": "OutcomeReport",
+  "description": "The harness contract output (design \u00a75, harness.OutcomeReport) and the body of POST /api/v1/runs/{token}/outcome. A stuck outcome always carries a stuckReason (R4).",
+  "type": "object",
+  "properties": {
+    "outcome": {
+      "type": "string",
+      "enum": [
+        "pr_opened",
+        "pr_updated",
+        "issue_updated",
+        "follow_up_created",
+        "stuck",
+        "failed",
+        "no_change_needed"
+      ]
+    },
+    "summary": {
+      "type": "string"
+    },
+    "links": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "PRs, commits, created follow-ups"
+    },
+    "checkpoint": {
+      "$ref": "checkpoint.v1.schema.json"
+    },
+    "stuckReason": {
+      "type": "string"
+    },
+    "failureReason": {
+      "type": "string",
+      "description": "Ploeg's internal failure taxonomy (VIK-597), work.FailureReason. Normally set by the orchestrator; a harness adapter with structured evidence (e.g. an ACP stop reason) may classify its own failure, and the orchestrator's heuristics defer to it.",
+      "enum": [
+        "infra_node",
+        "infra_llm",
+        "agent_error",
+        "budget",
+        "lease_lost",
+        "timeout",
+        "idle"
+      ]
+    },
+    "findings": {
+      "type": "string",
+      "description": "a reading Run's contribution to the blackboard (ADR-0011): markdown prose Ploeg publishes to the pull request and injects into the next Round's briefing. Writers normally omit it."
+    },
+    "usage": {
+      "type": "object",
+      "description": "per-run cost/usage (backlog #66) and the harness-native resume handle (backlog #70). The fields after sessionId (ADR-0045) are present only when the harness reported them; a reported zero is sent as zero and an unknown figure is left out.",
+      "properties": {
+        "inputTokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "outputTokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "costUsd": {
+          "type": "number",
+          "minimum": 0
+        },
+        "sessionId": {
+          "type": "string"
+        },
+        "cacheReadInputTokens": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "input tokens served from the provider's prompt cache"
+        },
+        "cacheCreationInputTokens": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "input tokens written to the provider's prompt cache"
+        },
+        "turns": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "agent turns the harness counted"
+        },
+        "durationMs": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "the harness's own wall-clock time for the Run"
+        },
+        "apiDurationMs": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "the part of durationMs spent waiting on the model API"
+        },
+        "toolCalls": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "tool invocations the harness reported"
+        },
+        "toolCallsByKind": {
+          "type": "object",
+          "description": "toolCalls split by the harness's tool kind (for ACP: read, edit, delete, move, search, execute, think, fetch, switch_mode, other)",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "peakContextTokens": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "the largest context-window fill the harness reported"
+        },
+        "contextWindowTokens": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "the size of the context window peakContextTokens fills"
+        },
+        "modelUsage": {
+          "type": "object",
+          "description": "the harness's own split of the Run's usage by model, keyed by model name",
+          "additionalProperties": {
+            "$ref": "#/$defs/modelUsage"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "verdict": {
+      "type": "string",
+      "enum": [
+        "approve",
+        "request_changes"
+      ],
+      "description": "a reading Run's answer to whether the work is done (ADR-0017). request_changes re-opens the plan's own writing Round, bounded by the Shift pool, maxFixRounds and the verdict itself. Ignored from a writing Role; it can name no Role, author no Round and raise no budget."
+    },
+    "problem": {
+      "type": "string",
+      "description": "a writing Run's account of what was wrong or missing (ADR-0042), markdown for the person who reviews the pull request. It decides nothing. Ignored from a reading Role."
+    },
+    "solution": {
+      "type": "string",
+      "description": "a writing Run's account of what it changed and how a reviewer can see it works (ADR-0042), markdown. It decides nothing. Ignored from a reading Role."
+    },
+    "createdWorkItems": {
+      "type": "array",
+      "maxItems": 50,
+      "description": "Work Items this Run proposes (Product R12, ADR-0031). Ploeg stores each as a follow_up Work Item that names this Run and its Work Item as its source, within the Team's created-work limits; every entry it rejects is recorded with a reason. Entries wait as proposed until a person approves them unless the Team sets autoDispatch. Optional: a report without it is unchanged.",
+      "items": {
+        "$ref": "#/$defs/createdWorkItem"
+      }
+    },
+    "verification": {
+      "$ref": "#/$defs/verification",
+      "description": "The worker's own run of the configured checks on a writing Run's checkout after the harness exited (VIK-1733). Only the worker sets it: it discards any value an adapter or agent reported, and ploegd stores it for a writing Run only. Readers take a Run's verification result and commit from this record, never from the summary or findings prose. Optional: a report from an older worker has none and is read through the prose the worker appended."
+    }
+  },
+  "$defs": {
+    "modelUsage": {
+      "type": "object",
+      "properties": {
+        "inputTokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "outputTokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cacheReadInputTokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cacheCreationInputTokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "costUsd": {
+          "type": "number",
+          "minimum": 0
+        },
+        "contextWindowTokens": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "createdWorkItem": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 16384
+        },
+        "ready": {
+          "type": "boolean",
+          "description": "Whether the Work Item is Ready: a decided change, or a problem described well enough that a solution can be conceived. A Work Item that is not Ready goes to the Team's refinement target, if one is configured."
+        },
+        "team": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Requested Team. Ploeg accepts only a Team it knows; absent means the source Run's Team."
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "split",
+            "clarify",
+            "discovered"
+          ]
+        }
+      },
+      "required": [
+        "title",
+        "description",
+        "ready",
+        "kind"
+      ],
+      "additionalProperties": false
+    },
+    "verification": {
+      "type": "object",
+      "properties": {
+        "result": {
+          "type": "string",
+          "enum": [
+            "passed",
+            "failed",
+            "incomplete"
+          ],
+          "description": "failed when a check failed; incomplete when checks stopped without a failure (time limit, cancellation); passed when every check ran and passed"
+        },
+        "commit": {
+          "type": "string",
+          "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$",
+          "description": "the full object name of HEAD when the checks ran; absent when git could not tell"
+        },
+        "dirty": {
+          "type": "boolean",
+          "description": "the working tree had uncommitted changes, so the result may not describe commit"
+        },
+        "stopped": {
+          "type": "string",
+          "description": "why the checks after the last one that ran did not run"
+        },
+        "startedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "finishedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "checks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/verificationCheck"
+          }
+        }
+      },
+      "required": [
+        "result",
+        "dirty",
+        "startedAt",
+        "finishedAt",
+        "checks"
+      ],
+      "additionalProperties": false
+    },
+    "verificationCheck": {
+      "type": "object",
+      "description": "one configured command, in the order the worker ran them; exitCode and the timestamps are present exactly when it ran",
+      "properties": {
+        "command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "result": {
+          "type": "string",
+          "enum": [
+            "passed",
+            "failed",
+            "not_run"
+          ]
+        },
+        "exitCode": {
+          "type": "integer",
+          "description": "the command's exit status; -1 when it ended without one"
+        },
+        "startedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "finishedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "command",
+        "result"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "outcome",
+    "summary"
+  ],
+  "if": {
+    "properties": {
+      "outcome": {
+        "const": "stuck"
+      }
+    }
+  },
+  "then": {
+    "required": [
+      "stuckReason"
+    ],
+    "properties": {
+      "stuckReason": {
+        "minLength": 1
+      }
+    }
+  },
+  "additionalProperties": false
+}

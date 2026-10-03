@@ -1,0 +1,9 @@
+apiVersion: v2
+name: ploeg
+description: Ploeg dispatch plane — webhook ingest, leases, run API, and pluggable executors (KEDA ScaledJob or CronJob) running swappable agent harnesses.
+type: application
+home: https://github.com/ploeg-hq/ploeg
+sources:
+  - https://github.com/ploeg-hq/ploeg
+version: 0.1.0
+appVersion: 0.1.0

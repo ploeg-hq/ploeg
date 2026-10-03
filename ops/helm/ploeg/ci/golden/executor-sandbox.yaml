@@ -1,0 +1,1286 @@
+---
+# Source: ploeg/templates/sandbox.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ploeg-sandbox-launcher
+  labels:
+    app.kubernetes.io/name: ploeg
+    app.kubernetes.io/instance: ploeg
+    app.kubernetes.io/version: "CHART-VERSION"
+    helm.sh/chart: ploeg-CHART-VERSION
+    app.kubernetes.io/managed-by: Helm
+automountServiceAccountToken: false
+---
+# Source: ploeg/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ploeg
+  labels:
+    app.kubernetes.io/name: ploeg
+    app.kubernetes.io/instance: ploeg
+    app.kubernetes.io/version: "CHART-VERSION"
+    helm.sh/chart: ploeg-CHART-VERSION
+    app.kubernetes.io/managed-by: Helm
+automountServiceAccountToken: false
+---
+# Source: ploeg/templates/serviceaccount.yaml
+# The workers' own identity, separate from ploegd's.
+#
+# Worker pods used to name no ServiceAccount at all, so the API server gave
+# them `default` — which is what `require-non-default-serviceaccount` fires on,
+# and it means every workload in the namespace shares one identity in audit
+# logs. They already run with automountServiceAccountToken: false and take zero
+# Kubernetes API authority, so this is an identity and audit fix rather than a
+# privilege one: the LLM-driven process still gets no token.
+#
+# Deliberately NOT ploegd's account. ploegd holds the LiteLLM master key and
+# (when configured) the forge admin credential; giving the agent pods the same
+# name would make a future RoleBinding on it apply to both.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ploeg-worker
+  labels:
+    app.kubernetes.io/name: ploeg
+    app.kubernetes.io/instance: ploeg
+    app.kubernetes.io/version: "CHART-VERSION"
+    helm.sh/chart: ploeg-CHART-VERSION
+    app.kubernetes.io/managed-by: Helm
+automountServiceAccountToken: false
+---
+# Source: ploeg/templates/sandbox.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ploeg-sandbox-launcher
+  labels:
+    app.kubernetes.io/name: ploeg
+    app.kubernetes.io/instance: ploeg
+    app.kubernetes.io/version: "CHART-VERSION"
+    helm.sh/chart: ploeg-CHART-VERSION
+    app.kubernetes.io/managed-by: Helm
+rules:
+  - apiGroups: ["extensions.agents.x-k8s.io"]
+    resources: ["sandboxclaims"]
+    verbs: ["create", "get", "delete"]
+---
+# Source: ploeg/templates/sandbox.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ploeg-sandbox-launcher
+  labels:
+    app.kubernetes.io/name: ploeg
+    app.kubernetes.io/instance: ploeg
+    app.kubernetes.io/version: "CHART-VERSION"
+    helm.sh/chart: ploeg-CHART-VERSION
+    app.kubernetes.io/managed-by: Helm
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: ploeg-sandbox-launcher
+subjects:
+  - kind: ServiceAccount
+    name: ploeg-sandbox-launcher
+    namespace: default
+---
+# Source: ploeg/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: ploeg
+  labels:
+    app.kubernetes.io/name: ploeg
+    app.kubernetes.io/instance: ploeg
+    app.kubernetes.io/version: "CHART-VERSION"
+    helm.sh/chart: ploeg-CHART-VERSION
+    app.kubernetes.io/managed-by: Helm
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: ploeg
+    app.kubernetes.io/instance: ploeg
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+# Source: ploeg/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ploeg
+  labels:
+    app.kubernetes.io/name: ploeg
+    app.kubernetes.io/instance: ploeg
+    app.kubernetes.io/version: "CHART-VERSION"
+    helm.sh/chart: ploeg-CHART-VERSION
+    app.kubernetes.io/managed-by: Helm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ploeg
+      app.kubernetes.io/instance: ploeg
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ploeg
+        app.kubernetes.io/instance: ploeg
+    spec:
+      serviceAccountName: ploeg
+      automountServiceAccountToken: false
+      nodeSelector:
+        node.webgrip.io/pool: worker
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: ploegd
+          image: ghcr.io/ploeg-hq/ploegd:CHART-VERSION
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: PLOEG_LISTEN
+              value: ":8080"
+            - name: PLOEG_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: ploeg-db-app
+                  key: uri
+            - name: PLOEG_VIKUNJA_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: ploeg-webhook-secret
+                  key: PLOEG_VIKUNJA_SECRET
+            - name: PLOEG_TEAM_PLANS
+              value: "{\"gold\":{\"maxFixRounds\":0,\"pool\":\"4\",\"rounds\":[{\"roles\":[{\"cap\":\"3.00\",\"name\":\"builder\",\"writes\":true}]},{\"roles\":[{\"cap\":\"0.75\",\"harness\":{\"dind\":false},\"name\":\"reviewer\",\"writes\":false}]}]}}"
+            - name: PLOEG_FORGEJO_URL
+              value: "http://forgejo-http.forgejo.svc.cluster.local:3000"
+            - name: PLOEG_FORGEJO_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: agent-builder-token
+                  key: FORGEJO_TOKEN
+            - name: PLOEG_FORGEJO_BOT
+              value: "agent-builder"
+            - name: PLOEG_TARGET_FORGE
+              value: "forgejo"
+            - name: PLOEG_DEFAULT_TEAM
+              value: "default"
+            - name: PLOEG_LEASE_TTL
+              value: "5m"
+            - name: PLOEG_REPORT_GRAFANA_URL
+              value: ""
+            - name: PLOEG_REPORT_VLOER_URL
+              value: ""
+            - name: PLOEG_SWEEP_INTERVAL
+              value: "15s"
+            - name: PLOEG_TEAM_MAP
+              value: ""
+            - name: PLOEG_USAGE_REPORT
+              value: "true"
+            - name: LITELLM_ADMIN_URL
+              value: "http://litellm.ai.svc.cluster.local:4000"
+            - name: LITELLM_MASTER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: agent-litellm-master
+                  key: LITELLM_MASTER_KEY
+            - name: PLOEG_WORKER_AUTH_MODE
+              value: "managed"
+            - name: PLOEG_WORKER_SIGNING_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ploeg-worker-signing
+                  key: key
+            - name: PLOEG_WORKER_BOOTSTRAPS
+              valueFrom:
+                secretKeyRef:
+                  name: ploeg-worker-bootstrap
+                  key: registry.json
+            - name: PLOEG_WORKER_LLM_POLICIES
+              value: "[{\"budgetUsd\":2,\"models\":[\"deepseek-chat\"],\"role\":\"\",\"team\":\"bronze\",\"ttl\":\"4h\"},{\"budgetUsd\":3,\"models\":[\"deepseek-chat\"],\"role\":\"builder\",\"team\":\"gold\",\"ttl\":\"4h\"},{\"budgetUsd\":0.75,\"models\":[\"deepseek-chat\"],\"role\":\"reviewer\",\"team\":\"gold\",\"ttl\":\"4h\"}]"
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 20
+          resources:
+            limits:
+              cpu: 100m
+              memory: 256Mi
+            requests:
+              cpu: 100m
+              memory: 256Mi
+---
+# Source: ploeg/templates/sandbox.yaml
+apiVersion: extensions.agents.x-k8s.io/v1beta1
+kind: SandboxTemplate
+metadata:
+  name: ploeg-worker-bronze
+  labels:
+    app.kubernetes.io/name: ploeg
+    app.kubernetes.io/instance: ploeg
+    app.kubernetes.io/version: "CHART-VERSION"
+    helm.sh/chart: ploeg-CHART-VERSION
+    app.kubernetes.io/managed-by: Helm
+spec:
+  podTemplate:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ploeg-worker
+        ploeg.webgrip.dev/privileged-dind: "true"
+        ploeg.webgrip.dev/team: bronze
+    spec:
+      activeDeadlineSeconds: 7200
+      automountServiceAccountToken: false
+      containers:
+      - command:
+        - /mnt/bin/ploeg-worker
+        env:
+        - name: PLOEG_API_URL
+          value: http://ploeg:8080
+        - name: PLOEG_TEAM
+          value: bronze
+        - name: PLOEG_HARNESS
+          value: openhands
+        - name: PLOEG_HARNESS_TIMEOUT
+          value: 100m
+        - name: PLOEG_HARNESS_IDLE_TIMEOUT
+          value: 15m
+        - name: LLM_MODEL
+          value: litellm_proxy/deepseek-chat
+        - name: LITELLM_KEY_BUDGET
+          value: "2"
+        - name: LITELLM_KEY_DURATION
+          value: 4h
+        - name: LLM_BASE_URL
+          value: http://litellm.ai.svc.cluster.local:4000/v1
+        - name: PLOEG_LLM_CREDENTIAL_MODE
+          value: managed
+        - name: PLOEG_WORKER_BOOTSTRAP_TOKEN
+          valueFrom:
+            secretKeyRef:
+              key: bronze--default
+              name: ploeg-worker-bootstrap
+        - name: PLOEG_TARGET_FORGE
+          value: forgejo
+        - name: FORGE_URL
+          value: http://forgejo-http.forgejo.svc.cluster.local:3000
+        - name: AGENT_BUILDER_TOKEN
+          valueFrom:
+            secretKeyRef:
+              key: FORGEJO_TOKEN
+              name: agent-builder-token
+        - name: REPO_OWNER
+          value: webgrip
+        - name: REPO_NAME
+          value: example
+        - name: PLOEG_BASE_BRANCH
+          value: development
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: POD_UID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.uid
+        - name: WORK_DIR
+          value: /mnt/ci-shared
+        - name: DOCKER_HOST
+          value: tcp://localhost:2376
+        - name: DOCKER_CERT_PATH
+          value: /certs/client
+        - name: DOCKER_TLS_VERIFY
+          value: "1"
+        image: harbor.webgrip.dev/webgrip/agent-runner:1.3.0@sha256:ab0a56f12a33b2af542663e0f2079261f5b9aca5596a5d497583f211a284684f
+        name: worker
+        resources:
+          limits:
+            cpu: "1"
+            memory: 1Gi
+          requests:
+            cpu: "1"
+            memory: 1Gi
+        volumeMounts:
+        - mountPath: /mnt/bin
+          name: worker-bin
+          readOnly: true
+        - mountPath: /certs
+          name: docker-certs
+          readOnly: true
+        - mountPath: /mnt/ci-shared
+          name: ci-shared
+      dnsPolicy: ClusterFirst
+      initContainers:
+      - command:
+        - /usr/local/bin/ploeg-worker
+        - install
+        - /mnt/bin/ploeg-worker
+        image: ghcr.io/ploeg-hq/ploegd:CHART-VERSION
+        name: worker-bin
+        resources:
+          limits:
+            cpu: 50m
+            memory: 64Mi
+          requests:
+            cpu: 50m
+            memory: 64Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          runAsNonRoot: true
+          runAsUser: 65532
+          seccompProfile:
+            type: RuntimeDefault
+        volumeMounts:
+        - mountPath: /mnt/bin
+          name: worker-bin
+      - env:
+        - name: DOCKER_TLS_CERTDIR
+          value: /certs
+        image: harbor.webgrip.dev/dockerhub/library/docker:29.8.2-dind@sha256:7dcdfc4a20246236f558175182ccace1eb15a41bd3eb119dd2284f393498b7c1
+        name: dind
+        resources:
+          limits:
+            cpu: "1"
+            memory: 1536Mi
+          requests:
+            cpu: "1"
+            memory: 1536Mi
+        restartPolicy: Always
+        securityContext:
+          privileged: true
+        startupProbe:
+          failureThreshold: 60
+          periodSeconds: 2
+          tcpSocket:
+            port: 2376
+          timeoutSeconds: 5
+        volumeMounts:
+        - mountPath: /certs
+          name: docker-certs
+        - mountPath: /var/lib/docker
+          name: docker-storage
+        - mountPath: /mnt/ci-shared
+          name: ci-shared
+      nodeSelector:
+        node.webgrip.io/pool: worker
+      restartPolicy: Never
+      runtimeClassName: kata
+      securityContext:
+        fsGroup: 1000
+      serviceAccountName: ploeg-worker
+      terminationGracePeriodSeconds: 90
+      volumes:
+      - emptyDir: {}
+        name: worker-bin
+      - emptyDir: {}
+        name: docker-certs
+      - emptyDir: {}
+        name: docker-storage
+      - emptyDir:
+          sizeLimit: 8Gi
+        name: ci-shared
+  service: false
+  networkPolicyManagement: Managed
+  networkPolicy:
+    egress:
+    - ports:
+      - port: 53
+        protocol: UDP
+      - port: 53
+        protocol: TCP
+      to:
+      - namespaceSelector: {}
+        podSelector:
+          matchLabels:
+            k8s-app: kube-dns
+    - ports:
+      - port: 8080
+        protocol: TCP
+      to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: ploeg
+    - ports:
+      - port: 4000
+        protocol: TCP
+      to:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: ai
+    - ports:
+      - port: 443
+        protocol: TCP
+      - port: 3000
+        protocol: TCP
+      to:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: forgejo
+    ingress: []
+  envVarsInjectionPolicy: Disallowed
+---
+# Source: ploeg/templates/sandbox.yaml
+apiVersion: extensions.agents.x-k8s.io/v1beta1
+kind: SandboxTemplate
+metadata:
+  name: ploeg-worker-gold-builder
+  labels:
+    app.kubernetes.io/name: ploeg
+    app.kubernetes.io/instance: ploeg
+    app.kubernetes.io/version: "CHART-VERSION"
+    helm.sh/chart: ploeg-CHART-VERSION
+    app.kubernetes.io/managed-by: Helm
+spec:
+  podTemplate:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ploeg-worker
+        ploeg.webgrip.dev/privileged-dind: "true"
+        ploeg.webgrip.dev/role: builder
+        ploeg.webgrip.dev/team: gold
+    spec:
+      activeDeadlineSeconds: 7200
+      automountServiceAccountToken: false
+      containers:
+      - command:
+        - /mnt/bin/ploeg-worker
+        env:
+        - name: PLOEG_API_URL
+          value: http://ploeg:8080
+        - name: PLOEG_TEAM
+          value: gold
+        - name: PLOEG_ROLE
+          value: builder
+        - name: PLOEG_HARNESS
+          value: openhands
+        - name: PLOEG_HARNESS_TIMEOUT
+          value: 100m
+        - name: PLOEG_HARNESS_IDLE_TIMEOUT
+          value: 15m
+        - name: LLM_MODEL
+          value: litellm_proxy/deepseek-chat
+        - name: LITELLM_KEY_BUDGET
+          value: "3.00"
+        - name: LITELLM_KEY_DURATION
+          value: 4h
+        - name: LLM_BASE_URL
+          value: http://litellm.ai.svc.cluster.local:4000/v1
+        - name: PLOEG_LLM_CREDENTIAL_MODE
+          value: managed
+        - name: PLOEG_WORKER_BOOTSTRAP_TOKEN
+          valueFrom:
+            secretKeyRef:
+              key: gold--builder
+              name: ploeg-worker-bootstrap
+        - name: PLOEG_TARGET_FORGE
+          value: forgejo
+        - name: FORGE_URL
+          value: http://forgejo-http.forgejo.svc.cluster.local:3000
+        - name: PLOEG_FORGE_TOKEN_ACCESS
+          value: read-write
+        - name: AGENT_BUILDER_TOKEN
+          valueFrom:
+            secretKeyRef:
+              key: FORGEJO_TOKEN
+              name: agent-builder-token
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: POD_UID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.uid
+        - name: WORK_DIR
+          value: /mnt/ci-shared
+        - name: DOCKER_HOST
+          value: tcp://localhost:2376
+        - name: DOCKER_CERT_PATH
+          value: /certs/client
+        - name: DOCKER_TLS_VERIFY
+          value: "1"
+        image: harbor.webgrip.dev/webgrip/agent-runner:1.3.0@sha256:ab0a56f12a33b2af542663e0f2079261f5b9aca5596a5d497583f211a284684f
+        name: worker
+        resources:
+          limits:
+            cpu: "1"
+            memory: 1Gi
+          requests:
+            cpu: "1"
+            memory: 1Gi
+        volumeMounts:
+        - mountPath: /mnt/bin
+          name: worker-bin
+          readOnly: true
+        - mountPath: /certs
+          name: docker-certs
+          readOnly: true
+        - mountPath: /mnt/ci-shared
+          name: ci-shared
+      dnsPolicy: ClusterFirst
+      initContainers:
+      - command:
+        - /usr/local/bin/ploeg-worker
+        - install
+        - /mnt/bin/ploeg-worker
+        image: ghcr.io/ploeg-hq/ploegd:CHART-VERSION
+        name: worker-bin
+        resources:
+          limits:
+            cpu: 50m
+            memory: 64Mi
+          requests:
+            cpu: 50m
+            memory: 64Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          runAsNonRoot: true
+          runAsUser: 65532
+          seccompProfile:
+            type: RuntimeDefault
+        volumeMounts:
+        - mountPath: /mnt/bin
+          name: worker-bin
+      - env:
+        - name: DOCKER_TLS_CERTDIR
+          value: /certs
+        image: harbor.webgrip.dev/dockerhub/library/docker:29.8.2-dind@sha256:7dcdfc4a20246236f558175182ccace1eb15a41bd3eb119dd2284f393498b7c1
+        name: dind
+        resources:
+          limits:
+            cpu: "1"
+            memory: 1536Mi
+          requests:
+            cpu: "1"
+            memory: 1536Mi
+        restartPolicy: Always
+        securityContext:
+          privileged: true
+        startupProbe:
+          failureThreshold: 60
+          periodSeconds: 2
+          tcpSocket:
+            port: 2376
+          timeoutSeconds: 5
+        volumeMounts:
+        - mountPath: /certs
+          name: docker-certs
+        - mountPath: /var/lib/docker
+          name: docker-storage
+        - mountPath: /mnt/ci-shared
+          name: ci-shared
+      nodeSelector:
+        node.webgrip.io/pool: worker
+      restartPolicy: Never
+      runtimeClassName: kata
+      securityContext:
+        fsGroup: 1000
+      serviceAccountName: ploeg-worker
+      terminationGracePeriodSeconds: 90
+      volumes:
+      - emptyDir: {}
+        name: worker-bin
+      - emptyDir: {}
+        name: docker-certs
+      - emptyDir: {}
+        name: docker-storage
+      - emptyDir:
+          sizeLimit: 8Gi
+        name: ci-shared
+  service: false
+  networkPolicyManagement: Managed
+  networkPolicy:
+    egress:
+    - ports:
+      - port: 53
+        protocol: UDP
+      - port: 53
+        protocol: TCP
+      to:
+      - namespaceSelector: {}
+        podSelector:
+          matchLabels:
+            k8s-app: kube-dns
+    - ports:
+      - port: 8080
+        protocol: TCP
+      to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: ploeg
+    - ports:
+      - port: 4000
+        protocol: TCP
+      to:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: ai
+    - ports:
+      - port: 443
+        protocol: TCP
+      - port: 3000
+        protocol: TCP
+      to:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: forgejo
+    ingress: []
+  envVarsInjectionPolicy: Disallowed
+---
+# Source: ploeg/templates/sandbox.yaml
+apiVersion: extensions.agents.x-k8s.io/v1beta1
+kind: SandboxTemplate
+metadata:
+  name: ploeg-worker-gold-reviewer
+  labels:
+    app.kubernetes.io/name: ploeg
+    app.kubernetes.io/instance: ploeg
+    app.kubernetes.io/version: "CHART-VERSION"
+    helm.sh/chart: ploeg-CHART-VERSION
+    app.kubernetes.io/managed-by: Helm
+spec:
+  podTemplate:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ploeg-worker
+        ploeg.webgrip.dev/role: reviewer
+        ploeg.webgrip.dev/team: gold
+    spec:
+      activeDeadlineSeconds: 7200
+      automountServiceAccountToken: false
+      containers:
+      - command:
+        - /mnt/bin/ploeg-worker
+        env:
+        - name: PLOEG_API_URL
+          value: http://ploeg:8080
+        - name: PLOEG_TEAM
+          value: gold
+        - name: PLOEG_ROLE
+          value: reviewer
+        - name: PLOEG_HARNESS
+          value: openhands
+        - name: PLOEG_HARNESS_TIMEOUT
+          value: 100m
+        - name: PLOEG_HARNESS_IDLE_TIMEOUT
+          value: 15m
+        - name: LLM_MODEL
+          value: litellm_proxy/deepseek-chat
+        - name: LITELLM_KEY_BUDGET
+          value: "0.75"
+        - name: LITELLM_KEY_DURATION
+          value: 4h
+        - name: LLM_BASE_URL
+          value: http://litellm.ai.svc.cluster.local:4000/v1
+        - name: PLOEG_LLM_CREDENTIAL_MODE
+          value: managed
+        - name: PLOEG_WORKER_BOOTSTRAP_TOKEN
+          valueFrom:
+            secretKeyRef:
+              key: gold--reviewer
+              name: ploeg-worker-bootstrap
+        - name: PLOEG_TARGET_FORGE
+          value: forgejo
+        - name: FORGE_URL
+          value: http://forgejo-http.forgejo.svc.cluster.local:3000
+        - name: PLOEG_FORGE_TOKEN_ACCESS
+          value: read-only
+        - name: AGENT_BUILDER_TOKEN
+          valueFrom:
+            secretKeyRef:
+              key: FORGEJO_TOKEN
+              name: agent-reader-token
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: POD_UID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.uid
+        - name: WORK_DIR
+          value: /mnt/ci-shared
+        image: harbor.webgrip.dev/webgrip/agent-runner:1.3.0@sha256:ab0a56f12a33b2af542663e0f2079261f5b9aca5596a5d497583f211a284684f
+        name: worker
+        resources:
+          limits:
+            cpu: "1"
+            memory: 1Gi
+          requests:
+            cpu: "1"
+            memory: 1Gi
+        volumeMounts:
+        - mountPath: /mnt/bin
+          name: worker-bin
+          readOnly: true
+        - mountPath: /mnt/ci-shared
+          name: ci-shared
+      dnsPolicy: ClusterFirst
+      initContainers:
+      - command:
+        - /usr/local/bin/ploeg-worker
+        - install
+        - /mnt/bin/ploeg-worker
+        image: ghcr.io/ploeg-hq/ploegd:CHART-VERSION
+        name: worker-bin
+        resources:
+          limits:
+            cpu: 50m
+            memory: 64Mi
+          requests:
+            cpu: 50m
+            memory: 64Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          runAsNonRoot: true
+          runAsUser: 65532
+          seccompProfile:
+            type: RuntimeDefault
+        volumeMounts:
+        - mountPath: /mnt/bin
+          name: worker-bin
+      nodeSelector:
+        node.webgrip.io/pool: worker
+      restartPolicy: Never
+      runtimeClassName: kata
+      securityContext:
+        fsGroup: 1000
+      serviceAccountName: ploeg-worker
+      terminationGracePeriodSeconds: 90
+      volumes:
+      - emptyDir: {}
+        name: worker-bin
+      - emptyDir:
+          sizeLimit: 8Gi
+        name: ci-shared
+  service: false
+  networkPolicyManagement: Managed
+  networkPolicy:
+    egress:
+    - ports:
+      - port: 53
+        protocol: UDP
+      - port: 53
+        protocol: TCP
+      to:
+      - namespaceSelector: {}
+        podSelector:
+          matchLabels:
+            k8s-app: kube-dns
+    - ports:
+      - port: 8080
+        protocol: TCP
+      to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: ploeg
+    - ports:
+      - port: 4000
+        protocol: TCP
+      to:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: ai
+    - ports:
+      - port: 443
+        protocol: TCP
+      - port: 3000
+        protocol: TCP
+      to:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: forgejo
+    ingress: []
+  envVarsInjectionPolicy: Disallowed
+---
+# Source: ploeg/templates/sandbox.yaml
+apiVersion: extensions.agents.x-k8s.io/v1beta1
+kind: SandboxWarmPool
+metadata:
+  name: ploeg-worker-bronze
+  labels:
+    app.kubernetes.io/name: ploeg
+    app.kubernetes.io/instance: ploeg
+    app.kubernetes.io/version: "CHART-VERSION"
+    helm.sh/chart: ploeg-CHART-VERSION
+    app.kubernetes.io/managed-by: Helm
+spec:
+  replicas: 0
+  sandboxTemplateRef:
+    name: ploeg-worker-bronze
+---
+# Source: ploeg/templates/sandbox.yaml
+apiVersion: extensions.agents.x-k8s.io/v1beta1
+kind: SandboxWarmPool
+metadata:
+  name: ploeg-worker-gold-builder
+  labels:
+    app.kubernetes.io/name: ploeg
+    app.kubernetes.io/instance: ploeg
+    app.kubernetes.io/version: "CHART-VERSION"
+    helm.sh/chart: ploeg-CHART-VERSION
+    app.kubernetes.io/managed-by: Helm
+spec:
+  replicas: 0
+  sandboxTemplateRef:
+    name: ploeg-worker-gold-builder
+---
+# Source: ploeg/templates/sandbox.yaml
+apiVersion: extensions.agents.x-k8s.io/v1beta1
+kind: SandboxWarmPool
+metadata:
+  name: ploeg-worker-gold-reviewer
+  labels:
+    app.kubernetes.io/name: ploeg
+    app.kubernetes.io/instance: ploeg
+    app.kubernetes.io/version: "CHART-VERSION"
+    helm.sh/chart: ploeg-CHART-VERSION
+    app.kubernetes.io/managed-by: Helm
+spec:
+  replicas: 0
+  sandboxTemplateRef:
+    name: ploeg-worker-gold-reviewer
+---
+# Source: ploeg/templates/scaledjob.yaml
+# One ScaledJob per (team, Role) — the flagship executor. A team without a
+# plan has exactly one Role-less workload, byte-identical to the pre-Shift
+# shape; a team with a plan gets one per Role, which is what makes "different
+# agents, different harnesses, different images" literally true: pod shape is
+# fixed at render time. The shape lives in the shared ploeg.workerPodTemplate
+# helper (also used by the CronJob executor): privileged DinD sidecar when the
+# harness needs Docker, a shared disk-backed workspace mounted at the SAME
+# path in both containers, and zero Kubernetes API authority for the
+# LLM-driven process.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledJob
+metadata:
+  name: ploeg-worker-bronze
+  labels:
+    app.kubernetes.io/name: ploeg
+    app.kubernetes.io/instance: ploeg
+    app.kubernetes.io/version: "CHART-VERSION"
+    helm.sh/chart: ploeg-CHART-VERSION
+    app.kubernetes.io/managed-by: Helm
+spec:
+  pollingInterval: 30
+  minReplicaCount: 0
+  maxReplicaCount: 1
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  rollout:
+    strategy: gradual # spec updates never kill in-flight runs (backlog #50)
+  scalingStrategy:
+    strategy: accurate # never eager: open over-scaling bug kedacore/keda#6416 (backlog #47)
+  jobTargetRef:
+    parallelism: 1
+    completions: 1
+    backoffLimit: 0 # ploeg owns retries; every pod is one auditable run (backlog #51)
+    activeDeadlineSeconds: 7800
+    template:
+      
+      metadata:
+        labels:
+          app.kubernetes.io/name: ploeg-sandbox-launcher
+          ploeg.webgrip.dev/team: bronze
+      spec:
+        restartPolicy: Never
+        serviceAccountName: ploeg-sandbox-launcher
+        automountServiceAccountToken: true
+        nodeSelector:
+          node.webgrip.io/pool: worker
+        containers:
+          - name: launcher
+            image: ghcr.io/ploeg-hq/ploegd:CHART-VERSION
+            command: ["/usr/local/bin/ploeg-worker", "sandbox-launch"]
+            env:
+              - name: POD_NAME
+                valueFrom:
+                  fieldRef:
+                    fieldPath: metadata.name
+              - name: POD_NAMESPACE
+                valueFrom:
+                  fieldRef:
+                    fieldPath: metadata.namespace
+              - name: PLOEG_SANDBOX_JOB_NAME
+                valueFrom:
+                  fieldRef:
+                    fieldPath: metadata.labels['batch.kubernetes.io/job-name']
+              - name: PLOEG_SANDBOX_JOB_UID
+                valueFrom:
+                  fieldRef:
+                    fieldPath: metadata.labels['batch.kubernetes.io/controller-uid']
+              - name: PLOEG_SANDBOX_WARM_POOL
+                value: "ploeg-worker-bronze"
+              - name: PLOEG_SANDBOX_RUN_DEADLINE
+                value: "7200s"
+              - name: PLOEG_SANDBOX_SHUTDOWN_MARGIN
+                value: "600s"
+              - name: PLOEG_SANDBOX_START_TIMEOUT
+                value: "600s"
+              - name: PLOEG_SANDBOX_TTL_SECONDS_AFTER_FINISHED
+                value: "60"
+              - name: PLOEG_API_URL
+                value: "http://ploeg:8080"
+              - name: PLOEG_TEAM
+                value: "bronze"
+              - name: PLOEG_WORKER_ID
+                valueFrom:
+                  fieldRef:
+                    fieldPath: metadata.uid
+              - name: PLOEG_WORKER_BOOTSTRAP_TOKEN
+                valueFrom:
+                  secretKeyRef:
+                    name: ploeg-worker-bootstrap
+                    key: "bronze--default"
+            securityContext:
+              runAsNonRoot: true
+              runAsUser: 65532
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop: [ALL]
+              seccompProfile:
+                type: RuntimeDefault
+            resources:
+              limits:
+                cpu: 50m
+                memory: 32Mi
+              requests:
+                cpu: 10m
+                memory: 32Mi
+  triggers:
+    - type: postgresql
+      metadata:
+        # Resolved by the KEDA operator from ITS namespace, not this one —
+        # a bare in-namespace service name never resolves there.
+        host: "ploeg-db-rw.default.svc.cluster.local"
+        port: "5432"
+        userName: "ploeg_scaler"
+        dbName: "app"
+        sslmode: "require"
+        # The one poll-query shape: served index-only by work_items_claimable
+        # (backlog #24/#47). Must stay in sync with store.Claim.
+        query: "SELECT COUNT(*) FROM work_items WHERE team = 'bronze' AND state = 'queued' AND NOT operator_owned AND (next_eligible_at IS NULL OR next_eligible_at <= now())"
+        targetQueryValue: "1"
+        activationTargetQueryValue: "0"
+      authenticationRef:
+        name: ploeg-scaler
+---
+# Source: ploeg/templates/scaledjob.yaml
+# One ScaledJob per (team, Role) — the flagship executor. A team without a
+# plan has exactly one Role-less workload, byte-identical to the pre-Shift
+# shape; a team with a plan gets one per Role, which is what makes "different
+# agents, different harnesses, different images" literally true: pod shape is
+# fixed at render time. The shape lives in the shared ploeg.workerPodTemplate
+# helper (also used by the CronJob executor): privileged DinD sidecar when the
+# harness needs Docker, a shared disk-backed workspace mounted at the SAME
+# path in both containers, and zero Kubernetes API authority for the
+# LLM-driven process.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledJob
+metadata:
+  name: ploeg-worker-gold-builder
+  labels:
+    app.kubernetes.io/name: ploeg
+    app.kubernetes.io/instance: ploeg
+    app.kubernetes.io/version: "CHART-VERSION"
+    helm.sh/chart: ploeg-CHART-VERSION
+    app.kubernetes.io/managed-by: Helm
+spec:
+  pollingInterval: 30
+  minReplicaCount: 0
+  maxReplicaCount: 1
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  rollout:
+    strategy: gradual # spec updates never kill in-flight runs (backlog #50)
+  scalingStrategy:
+    strategy: accurate # never eager: open over-scaling bug kedacore/keda#6416 (backlog #47)
+  jobTargetRef:
+    parallelism: 1
+    completions: 1
+    backoffLimit: 0 # ploeg owns retries; every pod is one auditable run (backlog #51)
+    activeDeadlineSeconds: 7800
+    template:
+      
+      metadata:
+        labels:
+          app.kubernetes.io/name: ploeg-sandbox-launcher
+          ploeg.webgrip.dev/team: gold
+          ploeg.webgrip.dev/role: builder
+      spec:
+        restartPolicy: Never
+        serviceAccountName: ploeg-sandbox-launcher
+        automountServiceAccountToken: true
+        nodeSelector:
+          node.webgrip.io/pool: worker
+        containers:
+          - name: launcher
+            image: ghcr.io/ploeg-hq/ploegd:CHART-VERSION
+            command: ["/usr/local/bin/ploeg-worker", "sandbox-launch"]
+            env:
+              - name: POD_NAME
+                valueFrom:
+                  fieldRef:
+                    fieldPath: metadata.name
+              - name: POD_NAMESPACE
+                valueFrom:
+                  fieldRef:
+                    fieldPath: metadata.namespace
+              - name: PLOEG_SANDBOX_JOB_NAME
+                valueFrom:
+                  fieldRef:
+                    fieldPath: metadata.labels['batch.kubernetes.io/job-name']
+              - name: PLOEG_SANDBOX_JOB_UID
+                valueFrom:
+                  fieldRef:
+                    fieldPath: metadata.labels['batch.kubernetes.io/controller-uid']
+              - name: PLOEG_SANDBOX_WARM_POOL
+                value: "ploeg-worker-gold-builder"
+              - name: PLOEG_SANDBOX_RUN_DEADLINE
+                value: "7200s"
+              - name: PLOEG_SANDBOX_SHUTDOWN_MARGIN
+                value: "600s"
+              - name: PLOEG_SANDBOX_START_TIMEOUT
+                value: "600s"
+              - name: PLOEG_SANDBOX_TTL_SECONDS_AFTER_FINISHED
+                value: "60"
+              - name: PLOEG_API_URL
+                value: "http://ploeg:8080"
+              - name: PLOEG_TEAM
+                value: "gold"
+              - name: PLOEG_ROLE
+                value: "builder"
+              - name: PLOEG_WORKER_ID
+                valueFrom:
+                  fieldRef:
+                    fieldPath: metadata.uid
+              - name: PLOEG_WORKER_BOOTSTRAP_TOKEN
+                valueFrom:
+                  secretKeyRef:
+                    name: ploeg-worker-bootstrap
+                    key: "gold--builder"
+            securityContext:
+              runAsNonRoot: true
+              runAsUser: 65532
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop: [ALL]
+              seccompProfile:
+                type: RuntimeDefault
+            resources:
+              limits:
+                cpu: 50m
+                memory: 32Mi
+              requests:
+                cpu: 10m
+                memory: 32Mi
+  triggers:
+    - type: postgresql
+      metadata:
+        # Resolved by the KEDA operator from ITS namespace, not this one —
+        # a bare in-namespace service name never resolves there.
+        host: "ploeg-db-rw.default.svc.cluster.local"
+        port: "5432"
+        userName: "ploeg_scaler"
+        dbName: "app"
+        sslmode: "require"
+        # THE claim predicate for a Role, and it must stay byte-identical to
+        # store.ClaimRole and store.PendingRuns: pending runs for this team and
+        # role. Served index-only by agent_runs_claimable, which migration 0008
+        # created verbatim for this query:
+        #   CREATE INDEX agent_runs_claimable
+        #       ON agent_runs (team, role, id) WHERE state = 'pending';
+        # Overshoot merely wastes a pod that exits 0 empty-handed; undershoot
+        # stalls Work Items with no error anywhere, which is the worst failure
+        # this system can have. TestClaimRoleAgreesWithPendingRuns keeps the
+        # two Go callers honest; this comment is the third copy's leash.
+        query: "SELECT COUNT(*) FROM agent_runs WHERE team = 'gold' AND role = 'builder' AND state = 'pending'"
+        targetQueryValue: "1"
+        activationTargetQueryValue: "0"
+      authenticationRef:
+        name: ploeg-scaler
+---
+# Source: ploeg/templates/scaledjob.yaml
+# One ScaledJob per (team, Role) — the flagship executor. A team without a
+# plan has exactly one Role-less workload, byte-identical to the pre-Shift
+# shape; a team with a plan gets one per Role, which is what makes "different
+# agents, different harnesses, different images" literally true: pod shape is
+# fixed at render time. The shape lives in the shared ploeg.workerPodTemplate
+# helper (also used by the CronJob executor): privileged DinD sidecar when the
+# harness needs Docker, a shared disk-backed workspace mounted at the SAME
+# path in both containers, and zero Kubernetes API authority for the
+# LLM-driven process.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledJob
+metadata:
+  name: ploeg-worker-gold-reviewer
+  labels:
+    app.kubernetes.io/name: ploeg
+    app.kubernetes.io/instance: ploeg
+    app.kubernetes.io/version: "CHART-VERSION"
+    helm.sh/chart: ploeg-CHART-VERSION
+    app.kubernetes.io/managed-by: Helm
+spec:
+  pollingInterval: 30
+  minReplicaCount: 0
+  maxReplicaCount: 1
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  rollout:
+    strategy: gradual # spec updates never kill in-flight runs (backlog #50)
+  scalingStrategy:
+    strategy: accurate # never eager: open over-scaling bug kedacore/keda#6416 (backlog #47)
+  jobTargetRef:
+    parallelism: 1
+    completions: 1
+    backoffLimit: 0 # ploeg owns retries; every pod is one auditable run (backlog #51)
+    activeDeadlineSeconds: 7800
+    template:
+      
+      metadata:
+        labels:
+          app.kubernetes.io/name: ploeg-sandbox-launcher
+          ploeg.webgrip.dev/team: gold
+          ploeg.webgrip.dev/role: reviewer
+      spec:
+        restartPolicy: Never
+        serviceAccountName: ploeg-sandbox-launcher
+        automountServiceAccountToken: true
+        nodeSelector:
+          node.webgrip.io/pool: worker
+        containers:
+          - name: launcher
+            image: ghcr.io/ploeg-hq/ploegd:CHART-VERSION
+            command: ["/usr/local/bin/ploeg-worker", "sandbox-launch"]
+            env:
+              - name: POD_NAME
+                valueFrom:
+                  fieldRef:
+                    fieldPath: metadata.name
+              - name: POD_NAMESPACE
+                valueFrom:
+                  fieldRef:
+                    fieldPath: metadata.namespace
+              - name: PLOEG_SANDBOX_JOB_NAME
+                valueFrom:
+                  fieldRef:
+                    fieldPath: metadata.labels['batch.kubernetes.io/job-name']
+              - name: PLOEG_SANDBOX_JOB_UID
+                valueFrom:
+                  fieldRef:
+                    fieldPath: metadata.labels['batch.kubernetes.io/controller-uid']
+              - name: PLOEG_SANDBOX_WARM_POOL
+                value: "ploeg-worker-gold-reviewer"
+              - name: PLOEG_SANDBOX_RUN_DEADLINE
+                value: "7200s"
+              - name: PLOEG_SANDBOX_SHUTDOWN_MARGIN
+                value: "600s"
+              - name: PLOEG_SANDBOX_START_TIMEOUT
+                value: "600s"
+              - name: PLOEG_SANDBOX_TTL_SECONDS_AFTER_FINISHED
+                value: "60"
+              - name: PLOEG_API_URL
+                value: "http://ploeg:8080"
+              - name: PLOEG_TEAM
+                value: "gold"
+              - name: PLOEG_ROLE
+                value: "reviewer"
+              - name: PLOEG_WORKER_ID
+                valueFrom:
+                  fieldRef:
+                    fieldPath: metadata.uid
+              - name: PLOEG_WORKER_BOOTSTRAP_TOKEN
+                valueFrom:
+                  secretKeyRef:
+                    name: ploeg-worker-bootstrap
+                    key: "gold--reviewer"
+            securityContext:
+              runAsNonRoot: true
+              runAsUser: 65532
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop: [ALL]
+              seccompProfile:
+                type: RuntimeDefault
+            resources:
+              limits:
+                cpu: 50m
+                memory: 32Mi
+              requests:
+                cpu: 10m
+                memory: 32Mi
+  triggers:
+    - type: postgresql
+      metadata:
+        # Resolved by the KEDA operator from ITS namespace, not this one —
+        # a bare in-namespace service name never resolves there.
+        host: "ploeg-db-rw.default.svc.cluster.local"
+        port: "5432"
+        userName: "ploeg_scaler"
+        dbName: "app"
+        sslmode: "require"
+        # THE claim predicate for a Role, and it must stay byte-identical to
+        # store.ClaimRole and store.PendingRuns: pending runs for this team and
+        # role. Served index-only by agent_runs_claimable, which migration 0008
+        # created verbatim for this query:
+        #   CREATE INDEX agent_runs_claimable
+        #       ON agent_runs (team, role, id) WHERE state = 'pending';
+        # Overshoot merely wastes a pod that exits 0 empty-handed; undershoot
+        # stalls Work Items with no error anywhere, which is the worst failure
+        # this system can have. TestClaimRoleAgreesWithPendingRuns keeps the
+        # two Go callers honest; this comment is the third copy's leash.
+        query: "SELECT COUNT(*) FROM agent_runs WHERE team = 'gold' AND role = 'reviewer' AND state = 'pending'"
+        targetQueryValue: "1"
+        activationTargetQueryValue: "0"
+      authenticationRef:
+        name: ploeg-scaler
+---
+# Source: ploeg/templates/triggerauthentication.yaml
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: ploeg-scaler
+  labels:
+    app.kubernetes.io/name: ploeg
+    app.kubernetes.io/instance: ploeg
+    app.kubernetes.io/version: "CHART-VERSION"
+    helm.sh/chart: ploeg-CHART-VERSION
+    app.kubernetes.io/managed-by: Helm
+spec:
+  secretTargetRef:
+    - parameter: password
+      name: ploeg-scaler
+      key: password

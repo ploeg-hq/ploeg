@@ -1,0 +1,12 @@
+# CI-only values: render the KEDA-free CronJob executor path
+# (docs/contracts/executor.md) so it cannot rot silently.
+executor:
+  enabled: true
+  type: cronjob
+  teams:
+    - name: bronze
+      model: litellm_proxy/deepseek-chat
+      budget: "2"
+      repoOwner: webgrip
+      repoName: example
+      baseBranch: development

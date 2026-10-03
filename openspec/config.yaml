@@ -1,0 +1,136 @@
+schema: spec-driven-with-adr
+
+# This block is injected into every artifact prompt (see `openspec instructions`).
+# It deliberately POINTS at the authoritative documents rather than copying them.
+# Ploeg's contracts are pinned to the Go types by pkg/harness/contract_test.go and
+# its domain model is generated from docs/domain/model.yaml — a prose duplicate
+# here would be drift with no gate on it. Keep this file a map, not a mirror.
+context: |
+  ## Product
+
+  Ploeg authorizes and coordinates agent work from tracker events and explicit
+  operator admission. Trackers retain work content and priorities. Ploeg records
+  execution authority; unattended workers or De Vloer perform the work. Read
+  docs/index.md for current guidance. Go plus a Helm chart, Apache-2.0.
+
+  Read before designing anything non-trivial:
+
+  - `docs/architecture.md` — current-state reality. §9 lists where the code
+    diverges from design intent and goes stale in BOTH directions; check its
+    claims against the code before repeating them.
+  - `docs/design.md` — design intent, §2 the non-goals.
+  - `docs/adrs/` — the decision ledger. In-force = accepted and not superseded,
+    per the Records index in `docs/adrs/README.md`. Design within them.
+  - `docs/contracts/` — the published wire contracts (TaskSpec, OutcomeReport,
+    Checkpoint, run API) plus the executor SPI. Versioned; v1 permits additive
+    optional fields only.
+  - `docs/domain/` — glossary, entities, rules, events, and the
+    `model.yaml` they are generated from.
+  - `docs/backlog.md` — numbered roadmap. Cite items by number.
+  - `docs/research/` — evidence trails behind the verdicts in `docs/adrs/`.
+
+  ## Ubiquitous language (mandatory)
+
+  Use the canonical terms from `docs/domain/glossary.md` exactly, in prose and in
+  identifiers: Work Item, Lease, Run, Team, Team Queue, Outcome, Checkpoint,
+  Follow-Up, Task Spec, Tracker Provider, Forge Provider, Harness, Executor. If a
+  concept is missing, update `docs/domain/model.yaml` first and regenerate the
+  docs, then write the artifact.
+
+  Cite business rules by id (`docs/domain/rules.md`) instead of restating
+  them. The load-bearing ones in almost every change: R1 one live Lease per Work
+  Item, R2 crash-safety never depends on an agent behaving well, R4 a stuck
+  Outcome always carries a reason, R6 the worker stays single-purpose.
+
+  ## The seams
+
+  A change usually touches exactly one. Name it in the proposal; a change
+  crossing two probably wants to be two changes.
+
+  - **Tracker ingest** — webhook verify → dedup → enqueue (`pkg/httpapi`,
+    `pkg/provider`)
+  - **Store** — work items, leases, claims, outcomes, audit (`pkg/store`;
+    `migrations/` is APPEND-ONLY)
+  - **Run API** — claim, renew, checkpoint, outcome (`pkg/httpapi`)
+  - **Executor** — dispatcher → worker pod (`docs/contracts/executor.md`,
+    `ops/helm/ploeg`)
+  - **Harness** — worker → coding agent (`pkg/harness`, adapters underneath)
+  - **LLM control** — managed authorization, credential lifecycle and accounting
+    (`pkg/httpapi/llm_control.go`, `pkg/store/llm_accounts.go`;
+    `docs/contracts/worker-control.md`)
+
+  ## Invariants that outrank convenience
+
+  - **Tracker-originated content stays authoritative at the tracker.** Explicit
+    authenticated operator admission may also create manual-origin work without
+    a tracker ticket (`docs/contracts/README.md`).
+  - **Leases are the crash-safety mechanism**, not agent cooperation. A dead pod
+    releases its ticket because a TTL expires (R2).
+  - **Management authority stays in the controller.** Follow the managed worker
+    contract for scoped capabilities and unresolved accounting. A gateway
+    observation is not final settlement. Never log a secret value (ADR 0008).
+  - **Published contracts change with their Go types**, in the same change, and
+    additively (`docs/contracts/README.md`).
+  - **Migrations are append-only.** Change schema by adding the next numbered
+    migration.
+  - **Every seam is pluggable.** No tracker, forge or harness is special-cased
+    outside its provider or adapter.
+
+  ## Delivery
+
+  Trunk is `development`; `main` is a release-promotion stub. Work on
+  `agent/<slug>`. Conventional commits — `fix:`/`feat:` cut an rc release,
+  `docs:`/`chore:`/`test:` do not. Gates are `.forgejo/workflows/on_pull_request.yml`
+  and their output goes in the PR body. Tests use fake external services;
+  database and toolchain provisioning may need network access.
+
+rules:
+  proposal:
+    - Name the seam(s) the change touches; a change crossing two seams probably
+      wants to be two changes
+    - Use canonical domain terms exactly; cite rules by id, do not
+      restate them
+    - Include a "Non-goals" section, and check the change against design.md §2
+      before writing it
+    - Cite backlog items by number where the change implements or supersedes one
+  specs:
+    - One capability per seam; do not mix executor and harness concerns in one
+      capability
+    - Never restate a published schema from docs/contracts/ — reference it. A
+      contract change edits the schema and the Go type together, additively
+    - Normative keywords per RFC 2119 / BCP 14 (SHALL, MUST, SHOULD, MAY)
+    - Anything touching leases, claims or outcomes states its crash behaviour as
+      a requirement — what happens when the pod dies mid-operation (R2)
+  design:
+    - Read the in-force ADRs in docs/adrs/ first; design within them or flag a
+      supersession under Open Questions — never edit an accepted record
+    - Cite ADRs by number, rules by id, backlog items by number; restate none of
+      them
+    - Verify docs/architecture.md §9's claims against the code before relying on
+      them; it goes stale in both directions
+    - Durable commitments are extracted to docs/adrs/ in the adr step; design.md
+      keeps only change-local rationale
+    - Any claim/queue predicate change states how the KEDA scaler query in
+      ops/helm/ploeg/templates/scaledjob.yaml stays in sync
+  adr:
+    - One decision per record; MADR 4.0 per docs/adrs/adr-template.md
+    - Every record carries a "### Confirmation" subsection naming the CI gate,
+      review step or script that checks compliance
+    - Accepted records are immutable — supersede with a new record naming the old
+      one in `supersedes:`; never flip a prior record's status
+    - The `review-by` front-matter field is a date or `none`; a date REQUIRES a
+      "Re-evaluation triggers" section naming observable events
+    - Evidence stays in docs/research/YYYY-MM-DD-<topic>.md and is linked, not
+      summarised into the record
+    - Never mark a record accepted on the human's behalf, and never write one to
+      retro-justify a change that is already built
+  tasks:
+    - Every change runs the full gate set from
+      .forgejo/workflows/on_pull_request.yml and pastes the output in the PR body
+    - A bug fix includes a regression test proven to FAIL against the unfixed
+      code
+    - A pkg/harness type change includes the docs/contracts/ schema edit and a
+      contract_test.go assertion
+    - A schema change is a new numbered file in pkg/store/migrations/, never an
+      edit to an applied one
+    - A change adding an ADR runs `go test ./internal/ledger/`

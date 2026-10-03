@@ -1,0 +1,389 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webgrip.dev/ploeg/contracts/tracker-execution.v1.schema.json",
+  "title": "Canonical tracker execution binding v1",
+  "description": "Additive source expectations for operator admission. Lookup is scoped by the named bearer consumer. Every native expectation is compared before adopting an existing queued, pristine assignment Work Item. expectedBaseUrl is only compared with the configured singleton provider, never used as an outbound endpoint.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/lookup"
+    },
+    {
+      "$ref": "#/$defs/source"
+    }
+  ],
+  "$defs": {
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "workItemId",
+        "provider",
+        "externalId",
+        "expectedScope",
+        "expectedBaseUrl",
+        "expectedRevision",
+        "expectedUpdatedAt",
+        "expectedTarget"
+      ],
+      "properties": {
+        "workItemId": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]{0,18}$"
+        },
+        "provider": {
+          "$ref": "#/$defs/name"
+        },
+        "externalId": {
+          "$ref": "#/$defs/name"
+        },
+        "expectedScope": {
+          "$ref": "#/$defs/name"
+        },
+        "expectedBaseUrl": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048,
+          "format": "uri"
+        },
+        "expectedRevision": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "expectedUpdatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "expectedTarget": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "forge",
+            "owner",
+            "repo",
+            "baseBranch"
+          ],
+          "properties": {
+            "forge": {
+              "type": "string",
+              "minLength": 1
+            },
+            "owner": {
+              "type": "string",
+              "minLength": 1
+            },
+            "repo": {
+              "type": "string",
+              "minLength": 1
+            },
+            "baseBranch": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    "name": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+    },
+    "lookup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "item",
+        "source"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "1.0"
+        },
+        "item": {
+          "$ref": "#/$defs/item"
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        }
+      }
+    },
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "provider",
+        "externalId",
+        "revision",
+        "team",
+        "state",
+        "title",
+        "description",
+        "url",
+        "priority",
+        "attempts",
+        "infraFailures",
+        "nextEligibleAt",
+        "createdAt",
+        "updatedAt",
+        "target",
+        "latestShift",
+        "lease"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]{0,18}$"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "externalId": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "string"
+        },
+        "team": {
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "ingested",
+            "proposed",
+            "queued",
+            "leased",
+            "needs_human",
+            "awaiting_review",
+            "stale",
+            "done",
+            "withdrawn"
+          ]
+        },
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "priority": {
+          "type": "integer"
+        },
+        "attempts": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "infraFailures": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "nextEligibleAt": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "target": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/target"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "pullRequest": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/pullRequest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "latestShift": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/shift"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "lease": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/lease"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "shift": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "workItemId",
+        "team",
+        "branch",
+        "round",
+        "budgetUsd",
+        "spentUsd",
+        "reservedUsd",
+        "openedAt",
+        "closedAt",
+        "closeReason"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]{0,18}$"
+        },
+        "workItemId": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]{0,18}$"
+        },
+        "team": {
+          "type": "string"
+        },
+        "branch": {
+          "type": "string"
+        },
+        "round": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "budgetUsd": {
+          "type": "number"
+        },
+        "spentUsd": {
+          "type": "number"
+        },
+        "reservedUsd": {
+          "type": "number"
+        },
+        "openedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "closedAt": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "closeReason": {
+          "type": "string"
+        }
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "forge",
+        "owner",
+        "repo",
+        "baseBranch"
+      ],
+      "properties": {
+        "forge": {
+          "type": "string"
+        },
+        "owner": {
+          "type": "string"
+        },
+        "repo": {
+          "type": "string"
+        },
+        "baseBranch": {
+          "type": "string"
+        }
+      }
+    },
+    "lease": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "expiresAt",
+        "renewedAt"
+      ],
+      "properties": {
+        "expiresAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "renewedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "pullRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "url",
+        "agentVerdict",
+        "agentVerdictRound",
+        "humanChangesRequested",
+        "repairFollowUps"
+      ],
+      "properties": {
+        "url": {
+          "type": "string"
+        },
+        "agentVerdict": {
+          "type": "string"
+        },
+        "agentVerdictRound": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "humanChangesRequested": {
+          "type": "boolean"
+        },
+        "repairFollowUps": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

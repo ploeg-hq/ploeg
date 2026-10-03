@@ -1,0 +1,35 @@
+:root {
+  /* Ploeg — merkkleuren. De namen volgen het domein: de voor, de klei, de akker. */
+  --ploeg-voor:          #141A1D; /* inkt — dragende vorm, tekst op licht */
+  --ploeg-klei:          #E4572E; /* accent — het snijdende deel */
+  --ploeg-klei-diep:     #C0431F; /* accent voor kleine tekst op lichte grond */
+  --ploeg-kalk:          #F4F6F2; /* papier */
+  --ploeg-nacht:         #111619; /* donkere grond */
+  --ploeg-stoppel:       #5E6B66; /* gedempte tekst op licht */
+  --ploeg-stoppel-licht: #8C9A94; /* gedempte tekst op donker */
+
+  /* Rollen — licht */
+  --ploeg-grond:  var(--ploeg-kalk);
+  --ploeg-tekst:  var(--ploeg-voor);
+  --ploeg-zacht:  var(--ploeg-stoppel);
+  --ploeg-accent: var(--ploeg-klei-diep);
+
+  /* Typografie */
+  --ploeg-sans: "Archivo", "Helvetica Neue", Arial, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ploeg-grond:  var(--ploeg-nacht);
+    --ploeg-tekst:  var(--ploeg-kalk);
+    --ploeg-zacht:  var(--ploeg-stoppel-licht);
+    --ploeg-accent: var(--ploeg-klei);
+  }
+}
+
+:root[data-theme="dark"] {
+  --ploeg-grond:  var(--ploeg-nacht);
+  --ploeg-tekst:  var(--ploeg-kalk);
+  --ploeg-zacht:  var(--ploeg-stoppel-licht);
+  --ploeg-accent: var(--ploeg-klei);
+}

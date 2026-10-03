@@ -1,0 +1,27 @@
+[settings]
+lockfile = true
+
+[tools]
+go = "1.27.1"
+helm = "4.3.0"
+uv = "0.12.22"
+node = "24.21.0"  # runtime for the openspec CLI
+"npm:@fission-ai/openspec" = "1.13.2"  # `openspec` — the /opsx workflow (openspec/config.yaml)
+
+[tasks.setup]
+run = "mise install"
+description = "Install the pinned standalone toolchain"
+
+[tasks.verify]
+run = "bash scripts/verify.sh"
+description = "Build, test and validate the standalone project"
+
+[tasks.docs-check]
+run = "go test ./internal/ledger/ ./pkg/harness/ && uv run --no-project --with pyyaml==6.0.3 python scripts/docs-configuration.py --check && uv run --no-project --with pyyaml==6.0.3 python scripts/check-domain.py"
+description = "Validate decisions, contracts and generated configuration"
+
+[tasks.docs-configuration]
+run = "uv run --no-project --with pyyaml==6.0.3 python scripts/docs-configuration.py"
+
+[tasks.domain]
+run = "uv run --no-project --with pyyaml==6.0.3 python scripts/generate-domain.py docs/domain/model.yaml -o docs/domain"

@@ -1,0 +1,138 @@
+env:
+  PLOEG_DATABASE_URL:
+    ploegd: PostgreSQL connection URI. The chart reads the whole `uri` key of the CNPG app Secret named by `database.existingSecret`.
+    ploeg-worker: Controller-only. The worker refuses to start when it is set.
+  PLOEG_CONFIG: Path of the routing and roster file (the chart's `config:` value, mounted at `/etc/ploeg/ploeg.yaml`). Unset means the legacy `PLOEG_TARGET_MAP`, `PLOEG_TEAM_MAP` and `PLOEG_TEAM_PLANS` variables still apply.
+  PLOEG_DEFAULT_TEAM: Team that receives work from an assignee no Team lists.
+  PLOEG_TEAM_MAP: Legacy assignee roster, replaced by `teams.<name>.assignees` in the `PLOEG_CONFIG` file.
+  PLOEG_TEAM_PLANS: Legacy Shift plans, replaced by `teams.<name>.plan` in the `PLOEG_CONFIG` file. A malformed plan stops ploegd at boot.
+  PLOEG_TARGET_MAP: Legacy routing from tracker scope to repository, rendered from the org.yaml roster manifest. Replaced by `trackers.<tracker>.projects` in the `PLOEG_CONFIG` file.
+  PLOEG_VIKUNJA_SECRET: Secret that verifies `X-Vikunja-Signature` on `POST /webhooks/tracker/vikunja`. The chart reads it from `webhook.existingSecret`. Unset rejects every Vikunja webhook.
+  PLOEG_VIKUNJA_URL: Vikunja API root (chart `tracker.url`). With `PLOEG_VIKUNJA_TOKEN` it enables comments on the ticket and the webhook registration check.
+  PLOEG_VIKUNJA_TOKEN: Vikunja API token (chart `tracker.tokenSecret`). Unset keeps tracker write-backs a logged no-op.
+  PLOEG_VIKUNJA_WEBHOOK_URL: Exact webhook target the registration check looks for. Unset means any target on the `/webhooks/tracker/vikunja` path counts.
+  PLOEG_VIKUNJA_WEBHOOK_REGISTER: "`true` registers a signed webhook on each configured project that lacks one. Requires `PLOEG_VIKUNJA_WEBHOOK_URL` and the webhook secret, or ploegd refuses to start."
+  PLOEG_CLICKUP_SECRET: Verifies `X-Signature` on `POST /webhooks/tracker/clickup`. ClickUp generates it when the webhook is registered. ClickUp is registered only when this or `PLOEG_CLICKUP_TOKEN` is set. Unset rejects every ClickUp webhook.
+  PLOEG_CLICKUP_TOKEN: Personal ClickUp token for reads and write-backs (chart `tracker.clickup.tokenSecret`).
+  PLOEG_CLICKUP_URL: ClickUp API root (chart `tracker.clickup.url`). Empty means `https://api.clickup.com/api/v2`.
+  PLOEG_CLICKUP_DONE_STATUS: List status applied when a Shift finishes (chart `tracker.clickup.doneStatus`). Empty leaves the board untouched.
+  PLOEG_FORGEJO_BOT: Forge user whose push tokens ploegd mints, and the identity agents act as (chart `executor.forgejo.botUser`). A review by this user never sends work back under `teams.<name>.forgeFollowUps`.
+  PLOEG_GITLAB_BOT: GitLab username Ploeg acts as. Like `PLOEG_FORGEJO_BOT`, a review event from it never sends work back under `teams.<name>.forgeFollowUps`. Unset adds no GitLab identity.
+  PLOEG_FORGEJO_SECRET: HMAC secret that verifies `X-Forgejo-Signature` on `POST /webhooks/forge/forgejo` (chart `executor.forgejo.webhookSecret`). Unset rejects every Forgejo webhook.
+  PLOEG_FORGEJO_BOT_PASSWORD:
+    ploegd: Password of `PLOEG_FORGEJO_BOT`. ploegd signs in with it to mint a push token per writing Run, limited to `write:repository` on that Run's repository, and revokes the token when the Run settles (ADR-0013 tier 2, chart `executor.forgejo.botPasswordSecret`). Unset means every Run uses the shared token.
+    ploeg-worker: Controller-only. The worker refuses to start when it is set.
+  PLOEG_FORGEJO_ADMIN_TOKEN:
+    ploegd: Ignored with a warning. Forgejo creates access tokens only for a password sign-in, so set `PLOEG_FORGEJO_BOT_PASSWORD` instead.
+    ploeg-worker: Controller-only. The worker refuses to start when it is set.
+  PLOEG_GITLAB_URL: GitLab base URL without `/api/v4` (chart `executor.gitlab.url`). Empty configures no GitLab provider, so findings never reach a merge request.
+  PLOEG_GITLAB_TOKEN: Token with `api` scope on the target projects, sent as `PRIVATE-TOKEN` (chart `executor.gitlab.tokenSecret`).
+  PLOEG_GITLAB_SECRET: Shared secret GitLab sends as `X-Gitlab-Token` to `POST /webhooks/forge/gitlab` (chart `executor.gitlab.webhookSecret`). Unset rejects every GitLab webhook.
+  PLOEG_TARGET_FORGE:
+    ploegd: Forge instance id a Work Target carries by default (chart `executor.forge`). Binds to the configured forge of that dialect, or to the only configured forge.
+    ploeg-worker: Forge dialect the worker acts against (chart `executor.forge`).
+  LITELLM_ADMIN_URL:
+    ploegd: LiteLLM management URL (chart `executor.litellm.adminUrl`). Unset disables key revocation, and managed worker mode then refuses to start.
+    ploeg-worker: Controller-only. The worker refuses to start when it is set.
+  LITELLM_MASTER_KEY:
+    ploegd: LiteLLM management key, held only by the controller (chart `executor.litellm.masterKeySecret`).
+    ploeg-worker: Controller-only. The worker refuses to start when it is set.
+  PLOEG_WORKER_AUTH_MODE: "`legacy` opts into historical worker authentication; anything else is managed mode (chart `executor.workerAuth.mode`)."
+  PLOEG_WORKER_SIGNING_KEY:
+    ploegd: Controller-only signing material for worker control capabilities, at least 32 bytes (chart `executor.workerAuth.signingKeySecret`).
+    ploeg-worker: Controller-only. The worker refuses to start when it is set.
+  PLOEG_WORKER_BOOTSTRAPS:
+    ploegd: Bootstrap registry, a JSON array of `token`, `team` and `role` entries (chart `executor.workerAuth.bootstrapSecret`).
+    ploeg-worker: Controller-only. The worker refuses to start when it is set.
+  PLOEG_WORKER_LLM_POLICIES: Trusted team and role inference policies. The chart builds them from each team and role model and budget plus `executor.workerAuth.additionalLLMPolicies`.
+  PLOEG_LLM_SETTLE_AFTER: Quiet period after which the settlement sweep settles a blocked Run's account from LiteLLM spend logs.
+  PLOEG_LLM_CORRECTION_WINDOW: How long a spend-log settlement stays provisional. Every 15 minutes in this window the correction sweep reads the spend logs again and charges any late entry as an adjustment. `0` makes the first settlement final; a negative value refuses to start. The window is fixed at each account's first settlement.
+  PLOEG_USAGE_REPORT: Publish the usage and evidence report on each agent pull request. Default on; "false" is the kill switch (chart `env.PLOEG_USAGE_REPORT`).
+  PLOEG_REPORT_GRAFANA_URL: Grafana base URL the report links from — the Unfold — Loop dashboard (`/d/glide-loop`) filtered by the Team, the Run Explorer (`/d/dark-factory-run-explorer`) for the Run's trace alias and Spend & Attribution (`/d/dark-factory-spend-attribution`) (chart `env.PLOEG_REPORT_GRAFANA_URL`). Empty omits the Grafana links.
+  PLOEG_REPORT_VLOER_URL: Vloer base URL; the report links the Work Item page, `<base>/#work/<id>` (chart `env.PLOEG_REPORT_VLOER_URL`). Empty omits it; with both unset the links section is omitted and the report still renders.
+  PLOEG_OPERATOR_CONSUMERS: JSON array of operator read consumers. Each entry names a `tokenEnv`, a further variable that holds that consumer's bearer token (chart `operator.consumers`). No consumers refuses every operator request.
+  PLOEG_OPERATOR_DELIVERY_POLICIES: JSON array of trusted delivery policies with `repositoryId`, `policySha256`, `verifierId`, `minTests` and optional `publicationEnabled` (chart `operator.deliveryPolicies`).
+  PLOEG_DEPLOY_TOKEN: Bearer token, 32 to 4096 bytes, that `POST /api/v1/deploys` accepts from pipelines reporting a deploy (ADR-0047, chart `deploys.tokenSecret`). Unset answers 404 on that endpoint. A shorter token stops ploegd at boot.
+  PLOEG_API_URL: ploegd's run API (chart `executor.apiUrl`, default `http://<fullname>:<service.port>`).
+  PLOEG_TEAM: Team this worker claims work for.
+  PLOEG_WORKER_BOOTSTRAP_TOKEN: This worker's bootstrap credential, the `<team>--<role>` entry of the bootstrap Secret.
+  PLOEG_WORKER_ID: Worker identity for managed mode.
+  POD_UID: Downward-API pod UID; the worker identity when `PLOEG_WORKER_ID` is unset.
+  PLOEG_LLM_CREDENTIAL_MODE: "`managed`, or `static-compatibility` for legacy mode, which uses `LLM_API_KEY`."
+  LLM_API_KEY: Static inference key for legacy mode (chart `executor.workerAuth.staticInferenceSecret`).
+  LLM_BASE_URL: Model gateway URL (chart `executor.litellm.baseUrl`).
+  LITELLM_KEY_DURATION: Lifetime of the per-run inference key (chart `executor.litellm.keyDuration`).
+  AGENT_BUILDER_TOKEN: Forge token for clone and push. A reading Role gets `executor.forgejo.readTokenSecret` when set. Writers also pass it to the harness.
+  REPO_OWNER: Fallback repository owner for a team that pins one. The repository normally comes from the claimed Work Item.
+  REPO_NAME: Fallback repository name for a team that pins one. The repository normally comes from the claimed Work Item.
+  PLOEG_BASE_BRANCH: Fallback branch the worker clones, branches from and targets. Unset means the repository default branch.
+  PLOEG_TARGET_SOURCE: "`env` ignores the claim's target and uses the fallback repository."
+  PLOEG_HARNESS: "Harness adapter: `openhands`, `exec`, `claude-code` or `acp` (chart `executor.harness.name`)."
+  PLOEG_HARNESS_ENTRYPOINT: Harness binary override (chart `executor.harness.entrypoint`). Empty means the adapter default.
+  PLOEG_HARNESS_ARGS: "`exec` harness only: JSON argv template with `{taskspec}` and `{taskfile}` (chart `executor.harness.args`)."
+  PLOEG_OUTCOME_FILE: "`exec` harness only: OutcomeReport JSON path override (chart `executor.harness.outcomeFile`)."
+  PLOEG_HARNESS_TIMEOUT: Stops a harness that runs longer than this, with failure reason `timeout`.
+  PLOEG_HARNESS_IDLE_TIMEOUT: Stops a harness that prints nothing and makes no model call for this long, with failure reason `idle`.
+  PLOEG_TOOLCHAINS: "JSON array of mounted toolchains, each `{name, path, env}`: `path` directories go in front of the harness's `PATH` and `env` is added. The worker refuses to claim when a directory is missing (chart `executor.harness.toolchains`)."
+  PLOEG_VERIFY_COMMANDS: "JSON array of shell command lines. The harness gets them as the script `$PLOEG_VERIFY_SCRIPT`; after a writing Run opens or updates a pull request the worker runs them itself and posts the result (chart `executor.harness.verify`)."
+  PLOEG_VERIFY_TIMEOUT: "Bounds the worker's own run of `PLOEG_VERIFY_COMMANDS`. Empty means 15m (chart `executor.harness.verifyTimeout`)."
+  PLOEG_ACP_PROFILE: "`acp` harness only: `opencode`, `qwen-code`, `goose`, `openhands` or `custom` (chart `executor.harness.acp.profile`). See [ACP profiles](../contracts/acp-profiles.md)."
+  PLOEG_ACP_ARGV: "`acp` harness only: the whole launch command as a JSON array; required when the profile is `custom`."
+  PLOEG_ACP_PERMISSION_MODE: "`acp` harness only: `allow_always` (default), `allow_read_only` or `deny_all`."
+  PLOEG_ACP_PROMPT_TIMEOUT: "`acp` harness only: prompt timeout as a Go duration. Empty means the adapter default (45m)."
+  PLOEG_ACP_IDLE_TIMEOUT: "`acp` harness only: timeout without protocol traffic. Empty means the adapter default (10m)."
+  PLOEG_ACP_CONFIG_JSON: "`acp` harness only: replaces the generated agent configuration of the `opencode` or `qwen-code` profile wholesale. The `goose` and `openhands` profiles refuse it at startup."
+  KUBECONFIG: Administrative configuration. The worker refuses to start when it is set.
+  PATH: Passed to `git` and `openspec` subprocesses; also on the harness allowlist.
+helm:
+  executor.enabled: Turns on the executor. Requires the LiteLLM and agent-builder secrets and, for DinD harnesses, the privileged-DinD PolicyException.
+  executor.workerAuth.mode: "`managed` by default; `legacy` is explicit compatibility and sets the controller's `PLOEG_WORKER_AUTH_MODE=legacy` and the worker's `PLOEG_LLM_CREDENTIAL_MODE=static-compatibility`."
+  executor.workerAuth.signingKeySecret: Secret name and key for the controller-only signing material; at least 32 bytes.
+  executor.workerAuth.bootstrapSecret: Secret name and `registryKey` for the controller's bootstrap registry.
+  executor.workerAuth.staticInferenceSecret: Legacy mode only. Secret reference for the static inference key.
+  executor.workerAuth.additionalLLMPolicies: Additional trusted team and role policies with `team`, `role`, `budgetUsd`, `models` and `ttl`, including the `operator` role for a workbench consumer.
+  executor.litellm.masterKeySecret: Controller-only LiteLLM management Secret reference.
+  executor.litellm.keyDuration: Per-run key lifetime; a positive Go duration between one second and 24 hours.
+  executor.forgejo.tokenSecret: Shared bot token every Run uses when no admin token mints per-run push tokens.
+  operator.consumers: Operator read consumers, forwarded as `PLOEG_OPERATOR_CONSUMERS`.
+  operator.deliveryPolicies: Trusted delivery policies, forwarded as `PLOEG_OPERATOR_DELIVERY_POLICIES`.
+  deploys.tokenSecret: Secret name and key of the deploy bearer token, forwarded to ploegd only as `PLOEG_DEPLOY_TOKEN`. Unset disables `POST /api/v1/deploys`.
+  tracker.tokenSecret: Vikunja API token Secret. Unset keeps write-backs a logged no-op; ingest needs no token.
+  executor.harness.timeout: Stops a harness that runs longer than this (`PLOEG_HARNESS_TIMEOUT`).
+  executor.harness.idleTimeout: Stops a harness that prints nothing and makes no model call for this long (`PLOEG_HARNESS_IDLE_TIMEOUT`).
+  executor.harness.toolchains: Toolchain images mounted read-only at `/opt/ploeg/toolchains/<name>` as image volumes (Kubernetes 1.35 or later) and put on the harness's `PATH` (`PLOEG_TOOLCHAINS`).
+  executor.harness.verify: Checks a Run is told to run and the worker runs after a writing Run (`PLOEG_VERIFY_COMMANDS`). Write a formatter check so output fails it, for example `test -z "$(gofmt -l .)"`.
+  executor.harness.verifyTimeout: Bounds the worker's own verification run (`PLOEG_VERIFY_TIMEOUT`).
+  executor.teams[].name: Team name. Give the routing config's Team the same name.
+  executor.teams[].model: Model the Team's workers use unless a Role overrides it.
+  executor.teams[].budget: Per-run key budget in USD. For a Team with a plan it is the Shift pool the Roles share.
+  executor.teams[].repoOwner: Deprecated per-team fallback repository owner. The repository belongs to the Work Item.
+  executor.teams[].repoName: Deprecated per-team fallback repository name. The repository belongs to the Work Item.
+  executor.teams[].baseBranch: Branch the worker clones, branches from and targets. Unset means the repository default branch.
+  executor.teams[].targetSource: "`env` ignores the claim's target and uses the fallback repository."
+  executor.teams[].harness: Overrides the `executor.harness` defaults for this Team.
+  operator.consumers[].name: Consumer name.
+  operator.consumers[].teams: Teams the consumer may read. Omitted grants all Teams; an empty list grants none.
+  operator.consumers[].execute: Grants execution commands. Defaults to false.
+  operator.consumers[].maxBudgetUsd: Budget ceiling for an executing consumer, 0.01 to 10000. Defaults to 25.
+  operator.consumers[].tokenSecret: Secret holding the consumer's bearer token, at least 32 bytes.
+  operator.consumers[].verify: Grants the trusted delivery-verifier operations. Defaults to false; configure it on a distinct consumer.
+  operator.deliveryPolicies[].minTests: Minimum number of tests the delivery evidence must report; positive.
+  operator.deliveryPolicies[].publicationEnabled: Allows publication. Defaults to false.
+  harness.name: "`openhands`, `exec`, `claude-code` or `acp`."
+  harness.image: Agent image. Empty means `executor.runnerImage`.
+  harness.entrypoint: Harness binary override. Empty means the adapter default.
+  harness.args: "`exec` harness only: argv template with `{taskspec}` and `{taskfile}`."
+  harness.outcomeFile: "`exec` harness only: OutcomeReport JSON path override."
+  harness.dind: Adds the privileged DinD sidecar and Docker wiring. OpenHands and gate builds need it.
+  harness.timeout: Stops a harness that runs longer than this.
+  harness.idleTimeout: Stops a harness that is silent for this long.
+  harness.acp: "`acp` harness settings."
+  acp.profile: "`opencode`, `qwen-code`, `goose` or `custom`."
+  acp.argv: Whole launch command; required when the profile is `custom`.
+  acp.permissionMode: "`allow_always` (default), `allow_read_only` or `deny_all`."
+  acp.promptTimeout: Go duration. Empty means the adapter default (45m).
+  acp.idleTimeout: Go duration without protocol traffic. Empty means the adapter default (10m).
+  acp.configJson: Replaces the generated agent configuration of the `opencode` or `qwen-code` profile wholesale; `goose` refuses it.
+  secretRef.name: Kubernetes Secret name.
+  secretRef.key: Key within that Secret.

@@ -1,0 +1,86 @@
+{{- $executorType := .Values.executor.type | default "keda" }}
+{{- if and .Values.executor.enabled (has $executorType (list "keda" "sandbox")) }}
+{{- $root := . }}
+{{- range $team := .Values.executor.teams }}
+{{- $sandbox := eq (include "ploeg.teamExecutorType" (dict "root" $root "team" $team)) "sandbox" }}
+{{- range $role := (include "ploeg.teamRoles" $team | fromJsonArray) }}
+---
+# One ScaledJob per (team, Role) — the flagship executor. A team without a
+# plan has exactly one Role-less workload, byte-identical to the pre-Shift
+# shape; a team with a plan gets one per Role, which is what makes "different
+# agents, different harnesses, different images" literally true: pod shape is
+# fixed at render time. The shape lives in the shared ploeg.workerPodTemplate
+# helper (also used by the CronJob executor): privileged DinD sidecar when the
+# harness needs Docker, a shared disk-backed workspace mounted at the SAME
+# path in both containers, and zero Kubernetes API authority for the
+# LLM-driven process.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledJob
+metadata:
+  name: {{ include "ploeg.workloadName" (dict "root" $root "team" $team "role" $role) }}
+  labels: {{- include "ploeg.labels" $root | nindent 4 }}
+    {{- if and (not $sandbox) (include "ploeg.roleUsesDind" (dict "root" $root "team" $team "role" $role)) }}
+    # KEDA copies these labels onto every Job it creates, which is the only way
+    # the hazard reaches the Job. Kyverno autogens a Job rule for
+    # pod-security-baseline-enforce and a Job selector matches the JOB's own
+    # labels — stamping this on the pod template alone left the PolicyException
+    # unable to admit the Job, and DinD teams were rejected at admission.
+    ploeg.webgrip.dev/privileged-dind: "true"
+    {{- end }}
+spec:
+  pollingInterval: {{ $root.Values.executor.pollingInterval }}
+  minReplicaCount: 0
+  maxReplicaCount: {{ include "ploeg.maxReplicaCount" (dict "root" $root "team" $team "role" $role) }}
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  rollout:
+    strategy: gradual # spec updates never kill in-flight runs (backlog #50)
+  scalingStrategy:
+    strategy: accurate # never eager: open over-scaling bug kedacore/keda#6416 (backlog #47)
+  jobTargetRef:
+    parallelism: 1
+    completions: 1
+    backoffLimit: 0 # ploeg owns retries; every pod is one auditable run (backlog #51)
+    {{- if $sandbox }}
+    activeDeadlineSeconds: {{ add $root.Values.executor.activeDeadlineSeconds $root.Values.executor.sandbox.shutdownMarginSeconds }}
+    template:
+      {{- include "ploeg.sandboxLauncherPodTemplate" (dict "root" $root "team" $team "role" $role) | nindent 6 }}
+    {{- else }}
+    activeDeadlineSeconds: {{ $root.Values.executor.activeDeadlineSeconds }}
+    template:
+      {{- include "ploeg.workerPodTemplate" (dict "root" $root "team" $team "role" $role) | nindent 6 }}
+    {{- end }}
+  triggers:
+    - type: postgresql
+      metadata:
+        # Resolved by the KEDA operator from ITS namespace, not this one —
+        # a bare in-namespace service name never resolves there.
+        host: {{ $root.Values.executor.scaler.host | default (printf "ploeg-db-rw.%s.svc.cluster.local" $root.Release.Namespace) | quote }}
+        port: {{ $root.Values.executor.scaler.port | quote }}
+        userName: {{ $root.Values.executor.scaler.userName | quote }}
+        dbName: {{ $root.Values.executor.scaler.dbName | quote }}
+        sslmode: {{ $root.Values.executor.scaler.sslmode | quote }}
+        {{- if $role.name }}
+        # THE claim predicate for a Role, and it must stay byte-identical to
+        # store.ClaimRole and store.PendingRuns: pending runs for this team and
+        # role. Served index-only by agent_runs_claimable, which migration 0008
+        # created verbatim for this query:
+        #   CREATE INDEX agent_runs_claimable
+        #       ON agent_runs (team, role, id) WHERE state = 'pending';
+        # Overshoot merely wastes a pod that exits 0 empty-handed; undershoot
+        # stalls Work Items with no error anywhere, which is the worst failure
+        # this system can have. TestClaimRoleAgreesWithPendingRuns keeps the
+        # two Go callers honest; this comment is the third copy's leash.
+        query: "SELECT COUNT(*) FROM agent_runs WHERE team = '{{ $team.name }}' AND role = '{{ $role.name }}' AND state = 'pending'"
+        {{- else }}
+        # The one poll-query shape: served index-only by work_items_claimable
+        # (backlog #24/#47). Must stay in sync with store.Claim.
+        query: "SELECT COUNT(*) FROM work_items WHERE team = '{{ $team.name }}' AND state = 'queued' AND NOT operator_owned AND (next_eligible_at IS NULL OR next_eligible_at <= now())"
+        {{- end }}
+        targetQueryValue: "1"
+        activationTargetQueryValue: "0"
+      authenticationRef:
+        name: {{ include "ploeg.fullname" $root }}-scaler
+{{- end }}
+{{- end }}
+{{- end }}

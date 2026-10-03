@@ -1,0 +1,23 @@
+{{- $sm := .Values.monitoring.serviceMonitor }}
+{{- if $sm.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "ploeg.fullname" . }}
+  labels:
+    {{- include "ploeg.labels" . | nindent 4 }}
+    {{- with $sm.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels: {{- include "ploeg.selectorLabels" . | nindent 6 }}
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace }}
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: {{ $sm.interval }}
+      scrapeTimeout: {{ $sm.scrapeTimeout }}
+{{- end }}

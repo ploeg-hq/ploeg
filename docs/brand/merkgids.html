@@ -1,0 +1,583 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Merkidentiteit voor Ploeg: constructie van de mark, palet met gemeten contrast, de fontkeuze, lockups en merkbeleid.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<!--
+  Gegenereerde pagina. De bron van waarheid is README.md plus de SVG-bestanden
+  in deze map; deze pagina toont dezelfde assets inline. Naam en beeldmerk:
+  zie TRADEMARK.md en ADR-0022.
+
+  Het enige externe verzoek is Google Fonts (Archivo, JetBrains Mono). Zonder
+  netwerk valt de pagina terug op de systeemstack en blijft leesbaar.
+-->
+<title>Ploeg Merkgids</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..900&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+:root {
+  --voor:#141A1D; --klei:#E4572E; --diep:#C0431F; --kalk:#F4F6F2; --nacht:#111619;
+  --stoppel:#5E6B66; --stoppel-licht:#8C9A94;
+  --grond:var(--kalk); --vlak:#FFFFFF; --tekst:var(--voor); --zacht:var(--stoppel);
+  --accent:var(--diep); --lijn:#D9DED6; --lijn-zacht:#E8ECE5;
+  --sans:"Archivo","Helvetica Neue",Arial,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --grond:var(--nacht); --vlak:#181F22; --tekst:var(--kalk); --zacht:var(--stoppel-licht);
+    --accent:var(--klei); --lijn:#2A3337; --lijn-zacht:#1F272A;
+  }
+}
+:root[data-theme="dark"] {
+  --grond:var(--nacht); --vlak:#181F22; --tekst:var(--kalk); --zacht:var(--stoppel-licht);
+  --accent:var(--klei); --lijn:#2A3337; --lijn-zacht:#1F272A;
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--grond); color:var(--tekst); font-family:var(--sans);
+  font-size:16px; line-height:1.6; font-variation-settings:"wdth" 100; -webkit-font-smoothing:antialiased; }
+.wrap { max-width:1140px; margin:0 auto; padding:clamp(26px,5vw,64px) clamp(18px,4vw,40px) 100px; }
+
+/* masthead */
+.mast { display:grid; gap:18px; padding-bottom:26px; border-bottom:2px solid var(--tekst); }
+.eyebrow { font-size:11px; font-weight:700; letter-spacing:.2em; text-transform:uppercase;
+  color:var(--zacht); margin:0; }
+h1 { font-size:clamp(40px,8vw,80px); font-weight:800; font-variation-settings:"wdth" 112;
+  letter-spacing:-.03em; line-height:.95; margin:0; }
+.lede { max-width:58ch; font-size:18px; margin:0; color:var(--tekst); }
+.hero { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:6px; }
+.hero > div { display:grid; place-items:center; padding:clamp(24px,5vw,46px) 20px; border-radius:4px; }
+.hero .lite { background:var(--kalk); border:1px solid var(--lijn); }
+.hero .dark { background:var(--nacht); }
+.hero svg { width:100%; max-width:260px; height:auto; display:block; }
+@media (max-width:620px) { .hero { grid-template-columns:1fr; } }
+
+h2 { font-size:clamp(24px,3.4vw,34px); font-weight:800; font-variation-settings:"wdth" 108;
+  letter-spacing:-.022em; margin:0; }
+section { margin-top:64px; }
+.sec-head { display:grid; gap:7px; padding-bottom:14px; border-bottom:1px solid var(--lijn); margin-bottom:26px; }
+.sec-head p { margin:0; max-width:68ch; font-size:15.5px; color:var(--zacht); }
+.n { font-family:var(--mono); font-size:12px; font-weight:600; color:var(--accent); }
+
+/* mark + constructie */
+.markgrid { display:grid; grid-template-columns:1fr 1fr; gap:16px; align-items:stretch; }
+@media (max-width:760px) { .markgrid { grid-template-columns:1fr; } }
+.panel { background:var(--vlak); border:1px solid var(--lijn); border-radius:4px; padding:26px; }
+.panel h3 { font-size:13px; font-weight:700; letter-spacing:.09em; text-transform:uppercase;
+  margin:0 0 16px; color:var(--zacht); }
+.draw { width:100%; max-width:290px; height:auto; display:block; margin:0 auto; color:var(--tekst); }
+.big { width:100%; max-width:230px; height:auto; display:block; margin:8px auto 0; }
+table { width:100%; border-collapse:collapse; font-size:14px; }
+th, td { text-align:left; padding:8px 10px 8px 0; border-bottom:1px solid var(--lijn-zacht); }
+th { font-size:11px; font-weight:700; letter-spacing:.09em; text-transform:uppercase; color:var(--zacht); }
+td.v { font-family:var(--mono); font-size:12.5px; font-variant-numeric:tabular-nums; text-align:right; }
+pre { font-family:var(--mono); font-size:12px; background:var(--grond); border:1px solid var(--lijn);
+  border-radius:3px; padding:12px 14px; overflow-x:auto; margin:16px 0 0; }
+
+/* kleur */
+.sws { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:12px; }
+.sw { background:var(--vlak); border:1px solid var(--lijn); border-radius:4px; overflow:hidden; }
+.chip { height:74px; }
+.sw-b { padding:13px 15px 15px; display:grid; gap:3px; }
+.sw-b b { font-size:15px; font-weight:700; }
+.sw-b code { font-family:var(--mono); font-size:12px; color:var(--accent); }
+.sw-b span { font-size:12.5px; color:var(--zacht); line-height:1.45; }
+.cr { font-family:var(--mono); font-size:11px; }
+.cr i { font-style:normal; border:1px solid var(--lijn); border-radius:99px; padding:1px 6px; margin-left:4px; }
+
+/* font */
+.cands { display:grid; gap:9px; }
+.cand { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:6px 20px; align-items:center;
+  background:var(--vlak); border:1px solid var(--lijn); border-radius:4px; padding:16px 20px; }
+.cand.is-pick { border-color:var(--accent); border-width:2px; padding:15px 19px; }
+.cand-spec { grid-column:1; }
+.spec { height:40px; width:auto; max-width:100%; display:block; color:var(--tekst); }
+.cand.is-pick .spec { height:52px; color:var(--tekst); }
+.cand-meta { grid-column:2; display:grid; justify-items:end; gap:2px; }
+.cand-meta b { font-size:13px; font-weight:600; white-space:nowrap; }
+.stemval { font-family:var(--mono); font-size:12px; font-variant-numeric:tabular-nums; color:var(--zacht); }
+.stemval i { font-style:normal; color:var(--accent); margin-left:6px; }
+.bar { grid-column:1/-1; height:3px; background:var(--lijn-zacht); border-radius:2px; overflow:hidden; }
+.bar span { display:block; height:100%; background:var(--zacht); }
+.cand.is-pick .bar span { background:var(--accent); }
+.target { display:flex; gap:9px; align-items:center; font-family:var(--mono); font-size:12px;
+  color:var(--zacht); margin-bottom:14px; }
+.target b { color:var(--accent); }
+
+/* lockups */
+.locks { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:14px; }
+.lockcell { border:1px solid var(--lijn); border-radius:4px; padding:30px 26px; display:grid;
+  place-items:center; gap:0; min-height:150px; }
+.lockcell.on-kalk { background:var(--kalk); }
+.lockcell.on-nacht { background:var(--nacht); border-color:var(--nacht); }
+.lockcell svg { width:100%; height:auto; display:block; }
+.lockcell.tile svg { max-width:96px; border-radius:20px; }
+.lockcell.markonly svg { max-width:82px; }
+.cap { font-family:var(--mono); font-size:10.5px; letter-spacing:.06em; text-transform:uppercase;
+  color:var(--zacht); margin-top:16px; }
+.lockcell.on-nacht .cap { color:var(--stoppel-licht); }
+
+/* favicon */
+.fav { display:flex; flex-wrap:wrap; gap:26px; align-items:flex-end; padding:22px 26px;
+  border:1px solid var(--lijn); border-radius:4px; background:var(--kalk); }
+.fav.dark { background:var(--nacht); border-color:var(--nacht); margin-top:10px; }
+.fav figure { margin:0; display:grid; gap:8px; justify-items:center; }
+.fav svg { display:block; }
+.f16 { width:16px; height:16px; } .f24 { width:24px; height:24px; }
+.f32 { width:32px; height:32px; } .f48 { width:48px; height:48px; }
+.fav figcaption { font-family:var(--mono); font-size:10px; color:var(--stoppel); }
+.fav.dark figcaption { color:var(--stoppel-licht); }
+
+/* dont */
+.donts { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:13px; }
+.dont { margin:0; background:var(--vlak); border:1px solid var(--lijn); border-radius:4px; overflow:hidden; }
+.dont-art { position:relative; display:grid; place-items:center; padding:22px; background:var(--kalk); }
+.dont-art svg { width:76px; height:76px; display:block; }
+.dont-art::after { content:""; position:absolute; inset:0;
+  background:linear-gradient(to top left, transparent calc(50% - 1px), #C0431F calc(50% - 1px),
+  #C0431F calc(50% + 1px), transparent calc(50% + 1px)); opacity:.85; }
+.dont figcaption { padding:12px 14px 14px; font-size:12.5px; color:var(--zacht); line-height:1.45; }
+.dont figcaption b { display:block; font-size:13.5px; color:var(--tekst); margin-bottom:3px; font-weight:700; }
+
+.files { font-family:var(--mono); font-size:12.5px; }
+.files td:first-child { color:var(--accent); }
+footer.end { margin-top:64px; padding-top:20px; border-top:1px solid var(--lijn);
+  font-family:var(--mono); font-size:11.5px; color:var(--zacht); display:flex; flex-wrap:wrap; gap:6px 18px; }
+button { font-family:var(--sans); font-weight:600; font-size:12px; letter-spacing:.05em;
+  text-transform:uppercase; color:var(--tekst); background:var(--vlak); border:1px solid var(--lijn);
+  border-radius:2px; padding:9px 15px; cursor:pointer; }
+button:hover { border-color:var(--tekst); }
+button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+@media (prefers-reduced-motion: reduce) { * { transition:none !important; } }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
+<clipPath id="knip-mark"><path clip-rule="evenodd" d="M-8 -8H72V72H-8ZM10 22H25V57H10Z"/></clipPath>
+<clipPath id="knip-favicon"><path clip-rule="evenodd" d="M-8 -8H72V72H-8ZM7 19H23V61H7Z"/></clipPath>
+<clipPath id="knip-tegel"><path clip-rule="evenodd" d="M-8 -8H72V72H-8ZM13 24H26V53H13Z"/></clipPath>
+</defs></svg>
+<div class="wrap">
+  <header class="mast">
+    <p class="eyebrow">Ploeg · merkidentiteit · v1</p>
+    <h1>Merkgids</h1>
+    <p class="lede">Een steel die bovenaan wegbuigt. Half hoofdletter P, half scharblad. De steel draagt, het blad snijdt — en dat onderscheid is alles wat de tweekleur codeert.</p>
+    <div class="hero">
+      <div class="lite"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 246.55 60.84" fill="none" role="img" aria-hidden="true" focusable="false">
+<g transform="translate(-11 -8)">
+<path d="M17.5 49.5V14.5H29.5A17 17 0 0 1 46.5 31.5" stroke="#E4572E" stroke-width="13" stroke-linecap="round" stroke-linejoin="round" fill="none" clip-path="url(#knip-mark)"/>
+<path d="M11 21H24V49.5A6.5 6.5 0 0 1 11 49.5Z" fill="#141A1D"/>
+</g>
+<g transform="translate(55.00 48.00) scale(0.44000)"><path d="M0 0V-100.19H63.98Q74.04 -100.19 81.33 -95.97Q88.63 -91.75 92.61 -84.25Q96.59 -76.75 96.59 -66.75Q96.59 -56.65 92.52 -49.05Q88.44 -41.44 81.04 -37.24Q73.64 -33.04 63.59 -33.04H27.57V0ZM27.57 -53.93H56.61Q62.9 -53.93 66.19 -57.23Q69.49 -60.53 69.49 -66.6Q69.49 -70.72 68.03 -73.49Q66.58 -76.27 63.74 -77.74Q60.9 -79.21 56.61 -79.21H27.57ZM106.94 0V-105.58H132.05V0ZM189.78 1.75Q175.93 1.75 165.89 -2.67Q155.85 -7.09 150.42 -16.02Q144.99 -24.95 144.99 -38.44Q144.99 -52.05 150.42 -60.94Q155.85 -69.83 165.89 -74.22Q175.93 -78.61 189.78 -78.61Q203.68 -78.61 213.72 -74.22Q223.76 -69.83 229.19 -60.94Q234.62 -52.05 234.62 -38.44Q234.62 -24.95 229.19 -16.02Q223.76 -7.09 213.72 -2.67Q203.68 1.75 189.78 1.75ZM189.78 -15.98Q196.4 -15.98 200.67 -18.39Q204.94 -20.8 206.97 -25.33Q209 -29.87 209 -36.2V-40.64Q209 -47 206.97 -51.54Q204.94 -56.09 200.67 -58.49Q196.4 -60.88 189.78 -60.88Q183.16 -60.88 178.91 -58.49Q174.67 -56.09 172.64 -51.54Q170.61 -47 170.61 -40.64V-36.2Q170.61 -29.87 172.64 -25.33Q174.67 -20.8 178.91 -18.39Q183.16 -15.98 189.78 -15.98ZM289.63 1.75Q275.47 1.75 265.26 -2.54Q255.06 -6.82 249.59 -15.73Q244.12 -24.64 244.12 -38.42Q244.12 -52.03 249.52 -60.93Q254.92 -69.83 264.89 -74.22Q274.87 -78.61 288.61 -78.61Q302.57 -78.61 312.32 -74.34Q322.07 -70.07 327.16 -61.32Q332.25 -52.58 332.25 -39.03V-33.49H269.84Q270.06 -27.35 272.25 -23.2Q274.43 -19.05 278.78 -17.02Q283.13 -14.99 289.65 -14.99Q293.39 -14.99 296.55 -15.84Q299.7 -16.69 302.03 -18.29Q304.36 -19.88 305.67 -22.16Q306.98 -24.43 307.06 -27.28H332.11Q332.11 -20.4 329.1 -14.98Q326.1 -9.56 320.5 -5.85Q314.9 -2.13 307.07 -0.19Q299.25 1.75 289.63 1.75ZM270 -47.08H306.13Q306.13 -50.7 304.93 -53.44Q303.73 -56.18 301.52 -58.06Q299.3 -59.95 296.22 -60.89Q293.14 -61.83 289.36 -61.83Q283.49 -61.83 279.38 -60.09Q275.27 -58.35 272.98 -55.06Q270.68 -51.77 270 -47.08ZM358 29.17Q352.56 29.17 347.86 26.98Q343.15 24.79 340.31 20.64Q337.47 16.49 337.47 10.79Q337.47 4.71 341.34 0.41Q345.2 -3.89 350.67 -6.01Q346.71 -8.23 344.59 -11.65Q342.47 -15.07 342.47 -19.23Q342.47 -25.2 346.75 -29.4Q351.03 -33.59 357.43 -34.75Q351.87 -37.98 348.41 -42.88Q344.96 -47.77 344.96 -53.67Q344.96 -62.75 350.06 -68.22Q355.16 -73.68 364.31 -76.14Q373.46 -78.61 385.49 -78.61Q390.04 -78.61 393.87 -78.22Q397.71 -77.84 400.94 -77.06Q407.39 -80.57 410.04 -84.41Q412.7 -88.25 412.87 -90.63H435.35Q435.32 -84.86 433.1 -80.85Q430.87 -76.83 426.77 -74.31Q422.67 -71.79 416.93 -70.43Q421.21 -67.28 423.56 -62.98Q425.91 -58.67 425.91 -53.56Q425.91 -45.04 421.45 -39.5Q416.99 -33.96 409.06 -31.26Q401.13 -28.56 390.63 -28.56H376.06Q371.75 -28.56 369.72 -27.28Q367.68 -26.01 367.68 -23.84Q367.68 -21.78 369.52 -20.36Q371.36 -18.94 376.03 -18.94H411.46Q423.13 -18.94 429.15 -12.47Q435.17 -6 435.17 4.04Q435.17 11.61 431.08 17.25Q427 22.89 420.18 26.03Q413.35 29.17 405.03 29.17ZM370.19 14.29H401.57Q403.95 14.29 405.84 13.38Q407.72 12.47 408.83 10.73Q409.94 9 409.94 6.76Q409.94 3.2 407.59 1.28Q405.23 -0.64 401.89 -0.64H370.32Q366.91 -0.64 364.6 1.29Q362.29 3.22 362.29 6.65Q362.29 10.08 364.54 12.18Q366.79 14.29 370.19 14.29ZM385.46 -42.88Q392.91 -42.88 396.98 -45.5Q401.06 -48.11 401.06 -53.59Q401.06 -59.07 396.98 -61.68Q392.91 -64.28 385.46 -64.28Q378.24 -64.28 374.1 -61.68Q369.96 -59.07 369.96 -53.59Q369.96 -49.95 371.76 -47.54Q373.57 -45.13 377.04 -44.01Q380.51 -42.88 385.46 -42.88Z" fill="#141A1D"/></g>
+</svg></div>
+      <div class="dark"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 246.55 60.84" fill="none" role="img" aria-hidden="true" focusable="false">
+<g transform="translate(-11 -8)">
+<path d="M17.5 49.5V14.5H29.5A17 17 0 0 1 46.5 31.5" stroke="#E4572E" stroke-width="13" stroke-linecap="round" stroke-linejoin="round" fill="none" clip-path="url(#knip-mark)"/>
+<path d="M11 21H24V49.5A6.5 6.5 0 0 1 11 49.5Z" fill="#FFFFFF"/>
+</g>
+<g transform="translate(55.00 48.00) scale(0.44000)"><path d="M0 0V-100.19H63.98Q74.04 -100.19 81.33 -95.97Q88.63 -91.75 92.61 -84.25Q96.59 -76.75 96.59 -66.75Q96.59 -56.65 92.52 -49.05Q88.44 -41.44 81.04 -37.24Q73.64 -33.04 63.59 -33.04H27.57V0ZM27.57 -53.93H56.61Q62.9 -53.93 66.19 -57.23Q69.49 -60.53 69.49 -66.6Q69.49 -70.72 68.03 -73.49Q66.58 -76.27 63.74 -77.74Q60.9 -79.21 56.61 -79.21H27.57ZM106.94 0V-105.58H132.05V0ZM189.78 1.75Q175.93 1.75 165.89 -2.67Q155.85 -7.09 150.42 -16.02Q144.99 -24.95 144.99 -38.44Q144.99 -52.05 150.42 -60.94Q155.85 -69.83 165.89 -74.22Q175.93 -78.61 189.78 -78.61Q203.68 -78.61 213.72 -74.22Q223.76 -69.83 229.19 -60.94Q234.62 -52.05 234.62 -38.44Q234.62 -24.95 229.19 -16.02Q223.76 -7.09 213.72 -2.67Q203.68 1.75 189.78 1.75ZM189.78 -15.98Q196.4 -15.98 200.67 -18.39Q204.94 -20.8 206.97 -25.33Q209 -29.87 209 -36.2V-40.64Q209 -47 206.97 -51.54Q204.94 -56.09 200.67 -58.49Q196.4 -60.88 189.78 -60.88Q183.16 -60.88 178.91 -58.49Q174.67 -56.09 172.64 -51.54Q170.61 -47 170.61 -40.64V-36.2Q170.61 -29.87 172.64 -25.33Q174.67 -20.8 178.91 -18.39Q183.16 -15.98 189.78 -15.98ZM289.63 1.75Q275.47 1.75 265.26 -2.54Q255.06 -6.82 249.59 -15.73Q244.12 -24.64 244.12 -38.42Q244.12 -52.03 249.52 -60.93Q254.92 -69.83 264.89 -74.22Q274.87 -78.61 288.61 -78.61Q302.57 -78.61 312.32 -74.34Q322.07 -70.07 327.16 -61.32Q332.25 -52.58 332.25 -39.03V-33.49H269.84Q270.06 -27.35 272.25 -23.2Q274.43 -19.05 278.78 -17.02Q283.13 -14.99 289.65 -14.99Q293.39 -14.99 296.55 -15.84Q299.7 -16.69 302.03 -18.29Q304.36 -19.88 305.67 -22.16Q306.98 -24.43 307.06 -27.28H332.11Q332.11 -20.4 329.1 -14.98Q326.1 -9.56 320.5 -5.85Q314.9 -2.13 307.07 -0.19Q299.25 1.75 289.63 1.75ZM270 -47.08H306.13Q306.13 -50.7 304.93 -53.44Q303.73 -56.18 301.52 -58.06Q299.3 -59.95 296.22 -60.89Q293.14 -61.83 289.36 -61.83Q283.49 -61.83 279.38 -60.09Q275.27 -58.35 272.98 -55.06Q270.68 -51.77 270 -47.08ZM358 29.17Q352.56 29.17 347.86 26.98Q343.15 24.79 340.31 20.64Q337.47 16.49 337.47 10.79Q337.47 4.71 341.34 0.41Q345.2 -3.89 350.67 -6.01Q346.71 -8.23 344.59 -11.65Q342.47 -15.07 342.47 -19.23Q342.47 -25.2 346.75 -29.4Q351.03 -33.59 357.43 -34.75Q351.87 -37.98 348.41 -42.88Q344.96 -47.77 344.96 -53.67Q344.96 -62.75 350.06 -68.22Q355.16 -73.68 364.31 -76.14Q373.46 -78.61 385.49 -78.61Q390.04 -78.61 393.87 -78.22Q397.71 -77.84 400.94 -77.06Q407.39 -80.57 410.04 -84.41Q412.7 -88.25 412.87 -90.63H435.35Q435.32 -84.86 433.1 -80.85Q430.87 -76.83 426.77 -74.31Q422.67 -71.79 416.93 -70.43Q421.21 -67.28 423.56 -62.98Q425.91 -58.67 425.91 -53.56Q425.91 -45.04 421.45 -39.5Q416.99 -33.96 409.06 -31.26Q401.13 -28.56 390.63 -28.56H376.06Q371.75 -28.56 369.72 -27.28Q367.68 -26.01 367.68 -23.84Q367.68 -21.78 369.52 -20.36Q371.36 -18.94 376.03 -18.94H411.46Q423.13 -18.94 429.15 -12.47Q435.17 -6 435.17 4.04Q435.17 11.61 431.08 17.25Q427 22.89 420.18 26.03Q413.35 29.17 405.03 29.17ZM370.19 14.29H401.57Q403.95 14.29 405.84 13.38Q407.72 12.47 408.83 10.73Q409.94 9 409.94 6.76Q409.94 3.2 407.59 1.28Q405.23 -0.64 401.89 -0.64H370.32Q366.91 -0.64 364.6 1.29Q362.29 3.22 362.29 6.65Q362.29 10.08 364.54 12.18Q366.79 14.29 370.19 14.29ZM385.46 -42.88Q392.91 -42.88 396.98 -45.5Q401.06 -48.11 401.06 -53.59Q401.06 -59.07 396.98 -61.68Q392.91 -64.28 385.46 -64.28Q378.24 -64.28 374.1 -61.68Q369.96 -59.07 369.96 -53.59Q369.96 -49.95 371.76 -47.54Q373.57 -45.13 377.04 -44.01Q380.51 -42.88 385.46 -42.88Z" fill="#FFFFFF"/></g>
+</svg></div>
+    </div>
+    <div><button id="theme" aria-pressed="false">Grond omkeren</button></div>
+  </header>
+
+  <section>
+    <div class="sec-head"><h2><span class="n">01</span> De mark</h2>
+      <p>De vorm is opzettelijk <b>open</b>: hij sluit niet terug naar de steel zoals een echte P. Daarmee blijft hij een werktuig en wordt hij nooit helemaal een letter. Alles is afgeleid van één maat — de streekbreedte.</p></div>
+    <div class="markgrid">
+      <div class="panel"><h3>Master</h3><svg class="big" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" role="img" aria-hidden="true" focusable="false">
+<path d="M17.5 49.5V14.5H29.5A17 17 0 0 1 46.5 31.5" stroke="#E4572E" stroke-width="13" stroke-linecap="round" stroke-linejoin="round" fill="none" clip-path="url(#knip-mark)"/>
+<path d="M11 21H24V49.5A6.5 6.5 0 0 1 11 49.5Z" fill="#141A1D"/>
+</svg></div>
+      <div class="panel"><h3>Constructie</h3><svg viewBox="0 0 64 64" aria-hidden="true" class="draw">
+  <g stroke="#E4572E" stroke-width=".4" opacity=".5">
+    <path d="M0 8h64M0 56h64M0 14.5h64M0 49.5h64M0 31.5h64"/>
+    <path d="M11 0v64M24 0v64M53 0v64M17.5 0v64M29.5 0v64M46.5 0v64"/>
+  </g>
+  <rect x="11" y="8" width="42" height="48" stroke="#E4572E" stroke-width=".8"
+        stroke-dasharray="2 2" fill="none"/>
+  <circle cx="29.5" cy="31.5" r="17" stroke="#E4572E" stroke-width=".8"
+          stroke-dasharray="2 2" fill="none" opacity=".7"/>
+  <circle cx="29.5" cy="31.5" r="1.1" fill="#E4572E"/>
+  <path d="M29.5 31.5 46.5 31.5" stroke="#E4572E" stroke-width=".8"/>
+  <path d="M17.5 49.5V14.5H29.5A17 17 0 0 1 46.5 31.5" stroke="currentColor" stroke-width="13" stroke-linecap="round"
+        stroke-linejoin="round" fill="none" opacity=".14"/>
+  <path d="M17.5 49.5V14.5H29.5A17 17 0 0 1 46.5 31.5" stroke="currentColor" stroke-width=".9" fill="none"/>
+  <path d="M9 21H26" stroke="#E4572E" stroke-width="1.6"/>
+  <text x="27.5" y="19.6" font-family="ui-monospace,monospace" font-size="3.4"
+        fill="#E4572E">naad y=21</text>
+</svg></div>
+    </div>
+    <div class="markgrid" style="margin-top:16px">
+      <div class="panel">
+        <h3>Maten op 64 × 64</h3>
+        <table>
+          <tr><th>Streekbreedte w</th><td class="v">13</td></tr>
+          <tr><th>Steel · hartlijn x</th><td class="v">17.5</td></tr>
+          <tr><th>Bovenkant · hartlijn y</th><td class="v">14.5</td></tr>
+          <tr><th>Onderkant · hartlijn y</th><td class="v">49.5</td></tr>
+          <tr><th>Bochtstraal</th><td class="v">17</td></tr>
+          <tr><th>Binnenstraal</th><td class="v">10.5</td></tr>
+          <tr><th>Omhullende</th><td class="v">42 × 48</td></tr>
+          <tr><th>Streek ÷ hoogte</th><td class="v">27.1 %</td></tr>
+        </table>
+      </div>
+      <div class="panel">
+        <h3>Vier besluiten</h3>
+        <p style="font-size:14.5px;margin:0 0 11px"><b>Eén silhouet, kleur erover.</b> De voor de hand liggende bouw — twee losse streken vanaf hetzelfde punt — is fout. Zie hiernaast.</p>
+        <p style="font-size:14.5px;margin:0 0 11px"><b>Halve hartlijnen, hele randen.</b> Bij een oneven streekbreedte vallen de <i>randen</i> op hele pixels als de hartlijn op een halve valt. Dat is wat scherp rendert.</p>
+        <p style="font-size:14.5px;margin:0 0 11px"><b>42 × 48.</b> Optisch vierkant zou te breed staan; dit is de verhouding van een kapitaal.</p>
+        <p style="font-size:14.5px;margin:0"><b>Binnenstraal 10.5.</b> Ruim genoeg dat de tegenvorm niet dichtslibt op 16 px.</p>
+        <pre>silhouet  M17.5 49.5V14.5H29.5A17 17 0 0 1 46.5 31.5
+steel     M11 21H24V49.5A6.5 6.5 0 0 1 11 49.5Z
+knip      clipPath op het silhouet, evenodd:
+          M-8 -8H72V72H-8Z M10 22H25V57H10Z</pre>
+      </div>
+    </div>
+    <div class="panel" style="margin-top:16px">
+      <h3>De naad</h3>
+      <div style="display:grid;grid-template-columns:minmax(0,340px) minmax(0,1fr);gap:26px;align-items:center">
+        <div><svg viewBox="0 0 150 74" aria-hidden="true" class="draw" style="max-width:100%">
+  <g transform="translate(2 2)">
+    <path d="M17.5 14.5V49.5" stroke="currentColor" stroke-width="13" stroke-linecap="round" fill="none"/>
+    <path d="M17.5 14.5H29.5A17 17 0 0 1 46.5 31.5" stroke="#E4572E" stroke-width="13"
+          stroke-linecap="round" fill="none"/>
+    <text x="0" y="70" font-family="ui-monospace,monospace" font-size="5"
+          fill="#C0431F">fout — gebogen naad</text>
+  </g>
+  <g transform="translate(80 2)"><path d="M17.5 49.5V14.5H29.5A17 17 0 0 1 46.5 31.5" stroke="#E4572E" stroke-width="13" stroke-linecap="round" stroke-linejoin="round" fill="none" clip-path="url(#knip-mark)"/><path d="M11 21H24V49.5A6.5 6.5 0 0 1 11 49.5Z" fill="currentColor"/>
+    <text x="0" y="70" font-family="ui-monospace,monospace" font-size="5"
+          fill="currentColor" opacity=".65">goed — naad recht</text>
+  </g>
+</svg></div>
+        <div>
+          <p style="font-size:15px;margin:0 0 12px">Twee streken met een ronde kap op hetzelfde beginpunt geven een <b>gebogen kleurnaad</b>: links zwiept het accent in een boog naar beneden tot (11, 14.5), rechts eindigt het vlak op y=21. Dat leest als een pil die op de steel ligt, niet als één werktuig.</p>
+          <p style="font-size:15px;margin:0 0 12px">De fix: trek het <b>hele silhouet</b> in accent en leg de steel er als gevuld vlak overheen. De naad is dan een rechte lijn op y=21, van x=11 tot x=24, en het buitensilhouet komt uit één pad.</p>
+          <p style="font-size:15px;margin:0 0 12px">Eén gevolg vraagt een tegenmaatregel: de Klei die onder de steel doorloopt schemert bij het renderen door elke rand van de steel heen — anti-aliasing mengt randpixels met wat eronder ligt, en dat geeft een oranje zweem langs de steel. Daarom knipt een <code style="font-family:var(--mono);font-size:12.5px">clipPath</code> het verborgen deel van het silhouet weg, op een strook van één eenheid onder de naad na, die de naad zelf blijft afdekken.</p>
+          <p style="font-size:14px;margin:0;color:var(--zacht)"><code style="font-family:var(--mono);font-size:12.5px">fill="none"</code> staat expliciet op elk stroke-pad, niet alleen op het <code style="font-family:var(--mono);font-size:12.5px">&lt;svg&gt;</code>. Wie een pad los kopieert krijgt anders een zwart vlak.</p>
+        </div>
+      </div>
+    </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><h2><span class="n">02</span> Kleur</h2>
+      <p>Zeven waarden, namen uit het domein. <b>Klei is geen tekstkleur op lichte grond</b> — 3.39:1 haalt de grafische drempel maar niet die voor tekst. Op Nacht draait dat om. <code style="font-family:var(--mono);font-size:12.5px">tokens.css</code> regelt de omslag via <code style="font-family:var(--mono);font-size:12.5px">--ploeg-accent</code>.</p></div>
+    <div class="sws">
+      <div class="sw">
+        <div class="chip" style="background:#141A1D"></div>
+        <div class="sw-b"><b>Voor</b><code>#141A1D</code><span>inkt · dragende vorm</span>
+        <span class="cr">16.16:1 op Kalk <i>AAA</i></span></div>
+      </div>
+      <div class="sw">
+        <div class="chip" style="background:#E4572E"></div>
+        <div class="sw-b"><b>Klei</b><code>#E4572E</code><span>accent · het snijdende deel</span>
+        <span class="cr">3.39:1 op Kalk · 4.95:1 op Nacht <i>grafisch / AA</i></span></div>
+      </div>
+      <div class="sw">
+        <div class="chip" style="background:#C0431F"></div>
+        <div class="sw-b"><b>Klei Diep</b><code>#C0431F</code><span>accent voor kleine tekst op licht</span>
+        <span class="cr">4.75:1 op Kalk <i>AA tekst</i></span></div>
+      </div>
+      <div class="sw">
+        <div class="chip" style="background:#F4F6F2"></div>
+        <div class="sw-b"><b>Kalk</b><code>#F4F6F2</code><span>papier</span>
+        <span class="cr">16.75:1 met Voor <i>AAA</i></span></div>
+      </div>
+      <div class="sw">
+        <div class="chip" style="background:#111619"></div>
+        <div class="sw-b"><b>Nacht</b><code>#111619</code><span>donkere grond</span>
+        <span class="cr">16.75:1 met Kalk <i>AAA</i></span></div>
+      </div>
+      <div class="sw">
+        <div class="chip" style="background:#5E6B66"></div>
+        <div class="sw-b"><b>Stoppel</b><code>#5E6B66</code><span>gedempt op licht</span>
+        <span class="cr">5.12:1 op Kalk <i>AA tekst</i></span></div>
+      </div>
+      <div class="sw">
+        <div class="chip" style="background:#8C9A94"></div>
+        <div class="sw-b"><b>Stoppel Licht</b><code>#8C9A94</code><span>gedempt op donker</span>
+        <span class="cr">6.22:1 op Nacht <i>AA tekst</i></span></div>
+      </div></div>
+  </section>
+
+  <section>
+    <div class="sec-head"><h2><span class="n">03</span> Typografie</h2>
+      <p>De keuze is gemeten, niet gevoeld. De mark heeft een streek van 27.1 % van zijn hoogte; het woordmerk hoort daar net onder te zitten, want een mark is een massief object en leest zwaarder dan de tekst ernaast. Alle acht kandidaten hieronder zijn <b>echte contouren</b>, niet een screenshot van een fontnaam.</p></div>
+    <div class="target"><span>Doel: stam ≈ <b>25–27 %</b> van de kaphoogte · mark = 27.1 %</span></div>
+    <div class="cands">
+      <div class="cand is-pick">
+        <div class="cand-spec"><svg viewBox="0 0 435.3 134.8" aria-hidden="true" class="spec"><g transform="translate(0 105.58)"><path d="M0 0V-100.19H63.98Q74.04 -100.19 81.33 -95.97Q88.63 -91.75 92.61 -84.25Q96.59 -76.75 96.59 -66.75Q96.59 -56.65 92.52 -49.05Q88.44 -41.44 81.04 -37.24Q73.64 -33.04 63.59 -33.04H27.57V0ZM27.57 -53.93H56.61Q62.9 -53.93 66.19 -57.23Q69.49 -60.53 69.49 -66.6Q69.49 -70.72 68.03 -73.49Q66.58 -76.27 63.74 -77.74Q60.9 -79.21 56.61 -79.21H27.57ZM106.94 0V-105.58H132.05V0ZM189.78 1.75Q175.93 1.75 165.89 -2.67Q155.85 -7.09 150.42 -16.02Q144.99 -24.95 144.99 -38.44Q144.99 -52.05 150.42 -60.94Q155.85 -69.83 165.89 -74.22Q175.93 -78.61 189.78 -78.61Q203.68 -78.61 213.72 -74.22Q223.76 -69.83 229.19 -60.94Q234.62 -52.05 234.62 -38.44Q234.62 -24.95 229.19 -16.02Q223.76 -7.09 213.72 -2.67Q203.68 1.75 189.78 1.75ZM189.78 -15.98Q196.4 -15.98 200.67 -18.39Q204.94 -20.8 206.97 -25.33Q209 -29.87 209 -36.2V-40.64Q209 -47 206.97 -51.54Q204.94 -56.09 200.67 -58.49Q196.4 -60.88 189.78 -60.88Q183.16 -60.88 178.91 -58.49Q174.67 -56.09 172.64 -51.54Q170.61 -47 170.61 -40.64V-36.2Q170.61 -29.87 172.64 -25.33Q174.67 -20.8 178.91 -18.39Q183.16 -15.98 189.78 -15.98ZM289.63 1.75Q275.47 1.75 265.26 -2.54Q255.06 -6.82 249.59 -15.73Q244.12 -24.64 244.12 -38.42Q244.12 -52.03 249.52 -60.93Q254.92 -69.83 264.89 -74.22Q274.87 -78.61 288.61 -78.61Q302.57 -78.61 312.32 -74.34Q322.07 -70.07 327.16 -61.32Q332.25 -52.58 332.25 -39.03V-33.49H269.84Q270.06 -27.35 272.25 -23.2Q274.43 -19.05 278.78 -17.02Q283.13 -14.99 289.65 -14.99Q293.39 -14.99 296.55 -15.84Q299.7 -16.69 302.03 -18.29Q304.36 -19.88 305.67 -22.16Q306.98 -24.43 307.06 -27.28H332.11Q332.11 -20.4 329.1 -14.98Q326.1 -9.56 320.5 -5.85Q314.9 -2.13 307.07 -0.19Q299.25 1.75 289.63 1.75ZM270 -47.08H306.13Q306.13 -50.7 304.93 -53.44Q303.73 -56.18 301.52 -58.06Q299.3 -59.95 296.22 -60.89Q293.14 -61.83 289.36 -61.83Q283.49 -61.83 279.38 -60.09Q275.27 -58.35 272.98 -55.06Q270.68 -51.77 270 -47.08ZM358 29.17Q352.56 29.17 347.86 26.98Q343.15 24.79 340.31 20.64Q337.47 16.49 337.47 10.79Q337.47 4.71 341.34 0.41Q345.2 -3.89 350.67 -6.01Q346.71 -8.23 344.59 -11.65Q342.47 -15.07 342.47 -19.23Q342.47 -25.2 346.75 -29.4Q351.03 -33.59 357.43 -34.75Q351.87 -37.98 348.41 -42.88Q344.96 -47.77 344.96 -53.67Q344.96 -62.75 350.06 -68.22Q355.16 -73.68 364.31 -76.14Q373.46 -78.61 385.49 -78.61Q390.04 -78.61 393.87 -78.22Q397.71 -77.84 400.94 -77.06Q407.39 -80.57 410.04 -84.41Q412.7 -88.25 412.87 -90.63H435.35Q435.32 -84.86 433.1 -80.85Q430.87 -76.83 426.77 -74.31Q422.67 -71.79 416.93 -70.43Q421.21 -67.28 423.56 -62.98Q425.91 -58.67 425.91 -53.56Q425.91 -45.04 421.45 -39.5Q416.99 -33.96 409.06 -31.26Q401.13 -28.56 390.63 -28.56H376.06Q371.75 -28.56 369.72 -27.28Q367.68 -26.01 367.68 -23.84Q367.68 -21.78 369.52 -20.36Q371.36 -18.94 376.03 -18.94H411.46Q423.13 -18.94 429.15 -12.47Q435.17 -6 435.17 4.04Q435.17 11.61 431.08 17.25Q427 22.89 420.18 26.03Q413.35 29.17 405.03 29.17ZM370.19 14.29H401.57Q403.95 14.29 405.84 13.38Q407.72 12.47 408.83 10.73Q409.94 9 409.94 6.76Q409.94 3.2 407.59 1.28Q405.23 -0.64 401.89 -0.64H370.32Q366.91 -0.64 364.6 1.29Q362.29 3.22 362.29 6.65Q362.29 10.08 364.54 12.18Q366.79 14.29 370.19 14.29ZM385.46 -42.88Q392.91 -42.88 396.98 -45.5Q401.06 -48.11 401.06 -53.59Q401.06 -59.07 396.98 -61.68Q392.91 -64.28 385.46 -64.28Q378.24 -64.28 374.1 -61.68Q369.96 -59.07 369.96 -53.59Q369.96 -49.95 371.76 -47.54Q373.57 -45.13 377.04 -44.01Q380.51 -42.88 385.46 -42.88Z" fill="currentColor"/></g></svg></div>
+        <div class="cand-meta">
+          <b>Archivo 800 · wdth 110</b>
+          <span class="stemval">25.1%<i>-2.0</i></span>
+        </div>
+        <div class="bar"><span style="width:71.7%"></span></div>
+      </div>
+      <div class="cand">
+        <div class="cand-spec"><svg viewBox="0 0 381.4 132.9" aria-hidden="true" class="spec"><g transform="translate(0 105.46)"><path d="M0 0V-100.06H52.11Q62.84 -100.06 70.06 -96.05Q77.27 -92.03 81.01 -84.8Q84.75 -77.56 84.75 -67.61Q84.75 -57.72 80.88 -50.35Q77.01 -42.98 69.57 -38.93Q62.12 -34.87 51.31 -34.87H21.83V0ZM21.83 -52.64H48.51Q55.32 -52.64 59.02 -56.57Q62.71 -60.51 62.71 -67.55Q62.71 -72.3 61.1 -75.53Q59.49 -78.76 56.38 -80.5Q53.26 -82.23 48.51 -82.23H21.83ZM95.82 0V-105.46H116.05V0ZM168.34 1.75Q155.68 1.75 146.95 -2.58Q138.23 -6.91 133.75 -15.82Q129.27 -24.73 129.27 -38.37Q129.27 -52.15 133.75 -60.99Q138.23 -69.83 146.95 -74.16Q155.68 -78.49 168.34 -78.49Q181.12 -78.49 189.8 -74.16Q198.49 -69.83 202.97 -60.99Q207.45 -52.15 207.45 -38.37Q207.45 -24.73 202.97 -15.82Q198.49 -6.91 189.8 -2.58Q181.12 1.75 168.34 1.75ZM168.34 -13.94Q174.93 -13.94 178.99 -16.48Q183.05 -19.01 184.91 -24.08Q186.77 -29.15 186.77 -36.65V-40.06Q186.77 -47.55 184.91 -52.64Q183.05 -57.73 178.99 -60.26Q174.93 -62.8 168.34 -62.8Q161.76 -62.8 157.71 -60.26Q153.66 -57.73 151.81 -52.64Q149.95 -47.55 149.95 -40.06V-36.65Q149.95 -29.15 151.81 -24.08Q153.66 -19.01 157.71 -16.48Q161.76 -13.94 168.34 -13.94ZM255.42 1.75Q242.83 1.75 234.23 -2.55Q225.64 -6.85 221.26 -15.74Q216.88 -24.64 216.88 -38.37Q216.88 -52.15 221.24 -60.99Q225.61 -69.83 234.11 -74.16Q242.6 -78.49 255.04 -78.49Q266.72 -78.49 274.7 -74.3Q282.68 -70.12 286.76 -61.45Q290.84 -52.79 290.84 -39.05V-33.87H237.44Q237.67 -27.14 239.49 -22.49Q241.3 -17.85 245.19 -15.54Q249.07 -13.23 255.41 -13.23Q258.89 -13.23 261.75 -14.1Q264.62 -14.98 266.7 -16.74Q268.77 -18.49 269.9 -21.11Q271.03 -23.72 271.03 -27.08H290.84Q290.84 -19.88 288.27 -14.46Q285.7 -9.03 280.97 -5.45Q276.23 -1.88 269.75 -0.06Q263.26 1.75 255.42 1.75ZM237.7 -46.66H269.98Q269.98 -51.09 268.93 -54.24Q267.89 -57.38 265.98 -59.46Q264.08 -61.53 261.39 -62.47Q258.7 -63.4 255.29 -63.4Q249.8 -63.4 246.08 -61.57Q242.36 -59.74 240.38 -56.04Q238.4 -52.34 237.7 -46.66ZM316.54 27.42Q311.41 27.42 306.91 25.28Q302.4 23.15 299.66 19.07Q296.93 15 296.93 9.3Q296.93 2.98 300.64 -0.91Q304.36 -4.8 308.94 -6.76Q305.56 -8.67 303.46 -11.71Q301.36 -14.75 301.36 -18.84Q301.36 -24.44 305.49 -28Q309.62 -31.57 315.06 -32.68Q309.7 -36.04 306.7 -41.17Q303.7 -46.31 303.7 -52.76Q303.7 -61.13 307.89 -66.81Q312.09 -72.49 319.87 -75.49Q327.65 -78.49 338.21 -78.49Q342.47 -78.49 346.2 -77.99Q349.93 -77.48 352.95 -76.47Q358.33 -79.72 360.36 -83.57Q362.38 -87.42 362.49 -89.8H381.27Q381.27 -84.45 379.27 -80.48Q377.27 -76.51 373.66 -73.98Q370.05 -71.44 364.96 -70.21Q368.74 -67 370.74 -62.53Q372.75 -58.06 372.75 -52.8Q372.75 -44.65 368.86 -38.9Q364.96 -33.15 357.72 -30.07Q350.47 -26.99 340.39 -26.99H328.74Q325.26 -26.99 323.49 -25.71Q321.72 -24.43 321.72 -22.19Q321.72 -20.29 323.31 -18.87Q324.91 -17.44 328.28 -17.44H360.22Q369.87 -17.44 375.62 -11.54Q381.38 -5.65 381.38 3.54Q381.38 10.45 377.72 15.84Q374.05 21.23 367.66 24.33Q361.27 27.42 353.01 27.42ZM324.98 13.86H351.95Q354.59 13.86 356.62 12.93Q358.66 12 359.85 10.26Q361.04 8.53 361.04 6.34Q361.04 2.65 358.67 0.75Q356.29 -1.14 352.86 -1.14H324.98Q321.55 -1.14 319.25 0.91Q316.95 2.96 316.95 6.31Q316.95 9.67 319.19 11.76Q321.44 13.86 324.98 13.86ZM338.26 -40.09Q345.42 -40.09 349.11 -43.4Q352.8 -46.7 352.8 -52.8Q352.8 -58.89 349.11 -62.14Q345.42 -65.38 338.26 -65.38Q331.23 -65.38 327.51 -62.14Q323.79 -58.89 323.79 -52.8Q323.79 -48.79 325.39 -45.92Q326.99 -43.05 330.21 -41.57Q333.43 -40.09 338.26 -40.09Z" fill="currentColor"/></g></svg></div>
+        <div class="cand-meta">
+          <b>Archivo 700 · wdth 100</b>
+          <span class="stemval">20.2%<i>-6.9</i></span>
+        </div>
+        <div class="bar"><span style="width:57.7%"></span></div>
+      </div>
+      <div class="cand">
+        <div class="cand-spec"><svg viewBox="0 0 457.5 136.3" aria-hidden="true" class="spec"><g transform="translate(0 105.69)"><path d="M0 0V-100.29H67.76Q77.41 -100.29 84.77 -95.93Q92.13 -91.57 96.27 -83.85Q100.41 -76.12 100.41 -65.95Q100.41 -55.48 96.2 -47.68Q91.98 -39.88 84.62 -35.6Q77.26 -31.31 67.76 -31.31H33.73V0ZM33.73 -55.36H57.26Q62.56 -55.36 65.16 -57.99Q67.76 -60.62 67.76 -65.72Q67.76 -69.21 66.6 -71.48Q65.45 -73.74 63.13 -74.9Q60.82 -76.06 57.26 -76.06H33.73ZM109.18 0V-105.69H139.65V0ZM198.8 1.75Q184.58 1.75 173.92 -2.7Q163.27 -7.14 157.29 -16.08Q151.31 -25.01 151.31 -38.48Q151.31 -52.04 157.29 -60.96Q163.27 -69.88 173.92 -74.3Q184.58 -78.72 198.8 -78.72Q213.03 -78.72 223.73 -74.3Q234.43 -69.88 240.41 -60.96Q246.39 -52.04 246.39 -38.48Q246.39 -25.01 240.41 -16.08Q234.43 -7.14 223.73 -2.7Q213.03 1.75 198.8 1.75ZM198.8 -18.28Q204.72 -18.28 208.43 -20.45Q212.13 -22.62 213.82 -26.47Q215.51 -30.32 215.51 -35.36V-41.52Q215.51 -46.56 213.82 -50.45Q212.13 -54.34 208.43 -56.52Q204.72 -58.69 198.8 -58.69Q192.89 -58.69 189.23 -56.52Q185.57 -54.34 183.88 -50.45Q182.19 -46.56 182.19 -41.52V-35.36Q182.19 -30.32 183.88 -26.47Q185.57 -22.62 189.23 -20.45Q192.89 -18.28 198.8 -18.28ZM303.64 1.75Q288.75 1.75 277.68 -2.52Q266.62 -6.79 260.57 -15.71Q254.52 -24.64 254.52 -38.48Q254.52 -52.04 260.5 -60.96Q266.47 -69.88 277.13 -74.3Q287.78 -78.72 302.01 -78.72Q316.97 -78.72 327.62 -74.45Q338.28 -70.17 343.97 -61.28Q349.65 -52.39 349.65 -38.48V-33.29H285.57Q285.69 -27.99 287.59 -24.26Q289.5 -20.52 293.46 -18.64Q297.41 -16.76 303.41 -16.76Q307.52 -16.76 310.51 -17.64Q313.5 -18.51 315.44 -20.04Q317.38 -21.57 318.28 -23.56Q319.18 -25.54 319.18 -27.76H349.59Q349.59 -20.73 346.36 -15.22Q343.12 -9.71 337.08 -5.93Q331.05 -2.16 322.58 -0.2Q314.11 1.75 303.64 1.75ZM285.71 -47.46H318.08Q318.08 -50.29 317.08 -52.61Q316.09 -54.93 314.18 -56.63Q312.27 -58.34 309.52 -59.27Q306.76 -60.2 303.29 -60.2Q297.84 -60.2 294.17 -58.57Q290.5 -56.94 288.43 -54.1Q286.36 -51.25 285.71 -47.46ZM372.83 30.61Q367.64 30.61 363.19 28.19Q358.75 25.77 356.09 21.53Q353.44 17.29 353.44 12.1Q353.44 6.01 357.33 1.43Q361.22 -3.15 366.91 -5.39Q362.83 -7.81 360.7 -11.34Q358.57 -14.87 358.57 -18.95Q358.57 -25.19 363.05 -29.78Q367.52 -34.37 374.29 -35.66Q368.75 -38.83 364.94 -43.63Q361.14 -48.43 361.14 -54.08Q361.14 -63.82 366.94 -69.15Q372.74 -74.49 382.62 -76.6Q392.51 -78.72 404.64 -78.72Q409.07 -78.72 412.52 -78.47Q415.98 -78.22 418.89 -77.67Q425.83 -81.6 428.51 -85.48Q431.2 -89.36 431.2 -91.4H457.49Q457.49 -85.13 455.18 -81.05Q452.86 -76.97 448.47 -74.49Q444.08 -72.01 438.02 -70.55Q442.65 -67.35 445.26 -63.08Q447.87 -58.8 447.87 -53.88Q447.87 -44.99 443 -39.55Q438.13 -34.11 430.04 -31.63Q421.95 -29.15 412.19 -29.15H398.13Q393.18 -29.15 391.06 -27.99Q388.95 -26.82 388.95 -24.93Q388.95 -23.03 390.77 -21.72Q392.59 -20.41 398.13 -20.41H431.49Q444.9 -20.41 451.17 -13.48Q457.43 -6.56 457.43 4.23Q457.43 12.39 452.92 18.29Q448.4 24.2 441.04 27.41Q433.67 30.61 425.07 30.61ZM390.85 14.43H419.13Q421.31 14.43 423.06 13.56Q424.81 12.68 425.83 11.01Q426.85 9.33 426.85 7.14Q426.85 3.79 424.59 1.9Q422.33 0 419.13 0H390.85Q387.64 0 385.45 1.82Q383.27 3.64 383.27 7Q383.27 10.35 385.45 12.39Q387.64 14.43 390.85 14.43ZM404.52 -44.55Q410.85 -44.55 414.34 -46.82Q417.84 -49.1 417.84 -53.94Q417.84 -58.78 414.34 -61.05Q410.85 -63.32 404.52 -63.32Q398.6 -63.32 394.99 -61.05Q391.37 -58.78 391.37 -53.94Q391.37 -50.79 392.92 -48.66Q394.46 -46.53 397.41 -45.54Q400.35 -44.55 404.52 -44.55Z" fill="currentColor"/></g></svg></div>
+        <div class="cand-meta">
+          <b>Archivo 900 · wdth 110</b>
+          <span class="stemval">30.5%<i>+3.4</i></span>
+        </div>
+        <div class="bar"><span style="width:87.1%"></span></div>
+      </div>
+      <div class="cand">
+        <div class="cand-spec"><svg viewBox="0 0 380.1 132.4" aria-hidden="true" class="spec"><g transform="translate(0 104.96)"><path d="M0 0V-100H51.6Q59.91 -100 66.75 -96.12Q73.58 -92.24 77.61 -85.6Q81.63 -78.97 81.63 -70.66V-67.82Q81.63 -59.51 77.5 -52.48Q73.36 -45.44 66.51 -41.16Q59.66 -36.88 51.31 -36.88H27.48V0ZM27.48 -57.11H43.51Q46.68 -57.11 48.94 -58.49Q51.2 -59.88 52.51 -62.39Q53.83 -64.91 53.83 -68.33Q53.83 -72.67 51.17 -76Q48.51 -79.34 43.4 -79.34H27.48ZM90.67 0V-104.96H116.55V0ZM165.52 1.46Q154.74 1.46 146.21 -3.23Q137.68 -7.91 132.8 -16.31Q127.92 -24.71 127.92 -35.79V-38.7Q127.92 -49.93 132.8 -58.25Q137.68 -66.58 146.19 -71.26Q154.7 -75.95 165.49 -75.95H169.57Q180.39 -75.95 188.9 -71.26Q197.41 -66.58 202.3 -58.25Q207.18 -49.93 207.18 -38.7V-35.79Q207.18 -24.6 202.3 -16.2Q197.41 -7.8 188.9 -3.17Q180.39 1.46 169.61 1.46ZM167.53 -14.65Q170.99 -14.65 173.69 -16.29Q176.38 -17.93 177.97 -20.88Q179.56 -23.83 179.56 -27.62V-46.87Q179.56 -50.8 177.97 -53.68Q176.38 -56.56 173.69 -58.2Q170.99 -59.84 167.53 -59.84Q164.21 -59.84 161.46 -58.2Q158.71 -56.56 157.12 -53.68Q155.54 -50.8 155.54 -46.87V-27.62Q155.54 -23.83 157.12 -20.88Q158.71 -17.93 161.46 -16.29Q164.21 -14.65 167.53 -14.65ZM253.53 1.46Q242.35 1.46 233.64 -2.79Q224.93 -7.03 219.97 -15.23Q215.01 -23.43 215.01 -35.13V-39.36Q215.01 -51.06 219.99 -59.26Q224.96 -67.46 233.73 -71.7Q242.49 -75.95 253.68 -75.95H256.89Q267.89 -75.95 275.69 -71.7Q283.49 -67.46 287.65 -60.04Q291.8 -52.62 291.8 -42.89V-33.82H242.6Q242.6 -28.39 243.71 -24.02Q244.83 -19.64 247.47 -17.15Q250.11 -14.65 254.88 -14.65Q259.07 -14.65 261.9 -16.24Q264.72 -17.82 266.22 -20.83Q267.71 -23.83 267.71 -27.92H291.69Q291.69 -19.61 287.21 -12.94Q282.73 -6.27 274.64 -2.41Q266.55 1.46 255.54 1.46ZM242.64 -45.66H266.33Q266.33 -53.02 263.08 -56.43Q259.84 -59.84 254.63 -59.84Q249.42 -59.84 246.08 -56.23Q242.75 -52.62 242.64 -45.66ZM315.63 27.41Q310.75 27.41 306.49 25Q302.22 22.59 299.53 18.62Q296.83 14.65 296.83 9.8Q296.83 4.45 299.8 0Q302.77 -4.45 307.87 -6.89Q304.66 -9.04 302.79 -12.35Q300.91 -15.67 300.91 -19.42Q300.91 -24.93 304.7 -29.08Q308.49 -33.24 313.99 -34.8Q309.37 -37.17 306.21 -41.2Q303.06 -45.23 303.06 -51.38Q303.06 -57.87 306.63 -63.45Q310.2 -69.02 317.47 -72.49Q324.74 -75.95 335.86 -75.95Q340.05 -75.95 343.59 -75.66Q347.12 -75.36 349.93 -74.74Q355.94 -78.46 358.2 -81.96Q360.46 -85.46 360.53 -87.9H380.1Q380.1 -82.43 378.17 -78.55Q376.24 -74.67 372.7 -72.27Q369.17 -69.86 364.29 -68.51L364.14 -68.08Q367.71 -65.05 369.97 -61.12Q372.23 -57.18 372.23 -52.7Q372.23 -46.28 368.37 -40.89Q364.5 -35.5 357.98 -32.33Q351.46 -29.15 343.19 -29.15H332.84Q328.32 -29.15 326.24 -27.66Q324.16 -26.17 324.16 -24.02Q324.16 -21.79 325.98 -20.3Q327.81 -18.8 332.84 -18.8H356.01Q367.49 -18.8 373.8 -12.54Q380.1 -6.27 380.1 3.28Q380.1 9.69 376.66 15.2Q373.21 20.7 367.27 24.05Q361.33 27.41 353.61 27.41ZM326.35 12.21H348.65Q352 12.21 354.35 10.19Q356.71 8.16 356.71 5.28Q356.71 2.55 354.48 0.55Q352.26 -1.46 349.02 -1.46H326.35Q323.03 -1.46 320.75 0.53Q318.48 2.51 318.48 5.32Q318.48 8.09 320.75 10.15Q323.03 12.21 326.35 12.21ZM338.08 -42.24Q342.75 -42.24 345.7 -45.24Q348.65 -48.25 348.65 -52.48Q348.65 -56.71 345.7 -59.73Q342.75 -62.76 338.08 -62.76Q333.42 -62.76 330.47 -59.73Q327.51 -56.71 327.51 -52.48Q327.51 -48.25 330.47 -45.24Q333.42 -42.24 338.08 -42.24Z" fill="currentColor"/></g></svg></div>
+        <div class="cand-meta">
+          <b>Chivo 800</b>
+          <span class="stemval">25.9%<i>-1.2</i></span>
+        </div>
+        <div class="bar"><span style="width:74.0%"></span></div>
+      </div>
+      <div class="cand">
+        <div class="cand-spec"><svg viewBox="0 0 359.7 130.1" aria-hidden="true" class="spec"><g transform="translate(0 102.56)"><path d="M0 0V-100H41.79Q61.03 -100 69.87 -91.86Q78.72 -83.72 78.72 -70Q78.72 -56.28 69.94 -48.08Q61.15 -39.87 41.79 -39.87H21.28V0ZM21.28 -56.03H38.59Q47.31 -56.03 52.24 -59.04Q57.18 -62.05 57.18 -69.87Q57.18 -77.56 52.24 -80.71Q47.31 -83.85 38.59 -83.85H21.28ZM96.79 0Q93.21 -4.1 91.73 -9.29Q90.26 -14.49 90.26 -22.95V-102.56H111.03V-25.13Q111.03 -15.38 113.21 -9.94Q115.38 -4.49 118.97 -0.77V0ZM162.05 1.92Q142.95 1.92 133.53 -9.04Q124.1 -20 124.1 -38.46Q124.1 -56.92 133.53 -67.88Q142.95 -78.85 162.05 -78.85Q181.15 -78.85 190.58 -67.88Q200 -56.92 200 -38.46Q200 -20 190.58 -9.04Q181.15 1.92 162.05 1.92ZM162.05 -11.92Q170.56 -11.92 174.51 -18.59Q178.46 -25.26 178.46 -38.53Q178.46 -51.79 174.51 -58.4Q170.56 -65 162.05 -65Q153.54 -65 149.59 -58.4Q145.64 -51.79 145.64 -38.53Q145.64 -25.26 149.59 -18.59Q153.54 -11.92 162.05 -11.92ZM244.49 1.92Q226.28 1.92 216.73 -8.97Q207.18 -19.87 207.18 -38.59Q207.18 -51.15 211.47 -60.13Q215.77 -69.1 224.04 -73.97Q232.31 -78.85 244.23 -78.85Q261.41 -78.85 270.58 -68.46Q279.74 -58.08 279.74 -37.95V-33.59H227.44Q228.08 -23.85 232.5 -18.27Q236.92 -12.69 244.49 -12.69Q250.51 -12.69 254.17 -16.28Q257.82 -19.87 258.97 -24.62H278.72Q277.56 -17.56 273.59 -11.54Q269.62 -5.51 262.44 -1.79Q255.26 1.92 244.49 1.92ZM227.44 -46.67H259.49Q258.97 -55.38 255.13 -60.19Q251.28 -65 244.1 -65Q237.05 -65 232.76 -60.45Q228.46 -55.9 227.44 -46.67ZM324.1 27.56Q313.33 27.56 306.73 24.94Q300.13 22.31 296.6 18.33Q293.08 14.36 291.67 10.26Q290.26 6.15 290 3.08H310.26Q310.9 6.79 313.85 9.87Q316.79 12.95 323.85 12.95Q331.79 12.95 335.77 8.27Q339.74 3.59 339.74 -5V-14.1H336.67Q334.87 -8.59 330 -5.45Q325.13 -2.31 317.18 -2.31Q302.18 -2.31 294.29 -12.76Q286.41 -23.21 286.41 -40.64Q286.41 -51.79 289.87 -60.45Q293.33 -69.1 300.26 -73.97Q307.18 -78.85 317.56 -78.85Q325.51 -78.85 330.32 -75.83Q335.13 -72.82 337.44 -67.69H340.51V-76.92H359.74V-5.77Q359.74 10.13 351.03 18.85Q342.31 27.56 324.1 27.56ZM322.82 -16.92Q330.38 -16.92 334.68 -23.33Q338.97 -29.74 338.97 -40.64Q338.97 -51.54 334.68 -57.88Q330.38 -64.23 322.82 -64.23Q315.77 -64.23 311.6 -58.33Q307.44 -52.44 307.44 -40.64Q307.44 -28.59 311.6 -22.76Q315.77 -16.92 322.82 -16.92Z" fill="currentColor"/></g></svg></div>
+        <div class="cand-meta">
+          <b>Familjen Grotesk 700</b>
+          <span class="stemval">28.7%<i>+1.6</i></span>
+        </div>
+        <div class="bar"><span style="width:82.0%"></span></div>
+      </div>
+      <div class="cand">
+        <div class="cand-spec"><svg viewBox="0 0 361.8 129.9" aria-hidden="true" class="spec"><g transform="translate(0 100.00)"><path d="M0 0V-100H47.5Q58.61 -100 66.6 -96.11Q74.58 -92.22 78.96 -85.28Q83.33 -78.33 83.33 -69.03Q83.33 -59.72 78.89 -52.64Q74.44 -45.56 66.46 -41.6Q58.47 -37.64 47.5 -37.64H16.94V-54.03H46.39Q53.75 -54.03 57.85 -58.12Q61.94 -62.22 61.94 -68.89Q61.94 -75.56 57.85 -79.58Q53.75 -83.61 46.39 -83.61H21.39V0ZM93.33 0V-100H114.17V0ZM163.06 1.39Q151.39 1.39 142.57 -3.26Q133.75 -7.92 128.82 -16.32Q123.89 -24.72 123.89 -35.69Q123.89 -46.67 128.82 -54.86Q133.75 -63.06 142.57 -67.64Q151.39 -72.22 163.06 -72.22Q174.86 -72.22 183.68 -67.64Q192.5 -63.06 197.36 -54.86Q202.22 -46.67 202.22 -35.69Q202.22 -24.72 197.29 -16.32Q192.36 -7.92 183.54 -3.26Q174.72 1.39 163.06 1.39ZM163.06 -15Q167.92 -15 171.88 -17.5Q175.83 -20 178.19 -24.65Q180.56 -29.31 180.56 -35.83Q180.56 -45.42 175.49 -50.62Q170.42 -55.83 163.06 -55.83Q155.69 -55.83 150.62 -50.56Q145.56 -45.28 145.56 -35.83Q145.56 -29.31 147.92 -24.65Q150.28 -20 154.24 -17.5Q158.19 -15 163.06 -15ZM245.28 1.39Q233.47 1.39 224.72 -3.26Q215.97 -7.92 211.18 -16.25Q206.39 -24.58 206.39 -35.42Q206.39 -46.39 211.18 -54.65Q215.97 -62.92 224.58 -67.57Q233.19 -72.22 244.58 -72.22Q255.56 -72.22 263.61 -67.78Q271.67 -63.33 276.11 -55.42Q280.56 -47.5 280.56 -36.81Q280.56 -34.58 280.42 -32.71Q280.28 -30.83 280 -29.17H218.61V-42.92H263.19L259.58 -40.42Q259.58 -49.03 255.49 -53.12Q251.39 -57.22 244.31 -57.22Q236.11 -57.22 231.6 -51.67Q227.08 -46.11 227.08 -35Q227.08 -24.17 231.6 -18.89Q236.11 -13.61 245.14 -13.61Q250.14 -13.61 253.75 -15.28Q257.36 -16.94 259.17 -20.69H278.75Q275.28 -10.42 266.88 -4.51Q258.47 1.39 245.28 1.39ZM323.89 29.86Q309.17 29.86 299.93 23.61Q290.69 17.36 289.03 6.67H308.75Q309.86 9.31 313.54 10.69Q317.22 12.08 322.92 12.08Q332.36 12.08 336.67 8.47Q340.97 4.86 340.97 -2.78V-18.19L342.08 -17.92Q340.69 -10.14 334.03 -5.62Q327.36 -1.11 317.5 -1.11Q308.06 -1.11 301.04 -5.49Q294.03 -9.86 290.14 -17.78Q286.25 -25.69 286.25 -36.39Q286.25 -47.22 290.28 -55.28Q294.31 -63.33 301.6 -67.78Q308.89 -72.22 318.61 -72.22Q328.61 -72.22 334.93 -67.5Q341.25 -62.78 342.36 -54.58L341.39 -54.44V-70.83H361.81V-3.06Q361.81 12.22 351.67 21.04Q341.53 29.86 323.89 29.86ZM324.72 -17.08Q332.08 -17.08 336.67 -22.15Q341.25 -27.22 341.25 -36.67Q341.25 -46.11 336.6 -51.18Q331.94 -56.25 324.44 -56.25Q317.22 -56.25 312.57 -51.11Q307.92 -45.97 307.92 -36.53Q307.92 -27.08 312.57 -22.08Q317.22 -17.08 324.72 -17.08Z" fill="currentColor"/></g></svg></div>
+        <div class="cand-meta">
+          <b>Instrument Sans 700</b>
+          <span class="stemval">20.8%<i>-6.3</i></span>
+        </div>
+        <div class="bar"><span style="width:59.4%"></span></div>
+      </div>
+      <div class="cand">
+        <div class="cand-spec"><svg viewBox="0 0 362.9 126.4" aria-hidden="true" class="spec"><g transform="translate(0 102.77)"><path d="M0 0V-100H38.2Q49.17 -100 57.94 -96.14Q66.71 -92.28 71.8 -84.83Q76.9 -77.38 76.9 -66.65Q76.9 -56.74 72.52 -49.67Q68.13 -42.6 60.13 -38.82Q52.12 -35.04 41.24 -35.04H23.63V0ZM23.39 -52.9H40.54Q46.89 -52.9 51 -57.38Q55.12 -61.86 55.12 -67.89Q55.12 -74.21 50.72 -78.25Q46.32 -82.29 40.39 -82.29H23.39ZM112.37 1.37Q103.46 1.37 98.37 -0.61Q93.28 -2.6 90.93 -5.83Q88.58 -9.05 87.97 -12.99Q87.36 -16.92 87.36 -20.82V-102.77H110.43V-23.85Q110.43 -20.62 111.94 -18.24Q113.44 -15.86 118.51 -15.21L121.65 -14.98V-0.58Q119.42 0.22 117.06 0.79Q114.7 1.37 112.37 1.37ZM160.9 1.38Q150.12 1.38 142.17 -3.21Q134.22 -7.81 129.85 -16.06Q125.49 -24.31 125.49 -35.31Q125.49 -46.57 129.95 -55.04Q134.41 -63.5 142.4 -68.19Q150.39 -72.89 161.02 -72.89Q171.91 -72.89 179.84 -68.14Q187.76 -63.4 192.07 -54.93Q196.37 -46.46 196.37 -35.31Q196.37 -24.6 192.09 -16.33Q187.81 -8.06 179.87 -3.34Q171.93 1.38 160.9 1.38ZM161.02 -15.87Q165.82 -15.87 168.53 -18.89Q171.24 -21.91 172.34 -26.57Q173.44 -31.23 173.44 -36.13Q173.44 -40.9 172.41 -45.44Q171.37 -49.98 168.67 -52.92Q165.97 -55.85 161.02 -55.85Q156.15 -55.85 153.43 -53Q150.7 -50.16 149.56 -45.63Q148.43 -41.1 148.43 -36.13Q148.43 -31.43 149.5 -26.75Q150.57 -22.07 153.28 -18.97Q156 -15.87 161.02 -15.87ZM241.46 1.38Q230.6 1.38 222.33 -3.1Q214.06 -7.59 209.46 -15.75Q204.86 -23.91 204.86 -34.9Q204.86 -45.38 209.08 -54Q213.29 -62.62 221.23 -67.75Q229.18 -72.89 240.4 -72.89Q251.71 -72.89 259.32 -68.17Q266.93 -63.45 270.78 -55.15Q274.62 -46.86 274.62 -36.21V-30.36H228.07Q228.01 -25.47 229.6 -22.11Q231.19 -18.75 234.1 -17.03Q237.01 -15.31 240.88 -15.31Q245.3 -15.31 248.72 -17.11Q252.14 -18.92 253.73 -23.52H274.72Q273.57 -15.73 268.55 -10.15Q263.52 -4.56 256.35 -1.59Q249.17 1.38 241.46 1.38ZM227.98 -43.9H252.77Q252.77 -47.42 251.38 -50.36Q249.99 -53.3 247.24 -55.04Q244.5 -56.78 240.37 -56.78Q236.67 -56.78 233.88 -54.96Q231.1 -53.14 229.53 -50.18Q227.97 -47.22 227.98 -43.9ZM319.72 23.65Q299.59 23.65 289.44 18.83Q279.3 14.01 279.3 6.63Q279.3 3.08 281.26 0.71Q283.22 -1.65 285.87 -3.03Q288.51 -4.41 290.71 -5.08Q292.91 -5.75 293.38 -5.92Q292.3 -6.51 290.04 -7.76Q287.78 -9.01 285.85 -11.29Q283.93 -13.58 283.93 -17.24Q283.93 -21.31 287.77 -24.72Q291.61 -28.13 299.48 -29.3Q292.08 -32.7 288.34 -38.59Q284.6 -44.48 284.6 -50.26Q284.6 -57.4 289.34 -62.4Q294.08 -67.41 302.04 -70.01Q310 -72.61 319.72 -72.61Q327.24 -72.61 331.95 -71.07Q336.67 -69.53 340.64 -67.24Q342.44 -67.93 345.14 -68.98Q347.85 -70.03 350.98 -71.26Q354.12 -72.49 357.2 -73.75Q360.28 -75 362.9 -76.09L362.78 -58.74L350.53 -56.9Q351.1 -55.22 351.41 -53.3Q351.72 -51.39 351.72 -50.38Q351.72 -44.24 347.94 -38.72Q344.15 -33.2 336.67 -29.72Q329.19 -26.23 318.17 -26.23Q316.71 -26.23 314.09 -26.32Q311.46 -26.41 309.88 -26.58Q307.34 -26.37 306.35 -25.85Q305.35 -25.32 305.35 -24.49Q305.35 -22.91 308.47 -22.52Q311.58 -22.12 317.35 -21.73Q319.41 -21.64 323.34 -21.43Q327.26 -21.23 331.9 -20.88Q345.9 -19.93 352.54 -14.12Q359.18 -8.3 359.18 0.06Q359.18 10.28 349.31 16.97Q339.45 23.65 319.72 23.65ZM323.42 10.95Q331.15 10.95 333.99 9.29Q336.82 7.63 336.82 4.73Q336.82 1.97 334.26 0.23Q331.7 -1.5 326.98 -1.81L312.29 -2.75Q308.8 -2.95 306.58 -1.99Q304.36 -1.03 303.3 0.57Q302.25 2.18 302.25 3.86Q302.25 7.8 307.4 9.37Q312.55 10.95 323.42 10.95ZM318.89 -38.93Q323.69 -38.93 326.6 -41.85Q329.52 -44.76 329.52 -49.49Q329.52 -54.32 326.6 -57.53Q323.69 -60.73 318.89 -60.73Q314.13 -60.73 311.17 -57.52Q308.2 -54.31 308.2 -49.49Q308.2 -44.83 311.11 -41.88Q314.02 -38.93 318.89 -38.93Z" fill="currentColor"/></g></svg></div>
+        <div class="cand-meta">
+          <b>Public Sans 800</b>
+          <span class="stemval">34.3%<i>+7.2</i></span>
+        </div>
+        <div class="bar"><span style="width:98.0%"></span></div>
+      </div>
+      <div class="cand">
+        <div class="cand-spec"><svg viewBox="0 0 385.2 135.1" aria-hidden="true" class="spec"><g transform="translate(0 107.92)"><path d="M15.31 -28.39V-45.54H37.77Q48.67 -45.54 54.07 -49.93Q59.47 -54.32 59.47 -64.55Q59.47 -73.69 54.48 -78.35Q49.48 -83.01 38.9 -83.01H15.31V-100H39.65Q49.21 -100 56.92 -97.76Q64.64 -95.52 70.15 -91.09Q75.67 -86.66 78.6 -79.89Q81.52 -73.13 81.52 -64.07Q81.52 -52.39 76.22 -44.45Q70.92 -36.5 60.58 -32.45Q50.24 -28.39 34.9 -28.39ZM0 0V-100H21.79V0ZM94 0V-107.92H115.45V0ZM169.24 2.07Q157.32 2.07 148.23 -2.65Q139.14 -7.38 133.99 -16.73Q128.84 -26.07 128.84 -39.95Q128.84 -54.01 134.07 -63.25Q139.3 -72.5 148.43 -77.08Q157.57 -81.67 169.2 -81.67Q181.07 -81.67 190.2 -76.97Q199.33 -72.27 204.51 -62.98Q209.7 -53.68 209.7 -39.72Q209.7 -25.51 204.4 -16.2Q199.09 -6.89 189.91 -2.41Q180.72 2.07 169.24 2.07ZM169.91 -14.1Q175.73 -14.1 179.71 -16.86Q183.68 -19.62 185.74 -25.12Q187.79 -30.62 187.79 -38.49Q187.79 -46.81 185.6 -52.63Q183.41 -58.45 179.19 -61.58Q174.98 -64.72 168.66 -64.72Q162.99 -64.72 158.94 -61.98Q154.9 -59.24 152.84 -53.77Q150.77 -48.3 150.77 -40.25Q150.77 -27.48 155.82 -20.79Q160.87 -14.1 169.91 -14.1ZM260.09 2.07Q250.12 2.07 242.47 -0.68Q234.82 -3.44 229.56 -8.68Q224.3 -13.91 221.57 -21.4Q218.84 -28.88 218.84 -38.33Q218.84 -47.68 221.48 -55.62Q224.13 -63.55 229.2 -69.39Q234.27 -75.23 241.69 -78.45Q249.1 -81.67 258.54 -81.67Q267.73 -81.67 274.83 -78.63Q281.93 -75.59 286.63 -69.68Q291.33 -63.76 293.48 -55.26Q295.64 -46.76 294.85 -35.83L232.97 -35.3V-47.26L281.83 -47.76L274.71 -41.57Q275.66 -49.51 273.66 -54.64Q271.66 -59.76 267.7 -62.23Q263.75 -64.7 258.73 -64.7Q252.95 -64.7 248.66 -61.63Q244.37 -58.55 242.05 -52.79Q239.74 -47.02 239.74 -38.8Q239.74 -26.01 245.25 -19.95Q250.76 -13.9 260.05 -13.9Q264.31 -13.9 267.23 -15.03Q270.14 -16.17 272.04 -18.01Q273.94 -19.86 275.02 -22.19Q276.1 -24.53 276.66 -26.93L295.76 -23.12Q294.7 -17.58 292.12 -12.97Q289.55 -8.37 285.2 -5Q280.86 -1.63 274.67 0.22Q268.47 2.07 260.09 2.07ZM340.2 27.21Q327.05 27.21 318.73 25.19Q310.41 23.17 306.54 19.23Q302.68 15.28 302.68 9.56Q302.68 2.64 308.15 -1.73Q313.63 -6.1 324.41 -7.05V-9.84Q316.17 -9.82 311.82 -11.67Q307.46 -13.51 307.46 -17.93Q307.46 -22.16 311.74 -25.48Q316.01 -28.8 325.91 -30.64V-33.47Q316.69 -34.25 311.44 -39.67Q306.19 -45.08 306.19 -53.82Q306.19 -61.38 310.4 -67.36Q314.6 -73.34 322.9 -76.85Q331.2 -80.37 343.29 -80.37H383.55V-63.64L358.25 -67.07V-63.93Q368.17 -62.42 372.53 -58.85Q376.89 -55.28 376.89 -49.19Q376.89 -43.08 372.9 -38.37Q368.91 -33.66 361.45 -31.02Q353.99 -28.38 343.43 -28.38Q341.35 -28.38 339 -28.56Q336.65 -28.74 331.66 -29.34Q328.74 -27.25 327.1 -25.68Q325.46 -24.11 325.46 -22.78Q325.46 -21.71 326.56 -21.05Q327.66 -20.39 329.51 -20.1Q331.36 -19.81 333.3 -19.81H356.21Q359.24 -19.81 364.07 -19.39Q368.9 -18.97 373.73 -17.02Q378.57 -15.06 381.9 -10.74Q385.22 -6.42 385.22 1.49Q385.22 10.25 380.29 15.99Q375.36 21.74 365.39 24.47Q355.41 27.21 340.2 27.21ZM342.28 9.56Q351.58 9.56 356.81 8.58Q362.03 7.61 364.15 5.53Q366.26 3.46 366.26 0.31Q366.26 -2.63 364.95 -4.32Q363.64 -6.01 361.63 -6.68Q359.61 -7.34 357.53 -7.5Q355.46 -7.66 354 -7.66H334.77Q328.48 -6.96 325.77 -4.27Q323.07 -1.59 323.07 1.92Q323.07 5.05 325.2 6.7Q327.34 8.35 331.61 8.95Q335.88 9.56 342.28 9.56ZM342.34 -39.83Q349.38 -39.83 352.98 -43.39Q356.58 -46.94 356.58 -52.61Q356.58 -58.67 352.9 -62.55Q349.22 -66.43 342.31 -66.43Q335.37 -66.43 331.55 -62.59Q327.73 -58.74 327.73 -52.75Q327.73 -48.99 329.42 -46.06Q331.11 -43.12 334.38 -41.48Q337.64 -39.83 342.34 -39.83Z" fill="currentColor"/></g></svg></div>
+        <div class="cand-meta">
+          <b>Bricolage Grotesque 700</b>
+          <span class="stemval">21.5%<i>-5.6</i></span>
+        </div>
+        <div class="bar"><span style="width:61.4%"></span></div>
+      </div></div>
+    <div class="panel" style="margin-top:16px">
+      <h3>Waarom Archivo</h3>
+      <p style="font-size:15px;margin:0 0 12px">Chivo komt er het dichtst bij, maar heeft <b>geen breedte-as</b>. Die is hier wél nodig: <code style="font-family:var(--mono);font-size:12.5px">wdth 110</code> geeft het woordmerk de brede, stevige stand die bij een bot werktuig hoort, zonder een tweede fontbestand. Archivo gaat bovendien terug op laat-negentiende-eeuwse Amerikaanse grotesques — het register van machinenaamplaatjes.</p>
+      <p style="font-size:15px;margin:0 0 12px;color:var(--zacht)">Afgevallen: Instrument Sans en Bricolage zijn te licht op 700 en hebben geen zwaardere variabele stand die de match haalt. Public Sans schiet er ruim overheen. Bricolage heeft eigenzinnige details die met de blunte mark vechten.</p>
+      <table>
+        <tr><th>Woordmerk (vast)</th><td>Archivo 800 · wdth 110 · tracking −1.4 %</td></tr>
+        <tr><th>Koppen</th><td>Archivo 700 · tracking −2 %</td></tr>
+        <tr><th>Interface</th><td>Archivo 500–600</td></tr>
+        <tr><th>Broodtekst</th><td>Archivo 400</td></tr>
+        <tr><th>Licentie</th><td>SIL OFL 1.1 · Google Fonts</td></tr>
+      </table>
+      <p style="font-size:14px;margin:16px 0 0;color:var(--zacht)"><b style="color:var(--tekst)">Het woordmerk is omgezet naar contouren.</b> Er is geen font nodig om het te tonen en het verschuift niet als Archivo ontbreekt. Zet het nooit na in een live font — gebruik het bestand.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><h2><span class="n">04</span> Lockups</h2>
+      <p>Kaphoogte woordmerk = 44 tegen een markhoogte van 48. De basislijn valt gelijk met de onderkant van de mark; de tussenruimte is exact één streekbreedte.</p></div>
+    <div class="locks">
+      <div class="lockcell on-kalk"><div><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 246.55 60.84" fill="none" role="img" aria-hidden="true" focusable="false">
+<g transform="translate(-11 -8)">
+<path d="M17.5 49.5V14.5H29.5A17 17 0 0 1 46.5 31.5" stroke="#E4572E" stroke-width="13" stroke-linecap="round" stroke-linejoin="round" fill="none" clip-path="url(#knip-mark)"/>
+<path d="M11 21H24V49.5A6.5 6.5 0 0 1 11 49.5Z" fill="#141A1D"/>
+</g>
+<g transform="translate(55.00 48.00) scale(0.44000)"><path d="M0 0V-100.19H63.98Q74.04 -100.19 81.33 -95.97Q88.63 -91.75 92.61 -84.25Q96.59 -76.75 96.59 -66.75Q96.59 -56.65 92.52 -49.05Q88.44 -41.44 81.04 -37.24Q73.64 -33.04 63.59 -33.04H27.57V0ZM27.57 -53.93H56.61Q62.9 -53.93 66.19 -57.23Q69.49 -60.53 69.49 -66.6Q69.49 -70.72 68.03 -73.49Q66.58 -76.27 63.74 -77.74Q60.9 -79.21 56.61 -79.21H27.57ZM106.94 0V-105.58H132.05V0ZM189.78 1.75Q175.93 1.75 165.89 -2.67Q155.85 -7.09 150.42 -16.02Q144.99 -24.95 144.99 -38.44Q144.99 -52.05 150.42 -60.94Q155.85 -69.83 165.89 -74.22Q175.93 -78.61 189.78 -78.61Q203.68 -78.61 213.72 -74.22Q223.76 -69.83 229.19 -60.94Q234.62 -52.05 234.62 -38.44Q234.62 -24.95 229.19 -16.02Q223.76 -7.09 213.72 -2.67Q203.68 1.75 189.78 1.75ZM189.78 -15.98Q196.4 -15.98 200.67 -18.39Q204.94 -20.8 206.97 -25.33Q209 -29.87 209 -36.2V-40.64Q209 -47 206.97 -51.54Q204.94 -56.09 200.67 -58.49Q196.4 -60.88 189.78 -60.88Q183.16 -60.88 178.91 -58.49Q174.67 -56.09 172.64 -51.54Q170.61 -47 170.61 -40.64V-36.2Q170.61 -29.87 172.64 -25.33Q174.67 -20.8 178.91 -18.39Q183.16 -15.98 189.78 -15.98ZM289.63 1.75Q275.47 1.75 265.26 -2.54Q255.06 -6.82 249.59 -15.73Q244.12 -24.64 244.12 -38.42Q244.12 -52.03 249.52 -60.93Q254.92 -69.83 264.89 -74.22Q274.87 -78.61 288.61 -78.61Q302.57 -78.61 312.32 -74.34Q322.07 -70.07 327.16 -61.32Q332.25 -52.58 332.25 -39.03V-33.49H269.84Q270.06 -27.35 272.25 -23.2Q274.43 -19.05 278.78 -17.02Q283.13 -14.99 289.65 -14.99Q293.39 -14.99 296.55 -15.84Q299.7 -16.69 302.03 -18.29Q304.36 -19.88 305.67 -22.16Q306.98 -24.43 307.06 -27.28H332.11Q332.11 -20.4 329.1 -14.98Q326.1 -9.56 320.5 -5.85Q314.9 -2.13 307.07 -0.19Q299.25 1.75 289.63 1.75ZM270 -47.08H306.13Q306.13 -50.7 304.93 -53.44Q303.73 -56.18 301.52 -58.06Q299.3 -59.95 296.22 -60.89Q293.14 -61.83 289.36 -61.83Q283.49 -61.83 279.38 -60.09Q275.27 -58.35 272.98 -55.06Q270.68 -51.77 270 -47.08ZM358 29.17Q352.56 29.17 347.86 26.98Q343.15 24.79 340.31 20.64Q337.47 16.49 337.47 10.79Q337.47 4.71 341.34 0.41Q345.2 -3.89 350.67 -6.01Q346.71 -8.23 344.59 -11.65Q342.47 -15.07 342.47 -19.23Q342.47 -25.2 346.75 -29.4Q351.03 -33.59 357.43 -34.75Q351.87 -37.98 348.41 -42.88Q344.96 -47.77 344.96 -53.67Q344.96 -62.75 350.06 -68.22Q355.16 -73.68 364.31 -76.14Q373.46 -78.61 385.49 -78.61Q390.04 -78.61 393.87 -78.22Q397.71 -77.84 400.94 -77.06Q407.39 -80.57 410.04 -84.41Q412.7 -88.25 412.87 -90.63H435.35Q435.32 -84.86 433.1 -80.85Q430.87 -76.83 426.77 -74.31Q422.67 -71.79 416.93 -70.43Q421.21 -67.28 423.56 -62.98Q425.91 -58.67 425.91 -53.56Q425.91 -45.04 421.45 -39.5Q416.99 -33.96 409.06 -31.26Q401.13 -28.56 390.63 -28.56H376.06Q371.75 -28.56 369.72 -27.28Q367.68 -26.01 367.68 -23.84Q367.68 -21.78 369.52 -20.36Q371.36 -18.94 376.03 -18.94H411.46Q423.13 -18.94 429.15 -12.47Q435.17 -6 435.17 4.04Q435.17 11.61 431.08 17.25Q427 22.89 420.18 26.03Q413.35 29.17 405.03 29.17ZM370.19 14.29H401.57Q403.95 14.29 405.84 13.38Q407.72 12.47 408.83 10.73Q409.94 9 409.94 6.76Q409.94 3.2 407.59 1.28Q405.23 -0.64 401.89 -0.64H370.32Q366.91 -0.64 364.6 1.29Q362.29 3.22 362.29 6.65Q362.29 10.08 364.54 12.18Q366.79 14.29 370.19 14.29ZM385.46 -42.88Q392.91 -42.88 396.98 -45.5Q401.06 -48.11 401.06 -53.59Q401.06 -59.07 396.98 -61.68Q392.91 -64.28 385.46 -64.28Q378.24 -64.28 374.1 -61.68Q369.96 -59.07 369.96 -53.59Q369.96 -49.95 371.76 -47.54Q373.57 -45.13 377.04 -44.01Q380.51 -42.88 385.46 -42.88Z" fill="#141A1D"/></g>
+</svg><div class="cap">lockup-horizontal</div></div></div>
+      <div class="lockcell on-nacht"><div><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 246.55 60.84" fill="none" role="img" aria-hidden="true" focusable="false">
+<g transform="translate(-11 -8)">
+<path d="M17.5 49.5V14.5H29.5A17 17 0 0 1 46.5 31.5" stroke="#E4572E" stroke-width="13" stroke-linecap="round" stroke-linejoin="round" fill="none" clip-path="url(#knip-mark)"/>
+<path d="M11 21H24V49.5A6.5 6.5 0 0 1 11 49.5Z" fill="#FFFFFF"/>
+</g>
+<g transform="translate(55.00 48.00) scale(0.44000)"><path d="M0 0V-100.19H63.98Q74.04 -100.19 81.33 -95.97Q88.63 -91.75 92.61 -84.25Q96.59 -76.75 96.59 -66.75Q96.59 -56.65 92.52 -49.05Q88.44 -41.44 81.04 -37.24Q73.64 -33.04 63.59 -33.04H27.57V0ZM27.57 -53.93H56.61Q62.9 -53.93 66.19 -57.23Q69.49 -60.53 69.49 -66.6Q69.49 -70.72 68.03 -73.49Q66.58 -76.27 63.74 -77.74Q60.9 -79.21 56.61 -79.21H27.57ZM106.94 0V-105.58H132.05V0ZM189.78 1.75Q175.93 1.75 165.89 -2.67Q155.85 -7.09 150.42 -16.02Q144.99 -24.95 144.99 -38.44Q144.99 -52.05 150.42 -60.94Q155.85 -69.83 165.89 -74.22Q175.93 -78.61 189.78 -78.61Q203.68 -78.61 213.72 -74.22Q223.76 -69.83 229.19 -60.94Q234.62 -52.05 234.62 -38.44Q234.62 -24.95 229.19 -16.02Q223.76 -7.09 213.72 -2.67Q203.68 1.75 189.78 1.75ZM189.78 -15.98Q196.4 -15.98 200.67 -18.39Q204.94 -20.8 206.97 -25.33Q209 -29.87 209 -36.2V-40.64Q209 -47 206.97 -51.54Q204.94 -56.09 200.67 -58.49Q196.4 -60.88 189.78 -60.88Q183.16 -60.88 178.91 -58.49Q174.67 -56.09 172.64 -51.54Q170.61 -47 170.61 -40.64V-36.2Q170.61 -29.87 172.64 -25.33Q174.67 -20.8 178.91 -18.39Q183.16 -15.98 189.78 -15.98ZM289.63 1.75Q275.47 1.75 265.26 -2.54Q255.06 -6.82 249.59 -15.73Q244.12 -24.64 244.12 -38.42Q244.12 -52.03 249.52 -60.93Q254.92 -69.83 264.89 -74.22Q274.87 -78.61 288.61 -78.61Q302.57 -78.61 312.32 -74.34Q322.07 -70.07 327.16 -61.32Q332.25 -52.58 332.25 -39.03V-33.49H269.84Q270.06 -27.35 272.25 -23.2Q274.43 -19.05 278.78 -17.02Q283.13 -14.99 289.65 -14.99Q293.39 -14.99 296.55 -15.84Q299.7 -16.69 302.03 -18.29Q304.36 -19.88 305.67 -22.16Q306.98 -24.43 307.06 -27.28H332.11Q332.11 -20.4 329.1 -14.98Q326.1 -9.56 320.5 -5.85Q314.9 -2.13 307.07 -0.19Q299.25 1.75 289.63 1.75ZM270 -47.08H306.13Q306.13 -50.7 304.93 -53.44Q303.73 -56.18 301.52 -58.06Q299.3 -59.95 296.22 -60.89Q293.14 -61.83 289.36 -61.83Q283.49 -61.83 279.38 -60.09Q275.27 -58.35 272.98 -55.06Q270.68 -51.77 270 -47.08ZM358 29.17Q352.56 29.17 347.86 26.98Q343.15 24.79 340.31 20.64Q337.47 16.49 337.47 10.79Q337.47 4.71 341.34 0.41Q345.2 -3.89 350.67 -6.01Q346.71 -8.23 344.59 -11.65Q342.47 -15.07 342.47 -19.23Q342.47 -25.2 346.75 -29.4Q351.03 -33.59 357.43 -34.75Q351.87 -37.98 348.41 -42.88Q344.96 -47.77 344.96 -53.67Q344.96 -62.75 350.06 -68.22Q355.16 -73.68 364.31 -76.14Q373.46 -78.61 385.49 -78.61Q390.04 -78.61 393.87 -78.22Q397.71 -77.84 400.94 -77.06Q407.39 -80.57 410.04 -84.41Q412.7 -88.25 412.87 -90.63H435.35Q435.32 -84.86 433.1 -80.85Q430.87 -76.83 426.77 -74.31Q422.67 -71.79 416.93 -70.43Q421.21 -67.28 423.56 -62.98Q425.91 -58.67 425.91 -53.56Q425.91 -45.04 421.45 -39.5Q416.99 -33.96 409.06 -31.26Q401.13 -28.56 390.63 -28.56H376.06Q371.75 -28.56 369.72 -27.28Q367.68 -26.01 367.68 -23.84Q367.68 -21.78 369.52 -20.36Q371.36 -18.94 376.03 -18.94H411.46Q423.13 -18.94 429.15 -12.47Q435.17 -6 435.17 4.04Q435.17 11.61 431.08 17.25Q427 22.89 420.18 26.03Q413.35 29.17 405.03 29.17ZM370.19 14.29H401.57Q403.95 14.29 405.84 13.38Q407.72 12.47 408.83 10.73Q409.94 9 409.94 6.76Q409.94 3.2 407.59 1.28Q405.23 -0.64 401.89 -0.64H370.32Q366.91 -0.64 364.6 1.29Q362.29 3.22 362.29 6.65Q362.29 10.08 364.54 12.18Q366.79 14.29 370.19 14.29ZM385.46 -42.88Q392.91 -42.88 396.98 -45.5Q401.06 -48.11 401.06 -53.59Q401.06 -59.07 396.98 -61.68Q392.91 -64.28 385.46 -64.28Q378.24 -64.28 374.1 -61.68Q369.96 -59.07 369.96 -53.59Q369.96 -49.95 371.76 -47.54Q373.57 -45.13 377.04 -44.01Q380.51 -42.88 385.46 -42.88Z" fill="#FFFFFF"/></g>
+</svg><div class="cap">-white</div></div></div>
+      <div class="lockcell on-kalk"><div style="max-width:150px;margin:0 auto"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 191.55 120.29" fill="none" role="img" aria-hidden="true" focusable="false">
+<g transform="translate(63.78 -8)">
+<path d="M17.5 49.5V14.5H29.5A17 17 0 0 1 46.5 31.5" stroke="#E4572E" stroke-width="13" stroke-linecap="round" stroke-linejoin="round" fill="none" clip-path="url(#knip-mark)"/>
+<path d="M11 21H24V49.5A6.5 6.5 0 0 1 11 49.5Z" fill="#141A1D"/>
+</g>
+<g transform="translate(0.00 107.45) scale(0.44000)"><path d="M0 0V-100.19H63.98Q74.04 -100.19 81.33 -95.97Q88.63 -91.75 92.61 -84.25Q96.59 -76.75 96.59 -66.75Q96.59 -56.65 92.52 -49.05Q88.44 -41.44 81.04 -37.24Q73.64 -33.04 63.59 -33.04H27.57V0ZM27.57 -53.93H56.61Q62.9 -53.93 66.19 -57.23Q69.49 -60.53 69.49 -66.6Q69.49 -70.72 68.03 -73.49Q66.58 -76.27 63.74 -77.74Q60.9 -79.21 56.61 -79.21H27.57ZM106.94 0V-105.58H132.05V0ZM189.78 1.75Q175.93 1.75 165.89 -2.67Q155.85 -7.09 150.42 -16.02Q144.99 -24.95 144.99 -38.44Q144.99 -52.05 150.42 -60.94Q155.85 -69.83 165.89 -74.22Q175.93 -78.61 189.78 -78.61Q203.68 -78.61 213.72 -74.22Q223.76 -69.83 229.19 -60.94Q234.62 -52.05 234.62 -38.44Q234.62 -24.95 229.19 -16.02Q223.76 -7.09 213.72 -2.67Q203.68 1.75 189.78 1.75ZM189.78 -15.98Q196.4 -15.98 200.67 -18.39Q204.94 -20.8 206.97 -25.33Q209 -29.87 209 -36.2V-40.64Q209 -47 206.97 -51.54Q204.94 -56.09 200.67 -58.49Q196.4 -60.88 189.78 -60.88Q183.16 -60.88 178.91 -58.49Q174.67 -56.09 172.64 -51.54Q170.61 -47 170.61 -40.64V-36.2Q170.61 -29.87 172.64 -25.33Q174.67 -20.8 178.91 -18.39Q183.16 -15.98 189.78 -15.98ZM289.63 1.75Q275.47 1.75 265.26 -2.54Q255.06 -6.82 249.59 -15.73Q244.12 -24.64 244.12 -38.42Q244.12 -52.03 249.52 -60.93Q254.92 -69.83 264.89 -74.22Q274.87 -78.61 288.61 -78.61Q302.57 -78.61 312.32 -74.34Q322.07 -70.07 327.16 -61.32Q332.25 -52.58 332.25 -39.03V-33.49H269.84Q270.06 -27.35 272.25 -23.2Q274.43 -19.05 278.78 -17.02Q283.13 -14.99 289.65 -14.99Q293.39 -14.99 296.55 -15.84Q299.7 -16.69 302.03 -18.29Q304.36 -19.88 305.67 -22.16Q306.98 -24.43 307.06 -27.28H332.11Q332.11 -20.4 329.1 -14.98Q326.1 -9.56 320.5 -5.85Q314.9 -2.13 307.07 -0.19Q299.25 1.75 289.63 1.75ZM270 -47.08H306.13Q306.13 -50.7 304.93 -53.44Q303.73 -56.18 301.52 -58.06Q299.3 -59.95 296.22 -60.89Q293.14 -61.83 289.36 -61.83Q283.49 -61.83 279.38 -60.09Q275.27 -58.35 272.98 -55.06Q270.68 -51.77 270 -47.08ZM358 29.17Q352.56 29.17 347.86 26.98Q343.15 24.79 340.31 20.64Q337.47 16.49 337.47 10.79Q337.47 4.71 341.34 0.41Q345.2 -3.89 350.67 -6.01Q346.71 -8.23 344.59 -11.65Q342.47 -15.07 342.47 -19.23Q342.47 -25.2 346.75 -29.4Q351.03 -33.59 357.43 -34.75Q351.87 -37.98 348.41 -42.88Q344.96 -47.77 344.96 -53.67Q344.96 -62.75 350.06 -68.22Q355.16 -73.68 364.31 -76.14Q373.46 -78.61 385.49 -78.61Q390.04 -78.61 393.87 -78.22Q397.71 -77.84 400.94 -77.06Q407.39 -80.57 410.04 -84.41Q412.7 -88.25 412.87 -90.63H435.35Q435.32 -84.86 433.1 -80.85Q430.87 -76.83 426.77 -74.31Q422.67 -71.79 416.93 -70.43Q421.21 -67.28 423.56 -62.98Q425.91 -58.67 425.91 -53.56Q425.91 -45.04 421.45 -39.5Q416.99 -33.96 409.06 -31.26Q401.13 -28.56 390.63 -28.56H376.06Q371.75 -28.56 369.72 -27.28Q367.68 -26.01 367.68 -23.84Q367.68 -21.78 369.52 -20.36Q371.36 -18.94 376.03 -18.94H411.46Q423.13 -18.94 429.15 -12.47Q435.17 -6 435.17 4.04Q435.17 11.61 431.08 17.25Q427 22.89 420.18 26.03Q413.35 29.17 405.03 29.17ZM370.19 14.29H401.57Q403.95 14.29 405.84 13.38Q407.72 12.47 408.83 10.73Q409.94 9 409.94 6.76Q409.94 3.2 407.59 1.28Q405.23 -0.64 401.89 -0.64H370.32Q366.91 -0.64 364.6 1.29Q362.29 3.22 362.29 6.65Q362.29 10.08 364.54 12.18Q366.79 14.29 370.19 14.29ZM385.46 -42.88Q392.91 -42.88 396.98 -45.5Q401.06 -48.11 401.06 -53.59Q401.06 -59.07 396.98 -61.68Q392.91 -64.28 385.46 -64.28Q378.24 -64.28 374.1 -61.68Q369.96 -59.07 369.96 -53.59Q369.96 -49.95 371.76 -47.54Q373.57 -45.13 377.04 -44.01Q380.51 -42.88 385.46 -42.88Z" fill="#141A1D"/></g>
+</svg><div class="cap">lockup-stacked</div></div></div>
+      <div class="lockcell on-nacht"><div style="max-width:150px;margin:0 auto"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 191.55 120.29" fill="none" role="img" aria-hidden="true" focusable="false">
+<g transform="translate(63.78 -8)">
+<path d="M17.5 49.5V14.5H29.5A17 17 0 0 1 46.5 31.5" stroke="#E4572E" stroke-width="13" stroke-linecap="round" stroke-linejoin="round" fill="none" clip-path="url(#knip-mark)"/>
+<path d="M11 21H24V49.5A6.5 6.5 0 0 1 11 49.5Z" fill="#FFFFFF"/>
+</g>
+<g transform="translate(0.00 107.45) scale(0.44000)"><path d="M0 0V-100.19H63.98Q74.04 -100.19 81.33 -95.97Q88.63 -91.75 92.61 -84.25Q96.59 -76.75 96.59 -66.75Q96.59 -56.65 92.52 -49.05Q88.44 -41.44 81.04 -37.24Q73.64 -33.04 63.59 -33.04H27.57V0ZM27.57 -53.93H56.61Q62.9 -53.93 66.19 -57.23Q69.49 -60.53 69.49 -66.6Q69.49 -70.72 68.03 -73.49Q66.58 -76.27 63.74 -77.74Q60.9 -79.21 56.61 -79.21H27.57ZM106.94 0V-105.58H132.05V0ZM189.78 1.75Q175.93 1.75 165.89 -2.67Q155.85 -7.09 150.42 -16.02Q144.99 -24.95 144.99 -38.44Q144.99 -52.05 150.42 -60.94Q155.85 -69.83 165.89 -74.22Q175.93 -78.61 189.78 -78.61Q203.68 -78.61 213.72 -74.22Q223.76 -69.83 229.19 -60.94Q234.62 -52.05 234.62 -38.44Q234.62 -24.95 229.19 -16.02Q223.76 -7.09 213.72 -2.67Q203.68 1.75 189.78 1.75ZM189.78 -15.98Q196.4 -15.98 200.67 -18.39Q204.94 -20.8 206.97 -25.33Q209 -29.87 209 -36.2V-40.64Q209 -47 206.97 -51.54Q204.94 -56.09 200.67 -58.49Q196.4 -60.88 189.78 -60.88Q183.16 -60.88 178.91 -58.49Q174.67 -56.09 172.64 -51.54Q170.61 -47 170.61 -40.64V-36.2Q170.61 -29.87 172.64 -25.33Q174.67 -20.8 178.91 -18.39Q183.16 -15.98 189.78 -15.98ZM289.63 1.75Q275.47 1.75 265.26 -2.54Q255.06 -6.82 249.59 -15.73Q244.12 -24.64 244.12 -38.42Q244.12 -52.03 249.52 -60.93Q254.92 -69.83 264.89 -74.22Q274.87 -78.61 288.61 -78.61Q302.57 -78.61 312.32 -74.34Q322.07 -70.07 327.16 -61.32Q332.25 -52.58 332.25 -39.03V-33.49H269.84Q270.06 -27.35 272.25 -23.2Q274.43 -19.05 278.78 -17.02Q283.13 -14.99 289.65 -14.99Q293.39 -14.99 296.55 -15.84Q299.7 -16.69 302.03 -18.29Q304.36 -19.88 305.67 -22.16Q306.98 -24.43 307.06 -27.28H332.11Q332.11 -20.4 329.1 -14.98Q326.1 -9.56 320.5 -5.85Q314.9 -2.13 307.07 -0.19Q299.25 1.75 289.63 1.75ZM270 -47.08H306.13Q306.13 -50.7 304.93 -53.44Q303.73 -56.18 301.52 -58.06Q299.3 -59.95 296.22 -60.89Q293.14 -61.83 289.36 -61.83Q283.49 -61.83 279.38 -60.09Q275.27 -58.35 272.98 -55.06Q270.68 -51.77 270 -47.08ZM358 29.17Q352.56 29.17 347.86 26.98Q343.15 24.79 340.31 20.64Q337.47 16.49 337.47 10.79Q337.47 4.71 341.34 0.41Q345.2 -3.89 350.67 -6.01Q346.71 -8.23 344.59 -11.65Q342.47 -15.07 342.47 -19.23Q342.47 -25.2 346.75 -29.4Q351.03 -33.59 357.43 -34.75Q351.87 -37.98 348.41 -42.88Q344.96 -47.77 344.96 -53.67Q344.96 -62.75 350.06 -68.22Q355.16 -73.68 364.31 -76.14Q373.46 -78.61 385.49 -78.61Q390.04 -78.61 393.87 -78.22Q397.71 -77.84 400.94 -77.06Q407.39 -80.57 410.04 -84.41Q412.7 -88.25 412.87 -90.63H435.35Q435.32 -84.86 433.1 -80.85Q430.87 -76.83 426.77 -74.31Q422.67 -71.79 416.93 -70.43Q421.21 -67.28 423.56 -62.98Q425.91 -58.67 425.91 -53.56Q425.91 -45.04 421.45 -39.5Q416.99 -33.96 409.06 -31.26Q401.13 -28.56 390.63 -28.56H376.06Q371.75 -28.56 369.72 -27.28Q367.68 -26.01 367.68 -23.84Q367.68 -21.78 369.52 -20.36Q371.36 -18.94 376.03 -18.94H411.46Q423.13 -18.94 429.15 -12.47Q435.17 -6 435.17 4.04Q435.17 11.61 431.08 17.25Q427 22.89 420.18 26.03Q413.35 29.17 405.03 29.17ZM370.19 14.29H401.57Q403.95 14.29 405.84 13.38Q407.72 12.47 408.83 10.73Q409.94 9 409.94 6.76Q409.94 3.2 407.59 1.28Q405.23 -0.64 401.89 -0.64H370.32Q366.91 -0.64 364.6 1.29Q362.29 3.22 362.29 6.65Q362.29 10.08 364.54 12.18Q366.79 14.29 370.19 14.29ZM385.46 -42.88Q392.91 -42.88 396.98 -45.5Q401.06 -48.11 401.06 -53.59Q401.06 -59.07 396.98 -61.68Q392.91 -64.28 385.46 -64.28Q378.24 -64.28 374.1 -61.68Q369.96 -59.07 369.96 -53.59Q369.96 -49.95 371.76 -47.54Q373.57 -45.13 377.04 -44.01Q380.51 -42.88 385.46 -42.88Z" fill="#FFFFFF"/></g>
+</svg><div class="cap">-white</div></div></div>
+      <div class="lockcell on-kalk markonly"><div><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" role="img" aria-hidden="true" focusable="false">
+<path d="M17.5 49.5V14.5H29.5A17 17 0 0 1 46.5 31.5" stroke="#E4572E" stroke-width="13" stroke-linecap="round" stroke-linejoin="round" fill="none" clip-path="url(#knip-mark)"/>
+<path d="M11 21H24V49.5A6.5 6.5 0 0 1 11 49.5Z" fill="#141A1D"/>
+</svg><div class="cap">mark</div></div></div>
+      <div class="lockcell on-nacht tile"><div><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" role="img" aria-hidden="true" focusable="false">
+<rect width="64" height="64" rx="14" fill="#141A1D"/>
+<path d="M19.5 46.5V17.5H29.5A14 14 0 0 1 43.5 31.5" stroke="#E4572E" stroke-width="11" stroke-linecap="round" stroke-linejoin="round" fill="none" clip-path="url(#knip-tegel)"/>
+<path d="M14 23H25V46.5A5.5 5.5 0 0 1 14 46.5Z" fill="#F4F6F2"/>
+</svg><div class="cap">mark-tile · avatar</div></div></div>
+    </div>
+    <div class="markgrid" style="margin-top:16px">
+      <div class="panel"><h3>Vrije ruimte</h3><svg viewBox="-6 -6 76 76" aria-hidden="true" class="draw">
+  <rect x="-2" y="-5" width="68" height="74" fill="none" stroke="#E4572E"
+        stroke-width=".9" stroke-dasharray="3 2.5"/>
+  <rect x="11" y="8" width="42" height="48" fill="none" stroke="currentColor"
+        stroke-width=".6" opacity=".35"/>
+  <g stroke="#E4572E" stroke-width=".9">
+    <path d="M11 -5v13M11 56v13M-2 8h13M53 8h13"/>
+  </g>
+  <path d="M17.5 14.5V49.5" stroke="currentColor" stroke-width="13" stroke-linecap="round"/>
+  <path d="M17.5 14.5H29.5A17 17 0 0 1 46.5 31.5" stroke="#E4572E" stroke-width="13"
+        stroke-linecap="round" fill="none"/>
+</svg>
+        <p style="font-size:14.5px;margin:14px 0 0">Rondom minimaal <b>één streekbreedte</b> vrij — 13 eenheden op een markhoogte van 48, oftewel 27 % van de hoogte. Niets in die marge.</p></div>
+      <div class="panel"><h3>Minimummaten</h3>
+        <table>
+          <tr><th>Mark</th><td class="v">16 px</td></tr>
+          <tr><th>Horizontale lockup</th><td class="v">96 px breed</td></tr>
+          <tr><th>Gestapelde lockup</th><td class="v">64 px breed</td></tr>
+        </table>
+        <p style="font-size:14.5px;margin:16px 0 0">Onder 32 px altijd <code style="font-family:var(--mono);font-size:12.5px">favicon.svg</code>: voller kader en een naar verhouding <i>lichtere</i> streek (25 % tegen 27 %). Zware streken lopen dicht op klein formaat — dat compenseer je door ze dunner te maken, niet dikker.</p>
+      </div>
+    </div>
+    <h3 style="font-size:13px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--zacht);margin:26px 0 12px">Faviconproef</h3>
+    <div class="fav">
+      <figure><svg class="f16" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" role="img" aria-hidden="true" focusable="false">
+<path d="M15 53V11H31A19 19 0 0 1 50 30" stroke="#E4572E" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" fill="none" clip-path="url(#knip-favicon)"/>
+<path d="M8 18H22V53A7 7 0 0 1 8 53Z" fill="#141A1D"/>
+</svg><figcaption>16</figcaption></figure>
+      <figure><svg class="f24" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" role="img" aria-hidden="true" focusable="false">
+<path d="M15 53V11H31A19 19 0 0 1 50 30" stroke="#E4572E" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" fill="none" clip-path="url(#knip-favicon)"/>
+<path d="M8 18H22V53A7 7 0 0 1 8 53Z" fill="#141A1D"/>
+</svg><figcaption>24</figcaption></figure>
+      <figure><svg class="f32" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" role="img" aria-hidden="true" focusable="false">
+<path d="M15 53V11H31A19 19 0 0 1 50 30" stroke="#E4572E" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" fill="none" clip-path="url(#knip-favicon)"/>
+<path d="M8 18H22V53A7 7 0 0 1 8 53Z" fill="#141A1D"/>
+</svg><figcaption>32</figcaption></figure>
+      <figure><svg class="f48" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" role="img" aria-hidden="true" focusable="false">
+<path d="M15 53V11H31A19 19 0 0 1 50 30" stroke="#E4572E" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" fill="none" clip-path="url(#knip-favicon)"/>
+<path d="M8 18H22V53A7 7 0 0 1 8 53Z" fill="#141A1D"/>
+</svg><figcaption>48</figcaption></figure>
+      <figure><svg class="f16" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" role="img" aria-hidden="true" focusable="false">
+<path d="M17.5 49.5V14.5H29.5A17 17 0 0 1 46.5 31.5" stroke="#E4572E" stroke-width="13" stroke-linecap="round" stroke-linejoin="round" fill="none" clip-path="url(#knip-mark)"/>
+<path d="M11 21H24V49.5A6.5 6.5 0 0 1 11 49.5Z" fill="#141A1D"/>
+</svg><figcaption>16 · master</figcaption></figure>
+      <figure><svg class="f32" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" role="img" aria-hidden="true" focusable="false">
+<path d="M17.5 49.5V14.5H29.5A17 17 0 0 1 46.5 31.5" stroke="#E4572E" stroke-width="13" stroke-linecap="round" stroke-linejoin="round" fill="none" clip-path="url(#knip-mark)"/>
+<path d="M11 21H24V49.5A6.5 6.5 0 0 1 11 49.5Z" fill="#141A1D"/>
+</svg><figcaption>32 · master</figcaption></figure>
+    </div>
+    <div class="fav dark">
+      <figure><svg class="f16" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" role="img" aria-hidden="true" focusable="false">
+<path d="M15 53V11H31A19 19 0 0 1 50 30" stroke="#E4572E" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" fill="none" clip-path="url(#knip-favicon)"/>
+<path d="M8 18H22V53A7 7 0 0 1 8 53Z" fill="#FFFFFF"/>
+</svg><figcaption>16</figcaption></figure>
+      <figure><svg class="f24" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" role="img" aria-hidden="true" focusable="false">
+<path d="M15 53V11H31A19 19 0 0 1 50 30" stroke="#E4572E" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" fill="none" clip-path="url(#knip-favicon)"/>
+<path d="M8 18H22V53A7 7 0 0 1 8 53Z" fill="#FFFFFF"/>
+</svg><figcaption>24</figcaption></figure>
+      <figure><svg class="f32" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" role="img" aria-hidden="true" focusable="false">
+<path d="M15 53V11H31A19 19 0 0 1 50 30" stroke="#E4572E" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" fill="none" clip-path="url(#knip-favicon)"/>
+<path d="M8 18H22V53A7 7 0 0 1 8 53Z" fill="#FFFFFF"/>
+</svg><figcaption>32</figcaption></figure>
+      <figure><svg class="f48" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" role="img" aria-hidden="true" focusable="false">
+<path d="M15 53V11H31A19 19 0 0 1 50 30" stroke="#E4572E" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" fill="none" clip-path="url(#knip-favicon)"/>
+<path d="M8 18H22V53A7 7 0 0 1 8 53Z" fill="#FFFFFF"/>
+</svg><figcaption>48</figcaption></figure>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><h2><span class="n">05</span> Wat niet mag</h2>
+      <p>Zes fouten die de mark zijn betekenis kosten in plaats van alleen zijn uiterlijk.</p></div>
+    <div class="donts"><figure class="dont">
+      <div class="dont-art"><svg viewBox="0 0 64 64" aria-hidden="true"><path d="M17.5 49.5V14.5H29.5A17 17 0 0 1 46.5 31.5" stroke="#141A1D" stroke-width="13" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M11 21H24V49.5A6.5 6.5 0 0 1 11 49.5Z" fill="#E4572E"/></svg></div>
+      <figcaption><b>Kleur omgedraaid</b>De steel draagt, het blad snijdt. Andersom is het betekenisloos.</figcaption></figure><figure class="dont">
+      <div class="dont-art"><svg viewBox="0 0 64 64" aria-hidden="true"><path d="M17.5 49.5V14.5H29.5A17 17 0 0 1 29.5 48.5H17.5" stroke="#E4572E" stroke-width="13" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M11 21H24V49.5A6.5 6.5 0 0 1 11 49.5Z" fill="#141A1D"/></svg></div>
+      <figcaption><b>Gesloten tot een P</b>Dan is het een letter en geen werktuig meer.</figcaption></figure><figure class="dont">
+      <div class="dont-art"><svg viewBox="0 0 64 64" aria-hidden="true"><g transform="rotate(-32 32 32)"><path d="M17.5 49.5V14.5H29.5A17 17 0 0 1 46.5 31.5" stroke="#E4572E" stroke-width="13" stroke-linecap="round" stroke-linejoin="round" fill="none" clip-path="url(#knip-mark)"/><path d="M11 21H24V49.5A6.5 6.5 0 0 1 11 49.5Z" fill="#141A1D"/></g></svg></div>
+      <figcaption><b>Geroteerd</b>De voor loopt horizontaal. Altijd.</figcaption></figure><figure class="dont">
+      <div class="dont-art"><svg viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="g1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#E4572E"/><stop offset="1" stop-color="#7B2FF7"/></linearGradient></defs><path d="M17.5 49.5V14.5H29.5A17 17 0 0 1 46.5 31.5" stroke="url(#g1)" stroke-width="13" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M11 21H24V49.5A6.5 6.5 0 0 1 11 49.5Z" fill="#141A1D"/></svg></div>
+      <figcaption><b>Verloop</b>Vlakke kleur. Geen verloop, schaduw of omlijning.</figcaption></figure><figure class="dont">
+      <div class="dont-art"><svg viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" fill="#111619"/><path d="M17.5 49.5V14.5H29.5A17 17 0 0 1 46.5 31.5" stroke="#E4572E" stroke-width="13" stroke-linecap="round" stroke-linejoin="round" fill="none" clip-path="url(#knip-mark)"/><path d="M11 21H24V49.5A6.5 6.5 0 0 1 11 49.5Z" fill="#141A1D"/></svg></div>
+      <figcaption><b>Voor op Nacht</b>1.04:1 — de steel verdwijnt. Gebruik mark-white.svg.</figcaption></figure><figure class="dont">
+      <div class="dont-art"><svg viewBox="0 0 64 64" aria-hidden="true"><g transform="translate(32 32) scale(1.35 .82) translate(-32 -32)"><path d="M17.5 49.5V14.5H29.5A17 17 0 0 1 46.5 31.5" stroke="#E4572E" stroke-width="13" stroke-linecap="round" stroke-linejoin="round" fill="none" clip-path="url(#knip-mark)"/><path d="M11 21H24V49.5A6.5 6.5 0 0 1 11 49.5Z" fill="#141A1D"/></g></svg></div>
+      <figcaption><b>Uitgerekt</b>Schaal het bestand, verander de verhouding niet.</figcaption></figure></div>
+  </section>
+
+  <section>
+    <div class="sec-head"><h2><span class="n">06</span> Naam en beeldmerk</h2>
+      <p>De code is Apache-2.0, en deze bestanden ook — §6 van die licentie verleent geen rechten op handelsnamen of merken, en die uitzondering is opzettelijk. <b>"Ploeg" en de mark zijn merken</b>, met hun voorwaarden in <code style="font-family:var(--mono);font-size:12.5px">docs/brand/TRADEMARK.md</code>.</p></div>
+    <div class="markgrid">
+      <div class="panel">
+        <h3>Mag zonder vragen</h3>
+        <p style="font-size:14.5px;margin:0 0 9px">De <b>onveranderde</b> mark reproduceren om naar Ploeg te verwijzen: artikelen, talks, slides, README-badges, integratielijsten, vergelijkingstabellen.</p>
+        <p style="font-size:14.5px;margin:0 0 9px">Zeggen dat je software met Ploeg <b>werkt</b>, het <b>ondersteunt</b> of erop <b>gebouwd</b> is.</p>
+        <p style="font-size:14.5px;margin:0">Een <b>onveranderde</b> Ploeg herdistribueren als Ploeg — pakket, image, chart-mirror.</p>
+      </div>
+      <div class="panel">
+        <h3>Vraagt toestemming</h3>
+        <p style="font-size:14.5px;margin:0 0 9px">Een <b>fork</b> onder de naam of de mark uitbrengen. De code forken mag vrij — geef hem alleen je eigen naam.</p>
+        <p style="font-size:14.5px;margin:0 0 9px">Elk gebruik dat <b>endorsement, affiliatie of certificering</b> suggereert.</p>
+        <p style="font-size:14.5px;margin:0">De mark <b>wijzigen</b>: verhouding, streekbreedte, bochtstraal, de tweekleursplitsing, rotatie, effecten.</p>
+      </div>
+    </div>
+    <div class="panel" style="margin-top:16px">
+      <h3>Waarom geen CC-licentie</h3>
+      <p style="font-size:15px;margin:0 0 12px">Er staat bewust <b>geen aparte licentie onder docs/brand/</b>. Een CC-licentie op een beeldmerk is het verkeerde instrument: hij is <b>onherroepelijk</b>, hij verleent het recht om de mark te <i>wijzigen</i>, en Creative Commons waarschuwt zelf dat het je merkrechten volledig kan kosten — een merk identificeert herkomst, en een kopieerrecht om het aan te passen ondergraaft precies die functie.</p>
+      <p style="font-size:15px;margin:0 0 12px">Share-alike is daarbovenop vijandig voor een merk: het legt een virale verplichting op materiaal dat het logo alleen maar afbeeldt — precies het gedrag dat een jong project wíl.</p>
+      <p style="font-size:14px;margin:0;color:var(--zacht)">Vastgelegd in <b style="color:var(--tekst)">ADR-0022</b>; <code style="font-family:var(--mono);font-size:12.5px">scripts/brand-marks.sh</code> bewaakt het in CI. Archivo is niet van ons: Omnibus-Type, SIL OFL 1.1 — die licentie staat er los van.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><h2><span class="n">07</span> Bestanden</h2>
+      <p>Alles in <code style="font-family:var(--mono);font-size:12.5px">docs/brand/</code>. Elke SVG heeft een viewBox — schalen doe je met CSS of door width/height te verwijderen.</p></div>
+    <div class="panel">
+      <table class="files">
+        <tr><td>mark.svg</td><td>tweekleur · Voor + Klei</td></tr>
+        <tr><td>mark-currentcolor.svg</td><td>thema-volgend · currentColor + var(--ploeg-klei)</td></tr>
+        <tr><td>mark-mono.svg</td><td>één pad · currentColor · geen naad in de hoek</td></tr>
+        <tr><td>mark-black · -white · -klei</td><td>één pad · vaste kleur</td></tr>
+        <tr><td>mark-tile.svg</td><td>aflopende tegel · avatar en app-icoon</td></tr>
+        <tr><td>favicon.svg · favicon-dark.svg</td><td>16–32 px</td></tr>
+        <tr><td>wordmark.svg · -white.svg</td><td>"Ploeg" · contouren</td></tr>
+        <tr><td>lockup-horizontal · -white · -mono</td><td>standaard</td></tr>
+        <tr><td>lockup-stacked · -white</td><td>vierkante ruimtes</td></tr>
+        <tr><td>tokens.css</td><td>kleur- en fonttokens</td></tr>
+        <tr><td>README.md</td><td>dit document, als bron</td></tr>
+        <tr><td>TRADEMARK.md</td><td>voorwaarden voor naam en mark</td></tr>
+      </table>
+    </div>
+  </section>
+
+  <footer class="end">
+    <span>docs/brand/</span><span>Archivo · SIL OFL 1.1</span>
+    <span>naam en mark: merk · ADR-0022</span>
+  </footer>
+</div>
+<script>
+  const r = document.documentElement, t = document.getElementById('theme');
+  t.addEventListener('click', () => {
+    const on = t.getAttribute('aria-pressed') === 'true';
+    t.setAttribute('aria-pressed', String(!on));
+    const d = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    r.setAttribute('data-theme', !on ? (d ? 'light' : 'dark') : (d ? 'dark' : 'light'));
+  });
+</script>
+</body>
+</html>

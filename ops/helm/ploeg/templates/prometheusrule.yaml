@@ -1,0 +1,94 @@
+{{- $pr := .Values.monitoring.prometheusRule }}
+{{- if $pr.enabled }}
+{{- $sel := $pr.selector | default (printf "job=%q,namespace=%q" (include "ploeg.fullname" .) .Release.Namespace) }}
+{{- $a := $pr.alerts }}
+{{- $runbook := $pr.runbookBaseUrl }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "ploeg.fullname" . }}
+  labels:
+    {{- include "ploeg.labels" . | nindent 4 }}
+    {{- with $pr.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: ploeg
+      rules:
+        {{- with $a.stuckShift }}
+        {{- if .enabled }}
+        - alert: PloegShiftStuck
+          expr: max by (team) (ploeg_shift_idle_seconds_max{ {{- $sel -}} }) > {{ mulf .idleHours 3600 }}
+          for: {{ .for }}
+          labels:
+            severity: {{ .severity }}
+          annotations:
+            summary: {{ printf "A Shift of team {{ $labels.team }} has made no Run progress for over %v hours" .idleHours | quote }}
+            description: "No Run has started, finished or checkpointed on an open Shift for {{ "{{" }} $value | humanizeDuration {{ "}}" }}. Lease and deadline renewals do not count as progress."
+            {{- if $runbook }}
+            runbook_url: {{ printf "%s#ploegshiftstuck" $runbook }}
+            {{- end }}
+        {{- end }}
+        {{- end }}
+        {{- with $a.expiredLease }}
+        {{- if .enabled }}
+        - alert: PloegLeaseExpired
+          expr: max(ploeg_lease_overdue_seconds_max{ {{- $sel -}} }) > {{ .overdueSeconds }}
+          for: {{ .for }}
+          labels:
+            severity: {{ .severity }}
+          annotations:
+            summary: "A Run holds a Lease past its expiry"
+            description: "The most overdue Lease expired {{ "{{" }} $value | humanizeDuration {{ "}}" }} ago and the sweep has not released it."
+            {{- if $runbook }}
+            runbook_url: {{ printf "%s#ploegleaseexpired" $runbook }}
+            {{- end }}
+        {{- end }}
+        {{- end }}
+        {{- with $a.leakedModelKey }}
+        {{- if .enabled }}
+        - alert: PloegModelKeyPastTTL
+          expr: max by (state) (ploeg_llm_key_ttl_overrun_seconds_max{ {{- $sel -}} }) > {{ .graceSeconds }}
+          for: {{ .for }}
+          labels:
+            severity: {{ .severity }}
+          annotations:
+            summary: "An inference account is still {{ "{{" }} $labels.state {{ "}}" }} past its key TTL"
+            description: "An account in state {{ "{{" }} $labels.state {{ "}}" }} outlived its key TTL by {{ "{{" }} $value | humanizeDuration {{ "}}" }}. Its gateway key may still be live."
+            {{- if $runbook }}
+            runbook_url: {{ printf "%s#ploegmodelkeypastttl" $runbook }}
+            {{- end }}
+        {{- end }}
+        {{- end }}
+        {{- with $a.spendSpike }}
+        {{- if .enabled }}
+        - alert: PloegSpendSpike
+          expr: max(ploeg_settled_spend_usd_last_hour{ {{- $sel -}} }) > {{ .usdPerHour }}
+          for: {{ .for }}
+          labels:
+            severity: {{ .severity }}
+          annotations:
+            summary: {{ printf "Settled spend in the last hour is above %v USD" .usdPerHour | quote }}
+            description: "Ploeg settled {{ "{{" }} $value | printf \"%.2f\" {{ "}}" }} USD onto Shifts in the last hour."
+            {{- if $runbook }}
+            runbook_url: {{ printf "%s#ploegspendspike" $runbook }}
+            {{- end }}
+        {{- end }}
+        {{- end }}
+        {{- with $a.trackerWebhookMissing }}
+        {{- if .enabled }}
+        - alert: PloegTrackerWebhookMissing
+          expr: max(ploeg_tracker_webhooks_missing{ {{- $sel -}} }) > 0
+          for: {{ .for }}
+          labels:
+            severity: {{ .severity }}
+          annotations:
+            summary: "Tracker projects have no assignment webhook to Ploeg"
+            description: "{{ "{{" }} $value {{ "}}" }} configured Vikunja project(s) had no assignment webhook at the last check. Assignments there do not reach Ploeg."
+            {{- if $runbook }}
+            runbook_url: {{ printf "%s#ploegtrackerwebhookmissing" $runbook }}
+            {{- end }}
+        {{- end }}
+        {{- end }}
+{{- end }}

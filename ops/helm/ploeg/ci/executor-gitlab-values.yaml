@@ -1,0 +1,39 @@
+tracker:
+  clickup:
+    tokenSecret:
+      name: agent-clickup-token
+      key: CLICKUP_TOKEN
+    webhookSecret:
+      name: ploeg-clickup-webhook
+      key: PLOEG_CLICKUP_SECRET
+    doneStatus: for review
+executor:
+  enabled: true
+  forge: gitlab
+  forgejo: null
+  gitlab:
+    url: https://gitlab.com
+    tokenSecret:
+      name: agent-builder-token
+      key: GITLAB_TOKEN
+    readTokenSecret:
+      name: agent-reader-token
+      key: GITLAB_TOKEN
+    webhookSecret:
+      name: ploeg-gitlab-webhook
+      key: PLOEG_GITLAB_SECRET
+  teams:
+    - name: silver
+      model: litellm_proxy/claude-sonnet-5
+      budget: "6"
+      maxReplicaCount: 1
+      harness:
+        name: claude-code
+        dind: false
+      plan:
+        - roles:
+            - {name: analyst, writes: false, cap: "0.50", harness: {dind: false}}
+        - roles:
+            - {name: builder, writes: true, cap: "3.00"}
+        - roles:
+            - {name: reviewer, writes: false, cap: "0.75", harness: {dind: false}}

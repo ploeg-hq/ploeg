@@ -1,0 +1,271 @@
+name: spec-driven-with-adr
+version: 1
+description: >
+  OpenSpec workflow for webgrip/ploeg — proposal → specs → design → adr → tasks.
+  Derived from the upstream `spec-driven` schema shipped with
+  @fission-ai/openspec, with an `adr` artifact inserted before `tasks` and
+  repo-specific rules folded into each instruction. Durable decisions persist at
+  <repo>/docs/adrs/ (ADR 0001).
+artifacts:
+  - id: proposal
+    generates: proposal.md
+    description: Initial proposal document outlining the change
+    template: proposal.md
+    instruction: |
+      Create the proposal document that establishes WHY this change is needed.
+
+      Sections:
+      - **Why**: 1-2 sentences on the problem or opportunity. What problem does this solve? Why now?
+      - **What Changes**: Bullet list of changes. Be specific about new capabilities, modifications, or removals. Mark breaking changes with **BREAKING**.
+      - **Capabilities**: Identify which specs will be created or modified:
+        - **New Capabilities**: List capabilities being introduced. Each becomes a new `specs/<name>/spec.md`. Use kebab-case names (e.g., `lease-manager`, `harness-adapter`).
+        - **Modified Capabilities**: List existing capabilities whose REQUIREMENTS are changing. Only include if spec-level behavior changes (not just implementation details). Each needs a delta spec file. Check `openspec/specs/` for existing spec names. Leave empty if no requirement changes.
+      - **Non-goals**: What this change explicitly does NOT do. Required — an unstated non-goal is scope creep waiting to happen.
+      - **Impact**: Affected code, APIs, dependencies, or systems.
+
+      IMPORTANT: The Capabilities section is critical. It creates the contract between
+      proposal and specs phases. Research existing specs before filling this in.
+
+      Repo rules:
+      - Name the **seam(s)** the change touches: tracker ingest, provider SPI,
+        store/lease, run API, executor, or harness adapter. A change that crosses
+        two seams usually wants to be two changes.
+      - Cite domain rules by id (R1-R10, `docs/domain/rules.md`) rather than
+        restating them, and use the canonical terms from
+        `docs/domain/glossary.md` exactly — Work Item, Lease, Run, Team, Outcome,
+        Checkpoint, Follow-Up.
+      - Check the change against `design.md` §2 non-goals before writing it. A
+        board UI, persistent agents, model serving, grooming semantics, and a
+        core-maintained connector matrix are all out of scope by decision, not by
+        omission.
+      - If the change is a bug fix, state the observable wrong behaviour and how
+        it was noticed.
+
+      Keep it concise (1-2 pages). Focus on the "why" not the "how" -
+      implementation details belong in design.md.
+    requires: []
+
+  - id: specs
+    generates: "specs/**/*.md"
+    description: Detailed specifications for the change
+    template: spec.md
+    instruction: |
+      Create specification files that define WHAT the system should do.
+
+      Create one spec file per capability listed in the proposal's Capabilities section.
+      - New capabilities: use the exact kebab-case name from the proposal (specs/<capability>/spec.md).
+      - Modified capabilities: use the existing spec folder name from openspec/specs/<capability>/ when creating the delta spec at specs/<capability>/spec.md.
+
+      Delta operations (use ## headers):
+      - **ADDED Requirements**: New capabilities
+      - **MODIFIED Requirements**: Changed behavior - MUST include full updated content
+      - **REMOVED Requirements**: Deprecated features - MUST include **Reason** and **Migration**
+      - **RENAMED Requirements**: Name changes only - use FROM:/TO: format
+
+      Format requirements:
+      - Each requirement: `### Requirement: <name>` followed by description
+      - Normative keywords per RFC 2119 / BCP 14 (SHALL, MUST, SHOULD, MAY) — avoid bare "should"
+      - Each scenario: `#### Scenario: <name>` with WHEN/THEN format
+      - **CRITICAL**: Scenarios MUST use exactly 4 hashtags (`####`). Using 3 hashtags or bullets will fail silently.
+      - Every requirement MUST have at least one scenario.
+
+      MODIFIED requirements workflow:
+      1. Locate the existing requirement in openspec/specs/<capability>/spec.md
+      2. Copy the ENTIRE requirement block (from `### Requirement:` through all scenarios)
+      3. Paste under `## MODIFIED Requirements` and edit to reflect new behavior
+      4. Ensure header text matches exactly (whitespace-insensitive)
+
+      Repo rules:
+      - **Never restate a published contract.** The JSON Schemas in
+        `docs/contracts/` are the wire contract and are pinned to the Go types by
+        `pkg/harness/contract_test.go`. Reference them; a prose copy in a spec is
+        drift with no gate on it.
+      - A contract change means the schema and the Go type change in the SAME
+        change, and v1 permits additive optional fields only
+        (`docs/contracts/README.md`).
+      - Cite domain rules by id (R1-R10). A spec that contradicts one is wrong
+        until the rule is changed first.
+      - State crash behaviour explicitly for anything touching leases, claims or
+        outcomes: what happens when the pod dies mid-operation is a requirement,
+        not an implementation detail (R2).
+
+      Specs should be testable - each scenario is a potential test case.
+    requires:
+      - proposal
+
+  - id: design
+    generates: design.md
+    description: Technical design document with implementation details
+    template: design.md
+    instruction: |
+      Create the design document that explains HOW to implement the change.
+
+      When to include design.md (create only if any apply):
+      - Cross-cutting change (multiple packages/seams) or new architectural pattern
+      - New external dependency or significant data model changes
+      - Security, performance, or migration complexity
+      - Ambiguity that benefits from technical decisions before coding
+
+      Sections:
+      - **Context**: Background, current state, constraints
+      - **Goals / Non-Goals**: What this design achieves and explicitly excludes
+      - **Decisions**: Key technical choices with rationale (why X over Y?). Include alternatives considered for each decision.
+      - **Risks / Trade-offs**: Known limitations, things that could go wrong. Format: [Risk] → Mitigation
+      - **Migration Plan**: Steps to deploy, rollback strategy (if applicable)
+      - **Open Questions**: Outstanding decisions or unknowns to resolve
+
+      Repo rules:
+      - **Read the in-force ADRs in `docs/adrs/` FIRST** (accepted, not superseded
+        per the Records index). Design within them, or flag a supersession under
+        Open Questions — never quietly contradict one, and never edit one here.
+      - Cite ADRs by number and domain rules by id; do not restate either.
+      - Durable architectural commitments are extracted to `docs/adrs/` in the
+        adr step. design.md keeps only change-local rationale — if a decision
+        will outlive this change, it belongs in an ADR, not here.
+      - Read `docs/architecture.md` §9 (where the code diverges from design
+        intent) before assuming a documented behaviour exists. It goes stale in
+        both directions; verify its claims against the code.
+      - `pkg/store/migrations/` is append-only. Schema changes are a new
+        numbered migration, never an edit to an applied one.
+      - Anything touching claim, lease or queue predicates must state how the
+        KEDA scaler query in `ops/helm/ploeg/templates/scaledjob.yaml` stays in
+        sync — it is a third copy of the predicate that only a human keeps
+        aligned.
+
+      Focus on architecture and approach, not line-by-line implementation.
+    requires:
+      - proposal
+
+  - id: adr
+    generates: adr.md
+    description: Change-local ADR review manifest with durable ADR references
+    template: adr.md
+    instruction: |
+      Complete ADR review for this change by writing
+      openspec/changes/<change>/adr.md. This change-local file is a concise review
+      manifest and the OpenSpec completion marker for the adr artifact. Existing
+      files under <repo>/docs/adrs/ are decision history and context; they do not
+      complete ADR review for a new change.
+
+      Durable Architecture Decision Records live in <repo>/docs/adrs/ — the folder
+      at the repository root beside openspec/, never inside openspec/. Conventions
+      are in docs/adrs/README.md and ADR 0001. Do not duplicate full ADR content
+      in the manifest.
+
+      IRON RULE — accepted ADRs are immutable. You MUST NOT edit a prior ADR file
+      under any circumstance: not its status, not its body, not its date. To change
+      a previously accepted decision, write a NEW record whose own status stays
+      "accepted" and whose `supersedes:` front-matter field names the prior one.
+      The prior file stays frozen as a historical artefact; docs/adrs/README.md's
+      Records table is where "superseded by NNNN" appears.
+
+      Authoring tool. Invoke the `adr-writer` skill to write the file, and start
+      from docs/adrs/adr-template.md. Three repo rules override the skill's
+      defaults:
+        1. Layout — docs/adrs/ (plural), NNNN-kebab-title.md with no `adr-`
+           prefix, files never renamed, index in docs/adrs/README.md.
+        2. Supersession is append-only. The skill's default flips the prior
+           record's status; this repo FORBIDS that (see IRON RULE).
+        3. Every record needs `review-by:` (a date or `none`) and, when dated, a
+           `## Re-evaluation triggers` section naming observable events that
+           reopen the decision. Prefer checkable facts over judgements.
+      Do NOT run the skill's bundled validate_adr_consistency.py — it assumes
+      status-flip supersession and rejects this corpus. Run
+      `go test ./internal/ledger/` instead.
+
+      Process:
+
+      1. Read every record in <repo>/docs/adrs/ and the Records index. Build the
+         supersession graph from each `supersedes:` field. Note the highest number
+         in use. List the in-force records you reviewed in the manifest.
+
+      2. Re-read design.md. Identify decisions that meet ALL of:
+         - establishes a long-term commitment (pattern, technology, boundary,
+           contract) rather than a tactical implementation detail;
+         - will affect changes beyond this one;
+         - is not already captured by an in-force record, OR intentionally
+           diverges from one (in which case the new record supersedes it).
+
+      3. For each qualifying decision, create <repo>/docs/adrs/NNNN-kebab-title.md
+         with NNNN one greater than the highest existing number, using the
+         template. MADR 4.0 sections: Context and Problem Statement; Decision
+         Drivers; Considered Options; Decision Outcome (with "Chosen option: …,
+         because …", Consequences as Good/Bad bullets, and a REQUIRED
+         `### Confirmation` subsection naming the CI gate, review step, or script
+         that checks compliance); Pros and Cons of the Options; Re-evaluation
+         triggers when review-by is dated; More Information.
+         Add the Records row in docs/adrs/README.md in the same change — the
+         parity check fails otherwise — and reference the new record from
+         openspec/changes/<change>/adr.md.
+
+      4. Evidence does not go in the record. A survey's working belongs in
+         docs/research/YYYY-MM-DD-<topic>.md, linked from More Information.
+
+      5. Never mark a record `accepted` on the human's behalf, and never write one
+         to retro-justify a change that is already built. If a decision was made
+         during implementation, say so in the manifest and let a human ratify it.
+
+      6. If nothing meets the bar, do not invent records. The step still completes
+         by writing openspec/changes/<change>/adr.md stating that ADR review was
+         completed, which in-force records were reviewed, and that no new durable
+         decision was introduced.
+
+      Finish by running `go test ./internal/ledger/` and pasting its output into
+      the manifest.
+    requires:
+      - design
+
+  - id: tasks
+    generates: tasks.md
+    description: Implementation checklist with trackable tasks
+    template: tasks.md
+    instruction: |
+      Create the task list that breaks down the implementation work.
+
+      **IMPORTANT: Follow the template below exactly.** The apply phase parses
+      checkbox format to track progress. Tasks not using `- [ ]` won't be tracked.
+
+      Guidelines:
+      - Group related tasks under ## numbered headings
+      - Each task MUST be a checkbox: `- [ ] X.Y Task description`
+      - Tasks should be small enough to complete in one session
+      - Order tasks by dependency (what must be done first?)
+
+      Repo rules — every change includes these as explicit tasks:
+      - Run the gate set from `.forgejo/workflows/on_pull_request.yml` and paste
+        the output into the PR body: `gofmt -l .`, `go vet ./...`,
+        `go build ./...`, `go test ./...`, `helm lint ops/helm/ploeg`, and all
+        three `helm template` renderings. Without a local toolchain, run them
+        through Docker with the `golang` and `alpine/helm` images.
+      - A bug fix includes a regression test that FAILS against the unfixed code.
+        Prove it — run the new test against the original code path and record the
+        failure output.
+      - A change to `pkg/harness` types includes the matching
+        `docs/contracts/*.schema.json` edit and a `contract_test.go` assertion.
+      - A change to a claim/queue predicate includes the matching edit to the KEDA
+        scaler query in `ops/helm/ploeg/templates/scaledjob.yaml` and a store test
+        asserting the two agree.
+      - A new store migration is a new numbered file in
+        `pkg/store/migrations/`, never an edit to an applied one.
+      - If the change adds an ADR, `go test ./internal/ledger/` passes.
+
+      Reference specs for what needs to be built, design for how to build it.
+      Each task should be verifiable - you know when it's done.
+    requires:
+      - specs
+      - adr
+
+apply:
+  requires: [tasks]
+  tracks: tasks.md
+  instruction: |
+    Read context files, work through pending tasks, mark complete as you go.
+    Pause if you hit blockers or need clarification.
+
+    Several sessions share this checkout: `git add` the files you wrote, never
+    `-A`, `.`, or `commit -a`. Dirt in `git status` you did not create belongs to
+    someone else. Work on `agent/<slug>` branched from `development`; never
+    commit to `main`.
+
+    Report honestly. If a gate fails, say so with its output; if a task was
+    skipped, say that. "Should work" is not done.

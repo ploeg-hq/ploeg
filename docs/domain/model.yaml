@@ -1,0 +1,1220 @@
+project: Ploeg
+owner: ploeg
+description: >
+  Ploeg schedules and runs work handed to agents, tracks progress and cost,
+  and supports cooperation between agents. It is Unfold's only execution engine
+  and the Authority for every Run (Unfold ADR-0002). De Vloer is its front end,
+  where people work on tickets, give work to agents and review the results.
+  Vloer Start requests Ploeg admission; a manual-origin request need not have a
+  tracker ticket. Until Vloer's own engine is retired, Vloer still performs
+  delegated operator Runs. Trackers keep their work content and priorities.
+  This vocabulary includes intended domain rules; it is not a database or API
+  field inventory. The architecture and published contracts identify current
+  implementation limits. Vloer uses these execution terms.
+version: 0.6.0
+combined_glossary: https://github.com/webgrip/unfold/blob/9c1d53f01fbfb65733800aa75e288341734dc23f/docs/reference/glossary.md
+references:
+  - label: Unfold ADR-0002
+    path: https://github.com/webgrip/unfold/blob/9c1d53f01fbfb65733800aa75e288341734dc23f/docs/adr/adr-0002-ploeg-is-the-only-engine.md
+    note: Ploeg is the only execution engine and Vloer is its front end.
+imports:
+  - model: consumer-terms.yaml
+    terms: [Ready, Model, Result, Review, Session, Crew, Step]
+
+contexts:
+  - name: Dispatch
+    description: >
+      Core semantics owned by ploegd and Postgres: work items, leases, queues,
+      checkpoints, outcomes, audit. Provider- and runtime-agnostic by rule.
+  - name: Integration
+    description: >
+      The provider SPI boundary: tracker and forge adapters, webhook parsing,
+      normalized events, write-backs. Everything vendor-specific lives here.
+  - name: Execution
+    description: >
+      How admitted work executes, including Kubernetes workers and delegated
+      workbench runs. KEDA is one implementation, not part of the language.
+  - name: Harness
+    description: >
+      The contract between Ploeg and an agent container: Task Spec in,
+      Outcome Report out. Isolates the fast-churning agent-tool boundary.
+
+terms:
+  - name: Delivery Candidate
+    definition: >
+      An immutable proposed repository tree with a canonical commit on an approved
+      base, artifact digests and a verification policy digest, bound to one
+      Operator Execution generation. Worker assertions do not verify it.
+    context: Dispatch
+    see_also: [Operator Execution, Verification Receipt, Publication Operation]
+
+  - name: Verification Receipt
+    definition: >
+      Evidence reported by an explicitly authorized verifier for one Delivery
+      Candidate and policy digest. It records the real check exit and discovery
+      count from an independent disposable environment.
+    context: Execution
+    see_also: [Delivery Candidate, Operator Consumer]
+
+  - name: Publication Operation
+    definition: >
+      A durable, explicitly approved operation to publish one verified Delivery
+      Candidate. An in-flight or uncertain external effect retains a barrier
+      against a replacement execution or duplicate publication.
+    context: Integration
+    see_also: [Delivery Candidate, Verification Receipt, Operator Execution]
+
+  - name: Operator Execution
+    definition: >
+      A Ploeg record admitted for an authenticated Operator Consumer and linked
+      to its session. Vloer Start requests admission even when the person will
+      steer the work live. It links one Work Item, Shift and Run and retains its
+      identity through changes in supervision.
+    context: Dispatch
+    not_to_be_confused_with:
+      - term: Shift
+        note: The whole attempt on a Work Item. An Operator Execution is the admitted record that links one.
+    see_also: [Work Item, Shift, Run, Operator Consumer, Inference Account]
+
+  - name: Operator Consumer
+    definition: >
+      A named service identity with explicit Team scope and separate read and
+      execution permissions. It authenticates the human actor and authorizes
+      registered repositories before requesting an Operator Execution.
+    context: Integration
+    see_also: [Team, Operator Execution]
+
+  - name: Inference Account
+    definition: >
+      The durable authorization and accounting record for a Run's scoped
+      inference capability. Uncertain issuance, blocking, expiry and observed
+      spend retain unresolved authorization until trusted final evidence
+      reconciles it. An observed debit is not settlement.
+    context: Execution
+    see_also: [Run, Operator Execution]
+
+  - name: Work Item
+    definition: >
+      A unit of work: something we have decided to do, or a problem described
+      well enough that a solution can be formulated or at least conceived. It
+      comes from a Tracker Item, from an Operator Execution admitted through
+      Vloer, or from other work (a Follow-Up). Ploeg keeps one record per Work
+      Item and runs Shifts against it; a failed Shift leaves it in place.
+      Tracker-originated content remains owned by the Tracker Item.
+      Manual-origin content is registered by an authenticated Operator Consumer
+      and never silently creates a Tracker Item.
+    context: Dispatch
+    avoid: [task, ticket]
+    see_also: [Tracker Item, Lease, Follow-Up, Work Target]
+
+  - name: Work Target
+    definition: >
+      The forge coordinates a Work Item's Runs act on: forge, owner,
+      repository, base branch. Resolved at ingest from the Scope the item
+      arrived in, pinned on the Work Item, and independent of the Team that
+      claims it — a Team never names one. A coordinate, not a connection: it
+      carries a forge id, never a URL and never a credential (R8).
+    context: Dispatch
+    synonyms: [target]
+    avoid: [team repo, repo_url]
+    see_also: [Work Item, Forge, Routing Rule, Team]
+
+  - name: Tracker Item
+    definition: >
+      The authoritative item in the external tracker (Vikunja, Jira, GitHub
+      Issues, …). Ploeg reads it via a Tracker Provider and mirrors it into a
+      Work Item; all content edits happen in the tracker, never in Ploeg.
+    context: Integration
+    synonyms: [issue]
+    see_also: [Work Item, Tracker Provider]
+
+  - name: Shift
+    definition: >
+      One Team's engagement with one Work Item: the container that owns the
+      branch, the budget pool, the roster of Runs and the Round counter. Opens
+      when the first Run starts, closes when the work reaches a terminal state.
+      A Shift is what makes several Runs on one item coherent without any of
+      them needing to remember the others. Named for the crew sense — Ploeg is
+      Dutch for a crew, and ploegendienst is shift work.
+    context: Dispatch
+    avoid: [claim (as a noun), engagement, session, execution]
+    not_to_be_confused_with:
+      - term: Execution
+        note: >
+          A retired product term for the same attempt. The word still names a
+          bounded context and is part of Operator Execution.
+      - term: Session
+        note: Vloer's record of a person's interaction; a started session links to one Shift.
+    see_also: [Lease, Run, Round, Team, Work Item]
+
+  - name: Lease
+    definition: >
+      The exclusive right to WRITE a Shift's branch, unique per Shift. It is a
+      capability rather than a note: the holder's push credential is minted with
+      it and revoked when it lapses, so holding a Lease and being able to push
+      are one fact. Only a writing Run takes one — reading Runs take none, which
+      is what lets any number of them run at once. A Lease governs exclusion
+      only; liveness belongs to the Run, because a Run is what dies and a reader
+      has no Lease to expire.
+    context: Dispatch
+    avoid: [claim (as a noun), lock]
+    see_also: [Shift, Run, Push Credential]
+
+  - name: Push Credential
+    definition: >
+      The repository-scoped forge token minted for one writing Run and revoked
+      when its Lease settles or lapses. What makes the Lease enforceable rather
+      than advisory, and the reason a reading Run cannot write the branch it is
+      reviewing. The model-provider equivalent is the per-Run LiteLLM key.
+      It has no expiry of its own, because a Forgejo access token lives until
+      it is deleted, so revocation is its only bound. The forge orphan sweep
+      revokes every token whose Run holds no Lease.
+    context: Execution
+    avoid: [builder token, deploy key]
+    see_also: [Lease, Run]
+
+  - name: Round
+    definition: >
+      A set of Runs within a Shift that start together. Runs in one Round never
+      observe each other — they receive the same injected state and their
+      findings land afterwards; every later Round sees everything from every
+      earlier one. A Round is either a fan-out of reading Runs or exactly one
+      writing Run, never both, and that rule is the whole of the concurrency
+      control.
+    context: Dispatch
+    avoid: [turn, iteration]
+    see_also: [Shift, Run]
+
+  - name: Team
+    definition: >
+      A declarative manifest — name, Roles, harness image and model per Role,
+      run strategy (sequential or parallel), resource/token budget, concurrency
+      cap — that is the unit of claiming. Two Teams never hold a Shift on the
+      same Work Item; any number of Roles work within one Team's Shift. A Team
+      never names a repository, forge, or credential: capacity and codebase are
+      independent axes (R11) — those coordinates are the Work Item's Work
+      Target, not the Team's.
+    context: Dispatch
+    avoid: [crew]
+    not_to_be_confused_with:
+      - term: Crew
+        note: Vloer's registered list of Roles for a session; it maps to a Team.
+    examples: ["implementer + reviewer-on-a-different-model-family + tester"]
+    see_also: [Role, Shift, Work Target]
+
+  - name: Role
+    definition: >
+      A named specialist function within a Team (implementer, reviewer,
+      tester), bound to a harness image and model. A Role is a slot in the
+      manifest; a Run is one execution of that slot. Every Role is either a
+      writer (mutates the tree, so its Runs take the Shift's Lease) or a reader
+      (reads and opines, so its Runs take no Lease and may run beside others).
+    context: Dispatch
+    synonyms: [specialist, specialist role]
+    see_also: [Team, Run, Lease]
+
+  - name: Run
+    definition: >
+      One execution of one Role against a Work Item, realized by an Executor
+      as a Kubernetes Job or a delegated workbench execution. A Lease may accumulate several Runs (roles,
+      retries, resumes). The runner reports its outcome; controller expiry and
+      reconciliation recover missing reports while preserving operator stop intent. "Job" is reserved for the Kubernetes
+      object and is never a domain term. A delegated Run may contain several
+      Vloer Steps until Vloer's engine is retired (Unfold ADR-0002).
+    context: Execution
+    avoid: [job (as a domain term), role run]
+    not_to_be_confused_with:
+      - term: Shift
+        note: The whole attempt on a Work Item, which contains one or more Runs.
+      - term: Step
+        note: A Vloer-internal part of one Run; older Vloer text says "role run".
+    see_also: [Role, Outcome, Outcome Report, Executor, Lease]
+
+  - name: Outcome
+    definition: >
+      The terminal result of a Run, one of: pr_opened, pr_updated,
+      issue_updated, follow_up_created, stuck, failed, no_change_needed.
+      A stuck Outcome carries a mandatory reason and moves the Work Item to
+      needs_human on the tracker path. A failed Outcome follows the applicable
+      tracker or operator recovery policy; it does not universally authorize retry.
+    context: Dispatch
+    not_to_be_confused_with:
+      - term: Result
+        note: The deliverable and evidence that a person reviews against the Acceptance Conditions.
+      - term: Verdict
+        note: A reading Run's opinion of the work; an Outcome classifies how the Run itself ended.
+    see_also: [Outcome Report, Run]
+
+  - name: Checkpoint
+    definition: >
+      The small durable progress record (phase, branch, PR URL) a Run writes
+      via the report API. The Task Spec can carry one, but the current unattended
+      worker does not inject the last stored Checkpoint automatically. Retained
+      repository changes and evidence support recovery; native harness state
+      is not a portable Checkpoint.
+    context: Dispatch
+    see_also: [Run, Task Spec]
+
+  - name: Follow-Up
+    definition: >
+      A Work Item created by other work rather than by a person: from a Forge
+      Event (review submitted, check failed, merge-state dirty), or from a Run
+      that splits work or records work it discovered (Product R12). It references its
+      source Work Item and carries that Work Item's Work Target. From a Forge
+      Event it also references the source PR, is routed to the Team owning the
+      source branch, and enters the lifecycle directly at queued; today only a
+      failed check creates one, and only for a Team that enabled
+      forgeFollowUps.repairFailedChecks: one open repair per pull request,
+      capped per pull request. From a Run it also references the source Run,
+      says whether it is Ready, exists only in Ploeg, sits one level deeper
+      than its source, is bounded by its Team's created-work limits, and enters
+      the lifecycle at proposed unless the Team sets autoDispatch (ADR-0031).
+    context: Dispatch
+    see_also: [Work Item, Forge Event, Team, Work Target]
+
+  - name: Assignment
+    definition: >
+      The normalized tracker event that offers an ingested Work Item to agents,
+      transitioning it to queued. Assigning in the tracker is the sole human
+      gesture that puts work in front of agents; which Team and which Work
+      Target it resolves to is decided by the Routing Rules, never carried in
+      the event.
+    context: Dispatch
+    see_also: [Tracker Event, Routing Rule, Team Queue]
+
+  - name: Routing Rule
+    definition: >
+      The operator-declared mapping from (provider, Scope, actor, hint) to a
+      Team and a Work Target. Rules are ordered and first-match-wins, evaluated
+      once at ingest; an event that matches no rule is never dispatched. The set
+      of Work Targets reachable through the rules is closed and
+      operator-declared, so a hint selects among registered routes and can never
+      construct one (R11).
+    context: Dispatch
+    avoid: [team map]
+    see_also: [Scope, Work Target, Team, Tracker Event]
+
+  - name: Team Queue
+    definition: >
+      The ordered set of queued Work Items for one Team — a derived view, not
+      a stored entity. Order mirrors the tracker's priority/rank, falling back
+      to oldest-first; Ploeg never owns prioritization, the board does.
+    context: Dispatch
+    synonyms: [pick-up queue]
+    see_also: [Assignment, Work Item]
+
+  - name: Tracker Provider
+    definition: >
+      The SPI adapter for one task-management system: verify and parse
+      webhooks into normalized Tracker Events, fetch items for mirroring, and
+      write back comments and status. Reference implementation: Vikunja.
+    context: Integration
+    see_also: [Forge Provider, Tracker Event]
+
+  - name: Forge Provider
+    definition: >
+      The SPI adapter for one git forge: verify and parse webhooks into
+      normalized Forge Events and write back PR comments. Reference
+      implementation: Forgejo. The adapter, not the instance it speaks to —
+      that is a Forge.
+    context: Integration
+    see_also: [Tracker Provider, Forge Event, Forge]
+
+  - name: Forge
+    definition: >
+      One registered git forge instance: id, endpoint, dialect, git identity,
+      credential source. A Work Target names a Forge by id and the registry
+      resolves the rest, so no Work Item ever carries a URL or a token.
+      Distinct from a Forge Provider, which is the adapter speaking one Forge's
+      dialect.
+    context: Integration
+    examples: ["the in-cluster Forgejo instance", "a second Forgejo", "github.com"]
+    see_also: [Forge Provider, Work Target]
+
+  - name: Scope
+    definition: >
+      An opaque, provider-scoped container id for a body of work (a Vikunja
+      project, a Jira project, a GitHub repository), carried on every Tracker
+      Event. Ploeg compares a Scope for equality against Routing Rule keys and
+      never parses, splits, or otherwise interprets it — equality-only is the
+      test that keeps a vendor concept out of the core (R7).
+    context: Integration
+    synonyms: [container id]
+    see_also: [Tracker Event, Routing Rule, Tracker Provider]
+
+  - name: Tracker Event
+    definition: >
+      The normalized result of parsing a tracker webhook — assigned, updated,
+      or unassigned — carrying the external id, the provider's Scope, the actor,
+      and normalized hints. It never carries a Ploeg Team or a repository:
+      choosing either is core policy, decided by the Routing Rules (R7). The
+      core only ever sees normalized events, never raw vendor payloads.
+    context: Integration
+    see_also: [Assignment, Tracker Provider, Scope, Routing Rule]
+
+  - name: Forge Event
+    definition: >
+      The normalized result of parsing a forge webhook — review_submitted,
+      check_failed, or merge_state_dirty — with the Work Target, PR, branch, and
+      the feedback body for classification. Source of every Follow-Up; carrying
+      a Work Target is what lets the follow-up path and the assignment path
+      converge on one type.
+    context: Integration
+    see_also: [Follow-Up, Forge Provider, Work Target]
+
+  - name: Executor
+    definition: >
+      The component that performs admitted Runs and reports progress and outcomes.
+      Current unattended execution uses Kubernetes workers; Vloer performs delegated
+      operator execution until Unfold ADR-0002 moves it to ploeg-worker. The
+      controller recovers missing reports through expiry and reconciliation,
+      without a Kubernetes Job watcher.
+    context: Execution
+    see_also: [Run]
+
+  - name: Harness
+    definition: >
+      A concrete agent tool (Claude Code, opencode, …): the program that manages
+      an agent's conversation with a model and runs the tools it is permitted to
+      use. Ploeg never talks to a Harness directly — only through a Harness
+      Adapter — because this boundary churns fastest of any in the system.
+    context: Harness
+    see_also: [Harness Adapter, Agent Container, Model]
+
+  - name: Harness Adapter
+    definition: >
+      The thin wrapper that makes one Harness satisfy the harness contract:
+      accept a Task Spec, drive the tool, emit an Outcome Report. Adapters are
+      the isolation layer for harness churn; ACP is tracked as a candidate
+      standard to adopt instead of inventing more.
+    context: Harness
+    see_also: [Harness, Task Spec, Outcome Report]
+
+  - name: Agent Container
+    definition: >
+      The container a Run executes: a Harness plus its Adapter, invoked with a
+      Task Spec and obligated to write an Outcome Report before exit.
+      Credentials arrive through scoped runtime configuration, never in the spec.
+    context: Harness
+    see_also: [Run, Task Spec, Outcome Report]
+
+  - name: Task Spec
+    definition: >
+      The input contract of an Agent Container: Work Item snapshot, Role,
+      optional Checkpoint, and the Work Item's Work Target together with the
+      forge endpoint its Forge id resolves to. Injected as a file mount or
+      environment; deliberately credential-free (R8).
+    context: Harness
+    see_also: [Outcome Report, Agent Container, Work Target, Forge]
+
+  - name: Outcome Report
+    definition: >
+      The output contract of an Agent Container: Outcome, summary, links, and
+      optionally a new Checkpoint, written before exit. An absent report is not
+      a successful outcome; expiry and reconciliation record the recovery state.
+    context: Harness
+    see_also: [Task Spec, Outcome, Verdict]
+
+  - name: Verdict
+    definition: >
+      A reading Run's answer to "is this done?", reported in its Outcome Report:
+      approve or request_changes, or empty for no opinion. A request_changes
+      Verdict can open a capped fix Round (Ploeg ADR-0017). Vloer's reviewer
+      prompt also accepts inconclusive.
+    context: Harness
+    not_to_be_confused_with:
+      - term: Review
+        note: A judgement of a Result against its Acceptance Conditions. A Verdict is Evidence for it, not acceptance.
+    see_also: [Outcome Report, Round, Role]
+
+  - name: Admission
+    definition: >
+      Ploeg's decision to accept work for execution and record it. Operator work
+      is admitted when an authenticated Operator Consumer asks, for example on
+      Vloer Start; tracker work enters through an Assignment and the Routing
+      Rules. No Run starts before its work is admitted.
+    context: Dispatch
+    see_also: [Authority, Operator Execution, Operator Consumer, Assignment, Work Item]
+
+  - name: Authority
+    definition: >
+      The one party entitled to approve a Run, set its budget and grant or revoke
+      its credentials. Ploeg is the Authority for every Run (Unfold ADR-0002). A
+      Run never switches to another authority because a connection fails.
+    context: Dispatch
+    see_also: [Admission, Inference Account, Push Credential, Run]
+
+entities:
+  - name: Operator Execution
+    description: A consumer-owned session binding and serialized execution lifecycle.
+    context: Dispatch
+    attributes:
+      - name: id
+        type: string
+        required: true
+        description: Stable identity derived from consumer and session; admission is idempotent.
+      - name: generation
+        type: integer
+        required: true
+        description: Incremented on explicit resume; stale executors cannot authorize new turns.
+      - name: revision
+        type: integer
+        required: true
+        description: Transactionally serialized command and event position for this execution.
+      - name: supervision
+        type: enum(human, background)
+        description: Human attention mode; it does not move or replace the Executor.
+      - name: stop_confirmed
+        type: boolean
+        description: Whether the delegated Executor acknowledged that its turn stopped.
+    states:
+      - {from: '[start]', to: admitted, trigger: Scoped idempotent admission}
+      - {from: admitted, to: running, trigger: Explicit start before expiry}
+      - {from: admitted, to: cancelled, trigger: Human cancels before start, or the admission expires unstarted}
+      - {from: running, to: waiting_input, trigger: Runtime requests human input}
+      - {from: waiting_input, to: running, trigger: Authenticated answer accepted}
+      - {from: running, to: pause_requested, trigger: Human requests pause}
+      - {from: pause_requested, to: paused, trigger: Executor confirms stop}
+      - {from: paused, to: running, trigger: Explicit resume with a new generation and usable capability}
+      - {from: running, to: cancel_requested, trigger: Human requests cancellation}
+      - {from: cancel_requested, to: cancelled, trigger: Executor confirms stop}
+      - {from: running, to: interrupted, trigger: Authority expires or Executor stops unexpectedly}
+      - {from: interrupted, to: running, trigger: Explicit resume after stop and capability reconciliation}
+      - {from: running, to: completed, trigger: Executor reports approved evidence and confirms stop}
+      - {from: running, to: failed, trigger: Executor reports failure and confirms stop}
+    relationships:
+      - {to: Work Item, kind: has_one, description: One manual item or atomically adopted pristine tracker item outside unattended queue claims.}
+      - {to: Shift, kind: has_one, description: One retained authorization pool.}
+      - {to: Run, kind: has_one, description: One operator Role whose delegated Steps Vloer performs until Unfold ADR-0002 is implemented.}
+
+  - name: Work Item
+    description: Ploeg's execution record for tracker, follow-up or operator work.
+    context: Dispatch
+    attributes:
+      - name: id
+        type: string
+        description: Ploeg-internal id.
+        required: true
+      - name: provider
+        type: string
+        description: Tracker provider name (e.g. "vikunja"); empty for Follow-Ups.
+      - name: external_id
+        type: string
+        description: Provider-scoped id of the mirrored Tracker Item.
+      - name: external_scope
+        type: string
+        description: >
+          The tracker's own container id (its Scope) for the item; the input to
+          Work Target resolution, recorded even when no Routing Rule matched.
+      - name: revision
+        type: string
+        description: Provider revision/etag for staleness detection.
+      - name: team
+        type: string
+        description: >
+          Team the item is queued for — the claiming crew, not the codebase;
+          empty until assigned.
+      - name: target
+        type: Work Target
+        description: Forge coordinates the item's Runs act on; absent means unresolved (R11).
+      - name: route_rule
+        type: string
+        description: Id of the Routing Rule that decided team and target; recorded for audit.
+      - name: state
+        type: "enum(ingested, proposed, queued, leased, needs_human, awaiting_review, stale, done, withdrawn)"
+        description: Dispatch lifecycle position. proposed means a Run created the item and it waits for a person to approve or reject it; no Team can claim it. awaiting_review means Ploeg's work succeeded and its pull request is ready for human review. withdrawn means a person took the mandate back by unassigning the Tracker Item or cancelling it through the operator API.
+        required: true
+      - name: origin
+        type: "enum(assignment, follow_up, operator)"
+        description: Whether the item came from a tracker, Forge Event or Operator Consumer.
+        required: true
+      - name: priority
+        type: integer
+        description: Rank mirrored from the tracker; drives Team Queue order.
+    states:
+      - from: "[start]"
+        to: ingested
+        trigger: Tracker webhook received; Tracker Item mirrored
+      - from: "[start]"
+        to: queued
+        trigger: Follow-Up created from a Forge Event, routed to the owning Team
+      - from: "[start]"
+        to: proposed
+        trigger: A Run created the item within its Team's created-work limits (ADR-0031)
+      - from: "[start]"
+        to: queued
+        trigger: A Run created the item and its Team sets autoDispatch; not-Ready work only with a refinement target
+      - from: proposed
+        to: queued
+        trigger: A person approves it through the operator API
+      - from: proposed
+        to: done
+        trigger: A person rejects it with a reason; its allotted budget is released
+      - from: ingested
+        to: queued
+        trigger: Assignment matches a Routing Rule, resolving a Team and a Work Target
+      - from: queued
+        to: leased
+        trigger: Team claims the item, acquiring a Lease
+      - from: leased
+        to: queued
+        trigger: Lease expired or Run failed, retries remaining
+      - from: leased
+        to: stale
+        trigger: Lease expired repeatedly without an Outcome (threshold reached)
+      - from: leased
+        to: needs_human
+        trigger: stuck Outcome reported (mandatory reason)
+      - from: leased
+        to: done
+        trigger: Terminal Outcome reported (issue_updated, follow_up_created, no_change_needed)
+      - from: leased
+        to: awaiting_review
+        trigger: A pull request was opened or updated and the Shift closed successfully
+      - from: awaiting_review
+        to: queued
+        trigger: Re-assignment in the tracker is a fresh mandate
+      - from: needs_human
+        to: queued
+        trigger: Human re-queues after resolving the blocker
+      - from: needs_human
+        to: done
+        trigger: Human closes the item
+      - from: stale
+        to: queued
+        trigger: Human or explicit policy re-queues
+      - from: queued
+        to: withdrawn
+        trigger: Tracker Item unassigned or cancelled by an operator; the live Shift closes
+      - from: leased
+        to: withdrawn
+        trigger: Tracker Item unassigned or cancelled by an operator; running Runs are stopped
+      - from: withdrawn
+        to: queued
+        trigger: Re-assignment in the tracker is a fresh mandate
+    relationships:
+      - to: Shift
+        kind: has_one
+        description: At most one live Shift at a time (unique per Work Item).
+      - to: Work Target
+        kind: has_one
+        description: Pinned at ingest; absent until resolved, and then not claimable (R11).
+      - to: Run
+        kind: has_many
+        description: All executions across roles, retries, and resumes.
+      - to: Checkpoint
+        kind: has_many
+        description: Progress records; the latest one drives resume.
+
+  - name: Work Target
+    description: >
+      Value object: the forge coordinates one Work Item's Runs act on. A
+      coordinate, not a connection — it names a Forge by id and carries no URL
+      and no credential.
+    context: Dispatch
+    attributes:
+      - name: forge
+        type: string
+        description: Id of a registered Forge; the registry resolves it, never the Work Item.
+        required: true
+      - name: owner
+        type: string
+        description: Owner or organisation on that Forge.
+        required: true
+      - name: repo
+        type: string
+        description: Repository name within the owner.
+        required: true
+      - name: base_branch
+        type: string
+        description: Branch Runs branch from and open PRs against.
+        required: true
+    relationships:
+      - to: Forge
+        kind: references
+        description: By id; the registry resolves endpoint, dialect, identity, and credential source.
+
+  - name: Shift
+    description: One Team's engagement with one Work Item — owns the branch, the budget pool, the roster and the Round counter (ADR-0010).
+    context: Dispatch
+    attributes:
+      - name: work_item_id
+        type: string
+        description: Unique among live Shifts — two Teams never work one item.
+        required: true
+      - name: team
+        type: string
+        required: true
+      - name: branch
+        type: string
+        description: The single branch every writing Run in this Shift pushes to.
+        required: true
+      - name: round
+        type: int
+        description: Runs started together share a Round and never observe each other.
+        required: true
+      - name: budget
+        type: decimal
+        description: The pool for the whole item, in USD (ADR-0012).
+        required: true
+      - name: spent
+        type: decimal
+        description: Settled spend across every Run in this Shift. Reserved is NOT stored — it is summed over running Runs, so it cannot drift (ADR-0012).
+        required: true
+    relationships:
+      - to: Work Item
+        kind: belongs_to
+        description: Unique per Work Item among live Shifts.
+      - to: Lease
+        kind: has_one
+        description: At most one live Lease — held by the writing Run, if any.
+      - to: Run
+        kind: has_many
+        description: Readers and writers across every Round.
+
+  - name: Lease
+    description: The exclusive right to write a Shift's branch, crash-safe and TTL-renewed. Held only by a writing Run.
+    context: Dispatch
+    attributes:
+      - name: shift_id
+        type: string
+        description: Unique per Shift — one writer at a time.
+        required: true
+      - name: run_id
+        type: string
+        description: The writing Run holding it. Readers never appear here.
+        required: true
+      - name: forge_token_id
+        type: string
+        description: The scoped push credential minted for this Run, revoked when the Lease lapses (ADR-0013).
+        required: true
+      - name: expires_at
+        type: timestamp
+        description: Expiry revokes the push credential and releases the Run's budget authorization in the same sweep.
+        required: true
+      - name: renewed_at
+        type: timestamp
+        description: Last renewal by the running Run.
+    relationships:
+      - to: Shift
+        kind: belongs_to
+        description: Unique per Shift.
+      - to: Run
+        kind: references
+        description: The writing Run holding write access.
+
+  - name: Run
+    description: One execution of one Role, realized as a Kubernetes Job or a delegated workbench execution.
+    context: Execution
+    attributes:
+      - name: work_item_id
+        type: string
+        required: true
+      - name: team
+        type: string
+        required: true
+      - name: role
+        type: string
+        description: The Role this Run executes.
+        required: true
+      - name: job_name
+        type: string
+        description: The Kubernetes Job realizing this Run, when an executor uses one.
+      - name: round
+        type: int
+        description: The Round this Run belongs to; Runs sharing a Round never observe each other.
+      - name: writes
+        type: boolean
+        description: A writer takes the Shift's Lease and runs alone; a reader takes none and runs beside others.
+      - name: state
+        type: "enum(pending, running, finished)"
+        description: A Round materialises its Runs as pending rows; pending rows are also the scale signal.
+      - name: authorized
+        type: decimal
+        description: The budget hold, summed over running Runs to give the Shift's reserved figure (ADR-0012).
+      - name: expires_at
+        type: timestamp
+        description: This Run's own liveness deadline. Not the Lease's — a reader has no Lease to expire.
+      - name: outcome
+        type: "enum(pr_opened, pr_updated, issue_updated, follow_up_created, stuck, failed, no_change_needed)"
+        description: Reported terminal result, or failure recorded by controller recovery when the applicable expiry rule fires.
+      - name: started_at
+        type: timestamp
+      - name: finished_at
+        type: timestamp
+    relationships:
+      - to: Work Item
+        kind: belongs_to
+      - to: Team
+        kind: references
+
+  - name: Checkpoint
+    description: Small durable progress record enabling resume.
+    context: Dispatch
+    attributes:
+      - name: work_item_id
+        type: string
+        required: true
+      - name: phase
+        type: string
+        description: e.g. branch_created, changes_made, pr_opened.
+        required: true
+      - name: branch
+        type: string
+      - name: pr_url
+        type: string
+      - name: at
+        type: timestamp
+    relationships:
+      - to: Work Item
+        kind: belongs_to
+
+  - name: Team
+    description: >
+      Declarative manifest of Roles; the unit of claiming. A Team never names a
+      repository, forge, or credential — those belong to the Work Item's Work
+      Target (R11).
+    context: Dispatch
+    attributes:
+      - name: name
+        type: string
+        required: true
+      - name: roles
+        type: "list(Role: name, harness image, model)"
+        description: The specialist slots and their bindings.
+        required: true
+      - name: strategy
+        type: "enum(sequential, parallel)"
+        description: How Roles coordinate within one Lease, on a shared branch.
+      - name: budget
+        type: string
+        description: Resource/token budget for the Team's Runs.
+      - name: concurrency
+        type: integer
+        description: Maximum Leases the Team may hold at once.
+    relationships:
+      - to: Lease
+        kind: has_many
+        description: One live Lease per held Work Item.
+
+  - name: Routing Rule
+    description: >
+      One ordered, first-match-wins mapping from a normalized tracker event to a
+      Team and a Work Target. Operator-declared; the rules are the only source
+      of reachable Work Targets.
+    context: Dispatch
+    attributes:
+      - name: id
+        type: string
+        description: Recorded on every Work Item this rule routed, for audit.
+        required: true
+      - name: provider
+        type: string
+        description: Tracker provider whose events this rule may match.
+        required: true
+      - name: match
+        type: "(scope, actor, hint)"
+        description: Compared for equality only; never parsed or pattern-matched (R7).
+        required: true
+      - name: team
+        type: string
+        description: Team the matched work is queued for.
+        required: true
+      - name: target
+        type: Work Target
+        description: A pre-registered target; never constructed from tracker text.
+        required: true
+      - name: order
+        type: integer
+        description: Evaluation position; the first matching rule wins.
+        required: true
+    relationships:
+      - to: Work Target
+        kind: references
+      - to: Team
+        kind: references
+
+  - name: Forge
+    description: >
+      Registry entry for one git forge instance, keyed by the id a Work Target
+      carries. Configuration, not a per-Team knob and not a per-item field.
+    context: Integration
+    attributes:
+      - name: id
+        type: string
+        description: Stable key a Work Target names.
+        required: true
+      - name: base_url
+        type: string
+        description: Endpoint of this instance.
+        required: true
+      - name: dialect
+        type: string
+        description: Which Forge Provider speaks to this instance.
+        required: true
+      - name: identity
+        type: "string (git name + email)"
+        description: Identity Runs commit as on this Forge.
+      - name: credential_ref
+        type: string
+        description: Reference to the credential source — a reference only, never a value (R8).
+
+  - name: Task Spec
+    description: >
+      Input contract of an Agent Container. The harness contract already carries
+      the coordinate as a struct (harness.RepoRef: forge url, owner, name, base
+      branch); here the model catches up.
+    context: Harness
+    attributes:
+      - name: work_item
+        type: Work Item snapshot
+        required: true
+      - name: role
+        type: string
+        required: true
+      - name: checkpoint
+        type: Checkpoint
+        description: Present on resume; absent on first Run.
+      - name: target
+        type: Work Target
+        description: The Work Item's pinned coordinate.
+        required: true
+      - name: forge_endpoint
+        type: string
+        description: Base URL the target's Forge id resolves to; never a credential (R8).
+        required: true
+    relationships:
+      - to: Work Item
+        kind: references
+      - to: Work Target
+        kind: references
+      - to: Checkpoint
+        kind: references
+
+  - name: Outcome Report
+    description: Output contract of an Agent Container; mandatory before exit.
+    context: Harness
+    attributes:
+      - name: outcome
+        type: Outcome
+        required: true
+      - name: summary
+        type: string
+        required: true
+      - name: links
+        type: "list(string)"
+        description: PRs, commits, created Follow-Ups.
+      - name: checkpoint
+        type: Checkpoint
+        description: New progress to persist.
+      - name: stuck_reason
+        type: string
+        description: Mandatory when outcome is stuck.
+    relationships:
+      - to: Checkpoint
+        kind: references
+
+rules:
+  - id: R18
+    statement: An Operator Execution requires authenticated admission. Creating a queued Vloer session alone does not admit it; Start does, including hands-on work. Vloer's deterministic demo, and its standalone mode until Unfold ADR-0002 retires it, do not create these Ploeg records.
+    rationale: Admission follows the configured execution mode and explicit start, not whether a person is currently watching the work.
+    applies_to: [Work Item, Operator Execution]
+    context: Dispatch
+  - id: R19
+    statement: A research ticket asking whether a product is worth building may finish with convincing evidence, a documented business case and a conclusion to stop. A technical design or proof of concept is not required when that conclusion is supported.
+    rationale: Research must support a decision; building an unwanted product does not improve the answer.
+    applies_to: [Tracker Item]
+    context: Integration
+  - id: R16
+    statement: Binding tracker work to an Operator Execution retains its canonical Work Item identity and tracker origin. Admission atomically excludes unattended claims and requires fresh registered Scope and Work Target expectations. Tracker refresh never implicitly relinquishes operator ownership.
+    rationale: Human interaction must not create a duplicate dispatch or restart intentionally stopped work.
+    applies_to: [Work Item, Operator Execution, Work Target]
+    context: Dispatch
+  - id: R17
+    statement: Publication requires an immutable Delivery Candidate, a matching trusted Verification Receipt and explicit candidate-bound human approval. An ambiguous Publication Operation retains its barrier until trusted positive evidence reconciles the external effect.
+    rationale: Neither worker claims nor a timeout establish that publication is safe to repeat.
+    applies_to: [Delivery Candidate, Verification Receipt, Publication Operation]
+    context: Integration
+  - id: R13
+    statement: Operator Execution commands require authenticated consumer and actor scope, a unique command identity, current revision and current generation. Replaying an accepted command returns its original result.
+    rationale: Lost responses must not create duplicate work or silently repeat paid submissions.
+    applies_to: [Operator Execution, Operator Consumer]
+    context: Dispatch
+  - id: R14
+    statement: A pending cancellation remains pending until confirmed cancelled; interruption, expiry and restart never turn it into resumable work. A pause requires confirmed stop before explicit resume.
+    rationale: A deliberate human stop must survive every recovery boundary.
+    applies_to: [Operator Execution, Run]
+    context: Dispatch
+  - id: R15
+    statement: Management credentials stay in the control plane. Inference Account authorization remains held across uncertain issuance, expiry and blocking until trusted final accounting reconciles it.
+    rationale: A crashed executor cannot authorize unrelated work or make unresolved paid work appear free.
+    applies_to: [Inference Account, Run, Executor]
+    context: Execution
+  - id: R1
+    statement: A Work Item is held by at most one Team at a time; a Lease is unique per Work Item.
+    rationale: Two Teams on one item means two writers on one branch and split accountability in the audit log.
+    applies_to: [Work Item, Lease, Team]
+    context: Dispatch
+
+  - id: R2
+    statement: A Lease must be renewed on a fixed interval by the running Run. Tracker execution expiry enters the configured recovery policy; Operator Execution expiry interrupts work and preserves pending stop intent and unresolved Inference Account authorization.
+    rationale: Controller recovery must work when an executor dies without cleanup, while preserving the applicable lane's stop intent and accounting holds.
+    applies_to: [Lease, Run]
+    context: Dispatch
+
+  - id: R3
+    statement: Every Run must retain a queryable outcome or recovery state. The runner submits an Outcome Report; controller expiry and reconciliation handle missing reports. Operator pause, cancel and uncertain external effects must not become automatic retries.
+    rationale: Audit completeness — no Run may vanish without a queryable terminal row.
+    applies_to: [Run, Outcome Report, Executor]
+    context: Execution
+
+  - id: R4
+    statement: A stuck Outcome carries a mandatory reason and transitions the Work Item to needs_human.
+    rationale: Silent stalls are the most expensive failure mode of unattended agents; stuck must always surface to a human with context.
+    applies_to: [Outcome, Work Item]
+    context: Dispatch
+
+  - id: R5
+    statement: Unattended tracker recovery has bounded retries. Infrastructure expiry and reported agent failure use separate counters and backoff rules; exhausted work requires intervention. Operator-owned work follows its own explicit lifecycle and never enters this automatic retry path.
+    rationale: Retrying is cheap once and ruinous forever — stale is the circuit breaker that stops burning tokens on repeatedly abandoned work.
+    applies_to: [Work Item, Lease]
+    context: Dispatch
+
+  - id: R6
+    statement: Authoritative Ploeg execution state lives in Postgres and durable repository evidence lives in git/forge state. Human-session records may live in the delegated workbench store; they cannot independently grant execution authority.
+    rationale: Ephemerality is the design axiom; any state trapped in a long-lived process breaks crash-safety and resume.
+    applies_to: [Run, Checkpoint]
+    context: Dispatch
+
+  - id: R7
+    statement: Core semantics must never encode a provider-specific workaround; everything vendor-specific lives behind the SPI.
+    rationale: SPI stability is the project's compatibility promise; one leaked vendor detail makes every other provider carry it forever. It cuts both ways — a provider never resolves a Team or a Work Target either; it emits a Scope the core compares for equality and never interprets.
+    applies_to: [Tracker Provider, Forge Provider, Tracker Event, Scope, Routing Rule]
+    context: Integration
+
+  - id: R8
+    statement: Credentials are delivered to an Agent Container through scoped runtime configuration outside the Task Spec. Only the credentials needed by that Run may be exposed.
+    rationale: Task Specs are logged, audited, and checkpointed; secrets in them would leak into every one of those stores.
+    applies_to: [Task Spec, Agent Container]
+    context: Harness
+
+  - id: R9
+    statement: Intended behavior — Follow-Ups are routed to the Team owning the source branch and never gate other Teams' new work.
+    rationale: Feedback loops must stay local — one team's red CI must not stall the whole factory.
+    applies_to: [Follow-Up, Team]
+    context: Dispatch
+
+  - id: R10
+    statement: Team Queue order mirrors the tracker's priority, falling back to oldest-first; Ploeg never owns prioritization.
+    rationale: The board is the source of truth for what matters and when; duplicating rank in Ploeg would create a second, silently diverging opinion.
+    applies_to: [Team Queue, Tracker Item]
+    context: Dispatch
+
+  - id: R11
+    statement: Intended target model — a Work Item carries its own Work Target (forge, owner, repository, base branch), resolved at ingest and independent of the Team that claims it. A Team is a capability manifest and never names a repository. A Work Item without a resolved Work Target is not claimable, and the set of reachable Work Targets is closed and operator-declared.
+    rationale: A Team is a crew, not a codebase. Binding them makes every capability change a repository migration and vice versa, leaves "two Teams on one repository" and "one Team across many repositories" both unrepresentable, and makes per-Run repo-scoped credentials impossible to express. The closed set keeps tracker content — untrusted input — from pointing a write-scoped credential at an arbitrary repository.
+    applies_to: [Work Item, Work Target, Team, Routing Rule]
+    context: Dispatch
+
+  - id: R12
+    statement: A Work Target is pinned once a Run has produced durable git state for it (a Work Item with an assigned branch); re-resolution that would change it is recorded as a divergence and requires a human.
+    rationale: Re-dispatch is the review-round mechanic; silently retargeting round n+1 orphans the branch and the open PR that round n produced.
+    applies_to: [Work Target, Work Item, Run]
+    context: Dispatch
+
+events:
+  - name: OperatorExecutionAdmitted
+    description: One authenticated session was bound to a Work Item, Shift and Run.
+    entity: Operator Execution
+    triggers: Makes explicit start available without launching an agent.
+  - name: OperatorExecutionCommandAccepted
+    description: A command passed identity, revision and generation checks and advanced the serialized revision.
+    entity: Operator Execution
+    triggers: The executor or workbench observes the new lifecycle or supervision state.
+  - name: OperatorExecutionExpired
+    description: Executor authority expired while work or a stop request remained unresolved.
+    entity: Operator Execution
+    triggers: Repeatedly attempt capability blocking; never enqueue a replacement execution.
+  - name: WorkItemIngested
+    description: A tracker webhook was mirrored into a new Work Item, recording the Scope it arrived in.
+    entity: Work Item
+    triggers: Eligible assignments are routed at ingestion; an intermediate ingested database state is not required.
+
+  - name: WorkItemAssigned
+    description: An Assignment matched a Routing Rule; the Work Item is queued with its Team and its pinned Work Target.
+    entity: Work Item
+    triggers: The Team Queue grows; the Executor's scaler may spawn a Run.
+
+  - name: ShiftOpened
+    description: A Team took up a queued Work Item; the branch, budget pool and Round counter come into existence.
+    entity: Shift
+    triggers: A Round is planned and its Runs are spawned with Task Specs.
+
+  - name: RoundStarted
+    description: A set of Runs was spawned together — either a fan-out of readers or a single writer.
+    entity: Shift
+    triggers: Each Run receives the same injected state; none observes the others.
+
+  - name: LeaseAcquired
+    description: A writing Run acquired the recorded lease for its Shift's branch. External credential issuance is a separate operation.
+    entity: Lease
+    triggers: The configured credential broker supplies access. The database lease alone does not prove external push fencing; legacy static credentials have weaker guarantees.
+
+  - name: PushRightsRevoked
+    description: The configured broker confirmed revocation of a Run's scoped forge token.
+    entity: Lease
+    triggers: Access through that token is removed. Lease expiry alone cannot establish this event, and a shared static token cannot provide per-Run revocation.
+
+  - name: BudgetAuthorized
+    description: A Run reserved min(roleCap, poolRemaining) against its Shift before spawning.
+    entity: Shift
+    triggers: Managed credential issuance may proceed after the durable reservation. Reservation, external key creation and confirmation have separate states; uncertainty retains the hold.
+
+  - name: BudgetSettled
+    description: Accounting finalized a Run's spend and released the corresponding reservation. A managed Run's outcome report alone does not settle its inference account.
+    entity: Shift
+    triggers: Unused allowance becomes available only after settlement; missing or uncertain accounting retains a conservative hold.
+
+  - name: LeaseExpired
+    description: A Lease TTL lapsed without renewal.
+    entity: Lease
+    triggers: Apply the lane's recovery policy and record the reason. Legacy tracker work may requeue; operator-owned work is excluded and reconciled without an automatic replacement.
+
+  - name: CheckpointWritten
+    description: A Run reported durable progress via the report API.
+    entity: Checkpoint
+    triggers: Progress is available for audit and recovery. The Task Spec supports a Checkpoint, but the current unattended worker does not populate it automatically.
+
+  - name: OutcomeReported
+    description: A Run ended with an Outcome Report.
+    entity: Run
+    triggers: Work Item transitions per the Outcome; write-back to tracker/forge through providers.
+
+  - name: FollowUpCreated
+    description: Intended event — an actionable Forge Event becomes a Follow-Up. Current forge webhook ingestion records and deduplicates events without creating this work.
+    entity: Work Item
+    triggers: The owning Team's Queue grows; vague or security-sensitive feedback goes to needs_human instead.
+
+ambiguities:
+  - phrase: who decides that delegated work is finished
+    issue: Successful checks, another agent's review and a person's approval are different possible conditions for finishing work; the product has no agreed rule for choosing between them.
+    options:
+      - Choose the condition for each task
+      - Always require a person's approval
+      - Let the agent finish when its checks pass
+    recommendation: Choose the condition for each task so research, coding and other work can use appropriate checks and approval.
+    status: open
+  - phrase: the "leased" Work Item state
+    issue: >
+      The Work Item state enum calls the working state `leased`, named for the
+      Lease it used to imply. After ADR-0010 a Work Item in that state has a
+      Shift, and may have no Lease at all — a Round of readers takes none. The
+      state name now describes the wrong thing.
+    options:
+      - Keep `leased` and accept the vocabulary drift
+      - Rename to `active`
+      - Rename to `in_shift`
+    recommendation: >
+      Decide with the implementing change, not before. The rename touches the
+      state enum, an applied migration, both contract schemas and the KEDA
+      scaler query, so it is a real cost to weigh against a name that is merely
+      imprecise. `active` reads best if it goes ahead.
+    status: open
+
+  - phrase: when a Shift closes
+    issue: >
+      ADR-0010 introduces the Shift but leaves its terminal rule to the
+      implementation. A Shift plainly closes on a terminal Outcome; less plainly
+      when an item goes needs_human and a human re-queues it — does the old
+      Shift resume with its remaining budget and Round counter, or does a fresh
+      one open?
+    options:
+      - Re-queue always opens a new Shift (budget resets, rounds restart)
+      - Re-queue resumes the existing Shift (budget and rounds carry over)
+      - Human chooses per re-queue
+    recommendation: >
+      Resume the existing Shift. A re-queue after needs_human is usually a human
+      unblocking work already done, and restarting the budget silently doubles
+      what the item may cost. Confirm against the first real needs_human Shift.
+    status: open
+
+  - phrase: follow-up mirroring
+    issue: >
+      Follow-Ups enter at queued with no Tracker Item, which tensions with "the
+      tracker is the source of truth for what to do" — work now exists that the
+      board cannot see.
+    options:
+      - Keep Follow-Ups tracker-invisible (current)
+      - Asynchronously write a Tracker Item back for every Follow-Up
+      - Write back only Follow-Ups that survive longer than one Run
+    recommendation: >
+      Revisit in roadmap phase 2 (PR-feedback ingestion); async write-back is the
+      likely answer so the board regains full visibility without blocking dispatch.
+    status: open
+
+  - phrase: groomer run
+    issue: >
+      The design says Ploeg "can schedule a groomer run" but grooming semantics
+      belong to the operator — it is unclear whether Groomer is Ploeg vocabulary
+      at all, and what distinguishes a groomer run from a normal Run.
+    options:
+      - Keep Groomer out of the core language (operator concern)
+      - Define it as a Team with a single grooming Role
+      - First-class GroomerRun concept
+    recommendation: >
+      Keep it out of the core language for now; if it lands in phase 2, model it
+      as an ordinary Team whose single Role grooms — no new concepts.
+    status: open
+
+dialogues:
+  - title: Working on a ticket in De Vloer
+    lines:
+      - speaker: Developer
+        text: Where do I start working?
+      - speaker: Product owner
+        text: In De Vloer. A ticket can supply the objective. Start requests Ploeg admission; without Ploeg, De Vloer runs only its deterministic demo.
+      - speaker: Developer
+        text: Does that require OpenCode?
+      - speaker: Product owner
+        text: No. The tool running the agent is replaceable. De Vloer is the place you use.
+  - title: Research can recommend stopping
+    lines:
+      - speaker: Developer
+        text: The research says this product should not be built. Must the agent still build a prototype?
+      - speaker: Product owner
+        text: No. Convincing evidence, a business case and a clear conclusion to stop can finish that ticket.
+      - speaker: Developer
+        text: And if the evidence supports building it?
+      - speaker: Product owner
+        text: I expect a usable design document, recorded decisions, graphs, documentation, a business case and a final conclusion. A proof of concept may also help.
+  - title: Lease vs claim, and what a crash does
+    context: Dispatch
+    lines:
+      - speaker: Dev
+        text: The implementer pod got OOM-killed halfway. Who cleans up its claim?
+      - speaker: Domain expert
+        text: The controller detects the expired **Lease** and applies the recovery policy (**R2**). Recovery does not depend on the dead pod running cleanup.
+      - speaker: Dev
+        text: So the item is lost?
+      - speaker: Domain expert
+        text: The retained record remains queryable. Unattended tracker work may retry within **R5**; operator-owned work keeps its stop intent. A stored **Checkpoint** does not guarantee automatic restoration of the harness session.
+      - speaker: Dev
+        text: And "claim" — is that a table?
+      - speaker: Domain expert
+        text: A verb. A **Team** claims an item, which means it acquires a **Lease**. If you're writing SQL, the noun is always Lease.
+
+  - title: stuck vs failed vs needs_human
+    context: Dispatch
+    lines:
+      - speaker: Dev
+        text: The agent container exited zero but never wrote anything. Is that stuck?
+      - speaker: Domain expert
+        text: A missing **Outcome Report** needs expiry or reconciliation (**R3**). Legacy tracker work may requeue, but operator-owned work must preserve stop intent and uncertain effects.
+      - speaker: Dev
+        text: Then what's stuck?
+      - speaker: Domain expert
+        text: stuck is the agent saying "I understand the task and I cannot proceed" — it must give a reason (**R4**), and the **Work Item** goes to needs_human, not back to the queue.
+      - speaker: Dev
+        text: And stale?
+      - speaker: Domain expert
+        text: stale means the machinery gave up — repeated **Lease** expiries with no Outcome at all. needs_human is the agent asking for help; stale is Ploeg refusing to retry blindly.

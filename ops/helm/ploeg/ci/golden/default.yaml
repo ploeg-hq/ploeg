@@ -1,0 +1,156 @@
+---
+# Source: ploeg/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ploeg
+  labels:
+    app.kubernetes.io/name: ploeg
+    app.kubernetes.io/instance: ploeg
+    app.kubernetes.io/version: "CHART-VERSION"
+    helm.sh/chart: ploeg-CHART-VERSION
+    app.kubernetes.io/managed-by: Helm
+automountServiceAccountToken: false
+---
+# Source: ploeg/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: ploeg
+  labels:
+    app.kubernetes.io/name: ploeg
+    app.kubernetes.io/instance: ploeg
+    app.kubernetes.io/version: "CHART-VERSION"
+    helm.sh/chart: ploeg-CHART-VERSION
+    app.kubernetes.io/managed-by: Helm
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: ploeg
+    app.kubernetes.io/instance: ploeg
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+# Source: ploeg/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ploeg
+  labels:
+    app.kubernetes.io/name: ploeg
+    app.kubernetes.io/instance: ploeg
+    app.kubernetes.io/version: "CHART-VERSION"
+    helm.sh/chart: ploeg-CHART-VERSION
+    app.kubernetes.io/managed-by: Helm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ploeg
+      app.kubernetes.io/instance: ploeg
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ploeg
+        app.kubernetes.io/instance: ploeg
+    spec:
+      serviceAccountName: ploeg
+      automountServiceAccountToken: false
+      nodeSelector:
+        node.webgrip.io/pool: worker
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: ploegd
+          image: ghcr.io/ploeg-hq/ploegd:CHART-VERSION
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: PLOEG_LISTEN
+              value: ":8080"
+            - name: PLOEG_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: ploeg-db-app
+                  key: uri
+            - name: PLOEG_VIKUNJA_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: ploeg-webhook-secret
+                  key: PLOEG_VIKUNJA_SECRET
+            - name: PLOEG_FORGEJO_URL
+              value: "http://forgejo-http.forgejo.svc.cluster.local:3000"
+            - name: PLOEG_FORGEJO_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: agent-builder-token
+                  key: FORGEJO_TOKEN
+            - name: PLOEG_FORGEJO_BOT
+              value: "agent-builder"
+            - name: PLOEG_TARGET_FORGE
+              value: "forgejo"
+            - name: PLOEG_DEFAULT_TEAM
+              value: "default"
+            - name: PLOEG_LEASE_TTL
+              value: "5m"
+            - name: PLOEG_REPORT_GRAFANA_URL
+              value: ""
+            - name: PLOEG_REPORT_VLOER_URL
+              value: ""
+            - name: PLOEG_SWEEP_INTERVAL
+              value: "15s"
+            - name: PLOEG_TEAM_MAP
+              value: ""
+            - name: PLOEG_USAGE_REPORT
+              value: "true"
+            - name: LITELLM_ADMIN_URL
+              value: "http://litellm.ai.svc.cluster.local:4000"
+            - name: LITELLM_MASTER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: agent-litellm-master
+                  key: LITELLM_MASTER_KEY
+            - name: PLOEG_WORKER_AUTH_MODE
+              value: "managed"
+            - name: PLOEG_WORKER_SIGNING_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ploeg-worker-signing
+                  key: key
+            - name: PLOEG_WORKER_BOOTSTRAPS
+              valueFrom:
+                secretKeyRef:
+                  name: ploeg-worker-bootstrap
+                  key: registry.json
+            - name: PLOEG_WORKER_LLM_POLICIES
+              value: "[]"
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 20
+          resources:
+            limits:
+              cpu: 100m
+              memory: 256Mi
+            requests:
+              cpu: 100m
+              memory: 256Mi

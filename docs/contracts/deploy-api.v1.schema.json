@@ -1,0 +1,135 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webgrip.dev/ploeg/contracts/deploy-api.v1.schema.json",
+  "title": "Ploeg deploy API v1",
+  "description": "POST /api/v1/deploys (ADR-0047): a pipeline reports that a commit is live in an environment. It authenticates with Authorization: Bearer <PLOEG_DEPLOY_TOKEN>, a dedicated credential, not an operator one. Without PLOEG_DEPLOY_TOKEN the endpoint answers 404. A missing or wrong token answers 401, an invalid body 400, a body over 16 KiB 413, a repo.forge this Ploeg has no forge for 422, and a database failure 503. A report is idempotent per (repo, environment, sha): a repeat keeps the first report's deployedAt, url and source, answers the same deployId and compares only the pull requests not compared with that deploy yet. Ploeg then checks at most 50 merged Ploeg pull requests of the repository that have no deploy of that environment at or before deployedAt, newest merge first, with the forge compare API, and marks each whose merge commit is an ancestor of sha with the first time that environment received it; a deploy reported late with an earlier deployedAt corrects that time. ploegd's sweep checks the remaining pull requests and retries failed comparisons without waiting for another deploy.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/deployRequest"
+    },
+    {
+      "$ref": "#/$defs/deployResponse"
+    },
+    {
+      "$ref": "#/$defs/errorResponse"
+    }
+  ],
+  "$defs": {
+    "deployRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "environment",
+        "repo",
+        "sha"
+      ],
+      "properties": {
+        "environment": {
+          "type": "string",
+          "description": "Free text, trimmed and lowercased by Ploeg; 1 to 63 letters, digits, dots, underscores and dashes. Common: development, test, acceptance, production.",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "repo": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "forge",
+            "owner",
+            "name"
+          ],
+          "properties": {
+            "forge": {
+              "type": "string",
+              "description": "The forge dialect (forgejo, gitlab) or the forge instance id Work Targets carry.",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$"
+            },
+            "owner": {
+              "type": "string",
+              "description": "The owner, or a GitLab group path with slashes.",
+              "pattern": "^[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*$",
+              "maxLength": 255
+            },
+            "name": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.-]{1,255}$"
+            }
+          }
+        },
+        "sha": {
+          "type": "string",
+          "description": "The full commit hash that was deployed, any case.",
+          "pattern": "^([0-9a-fA-F]{40}|[0-9a-fA-F]{64})$"
+        },
+        "deployedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the deploy went live. Default: when Ploeg received it. At most five minutes ahead of Ploeg's clock."
+        },
+        "url": {
+          "type": "string",
+          "description": "An http or https link to the pipeline run. Ploeg drops credentials, query and fragment.",
+          "maxLength": 2048
+        },
+        "source": {
+          "enum": [
+            "ci",
+            "gitops",
+            "manual"
+          ]
+        }
+      }
+    },
+    "deployResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "202 Accepted. pullRequests counts the pull requests this report marked as deployed to its environment for the first time.",
+      "required": [
+        "deployId",
+        "pullRequests"
+      ],
+      "properties": {
+        "deployId": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]*$"
+        },
+        "pullRequests": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "errorResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "error"
+      ],
+      "properties": {
+        "error": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "code",
+            "message"
+          ],
+          "properties": {
+            "code": {
+              "enum": [
+                "not_found",
+                "method_not_allowed",
+                "unauthorized",
+                "invalid_request",
+                "unknown_forge",
+                "unavailable"
+              ]
+            },
+            "message": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,63 @@
+# CI-only values: render the agent-sandbox executor (docs/contracts/executor.md)
+# so its SandboxTemplate, launcher and RBAC cannot rot silently. Bronze keeps
+# the default DinD harness, so the privileged-dind label must reach the
+# SandboxTemplate's pod and must NOT reach the launcher's ScaledJob. Gold has a
+# plan with a reading Role, so the per-Role objects and the read-only token
+# branch render too.
+executor:
+  enabled: true
+  type: sandbox
+  sandbox:
+    runtimeClassName: kata
+    # An egress allowlist: DNS, ploegd, the model gateway and the forge only.
+    networkPolicy:
+      ingress: []
+      egress:
+        - to:
+            - namespaceSelector: {}
+              podSelector:
+                matchLabels:
+                  k8s-app: kube-dns
+          ports:
+            - {protocol: UDP, port: 53}
+            - {protocol: TCP, port: 53}
+        - to:
+            - podSelector:
+                matchLabels:
+                  app.kubernetes.io/name: ploeg
+          ports:
+            - {protocol: TCP, port: 8080}
+        - to:
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: ai
+          ports:
+            - {protocol: TCP, port: 4000}
+        - to:
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: forgejo
+          ports:
+            - {protocol: TCP, port: 443}
+            - {protocol: TCP, port: 3000}
+  forgejo:
+    readTokenSecret:
+      name: agent-reader-token
+      key: FORGEJO_TOKEN
+  teams:
+    - name: bronze
+      model: litellm_proxy/deepseek-chat
+      budget: "2"
+      repoOwner: webgrip
+      repoName: example
+      baseBranch: development
+      maxReplicaCount: 1
+    - name: gold
+      model: litellm_proxy/deepseek-chat
+      budget: "4"
+      maxReplicaCount: 1
+      plan:
+        - roles:
+            - {name: builder, writes: true, cap: "3.00"}
+        - roles:
+            - {name: reviewer, writes: false, cap: "0.75", harness: {dind: false}}

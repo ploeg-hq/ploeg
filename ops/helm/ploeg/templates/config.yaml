@@ -1,0 +1,24 @@
+{{- if .Values.config }}
+---
+# ploegd's routing and roster, as a reviewable file rather than three env-var
+# DSLs. Mounted read-only at /etc/ploeg/ploeg.yaml.
+#
+# The reason this exists rather than PLOEG_TARGET_MAP="11/bronze=webgrip/..."
+# is that a bare `11` in cluster config says nothing about which board it is,
+# cannot be reviewed, and silently routes work to the wrong repository the day
+# the project is rebuilt with a new id. Here a project is NAMED; ploegd asks
+# the tracker for the id at boot and refuses to start if the name matches
+# nothing.
+#
+# A checksum annotation on the Deployment restarts ploegd when this changes —
+# the config is read once, at boot, on purpose: routing that mutates under a
+# running dispatch plane is not something anyone wants to debug.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ploeg.fullname" . }}-config
+  labels: {{- include "ploeg.labels" . | nindent 4 }}
+data:
+  ploeg.yaml: |
+    {{- toYaml .Values.config | nindent 4 }}
+{{- end }}

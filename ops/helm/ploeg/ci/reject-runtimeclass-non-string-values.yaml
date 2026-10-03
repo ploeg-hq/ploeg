@@ -1,0 +1,12 @@
+# CI-only values: a non-string RuntimeClass override must be refused by
+# values.schema.json — sandbox.runtimeClassName is a string, and a bare number
+# would ride into the rendered SandboxTemplate unquoted.
+executor:
+  enabled: true
+  type: sandbox
+  teams:
+    - name: bronze
+      model: litellm_proxy/deepseek-chat
+      budget: "2"
+      sandbox:
+        runtimeClassName: 123

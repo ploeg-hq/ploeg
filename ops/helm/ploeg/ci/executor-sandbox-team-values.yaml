@@ -1,0 +1,22 @@
+# CI-only values: one team on the sandbox executor while the deployment stays on
+# keda. Copper's workloads must render as a launcher ScaledJob plus a
+# SandboxTemplate and SandboxWarmPool; silver's must stay byte-identical to the
+# keda executor's worker ScaledJob, with no sandbox objects of its own.
+executor:
+  enabled: true
+  type: keda
+  teams:
+    - name: silver
+      model: litellm_proxy/deepseek-chat
+      budget: "4"
+      maxReplicaCount: 1
+      harness: {dind: false}
+    - name: copper
+      model: litellm_proxy/deepseek-chat
+      budget: "1"
+      maxReplicaCount: 1
+      executorType: sandbox
+      harness:
+        name: exec
+        args: ["/bin/cat", "{taskspec}"]
+        dind: false

@@ -1,0 +1,111 @@
+# CI-only values: render the executor templates (scaledjob, triggerauth) so
+# helm template exercises them on every change. The second team overrides
+# the harness block (name/image/args/dind) and the third selects the acp
+# harness, so every branch of the shared pod template renders.
+executor:
+  enabled: true
+  # Read-only reader credential configured, so the ADR-0013 tier-1 branch of
+  # the pod template renders on every PR rather than only in production.
+  forgejo:
+    # Workers stay in-cluster (the chart default url); ploegd gets the public URL.
+    publicUrl: https://forgejo.example.com
+    readTokenSecret:
+      name: agent-reader-token
+      key: FORGEJO_TOKEN
+    webhookSecret:
+      name: ploeg-forge-webhook
+      key: PLOEG_FORGEJO_SECRET
+    botPasswordSecret:
+      name: agent-builder-password
+      key: FORGEJO_BOT_PASSWORD
+  teams:
+    - name: bronze
+      model: litellm_proxy/deepseek-chat
+      budget: "2"
+      repoOwner: webgrip
+      repoName: example
+      baseBranch: development
+      maxReplicaCount: 1
+    - name: copper
+      model: litellm_proxy/claude-sonnet-5
+      budget: "3"
+      repoOwner: webgrip
+      repoName: example
+      baseBranch: development
+      maxReplicaCount: 1
+      harness:
+        name: exec
+        image: harbor.webgrip.dev/webgrip/custom-agent:0.1.0
+        args: ["/usr/local/bin/agent", "--spec", "{taskspec}", "--task", "{taskfile}"]
+        dind: false
+    # A team with NO repo: the target comes from the work item (R11), so this
+    # renders no REPO_OWNER/REPO_NAME at all. Proves the decoupled path on
+    # every PR — the whole point is that a capability tier needs no repository.
+    - name: tin
+      model: litellm_proxy/deepseek-chat
+      budget: "1"
+      maxReplicaCount: 1
+      # A mounted toolchain and the verification commands: renders the image
+      # volume, its read-only mount and PLOEG_TOOLCHAINS / PLOEG_VERIFY_*.
+      harness:
+        toolchains:
+          - name: go
+            image: harbor.webgrip.dev/dockerhub/library/golang:1.27-alpine@sha256:8a5910f31396cd4d89662f56c68b3ae31d374308270a1c3bd96672ee5ed43414
+            path: [/usr/local/go/bin]
+            env: {GOTOOLCHAIN: local}
+        verify:
+          - test -z "$(gofmt -l .)"
+          - go vet ./...
+          - go test ./...
+        verifyTimeout: 20m
+    # A team pinned to its fallback during migration.
+    - name: zinc
+      model: litellm_proxy/deepseek-chat
+      budget: "1"
+      repoOwner: webgrip
+      repoName: example
+      targetSource: env
+      # The concurrency cap clamps KEDA's ceiling (renders 2) and reaches
+      # ploegd as PLOEG_TEAM_MAX_RUNNING.
+      maxReplicaCount: 4
+      maxRunning: 2
+    # acp harness: exercises the PLOEG_ACP_* env branch and the custom-profile
+    # argv guard in the pod template. Names no repository either — a harness is
+    # a capability, and capability and codebase are independent axes (R11).
+    - name: lead
+      model: litellm_proxy/claude-sonnet-5
+      budget: "1"
+      maxReplicaCount: 1
+      harness:
+        name: acp
+        image: harbor.webgrip.dev/webgrip/opencode-runner:0.1.0
+        acp:
+          profile: custom
+          argv: ["opencode", "acp"]
+          permissionMode: allow_read_only
+          idleTimeout: 5m
+    # A PLANNED team: renders one workload per (team, Role) instead of one per
+    # team, which is the branch every other fixture leaves uncovered. It also
+    # pins the three properties that matter most about role partitioning:
+    #
+    #   * readers set dind: false, so they carry NO privileged-dind label and
+    #     fall outside the PolicyException entirely — the waiver follows the
+    #     hazard, not the workload's name;
+    #   * a reader draws AGENT_BUILDER_TOKEN from readTokenSecret while the
+    #     writer draws the read-write one (ADR-0013 tier 1);
+    #   * `builder` recurs in rounds 2 and 4 (the review→fix loop) with an
+    #     identical definition, so it must collapse to ONE workload.
+    - name: gold
+      model: litellm_proxy/deepseek-chat
+      budget: "6"
+      maxReplicaCount: 1
+      plan:
+        - roles:
+            - {name: analyst, writes: false, cap: "0.50", harness: {dind: false}}
+            - {name: tests, writes: false, cap: "0.50", harness: {dind: false}}
+        - roles:
+            - {name: builder, writes: true, cap: "3.00", model: litellm_proxy/claude-sonnet-5}
+        - roles:
+            - {name: reviewer, writes: false, cap: "0.75", model: litellm_proxy/claude-sonnet-5, harness: {dind: false}}
+        - roles:
+            - {name: builder, writes: true, cap: "3.00", model: litellm_proxy/claude-sonnet-5}

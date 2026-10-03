@@ -1,0 +1,697 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webgrip.dev/ploeg/contracts/operator-delivery.schema.json",
+  "title": "Ploeg operator delivery API 1.0",
+  "description": "Authenticated control service delivery governance; candidate and receipt inputs require verify capability, human approval and reservation require execution ownership. Failed verification is durable. Publication effect authority is granted only on first committed reservation; uncertain operation replay never grants another effect. Request schemas are addressable in $defs; root schema validates successful responses.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/candidateResponse"
+    },
+    {
+      "$ref": "#/$defs/receiptResponse"
+    },
+    {
+      "$ref": "#/$defs/approvalResponse"
+    },
+    {
+      "$ref": "#/$defs/reserveResponse"
+    },
+    {
+      "$ref": "#/$defs/statusResponse"
+    },
+    {
+      "$ref": "#/$defs/deliveryResponse"
+    }
+  ],
+  "$defs": {
+    "admitCandidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "generation",
+        "repositoryId",
+        "repositoryUrl",
+        "baseSha",
+        "canonicalSha",
+        "treeSha",
+        "artifactSha256",
+        "policySha256"
+      ],
+      "properties": {
+        "generation": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "repositoryId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+        },
+        "repositoryUrl": {
+          "type": "string",
+          "format": "uri",
+          "maxLength": 2000
+        },
+        "baseSha": {
+          "type": "string",
+          "pattern": "^(?:[a-f0-9]{40}|[a-f0-9]{64})$"
+        },
+        "canonicalSha": {
+          "type": "string",
+          "pattern": "^(?:[a-f0-9]{40}|[a-f0-9]{64})$"
+        },
+        "treeSha": {
+          "type": "string",
+          "pattern": "^(?:[a-f0-9]{40}|[a-f0-9]{64})$"
+        },
+        "artifactSha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "policySha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      }
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "executionId",
+        "workItemId",
+        "baseBranch",
+        "generation",
+        "repositoryId",
+        "repositoryUrl",
+        "baseSha",
+        "canonicalSha",
+        "treeSha",
+        "artifactSha256",
+        "policySha256",
+        "recordedBy",
+        "createdAt"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{32}$"
+        },
+        "executionId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{32}$"
+        },
+        "workItemId": {
+          "type": "string",
+          "pattern": "^[0-9]+$"
+        },
+        "baseBranch": {
+          "type": "string"
+        },
+        "generation": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "repositoryId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+        },
+        "repositoryUrl": {
+          "type": "string",
+          "format": "uri",
+          "maxLength": 2000
+        },
+        "baseSha": {
+          "type": "string",
+          "pattern": "^(?:[a-f0-9]{40}|[a-f0-9]{64})$"
+        },
+        "canonicalSha": {
+          "type": "string",
+          "pattern": "^(?:[a-f0-9]{40}|[a-f0-9]{64})$"
+        },
+        "treeSha": {
+          "type": "string",
+          "pattern": "^(?:[a-f0-9]{40}|[a-f0-9]{64})$"
+        },
+        "artifactSha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "policySha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "recordedBy": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "admitReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidateId",
+        "policySha256",
+        "canonicalSha",
+        "treeSha",
+        "artifactSha256",
+        "passed",
+        "testCount",
+        "verifierId",
+        "evidenceSha256"
+      ],
+      "properties": {
+        "candidateId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{32}$"
+        },
+        "policySha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "canonicalSha": {
+          "type": "string",
+          "pattern": "^(?:[a-f0-9]{40}|[a-f0-9]{64})$"
+        },
+        "treeSha": {
+          "type": "string",
+          "pattern": "^(?:[a-f0-9]{40}|[a-f0-9]{64})$"
+        },
+        "artifactSha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "passed": {
+          "type": "boolean"
+        },
+        "testCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "verifierId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+        },
+        "evidenceSha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      }
+    },
+    "receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "candidateId",
+        "policySha256",
+        "canonicalSha",
+        "treeSha",
+        "artifactSha256",
+        "passed",
+        "testCount",
+        "verifierId",
+        "evidenceSha256",
+        "recordedBy",
+        "createdAt"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{32}$"
+        },
+        "candidateId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{32}$"
+        },
+        "policySha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "canonicalSha": {
+          "type": "string",
+          "pattern": "^(?:[a-f0-9]{40}|[a-f0-9]{64})$"
+        },
+        "treeSha": {
+          "type": "string",
+          "pattern": "^(?:[a-f0-9]{40}|[a-f0-9]{64})$"
+        },
+        "artifactSha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "passed": {
+          "type": "boolean"
+        },
+        "testCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "verifierId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+        },
+        "evidenceSha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "recordedBy": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "approveCandidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidateId",
+        "receiptId",
+        "policySha256"
+      ],
+      "properties": {
+        "candidateId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{32}$"
+        },
+        "receiptId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{32}$"
+        },
+        "policySha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      }
+    },
+    "approval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "candidateId",
+        "receiptId",
+        "policySha256",
+        "actor",
+        "createdAt"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{32}$"
+        },
+        "candidateId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{32}$"
+        },
+        "receiptId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{32}$"
+        },
+        "policySha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "actor": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "reservePublication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operationId",
+        "candidateId",
+        "receiptId",
+        "approvalId",
+        "policySha256",
+        "branch"
+      ],
+      "properties": {
+        "operationId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+        },
+        "candidateId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{32}$"
+        },
+        "receiptId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{32}$"
+        },
+        "approvalId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{32}$"
+        },
+        "policySha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "branch": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      }
+    },
+    "operation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "executionId",
+        "operationId",
+        "candidateId",
+        "receiptId",
+        "approvalId",
+        "policySha256",
+        "branch",
+        "state",
+        "canonicalSha",
+        "repositoryUrl",
+        "baseBranch",
+        "createdAt",
+        "updatedAt"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+        },
+        "executionId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{32}$"
+        },
+        "operationId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+        },
+        "candidateId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{32}$"
+        },
+        "receiptId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{32}$"
+        },
+        "approvalId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{32}$"
+        },
+        "policySha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "branch": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "state": {
+          "enum": [
+            "reserved",
+            "unknown",
+            "published"
+          ]
+        },
+        "canonicalSha": {
+          "type": "string",
+          "pattern": "^(?:[a-f0-9]{40}|[a-f0-9]{64})$"
+        },
+        "repositoryUrl": {
+          "type": "string"
+        },
+        "baseBranch": {
+          "type": "string"
+        },
+        "remoteId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+        },
+        "remoteUrl": {
+          "type": "string",
+          "format": "uri"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "publicationStatus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "canonicalSha",
+        "branch"
+      ],
+      "properties": {
+        "state": {
+          "enum": [
+            "unknown",
+            "published"
+          ]
+        },
+        "remoteId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+        },
+        "remoteUrl": {
+          "type": "string",
+          "format": "uri"
+        },
+        "canonicalSha": {
+          "type": "string",
+          "pattern": "^(?:[a-f0-9]{40}|[a-f0-9]{64})$"
+        },
+        "branch": {
+          "type": "string"
+        }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repositoryId",
+        "policySha256",
+        "verifierId",
+        "minTests"
+      ],
+      "properties": {
+        "repositoryId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+        },
+        "policySha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "verifierId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+        },
+        "minTests": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000
+        },
+        "publicationEnabled": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "delivery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidate",
+        "receipt",
+        "approval",
+        "operation"
+      ],
+      "properties": {
+        "candidate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/candidate"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "receipt": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/receipt"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "approval": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/approval"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "operation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/operation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "candidateResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "candidate",
+        "created"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "1.0"
+        },
+        "candidate": {
+          "$ref": "#/$defs/candidate"
+        },
+        "created": {
+          "type": "boolean"
+        }
+      }
+    },
+    "receiptResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "receipt",
+        "created"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "1.0"
+        },
+        "receipt": {
+          "$ref": "#/$defs/receipt"
+        },
+        "created": {
+          "type": "boolean"
+        }
+      }
+    },
+    "approvalResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "approval",
+        "created"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "1.0"
+        },
+        "approval": {
+          "$ref": "#/$defs/approval"
+        },
+        "created": {
+          "type": "boolean"
+        }
+      }
+    },
+    "reserveResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "operation",
+        "effectAuthorized"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "1.0"
+        },
+        "operation": {
+          "$ref": "#/$defs/operation"
+        },
+        "effectAuthorized": {
+          "type": "boolean"
+        }
+      }
+    },
+    "statusResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "operation"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "1.0"
+        },
+        "operation": {
+          "$ref": "#/$defs/operation"
+        }
+      }
+    },
+    "deliveryResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "delivery",
+        "lifecycle"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "1.0"
+        },
+        "delivery": {
+          "$ref": "#/$defs/delivery"
+        },
+        "lifecycle": {
+          "const": "single-completed-execution"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://webgrip.dev/ploeg/contracts/run-api.v1.schema.json",
+  "title": "Run API",
+  "description": "Message bodies of ploegd's run API — the executor contract surface (docs/contracts/executor.md). Endpoints: POST /api/v1/claim, POST /api/v1/runs/{token}/renew, POST /api/v1/runs/{token}/checkpoint, POST /api/v1/runs/{token}/outcome. GET /api/v1/queue/depth and its queueDepthResponse were removed on 2026-09-23 because nothing consumed them; executors read the scale signal by SQL (docs/contracts/executor.md).",
+  "$defs": {
+    "claimRequest": {
+      "type": "object",
+      "properties": {
+        "team": { "type": "string", "minLength": 1 },
+        "role": {
+          "type": "string",
+          "description": "claim only this Role's pending Run within the team (run-multi-agent-shifts). Absent = the pre-Shift claim, unchanged."
+        }
+      },
+      "required": ["team"],
+      "additionalProperties": false
+    },
+    "claimResponse": {
+      "description": "HTTP 200 body; HTTP 204 = no claimable work (empty-handed convention, exit 0), which also covers an exhausted Shift budget — retrying cannot fix running out of money, so the sweeper parks the item instead.",
+      "type": "object",
+      "properties": {
+        "runToken": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{48}$",
+          "description": "Run identifier used by renew/checkpoint/outcome routes; managed mode also requires the scoped control capability and worker identity described in worker-control.md"
+        },
+        "deadline": { "type": "string", "format": "date-time" },
+        "workItem": { "$ref": "taskspec.v1.schema.json#/$defs/workItem" },
+        "shift": { "type": "integer", "description": "the Shift this Run belongs to; absent on a pre-Shift claim" },
+        "role": { "type": "string" },
+        "round": { "type": "integer", "minimum": 0 },
+        "writes": {
+          "type": "boolean",
+          "description": "true = this Run holds the Shift's Lease and may push; false = a reader, which takes no Lease (ADR-0010)"
+        },
+        "branch": {
+          "type": "string",
+          "description": "the Shift's branch, derived server-side at Shift open; absent on a pre-Shift claim, where the worker derives it"
+        },
+        "authorized": {
+          "type": "number",
+          "minimum": 0,
+          "description": "USD ceiling the run's LLM credential must be minted at: min(roleCap, poolRemaining) (ADR-0012). Absent or 0 = use the worker's env budget."
+        },
+        "briefing": { "$ref": "taskspec.v1.schema.json#/$defs/briefing" },
+        "forgeToken": {
+          "type": "string",
+          "description": "Push credential for this run. Absent = use the worker's env credential. Never logged, never audited, never in a Task Spec (R8)."
+        },
+        "forgeTokenPerRun": {
+          "type": "boolean",
+          "description": "True when forgeToken was minted for this run alone and is revoked when it settles (ADR-0013 tier 2); false or absent when it is the deployment's shared token, which the Static broker returns in the same field."
+        },
+        "planner": {
+          "type": "boolean",
+          "description": "True when the team's plan marks this Role as a planner (ADR-0031): the worker composes the planner prompt, which asks for createdWorkItems instead of code. Absent = not a planner."
+        },
+        "preAuthor": {
+          "type": "boolean",
+          "description": "True for a reading Run when no writing Run precedes its Round in the Shift, so the Shift's branch may not exist yet. Only then does the worker review the base branch when that branch is absent; otherwise an absent branch ends the Run stuck. Absent = false."
+        }
+      },
+      "required": ["runToken", "deadline", "workItem"],
+      "additionalProperties": false
+    },
+    "renewResponse": {
+      "description": "HTTP 200 body; HTTP 404 = lease no longer ours, cancel the run.",
+      "type": "object",
+      "properties": { "deadline": { "type": "string", "format": "date-time" } },
+      "required": ["deadline"],
+      "additionalProperties": false
+    },
+    "checkpointRequest": { "$ref": "checkpoint.v1.schema.json" },
+    "outcomeRequest": { "$ref": "outcomereport.v1.schema.json" }
+  }
+}
