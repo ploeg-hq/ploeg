@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.2.0-rc.4
+
+### Changes
+
+- The worker drops `CAP_SYS_PTRACE` before it runs a harness with credential isolation on, and refuses to start if the capability survives, so a Run never claims an isolation it cannot give (#63, ADR 0034).
+- Both loopback proxies forward only requests that carry the Run's placeholder; anything else on the pod's loopback gets 403 (#64, ADR 0034).
+- The forge proxy lets a writer push only `refs/heads/<run branch>`: other branches, tags, deleting the Run's branch, push certificates and unparseable pushes get 403 (#65, ADR 0034).
+- A Run whose forge requests or pushed commits carry its model key, its forge token or a per-Run canary credential fails with the new reason `credential_leak`; its forge writes stop and its commits stay on the branch for inspection (#66).
+- `ploeg_runs_failed_total{reason}` counts failed Runs per reason, and the chart's PrometheusRule gains `PloegCredentialLeak` (critical) on its `credential_leak` series.
+
+### Upgrade notes
+
+- A harness that brings its own credentials instead of the placeholders Ploeg hands it now gets 403 from the proxies while `keyIsolation` or `forgeTokenIsolation` is `proxy`.
+- A writer whose pod grants `CAP_SYS_PTRACE` and cannot drop it no longer starts with isolation on.
+- The outcome contract's `failureReason` enum gains `credential_leak`; consumers that switch on it should treat it as a failure.
+- `monitoring.prometheusRule.alerts.credentialLeak` is on whenever the PrometheusRule is.
+
 ## 0.2.0-rc.3
 
 ### Changes
