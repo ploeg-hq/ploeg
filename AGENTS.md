@@ -1,6 +1,6 @@
 # Ploeg
 
-Ploeg admits, budgets and executes agent work from trackers, from Vloer and from other work. This is the standalone repository; `main` is trunk. Use conventional commits and stage only the paths you changed. Never use `git add -A`, `git add .` or `git commit -a`. Run `mise run setup` once and every tool through `mise exec --`. Start at [docs/index.md](docs/index.md).
+Ploeg admits, budgets and executes agent work from trackers, from Vloer and from other work. This is the standalone repository; `development` is trunk and `main` holds stable releases (ADR-0064). Use conventional commits and stage only the paths you changed. Never use `git add -A`, `git add .` or `git commit -a`. Run `mise run setup` once and every tool through `mise exec --`. Start at [docs/index.md](docs/index.md).
 
 ## Commits
 
