@@ -49,7 +49,7 @@ func startTestForgeProxy(t *testing.T, repo harness.RepoRef) *forgeTokenProxy {
 
 func startTestForgeProxyFor(t *testing.T, repo harness.RepoRef, access forgeAccess) *forgeTokenProxy {
 	t.Helper()
-	p, err := startForgeTokenProxy(repo, "real-forge-token", access, writerBranch)
+	p, err := startForgeTokenProxy(repo, "real-forge-token", access, writerBranch, testLeakScope(newLeakWatch()))
 	if err != nil {
 		t.Fatal(err)
 	}
