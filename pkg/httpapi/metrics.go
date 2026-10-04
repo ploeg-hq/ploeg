@@ -112,6 +112,10 @@ func renderMetrics(m store.OperationalMetrics, webhooks *WebhookCoverage) []byte
 	b.family("ploeg_settled_spend_usd_last_hour", "gauge", "Spend settled onto Shifts during the last hour, in USD.")
 	b.sample("ploeg_settled_spend_usd_last_hour", m.SettledSpendLastHourUSD)
 
+	b.family("ploeg_runs_failed_total", "counter", "Runs that ended failed, by failure reason. A credential_leak Run carried one of its credentials or its canary to the forge.")
+	for _, reason := range sortedKeys(m.FailedRuns) {
+		b.sample("ploeg_runs_failed_total", float64(m.FailedRuns[reason]), "reason", reason)
+	}
 	b.family("ploeg_runs_without_observed_delivery_last_day", "gauge", "Runs finished in the last day whose report carried no delivery record from the worker (legacy) or one that did not match the Run (mismatch).")
 	for _, source := range sortedKeys(m.RunsWithoutObservedDeliveryLastDay) {
 		b.sample("ploeg_runs_without_observed_delivery_last_day", float64(m.RunsWithoutObservedDeliveryLastDay[source]), "source", source)

@@ -389,6 +389,16 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	}
 	runEnv = append(runEnv, skillsDirectoryEnv+"="+filepath.Join(home, skills.CanonicalDir))
 	runEnv = append(runEnv, contextEnv...)
+	leaks := leakScope{run: trace, workItem: item.ExternalID, log: w.Log, watch: newLeakWatch()}
+	if writes {
+		canary, err := newCanaryCredential()
+		if err != nil {
+			return stuckReport("could not generate the Run's canary credential", err.Error())
+		}
+		leaks.watch.guard(credentialCanary, canary)
+		leaks.watch.guard(credentialForgeToken, forgeToken)
+		runEnv = append(runEnv, canaryEnv+"="+canary)
+	}
 	knowledgeDir := filepath.Join(scratchDir, "knowledge")
 	if brief := w.knowledgePack(cloneDir, item, knowledgeDir, contextConcepts...); brief != nil {
 		spec.Knowledge = brief
@@ -411,7 +421,7 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 		gitEnv = gitAuthenticationEnvironment(cloneURL, forgeToken)
 	}
 	if writes && forgeToken != "" && w.Cfg.ForgeTokenIsolation == ForgeTokenIsolationProxy {
-		forgeProxy, err := startForgeTokenProxy(ref, forgeToken, forgeWriter)
+		forgeProxy, err := startForgeTokenProxy(ref, forgeToken, forgeWriter, branch, leaks)
 		if err != nil {
 			return stuckReport("could not isolate the forge token", err.Error())
 		}
@@ -452,12 +462,12 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 
 	w.Log.Info("starting headless harness run", "harness", w.Adapter.Name(), "cwd", cloneDir,
 		"role", claimed.Role, "budget_usd", budget, "briefing", len(claimed.Briefing))
-	report, mintErr, runErr := runAgent(ctx, w.Log, w.Broker, w.Adapter, harnessSpec, env, llmbroker.MintRequest{
+	report, mintErr, runErr := runWatchedAgent(ctx, w.Log, w.Broker, w.Adapter, harnessSpec, env, llmbroker.MintRequest{
 		RunToken:  claimed.RunToken,
 		BudgetUSD: budget,
 		Models:    w.Cfg.LLMModels,
 		TTL:       w.Cfg.KeyTTL,
-	}, w.Cfg.HarnessTimeout, w.Cfg.LLMKeyIsolation)
+	}, w.Cfg.HarnessTimeout, w.Cfg.LLMKeyIsolation, leaks.watch)
 	if mintErr != nil {
 		return stuckReport("failed to mint per-run LiteLLM key", mintErr.Error())
 	}
@@ -491,6 +501,12 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 			"failed", failed, "failed_check", failedCheck.Command, "stopped", v.Stopped)
 		final = withVerification(final, v)
 	}
+	scanCtx, cancelScan := context.WithTimeout(context.WithoutCancel(ctx), leakScanTimeout)
+	defer cancelScan()
+	final = guardCredentialLeaks(scanCtx, final, leaks, pushedCommitScan{
+		dir: cloneDir, cloneURL: cloneURL, token: forgeToken, branch: branch, start: baseline.start, publishedBefore: baseline.branch,
+	}, writes)
+	final = withholdLeakedLearnings(final, leaks, branch)
 	return w.keepLearnings(final, trace, work.Reference(item))
 }
 
@@ -499,6 +515,11 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 // adapter's report, a mint error (nothing ran), and the run error.
 func runAgent(ctx context.Context, log *slog.Logger, broker llmbroker.Broker, adapter harness.Adapter,
 	spec harness.TaskSpec, env harness.RunEnv, req llmbroker.MintRequest, limit time.Duration, isolation string) (report harness.OutcomeReport, mintErr, runErr error) {
+	return runWatchedAgent(ctx, log, broker, adapter, spec, env, req, limit, isolation, nil)
+}
+
+func runWatchedAgent(ctx context.Context, log *slog.Logger, broker llmbroker.Broker, adapter harness.Adapter,
+	spec harness.TaskSpec, env harness.RunEnv, req llmbroker.MintRequest, limit time.Duration, isolation string, leaks *leakWatch) (report harness.OutcomeReport, mintErr, runErr error) {
 
 	mintCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	cred, err := broker.Mint(mintCtx, req)
@@ -506,6 +527,7 @@ func runAgent(ctx context.Context, log *slog.Logger, broker llmbroker.Broker, ad
 	if err != nil {
 		return harness.OutcomeReport{}, err, nil
 	}
+	leaks.guard(credentialModelKey, cred.APIKey)
 	if cred.APIKey != "" {
 		log.Info("minted per-run key", "trace", cred.Alias)
 	}

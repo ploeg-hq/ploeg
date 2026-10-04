@@ -66,6 +66,9 @@ func TestMetricsExposeAlertingStateFromTheDatabase(t *testing.T) {
 		`ploeg_llm_keys_past_ttl{state="issued"} 0`,
 		`ploeg_llm_keys_past_ttl{state="unknown"} 0`,
 		"ploeg_settled_spend_usd_last_hour 0",
+		"# TYPE ploeg_runs_failed_total counter",
+		`ploeg_runs_failed_total{reason="credential_leak"} 0`,
+		`ploeg_runs_failed_total{reason="lease_lost"} 0`,
 		`ploeg_runs_without_observed_delivery_last_day{source="legacy"} 0`,
 		`ploeg_runs_without_observed_delivery_last_day{source="mismatch"} 0`,
 	)

@@ -64,6 +64,10 @@ const gitWaitDelay = 5 * time.Second
 var testGitConfig []string
 
 func runGit(ctx context.Context, dir, repositoryURL, token string, args ...string) ([]byte, error) {
+	return gitCommand(ctx, dir, repositoryURL, token, args...).CombinedOutput()
+}
+
+func gitCommand(ctx context.Context, dir, repositoryURL, token string, args ...string) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, "git", slices.Concat(testGitConfig, args)...)
 	cmd.Dir = dir
 	cmd.WaitDelay = gitWaitDelay
@@ -73,7 +77,7 @@ func runGit(ctx context.Context, dir, repositoryURL, token string, args ...strin
 		}
 	}
 	cmd.Env = append(cmd.Env, gitAuthenticationEnvironment(repositoryURL, token)...)
-	return cmd.CombinedOutput()
+	return cmd
 }
 
 // scrubSecrets removes forge credentials from the environment handed to a

@@ -25,6 +25,7 @@ var reservedToolchainEnv = map[string]bool{
 	"XDG_CONFIG_HOME": true, "XDG_DATA_HOME": true, "XDG_CACHE_HOME": true,
 	"AGENT_BUILDER_TOKEN": true, "LLM_API_KEY": true, "LLM_BASE_URL": true, "LLM_MODEL": true, "LLM_TRACE_ID": true,
 	"PLOEG_OUTCOME_FILE": true, "PLOEG_SKILLS_DIR": true, "PLOEG_VERIFY_SCRIPT": true,
+	canaryEnv: true,
 }
 
 // ParseToolchains decodes PLOEG_TOOLCHAINS. Empty input means no toolchains.

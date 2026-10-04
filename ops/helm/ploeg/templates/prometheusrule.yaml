@@ -91,4 +91,19 @@ spec:
             {{- end }}
         {{- end }}
         {{- end }}
+        {{- with $a.credentialLeak }}
+        {{- if .enabled }}
+        - alert: PloegCredentialLeak
+          expr: max(increase(ploeg_runs_failed_total{reason="credential_leak",{{ $sel }}}[15m])) > 0
+          for: {{ .for }}
+          labels:
+            severity: {{ .severity }}
+          annotations:
+            summary: "A Run carried one of its credentials to the forge"
+            description: "{{ "{{" }} $value | printf \"%.0f\" {{ "}}" }} Run(s) failed with credential_leak in the last 15 minutes. Rotate the Run's model key and forge token, then read the commits the Run left on its branch; ploegd's log names the Run and the route."
+            {{- if $runbook }}
+            runbook_url: {{ printf "%s#ploegcredentialleak" $runbook }}
+            {{- end }}
+        {{- end }}
+        {{- end }}
 {{- end }}

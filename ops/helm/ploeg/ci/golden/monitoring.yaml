@@ -213,6 +213,15 @@ spec:
             summary: "Tracker projects have no assignment webhook to Ploeg"
             description: "{{ $value }} configured Vikunja project(s) had no assignment webhook at the last check. Assignments there do not reach Ploeg."
             runbook_url: https://docs.example/ploeg/ops/alerts/#ploegtrackerwebhookmissing
+        - alert: PloegCredentialLeak
+          expr: max(increase(ploeg_runs_failed_total{reason="credential_leak",job="ploeg",namespace="default"}[15m])) > 0
+          for: 0m
+          labels:
+            severity: critical
+          annotations:
+            summary: "A Run carried one of its credentials to the forge"
+            description: "{{ $value | printf \"%.0f\" }} Run(s) failed with credential_leak in the last 15 minutes. Rotate the Run's model key and forge token, then read the commits the Run left on its branch; ploegd's log names the Run and the route."
+            runbook_url: https://docs.example/ploeg/ops/alerts/#ploegcredentialleak
 ---
 # Source: ploeg/templates/servicemonitor.yaml
 apiVersion: monitoring.coreos.com/v1

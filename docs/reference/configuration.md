@@ -286,6 +286,9 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `image.tag` |  | `""` | empty = .Chart.AppVersion (kept in lockstep with the chart by the release train) | values.yaml |
 | `imagePullSecrets` |  | `[]` | e.g. [{name: harbor-pull}] for a private registry | values.yaml |
 | `monitoring` | object |  | Prometheus Operator objects for ploegd's GET /metrics. Both are off by default: they need the monitoring.coreos.com CRDs. The alerts and what to do about each are in docs/ops/alerts.md. | values.yaml, values.schema.json |
+| `monitoring.prometheusRule.alerts.credentialLeak.enabled` | boolean | `true` |  | values.yaml, values.schema.json |
+| `monitoring.prometheusRule.alerts.credentialLeak.for` | string | `0m` |  | values.yaml, values.schema.json |
+| `monitoring.prometheusRule.alerts.credentialLeak.severity` | string | `critical` |  | values.yaml, values.schema.json |
 | `monitoring.prometheusRule.alerts.expiredLease.enabled` | boolean | `true` |  | values.yaml, values.schema.json |
 | `monitoring.prometheusRule.alerts.expiredLease.for` | string | `5m` |  | values.yaml, values.schema.json |
 | `monitoring.prometheusRule.alerts.expiredLease.overdueSeconds` | number | `300` |  | values.yaml, values.schema.json |
