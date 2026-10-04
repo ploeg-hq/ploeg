@@ -1,0 +1,10 @@
+executor:
+  enabled: true
+  forgeTokenIsolation: ""
+  litellm:
+    keyIsolation: ""
+  teams:
+    - name: qualified
+      model: litellm_proxy/deepseek-chat
+      budget: "1"
+      harness: {name: openhands, dind: false}

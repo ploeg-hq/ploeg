@@ -130,6 +130,40 @@ Context: (dict "root" $ "team" <team> "role" <role>).
 {{- $name }}
 {{- end -}}
 
+{{- define "ploeg.isolationQualifiedHarnesses" -}}
+{{- list "openhands" "acp/openhands" "exec" | toJson -}}
+{{- end -}}
+
+{{- define "ploeg.qualificationHarnessName" -}}
+{{- if eq .name "acp" -}}
+{{- printf "acp/%s" (.acpProfile | default "opencode") -}}
+{{- else -}}
+{{- .name -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "ploeg.credentialIsolation" -}}
+{{- $llmKey := .root.Values.executor.litellm.keyIsolation | default "" -}}
+{{- $forgeToken := .root.Values.executor.forgeTokenIsolation | default "" -}}
+{{- $offReason := "" -}}
+{{- if hasKey .override "value" -}}
+{{- $llmKey = .override.value | default "" -}}
+{{- $forgeToken = .override.value | default "" -}}
+{{- else if .dind -}}
+{{- $llmKey = "" -}}
+{{- $forgeToken = "" -}}
+{{- $offReason = "dind" -}}
+{{- else if not (has .harness (include "ploeg.isolationQualifiedHarnesses" . | fromJsonArray)) -}}
+{{- $llmKey = "" -}}
+{{- $forgeToken = "" -}}
+{{- $offReason = "unqualified" -}}
+{{- end -}}
+{{- if and (not $offReason) (or (not $llmKey) (not $forgeToken)) -}}
+{{- $offReason = "disabled" -}}
+{{- end -}}
+{{- dict "llmKey" $llmKey "forgeToken" $forgeToken "offReason" $offReason | toJson -}}
+{{- end -}}
+
 {{/*
 ploeg.workerPodTemplate renders the worker pod template for one team —
 shared by every executor (ScaledJob, CronJob). Context: (dict "root" $
@@ -187,6 +221,9 @@ global executor.harness defaults field-by-field (explicit hasKey checks, so
 {{- $acpIdle := $ra.idleTimeout | default ($ta.idleTimeout | default $ga.idleTimeout) }}
 {{- $acpConfig := $ra.configJson | default ($ta.configJson | default $ga.configJson) }}
 {{- $who := $team.name }}{{- if $role.name }}{{- $who = printf "%s/%s" $team.name $role.name }}{{- end }}
+{{- $isolationOverride := dict }}
+{{- if hasKey $rh "credentialIsolation" }}{{- $isolationOverride = dict "value" $rh.credentialIsolation }}{{- else if hasKey $th "credentialIsolation" }}{{- $isolationOverride = dict "value" $th.credentialIsolation }}{{- else if hasKey $gh "credentialIsolation" }}{{- $isolationOverride = dict "value" $gh.credentialIsolation }}{{- end }}
+{{- $isolation := include "ploeg.credentialIsolation" (dict "root" $root "harness" (include "ploeg.qualificationHarnessName" (dict "name" $hName "acpProfile" $acpProfile)) "dind" $hDind "override" $isolationOverride) | fromJson }}
 {{- if and (eq $hName "acp") (eq ($acpProfile | default "opencode") "custom") (not $acpArgv) }}
 {{- fail (printf "team %s: harness.acp.profile=custom requires harness.acp.argv" $who) }}
 {{- end -}}
@@ -366,12 +403,16 @@ spec:
           value: {{ $root.Values.executor.litellm.keyDuration | quote }}
         - name: LLM_BASE_URL
           value: {{ $root.Values.executor.litellm.baseUrl | quote }}
-        {{- with $root.Values.executor.litellm.keyIsolation }}
+        {{- with $isolation.llmKey }}
         - name: PLOEG_LLM_KEY_ISOLATION
           value: {{ . | quote }}
         {{- end }}
-        {{- with $root.Values.executor.forgeTokenIsolation }}
+        {{- with $isolation.forgeToken }}
         - name: PLOEG_FORGE_TOKEN_ISOLATION
+          value: {{ . | quote }}
+        {{- end }}
+        {{- with $isolation.offReason }}
+        - name: PLOEG_CREDENTIAL_ISOLATION_OFF_REASON
           value: {{ . | quote }}
         {{- end }}
         - name: PLOEG_LLM_CREDENTIAL_MODE

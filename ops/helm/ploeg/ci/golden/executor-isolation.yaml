@@ -109,28 +109,16 @@ spec:
                   name: ploeg-db-app
                   key: uri
             - name: PLOEG_TEAM_PLANS
-              value: "{\"gold\":{\"maxFixRounds\":0,\"pool\":\"6\",\"rounds\":[{\"roles\":[{\"cap\":\"0.50\",\"harness\":{\"dind\":false},\"name\":\"analyst\",\"writes\":false},{\"cap\":\"0.50\",\"harness\":{\"dind\":false},\"name\":\"tests\",\"writes\":false}]},{\"roles\":[{\"cap\":\"3.00\",\"model\":\"litellm_proxy/claude-sonnet-5\",\"name\":\"builder\",\"writes\":true}]},{\"roles\":[{\"cap\":\"0.75\",\"harness\":{\"dind\":false},\"model\":\"litellm_proxy/claude-sonnet-5\",\"name\":\"reviewer\",\"writes\":false}]},{\"roles\":[{\"cap\":\"3.00\",\"model\":\"litellm_proxy/claude-sonnet-5\",\"name\":\"builder\",\"writes\":true}]}]}}"
-            - name: PLOEG_TEAM_MAX_RUNNING
-              value: "{\"zinc\":2}"
+              value: "{\"override\":{\"maxFixRounds\":0,\"pool\":\"2\",\"rounds\":[{\"roles\":[{\"cap\":\"0.50\",\"harness\":{\"credentialIsolation\":\"proxy\",\"name\":\"claude-code\"},\"name\":\"optin\",\"writes\":false}]},{\"roles\":[{\"cap\":\"1.00\",\"name\":\"builder\",\"writes\":true}]}]}}"
             - name: PLOEG_FORGEJO_URL
-              value: "https://forgejo.example.com"
+              value: "http://forgejo-http.forgejo.svc.cluster.local:3000"
             - name: PLOEG_FORGEJO_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: agent-builder-token
                   key: FORGEJO_TOKEN
-            - name: PLOEG_FORGEJO_BOT_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: agent-builder-password
-                  key: FORGEJO_BOT_PASSWORD
             - name: PLOEG_FORGEJO_BOT
               value: "agent-builder"
-            - name: PLOEG_FORGEJO_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: ploeg-forge-webhook
-                  key: PLOEG_FORGEJO_SECRET
             - name: PLOEG_TARGET_FORGE
               value: "forgejo"
             - name: PLOEG_DEFAULT_TEAM
@@ -171,7 +159,7 @@ spec:
                   name: ploeg-worker-bootstrap
                   key: registry.json
             - name: PLOEG_WORKER_LLM_POLICIES
-              value: "[{\"budgetUsd\":2,\"models\":[\"deepseek-chat\"],\"role\":\"\",\"team\":\"bronze\",\"ttl\":\"4h\"},{\"budgetUsd\":3,\"models\":[\"claude-sonnet-5\"],\"role\":\"\",\"team\":\"copper\",\"ttl\":\"4h\"},{\"budgetUsd\":1,\"models\":[\"deepseek-chat\"],\"role\":\"\",\"team\":\"tin\",\"ttl\":\"4h\"},{\"budgetUsd\":1,\"models\":[\"deepseek-chat\"],\"role\":\"\",\"team\":\"zinc\",\"ttl\":\"4h\"},{\"budgetUsd\":1,\"models\":[\"claude-sonnet-5\"],\"role\":\"\",\"team\":\"lead\",\"ttl\":\"4h\"},{\"budgetUsd\":0.5,\"models\":[\"deepseek-chat\"],\"role\":\"analyst\",\"team\":\"gold\",\"ttl\":\"4h\"},{\"budgetUsd\":0.5,\"models\":[\"deepseek-chat\"],\"role\":\"tests\",\"team\":\"gold\",\"ttl\":\"4h\"},{\"budgetUsd\":3,\"models\":[\"claude-sonnet-5\"],\"role\":\"builder\",\"team\":\"gold\",\"ttl\":\"4h\"},{\"budgetUsd\":0.75,\"models\":[\"claude-sonnet-5\"],\"role\":\"reviewer\",\"team\":\"gold\",\"ttl\":\"4h\"}]"
+              value: "[{\"budgetUsd\":1,\"models\":[\"deepseek-chat\"],\"role\":\"\",\"team\":\"qualified\",\"ttl\":\"4h\"},{\"budgetUsd\":1,\"models\":[\"deepseek-chat\"],\"role\":\"\",\"team\":\"dind\",\"ttl\":\"4h\"},{\"budgetUsd\":1,\"models\":[\"claude-sonnet-5\"],\"role\":\"\",\"team\":\"unqualified\",\"ttl\":\"4h\"},{\"budgetUsd\":1,\"models\":[\"deepseek-chat\"],\"role\":\"\",\"team\":\"acp-opencode\",\"ttl\":\"4h\"},{\"budgetUsd\":1,\"models\":[\"deepseek-chat\"],\"role\":\"\",\"team\":\"acp-openhands\",\"ttl\":\"4h\"},{\"budgetUsd\":0.5,\"models\":[\"deepseek-chat\"],\"role\":\"optin\",\"team\":\"override\",\"ttl\":\"4h\"},{\"budgetUsd\":1,\"models\":[\"deepseek-chat\"],\"role\":\"builder\",\"team\":\"override\",\"ttl\":\"4h\"}]"
           readinessProbe:
             httpGet:
               path: /readyz
@@ -204,19 +192,13 @@ spec:
 apiVersion: keda.sh/v1alpha1
 kind: ScaledJob
 metadata:
-  name: ploeg-worker-bronze
+  name: ploeg-worker-qualified
   labels:
     app.kubernetes.io/name: ploeg
     app.kubernetes.io/instance: ploeg
     app.kubernetes.io/version: "CHART-VERSION"
     helm.sh/chart: ploeg-CHART-VERSION
     app.kubernetes.io/managed-by: Helm
-    # KEDA copies these labels onto every Job it creates, which is the only way
-    # the hazard reaches the Job. Kyverno autogens a Job rule for
-    # pod-security-baseline-enforce and a Job selector matches the JOB's own
-    # labels — stamping this on the pod template alone left the PolicyException
-    # unable to admit the Job, and DinD teams were rejected at admission.
-    ploeg.webgrip.dev/privileged-dind: "true"
 spec:
   pollingInterval: 30
   minReplicaCount: 0
@@ -238,13 +220,7 @@ spec:
       metadata:
         labels:
           app.kubernetes.io/name: ploeg-worker
-          ploeg.webgrip.dev/team: bronze
-          # Names the HAZARD, not the workload: this pod carries a privileged
-          # docker:dind sidecar, and the ploeg-worker PolicyException is keyed on
-          # exactly this label. A pod without dind never carries it and is held to
-          # the full baseline — so adding a Role costs no security-repo change, and
-          # readers are not waived for a privilege they do not take.
-          ploeg.webgrip.dev/privileged-dind: "true"
+          ploeg.webgrip.dev/team: qualified
       spec:
         restartPolicy: Never
         # The shutdown budget for ploeg-worker's SIGTERM path: abort the harness,
@@ -284,37 +260,6 @@ spec:
               requests:
                 cpu: 50m
                 memory: 64Mi
-          # DinD sidecar: the harness sandbox and the repo quality gates need a
-          # Docker daemon. Requires the ploeg-worker PolicyException. Teams whose
-          # harness needs no Docker set harness.dind: false.
-          - name: dind
-            image: docker.io/library/docker:29.8.2-dind@sha256:7dcdfc4a20246236f558175182ccace1eb15a41bd3eb119dd2284f393498b7c1
-            restartPolicy: Always
-            securityContext:
-              privileged: true
-            env:
-              - name: DOCKER_TLS_CERTDIR
-                value: /certs
-            startupProbe:
-              tcpSocket:
-                port: 2376
-              periodSeconds: 2
-              failureThreshold: 60
-              timeoutSeconds: 5
-            volumeMounts:
-              - name: docker-certs
-                mountPath: /certs
-              - name: docker-storage
-                mountPath: /var/lib/docker
-              - name: ci-shared
-                mountPath: /mnt/ci-shared
-            resources:
-              limits:
-                cpu: "1"
-                memory: 1536Mi
-              requests:
-                cpu: "1"
-                memory: 1536Mi
         containers:
           - name: worker
             image: registry.example/agent-runner:1.3.0
@@ -323,7 +268,7 @@ spec:
               - name: PLOEG_API_URL
                 value: "http://ploeg:8080"
               - name: PLOEG_TEAM
-                value: "bronze"
+                value: "qualified"
               - name: PLOEG_HARNESS
                 value: "openhands"
               - name: PLOEG_HARNESS_TIMEOUT
@@ -333,209 +278,7 @@ spec:
               - name: LLM_MODEL
                 value: "litellm_proxy/deepseek-chat"
               - name: LITELLM_KEY_BUDGET
-                value: "2"
-              - name: LITELLM_KEY_DURATION
-                value: "4h"
-              - name: LLM_BASE_URL
-                value: "http://litellm.ai.svc.cluster.local:4000/v1"
-              - name: PLOEG_CREDENTIAL_ISOLATION_OFF_REASON
-                value: "dind"
-              - name: PLOEG_LLM_CREDENTIAL_MODE
-                value: "managed"
-              - name: PLOEG_WORKER_BOOTSTRAP_TOKEN
-                valueFrom:
-                  secretKeyRef:
-                    name: ploeg-worker-bootstrap
-                    key: "bronze--default"
-              - name: PLOEG_TARGET_FORGE
-                value: "forgejo"
-              - name: FORGE_URL
-                value: "http://forgejo-http.forgejo.svc.cluster.local:3000"
-              - name: AGENT_BUILDER_TOKEN
-                valueFrom:
-                  secretKeyRef:
-                    name: agent-builder-token
-                    key: FORGEJO_TOKEN
-              # FALLBACK target only. The repository belongs to the work item,
-              # resolved at ingest from its tracker scope and delivered on the claim
-              # (R11, ADR-0001); these render only while a team still pins a repo,
-              # and a team that declares none renders no repo env at all.
-              - name: REPO_OWNER
-                value: "webgrip"
-              - name: REPO_NAME
-                value: "example"
-              # Base branch for clone/branch/PR (VIK-589). Unset = the repo's
-              # default branch on clone and the worker's historical "main".
-              - name: PLOEG_BASE_BRANCH
-                value: "development"
-              # Downward API: node+pod identity survives pod/job cleanup for
-              # run forensics (VIK-597). Logged at worker start and embedded in
-              # every checkpoint.
-              - name: NODE_NAME
-                valueFrom:
-                  fieldRef:
-                    fieldPath: spec.nodeName
-              - name: POD_UID
-                valueFrom:
-                  fieldRef:
-                    fieldPath: metadata.uid
-              - name: WORK_DIR
-                value: /mnt/ci-shared
-              - name: DOCKER_HOST
-                value: tcp://localhost:2376
-              - name: DOCKER_CERT_PATH
-                value: /certs/client
-              - name: DOCKER_TLS_VERIFY
                 value: "1"
-            volumeMounts:
-              - name: worker-bin
-                mountPath: /mnt/bin
-                readOnly: true
-              - name: docker-certs
-                mountPath: /certs
-                readOnly: true
-              - name: ci-shared
-                mountPath: /mnt/ci-shared
-            resources:
-              limits:
-                cpu: "1"
-                memory: 1Gi
-              requests:
-                cpu: "1"
-                memory: 1Gi
-        volumes:
-          - name: worker-bin
-            emptyDir: {}
-          - name: docker-certs
-            emptyDir: {}
-          - name: docker-storage
-            emptyDir: {}
-          # Disk-backed (not tmpfs): repo checkout + gate builds are large.
-          # Same absolute path in worker AND dind so `docker run -v`
-          # bind-mounts resolve on the daemon's filesystem.
-          - name: ci-shared
-            emptyDir:
-              sizeLimit: 8Gi
-  triggers:
-    - type: postgresql
-      metadata:
-        # Resolved by the KEDA operator from ITS namespace, not this one —
-        # a bare in-namespace service name never resolves there.
-        host: "ploeg-db-rw.default.svc.cluster.local"
-        port: "5432"
-        userName: "ploeg_scaler"
-        dbName: "app"
-        sslmode: "require"
-        # The one poll-query shape: served index-only by work_items_claimable
-        # (backlog #24/#47). Must stay in sync with store.Claim.
-        query: "SELECT COUNT(*) FROM work_items WHERE team = 'bronze' AND state = 'queued' AND NOT operator_owned AND (next_eligible_at IS NULL OR next_eligible_at <= now())"
-        targetQueryValue: "1"
-        activationTargetQueryValue: "0"
-      authenticationRef:
-        name: ploeg-scaler
----
-# Source: ploeg/templates/scaledjob.yaml
-# One ScaledJob per (team, Role) — the flagship executor. A team without a
-# plan has exactly one Role-less workload, byte-identical to the pre-Shift
-# shape; a team with a plan gets one per Role, which is what makes "different
-# agents, different harnesses, different images" literally true: pod shape is
-# fixed at render time. The shape lives in the shared ploeg.workerPodTemplate
-# helper (also used by the CronJob executor): privileged DinD sidecar when the
-# harness needs Docker, a shared disk-backed workspace mounted at the SAME
-# path in both containers, and zero Kubernetes API authority for the
-# LLM-driven process.
-apiVersion: keda.sh/v1alpha1
-kind: ScaledJob
-metadata:
-  name: ploeg-worker-copper
-  labels:
-    app.kubernetes.io/name: ploeg
-    app.kubernetes.io/instance: ploeg
-    app.kubernetes.io/version: "CHART-VERSION"
-    helm.sh/chart: ploeg-CHART-VERSION
-    app.kubernetes.io/managed-by: Helm
-spec:
-  pollingInterval: 30
-  minReplicaCount: 0
-  maxReplicaCount: 1
-  successfulJobsHistoryLimit: 3
-  failedJobsHistoryLimit: 3
-  rollout:
-    strategy: gradual # spec updates never kill in-flight runs (backlog #50)
-  scalingStrategy:
-    strategy: accurate # never eager: open over-scaling bug kedacore/keda#6416 (backlog #47)
-  jobTargetRef:
-    parallelism: 1
-    completions: 1
-    backoffLimit: 0 # ploeg owns retries; every pod is one auditable run (backlog #51)
-    activeDeadlineSeconds: 7200
-    template:
-      
-      
-      metadata:
-        labels:
-          app.kubernetes.io/name: ploeg-worker
-          ploeg.webgrip.dev/team: copper
-      spec:
-        restartPolicy: Never
-        # The shutdown budget for ploeg-worker's SIGTERM path: abort the harness,
-        # revoke the per-run credential, settle its spend, report the outcome. The
-        # 30s default SIGKILLed the pod mid-report, which is the silence that made a
-        # killed run indistinguishable from a hung one and cost the Round an attempt.
-        terminationGracePeriodSeconds: 90
-        # An identity of the workers' own. Naming none left them on `default`, which
-        # both trips require-non-default-serviceaccount and makes every workload in
-        # the namespace indistinguishable in an audit log. The token stays unmounted
-        # either way — a worker needs no Kubernetes API authority at all.
-        serviceAccountName: ploeg-worker
-        automountServiceAccountToken: false
-        securityContext:
-          fsGroup: 1000
-        initContainers:
-          # Extracts ploeg-worker from the distroless ploegd image via
-          # self-copy (no shell in distroless).
-          - name: worker-bin
-            image: ghcr.io/ploeg-hq/ploegd:CHART-VERSION
-            command: ["/usr/local/bin/ploeg-worker", "install", "/mnt/bin/ploeg-worker"]
-            securityContext:
-              runAsNonRoot: true
-              runAsUser: 65532
-              allowPrivilegeEscalation: false
-              capabilities:
-                drop: [ALL]
-              seccompProfile:
-                type: RuntimeDefault
-            volumeMounts:
-              - name: worker-bin
-                mountPath: /mnt/bin
-            resources:
-              limits:
-                cpu: 50m
-                memory: 64Mi
-              requests:
-                cpu: 50m
-                memory: 64Mi
-        containers:
-          - name: worker
-            image: harbor.webgrip.dev/webgrip/custom-agent:0.1.0
-            command: ["/mnt/bin/ploeg-worker"]
-            env:
-              - name: PLOEG_API_URL
-                value: "http://ploeg:8080"
-              - name: PLOEG_TEAM
-                value: "copper"
-              - name: PLOEG_HARNESS
-                value: "exec"
-              - name: PLOEG_HARNESS_ARGS
-                value: "[\"/usr/local/bin/agent\",\"--spec\",\"{taskspec}\",\"--task\",\"{taskfile}\"]"
-              - name: PLOEG_HARNESS_TIMEOUT
-                value: "100m"
-              - name: PLOEG_HARNESS_IDLE_TIMEOUT
-                value: "15m"
-              - name: LLM_MODEL
-                value: "litellm_proxy/claude-sonnet-5"
-              - name: LITELLM_KEY_BUDGET
-                value: "3"
               - name: LITELLM_KEY_DURATION
                 value: "4h"
               - name: LLM_BASE_URL
@@ -550,7 +293,7 @@ spec:
                 valueFrom:
                   secretKeyRef:
                     name: ploeg-worker-bootstrap
-                    key: "copper--default"
+                    key: "qualified--default"
               - name: PLOEG_TARGET_FORGE
                 value: "forgejo"
               - name: FORGE_URL
@@ -564,14 +307,6 @@ spec:
               # resolved at ingest from its tracker scope and delivered on the claim
               # (R11, ADR-0001); these render only while a team still pins a repo,
               # and a team that declares none renders no repo env at all.
-              - name: REPO_OWNER
-                value: "webgrip"
-              - name: REPO_NAME
-                value: "example"
-              # Base branch for clone/branch/PR (VIK-589). Unset = the repo's
-              # default branch on clone and the worker's historical "main".
-              - name: PLOEG_BASE_BRANCH
-                value: "development"
               # Downward API: node+pod identity survives pod/job cleanup for
               # run forensics (VIK-597). Logged at worker start and embedded in
               # every checkpoint.
@@ -619,7 +354,7 @@ spec:
         sslmode: "require"
         # The one poll-query shape: served index-only by work_items_claimable
         # (backlog #24/#47). Must stay in sync with store.Claim.
-        query: "SELECT COUNT(*) FROM work_items WHERE team = 'copper' AND state = 'queued' AND NOT operator_owned AND (next_eligible_at IS NULL OR next_eligible_at <= now())"
+        query: "SELECT COUNT(*) FROM work_items WHERE team = 'qualified' AND state = 'queued' AND NOT operator_owned AND (next_eligible_at IS NULL OR next_eligible_at <= now())"
         targetQueryValue: "1"
         activationTargetQueryValue: "0"
       authenticationRef:
@@ -638,7 +373,7 @@ spec:
 apiVersion: keda.sh/v1alpha1
 kind: ScaledJob
 metadata:
-  name: ploeg-worker-tin
+  name: ploeg-worker-dind
   labels:
     app.kubernetes.io/name: ploeg
     app.kubernetes.io/instance: ploeg
@@ -672,7 +407,7 @@ spec:
       metadata:
         labels:
           app.kubernetes.io/name: ploeg-worker
-          ploeg.webgrip.dev/team: tin
+          ploeg.webgrip.dev/team: dind
           # Names the HAZARD, not the workload: this pod carries a privileged
           # docker:dind sidecar, and the ploeg-worker PolicyException is keyed on
           # exactly this label. A pod without dind never carries it and is held to
@@ -757,255 +492,7 @@ spec:
               - name: PLOEG_API_URL
                 value: "http://ploeg:8080"
               - name: PLOEG_TEAM
-                value: "tin"
-              - name: PLOEG_HARNESS
-                value: "openhands"
-              - name: PLOEG_HARNESS_TIMEOUT
-                value: "100m"
-              - name: PLOEG_HARNESS_IDLE_TIMEOUT
-                value: "15m"
-              - name: PLOEG_TOOLCHAINS
-                value: "[{\"env\":{\"GOTOOLCHAIN\":\"local\"},\"name\":\"go\",\"path\":[\"/opt/ploeg/toolchains/go/usr/local/go/bin\"]}]"
-              - name: PLOEG_VERIFY_COMMANDS
-                value: "[\"test -z \\\"$$(gofmt -l .)\\\"\",\"go vet ./...\",\"go test ./...\"]"
-              - name: PLOEG_VERIFY_TIMEOUT
-                value: "20m"
-              - name: LLM_MODEL
-                value: "litellm_proxy/deepseek-chat"
-              - name: LITELLM_KEY_BUDGET
-                value: "1"
-              - name: LITELLM_KEY_DURATION
-                value: "4h"
-              - name: LLM_BASE_URL
-                value: "http://litellm.ai.svc.cluster.local:4000/v1"
-              - name: PLOEG_CREDENTIAL_ISOLATION_OFF_REASON
                 value: "dind"
-              - name: PLOEG_LLM_CREDENTIAL_MODE
-                value: "managed"
-              - name: PLOEG_WORKER_BOOTSTRAP_TOKEN
-                valueFrom:
-                  secretKeyRef:
-                    name: ploeg-worker-bootstrap
-                    key: "tin--default"
-              - name: PLOEG_TARGET_FORGE
-                value: "forgejo"
-              - name: FORGE_URL
-                value: "http://forgejo-http.forgejo.svc.cluster.local:3000"
-              - name: AGENT_BUILDER_TOKEN
-                valueFrom:
-                  secretKeyRef:
-                    name: agent-builder-token
-                    key: FORGEJO_TOKEN
-              # FALLBACK target only. The repository belongs to the work item,
-              # resolved at ingest from its tracker scope and delivered on the claim
-              # (R11, ADR-0001); these render only while a team still pins a repo,
-              # and a team that declares none renders no repo env at all.
-              # Downward API: node+pod identity survives pod/job cleanup for
-              # run forensics (VIK-597). Logged at worker start and embedded in
-              # every checkpoint.
-              - name: NODE_NAME
-                valueFrom:
-                  fieldRef:
-                    fieldPath: spec.nodeName
-              - name: POD_UID
-                valueFrom:
-                  fieldRef:
-                    fieldPath: metadata.uid
-              - name: WORK_DIR
-                value: /mnt/ci-shared
-              - name: DOCKER_HOST
-                value: tcp://localhost:2376
-              - name: DOCKER_CERT_PATH
-                value: /certs/client
-              - name: DOCKER_TLS_VERIFY
-                value: "1"
-            volumeMounts:
-              - name: worker-bin
-                mountPath: /mnt/bin
-                readOnly: true
-              - name: docker-certs
-                mountPath: /certs
-                readOnly: true
-              - name: ci-shared
-                mountPath: /mnt/ci-shared
-              - name: toolchain-go
-                mountPath: /opt/ploeg/toolchains/go
-                readOnly: true
-            resources:
-              limits:
-                cpu: "1"
-                memory: 1Gi
-              requests:
-                cpu: "1"
-                memory: 1Gi
-        volumes:
-          - name: worker-bin
-            emptyDir: {}
-          - name: docker-certs
-            emptyDir: {}
-          - name: docker-storage
-            emptyDir: {}
-          # Disk-backed (not tmpfs): repo checkout + gate builds are large.
-          # Same absolute path in worker AND dind so `docker run -v`
-          # bind-mounts resolve on the daemon's filesystem.
-          - name: ci-shared
-            emptyDir:
-              sizeLimit: 8Gi
-          - name: toolchain-go
-            image:
-              reference: harbor.webgrip.dev/dockerhub/library/golang:1.27-alpine@sha256:8a5910f31396cd4d89662f56c68b3ae31d374308270a1c3bd96672ee5ed43414
-              pullPolicy: IfNotPresent
-  triggers:
-    - type: postgresql
-      metadata:
-        # Resolved by the KEDA operator from ITS namespace, not this one —
-        # a bare in-namespace service name never resolves there.
-        host: "ploeg-db-rw.default.svc.cluster.local"
-        port: "5432"
-        userName: "ploeg_scaler"
-        dbName: "app"
-        sslmode: "require"
-        # The one poll-query shape: served index-only by work_items_claimable
-        # (backlog #24/#47). Must stay in sync with store.Claim.
-        query: "SELECT COUNT(*) FROM work_items WHERE team = 'tin' AND state = 'queued' AND NOT operator_owned AND (next_eligible_at IS NULL OR next_eligible_at <= now())"
-        targetQueryValue: "1"
-        activationTargetQueryValue: "0"
-      authenticationRef:
-        name: ploeg-scaler
----
-# Source: ploeg/templates/scaledjob.yaml
-# One ScaledJob per (team, Role) — the flagship executor. A team without a
-# plan has exactly one Role-less workload, byte-identical to the pre-Shift
-# shape; a team with a plan gets one per Role, which is what makes "different
-# agents, different harnesses, different images" literally true: pod shape is
-# fixed at render time. The shape lives in the shared ploeg.workerPodTemplate
-# helper (also used by the CronJob executor): privileged DinD sidecar when the
-# harness needs Docker, a shared disk-backed workspace mounted at the SAME
-# path in both containers, and zero Kubernetes API authority for the
-# LLM-driven process.
-apiVersion: keda.sh/v1alpha1
-kind: ScaledJob
-metadata:
-  name: ploeg-worker-zinc
-  labels:
-    app.kubernetes.io/name: ploeg
-    app.kubernetes.io/instance: ploeg
-    app.kubernetes.io/version: "CHART-VERSION"
-    helm.sh/chart: ploeg-CHART-VERSION
-    app.kubernetes.io/managed-by: Helm
-    # KEDA copies these labels onto every Job it creates, which is the only way
-    # the hazard reaches the Job. Kyverno autogens a Job rule for
-    # pod-security-baseline-enforce and a Job selector matches the JOB's own
-    # labels — stamping this on the pod template alone left the PolicyException
-    # unable to admit the Job, and DinD teams were rejected at admission.
-    ploeg.webgrip.dev/privileged-dind: "true"
-spec:
-  pollingInterval: 30
-  minReplicaCount: 0
-  maxReplicaCount: 2
-  successfulJobsHistoryLimit: 3
-  failedJobsHistoryLimit: 3
-  rollout:
-    strategy: gradual # spec updates never kill in-flight runs (backlog #50)
-  scalingStrategy:
-    strategy: accurate # never eager: open over-scaling bug kedacore/keda#6416 (backlog #47)
-  jobTargetRef:
-    parallelism: 1
-    completions: 1
-    backoffLimit: 0 # ploeg owns retries; every pod is one auditable run (backlog #51)
-    activeDeadlineSeconds: 7200
-    template:
-      
-      
-      metadata:
-        labels:
-          app.kubernetes.io/name: ploeg-worker
-          ploeg.webgrip.dev/team: zinc
-          # Names the HAZARD, not the workload: this pod carries a privileged
-          # docker:dind sidecar, and the ploeg-worker PolicyException is keyed on
-          # exactly this label. A pod without dind never carries it and is held to
-          # the full baseline — so adding a Role costs no security-repo change, and
-          # readers are not waived for a privilege they do not take.
-          ploeg.webgrip.dev/privileged-dind: "true"
-      spec:
-        restartPolicy: Never
-        # The shutdown budget for ploeg-worker's SIGTERM path: abort the harness,
-        # revoke the per-run credential, settle its spend, report the outcome. The
-        # 30s default SIGKILLed the pod mid-report, which is the silence that made a
-        # killed run indistinguishable from a hung one and cost the Round an attempt.
-        terminationGracePeriodSeconds: 90
-        # An identity of the workers' own. Naming none left them on `default`, which
-        # both trips require-non-default-serviceaccount and makes every workload in
-        # the namespace indistinguishable in an audit log. The token stays unmounted
-        # either way — a worker needs no Kubernetes API authority at all.
-        serviceAccountName: ploeg-worker
-        automountServiceAccountToken: false
-        securityContext:
-          fsGroup: 1000
-        initContainers:
-          # Extracts ploeg-worker from the distroless ploegd image via
-          # self-copy (no shell in distroless).
-          - name: worker-bin
-            image: ghcr.io/ploeg-hq/ploegd:CHART-VERSION
-            command: ["/usr/local/bin/ploeg-worker", "install", "/mnt/bin/ploeg-worker"]
-            securityContext:
-              runAsNonRoot: true
-              runAsUser: 65532
-              allowPrivilegeEscalation: false
-              capabilities:
-                drop: [ALL]
-              seccompProfile:
-                type: RuntimeDefault
-            volumeMounts:
-              - name: worker-bin
-                mountPath: /mnt/bin
-            resources:
-              limits:
-                cpu: 50m
-                memory: 64Mi
-              requests:
-                cpu: 50m
-                memory: 64Mi
-          # DinD sidecar: the harness sandbox and the repo quality gates need a
-          # Docker daemon. Requires the ploeg-worker PolicyException. Teams whose
-          # harness needs no Docker set harness.dind: false.
-          - name: dind
-            image: docker.io/library/docker:29.8.2-dind@sha256:7dcdfc4a20246236f558175182ccace1eb15a41bd3eb119dd2284f393498b7c1
-            restartPolicy: Always
-            securityContext:
-              privileged: true
-            env:
-              - name: DOCKER_TLS_CERTDIR
-                value: /certs
-            startupProbe:
-              tcpSocket:
-                port: 2376
-              periodSeconds: 2
-              failureThreshold: 60
-              timeoutSeconds: 5
-            volumeMounts:
-              - name: docker-certs
-                mountPath: /certs
-              - name: docker-storage
-                mountPath: /var/lib/docker
-              - name: ci-shared
-                mountPath: /mnt/ci-shared
-            resources:
-              limits:
-                cpu: "1"
-                memory: 1536Mi
-              requests:
-                cpu: "1"
-                memory: 1536Mi
-        containers:
-          - name: worker
-            image: registry.example/agent-runner:1.3.0
-            command: ["/mnt/bin/ploeg-worker"]
-            env:
-              - name: PLOEG_API_URL
-                value: "http://ploeg:8080"
-              - name: PLOEG_TEAM
-                value: "zinc"
               - name: PLOEG_HARNESS
                 value: "openhands"
               - name: PLOEG_HARNESS_TIMEOUT
@@ -1028,7 +515,7 @@ spec:
                 valueFrom:
                   secretKeyRef:
                     name: ploeg-worker-bootstrap
-                    key: "zinc--default"
+                    key: "dind--default"
               - name: PLOEG_TARGET_FORGE
                 value: "forgejo"
               - name: FORGE_URL
@@ -1042,14 +529,6 @@ spec:
               # resolved at ingest from its tracker scope and delivered on the claim
               # (R11, ADR-0001); these render only while a team still pins a repo,
               # and a team that declares none renders no repo env at all.
-              - name: REPO_OWNER
-                value: "webgrip"
-              - name: REPO_NAME
-                value: "example"
-              # env = ignore the claim's target and use this team's pinned repo.
-              # The per-team lever for rolling the decoupling forward or back.
-              - name: PLOEG_TARGET_SOURCE
-                value: "env"
               # Downward API: node+pod identity survives pod/job cleanup for
               # run forensics (VIK-597). Logged at worker start and embedded in
               # every checkpoint.
@@ -1110,7 +589,7 @@ spec:
         sslmode: "require"
         # The one poll-query shape: served index-only by work_items_claimable
         # (backlog #24/#47). Must stay in sync with store.Claim.
-        query: "SELECT COUNT(*) FROM work_items WHERE team = 'zinc' AND state = 'queued' AND NOT operator_owned AND (next_eligible_at IS NULL OR next_eligible_at <= now())"
+        query: "SELECT COUNT(*) FROM work_items WHERE team = 'dind' AND state = 'queued' AND NOT operator_owned AND (next_eligible_at IS NULL OR next_eligible_at <= now())"
         targetQueryValue: "1"
         activationTargetQueryValue: "0"
       authenticationRef:
@@ -1129,19 +608,13 @@ spec:
 apiVersion: keda.sh/v1alpha1
 kind: ScaledJob
 metadata:
-  name: ploeg-worker-lead
+  name: ploeg-worker-unqualified
   labels:
     app.kubernetes.io/name: ploeg
     app.kubernetes.io/instance: ploeg
     app.kubernetes.io/version: "CHART-VERSION"
     helm.sh/chart: ploeg-CHART-VERSION
     app.kubernetes.io/managed-by: Helm
-    # KEDA copies these labels onto every Job it creates, which is the only way
-    # the hazard reaches the Job. Kyverno autogens a Job rule for
-    # pod-security-baseline-enforce and a Job selector matches the JOB's own
-    # labels — stamping this on the pod template alone left the PolicyException
-    # unable to admit the Job, and DinD teams were rejected at admission.
-    ploeg.webgrip.dev/privileged-dind: "true"
 spec:
   pollingInterval: 30
   minReplicaCount: 0
@@ -1163,13 +636,7 @@ spec:
       metadata:
         labels:
           app.kubernetes.io/name: ploeg-worker
-          ploeg.webgrip.dev/team: lead
-          # Names the HAZARD, not the workload: this pod carries a privileged
-          # docker:dind sidecar, and the ploeg-worker PolicyException is keyed on
-          # exactly this label. A pod without dind never carries it and is held to
-          # the full baseline — so adding a Role costs no security-repo change, and
-          # readers are not waived for a privilege they do not take.
-          ploeg.webgrip.dev/privileged-dind: "true"
+          ploeg.webgrip.dev/team: unqualified
       spec:
         restartPolicy: Never
         # The shutdown budget for ploeg-worker's SIGTERM path: abort the harness,
@@ -1209,46 +676,194 @@ spec:
               requests:
                 cpu: 50m
                 memory: 64Mi
-          # DinD sidecar: the harness sandbox and the repo quality gates need a
-          # Docker daemon. Requires the ploeg-worker PolicyException. Teams whose
-          # harness needs no Docker set harness.dind: false.
-          - name: dind
-            image: docker.io/library/docker:29.8.2-dind@sha256:7dcdfc4a20246236f558175182ccace1eb15a41bd3eb119dd2284f393498b7c1
-            restartPolicy: Always
-            securityContext:
-              privileged: true
-            env:
-              - name: DOCKER_TLS_CERTDIR
-                value: /certs
-            startupProbe:
-              tcpSocket:
-                port: 2376
-              periodSeconds: 2
-              failureThreshold: 60
-              timeoutSeconds: 5
-            volumeMounts:
-              - name: docker-certs
-                mountPath: /certs
-              - name: docker-storage
-                mountPath: /var/lib/docker
-              - name: ci-shared
-                mountPath: /mnt/ci-shared
-            resources:
-              limits:
-                cpu: "1"
-                memory: 1536Mi
-              requests:
-                cpu: "1"
-                memory: 1536Mi
         containers:
           - name: worker
-            image: harbor.webgrip.dev/webgrip/opencode-runner:0.1.0
+            image: registry.example/agent-runner:1.3.0
             command: ["/mnt/bin/ploeg-worker"]
             env:
               - name: PLOEG_API_URL
                 value: "http://ploeg:8080"
               - name: PLOEG_TEAM
-                value: "lead"
+                value: "unqualified"
+              - name: PLOEG_HARNESS
+                value: "claude-code"
+              - name: PLOEG_HARNESS_TIMEOUT
+                value: "100m"
+              - name: PLOEG_HARNESS_IDLE_TIMEOUT
+                value: "15m"
+              - name: LLM_MODEL
+                value: "litellm_proxy/claude-sonnet-5"
+              - name: LITELLM_KEY_BUDGET
+                value: "1"
+              - name: LITELLM_KEY_DURATION
+                value: "4h"
+              - name: LLM_BASE_URL
+                value: "http://litellm.ai.svc.cluster.local:4000/v1"
+              - name: PLOEG_CREDENTIAL_ISOLATION_OFF_REASON
+                value: "unqualified"
+              - name: PLOEG_LLM_CREDENTIAL_MODE
+                value: "managed"
+              - name: PLOEG_WORKER_BOOTSTRAP_TOKEN
+                valueFrom:
+                  secretKeyRef:
+                    name: ploeg-worker-bootstrap
+                    key: "unqualified--default"
+              - name: PLOEG_TARGET_FORGE
+                value: "forgejo"
+              - name: FORGE_URL
+                value: "http://forgejo-http.forgejo.svc.cluster.local:3000"
+              - name: AGENT_BUILDER_TOKEN
+                valueFrom:
+                  secretKeyRef:
+                    name: agent-builder-token
+                    key: FORGEJO_TOKEN
+              # FALLBACK target only. The repository belongs to the work item,
+              # resolved at ingest from its tracker scope and delivered on the claim
+              # (R11, ADR-0001); these render only while a team still pins a repo,
+              # and a team that declares none renders no repo env at all.
+              # Downward API: node+pod identity survives pod/job cleanup for
+              # run forensics (VIK-597). Logged at worker start and embedded in
+              # every checkpoint.
+              - name: NODE_NAME
+                valueFrom:
+                  fieldRef:
+                    fieldPath: spec.nodeName
+              - name: POD_UID
+                valueFrom:
+                  fieldRef:
+                    fieldPath: metadata.uid
+              - name: WORK_DIR
+                value: /mnt/ci-shared
+            volumeMounts:
+              - name: worker-bin
+                mountPath: /mnt/bin
+                readOnly: true
+              - name: ci-shared
+                mountPath: /mnt/ci-shared
+            resources:
+              limits:
+                cpu: "1"
+                memory: 1Gi
+              requests:
+                cpu: "1"
+                memory: 1Gi
+        volumes:
+          - name: worker-bin
+            emptyDir: {}
+          # Disk-backed (not tmpfs): repo checkout + gate builds are large.
+          # Same absolute path in worker AND dind so `docker run -v`
+          # bind-mounts resolve on the daemon's filesystem.
+          - name: ci-shared
+            emptyDir:
+              sizeLimit: 8Gi
+  triggers:
+    - type: postgresql
+      metadata:
+        # Resolved by the KEDA operator from ITS namespace, not this one —
+        # a bare in-namespace service name never resolves there.
+        host: "ploeg-db-rw.default.svc.cluster.local"
+        port: "5432"
+        userName: "ploeg_scaler"
+        dbName: "app"
+        sslmode: "require"
+        # The one poll-query shape: served index-only by work_items_claimable
+        # (backlog #24/#47). Must stay in sync with store.Claim.
+        query: "SELECT COUNT(*) FROM work_items WHERE team = 'unqualified' AND state = 'queued' AND NOT operator_owned AND (next_eligible_at IS NULL OR next_eligible_at <= now())"
+        targetQueryValue: "1"
+        activationTargetQueryValue: "0"
+      authenticationRef:
+        name: ploeg-scaler
+---
+# Source: ploeg/templates/scaledjob.yaml
+# One ScaledJob per (team, Role) — the flagship executor. A team without a
+# plan has exactly one Role-less workload, byte-identical to the pre-Shift
+# shape; a team with a plan gets one per Role, which is what makes "different
+# agents, different harnesses, different images" literally true: pod shape is
+# fixed at render time. The shape lives in the shared ploeg.workerPodTemplate
+# helper (also used by the CronJob executor): privileged DinD sidecar when the
+# harness needs Docker, a shared disk-backed workspace mounted at the SAME
+# path in both containers, and zero Kubernetes API authority for the
+# LLM-driven process.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledJob
+metadata:
+  name: ploeg-worker-acp-opencode
+  labels:
+    app.kubernetes.io/name: ploeg
+    app.kubernetes.io/instance: ploeg
+    app.kubernetes.io/version: "CHART-VERSION"
+    helm.sh/chart: ploeg-CHART-VERSION
+    app.kubernetes.io/managed-by: Helm
+spec:
+  pollingInterval: 30
+  minReplicaCount: 0
+  maxReplicaCount: 1
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  rollout:
+    strategy: gradual # spec updates never kill in-flight runs (backlog #50)
+  scalingStrategy:
+    strategy: accurate # never eager: open over-scaling bug kedacore/keda#6416 (backlog #47)
+  jobTargetRef:
+    parallelism: 1
+    completions: 1
+    backoffLimit: 0 # ploeg owns retries; every pod is one auditable run (backlog #51)
+    activeDeadlineSeconds: 7200
+    template:
+      
+      
+      metadata:
+        labels:
+          app.kubernetes.io/name: ploeg-worker
+          ploeg.webgrip.dev/team: acp-opencode
+      spec:
+        restartPolicy: Never
+        # The shutdown budget for ploeg-worker's SIGTERM path: abort the harness,
+        # revoke the per-run credential, settle its spend, report the outcome. The
+        # 30s default SIGKILLed the pod mid-report, which is the silence that made a
+        # killed run indistinguishable from a hung one and cost the Round an attempt.
+        terminationGracePeriodSeconds: 90
+        # An identity of the workers' own. Naming none left them on `default`, which
+        # both trips require-non-default-serviceaccount and makes every workload in
+        # the namespace indistinguishable in an audit log. The token stays unmounted
+        # either way — a worker needs no Kubernetes API authority at all.
+        serviceAccountName: ploeg-worker
+        automountServiceAccountToken: false
+        securityContext:
+          fsGroup: 1000
+        initContainers:
+          # Extracts ploeg-worker from the distroless ploegd image via
+          # self-copy (no shell in distroless).
+          - name: worker-bin
+            image: ghcr.io/ploeg-hq/ploegd:CHART-VERSION
+            command: ["/usr/local/bin/ploeg-worker", "install", "/mnt/bin/ploeg-worker"]
+            securityContext:
+              runAsNonRoot: true
+              runAsUser: 65532
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop: [ALL]
+              seccompProfile:
+                type: RuntimeDefault
+            volumeMounts:
+              - name: worker-bin
+                mountPath: /mnt/bin
+            resources:
+              limits:
+                cpu: 50m
+                memory: 64Mi
+              requests:
+                cpu: 50m
+                memory: 64Mi
+        containers:
+          - name: worker
+            image: registry.example/agent-runner:1.3.0
+            command: ["/mnt/bin/ploeg-worker"]
+            env:
+              - name: PLOEG_API_URL
+                value: "http://ploeg:8080"
+              - name: PLOEG_TEAM
+                value: "acp-opencode"
               - name: PLOEG_HARNESS
                 value: "acp"
               - name: PLOEG_HARNESS_TIMEOUT
@@ -1256,15 +871,9 @@ spec:
               - name: PLOEG_HARNESS_IDLE_TIMEOUT
                 value: "15m"
               - name: PLOEG_ACP_PROFILE
-                value: "custom"
-              - name: PLOEG_ACP_ARGV
-                value: "[\"opencode\",\"acp\"]"
-              - name: PLOEG_ACP_PERMISSION_MODE
-                value: "allow_read_only"
-              - name: PLOEG_ACP_IDLE_TIMEOUT
-                value: "5m"
+                value: "opencode"
               - name: LLM_MODEL
-                value: "litellm_proxy/claude-sonnet-5"
+                value: "litellm_proxy/deepseek-chat"
               - name: LITELLM_KEY_BUDGET
                 value: "1"
               - name: LITELLM_KEY_DURATION
@@ -1272,14 +881,14 @@ spec:
               - name: LLM_BASE_URL
                 value: "http://litellm.ai.svc.cluster.local:4000/v1"
               - name: PLOEG_CREDENTIAL_ISOLATION_OFF_REASON
-                value: "dind"
+                value: "unqualified"
               - name: PLOEG_LLM_CREDENTIAL_MODE
                 value: "managed"
               - name: PLOEG_WORKER_BOOTSTRAP_TOKEN
                 valueFrom:
                   secretKeyRef:
                     name: ploeg-worker-bootstrap
-                    key: "lead--default"
+                    key: "acp-opencode--default"
               - name: PLOEG_TARGET_FORGE
                 value: "forgejo"
               - name: FORGE_URL
@@ -1306,18 +915,9 @@ spec:
                     fieldPath: metadata.uid
               - name: WORK_DIR
                 value: /mnt/ci-shared
-              - name: DOCKER_HOST
-                value: tcp://localhost:2376
-              - name: DOCKER_CERT_PATH
-                value: /certs/client
-              - name: DOCKER_TLS_VERIFY
-                value: "1"
             volumeMounts:
               - name: worker-bin
                 mountPath: /mnt/bin
-                readOnly: true
-              - name: docker-certs
-                mountPath: /certs
                 readOnly: true
               - name: ci-shared
                 mountPath: /mnt/ci-shared
@@ -1330,10 +930,6 @@ spec:
                 memory: 1Gi
         volumes:
           - name: worker-bin
-            emptyDir: {}
-          - name: docker-certs
-            emptyDir: {}
-          - name: docker-storage
             emptyDir: {}
           # Disk-backed (not tmpfs): repo checkout + gate builds are large.
           # Same absolute path in worker AND dind so `docker run -v`
@@ -1353,7 +949,7 @@ spec:
         sslmode: "require"
         # The one poll-query shape: served index-only by work_items_claimable
         # (backlog #24/#47). Must stay in sync with store.Claim.
-        query: "SELECT COUNT(*) FROM work_items WHERE team = 'lead' AND state = 'queued' AND NOT operator_owned AND (next_eligible_at IS NULL OR next_eligible_at <= now())"
+        query: "SELECT COUNT(*) FROM work_items WHERE team = 'acp-opencode' AND state = 'queued' AND NOT operator_owned AND (next_eligible_at IS NULL OR next_eligible_at <= now())"
         targetQueryValue: "1"
         activationTargetQueryValue: "0"
       authenticationRef:
@@ -1372,7 +968,7 @@ spec:
 apiVersion: keda.sh/v1alpha1
 kind: ScaledJob
 metadata:
-  name: ploeg-worker-gold-analyst
+  name: ploeg-worker-acp-openhands
   labels:
     app.kubernetes.io/name: ploeg
     app.kubernetes.io/instance: ploeg
@@ -1400,8 +996,7 @@ spec:
       metadata:
         labels:
           app.kubernetes.io/name: ploeg-worker
-          ploeg.webgrip.dev/team: gold
-          ploeg.webgrip.dev/role: analyst
+          ploeg.webgrip.dev/team: acp-openhands
       spec:
         restartPolicy: Never
         # The shutdown budget for ploeg-worker's SIGTERM path: abort the harness,
@@ -1449,11 +1044,195 @@ spec:
               - name: PLOEG_API_URL
                 value: "http://ploeg:8080"
               - name: PLOEG_TEAM
-                value: "gold"
-              - name: PLOEG_ROLE
-                value: "analyst"
+                value: "acp-openhands"
               - name: PLOEG_HARNESS
+                value: "acp"
+              - name: PLOEG_HARNESS_TIMEOUT
+                value: "100m"
+              - name: PLOEG_HARNESS_IDLE_TIMEOUT
+                value: "15m"
+              - name: PLOEG_ACP_PROFILE
                 value: "openhands"
+              - name: LLM_MODEL
+                value: "litellm_proxy/deepseek-chat"
+              - name: LITELLM_KEY_BUDGET
+                value: "1"
+              - name: LITELLM_KEY_DURATION
+                value: "4h"
+              - name: LLM_BASE_URL
+                value: "http://litellm.ai.svc.cluster.local:4000/v1"
+              - name: PLOEG_LLM_KEY_ISOLATION
+                value: "proxy"
+              - name: PLOEG_FORGE_TOKEN_ISOLATION
+                value: "proxy"
+              - name: PLOEG_LLM_CREDENTIAL_MODE
+                value: "managed"
+              - name: PLOEG_WORKER_BOOTSTRAP_TOKEN
+                valueFrom:
+                  secretKeyRef:
+                    name: ploeg-worker-bootstrap
+                    key: "acp-openhands--default"
+              - name: PLOEG_TARGET_FORGE
+                value: "forgejo"
+              - name: FORGE_URL
+                value: "http://forgejo-http.forgejo.svc.cluster.local:3000"
+              - name: AGENT_BUILDER_TOKEN
+                valueFrom:
+                  secretKeyRef:
+                    name: agent-builder-token
+                    key: FORGEJO_TOKEN
+              # FALLBACK target only. The repository belongs to the work item,
+              # resolved at ingest from its tracker scope and delivered on the claim
+              # (R11, ADR-0001); these render only while a team still pins a repo,
+              # and a team that declares none renders no repo env at all.
+              # Downward API: node+pod identity survives pod/job cleanup for
+              # run forensics (VIK-597). Logged at worker start and embedded in
+              # every checkpoint.
+              - name: NODE_NAME
+                valueFrom:
+                  fieldRef:
+                    fieldPath: spec.nodeName
+              - name: POD_UID
+                valueFrom:
+                  fieldRef:
+                    fieldPath: metadata.uid
+              - name: WORK_DIR
+                value: /mnt/ci-shared
+            volumeMounts:
+              - name: worker-bin
+                mountPath: /mnt/bin
+                readOnly: true
+              - name: ci-shared
+                mountPath: /mnt/ci-shared
+            resources:
+              limits:
+                cpu: "1"
+                memory: 1Gi
+              requests:
+                cpu: "1"
+                memory: 1Gi
+        volumes:
+          - name: worker-bin
+            emptyDir: {}
+          # Disk-backed (not tmpfs): repo checkout + gate builds are large.
+          # Same absolute path in worker AND dind so `docker run -v`
+          # bind-mounts resolve on the daemon's filesystem.
+          - name: ci-shared
+            emptyDir:
+              sizeLimit: 8Gi
+  triggers:
+    - type: postgresql
+      metadata:
+        # Resolved by the KEDA operator from ITS namespace, not this one —
+        # a bare in-namespace service name never resolves there.
+        host: "ploeg-db-rw.default.svc.cluster.local"
+        port: "5432"
+        userName: "ploeg_scaler"
+        dbName: "app"
+        sslmode: "require"
+        # The one poll-query shape: served index-only by work_items_claimable
+        # (backlog #24/#47). Must stay in sync with store.Claim.
+        query: "SELECT COUNT(*) FROM work_items WHERE team = 'acp-openhands' AND state = 'queued' AND NOT operator_owned AND (next_eligible_at IS NULL OR next_eligible_at <= now())"
+        targetQueryValue: "1"
+        activationTargetQueryValue: "0"
+      authenticationRef:
+        name: ploeg-scaler
+---
+# Source: ploeg/templates/scaledjob.yaml
+# One ScaledJob per (team, Role) — the flagship executor. A team without a
+# plan has exactly one Role-less workload, byte-identical to the pre-Shift
+# shape; a team with a plan gets one per Role, which is what makes "different
+# agents, different harnesses, different images" literally true: pod shape is
+# fixed at render time. The shape lives in the shared ploeg.workerPodTemplate
+# helper (also used by the CronJob executor): privileged DinD sidecar when the
+# harness needs Docker, a shared disk-backed workspace mounted at the SAME
+# path in both containers, and zero Kubernetes API authority for the
+# LLM-driven process.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledJob
+metadata:
+  name: ploeg-worker-override-optin
+  labels:
+    app.kubernetes.io/name: ploeg
+    app.kubernetes.io/instance: ploeg
+    app.kubernetes.io/version: "CHART-VERSION"
+    helm.sh/chart: ploeg-CHART-VERSION
+    app.kubernetes.io/managed-by: Helm
+spec:
+  pollingInterval: 30
+  minReplicaCount: 0
+  maxReplicaCount: 1
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  rollout:
+    strategy: gradual # spec updates never kill in-flight runs (backlog #50)
+  scalingStrategy:
+    strategy: accurate # never eager: open over-scaling bug kedacore/keda#6416 (backlog #47)
+  jobTargetRef:
+    parallelism: 1
+    completions: 1
+    backoffLimit: 0 # ploeg owns retries; every pod is one auditable run (backlog #51)
+    activeDeadlineSeconds: 7200
+    template:
+      
+      
+      metadata:
+        labels:
+          app.kubernetes.io/name: ploeg-worker
+          ploeg.webgrip.dev/team: override
+          ploeg.webgrip.dev/role: optin
+      spec:
+        restartPolicy: Never
+        # The shutdown budget for ploeg-worker's SIGTERM path: abort the harness,
+        # revoke the per-run credential, settle its spend, report the outcome. The
+        # 30s default SIGKILLed the pod mid-report, which is the silence that made a
+        # killed run indistinguishable from a hung one and cost the Round an attempt.
+        terminationGracePeriodSeconds: 90
+        # An identity of the workers' own. Naming none left them on `default`, which
+        # both trips require-non-default-serviceaccount and makes every workload in
+        # the namespace indistinguishable in an audit log. The token stays unmounted
+        # either way — a worker needs no Kubernetes API authority at all.
+        serviceAccountName: ploeg-worker
+        automountServiceAccountToken: false
+        securityContext:
+          fsGroup: 1000
+        initContainers:
+          # Extracts ploeg-worker from the distroless ploegd image via
+          # self-copy (no shell in distroless).
+          - name: worker-bin
+            image: ghcr.io/ploeg-hq/ploegd:CHART-VERSION
+            command: ["/usr/local/bin/ploeg-worker", "install", "/mnt/bin/ploeg-worker"]
+            securityContext:
+              runAsNonRoot: true
+              runAsUser: 65532
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop: [ALL]
+              seccompProfile:
+                type: RuntimeDefault
+            volumeMounts:
+              - name: worker-bin
+                mountPath: /mnt/bin
+            resources:
+              limits:
+                cpu: 50m
+                memory: 64Mi
+              requests:
+                cpu: 50m
+                memory: 64Mi
+        containers:
+          - name: worker
+            image: registry.example/agent-runner:1.3.0
+            command: ["/mnt/bin/ploeg-worker"]
+            env:
+              - name: PLOEG_API_URL
+                value: "http://ploeg:8080"
+              - name: PLOEG_TEAM
+                value: "override"
+              - name: PLOEG_ROLE
+                value: "optin"
+              - name: PLOEG_HARNESS
+                value: "claude-code"
               - name: PLOEG_HARNESS_TIMEOUT
                 value: "100m"
               - name: PLOEG_HARNESS_IDLE_TIMEOUT
@@ -1476,7 +1255,7 @@ spec:
                 valueFrom:
                   secretKeyRef:
                     name: ploeg-worker-bootstrap
-                    key: "gold--analyst"
+                    key: "override--optin"
               - name: PLOEG_TARGET_FORGE
                 value: "forgejo"
               - name: FORGE_URL
@@ -1547,7 +1326,7 @@ spec:
         # stalls Work Items with no error anywhere, which is the worst failure
         # this system can have. TestClaimRoleAgreesWithPendingRuns keeps the
         # two Go callers honest; this comment is the third copy's leash.
-        query: "SELECT COUNT(*) FROM agent_runs WHERE team = 'gold' AND role = 'analyst' AND state = 'pending'"
+        query: "SELECT COUNT(*) FROM agent_runs WHERE team = 'override' AND role = 'optin' AND state = 'pending'"
         targetQueryValue: "1"
         activationTargetQueryValue: "0"
       authenticationRef:
@@ -1566,7 +1345,7 @@ spec:
 apiVersion: keda.sh/v1alpha1
 kind: ScaledJob
 metadata:
-  name: ploeg-worker-gold-tests
+  name: ploeg-worker-override-builder
   labels:
     app.kubernetes.io/name: ploeg
     app.kubernetes.io/instance: ploeg
@@ -1594,214 +1373,8 @@ spec:
       metadata:
         labels:
           app.kubernetes.io/name: ploeg-worker
-          ploeg.webgrip.dev/team: gold
-          ploeg.webgrip.dev/role: tests
-      spec:
-        restartPolicy: Never
-        # The shutdown budget for ploeg-worker's SIGTERM path: abort the harness,
-        # revoke the per-run credential, settle its spend, report the outcome. The
-        # 30s default SIGKILLed the pod mid-report, which is the silence that made a
-        # killed run indistinguishable from a hung one and cost the Round an attempt.
-        terminationGracePeriodSeconds: 90
-        # An identity of the workers' own. Naming none left them on `default`, which
-        # both trips require-non-default-serviceaccount and makes every workload in
-        # the namespace indistinguishable in an audit log. The token stays unmounted
-        # either way — a worker needs no Kubernetes API authority at all.
-        serviceAccountName: ploeg-worker
-        automountServiceAccountToken: false
-        securityContext:
-          fsGroup: 1000
-        initContainers:
-          # Extracts ploeg-worker from the distroless ploegd image via
-          # self-copy (no shell in distroless).
-          - name: worker-bin
-            image: ghcr.io/ploeg-hq/ploegd:CHART-VERSION
-            command: ["/usr/local/bin/ploeg-worker", "install", "/mnt/bin/ploeg-worker"]
-            securityContext:
-              runAsNonRoot: true
-              runAsUser: 65532
-              allowPrivilegeEscalation: false
-              capabilities:
-                drop: [ALL]
-              seccompProfile:
-                type: RuntimeDefault
-            volumeMounts:
-              - name: worker-bin
-                mountPath: /mnt/bin
-            resources:
-              limits:
-                cpu: 50m
-                memory: 64Mi
-              requests:
-                cpu: 50m
-                memory: 64Mi
-        containers:
-          - name: worker
-            image: registry.example/agent-runner:1.3.0
-            command: ["/mnt/bin/ploeg-worker"]
-            env:
-              - name: PLOEG_API_URL
-                value: "http://ploeg:8080"
-              - name: PLOEG_TEAM
-                value: "gold"
-              - name: PLOEG_ROLE
-                value: "tests"
-              - name: PLOEG_HARNESS
-                value: "openhands"
-              - name: PLOEG_HARNESS_TIMEOUT
-                value: "100m"
-              - name: PLOEG_HARNESS_IDLE_TIMEOUT
-                value: "15m"
-              - name: LLM_MODEL
-                value: "litellm_proxy/deepseek-chat"
-              - name: LITELLM_KEY_BUDGET
-                value: "0.50"
-              - name: LITELLM_KEY_DURATION
-                value: "4h"
-              - name: LLM_BASE_URL
-                value: "http://litellm.ai.svc.cluster.local:4000/v1"
-              - name: PLOEG_LLM_KEY_ISOLATION
-                value: "proxy"
-              - name: PLOEG_FORGE_TOKEN_ISOLATION
-                value: "proxy"
-              - name: PLOEG_LLM_CREDENTIAL_MODE
-                value: "managed"
-              - name: PLOEG_WORKER_BOOTSTRAP_TOKEN
-                valueFrom:
-                  secretKeyRef:
-                    name: ploeg-worker-bootstrap
-                    key: "gold--tests"
-              - name: PLOEG_TARGET_FORGE
-                value: "forgejo"
-              - name: FORGE_URL
-                value: "http://forgejo-http.forgejo.svc.cluster.local:3000"
-              - name: PLOEG_FORGE_TOKEN_ACCESS
-                value: "read-only"
-              - name: AGENT_BUILDER_TOKEN
-                valueFrom:
-                  secretKeyRef:
-                    name: agent-reader-token
-                    key: FORGEJO_TOKEN
-              # FALLBACK target only. The repository belongs to the work item,
-              # resolved at ingest from its tracker scope and delivered on the claim
-              # (R11, ADR-0001); these render only while a team still pins a repo,
-              # and a team that declares none renders no repo env at all.
-              # Downward API: node+pod identity survives pod/job cleanup for
-              # run forensics (VIK-597). Logged at worker start and embedded in
-              # every checkpoint.
-              - name: NODE_NAME
-                valueFrom:
-                  fieldRef:
-                    fieldPath: spec.nodeName
-              - name: POD_UID
-                valueFrom:
-                  fieldRef:
-                    fieldPath: metadata.uid
-              - name: WORK_DIR
-                value: /mnt/ci-shared
-            volumeMounts:
-              - name: worker-bin
-                mountPath: /mnt/bin
-                readOnly: true
-              - name: ci-shared
-                mountPath: /mnt/ci-shared
-            resources:
-              limits:
-                cpu: "1"
-                memory: 1Gi
-              requests:
-                cpu: "1"
-                memory: 1Gi
-        volumes:
-          - name: worker-bin
-            emptyDir: {}
-          # Disk-backed (not tmpfs): repo checkout + gate builds are large.
-          # Same absolute path in worker AND dind so `docker run -v`
-          # bind-mounts resolve on the daemon's filesystem.
-          - name: ci-shared
-            emptyDir:
-              sizeLimit: 8Gi
-  triggers:
-    - type: postgresql
-      metadata:
-        # Resolved by the KEDA operator from ITS namespace, not this one —
-        # a bare in-namespace service name never resolves there.
-        host: "ploeg-db-rw.default.svc.cluster.local"
-        port: "5432"
-        userName: "ploeg_scaler"
-        dbName: "app"
-        sslmode: "require"
-        # THE claim predicate for a Role, and it must stay byte-identical to
-        # store.ClaimRole and store.PendingRuns: pending runs for this team and
-        # role. Served index-only by agent_runs_claimable, which migration 0008
-        # created verbatim for this query:
-        #   CREATE INDEX agent_runs_claimable
-        #       ON agent_runs (team, role, id) WHERE state = 'pending';
-        # Overshoot merely wastes a pod that exits 0 empty-handed; undershoot
-        # stalls Work Items with no error anywhere, which is the worst failure
-        # this system can have. TestClaimRoleAgreesWithPendingRuns keeps the
-        # two Go callers honest; this comment is the third copy's leash.
-        query: "SELECT COUNT(*) FROM agent_runs WHERE team = 'gold' AND role = 'tests' AND state = 'pending'"
-        targetQueryValue: "1"
-        activationTargetQueryValue: "0"
-      authenticationRef:
-        name: ploeg-scaler
----
-# Source: ploeg/templates/scaledjob.yaml
-# One ScaledJob per (team, Role) — the flagship executor. A team without a
-# plan has exactly one Role-less workload, byte-identical to the pre-Shift
-# shape; a team with a plan gets one per Role, which is what makes "different
-# agents, different harnesses, different images" literally true: pod shape is
-# fixed at render time. The shape lives in the shared ploeg.workerPodTemplate
-# helper (also used by the CronJob executor): privileged DinD sidecar when the
-# harness needs Docker, a shared disk-backed workspace mounted at the SAME
-# path in both containers, and zero Kubernetes API authority for the
-# LLM-driven process.
-apiVersion: keda.sh/v1alpha1
-kind: ScaledJob
-metadata:
-  name: ploeg-worker-gold-builder
-  labels:
-    app.kubernetes.io/name: ploeg
-    app.kubernetes.io/instance: ploeg
-    app.kubernetes.io/version: "CHART-VERSION"
-    helm.sh/chart: ploeg-CHART-VERSION
-    app.kubernetes.io/managed-by: Helm
-    # KEDA copies these labels onto every Job it creates, which is the only way
-    # the hazard reaches the Job. Kyverno autogens a Job rule for
-    # pod-security-baseline-enforce and a Job selector matches the JOB's own
-    # labels — stamping this on the pod template alone left the PolicyException
-    # unable to admit the Job, and DinD teams were rejected at admission.
-    ploeg.webgrip.dev/privileged-dind: "true"
-spec:
-  pollingInterval: 30
-  minReplicaCount: 0
-  maxReplicaCount: 1
-  successfulJobsHistoryLimit: 3
-  failedJobsHistoryLimit: 3
-  rollout:
-    strategy: gradual # spec updates never kill in-flight runs (backlog #50)
-  scalingStrategy:
-    strategy: accurate # never eager: open over-scaling bug kedacore/keda#6416 (backlog #47)
-  jobTargetRef:
-    parallelism: 1
-    completions: 1
-    backoffLimit: 0 # ploeg owns retries; every pod is one auditable run (backlog #51)
-    activeDeadlineSeconds: 7200
-    template:
-      
-      
-      metadata:
-        labels:
-          app.kubernetes.io/name: ploeg-worker
-          ploeg.webgrip.dev/team: gold
+          ploeg.webgrip.dev/team: override
           ploeg.webgrip.dev/role: builder
-          # Names the HAZARD, not the workload: this pod carries a privileged
-          # docker:dind sidecar, and the ploeg-worker PolicyException is keyed on
-          # exactly this label. A pod without dind never carries it and is held to
-          # the full baseline — so adding a Role costs no security-repo change, and
-          # readers are not waived for a privilege they do not take.
-          ploeg.webgrip.dev/privileged-dind: "true"
       spec:
         restartPolicy: Never
         # The shutdown budget for ploeg-worker's SIGTERM path: abort the harness,
@@ -1841,37 +1414,6 @@ spec:
               requests:
                 cpu: 50m
                 memory: 64Mi
-          # DinD sidecar: the harness sandbox and the repo quality gates need a
-          # Docker daemon. Requires the ploeg-worker PolicyException. Teams whose
-          # harness needs no Docker set harness.dind: false.
-          - name: dind
-            image: docker.io/library/docker:29.8.2-dind@sha256:7dcdfc4a20246236f558175182ccace1eb15a41bd3eb119dd2284f393498b7c1
-            restartPolicy: Always
-            securityContext:
-              privileged: true
-            env:
-              - name: DOCKER_TLS_CERTDIR
-                value: /certs
-            startupProbe:
-              tcpSocket:
-                port: 2376
-              periodSeconds: 2
-              failureThreshold: 60
-              timeoutSeconds: 5
-            volumeMounts:
-              - name: docker-certs
-                mountPath: /certs
-              - name: docker-storage
-                mountPath: /var/lib/docker
-              - name: ci-shared
-                mountPath: /mnt/ci-shared
-            resources:
-              limits:
-                cpu: "1"
-                memory: 1536Mi
-              requests:
-                cpu: "1"
-                memory: 1536Mi
         containers:
           - name: worker
             image: registry.example/agent-runner:1.3.0
@@ -1880,7 +1422,7 @@ spec:
               - name: PLOEG_API_URL
                 value: "http://ploeg:8080"
               - name: PLOEG_TEAM
-                value: "gold"
+                value: "override"
               - name: PLOEG_ROLE
                 value: "builder"
               - name: PLOEG_HARNESS
@@ -1890,22 +1432,22 @@ spec:
               - name: PLOEG_HARNESS_IDLE_TIMEOUT
                 value: "15m"
               - name: LLM_MODEL
-                value: "litellm_proxy/claude-sonnet-5"
+                value: "litellm_proxy/deepseek-chat"
               - name: LITELLM_KEY_BUDGET
-                value: "3.00"
+                value: "1.00"
               - name: LITELLM_KEY_DURATION
                 value: "4h"
               - name: LLM_BASE_URL
                 value: "http://litellm.ai.svc.cluster.local:4000/v1"
               - name: PLOEG_CREDENTIAL_ISOLATION_OFF_REASON
-                value: "dind"
+                value: "disabled"
               - name: PLOEG_LLM_CREDENTIAL_MODE
                 value: "managed"
               - name: PLOEG_WORKER_BOOTSTRAP_TOKEN
                 valueFrom:
                   secretKeyRef:
                     name: ploeg-worker-bootstrap
-                    key: "gold--builder"
+                    key: "override--builder"
               - name: PLOEG_TARGET_FORGE
                 value: "forgejo"
               - name: FORGE_URL
@@ -1934,213 +1476,6 @@ spec:
                     fieldPath: metadata.uid
               - name: WORK_DIR
                 value: /mnt/ci-shared
-              - name: DOCKER_HOST
-                value: tcp://localhost:2376
-              - name: DOCKER_CERT_PATH
-                value: /certs/client
-              - name: DOCKER_TLS_VERIFY
-                value: "1"
-            volumeMounts:
-              - name: worker-bin
-                mountPath: /mnt/bin
-                readOnly: true
-              - name: docker-certs
-                mountPath: /certs
-                readOnly: true
-              - name: ci-shared
-                mountPath: /mnt/ci-shared
-            resources:
-              limits:
-                cpu: "1"
-                memory: 1Gi
-              requests:
-                cpu: "1"
-                memory: 1Gi
-        volumes:
-          - name: worker-bin
-            emptyDir: {}
-          - name: docker-certs
-            emptyDir: {}
-          - name: docker-storage
-            emptyDir: {}
-          # Disk-backed (not tmpfs): repo checkout + gate builds are large.
-          # Same absolute path in worker AND dind so `docker run -v`
-          # bind-mounts resolve on the daemon's filesystem.
-          - name: ci-shared
-            emptyDir:
-              sizeLimit: 8Gi
-  triggers:
-    - type: postgresql
-      metadata:
-        # Resolved by the KEDA operator from ITS namespace, not this one —
-        # a bare in-namespace service name never resolves there.
-        host: "ploeg-db-rw.default.svc.cluster.local"
-        port: "5432"
-        userName: "ploeg_scaler"
-        dbName: "app"
-        sslmode: "require"
-        # THE claim predicate for a Role, and it must stay byte-identical to
-        # store.ClaimRole and store.PendingRuns: pending runs for this team and
-        # role. Served index-only by agent_runs_claimable, which migration 0008
-        # created verbatim for this query:
-        #   CREATE INDEX agent_runs_claimable
-        #       ON agent_runs (team, role, id) WHERE state = 'pending';
-        # Overshoot merely wastes a pod that exits 0 empty-handed; undershoot
-        # stalls Work Items with no error anywhere, which is the worst failure
-        # this system can have. TestClaimRoleAgreesWithPendingRuns keeps the
-        # two Go callers honest; this comment is the third copy's leash.
-        query: "SELECT COUNT(*) FROM agent_runs WHERE team = 'gold' AND role = 'builder' AND state = 'pending'"
-        targetQueryValue: "1"
-        activationTargetQueryValue: "0"
-      authenticationRef:
-        name: ploeg-scaler
----
-# Source: ploeg/templates/scaledjob.yaml
-# One ScaledJob per (team, Role) — the flagship executor. A team without a
-# plan has exactly one Role-less workload, byte-identical to the pre-Shift
-# shape; a team with a plan gets one per Role, which is what makes "different
-# agents, different harnesses, different images" literally true: pod shape is
-# fixed at render time. The shape lives in the shared ploeg.workerPodTemplate
-# helper (also used by the CronJob executor): privileged DinD sidecar when the
-# harness needs Docker, a shared disk-backed workspace mounted at the SAME
-# path in both containers, and zero Kubernetes API authority for the
-# LLM-driven process.
-apiVersion: keda.sh/v1alpha1
-kind: ScaledJob
-metadata:
-  name: ploeg-worker-gold-reviewer
-  labels:
-    app.kubernetes.io/name: ploeg
-    app.kubernetes.io/instance: ploeg
-    app.kubernetes.io/version: "CHART-VERSION"
-    helm.sh/chart: ploeg-CHART-VERSION
-    app.kubernetes.io/managed-by: Helm
-spec:
-  pollingInterval: 30
-  minReplicaCount: 0
-  maxReplicaCount: 1
-  successfulJobsHistoryLimit: 3
-  failedJobsHistoryLimit: 3
-  rollout:
-    strategy: gradual # spec updates never kill in-flight runs (backlog #50)
-  scalingStrategy:
-    strategy: accurate # never eager: open over-scaling bug kedacore/keda#6416 (backlog #47)
-  jobTargetRef:
-    parallelism: 1
-    completions: 1
-    backoffLimit: 0 # ploeg owns retries; every pod is one auditable run (backlog #51)
-    activeDeadlineSeconds: 7200
-    template:
-      
-      
-      metadata:
-        labels:
-          app.kubernetes.io/name: ploeg-worker
-          ploeg.webgrip.dev/team: gold
-          ploeg.webgrip.dev/role: reviewer
-      spec:
-        restartPolicy: Never
-        # The shutdown budget for ploeg-worker's SIGTERM path: abort the harness,
-        # revoke the per-run credential, settle its spend, report the outcome. The
-        # 30s default SIGKILLed the pod mid-report, which is the silence that made a
-        # killed run indistinguishable from a hung one and cost the Round an attempt.
-        terminationGracePeriodSeconds: 90
-        # An identity of the workers' own. Naming none left them on `default`, which
-        # both trips require-non-default-serviceaccount and makes every workload in
-        # the namespace indistinguishable in an audit log. The token stays unmounted
-        # either way — a worker needs no Kubernetes API authority at all.
-        serviceAccountName: ploeg-worker
-        automountServiceAccountToken: false
-        securityContext:
-          fsGroup: 1000
-        initContainers:
-          # Extracts ploeg-worker from the distroless ploegd image via
-          # self-copy (no shell in distroless).
-          - name: worker-bin
-            image: ghcr.io/ploeg-hq/ploegd:CHART-VERSION
-            command: ["/usr/local/bin/ploeg-worker", "install", "/mnt/bin/ploeg-worker"]
-            securityContext:
-              runAsNonRoot: true
-              runAsUser: 65532
-              allowPrivilegeEscalation: false
-              capabilities:
-                drop: [ALL]
-              seccompProfile:
-                type: RuntimeDefault
-            volumeMounts:
-              - name: worker-bin
-                mountPath: /mnt/bin
-            resources:
-              limits:
-                cpu: 50m
-                memory: 64Mi
-              requests:
-                cpu: 50m
-                memory: 64Mi
-        containers:
-          - name: worker
-            image: registry.example/agent-runner:1.3.0
-            command: ["/mnt/bin/ploeg-worker"]
-            env:
-              - name: PLOEG_API_URL
-                value: "http://ploeg:8080"
-              - name: PLOEG_TEAM
-                value: "gold"
-              - name: PLOEG_ROLE
-                value: "reviewer"
-              - name: PLOEG_HARNESS
-                value: "openhands"
-              - name: PLOEG_HARNESS_TIMEOUT
-                value: "100m"
-              - name: PLOEG_HARNESS_IDLE_TIMEOUT
-                value: "15m"
-              - name: LLM_MODEL
-                value: "litellm_proxy/claude-sonnet-5"
-              - name: LITELLM_KEY_BUDGET
-                value: "0.75"
-              - name: LITELLM_KEY_DURATION
-                value: "4h"
-              - name: LLM_BASE_URL
-                value: "http://litellm.ai.svc.cluster.local:4000/v1"
-              - name: PLOEG_LLM_KEY_ISOLATION
-                value: "proxy"
-              - name: PLOEG_FORGE_TOKEN_ISOLATION
-                value: "proxy"
-              - name: PLOEG_LLM_CREDENTIAL_MODE
-                value: "managed"
-              - name: PLOEG_WORKER_BOOTSTRAP_TOKEN
-                valueFrom:
-                  secretKeyRef:
-                    name: ploeg-worker-bootstrap
-                    key: "gold--reviewer"
-              - name: PLOEG_TARGET_FORGE
-                value: "forgejo"
-              - name: FORGE_URL
-                value: "http://forgejo-http.forgejo.svc.cluster.local:3000"
-              - name: PLOEG_FORGE_TOKEN_ACCESS
-                value: "read-only"
-              - name: AGENT_BUILDER_TOKEN
-                valueFrom:
-                  secretKeyRef:
-                    name: agent-reader-token
-                    key: FORGEJO_TOKEN
-              # FALLBACK target only. The repository belongs to the work item,
-              # resolved at ingest from its tracker scope and delivered on the claim
-              # (R11, ADR-0001); these render only while a team still pins a repo,
-              # and a team that declares none renders no repo env at all.
-              # Downward API: node+pod identity survives pod/job cleanup for
-              # run forensics (VIK-597). Logged at worker start and embedded in
-              # every checkpoint.
-              - name: NODE_NAME
-                valueFrom:
-                  fieldRef:
-                    fieldPath: spec.nodeName
-              - name: POD_UID
-                valueFrom:
-                  fieldRef:
-                    fieldPath: metadata.uid
-              - name: WORK_DIR
-                value: /mnt/ci-shared
             volumeMounts:
               - name: worker-bin
                 mountPath: /mnt/bin
@@ -2183,7 +1518,7 @@ spec:
         # stalls Work Items with no error anywhere, which is the worst failure
         # this system can have. TestClaimRoleAgreesWithPendingRuns keeps the
         # two Go callers honest; this comment is the third copy's leash.
-        query: "SELECT COUNT(*) FROM agent_runs WHERE team = 'gold' AND role = 'reviewer' AND state = 'pending'"
+        query: "SELECT COUNT(*) FROM agent_runs WHERE team = 'override' AND role = 'builder' AND state = 'pending'"
         targetQueryValue: "1"
         activationTargetQueryValue: "0"
       authenticationRef:

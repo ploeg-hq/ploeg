@@ -1,8 +1,12 @@
 package main
 
 import (
+	"bytes"
+	"log/slog"
 	"strings"
 	"testing"
+
+	"github.com/ploeg-hq/ploeg/pkg/worker"
 )
 
 func TestHarnessBoundsDefaultDisableAndRejectTypos(t *testing.T) {
@@ -47,5 +51,43 @@ func TestTheForgeBotPasswordNeverEntersAWorker(t *testing.T) {
 	err := rejectAdministrativeEnvironment()
 	if err == nil || strings.Contains(err.Error(), "canary-bot-password") {
 		t.Fatalf("worker accepted the minting password or disclosed it: %v", err)
+	}
+}
+
+func TestCredentialIsolationOffLogsOneWarningNamingHarnessAndReason(t *testing.T) {
+	cases := []struct {
+		name, reason, llm, forge string
+		hc                       worker.HarnessConfig
+		wantWarn                 bool
+		wantHarness, wantReason  string
+	}{
+		{name: "both proxies on", llm: "proxy", forge: "proxy", hc: worker.HarnessConfig{Name: "openhands"}},
+		{name: "unqualified harness", reason: "unqualified", hc: worker.HarnessConfig{Name: "claude-code"}, wantWarn: true, wantHarness: "claude-code", wantReason: "unqualified"},
+		{name: "dind", reason: "dind", hc: worker.HarnessConfig{Name: "openhands"}, wantWarn: true, wantHarness: "openhands", wantReason: "dind"},
+		{name: "acp profile named", reason: "unqualified", hc: worker.HarnessConfig{Name: "acp"}, wantWarn: true, wantHarness: "acp/opencode", wantReason: "unqualified"},
+		{name: "one proxy off without a chart reason", llm: "proxy", hc: worker.HarnessConfig{Name: "acp", ACP: worker.ACPConfig{Profile: "openhands"}}, wantWarn: true, wantHarness: "acp/openhands", wantReason: "disabled"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("PLOEG_CREDENTIAL_ISOLATION_OFF_REASON", tc.reason)
+			var out bytes.Buffer
+			log := slog.New(slog.NewTextHandler(&out, nil))
+			warnWhenCredentialIsolationOff(log, worker.Config{LLMKeyIsolation: tc.llm, ForgeTokenIsolation: tc.forge}, tc.hc)
+			got := out.String()
+			if !tc.wantWarn {
+				if got != "" {
+					t.Fatalf("logged with both proxies on: %s", got)
+				}
+				return
+			}
+			if strings.Count(got, "level=WARN") != 1 || strings.Count(got, "\n") != 1 {
+				t.Fatalf("want exactly one WARN line, got %q", got)
+			}
+			for _, want := range []string{"harness=" + tc.wantHarness, "reason=" + tc.wantReason} {
+				if !strings.Contains(got, want) {
+					t.Fatalf("%q missing from %q", want, got)
+				}
+			}
+		})
 	}
 }

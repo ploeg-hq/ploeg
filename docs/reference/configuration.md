@@ -51,6 +51,7 @@ The generator follows each binary's imports inside the module and records every 
 | `PLOEG_CONFIG` | ploegd |  | Path of the routing and roster file (the chart's `config:` value, mounted at `/etc/ploeg/ploeg.yaml`). Unset means the legacy `PLOEG_TARGET_MAP`, `PLOEG_TEAM_MAP` and `PLOEG_TEAM_PLANS` variables still apply. | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_CONTEXT_MAX_BYTES` | ploegd | `20 << 20` |  | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_CONTEXT_MAX_TOTAL_BYTES` | ploegd | `50 << 20` |  | [main.go](../../cmd/ploegd/main.go) |
+| `PLOEG_CREDENTIAL_ISOLATION_OFF_REASON` | ploeg-worker | `disabled` | Why the chart left a credential proxy off for this workload: `unqualified`, `dind` or `disabled`. ploeg-worker logs it in one boot WARN with the harness name. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_DATABASE_URL` | ploeg-worker |  | Controller-only. The worker refuses to start when it is set. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_DATABASE_URL` | ploegd | required | PostgreSQL connection URI. The chart reads the whole `uri` key of the CNPG app Secret named by `database.existingSecret`. | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_DEFAULT_TEAM` | ploegd | `default` | Team that receives work from an assignee no Team lists. | [main.go](../../cmd/ploegd/main.go), [operator.go](../../cmd/ploegd/operator.go) |
@@ -64,7 +65,7 @@ The generator follows each binary's imports inside the module and records every 
 | `PLOEG_FORGEJO_TOKEN` | ploegd |  |  | [forgecreds.go](../../cmd/ploegd/forgecreds.go), [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_FORGEJO_URL` | ploegd |  |  | [forgecreds.go](../../cmd/ploegd/forgecreds.go), [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_FORGE_TOKEN_ACCESS` | ploeg-worker |  |  | [main.go](../../cmd/ploeg-worker/main.go) |
-| `PLOEG_FORGE_TOKEN_ISOLATION` | ploeg-worker |  |  | [main.go](../../cmd/ploeg-worker/main.go) |
+| `PLOEG_FORGE_TOKEN_ISOLATION` | ploeg-worker |  | `proxy` keeps a writer's forge token in ploeg-worker behind a loopback proxy limited to the Run's repository (ADR-0034). The chart sets it only for a qualified harness without DinD. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_GITLAB_BOT` | ploegd |  | GitLab username Ploeg acts as. Like `PLOEG_FORGEJO_BOT`, a review event from it never sends work back under `teams.<name>.forgeFollowUps`. Unset adds no GitLab identity. | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_GITLAB_SECRET` | ploegd |  | Shared secret GitLab sends as `X-Gitlab-Token` to `POST /webhooks/forge/gitlab` (chart `executor.gitlab.webhookSecret`). Unset rejects every GitLab webhook. | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_GITLAB_TOKEN` | ploegd |  | Token with `api` scope on the target projects, sent as `PRIVATE-TOKEN` (chart `executor.gitlab.tokenSecret`). | [main.go](../../cmd/ploegd/main.go) |
@@ -78,7 +79,7 @@ The generator follows each binary's imports inside the module and records every 
 | `PLOEG_LISTEN` | ploegd | `:8080` |  | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_LLM_CORRECTION_WINDOW` | ploegd | `24h` | How long a spend-log settlement stays provisional. Every 15 minutes in this window the correction sweep reads the spend logs again and charges any late entry as an adjustment. `0` makes the first settlement final; a negative value refuses to start. The window is fixed at each account's first settlement. | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_LLM_CREDENTIAL_MODE` | ploeg-worker | `managed` | `managed`, or `static-compatibility` for legacy mode, which uses `LLM_API_KEY`. | [main.go](../../cmd/ploeg-worker/main.go) |
-| `PLOEG_LLM_KEY_ISOLATION` | ploeg-worker |  |  | [main.go](../../cmd/ploeg-worker/main.go) |
+| `PLOEG_LLM_KEY_ISOLATION` | ploeg-worker |  | `proxy` keeps the per-Run model key in ploeg-worker and hands the harness a placeholder and a loopback URL (ADR-0034). The chart sets it only for a qualified harness without DinD. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_LLM_SETTLE_AFTER` | ploegd | `15m` | Quiet period after which the settlement sweep settles a blocked Run's account from LiteLLM spend logs. | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_METRICS_CACHE_TTL` | ploegd | `15s` |  | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_OPERATOR_CONSUMERS` | ploegd |  | JSON array of operator read consumers. Each entry names a `tokenEnv`, a further variable that holds that consumer's bearer token (chart `operator.consumers`). No consumers refuses every operator request. | [operator.go](../../cmd/ploegd/operator.go) |
@@ -171,7 +172,7 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `executor.dindResources.requests.memory` |  | `1536Mi` |  | values.yaml |
 | `executor.enabled` | boolean | `false` | The executor (design §6, docs/contracts/executor.md). Disabled until the ingest path is verified in-cluster; flipping it on requires the LiteLLM + agent-builder secrets and (for dind harnesses) the privileged-DinD PolicyException in the namespace. | values.yaml, values.schema.json |
 | `executor.forge` | one of `"forgejo"`, `"gitlab"` | `forgejo` | Which forge the workers act against; selects the sibling block of the same name. Also the default dialect for a Work Item whose target names no forge (ADR-0023). One active forge per release: a worker pod holds one forge URL and one credential. | values.yaml, values.schema.json |
-| `executor.forgeTokenIsolation` | one of `""`, `"proxy"` | `""` | "proxy" keeps a writer's forge token inside ploeg-worker: git and the forge API reach only the Run's own repository through a loopback proxy that adds the token, and the harness sees a placeholder. "" hands the token over. Qualify per harness: one that pushes from inside DinD cannot reach it. | values.yaml, values.schema.json |
+| `executor.forgeTokenIsolation` | one of `""`, `"proxy"` | `proxy` | "proxy" keeps a writer's forge token inside ploeg-worker: git and the forge API reach only the Run's own repository through a loopback proxy that adds the token, and the harness sees a placeholder. "" hands the token over. Applies only to a qualified harness without DinD (openhands, acp profile openhands, exec; docs/research/2026-10-04-isolation-qualification.md); any other workload renders with it off, and ploeg-worker logs why. A team's or Role's harness.credentialIsolation overrides both proxies explicitly. | values.yaml, values.schema.json |
 | `executor.forgejo.botPasswordSecret` | [secretRef](#secretref) | `{}` | ADR-0013 tier 2: the password of botUser, which ploegd uses to MINT per-run push tokens limited to the Run's repository. Held only by ploegd, never by a worker. Unset = nothing is minted. | values.yaml, values.schema.json |
 | `executor.forgejo.botUser` | string | `agent-builder` | the forge user whose tokens are minted (default agent-builder) | values.yaml, values.schema.json |
 | `executor.forgejo.publicUrl` | string | `""` | ploegd's forge URL (PLOEG_FORGEJO_URL). Empty = url. Set it to the public https URL when url is in-cluster: ploegd matches a consumer's https repository URLs against it and accepts only https or ssh ones. | values.yaml, values.schema.json |
@@ -206,7 +207,7 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `executor.litellm.adminUrl` |  | `""` | ploegd's LiteLLM management URL (LITELLM_ADMIN_URL), e.g. http://litellm.<namespace>.svc.cluster.local:4000. REQUIRED while workerAuth.mode is managed: ploegd refuses to start without it. | values.yaml |
 | `executor.litellm.baseUrl` |  | `""` | The model gateway workers call (LLM_BASE_URL), e.g. http://litellm.<namespace>.svc.cluster.local:4000/v1. REQUIRED with the executor enabled. | values.yaml |
 | `executor.litellm.keyDuration` |  | `4h` | Per-run key lifetime; a positive Go duration between one second and 24 hours. | values.yaml |
-| `executor.litellm.keyIsolation` |  | `""` | "proxy" keeps the per-Run key inside ploeg-worker: the harness gets a placeholder and a loopback URL, and the worker swaps in the real key on the way to LiteLLM. "" hands the key to the harness. Qualify it per harness first: one that calls the model from inside a DinD container cannot reach the worker's loopback. | values.yaml |
+| `executor.litellm.keyIsolation` |  | `proxy` | "proxy" keeps the per-Run key inside ploeg-worker: the harness gets a placeholder and a loopback URL, and the worker swaps in the real key on the way to LiteLLM. "" hands the key to the harness. Like forgeTokenIsolation, it applies only to a qualified harness without DinD, because a harness calling the model from inside a DinD container cannot reach the worker's loopback. | values.yaml |
 | `executor.litellm.masterKeySecret` |  |  | Controller-only LiteLLM management Secret reference. | values.yaml |
 | `executor.litellm.masterKeySecret.key` |  | `LITELLM_MASTER_KEY` |  | values.yaml |
 | `executor.litellm.masterKeySecret.name` |  | `agent-litellm-master` |  | values.yaml |
@@ -381,6 +382,7 @@ name becomes the workload suffix (ploeg-worker-<team>-<role>); writes marks the 
 | `args` | array | `exec` harness only: argv template with `{taskspec}` and `{taskfile}`. |
 | `outcomeFile` | string | `exec` harness only: OutcomeReport JSON path override. |
 | `dind` | boolean | Adds the privileged DinD sidecar and Docker wiring. OpenHands and gate builds need it. |
+| `credentialIsolation` | one of `""`, `"proxy"` | Explicit per-workload setting for both credential proxies (ADR-0034). Unset = executor.forgeTokenIsolation and executor.litellm.keyIsolation apply to a qualified harness without DinD, and every other workload runs with both off. |
 | `timeout` | string | Stops a harness that runs longer than this. |
 | `idleTimeout` | string | Stops a harness that is silent for this long. |
 | `acp` | [acp](#acp) | `acp` harness settings. |
