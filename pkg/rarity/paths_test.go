@@ -11,12 +11,12 @@ func TestPatternMatching(t *testing.T) {
 		match   []string
 		miss    []string
 	}{
-		{"**/migrations/**", []string{"migrations/0001.sql", "apps/ploeg/pkg/store/migrations/0031_card_rarity.sql"}, []string{"pkg/migration.go", "docs/migrations.md"}},
-		{"migrations/**", []string{"migrations/0001.sql"}, []string{"apps/ploeg/migrations/0001.sql"}},
+		{"**/migrations/**", []string{"migrations/0001.sql", "services/engine/pkg/store/migrations/0031_card_rarity.sql"}, []string{"pkg/migration.go", "docs/migrations.md"}},
+		{"migrations/**", []string{"migrations/0001.sql"}, []string{"services/engine/migrations/0001.sql"}},
 		{"**/*.sql", []string{"a.sql", "db/seed/b.sql"}, []string{"a.sqlx", "sql/readme.md"}},
 		{"**/schema*.json", []string{"schema.json", "docs/contracts/schema-v2.json"}, []string{"docs/schemas/a.json"}},
 		{"**/openapi*.{yml,yaml,json}", []string{"openapi.yaml", "api/openapi-v1.yml", "api/openapi.json"}, []string{"api/openapi.toml", "openapi/x.yaml"}},
-		{"Dockerfile", []string{"Dockerfile", "apps/vloer/Dockerfile"}, []string{"Dockerfile.dev", "docs/Dockerfile.md"}},
+		{"Dockerfile", []string{"Dockerfile", "apps/console/Dockerfile"}, []string{"Dockerfile.dev", "docs/Dockerfile.md"}},
 		{"**/helm/**", []string{"ops/helm/ploeg/values.yaml"}, []string{"helmfile.yaml"}},
 		{"**/.forgejo/workflows/**", []string{".forgejo/workflows/on_push.yml"}, []string{".forgejo/actions/x.yml"}},
 		{"*.lock", []string{"yarn.lock", "deep/Cargo.lock"}, []string{"lock.go"}},
@@ -54,8 +54,8 @@ func TestDefaultRules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, f := range []string{"apps/ploeg/pkg/store/migrations/0031_card_rarity.sql", "db/schema.json", "api/v1/service.proto",
-		"openapi.yaml", "Dockerfile", "apps/ploeg/ops/helm/ploeg/values.yaml", ".github/workflows/ci.yml", ".forgejo/workflows/on_push.yml"} {
+	for _, f := range []string{"services/engine/pkg/store/migrations/0031_card_rarity.sql", "db/schema.json", "api/v1/service.proto",
+		"openapi.yaml", "Dockerfile", "services/engine/ops/helm/ploeg/values.yaml", ".github/workflows/ci.yml", ".forgejo/workflows/on_push.yml"} {
 		if !m.Sensitive(f) {
 			t.Errorf("%s is not sensitive by default", f)
 		}
@@ -65,7 +65,7 @@ func TestDefaultRules(t *testing.T) {
 			t.Errorf("%s is sensitive by default", f)
 		}
 	}
-	for _, f := range []string{"package-lock.json", "apps/vloer/package-lock.json", "go.sum", "apps/ploeg/go.sum", "pnpm-lock.yaml",
+	for _, f := range []string{"package-lock.json", "apps/console/package-lock.json", "go.sum", "services/engine/go.sum", "pnpm-lock.yaml",
 		"api/v1/service.pb.go", "vendor/github.com/x/y.go", "web/node_modules/a/index.js", "public/app.min.js", "test/__snapshots__/a.snap", "mise.lock"} {
 		if !m.Excluded(f) {
 			t.Errorf("%s is counted in size by default", f)
@@ -109,17 +109,17 @@ func TestRulesReplaceDefaultsAndAddAttentionPaths(t *testing.T) {
 
 func TestModule(t *testing.T) {
 	for file, want := range map[string]string{
-		"README.md":                      ".",
-		"pkg/store/card.go":              "pkg",
-		"docs/index.md":                  "docs",
-		"apps/ploeg/pkg/store/card.go":   "apps/ploeg",
-		"apps/README.md":                 "apps",
-		"packages/ui/src/button.tsx":     "packages/ui",
-		"services/api/main.go":           "services/api",
-		"/cmd/ploegd/main.go":            "cmd",
-		"crates/core/src/lib.rs":         "crates/core",
-		"internal/ledger/adr_test.go":    "internal",
-		".forgejo/workflows/on_push.yml": ".forgejo",
+		"README.md":                         ".",
+		"pkg/store/card.go":                 "pkg",
+		"docs/index.md":                     "docs",
+		"services/engine/pkg/store/card.go": "services/engine",
+		"apps/README.md":                    "apps",
+		"packages/ui/src/button.tsx":        "packages/ui",
+		"services/api/main.go":              "services/api",
+		"/cmd/ploegd/main.go":               "cmd",
+		"crates/core/src/lib.rs":            "crates/core",
+		"internal/ledger/adr_test.go":       "internal",
+		".forgejo/workflows/on_push.yml":    ".forgejo",
 	} {
 		if got := Module(file); got != want {
 			t.Errorf("Module(%q) = %q; want %q", file, got, want)

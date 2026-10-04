@@ -9,12 +9,10 @@ generated_by: "mise run domain"
 
 *Generated from `model.yaml` — do not edit by hand.*
 
-The [combined Unfold glossary](https://github.com/webgrip/unfold/blob/9c1d53f01fbfb65733800aa75e288341734dc23f/docs/reference/glossary.md) lists every term of every model once, with its owner and the words it must not be confused with.
-
 ## Admission
 *Context: Dispatch*
 
-Ploeg's decision to accept work for execution and record it. Operator work is admitted when an authenticated Operator Consumer asks, for example on Vloer Start; tracker work enters through an Assignment and the Routing Rules. No Run starts before its work is admitted.
+Ploeg's decision to accept work for execution and record it. Operator work is admitted when an authenticated Operator Consumer asks; tracker work enters through an Assignment and the Routing Rules. No Run starts before its work is admitted.
 
 **See also:** [Authority](#authority), [Operator Execution](#operator-execution), [Operator Consumer](#operator-consumer), [Assignment](#assignment), [Work Item](#work-item)  
 
@@ -35,7 +33,7 @@ The normalized tracker event that offers an ingested Work Item to agents, transi
 ## Authority
 *Context: Dispatch*
 
-The one party entitled to approve a Run, set its budget and grant or revoke its credentials. Ploeg is the Authority for every Run (Unfold ADR-0002). A Run never switches to another authority because a connection fails.
+The one party entitled to approve a Run, set its budget and grant or revoke its credentials. Ploeg is the Authority for every Run it executes. A Run never switches to another authority because a connection fails.
 
 **See also:** [Admission](#admission), [Inference Account](#inference-account), [Push Credential](#push-credential), [Run](#run)  
 
@@ -56,7 +54,7 @@ An immutable proposed repository tree with a canonical commit on an approved bas
 ## Executor
 *Context: Execution*
 
-The component that performs admitted Runs and reports progress and outcomes. Current unattended execution uses Kubernetes workers; Vloer performs delegated operator execution until Unfold ADR-0002 moves it to ploeg-worker. The controller recovers missing reports through expiry and reconciliation, without a Kubernetes Job watcher.
+The component that performs admitted Runs and reports progress and outcomes. Current unattended execution uses Kubernetes workers; an Operator Consumer performs delegated operator execution and reports it to Ploeg. The controller recovers missing reports through expiry and reconciliation, without a Kubernetes Job watcher.
 
 **See also:** [Run](#run)  
 
@@ -94,7 +92,7 @@ The SPI adapter for one git forge: verify and parse webhooks into normalized For
 
 A concrete agent tool (Claude Code, opencode, …): the program that manages an agent's conversation with a model and runs the tools it is permitted to use. Ploeg never talks to a Harness directly — only through a Harness Adapter — because this boundary churns fastest of any in the system.
 
-**See also:** [Harness Adapter](#harness-adapter), [Agent Container](#agent-container), [Model](https://github.com/webgrip/unfold/blob/9c1d53f01fbfb65733800aa75e288341734dc23f/docs/reference/glossary.md#model)  
+**See also:** [Harness Adapter](#harness-adapter), [Agent Container](#agent-container), [Model](#model)  
 
 ## Harness Adapter
 *Context: Harness*
@@ -118,6 +116,13 @@ The exclusive right to WRITE a Shift's branch, unique per Shift. It is a capabil
 **Do not use:** claim (as a noun), lock  
 **See also:** [Shift](#shift), [Run](#run), [Push Credential](#push-credential)  
 
+## Model
+*Context: Harness*
+
+The trained system a Harness sends requests to through the model gateway. Ploeg authorizes and accounts for its use per Run through the Run's Inference Account; it never runs a model itself.
+
+**See also:** [Harness](#harness), [Inference Account](#inference-account)  
+
 ## Operator Consumer
 *Context: Integration*
 
@@ -128,7 +133,7 @@ A named service identity with explicit Team scope and separate read and executio
 ## Operator Execution
 *Context: Dispatch*
 
-A Ploeg record admitted for an authenticated Operator Consumer and linked to its session. Vloer Start requests admission even when the person will steer the work live. It links one Work Item, Shift and Run and retains its identity through changes in supervision.
+A Ploeg record admitted for an authenticated Operator Consumer and linked to its session. A consumer requests admission even when a person will steer the work live. It links one Work Item, Shift and Run and retains its identity through changes in supervision.
 
 **Not to be confused with** [Shift](#shift): The whole attempt on a Work Item. An Operator Execution is the admitted record that links one.  
 **See also:** [Work Item](#work-item), [Shift](#shift), [Run](#run), [Operator Consumer](#operator-consumer), [Inference Account](#inference-account)  
@@ -138,7 +143,6 @@ A Ploeg record admitted for an authenticated Operator Consumer and linked to its
 
 The terminal result of a Run, one of: pr_opened, pr_updated, issue_updated, follow_up_created, stuck, failed, no_change_needed. A stuck Outcome carries a mandatory reason and moves the Work Item to needs_human on the tracker path. A failed Outcome follows the applicable tracker or operator recovery policy; it does not universally authorize retry.
 
-**Not to be confused with** [Result](https://github.com/webgrip/unfold/blob/9c1d53f01fbfb65733800aa75e288341734dc23f/docs/reference/glossary.md#result): The deliverable and evidence that a person reviews against the Acceptance Conditions.  
 **Not to be confused with** [Verdict](#verdict): A reading Run's opinion of the work; an Outcome classifies how the Run itself ended.  
 **See also:** [Outcome Report](#outcome-report), [Run](#run)  
 
@@ -191,11 +195,10 @@ The operator-declared mapping from (provider, Scope, actor, hint) to a Team and 
 ## Run
 *Context: Execution*
 
-One execution of one Role against a Work Item, realized by an Executor as a Kubernetes Job or a delegated workbench execution. A Lease may accumulate several Runs (roles, retries, resumes). The runner reports its outcome; controller expiry and reconciliation recover missing reports while preserving operator stop intent. "Job" is reserved for the Kubernetes object and is never a domain term. A delegated Run may contain several Vloer Steps until Vloer's engine is retired (Unfold ADR-0002).
+One execution of one Role against a Work Item, realized by an Executor as a Kubernetes Job or a delegated workbench execution. A Lease may accumulate several Runs (roles, retries, resumes). The runner reports its outcome; controller expiry and reconciliation recover missing reports while preserving operator stop intent. "Job" is reserved for the Kubernetes object and is never a domain term.
 
 **Do not use:** job (as a domain term), role run  
 **Not to be confused with** [Shift](#shift): The whole attempt on a Work Item, which contains one or more Runs.  
-**Not to be confused with** [Step](https://github.com/webgrip/unfold/blob/9c1d53f01fbfb65733800aa75e288341734dc23f/docs/reference/glossary.md#step): A Vloer-internal part of one Run; older Vloer text says "role run".  
 **See also:** [Role](#role), [Outcome](#outcome), [Outcome Report](#outcome-report), [Executor](#executor), [Lease](#lease)  
 
 ## Scope
@@ -212,8 +215,7 @@ An opaque, provider-scoped container id for a body of work (a Vikunja project, a
 One Team's engagement with one Work Item: the container that owns the branch, the budget pool, the roster of Runs and the Round counter. Opens when the first Run starts, closes when the work reaches a terminal state. A Shift is what makes several Runs on one item coherent without any of them needing to remember the others. Named for the crew sense — Ploeg is Dutch for a crew, and ploegendienst is shift work.
 
 **Do not use:** claim (as a noun), engagement, session, execution  
-**Not to be confused with** [Execution](https://github.com/webgrip/unfold/blob/9c1d53f01fbfb65733800aa75e288341734dc23f/docs/reference/glossary.md#execution): A retired product term for the same attempt. The word still names a bounded context and is part of Operator Execution.  
-**Not to be confused with** [Session](https://github.com/webgrip/unfold/blob/9c1d53f01fbfb65733800aa75e288341734dc23f/docs/reference/glossary.md#session): Vloer's record of a person's interaction; a started session links to one Shift.  
+**Not to be confused with** Execution: A retired product term for the same attempt. The word still names a bounded context and is part of Operator Execution.  
 **See also:** [Lease](#lease), [Run](#run), [Round](#round), [Team](#team), [Work Item](#work-item)  
 
 ## Task Spec
@@ -229,7 +231,6 @@ The input contract of an Agent Container: Work Item snapshot, Role, optional Che
 A declarative manifest — name, Roles, harness image and model per Role, run strategy (sequential or parallel), resource/token budget, concurrency cap — that is the unit of claiming. Two Teams never hold a Shift on the same Work Item; any number of Roles work within one Team's Shift. A Team never names a repository, forge, or credential: capacity and codebase are independent axes (R11) — those coordinates are the Work Item's Work Target, not the Team's.
 
 **Do not use:** crew  
-**Not to be confused with** [Crew](https://github.com/webgrip/unfold/blob/9c1d53f01fbfb65733800aa75e288341734dc23f/docs/reference/glossary.md#crew): Vloer's registered list of Roles for a session; it maps to a Team.  
 **Examples:** implementer + reviewer-on-a-different-model-family + tester  
 **See also:** [Role](#role), [Shift](#shift), [Work Target](#work-target)  
 
@@ -266,9 +267,8 @@ The SPI adapter for one task-management system: verify and parse webhooks into n
 ## Verdict
 *Context: Harness*
 
-A reading Run's answer to "is this done?", reported in its Outcome Report: approve or request_changes, or empty for no opinion. A request_changes Verdict can open a capped fix Round (Ploeg ADR-0017). Vloer's reviewer prompt also accepts inconclusive.
+A reading Run's answer to "is this done?", reported in its Outcome Report: approve or request_changes, or empty for no opinion. A request_changes Verdict can open a capped fix Round (Ploeg ADR-0017).
 
-**Not to be confused with** [Review](https://github.com/webgrip/unfold/blob/9c1d53f01fbfb65733800aa75e288341734dc23f/docs/reference/glossary.md#review): A judgement of a Result against its Acceptance Conditions. A Verdict is Evidence for it, not acceptance.  
 **See also:** [Outcome Report](#outcome-report), [Round](#round), [Role](#role)  
 
 ## Verification Receipt
@@ -281,7 +281,7 @@ Evidence reported by an explicitly authorized verifier for one Delivery Candidat
 ## Work Item
 *Context: Dispatch*
 
-A unit of work: something we have decided to do, or a problem described well enough that a solution can be formulated or at least conceived. It comes from a Tracker Item, from an Operator Execution admitted through Vloer, or from other work (a Follow-Up). Ploeg keeps one record per Work Item and runs Shifts against it; a failed Shift leaves it in place. Tracker-originated content remains owned by the Tracker Item. Manual-origin content is registered by an authenticated Operator Consumer and never silently creates a Tracker Item.
+A unit of work: something we have decided to do, or a problem described well enough that a solution can be formulated or at least conceived. It comes from a Tracker Item, from an Operator Execution admitted for an Operator Consumer, or from other work (a Follow-Up). Ploeg keeps one record per Work Item and runs Shifts against it; a failed Shift leaves it in place. Tracker-originated content remains owned by the Tracker Item. Manual-origin content is registered by an authenticated Operator Consumer and never silently creates a Tracker Item.
 
 **Do not use:** task, ticket  
 **See also:** [Tracker Item](#tracker-item), [Lease](#lease), [Follow-Up](#follow-up), [Work Target](#work-target)  
@@ -295,26 +295,11 @@ The forge coordinates a Work Item's Runs act on: forge, owner, repository, base 
 **Do not use:** team repo, repo_url  
 **See also:** [Work Item](#work-item), [Forge](#forge), [Routing Rule](#routing-rule), [Team](#team)  
 
-## Terms owned by other models
-
-This model uses these terms with their owners' meaning: [Crew](https://github.com/webgrip/unfold/blob/9c1d53f01fbfb65733800aa75e288341734dc23f/docs/reference/glossary.md#crew), [Model](https://github.com/webgrip/unfold/blob/9c1d53f01fbfb65733800aa75e288341734dc23f/docs/reference/glossary.md#model), [Ready](https://github.com/webgrip/unfold/blob/9c1d53f01fbfb65733800aa75e288341734dc23f/docs/reference/glossary.md#ready), [Result](https://github.com/webgrip/unfold/blob/9c1d53f01fbfb65733800aa75e288341734dc23f/docs/reference/glossary.md#result), [Review](https://github.com/webgrip/unfold/blob/9c1d53f01fbfb65733800aa75e288341734dc23f/docs/reference/glossary.md#review), [Session](https://github.com/webgrip/unfold/blob/9c1d53f01fbfb65733800aa75e288341734dc23f/docs/reference/glossary.md#session), [Step](https://github.com/webgrip/unfold/blob/9c1d53f01fbfb65733800aa75e288341734dc23f/docs/reference/glossary.md#step).
-
-## Decisions cited
-
-- [Unfold ADR-0002](https://github.com/webgrip/unfold/blob/9c1d53f01fbfb65733800aa75e288341734dc23f/docs/adr/adr-0002-ploeg-is-the-only-engine.md): Ploeg is the only execution engine and Vloer is its front end.
-
 ---
 
 ## Example dialogues
 
 Short exchanges showing the terms used precisely at concept boundaries.
-
-### Working on a ticket in De Vloer
-
-> **Developer:** Where do I start working?
-> **Product owner:** In De Vloer. A ticket can supply the objective. Start requests Ploeg admission; without Ploeg, De Vloer runs only its deterministic demo.
-> **Developer:** Does that require OpenCode?
-> **Product owner:** No. The tool running the agent is replaceable. De Vloer is the place you use.
 
 ### Research can recommend stopping
 

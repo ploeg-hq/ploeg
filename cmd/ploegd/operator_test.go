@@ -14,15 +14,15 @@ func TestOperatorConfigCarriesEachTargetsCardStyle(t *testing.T) {
 	t.Setenv("PLOEG_DEFAULT_TEAM", "")
 	t.Setenv("PLOEG_TEAM_MAP", "")
 	cfg := &config.File{Targets: map[string]config.Target{
-		"glide": {Repo: "webgrip/Glide", CardStyle: &config.CardStyle{Theme: "acme"}},
+		"app":   {Repo: "webgrip/App", CardStyle: &config.CardStyle{Theme: "acme"}},
 		"plain": {Repo: "webgrip/plain"},
 	}}
 	operator, err := operatorConfig(cfg, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	glide, ok := operator.CardStyles["webgrip/glide"]
-	if !ok || glide.Skin != store.DefaultCardSkin || glide.Theme == nil || *glide.Theme != "acme" {
+	app, ok := operator.CardStyles["webgrip/app"]
+	if !ok || app.Skin != store.DefaultCardSkin || app.Theme == nil || *app.Theme != "acme" {
 		t.Fatalf("card styles = %+v", operator.CardStyles)
 	}
 	if _, ok := operator.CardStyles["webgrip/plain"]; ok {
@@ -39,14 +39,14 @@ func TestOperatorConfigCarriesEachTargetsReleaseEnvironment(t *testing.T) {
 	t.Setenv("PLOEG_DEFAULT_TEAM", "")
 	t.Setenv("PLOEG_TEAM_MAP", "")
 	cfg := &config.File{Targets: map[string]config.Target{
-		"glide": {Repo: "webgrip/Glide", Release: &config.Release{Environment: "live"}},
+		"app":   {Repo: "webgrip/App", Release: &config.Release{Environment: "live"}},
 		"plain": {Repo: "webgrip/plain"},
 	}}
 	operator, err := operatorConfig(cfg, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := map[string]string{"webgrip/glide": "live"}; !reflect.DeepEqual(operator.ReleaseEnvironments, want) {
+	if want := map[string]string{"webgrip/app": "live"}; !reflect.DeepEqual(operator.ReleaseEnvironments, want) {
 		t.Fatalf("release environments = %v, want %v; a target without release uses production", operator.ReleaseEnvironments, want)
 	}
 }
@@ -71,8 +71,8 @@ func TestOperatorConfigListsEachTeamsTrackerAssignees(t *testing.T) {
 	t.Setenv("PLOEG_OPERATOR_DELIVERY_POLICIES", "")
 	t.Setenv("PLOEG_DEFAULT_TEAM", "")
 	t.Setenv("PLOEG_TEAM_MAP", "bronze=bronze,copper=copper,zinc=bronze")
-	cfg := &config.File{Teams: map[string]config.Team{"silver": {Assignees: []string{"Silver", "agent-silver"}}, "vloer": {}}}
-	cfg.Trackers.Vikunja.Projects = []config.Project{{ID: "11", Team: "vloer"}, {ID: "10"}, {Name: "Named", Team: "silver"}}
+	cfg := &config.File{Teams: map[string]config.Team{"silver": {Assignees: []string{"Silver", "agent-silver"}}, "console": {}}}
+	cfg.Trackers.Vikunja.Projects = []config.Project{{ID: "11", Team: "console"}, {ID: "10"}, {Name: "Named", Team: "silver"}}
 	operator, err := operatorConfig(cfg, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -81,10 +81,10 @@ func TestOperatorConfigListsEachTeamsTrackerAssignees(t *testing.T) {
 	if !reflect.DeepEqual(operator.TeamAssignees, want) {
 		t.Fatalf("team assignees = %v, want %v", operator.TeamAssignees, want)
 	}
-	if want := map[string][]string{"vloer": {"11"}}; !reflect.DeepEqual(operator.TeamScopes, want) {
+	if want := map[string][]string{"console": {"11"}}; !reflect.DeepEqual(operator.TeamScopes, want) {
 		t.Fatalf("team scopes = %v, want %v; only id-pinned projects pin a team", operator.TeamScopes, want)
 	}
-	for _, team := range []string{"silver", "bronze", "copper", "vloer"} {
+	for _, team := range []string{"silver", "bronze", "copper", "console"} {
 		if _, registered := operator.Teams[team]; !registered {
 			t.Errorf("team %s is not registered", team)
 		}

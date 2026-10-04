@@ -72,14 +72,20 @@ env:
   PLOEG_LEASE_TTL: 5m
   PLOEG_SWEEP_INTERVAL: 15s
   # The usage and evidence report Ploeg posts on every agent pull request
-  # (PLOEG_USAGE_REPORT). Default on; "false" is the kill switch. The two base
-  # URLs are where its links point — set them to the Grafana base and
-  # to Vloer. Either one unset omits its links, and both unset omits the links
-  # section while the report still renders.
+  # (PLOEG_USAGE_REPORT). Default on; "false" is the kill switch. The four
+  # link templates are where its "Where to dig deeper" links point; Ploeg
+  # fills {id} (the Work Item id), {team} and {run} (the Run's gateway alias).
+  # An unset template omits its link, and none set omits the section while
+  # the report still renders.
   PLOEG_USAGE_REPORT: "true"
-  PLOEG_REPORT_GRAFANA_URL: ""
-  # Vloer's base URL; the report links the Work Item page.
-  PLOEG_REPORT_VLOER_URL: ""
+  # One Work Item, for example https://console.example/items/{id}
+  PLOEG_REPORT_WORK_ITEM_URL: ""
+  # A dashboard filtered to the Shift's Team, for example .../d/loop?var-team={team}
+  PLOEG_REPORT_TEAM_DASHBOARD_URL: ""
+  # The usage of the Run behind the report, for example .../d/runs?var-run={run}
+  PLOEG_REPORT_RUN_DASHBOARD_URL: ""
+  # Spend across Runs.
+  PLOEG_REPORT_SPEND_DASHBOARD_URL: ""
 
 database:
   # REQUIRED: the Secret holding ploegd's PostgreSQL connection URI. The
@@ -298,7 +304,7 @@ executor:
     # Empty with the executor off = ploegd has no forge provider.
     url: ""
     # ploegd's forge URL (PLOEG_FORGEJO_URL). Empty = url. Set it to the
-    # public https URL when url is in-cluster: ploegd matches Vloer's https
+    # public https URL when url is in-cluster: ploegd matches a consumer's https
     # repository URLs against it and accepts only https or ssh ones.
     publicUrl: ""
     tokenSecret:
@@ -455,20 +461,20 @@ executor:
 # work to the wrong repository the day the project is rebuilt.
 config: {}
 #   targets:                          # ADR-0038: repositories a `repo/<key>` label may select
-#     unfold:
-#       repo: webgrip/glide
+#     app:
+#       repo: webgrip/app
 #       branch: development
 #       forge: forgejo
-#       cardStyle:                    # ADR-0046: Run card skin and theme; unset = vloer-native, no theme
+#       cardStyle:                    # ADR-0046: Run card skin and theme; unset = skin "default", no theme
 #         theme: acme
 #       release:                      # ADR-0047: the deploy environment that releases a merge; unset = production
 #         environment: production
 #       rarity:                       # ADR-0056: Run card rarity path rules; unset = the defaults
-#         attentionPaths: ["apps/ploeg/pkg/store/**"]  # more sensitive ground, on top of the defaults
+#         attentionPaths: ["pkg/store/**"]  # more sensitive ground, on top of the defaults
 #         # sensitivePaths: [...]       # replaces the default sensitive paths; [] = none
 #         # sizeExclude: [...]          # replaces the default lockfile/generated/vendor list
 #       cardShape:                    # ADR-0058: which files a Run card counts as tests and docs; unset = the defaults
-#         testPaths: ["**/*_test.go", "apps/vloer/test/**"]  # replaces the default test paths; [] = none
+#         testPaths: ["**/*_test.go", "web/test/**"]  # replaces the default test paths; [] = none
 #         # docPaths: [...]             # replaces the default documentation paths
 #     homelab-cluster:
 #       repo: webgrip/homelab-cluster
@@ -481,8 +487,8 @@ config: {}
 #           repo: webgrip/ploeg
 #           branch: development       # unset = the repo default, may be a stub
 #           team: bronze              # unset = the assignee decides
-#         - name: "Unfold"             # a board serving several repositories
-#           default: unfold            # a targets key, instead of repo/branch/forge
+#         - name: "App"                # a board serving several repositories
+#           default: app               # a targets key, instead of repo/branch/forge
 #           allow: [homelab-cluster]  # what a repo/<key> label may select here
 #           gates:                    # ADR-0051: bucket titles (Vikunja) or statuses (ClickUp) per delivery gate
 #             development: ["Doing"]
@@ -493,7 +499,7 @@ config: {}
 #             active: ["UAT"]
 #             blocked: ["Parked"]
 #         - name: "Forgejo Migration" # no default: every ticket needs a repo/<key> label
-#           allow: [unfold, homelab-cluster]
+#           allow: [app, homelab-cluster]
 #   teams:
 #     bronze:
 #       assignees: [jake, bronze]     # replaces PLOEG_TEAM_MAP

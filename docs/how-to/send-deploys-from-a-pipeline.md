@@ -3,7 +3,7 @@ type: how-to
 audience: [operator, owner]
 owner: ploeg
 last_verified: 2026-10-01
-verified_by: "Read apps/ploeg pkg/httpapi/deploys.go, pkg/store/{deployments,card}.go, pkg/provider/{forgejo,gitlab}/ancestry.go, cmd/ploegd/operator.go and ops/helm/ploeg/{values.yaml,templates/deployment.yaml}; go test ./pkg/httpapi ./pkg/store ./pkg/provider/... ./pkg/config. Not checked against a live deployment or a live pipeline."
+verified_by: "Read pkg/httpapi/deploys.go, pkg/store/{deployments,card}.go, pkg/provider/{forgejo,gitlab}/ancestry.go, cmd/ploegd/operator.go and ops/helm/ploeg/{values.yaml,templates/deployment.yaml}; go test ./pkg/httpapi ./pkg/store ./pkg/provider/... ./pkg/config. Not checked against a live deployment or a live pipeline."
 ---
 
 # Send deploys from a pipeline to Ploeg
@@ -55,7 +55,7 @@ Run it after the deploy succeeded, once per environment. Report the commit that 
   run: >-
     curl -fsS --retry 3 -X POST "${{ vars.PLOEG_URL }}/api/v1/deploys"
     -H "Authorization: Bearer ${{ secrets.PLOEG_DEPLOY_TOKEN }}" -H "Content-Type: application/json"
-    -d "{\"environment\":\"production\",\"repo\":{\"forge\":\"forgejo\",\"owner\":\"webgrip\",\"name\":\"unfold\"},\"sha\":\"${GITHUB_SHA}\",\"url\":\"${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}\",\"source\":\"ci\"}"
+    -d "{\"environment\":\"production\",\"repo\":{\"forge\":\"forgejo\",\"owner\":\"webgrip\",\"name\":\"app\"},\"sha\":\"${GITHUB_SHA}\",\"url\":\"${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}\",\"source\":\"ci\"}"
     || echo "Ploeg did not record the deploy"
 ```
 
@@ -101,7 +101,7 @@ targets:
 
 1. The pipeline log shows `{"deployId":"…","pullRequests":N}`. `N` counts the pull requests this report marked for the first time; pull requests the sweep marks later are not in it. A repeated call returns the same `deployId` and usually `0`.
 2. ploegd logs `deploy recorded` and one `pull request deployed` per marked pull request.
-3. In Vloer, the Work Item's card shows the deploy under its environments. Once production has it, the release says "deploy" instead of "counted from merge".
+3. In an operator consumer, the Work Item's card shows the deploy under its environments. Once production has it, the release says "deploy" instead of "counted from merge".
 
 ## Troubleshooting
 

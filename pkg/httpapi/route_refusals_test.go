@@ -55,7 +55,7 @@ func TestRouteRefusalsListWhatIngestRefusedWithItsCode(t *testing.T) {
 		t.Errorf("newest refusal = %+v, want 5102 refused as target_not_ready", notReady)
 	}
 	if unregistered.ExternalID != "5101" || unregistered.Code != "label_unregistered" ||
-		strings.Join(unregistered.AllowedLabels, ",") != "repo/glide,repo/homelab-cluster" ||
+		strings.Join(unregistered.AllowedLabels, ",") != "repo/app,repo/homelab-cluster" ||
 		strings.Join(unregistered.Labels, ",") != "repo/ploeg" || unregistered.Title != "routing fixture" {
 		t.Errorf("older refusal = %+v, want 5101 refused as label_unregistered with the board's labels", unregistered)
 	}
@@ -81,7 +81,7 @@ func TestRouteRefusalsStayInsideTheConsumersTeams(t *testing.T) {
 		{Provider: "vikunja", ExternalID: "5201", ExternalScope: "10", Team: "silver", Title: "visible refusal"},
 		{Provider: "vikunja", ExternalID: "5202", ExternalScope: "10", Team: "gold", Title: "hidden refusal"},
 	} {
-		if err := testStore.RefuseRoute(ctx, item, "label_missing", "needs a label", []string{"repo/unfold"}); err != nil {
+		if err := testStore.RefuseRoute(ctx, item, "label_missing", "needs a label", []string{"repo/app"}); err != nil {
 			t.Fatal(err)
 		}
 	}

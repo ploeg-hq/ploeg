@@ -18,16 +18,21 @@ import (
 // second copy (design D2).
 const usageReportMarker = "<!-- ploeg:usage-report -->"
 
-// reportLinkConfig is the two optional dashboard bases. The links section is
-// omitted entirely when both are empty, and the report still renders.
-type reportLinkConfig struct {
-	// GrafanaURL is the Grafana base. The Unfold — Loop dashboard filtered by
-	// team, the Run Explorer filtered by alias and the Spend & Attribution
-	// dashboard all hang off it.
-	GrafanaURL string
-	// VloerURL is Vloer's base; the report links the Work Item page,
-	// <VloerURL>/#work/<id>.
-	VloerURL string
+// ReportLinks are the optional links the usage report offers under "Where to
+// dig deeper". Each is a URL template the deployment configures; Ploeg knows
+// nothing about the systems behind them. "{id}" stands for the Work Item id,
+// "{team}" for the Team and "{run}" for the Run's gateway alias, each escaped
+// for a query value. A link whose template is empty, or whose placeholder has
+// no value, is left out, and no configured link omits the section.
+type ReportLinks struct {
+	// WorkItem links one Work Item, for example in an operator console.
+	WorkItem string
+	// TeamDashboard links a dashboard filtered to the Shift's Team.
+	TeamDashboard string
+	// RunDashboard links the usage of the Run behind the report.
+	RunDashboard string
+	// SpendDashboard links spend across Runs.
+	SpendDashboard string
 }
 
 // usageReportInput is everything the report renders. It is read from state
@@ -38,7 +43,7 @@ type usageReportInput struct {
 	TraceID  string // writing Run's alias ploeg-<12hex>; "" if none
 	Evidence Evidence
 	// Links carries the optional dashboard bases.
-	Links reportLinkConfig
+	Links ReportLinks
 }
 
 // Evidence is the writing Run's verification as stored; the zero value means
@@ -52,7 +57,7 @@ type Evidence struct {
 	Historical bool
 }
 
-// money formats a US dollar amount the way the Unfold — Loop dashboard does:
+// money formats a US dollar amount for the report:
 // "US$ 0,06" — a space after US$, and a decimal comma with a dot as the
 // thousands separator (nl-NL). Hand-rolled rather than locale-dependent so
 // rendering is pure and identical on every host.
@@ -262,35 +267,49 @@ func evidenceSection(ev Evidence) string {
 	return b.String()
 }
 
-// linksSection renders the dashboard links from configuration. It returns ""
-// (omitting the section) when no base URL is configured.
-func linksSection(links reportLinkConfig, u store.ShiftUsage, alias string) string {
-	grafana := strings.TrimRight(links.GrafanaURL, "/")
-	vloer := strings.TrimRight(links.VloerURL, "/")
-	if grafana == "" && vloer == "" {
+// linksSection renders the configured report links. It returns "" (omitting
+// the section) when no link applies.
+func linksSection(links ReportLinks, u store.ShiftUsage, alias string) string {
+	values := map[string]string{"{team}": strings.TrimSpace(u.Team), "{run}": strings.TrimSpace(alias)}
+	if u.WorkItemID > 0 {
+		values["{id}"] = fmt.Sprint(u.WorkItemID)
+	}
+	entries := []struct{ label, template string }{
+		{"Team dashboard", links.TeamDashboard},
+		{"This Run's usage", links.RunDashboard},
+		{"Spend dashboard", links.SpendDashboard},
+		{"This Work Item", links.WorkItem},
+	}
+	var lines []string
+	for _, entry := range entries {
+		if href, ok := fillLink(entry.template, values); ok {
+			lines = append(lines, fmt.Sprintf("- [%s](%s)\n", entry.label, href))
+		}
+	}
+	if len(lines) == 0 {
 		return ""
 	}
-	var b strings.Builder
-	b.WriteString("**Where to dig deeper**\n\n")
-	if grafana != "" {
-		loop := grafana + "/d/glide-loop"
-		if team := strings.TrimSpace(u.Team); team != "" {
-			loop += "?var-team=" + url.QueryEscape(team)
-		}
-		fmt.Fprintf(&b, "- [Unfold — Loop dashboard](%s)\n", loop)
-		if alias != "" {
-			fmt.Fprintf(&b, "- [Run Explorer](%s/d/dark-factory-run-explorer?var-run=%s)\n", grafana, url.QueryEscape(alias))
-		}
-		fmt.Fprintf(&b, "- [Spend & Attribution](%s/d/dark-factory-spend-attribution)\n", grafana)
+	return "**Where to dig deeper**\n\n" + strings.Join(lines, "")
+}
+
+// fillLink replaces each placeholder in template with its escaped value. It
+// reports false for an empty template or a placeholder without a value.
+func fillLink(template string, values map[string]string) (string, bool) {
+	template = strings.TrimSpace(template)
+	if template == "" {
+		return "", false
 	}
-	if vloer != "" {
-		if u.WorkItemID > 0 {
-			fmt.Fprintf(&b, "- [This Work Item in Vloer](%s/#work/%d)\n", vloer, u.WorkItemID)
-		} else {
-			fmt.Fprintf(&b, "- [Work in Vloer](%s/#work)\n", vloer)
+	for _, placeholder := range []string{"{id}", "{team}", "{run}"} {
+		if !strings.Contains(template, placeholder) {
+			continue
 		}
+		value := values[placeholder]
+		if value == "" {
+			return "", false
+		}
+		template = strings.ReplaceAll(template, placeholder, url.QueryEscape(value))
 	}
-	return b.String()
+	return template, true
 }
 
 // --- evidence parsing -------------------------------------------------------

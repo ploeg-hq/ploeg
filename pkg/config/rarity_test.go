@@ -11,10 +11,10 @@ import (
 func TestRarityRules_TargetsAndInlineRepos(t *testing.T) {
 	f, err := Load(write(t, `
 targets:
-  glide:
-    repo: webgrip/Glide
+  app:
+    repo: webgrip/App
     rarity:
-      attentionPaths: ["apps/ploeg/pkg/store/**", "**/budget*.go"]
+      attentionPaths: ["services/engine/pkg/store/**", "**/budget*.go"]
   homelab:
     repo: webgrip/homelab-cluster
 trackers:
@@ -26,9 +26,9 @@ trackers:
         rarity:
           sensitivePaths: []
           sizeExclude: ["docs/**"]
-      - name: "Glide"
+      - name: "App"
         id: "10"
-        default: glide
+        default: app
         allow: [homelab]
 `))
 	if err != nil {
@@ -38,9 +38,9 @@ trackers:
 	if err != nil {
 		t.Fatal(err)
 	}
-	glide := rules["webgrip/glide"]
-	if glide.SensitivePaths != nil || glide.SizeExclude != nil || !reflect.DeepEqual(glide.AttentionPaths, []string{"apps/ploeg/pkg/store/**", "**/budget*.go"}) {
-		t.Errorf("glide = %#v; unset lists keep the defaults", glide)
+	app := rules["webgrip/app"]
+	if app.SensitivePaths != nil || app.SizeExclude != nil || !reflect.DeepEqual(app.AttentionPaths, []string{"services/engine/pkg/store/**", "**/budget*.go"}) {
+		t.Errorf("app = %#v; unset lists keep the defaults", app)
 	}
 	ploeg := rules["webgrip/ploeg"]
 	if ploeg.SensitivePaths == nil || len(ploeg.SensitivePaths) != 0 || !reflect.DeepEqual(ploeg.SizeExclude, []string{"docs/**"}) {
@@ -65,47 +65,47 @@ func TestRarityRules_InvalidConfigurationFailsAtLoad(t *testing.T) {
 	for name, tc := range map[string]struct{ body, want string }{
 		"bad pattern": {`
 targets:
-  glide:
-    repo: webgrip/glide
+  app:
+    repo: webgrip/app
     rarity: {attentionPaths: ["src/[x"]}
-`, "targets.glide.rarity.attentionPaths"},
+`, "targets.app.rarity.attentionPaths"},
 		"duplicate pattern": {`
 targets:
-  glide:
-    repo: webgrip/glide
+  app:
+    repo: webgrip/app
     rarity: {sizeExclude: ["a", "a"]}
 `, "listed twice"},
 		"unknown key": {`
 targets:
-  glide:
-    repo: webgrip/glide
+  app:
+    repo: webgrip/app
     rarity: {sensitive: ["a"]}
 `, "sensitive"},
 		"rarity without repo": {`
 targets:
-  glide:
-    repo: webgrip/glide
+  app:
+    repo: webgrip/app
 trackers:
   vikunja:
     projects:
-      - name: "Glide"
+      - name: "App"
         id: "10"
-        default: glide
+        default: app
         rarity: {attentionPaths: ["a"]}
 `, "rarity requires repo"},
 		"two rule sets for one repository": {`
 targets:
-  glide:
-    repo: webgrip/glide
+  app:
+    repo: webgrip/app
     rarity: {attentionPaths: ["a"]}
 trackers:
   vikunja:
     projects:
-      - name: "Glide"
+      - name: "App"
         id: "10"
-        repo: webgrip/glide
+        repo: webgrip/app
         rarity: {attentionPaths: ["b"]}
-`, "rarity for webgrip/glide differs"},
+`, "rarity for webgrip/app differs"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := Load(write(t, tc.body))

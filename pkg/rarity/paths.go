@@ -33,7 +33,7 @@ var DefaultSizeExclude = []string{
 }
 
 // ModuleRoots are the top-level directories whose children are the modules,
-// as in apps/ploeg or packages/ui.
+// as in services/engine or packages/ui.
 var ModuleRoots = []string{"apps", "packages", "services", "libs", "modules", "crates", "components", "plugins", "projects"}
 
 // MaxPatterns is how many patterns one list of Rules may hold, and

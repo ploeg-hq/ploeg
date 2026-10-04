@@ -346,12 +346,12 @@ func TestOperatorWorkItemNamesWhoAskedForChangesWithinTheSchema(t *testing.T) {
 
 func TestOperatorTeamsListTheTrackerAssigneesThatRouteToEachTeam(t *testing.T) {
 	reset(t)
-	consumers, token := operatorTestConsumers(t, []string{"silver", "vloer"}, false)
+	consumers, token := operatorTestConsumers(t, []string{"silver", "console"}, false)
 	s := &Server{Store: testStore, OperatorConfig: OperatorConfig{
 		Consumers:     consumers,
-		Teams:         map[string][]string{"silver": {"builder"}, "vloer": {}, "gold": {"writer"}},
+		Teams:         map[string][]string{"silver": {"builder"}, "console": {}, "gold": {"writer"}},
 		TeamAssignees: map[string][]string{"silver": {"silver", "agent-silver"}, "gold": {"gold"}},
-		TeamScopes:    map[string][]string{"vloer": {"11"}, "gold": {"12"}},
+		TeamScopes:    map[string][]string{"console": {"11"}, "gold": {"12"}},
 	}}
 	var body struct {
 		Teams []struct {
@@ -372,10 +372,10 @@ func TestOperatorTeamsListTheTrackerAssigneesThatRouteToEachTeam(t *testing.T) {
 		got[team.ID] = *team.Assignees
 		pinned[team.ID] = *team.PinnedScopes
 	}
-	if strings.Join(pinned["vloer"], ",") != "11" || len(pinned["silver"]) != 0 {
+	if strings.Join(pinned["console"], ",") != "11" || len(pinned["silver"]) != 0 {
 		t.Fatalf("pinned scopes by team: %v", pinned)
 	}
-	if len(got) != 2 || strings.Join(got["silver"], ",") != "agent-silver,silver" || got["vloer"] == nil || len(got["vloer"]) != 0 {
+	if len(got) != 2 || strings.Join(got["silver"], ",") != "agent-silver,silver" || got["console"] == nil || len(got["console"]) != 0 {
 		t.Fatalf("assignees by team: %v", got)
 	}
 }

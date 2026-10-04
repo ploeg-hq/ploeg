@@ -8,8 +8,8 @@ import (
 func TestCardStyles_TargetsAndInlineRepos(t *testing.T) {
 	f, err := Load(write(t, `
 targets:
-  glide:
-    repo: webgrip/Glide
+  app:
+    repo: webgrip/App
     cardStyle:
       theme: acme
   homelab:
@@ -23,9 +23,9 @@ trackers:
         cardStyle:
           skin: foil
           theme: client-b
-      - name: "Glide"
+      - name: "App"
         id: "10"
-        default: glide
+        default: app
         allow: [homelab]
 `))
 	if err != nil {
@@ -35,8 +35,8 @@ trackers:
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := styles["webgrip/glide"]; got != (CardStyle{Skin: DefaultCardSkin, Theme: "acme"}) {
-		t.Errorf("glide = %+v; an omitted skin is the default skin", got)
+	if got := styles["webgrip/app"]; got != (CardStyle{Skin: DefaultCardSkin, Theme: "acme"}) {
+		t.Errorf("app = %+v; an omitted skin is the default skin", got)
 	}
 	if got := styles["webgrip/ploeg"]; got != (CardStyle{Skin: "foil", Theme: "client-b"}) {
 		t.Errorf("ploeg = %+v", got)
@@ -50,43 +50,43 @@ func TestCardStyles_InvalidConfigurationFailsAtLoad(t *testing.T) {
 	for name, tc := range map[string]struct{ body, want string }{
 		"bad skin": {`
 targets:
-  glide:
-    repo: webgrip/glide
+  app:
+    repo: webgrip/app
     cardStyle: {skin: "Foil Edition"}
-`, "targets.glide.cardStyle: skin"},
+`, "targets.app.cardStyle: skin"},
 		"bad theme": {`
 targets:
-  glide:
-    repo: webgrip/glide
+  app:
+    repo: webgrip/app
     cardStyle: {theme: "../x"}
 `, "theme"},
 		"unknown key": {`
 targets:
-  glide:
-    repo: webgrip/glide
+  app:
+    repo: webgrip/app
     cardStyle: {rarity: holo}
 `, "rarity"},
 		"style without repo": {`
 targets:
-  glide:
-    repo: webgrip/glide
+  app:
+    repo: webgrip/app
 trackers:
   vikunja:
     projects:
-      - name: "Glide"
-        default: glide
+      - name: "App"
+        default: app
         cardStyle: {skin: foil}
 `, "cardStyle requires repo"},
 		"conflicting styles": {`
 targets:
-  glide:
-    repo: webgrip/glide
+  app:
+    repo: webgrip/app
     cardStyle: {skin: foil}
 trackers:
   vikunja:
     projects:
-      - name: "Glide"
-        repo: WebGrip/Glide
+      - name: "App"
+        repo: WebGrip/App
         cardStyle: {skin: matte}
 `, "differs"},
 	} {
@@ -102,14 +102,14 @@ trackers:
 func TestCardStyles_TheSameStyleTwiceIsAllowed(t *testing.T) {
 	_, err := Load(write(t, `
 targets:
-  glide:
-    repo: webgrip/glide
-    cardStyle: {skin: vloer-native, theme: acme}
+  app:
+    repo: webgrip/app
+    cardStyle: {skin: default, theme: acme}
 trackers:
   vikunja:
     projects:
-      - name: "Glide"
-        repo: webgrip/glide
+      - name: "App"
+        repo: webgrip/app
         cardStyle: {theme: acme}
 `))
 	if err != nil {

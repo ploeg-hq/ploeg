@@ -106,7 +106,7 @@ func TestClickupTagsRouteWorkLikeVikunjaLabels(t *testing.T) {
 	board.set("cu-untagged", clickupTask{statusType: "open", tags: []string{"do-next"}})
 	board.set("cu-homelab", clickupTask{statusType: "open", tags: []string{"repo/homelab-cluster"}})
 	board.set("cu-unregistered", clickupTask{statusType: "open", tags: []string{"repo/ploeg"}})
-	board.set("cu-conflict", clickupTask{statusType: "open", tags: []string{"repo/glide", "repo/homelab-cluster"}})
+	board.set("cu-conflict", clickupTask{statusType: "open", tags: []string{"repo/app", "repo/homelab-cluster"}})
 	s := routingServer(t, newBoard(t), readyForge(), nil)
 	s.Trackers = map[string]provider.TrackerProvider{"clickup": board.provider()}
 	h := s.Handler()
@@ -115,7 +115,7 @@ func TestClickupTagsRouteWorkLikeVikunjaLabels(t *testing.T) {
 		clickupHook(t, h, "taskAssigneeUpdated", id)
 	}
 
-	if n, target, hint := clickupRoute(t, "cu-untagged"); n != 1 || target != glideTarget || hint != "" {
+	if n, target, hint := clickupRoute(t, "cu-untagged"); n != 1 || target != appTarget || hint != "" {
 		t.Errorf("untagged task: %d items, target %+v, hint %q; want the list default", n, target, hint)
 	}
 	if n, target, hint := clickupRoute(t, "cu-homelab"); n != 1 || target != homelabTarget || hint != "repo/homelab-cluster" {

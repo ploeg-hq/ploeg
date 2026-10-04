@@ -13,8 +13,8 @@ func TestGateBoards_ResolvesNamedAndPinnedProjects(t *testing.T) {
 trackers:
   vikunja:
     projects:
-      - name: "Unfold"
-        repo: webgrip/glide
+      - name: "App"
+        repo: webgrip/app
         gates:
           development: ["Doing"]
           test: ["In test"]
@@ -34,15 +34,15 @@ trackers:
 	if err != nil {
 		t.Fatal(err)
 	}
-	boards, err := f.GateBoards(context.Background(), fakeResolver{projects: map[string]string{"Unfold": "10", "Ploeg": "11"}}, discard())
+	boards, err := f.GateBoards(context.Background(), fakeResolver{projects: map[string]string{"App": "10", "Ploeg": "11"}}, discard())
 	if err != nil {
 		t.Fatal(err)
 	}
-	unfold, ok := boards.Lookup("vikunja", "10")
+	app, ok := boards.Lookup("vikunja", "10")
 	if !ok {
 		t.Fatalf("boards = %+v; the named project must resolve to its id", boards)
 	}
-	if g, _, ok := unfold.Resolve([]string{"uat"}); !ok || g != gate.Acceptance {
+	if g, _, ok := app.Resolve([]string{"uat"}); !ok || g != gate.Acceptance {
 		t.Errorf("UAT resolves to %q, %v", g, ok)
 	}
 	if _, ok := boards.Lookup("vikunja", "11"); ok {
@@ -62,15 +62,15 @@ func TestGateBoards_UnknownNameFailsAndPinnedIDsNeedNoResolver(t *testing.T) {
 trackers:
   vikunja:
     projects:
-      - name: "Unfold"
-        repo: webgrip/glide
+      - name: "App"
+        repo: webgrip/app
         gates:
           test: ["In test"]
 `))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.GateBoards(context.Background(), fakeResolver{projects: map[string]string{"Other": "3"}}, discard()); err == nil || !strings.Contains(err.Error(), `no tracker project named "Unfold"`) {
+	if _, err := f.GateBoards(context.Background(), fakeResolver{projects: map[string]string{"Other": "3"}}, discard()); err == nil || !strings.Contains(err.Error(), `no tracker project named "App"`) {
 		t.Fatalf("err = %v", err)
 	}
 	if _, err := f.GateBoards(context.Background(), nil, discard()); err == nil {
@@ -81,7 +81,7 @@ trackers:
   vikunja:
     projects:
       - id: "10"
-        repo: webgrip/glide
+        repo: webgrip/app
         gates:
           test: ["In test"]
 `))
@@ -101,7 +101,7 @@ trackers:
   vikunja:
     projects:
       - id: "10"
-        repo: webgrip/glide
+        repo: webgrip/app
         gates:
           review: ["In review"]
 `, "field review not found"},
@@ -110,7 +110,7 @@ trackers:
   vikunja:
     projects:
       - id: "10"
-        repo: webgrip/glide
+        repo: webgrip/app
         gates:
           test: ["Review"]
           acceptance: ["review"]
@@ -120,7 +120,7 @@ trackers:
   vikunja:
     projects:
       - id: "10"
-        repo: webgrip/glide
+        repo: webgrip/app
         gates: {}
 `, "maps no status"},
 		"padded status": {`
@@ -128,7 +128,7 @@ trackers:
   vikunja:
     projects:
       - id: "10"
-        repo: webgrip/glide
+        repo: webgrip/app
         gates:
           done: ["Done "]
 `, "surrounding space"},
@@ -140,12 +140,12 @@ trackers:
   vikunja:
     projects:
       - id: "10"
-        repo: webgrip/glide
+        repo: webgrip/app
         team: silver
         gates:
           test: ["In test"]
       - id: "10"
-        repo: webgrip/glide
+        repo: webgrip/app
         team: gold
         gates:
           test: ["QA"]
@@ -168,12 +168,12 @@ trackers:
   vikunja:
     projects:
       - id: "10"
-        repo: webgrip/glide
+        repo: webgrip/app
         team: silver
         gates:
           test: ["In test"]
       - id: "10"
-        repo: webgrip/glide
+        repo: webgrip/app
         team: gold
         gates:
           test: ["In test"]

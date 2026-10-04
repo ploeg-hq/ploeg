@@ -1,8 +1,8 @@
 # Product intent and design history
 
-Ploeg coordinates authorized agent work while external trackers retain priorities and requested outcomes. De Vloer supplies interactive sessions and can execute work admitted by Ploeg.
+Ploeg coordinates authorized agent work while external trackers retain priorities and requested outcomes. Operator consumers supply interactive sessions and can execute work admitted by Ploeg.
 
-For implemented behavior, start with the [architecture](architecture.md). For the current product discussion across both projects, use the [shared landscape guide](https://github.com/webgrip/unfold/blob/9c1d53f01fbfb65733800aa75e288341734dc23f/docs/landscape/index.md). A common execution layer and local operation without Ploeg remain open questions.
+For implemented behavior, start with the [architecture](architecture.md).
 
 ## 2. Non-goals
 

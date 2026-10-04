@@ -13,7 +13,7 @@ import (
 )
 
 // Finish is one step of the finish ladder a released card climbs by staying
-// live in production, as Vloer draws it.
+// live in production.
 type Finish struct {
 	Key   string
 	Label string
@@ -316,7 +316,7 @@ func crewLine(crew []store.CardCrew) string {
 	return strings.Join(parts, " · ")
 }
 
-// Money formats US dollars the way Vloer's cards do: nl-NL, two decimals,
+// Money formats US dollars as the card image shows them: nl-NL, two decimals,
 // "US$ 1.234,50", and "< US$ 0,01" for a positive amount below a cent.
 func Money(v float64) string {
 	if v > 0 && v < 0.01 {

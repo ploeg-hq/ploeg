@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/ploeg-hq/ploeg/pkg/cardimage"
@@ -156,7 +155,7 @@ func (s *Server) attachCard(ctx context.Context, fp provider.ForgeProvider, play
 	if !ok || commentID <= 0 {
 		return ""
 	}
-	svg := cardimage.Render(card, cardimage.Options{Now: now, Skin: s.cardStyle(card.Target).Skin})
+	svg := cardimage.Render(card, cardimage.Options{Now: now})
 	url, err := attacher.AttachToComment(ctx, play.Repo, play.Number, commentID,
 		provider.Attachment{Name: cardimage.FileName(card), ContentType: cardimage.ContentType, Data: svg})
 	if err != nil {
@@ -175,7 +174,7 @@ func findCardComment(ctx context.Context, fp provider.ForgeProvider, play store.
 		return 0, false, errors.Join(errNoCommentList, err)
 	}
 	for _, c := range comments {
-		if strings.HasPrefix(strings.TrimSpace(c.Body), cardimage.CommentMarker) {
+		if cardimage.IsCardComment(c.Body) {
 			return c.ID, true, nil
 		}
 	}

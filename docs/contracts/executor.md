@@ -4,7 +4,6 @@ This contract covers unattended worker launch against ploegd's run API. The
 [chart](../../ops/helm/ploeg/) supports KEDA ScaledJobs and a CronJob executor
 (`executor.type: cronjob`). The HTTP surface is the integration boundary.
 Managed requests also require [worker control authentication](worker-control.md).
-The [local demonstration](https://github.com/webgrip/unfold/blob/9c1d53f01fbfb65733800aa75e288341734dc23f/docs/workflows/local-demo.md) runs Ploeg locally through the operator path, not this one.
 Delegated workbench execution uses the separate [operator contract](README.md).
 
 ## The scale signal

@@ -29,12 +29,12 @@ Add `cardShape:` to a registered target, or to a tracker project that names its 
 ```yaml
 config:
   targets:
-    unfold:
-      repo: webgrip/glide
+    app:
+      repo: webgrip/app
       cardShape:
         testPaths:                       # replaces the default test paths
           - "**/*_test.go"
-          - "apps/vloer/test/**"
+          - "web/test/**"
           - "scripts/qa/**"
         # docPaths: []                   # [] = no file counts as documentation
 ```

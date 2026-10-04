@@ -140,9 +140,13 @@ spec:
               value: "default"
             - name: PLOEG_LEASE_TTL
               value: "5m"
-            - name: PLOEG_REPORT_GRAFANA_URL
+            - name: PLOEG_REPORT_RUN_DASHBOARD_URL
               value: ""
-            - name: PLOEG_REPORT_VLOER_URL
+            - name: PLOEG_REPORT_SPEND_DASHBOARD_URL
+              value: ""
+            - name: PLOEG_REPORT_TEAM_DASHBOARD_URL
+              value: ""
+            - name: PLOEG_REPORT_WORK_ITEM_URL
               value: ""
             - name: PLOEG_SWEEP_INTERVAL
               value: "15s"

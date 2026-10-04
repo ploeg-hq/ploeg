@@ -38,7 +38,7 @@ func TestGateLoadsEachUnreadyReasonAndAReadyTarget(t *testing.T) {
 		"webgrip/archived": {Archived: true, AgentsFile: true},
 		"webgrip/mirror":   {Mirror: true, AgentsFile: true},
 		"webgrip/bare":     {},
-		"webgrip/glide":    {AgentsFile: true},
+		"webgrip/app":      {AgentsFile: true},
 	}}
 	target := func(repo string) work.Target {
 		return work.Target{Forge: "forgejo", Owner: "webgrip", Repo: repo, BaseBranch: "main"}
@@ -47,7 +47,7 @@ func TestGateLoadsEachUnreadyReasonAndAReadyTarget(t *testing.T) {
 		"archived": target("archived"),
 		"mirror":   target("mirror"),
 		"bare":     target("bare"),
-		"glide":    target("glide"),
+		"app":      target("app"),
 		"missing":  target("missing"),
 		"gitlab":   {Forge: "gitlab", Owner: "acme", Repo: "app"},
 	})
@@ -66,38 +66,38 @@ func TestGateLoadsEachUnreadyReasonAndAReadyTarget(t *testing.T) {
 	if v := verdicts["missing"]; v.Ready || !v.Unknown || v.Reason == "" {
 		t.Errorf("missing = %+v, want unknown with a reason", v)
 	}
-	if v := verdicts["glide"]; !v.Ready || v.Reason != "" {
-		t.Errorf("glide = %+v, want ready", v)
+	if v := verdicts["app"]; !v.Ready || v.Reason != "" {
+		t.Errorf("app = %+v, want ready", v)
 	}
 }
 
 func TestGateAdmitTrustsReadyAndRechecksTheRest(t *testing.T) {
-	inspector := &fakeInspector{states: map[string]provider.RepositoryState{"webgrip/glide": {}}}
-	g := gateFor(inspector, map[string]work.Target{"glide": glide})
+	inspector := &fakeInspector{states: map[string]provider.RepositoryState{"webgrip/app": {}}}
+	g := gateFor(inspector, map[string]work.Target{"app": app})
 	ctx := context.Background()
-	if v := g.Load(ctx)["glide"]; v.Ready {
+	if v := g.Load(ctx)["app"]; v.Ready {
 		t.Fatalf("loaded %+v, want not ready", v)
 	}
-	inspector.states["webgrip/glide"] = provider.RepositoryState{AgentsFile: true}
-	if v := g.Admit(ctx, "glide"); !v.Ready {
+	inspector.states["webgrip/app"] = provider.RepositoryState{AgentsFile: true}
+	if v := g.Admit(ctx, "app"); !v.Ready {
 		t.Fatalf("admit after the fix = %+v, want ready without a restart", v)
 	}
 	calls := inspector.calls
-	if v := g.Admit(ctx, "glide"); !v.Ready || inspector.calls != calls {
+	if v := g.Admit(ctx, "app"); !v.Ready || inspector.calls != calls {
 		t.Errorf("admit of a ready target asked the forge again (%d calls, was %d)", inspector.calls, calls)
 	}
 }
 
 func TestGateCheckSeesATargetThatBecameUnready(t *testing.T) {
-	inspector := &fakeInspector{states: map[string]provider.RepositoryState{"webgrip/glide": {AgentsFile: true}}}
-	g := gateFor(inspector, map[string]work.Target{"glide": glide})
+	inspector := &fakeInspector{states: map[string]provider.RepositoryState{"webgrip/app": {AgentsFile: true}}}
+	g := gateFor(inspector, map[string]work.Target{"app": app})
 	ctx := context.Background()
-	if v := g.Admit(ctx, "glide"); !v.Ready {
+	if v := g.Admit(ctx, "app"); !v.Ready {
 		t.Fatalf("admit = %+v", v)
 	}
-	inspector.states["webgrip/glide"] = provider.RepositoryState{Archived: true, AgentsFile: true}
-	key, ok := g.KeyOf(glide)
-	if !ok || key != "glide" {
+	inspector.states["webgrip/app"] = provider.RepositoryState{Archived: true, AgentsFile: true}
+	key, ok := g.KeyOf(app)
+	if !ok || key != "app" {
 		t.Fatalf("KeyOf = %q %v", key, ok)
 	}
 	if v := g.Check(ctx, key); v.Ready || !strings.Contains(v.Reason, "archived") {

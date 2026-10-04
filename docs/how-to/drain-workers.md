@@ -3,7 +3,7 @@ type: how-to
 audience: [operator]
 owner: ploeg
 last_verified: 2026-09-23
-verified_by: "Read apps/ploeg ops/helm/ploeg/{values.yaml,templates/scaledjob.yaml,templates/cronjob.yaml,templates/deployment.yaml}, cmd/ploegd/sweep.go, cmd/ploeg-worker/main.go (signal handling), pkg/store/{store,shift,llm_settlement}.go and pkg/store/operator.go (team paused field never set)"
+verified_by: "Read ops/helm/ploeg/{values.yaml,templates/scaledjob.yaml,templates/cronjob.yaml,templates/deployment.yaml}, cmd/ploegd/sweep.go, cmd/ploeg-worker/main.go (signal handling), pkg/store/{store,shift,llm_settlement}.go and pkg/store/operator.go (team paused field never set)"
 ---
 
 # Drain workers before maintenance
@@ -52,7 +52,7 @@ done
 
 Do not remove the executor from the values (`executor.enabled: false`) while Runs are in flight. Deleting a ScaledJob also deletes the Jobs it started, which stops their Runs.
 
-Vloer sessions run as operator executions, which the worker workloads do not start. Ask users to finish or cancel their sessions in Vloer. **Not implemented yet:** a Ploeg switch that refuses new operator admissions.
+Operator consumer sessions run as operator executions, which the worker workloads do not start. Ask users to finish or cancel their sessions in the consumer. **Not implemented yet:** a Ploeg switch that refuses new operator admissions.
 
 ## 3. Let running Runs finish
 

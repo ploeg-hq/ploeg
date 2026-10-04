@@ -204,7 +204,7 @@ type CardStyle struct {
 }
 
 // DefaultCardSkin is the skin of a Work Target without a cardStyle.
-const DefaultCardSkin = "vloer-native"
+const DefaultCardSkin = "default"
 
 // CardSteward is the person a card names as carrying the Work Item. Source
 // is merged_by or approver.

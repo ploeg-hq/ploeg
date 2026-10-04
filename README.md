@@ -1,8 +1,8 @@
 # Ploeg
 
-Developed independently at [ploeg-hq/ploeg](https://github.com/ploeg-hq/ploeg). Extracted from Unfold; see [provenance](PROVENANCE.md).
+Developed independently at [ploeg-hq/ploeg](https://github.com/ploeg-hq/ploeg). See [provenance](PROVENANCE.md).
 
-Ploeg is a self-hosted service for authorizing and coordinating agent work. Tracker assignments can start unattended workers; De Vloer can run interactive sessions under the same execution authority. PostgreSQL retains the work, leases, outcomes, evidence and accounting.
+Ploeg is a self-hosted service for authorizing and coordinating agent work. Tracker assignments can start unattended workers; an operator consumer can run interactive sessions under the same execution authority. PostgreSQL retains the work, leases, outcomes, evidence and accounting.
 
 *Ploeg* is Dutch for a work crew or shift. The software is experimental and starts its independent release line at **0.1.0**. Qualification applies to specific tested paths, not every provider or deployment.
 
@@ -13,13 +13,12 @@ Ploeg is a self-hosted service for authorizing and coordinating agent work. Trac
 - [Documentation](docs/index.md): current guides, contracts and design history.
 - [Architecture](docs/architecture.md): what runs where and who holds authority.
 - [Managed workers](docs/ops/managed-workers.md): required configuration and recovery.
-- [De Vloer's local demonstration](https://github.com/webgrip/unfold/blob/9c1d53f01fbfb65733800aa75e288341734dc23f/docs/workflows/local-demo.md): both applications and PostgreSQL, using a deterministic fixture with no model calls.
 
 ## How it works
 
 Verified tracker webhooks enqueue work. KEDA or the CronJob executor starts workers that must claim authorized work. Configured Shift plans coordinate roles and review rounds. Workers invoke a harness, report results and renew their leases. KEDA polls queue depth; idle queue checks do not require model calls.
 
-[De Vloer](https://forgejo.webgrip.dev/webgrip/de-vloer) supplies the human workbench and delegated workspace execution. Its shared path retains one Ploeg Work Item, Shift and operator Run across changes in supervision. Supported [tracker selections](docs/contracts/tracker-execution.md) can bind an existing queued Work Item. Manual-origin admission need not create a tracker ticket.
+An operator consumer supplies the human workbench and delegated workspace execution through the operator API. Its admitted path retains one Ploeg Work Item, Shift and operator Run across changes in supervision. Supported [tracker selections](docs/contracts/tracker-execution.md) can bind an existing queued Work Item. Manual-origin admission need not create a tracker ticket.
 
 Management credentials remain in the controller. [Scoped worker capabilities](docs/contracts/worker-control.md) authorize control and inference. Unknown spending stays unresolved until trusted reconciliation.
 

@@ -57,14 +57,10 @@ type Engine struct {
 	// pull request (PLOEG_USAGE_REPORT). Default on; false is the kill switch
 	// and the report path does nothing else.
 	UsageReport bool
-	// GrafanaURL is the Grafana base the report links from. Empty omits the
-	// Grafana links.
-	GrafanaURL string
-	// VloerURL is Vloer's base for the Work Item link, <VloerURL>/#work/<id>.
-	// Empty omits it.
-	// When both URLs are empty the links section is omitted and the rest of
-	// the report still renders.
-	VloerURL string
+	// ReportLinks are the optional link templates the usage report offers
+	// (PLOEG_REPORT_*_URL). None configured omits the links section and the
+	// rest of the report still renders.
+	ReportLinks ReportLinks
 	// TrackerRecheck is how often the sweep re-reads the tracker task of one
 	// stopped Work Item (needs_human, awaiting_review) to settle it when the
 	// task was closed. Zero means DefaultTrackerRecheck.

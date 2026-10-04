@@ -10,7 +10,7 @@ import (
 )
 
 // ADR-0042: the writer's account travels from the outcome report to the
-// operator detail Vloer renders, unchanged.
+// operator detail Console renders, unchanged.
 func TestOutcome_WriterProblemAndSolutionReachTheOperatorDetail(t *testing.T) {
 	reset(t)
 	h := createdServer(nil).Handler()

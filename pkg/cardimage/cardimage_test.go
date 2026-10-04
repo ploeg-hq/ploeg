@@ -25,7 +25,7 @@ func mergedCard() store.OperatorCard {
 	return store.OperatorCard{
 		WorkItemID: "42", Title: "Add a retry budget to the forge client", ExternalRef: "VIK-1701", Team: "silver",
 		Target: &store.OperatorCardTarget{Forge: "forgejo", Owner: "webgrip", Repo: "ploeg"},
-		Style:  store.CardStyle{Skin: "vloer-native"},
+		Style:  store.CardStyle{Skin: "default"},
 		State:  "merged", Finish: "matte",
 		Steward: &store.CardSteward{Name: "anna", Source: "merged_by"},
 		Roster:  []store.CardPerson{{Name: "anna", Roles: []string{"merger"}}, {Name: "bram", Roles: []string{"reviewer", "qa"}}},
@@ -117,7 +117,7 @@ func golden(t *testing.T, name string, got []byte) {
 func TestRenderMatchesTheGoldenImages(t *testing.T) {
 	for name, card := range goldenCases() {
 		t.Run(name, func(t *testing.T) {
-			svg := Render(card, Options{Now: now, Skin: card.Style.Skin})
+			svg := Render(card, Options{Now: now})
 			assertWellFormed(t, svg)
 			golden(t, name+".svg", svg)
 			golden(t, name+".md", []byte(Summary(card, now)))
@@ -212,7 +212,7 @@ func TestGradedCrackedAndMendedCardsCarryTheirMarks(t *testing.T) {
 		t.Error("cracked card lacks its crack")
 	}
 	mendedSVG := string(Render(cases["mended"], Options{Now: now}))
-	gold := palettes["vloer-native"].gold
+	gold := cardPalette.gold
 	if !strings.Contains(mendedSVG, `stroke="`+gold+`" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" data-crack="1"`) || !strings.Contains(mendedSVG, "Mended · 1 crack sealed in gold") {
 		t.Error("mended card lacks its gold seam")
 	}
@@ -236,28 +236,15 @@ func TestSummaryNamesNoPersonButTheSteward(t *testing.T) {
 	}
 }
 
-func TestSkinChangesOnlyColours(t *testing.T) {
-	card := graded(mergedCard())
-	native := Render(card, Options{Now: now, Skin: "vloer-native"})
-	unknown := Render(card, Options{Now: now, Skin: "no-such-skin"})
-	if !bytes.Equal(native, unknown) {
-		t.Error("an unknown skin does not fall back to the default colours")
-	}
-	forge := Render(card, Options{Now: now, Skin: "forge"})
-	strip := func(b []byte) string {
-		s := string(b)
-		for _, p := range []palette{palettes["vloer-native"], palettes["forge"]} {
-			for _, col := range []string{p.surface, p.text, p.muted, p.border, p.accent, p.accentFg, p.selected, p.track, p.gold} {
-				s = strings.ReplaceAll(s, col, "C")
-			}
-			for _, col := range p.tones {
-				s = strings.ReplaceAll(s, col, "C")
-			}
+func TestTheConsumersSkinDoesNotChangePloegsImage(t *testing.T) {
+	plain := graded(mergedCard())
+	want := Render(plain, Options{Now: now})
+	for _, skin := range []string{"default", "forge", "no-such-skin"} {
+		styled := plain
+		styled.Style = store.CardStyle{Skin: skin}
+		if got := Render(styled, Options{Now: now}); !bytes.Equal(got, want) {
+			t.Errorf("skin %q changed the image Ploeg posts", skin)
 		}
-		return s
-	}
-	if strip(native) != strip(forge) {
-		t.Error("the forge skin changes more than colours")
 	}
 }
 
@@ -337,7 +324,7 @@ func TestCommentBodyEmbedsOnlySafeImageURLs(t *testing.T) {
 	card := goldenCases()["escaping"]
 	for url, embedded := range map[string]bool{
 		"https://forge.example/attachments/abc": true,
-		"/uploads/abc/unfold-card-42.svg":       true,
+		"/uploads/abc/run-card-42.svg":          true,
 		"":                                      false,
 		"javascript:alert(1)":                   false,
 		"//evil.example/x.svg":                  false,
@@ -358,7 +345,21 @@ func TestCommentBodyEmbedsOnlySafeImageURLs(t *testing.T) {
 }
 
 func TestFileNameKeepsOnlyTheWorkItemDigits(t *testing.T) {
-	if got := FileName(store.OperatorCard{WorkItemID: "42/../x"}); got != "unfold-card-42.svg" {
+	if got := FileName(store.OperatorCard{WorkItemID: "42/../x"}); got != "run-card-42.svg" {
 		t.Errorf("FileName = %q", got)
+	}
+}
+
+func TestCardCommentsAreFoundByTheirMarkerOfAnyRelease(t *testing.T) {
+	for body, want := range map[string]bool{
+		CommentBody(mergedCard(), now, "Merged", ""): true,
+		"<!-- acme:run-card -->\n### Run card":       true,
+		"  <!--ploeg:run-card-->":                    true,
+		"<!-- ploeg:usage-report -->":                false,
+		"A person quoting <!-- ploeg:run-card -->":   false,
+	} {
+		if got := IsCardComment(body); got != want {
+			t.Errorf("IsCardComment(%q) = %v, want %v", body, got, want)
+		}
 	}
 }

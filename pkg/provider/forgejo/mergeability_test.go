@@ -29,11 +29,11 @@ func recordedPull(t *testing.T, file string) (*httptest.Server, *[]string) {
 
 func TestPullRequestMergeability_DecodesARecordedForgejoResponse(t *testing.T) {
 	srv, paths := recordedPull(t, "pull-45.json")
-	m, err := (&Provider{BaseURL: srv.URL}).PullRequestMergeability(context.Background(), "webgrip/unfold", 45)
+	m, err := (&Provider{BaseURL: srv.URL}).PullRequestMergeability(context.Background(), "webgrip/app", 45)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(*paths) != 1 || (*paths)[0] != "GET /api/v1/repos/webgrip/unfold/pulls/45" {
+	if len(*paths) != 1 || (*paths)[0] != "GET /api/v1/repos/webgrip/app/pulls/45" {
 		t.Errorf("requests = %v, want the one pulls read", *paths)
 	}
 	if m.Mergeable == nil || !*m.Mergeable {
@@ -49,7 +49,7 @@ func TestPullRequestMergeability_DecodesARecordedForgejoResponse(t *testing.T) {
 
 func TestPullRequestMergeability_ReportsAConflictedPullRequest(t *testing.T) {
 	srv, _ := recordedPull(t, "pull-189-conflicted.json")
-	m, err := (&Provider{BaseURL: srv.URL}).PullRequestMergeability(context.Background(), "webgrip/unfold", 189)
+	m, err := (&Provider{BaseURL: srv.URL}).PullRequestMergeability(context.Background(), "webgrip/app", 189)
 	if err != nil {
 		t.Fatal(err)
 	}

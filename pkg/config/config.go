@@ -75,7 +75,8 @@ type Target struct {
 	// Forge names which forge instance holds the repo. Empty = the
 	// deployment's single forge.
 	Forge string `yaml:"forge"`
-	// CardStyle is how Vloer draws this repository's Run cards (ADR-0046).
+	// CardStyle is how the operator consumer draws this repository's Run cards
+	// (ADR-0046); Ploeg passes it through.
 	// Omitted = the default skin and no theme.
 	CardStyle *CardStyle `yaml:"cardStyle"`
 	// Release names the environment whose first deploy releases a merged
@@ -124,7 +125,8 @@ type Release struct {
 }
 
 // CardStyle names the skin and the optional theme a Run card is drawn with.
-// Ploeg passes both through to Vloer, which owns what they look like.
+// Ploeg passes both through to the operator consumer, which owns what they
+// look like; Ploeg attaches no meaning to either name.
 type CardStyle struct {
 	// Skin is the card skin; empty means DefaultCardSkin.
 	Skin string `yaml:"skin"`
@@ -132,8 +134,9 @@ type CardStyle struct {
 	Theme string `yaml:"theme"`
 }
 
-// DefaultCardSkin is the skin a Work Target without a cardStyle gets.
-const DefaultCardSkin = "vloer-native"
+// DefaultCardSkin is the skin a Work Target without a cardStyle gets: the
+// consumer's own default.
+const DefaultCardSkin = "default"
 
 // Project routes one tracker container to one repository, or to the
 // registered targets it names.

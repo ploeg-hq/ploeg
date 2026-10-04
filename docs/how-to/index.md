@@ -3,7 +3,7 @@ type: landing
 audience: [operator]
 owner: ploeg
 last_verified: 2026-09-23
-verified_by: "Read apps/ploeg ops/helm/ploeg/{values.yaml,templates/*}, pkg/store/migrations/0001-0016 and cmd/ploegd/{main,sweep}.go"
+verified_by: "Read ops/helm/ploeg/{values.yaml,templates/*}, pkg/store/migrations/0001-0016 and cmd/ploegd/{main,sweep}.go"
 ---
 
 # Operate Ploeg: runbooks
@@ -40,7 +40,7 @@ The commands assume the names the current GitOps layout gives the [Helm chart](.
 | PostgreSQL cluster (CloudNativePG) | `ploeg-db`, database `app` |
 | LiteLLM gateway | Service `litellm` in namespace `ai`, port 4000 |
 
-Terms used throughout: a **Work Item** is one unit of work from a tracker. A **Shift** is one Team's engagement with it, holding the budget pool. A **Run** is one Role working once, as one worker pod. A **Lease** is the exclusive right to write the Shift's branch; only writing Runs hold one. The **sweeper** is the loop in `ploegd` ([sweep.go](../../cmd/ploegd/sweep.go)) that expires overdue Leases and Runs, blocks their gateway keys and settles spend. The [glossary](https://github.com/webgrip/unfold/blob/9c1d53f01fbfb65733800aa75e288341734dc23f/docs/reference/glossary.md#lease) defines each term.
+Terms used throughout: a **Work Item** is one unit of work from a tracker. A **Shift** is one Team's engagement with it, holding the budget pool. A **Run** is one Role working once, as one worker pod. A **Lease** is the exclusive right to write the Shift's branch; only writing Runs hold one. The **sweeper** is the loop in `ploegd` ([sweep.go](../../cmd/ploegd/sweep.go)) that expires overdue Leases and Runs, blocks their gateway keys and settles spend. The [glossary](../domain/glossary.md) defines each term.
 
 Desired state lives in Git and Flux reconciles it. The runbooks use `kubectl` for observation and for short, deliberate interventions. When a step needs a lasting change, make it in the GitOps repository.
 

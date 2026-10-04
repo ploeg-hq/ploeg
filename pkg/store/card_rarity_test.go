@@ -172,7 +172,7 @@ func TestCardRarity_PredictedUsesEarlierPlaysFiles(t *testing.T) {
 	item := w.item("retry", "silver")
 	w.mint(item)
 	w.play(item, 42, "merged", 2, 525, 502,
-		rarityFileLines{"apps/ploeg/pkg/store/migrations/0001.sql", 5, 0}, rarityFileLines{"apps/vloer/src/a.ts", 20, 2},
+		rarityFileLines{"services/engine/pkg/store/migrations/0001.sql", 5, 0}, rarityFileLines{"apps/console/src/a.ts", 20, 2},
 		rarityFileLines{"package-lock.json", 500, 500})
 	w.play(item, 43, "open", 0, 30, 10)
 	card := w.rarityCard(item, CardOptions{})
@@ -182,7 +182,7 @@ func TestCardRarity_PredictedUsesEarlierPlaysFiles(t *testing.T) {
 	}
 	in := r.Inputs
 	if !near(r.Score, 50.1) || r.Tier != "uncommon" || *in.Reach.Modules != 2 || *in.Sensitive.Files != 1 || *in.Novelty.Files != 2 ||
-		in.Sensitive.Paths[0] != "apps/ploeg/pkg/store/migrations/0001.sql" || !near(in.Novelty.Share, 1) || *in.Size.CountedLines != 67 {
+		in.Sensitive.Paths[0] != "services/engine/pkg/store/migrations/0001.sql" || !near(in.Novelty.Share, 1) || *in.Size.CountedLines != 67 {
 		t.Fatalf("rarity = %+v inputs %+v", r, in)
 	}
 }

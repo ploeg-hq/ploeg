@@ -30,7 +30,7 @@ change either side and the test tells you.
   leaves out any figure it did not measure; it never sends a default zero.
 - The Run Card (`GET /api/v1/operator/work-items/{id}/card`) is a new
   response, not a change to an existing one. Its `schemaVersion` is the
-  number `1`, as the Vloer card contract states, where the older operator
+  number `1`, where the older operator
   responses send the string `"1.0"`. It follows the same rule: a fact nobody
   reported is absent, never zero.
 - Since [ADR-0047](../adrs/0047-ploeg-learns-where-a-merged-change-is-deployed-from-a-generic-deploy-endpoint.md)
@@ -139,7 +139,7 @@ different ids, or a change the worker cannot find in the clone stops the Run
 as `stuck` before the harness starts.
 
 The worker looks for `openspec/changes/<change-id>` at the repository root and
-in nested directories (Unfold keeps Ploeg's at `apps/ploeg/openspec`), without
+in nested directories (for example `services/api/openspec`), without
 following symbolic links. It fills the Task Spec's `openSpec` field with a
 brief: from `openspec instructions apply --change <id> --json` when an
 `openspec` executable is on the worker's PATH, otherwise from the change's
