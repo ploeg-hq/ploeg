@@ -184,6 +184,14 @@ func run(log *slog.Logger) error {
 		return err
 	}
 	cfg.SkillDirs = worker.SkillDirectories(hc)
+	cfg.KnowledgeDirs = filepath.SplitList(os.Getenv("PLOEG_KNOWLEDGE_DIRS"))
+	cfg.RepoKnowledgeDir = os.Getenv("PLOEG_REPO_KNOWLEDGE_DIR")
+	cfg.KnowledgeOutbox = os.Getenv("PLOEG_KNOWLEDGE_OUTBOX")
+	if v := os.Getenv("PLOEG_KNOWLEDGE_BUDGET_BYTES"); v != "" {
+		if cfg.KnowledgeBudget, err = strconv.Atoi(v); err != nil || cfg.KnowledgeBudget < 0 {
+			return fmt.Errorf("PLOEG_KNOWLEDGE_BUDGET_BYTES: want a non-negative byte count, got %q", v)
+		}
+	}
 	if cfg.Toolchains, err = worker.ParseToolchains(os.Getenv("PLOEG_TOOLCHAINS")); err != nil {
 		return err
 	}

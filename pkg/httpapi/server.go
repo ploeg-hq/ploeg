@@ -662,6 +662,10 @@ func (s *Server) handleCheckpoint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.Store.Checkpoint(r.Context(), r.PathValue("token"), cp); err != nil {
+		if errors.Is(err, store.ErrCheckpointRefused) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		runError(w, err)
 		return
 	}
@@ -700,6 +704,9 @@ func validateOutcomeReport(req harness.OutcomeReport) error {
 			return err
 		}
 	}
+	if req.Delivery != nil && !req.Delivery.Observed.Valid() {
+		return errors.New("delivery.observed must be opened, updated, none or unknown")
+	}
 	return harness.ValidateCreatedWorkItems(req.CreatedWorkItems)
 }
 
@@ -728,7 +735,7 @@ func (s *Server) handleOutcome(w http.ResponseWriter, r *http.Request) {
 	}
 	report := store.Report(req.Outcome, req.Summary, req.StuckReason, req.Links, usage, failureReason).
 		WithFindings(req.Findings).WithVerdict(req.Verdict).WithProblemAndSolution(req.Problem, req.Solution).
-		WithVerification(req.Verification).
+		WithVerification(req.Verification).WithDelivery(req.Delivery).
 		WithCreatedWork(req.CreatedWorkItems, s.createdWorkPolicy, s.knownTeam)
 	if req.Checkpoint != nil && req.Checkpoint.Phase != "" {
 		replay, err := s.Store.IsOutcomeReplay(r.Context(), r.PathValue("token"), report)
@@ -737,7 +744,11 @@ func (s *Server) handleOutcome(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if !replay {
-			if err := s.Store.Checkpoint(r.Context(), r.PathValue("token"), *req.Checkpoint); err != nil {
+			err := s.Store.Checkpoint(r.Context(), r.PathValue("token"), *req.Checkpoint)
+			switch {
+			case errors.Is(err, store.ErrCheckpointRefused):
+				s.Log.Warn("inline checkpoint refused; the outcome is still recorded", "err", err)
+			case err != nil:
 				runError(w, err)
 				return
 			}

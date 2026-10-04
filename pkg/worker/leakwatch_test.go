@@ -223,3 +223,61 @@ func TestToolchainsCannotOverrideTheCanary(t *testing.T) {
 		t.Fatal("a toolchain set the canary variable")
 	}
 }
+
+func watchedLeakScope() leakScope {
+	watch := newLeakWatch()
+	watch.guard(credentialModelKey, leakTestModelKey)
+	watch.guard(credentialCanary, leakTestCanary)
+	return testLeakScope(watch)
+}
+
+func TestLearningsCarryingTheCanaryFailTheRunAndAreNotKept(t *testing.T) {
+	report := harness.OutcomeReport{Outcome: work.OutcomePROpened, Links: []string{"https://forge.example/pulls/1"},
+		Learnings: []harness.Learning{{Type: "Pitfall", Title: "auth", Body: "export GITHUB_PAT=" + leakTestCanary}}}
+
+	got := withholdLeakedLearnings(report, watchedLeakScope(), "agent/vik-7")
+
+	if got.Outcome != work.OutcomeFailed || got.FailureReason != string(work.FailureCredentialLeak) {
+		t.Fatalf("outcome = %q/%q, want failed/credential_leak", got.Outcome, got.FailureReason)
+	}
+	if got.Learnings != nil || got.Links != nil {
+		t.Fatalf("a leaking Run kept learnings %v or links %v", got.Learnings, got.Links)
+	}
+}
+
+func TestLearningsCarryingTheModelKeyInATagFailTheRun(t *testing.T) {
+	report := harness.OutcomeReport{Outcome: work.OutcomeNoChangeNeeded,
+		Learnings: []harness.Learning{{Type: "Fact", Title: "gateway", Body: "uses a key", Tags: []string{leakTestModelKey}}}}
+
+	got := withholdLeakedLearnings(report, watchedLeakScope(), "agent/vik-7")
+
+	if got.FailureReason != string(work.FailureCredentialLeak) {
+		t.Fatalf("failure reason = %q, want credential_leak", got.FailureReason)
+	}
+}
+
+func TestCleanLearningsAreKept(t *testing.T) {
+	learnings := []harness.Learning{{Type: "Pitfall", Title: "Registry pulls time out", Body: "the sandbox reaches only its gateway"}}
+	report := harness.OutcomeReport{Outcome: work.OutcomePROpened, Learnings: learnings}
+
+	got := withholdLeakedLearnings(report, watchedLeakScope(), "agent/vik-7")
+
+	if got.Outcome != work.OutcomePROpened || len(got.Learnings) != 1 {
+		t.Fatalf("clean learnings changed the report: outcome %q, %d learnings", got.Outcome, len(got.Learnings))
+	}
+}
+
+func TestLearningsOfARunThatAlreadyLeakedAreDropped(t *testing.T) {
+	scope := watchedLeakScope()
+	scope.watch.record(credentialLeak{kind: credentialCanary, where: "POST /api/v1/repos/webgrip/example/pulls"})
+	report := credentialLeakReport(harness.OutcomeReport{
+		Learnings: []harness.Learning{{Type: "Fact", Title: "clean", Body: "nothing secret"}},
+	}, credentialLeak{kind: credentialCanary, where: "the forge"}, "agent/vik-7")
+	report.Learnings = []harness.Learning{{Type: "Fact", Title: "clean", Body: "nothing secret"}}
+
+	got := withholdLeakedLearnings(report, scope, "agent/vik-7")
+
+	if got.Learnings != nil {
+		t.Fatalf("a Run that already leaked kept %d learnings", len(got.Learnings))
+	}
+}

@@ -29,14 +29,16 @@ const ProvisionalDays = 180
 // gold when Overall is 10, and nil otherwise. Qualifiers holds RV when a play was reverted, HF when a
 // hotfix mended one of its cracks, OB when the recorded cost passed the
 // authorized budget and RT when a Run failed, in that order.
+// EvidenceComplete is true when Inputs.Missing is empty.
 type CardGrade struct {
-	Formula     string          `json:"formula"`
-	Overall     float64         `json:"overall"`
-	Provisional bool            `json:"provisional"`
-	Subgrades   CardSubgrades   `json:"subgrades"`
-	Label       *string         `json:"label"`
-	Qualifiers  []string        `json:"qualifiers"`
-	Inputs      CardGradeInputs `json:"inputs"`
+	Formula          string          `json:"formula"`
+	Overall          float64         `json:"overall"`
+	Provisional      bool            `json:"provisional"`
+	EvidenceComplete bool            `json:"evidenceComplete"`
+	Subgrades        CardSubgrades   `json:"subgrades"`
+	Label            *string         `json:"label"`
+	Qualifiers       []string        `json:"qualifiers"`
+	Inputs           CardGradeInputs `json:"inputs"`
 }
 
 // CardSubgrades are the four parts of a grade.
@@ -203,7 +205,7 @@ func computeGrade(f gradeFacts) CardGrade {
 		}
 	}
 	g := CardGrade{Formula: GradeFormula, Subgrades: sub, Inputs: in, Qualifiers: []string{},
-		Provisional: in.Durability.DaysLive < ProvisionalDays}
+		Provisional: in.Durability.DaysLive < ProvisionalDays, EvidenceComplete: len(in.Missing) == 0}
 	g.Overall = halfStep(gradeWeightReliability*sub.Reliability + gradeWeightDurability*sub.Durability +
 		gradeWeightDelivery*sub.Delivery + gradeWeightReview*sub.Review)
 	if g.Provisional {

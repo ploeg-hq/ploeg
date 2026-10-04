@@ -139,9 +139,12 @@ fails otherwise.
 | [0062](0062-github-is-the-independent-project-home.md) | GitHub is the independent project home | accepted | 2026-10-03 |
 | [0063](0063-independent-releases-start-at-zero-point-one.md) | Independent releases start at 0.1.0 | accepted | 2026-10-03 |
 | [0064](0064-development-is-trunk-and-release-candidates-come-from-it.md) | Development is trunk, and release candidates come from it | accepted | 2026-10-04 |
+| [0065](0065-a-run-is-briefed-with-an-okf-knowledge-pack-written-outside-the-clone.md) | A Run is briefed with an OKF knowledge pack written outside the clone | proposed | 2026-10-04 |
+| [0066](0066-a-runs-learnings-are-proposals-a-person-reviews-before-any-run-sees-them.md) | A Run's learnings are proposals a person reviews before any Run sees them | proposed | 2026-10-04 |
 | [0067](0067-context-bundles-are-stored-per-work-item-and-unpacked-by-the-worker-under-fixed-limits.md) | Context bundles are stored per Work Item and unpacked by the worker under fixed limits | accepted | 2026-10-04 |
 | [0068](0068-context-added-while-a-shift-runs-reaches-the-next-run.md) | Context added while a Shift runs reaches the next Run | accepted | 2026-10-04 |
 | [0069](0069-ploeg-names-none-of-its-consumers.md) | Ploeg names none of its consumers | accepted | 2026-10-04 |
+| [0070](0070-a-pull-request-is-ready-for-review-only-when-its-checks-passed-on-the-pushed-commit.md) | A pull request is ready for review only when its checks passed on the pushed commit | accepted | 2026-10-04 |
 
 ## Review calendar
 
@@ -158,8 +161,9 @@ triggers.
 | 2026-12-31 | [0038](0038-a-repo-label-selects-among-registered-targets-and-the-board-default-is-the-fallback.md) — or sooner, when the target registry passes 15 entries or a misroute reaches a merged pull request |
 | 2026-12-31 | [0039](0039-a-run-calls-only-its-roles-model-and-the-advisor-waits-for-metering.md) — or sooner, when LiteLLM prices advisor iterations per model or a Team runs `claude-code` |
 | 2026-12-31 | [0040](0040-a-conflicted-pull-request-becomes-a-priority-ticket-ploeg-resolves.md) — or sooner, when the homelab Forgejo reaches v17 or conflict results start being rejected |
-| 2027-01-04 | [0067](0067-context-bundles-are-stored-per-work-item-and-unpacked-by-the-worker-under-fixed-limits.md), [0068](0068-context-added-while-a-shift-runs-reaches-the-next-run.md) — or sooner, when context storage passes its limits, the storage spike recommends object storage, or steering between turns works on every shipped harness |
+| 2027-01-04 | [0065](0065-a-run-is-briefed-with-an-okf-knowledge-pack-written-outside-the-clone.md), [0066](0066-a-runs-learnings-are-proposals-a-person-reviews-before-any-run-sees-them.md), [0067](0067-context-bundles-are-stored-per-work-item-and-unpacked-by-the-worker-under-fixed-limits.md), [0068](0068-context-added-while-a-shift-runs-reaches-the-next-run.md) — or sooner, when the measurement spike reports, selection moves to Omnigraph, context storage passes its limits, or steering between turns works on every shipped harness |
 | 2027-01-31 | [0010](0010-shift-owns-the-item-lease-owns-the-branch.md), [0011](0011-the-pull-request-is-the-blackboard.md), [0012](0012-two-level-budgets-authorized-and-settled.md), [0013](0013-push-rights-are-minted-per-run.md), [0017](0017-the-review-loop-is-verdict-driven-and-capped.md), [0018](0018-the-outcome-drop-box-is-every-harnesss-return-path.md), [0019](0019-a-failed-writing-run-reopens-its-round.md), [0021](0021-infra-failures-and-agent-failures-get-separate-retry-budgets.md), [0023](0023-the-forge-dialect-travels-on-the-work-item.md) — after the first real Shifts have run; all nine rest on assumptions only production can test |
+| 2027-01-31 | [0070](0070-a-pull-request-is-ready-for-review-only-when-its-checks-passed-on-the-pushed-commit.md) — or sooner, when a route needs review while its checks cannot run in the sandbox, a flaky check sends five Work Items a month to `needs_human`, or every supported forge reports its check status to Ploeg |
 | 2027-01-31 | [0034](0034-the-harness-gets-placeholders-the-worker-keeps-credentials.md) — or sooner, when a qualified harness needs credentials from inside DinD |
 | 2027-01-31 | [0033](0033-board-control-planes-are-mined-for-design-never-depended-on.md) — or sooner, when Paperclip ships bring-your-own ticket system or Multica publishes a stable daemon protocol |
 | 2027-01-31 | [0036](0036-stuck-work-reaches-the-owner-as-a-cited-proposal-not-an-agent-decision.md) — or sooner, after 20 escalation briefs, or when Ploeg writes to the tracker as its own user |

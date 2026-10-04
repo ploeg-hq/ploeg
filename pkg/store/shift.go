@@ -829,6 +829,10 @@ type RunReport struct {
 	// it began keeping only the worker's verification record, and 0 for an
 	// older Run whose prose is unverified history.
 	EvidenceVersion int
+	// Delivery is the worker's delivery record as ReportOutcome admitted it
+	// (ADR-0059); nil for a Run from an older worker or stored before
+	// ploegd kept it.
+	Delivery *harness.Delivery
 }
 
 // CurrentEvidenceVersion is the evidence_version ReportOutcome stores: the
@@ -841,7 +845,7 @@ const CurrentEvidenceVersion = 1
 func (s *Store) RoundReports(ctx context.Context, shiftID int64) ([]RunReport, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT role, round, writes, COALESCE(outcome, ''), summary, findings, links, verdict, verification,
-		       COALESCE(failure_reason, ''), COALESCE(evidence_version, 0)
+		       COALESCE(failure_reason, ''), COALESCE(evidence_version, 0), delivery
 		FROM agent_runs
 		WHERE shift_id = $1 AND state = 'finished'
 		ORDER BY round, id`, shiftID)
@@ -852,10 +856,16 @@ func (s *Store) RoundReports(ctx context.Context, shiftID int64) ([]RunReport, e
 	var out []RunReport
 	for rows.Next() {
 		var r RunReport
-		var verification []byte
+		var verification, delivery []byte
 		if err := rows.Scan(&r.Role, &r.Round, &r.Writes, &r.Outcome, &r.Summary, &r.Findings, &r.Links, &r.Verdict, &verification,
-			&r.FailureReason, &r.EvidenceVersion); err != nil {
+			&r.FailureReason, &r.EvidenceVersion, &delivery); err != nil {
 			return nil, err
+		}
+		if delivery != nil {
+			r.Delivery = new(harness.Delivery)
+			if err := json.Unmarshal(delivery, r.Delivery); err != nil {
+				return nil, fmt.Errorf("decode run delivery: %w", err)
+			}
 		}
 		if verification != nil {
 			r.Verification = new(harness.Verification)

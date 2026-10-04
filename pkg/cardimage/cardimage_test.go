@@ -44,7 +44,8 @@ func mergedCard() store.OperatorCard {
 }
 
 func graded(c store.OperatorCard) store.OperatorCard {
-	c.Grade = &store.CardGrade{Formula: "2026.2", Overall: 8.5, Provisional: true, Qualifiers: []string{"RT"}}
+	c.Grade = &store.CardGrade{Formula: "2026.3", Overall: 8.5, Provisional: true, Qualifiers: []string{"RT"},
+		Inputs: store.CardGradeInputs{Missing: []string{"delivery.defectBounces"}}}
 	return c
 }
 
@@ -82,7 +83,8 @@ func goldenCases() map[string]store.OperatorCard {
 	over.Style.Skin = "forge"
 	over.Release = &store.CardRelease{At: now.Add(-400 * 24 * time.Hour), Source: "merge", Environment: "production"}
 	gold := "gold"
-	over.Grade = &store.CardGrade{Formula: "2026.2", Overall: 10, Label: &gold, Qualifiers: []string{"OB"}}
+	over.Grade = &store.CardGrade{Formula: "2026.3", Overall: 10, Label: &gold, Qualifiers: []string{"OB"}, EvidenceComplete: true,
+		Inputs: store.CardGradeInputs{Missing: []string{}}}
 
 	return map[string]store.OperatorCard{
 		"merged":   mergedCard(),
@@ -196,6 +198,24 @@ func TestDemoCardShowsNoCost(t *testing.T) {
 		if !strings.Contains(out, "Demo") || !strings.Contains(out, "no model calls") {
 			t.Errorf("demo card does not say it is a demo:\n%s", out)
 		}
+	}
+}
+
+func TestTheGradeSaysWhetherItsEvidenceIsComplete(t *testing.T) {
+	cases := goldenCases()
+	partial, complete := cases["graded"], cases["forge"]
+	if svg := string(Render(partial, Options{Now: now})); !strings.Contains(svg, "Formula 2026.3 · evidence incomplete") ||
+		!strings.Contains(svg, "Grade 8.5, evidence incomplete.") {
+		t.Error("a grade with a missing input does not say its evidence is incomplete on the slab")
+	}
+	if md := Summary(partial, now); !strings.Contains(md, "formula 2026.3 · missing delivery.defectBounces |") {
+		t.Errorf("summary does not name the missing input next to the grade:\n%s", md)
+	}
+	if svg := string(Render(complete, Options{Now: now})); !strings.Contains(svg, "Formula 2026.3 · evidence complete") {
+		t.Error("a grade with every input does not say its evidence is complete on the slab")
+	}
+	if md := Summary(complete, now); !strings.Contains(md, "formula 2026.3 · evidence complete |") {
+		t.Errorf("summary does not say the evidence is complete next to the grade:\n%s", md)
 	}
 }
 

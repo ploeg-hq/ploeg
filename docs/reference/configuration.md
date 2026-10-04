@@ -75,6 +75,9 @@ The generator follows each binary's imports inside the module and records every 
 | `PLOEG_HARNESS_ENTRYPOINT` | ploeg-worker |  | Harness binary override (chart `executor.harness.entrypoint`). Empty means the adapter default. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_HARNESS_IDLE_TIMEOUT` | ploeg-worker | `15m` | Stops a harness that prints nothing and makes no model call for this long, with failure reason `idle`. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_HARNESS_TIMEOUT` | ploeg-worker | `100m` | Stops a harness that runs longer than this, with failure reason `timeout`. | [main.go](../../cmd/ploeg-worker/main.go) |
+| `PLOEG_KNOWLEDGE_BUDGET_BYTES` | ploeg-worker |  |  | [main.go](../../cmd/ploeg-worker/main.go) |
+| `PLOEG_KNOWLEDGE_DIRS` | ploeg-worker |  |  | [main.go](../../cmd/ploeg-worker/main.go) |
+| `PLOEG_KNOWLEDGE_OUTBOX` | ploeg-worker |  |  | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_LEASE_TTL` | ploegd | `60s` |  | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_LISTEN` | ploegd | `:8080` |  | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_LLM_CORRECTION_WINDOW` | ploegd | `24h` | How long a spend-log settlement stays provisional. Every 15 minutes in this window the correction sweep reads the spend logs again and charges any late entry as an adjustment. `0` makes the first settlement final; a negative value refuses to start. The window is fixed at each account's first settlement. | [main.go](../../cmd/ploegd/main.go) |
@@ -89,6 +92,7 @@ The generator follows each binary's imports inside the module and records every 
 | `PLOEG_REPORT_SPEND_DASHBOARD_URL` | ploegd |  | Link to spend across Runs. Unset omits the link. | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_REPORT_TEAM_DASHBOARD_URL` | ploegd |  | Link template for a dashboard filtered to the Shift's Team; `{team}` is the escaped Team. Unset omits the link. | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_REPORT_WORK_ITEM_URL` | ploegd |  | Link template for one Work Item in the usage report; `{id}` is the Work Item id. Unset omits the link. | [main.go](../../cmd/ploegd/main.go) |
+| `PLOEG_REPO_KNOWLEDGE_DIR` | ploeg-worker |  |  | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_REVIEW_RECONCILE_INTERVAL` | ploegd | `10m` |  | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_ROLE` | ploeg-worker |  |  | [main.go](../../cmd/ploeg-worker/main.go), [sandbox.go](../../cmd/ploeg-worker/sandbox.go) |
 | `PLOEG_SANDBOX_JOB_NAME` | ploeg-worker |  |  | [sandbox.go](../../cmd/ploeg-worker/sandbox.go) |

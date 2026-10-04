@@ -33,6 +33,13 @@ func readBranchHead(ctx context.Context, dir, cloneURL, token, branch string) br
 	return parseBranchHead(branch, out, err)
 }
 
+func readBranchHeadOutsideAnyRepository(ctx context.Context, cloneURL, token, branch string) branchHead {
+	readCtx, cancel := context.WithTimeout(ctx, branchReadTimeout)
+	defer cancel()
+	out, err := runGit(readCtx, "", cloneURL, token, "ls-remote", "--exit-code", cloneURL, "refs/heads/"+branch)
+	return parseBranchHead(branch, out, err)
+}
+
 func parseBranchHead(branch string, out []byte, err error) branchHead {
 	switch {
 	case err == nil:
