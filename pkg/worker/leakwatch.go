@@ -174,22 +174,26 @@ type pushedCommitScan struct {
 }
 
 func scanPushedCommits(ctx context.Context, scope leakScope, c pushedCommitScan) error {
-	head := readBranchHead(ctx, c.dir, c.cloneURL, c.token, c.branch)
+	repo, err := openWorkerRepository(ctx, c.dir, c.cloneURL, c.token)
+	if err != nil {
+		return err
+	}
+	defer repo.remove()
+	head := repo.branchHead(ctx, c.branch)
 	if head.err != nil {
 		return head.err
 	}
 	if head.commit == "" || head.commit == c.publishedBefore.commit {
 		return nil
 	}
-	if out, err := runGit(ctx, c.dir, c.cloneURL, c.token, "fetch", "--no-tags", "--no-write-fetch-head", c.cloneURL,
-		"+refs/heads/"+c.branch+":"+publishedBranchForLeakScan); err != nil {
-		return fmt.Errorf("git fetch %s: %v: %s", c.branch, err, strings.TrimSpace(tail(out, 400)))
+	if err := repo.fetchBranch(ctx, c.branch, publishedBranchForLeakScan); err != nil {
+		return err
 	}
 	exclude := []string{c.start}
-	if c.publishedBefore.commit != "" && commitIsLocal(ctx, c.dir, c.publishedBefore.commit) {
+	if c.publishedBefore.commit != "" && repo.commitIsLocal(ctx, c.publishedBefore.commit) {
 		exclude = append(exclude, c.publishedBefore.commit)
 	}
-	cmd := gitCommand(ctx, c.dir, "", "", slices.Concat([]string{
+	cmd := repo.local(ctx, "", slices.Concat([]string{
 		"log", "--patch", "--text", "--no-color", "--no-ext-diff", "--no-textconv",
 		"--format=%H%n%an <%ae>%n%cn <%ce>%n%B", publishedBranchForLeakScan, "--not",
 	}, exclude)...)
