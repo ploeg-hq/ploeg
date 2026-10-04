@@ -66,5 +66,5 @@ Chosen option: "At the next Run's claim, with the item marked as added while ste
 * Evidence: [context bundles proof of concept](../research/2026-10-04-context-bundles-poc.md).
 * Brief Revisions (Unfold VIK-1835) fix what a Shift was authorized to do. Context added while steering is a steering input to the Shift, like an operator message, and does not change the Shift's revision; it can be promoted into the next draft revision when the Shift ends.
 
-* Unfold system ADR-0021; Vloer ADR-0038 shows the timing where the file is attached.
-* Vloer `docs/ploeg-front-end.md` options S1 (between Runs, chosen there too) and S2 (between turns).
+* Unfold system ADR-0022; Unfold ADR-0039 shows the timing where the file is attached.
+* Unfold `docs/ploeg-front-end.md` options S1 (between Runs, chosen there too) and S2 (between turns).

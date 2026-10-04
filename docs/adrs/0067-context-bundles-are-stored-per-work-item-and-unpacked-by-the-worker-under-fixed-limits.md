@@ -10,7 +10,7 @@ review-by: 2027-01-04
 
 ## Context and Problem Statement
 
-Unfold system ADR-0021 (proposed) lets a person attach files to a Work Item for agents: a zip, a tar.gz or a single file. Ploeg has no inbound file path, no object storage and no binary columns. Where does Ploeg keep the files, how do they reach the worker, and how is an archive kept from escaping its directory, filling a disk or becoming executable?
+Unfold system ADR-0022 (proposed) lets a person attach files to a Work Item for agents: a zip, a tar.gz or a single file. Ploeg has no inbound file path, no object storage and no binary columns. Where does Ploeg keep the files, how do they reach the worker, and how is an archive kept from escaping its directory, filling a disk or becoming executable?
 
 ## Decision Drivers
 
@@ -79,5 +79,5 @@ Chosen option: "Postgres rows per Work Item, references in the claim, download b
 
 * 2026-10-04 — accepted by the owner with the proof of concept. The owner kept 20 MiB per upload and 50 MiB per Work Item for the first pilot, let clients attach context to their own Work Items as well as agency members, and decided that a file the secret scan flags is held: stored, but given to no Run until a person removes it or confirms it is safe (spike VIK-1866 measures the scanner).
 * Evidence: [context bundles proof of concept](../research/2026-10-04-context-bundles-poc.md).
-* Unfold system ADR-0021 and the RFC "people give a Work Item context files" (Unfold `docs/research/2026-10-04-rfc-context-bundles-and-steering.md`).
+* Unfold system ADR-0022 and the RFC "people give a Work Item context files" (Unfold `docs/research/2026-10-04-rfc-context-bundles-and-steering.md`).
 * OpenSpec change `add-knowledge-and-context-bundles`, which lands with the knowledge pack (ADR-0065, proposed) in a later pull request.
