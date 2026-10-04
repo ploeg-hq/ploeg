@@ -216,7 +216,11 @@ func (c *canvas) slab(v view, y int) int {
 		status = g.label
 	}
 	c.f(`<text x="%d" y="%d" font-size="12" font-weight="700" fill="%s">%s</text>`, pad+80, y+25, c.p.text, esc(status))
-	c.f(`<text x="%d" y="%d" font-size="10" fill="%s">Formula %s</text>`, pad+80, y+41, c.p.muted, esc(g.formula))
+	evidence := "evidence incomplete"
+	if g.complete {
+		evidence = "evidence complete"
+	}
+	c.f(`<text x="%d" y="%d" font-size="10" fill="%s">Formula %s · %s</text>`, pad+80, y+41, c.p.muted, esc(g.formula), evidence)
 	if g.qualifiers != "" {
 		c.f(`<text x="%d" y="%d" font-size="12" font-weight="700" letter-spacing="1" text-anchor="end" fill="%s">%s</text>`, Width-pad-12, y+33, c.p.tones[toneAttention], esc(fit(g.qualifiers, 16)))
 	}
@@ -292,7 +296,11 @@ func describe(v view) string {
 		parts = append(parts, v.dayText+" live, "+v.finish.Label+" finish")
 	}
 	if v.grade != nil {
-		parts = append(parts, "Grade "+v.grade.overall)
+		evidence := ", evidence incomplete"
+		if v.grade.complete {
+			evidence = ", evidence complete"
+		}
+		parts = append(parts, "Grade "+v.grade.overall+evidence)
 	}
 	if v.cracks > 0 {
 		parts = append(parts, plural(int64(v.cracks), "crack")+", "+count(int64(v.mended))+" mended")

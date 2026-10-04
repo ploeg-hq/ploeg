@@ -69,6 +69,8 @@ func TestMetricsExposeAlertingStateFromTheDatabase(t *testing.T) {
 		"# TYPE ploeg_runs_failed_total counter",
 		`ploeg_runs_failed_total{reason="credential_leak"} 0`,
 		`ploeg_runs_failed_total{reason="lease_lost"} 0`,
+		`ploeg_runs_without_observed_delivery_last_day{source="legacy"} 0`,
+		`ploeg_runs_without_observed_delivery_last_day{source="mismatch"} 0`,
 	)
 	for _, prefix := range []string{`ploeg_shift_idle_seconds_max{team="bronze"} 7`, "ploeg_lease_overdue_seconds_max 3"} {
 		if !strings.Contains(body, "\n"+prefix) {

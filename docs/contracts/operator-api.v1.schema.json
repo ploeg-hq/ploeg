@@ -2370,11 +2370,12 @@
     "cardGrade": {
       "type": "object",
       "additionalProperties": false,
-      "description": "The card's grade (ADR-0050). formula names the version of the deterministic formula that computed it. Ploeg computes the grade when the card is read, always under its current formula, so a card read after a formula change shows the new version and the grade it gives. overall = 0.40 reliability + 0.25 durability + 0.20 delivery + 0.15 review, each subgrade rounded to the nearest half (ties up), then overall rounded the same way. provisional is true until the card has been live 180 days, and a provisional overall is at most 9. label is null while provisional; after that it is black when all four subgrades are 10, gold when overall is 10, otherwise null. qualifiers: RV when a play was reverted, HF when a hotfix-labelled fix mended one of its cracks, OB when the recorded cost passed the authorized budget, RT when a Run failed. Formula 2026.2 (ADR-0052) adds crack weight and reverts to reliability and reverts and hotfixes to durability. Formula 2026.3 (ADR-0061) lowers review by 1 per rework round only, caps a subgrade at 9 while one of its inputs is listed in inputs.missing, and gives no label while inputs.missing is not empty. inputs are the facts each subgrade used.",
+      "description": "The card's grade (ADR-0050). formula names the version of the deterministic formula that computed it. Ploeg computes the grade when the card is read, always under its current formula, so a card read after a formula change shows the new version and the grade it gives. overall = 0.40 reliability + 0.25 durability + 0.20 delivery + 0.15 review, each subgrade rounded to the nearest half (ties up), then overall rounded the same way. provisional is true until the card has been live 180 days, and a provisional overall is at most 9. label is null while provisional; after that it is black when all four subgrades are 10, gold when overall is 10, otherwise null. qualifiers: RV when a play was reverted, HF when a hotfix-labelled fix mended one of its cracks, OB when the recorded cost passed the authorized budget, RT when a Run failed. Formula 2026.2 (ADR-0052) adds crack weight and reverts to reliability and reverts and hotfixes to durability. Formula 2026.3 (ADR-0061) lowers review by 1 per rework round only, caps a subgrade at 9 while one of its inputs is listed in inputs.missing, and gives no label while inputs.missing is not empty. evidenceComplete is true when inputs.missing is empty, so a consumer can show next to the grade whether every input Ploeg can collect was seen; it does not change the formula. inputs are the facts each subgrade used.",
       "required": [
         "formula",
         "overall",
         "provisional",
+        "evidenceComplete",
         "subgrades",
         "label",
         "qualifiers",
@@ -2395,6 +2396,9 @@
           "multipleOf": 0.5
         },
         "provisional": {
+          "type": "boolean"
+        },
+        "evidenceComplete": {
           "type": "boolean"
         },
         "subgrades": {

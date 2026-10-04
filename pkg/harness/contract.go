@@ -31,6 +31,10 @@ type TaskSpec struct {
 	// OpenSpec is the OpenSpec change the Work Item names, located in the
 	// clone and rendered as a brief by the worker. Nil when it names none.
 	OpenSpec *OpenSpecBrief `json:"openSpec,omitempty"`
+	// Knowledge describes the knowledge pack the worker selected for this Run
+	// and wrote outside the clone. Nil when no knowledge source is configured
+	// or nothing matched.
+	Knowledge *KnowledgeBrief `json:"knowledge,omitempty"`
 	// Context records the files people attached to the Work Item that this
 	// Run was given, oldest first (proposed, context bundles proof of
 	// concept). The worker unpacked them outside the clone.
@@ -40,6 +44,19 @@ type TaskSpec struct {
 	// published Task Spec.
 	ContextIndex string `json:"-"`
 	// Credentials are delivered out-of-band (env, mounted secrets), never here (R8).
+}
+
+// KnowledgeBrief is the provenance of a Run's knowledge pack: which concepts
+// it was given, from which version of each source, so a Run can be explained
+// and replayed against the knowledge it had.
+type KnowledgeBrief struct {
+	// Index is the pack's table of contents, the part the prompt carries.
+	Index    string            `json:"index"`
+	Concepts []string          `json:"concepts"`
+	Sources  []KnowledgeSource `json:"sources"`
+	Bytes    int               `json:"bytes"`
+	// Omitted counts matching concepts the size limit left out.
+	Omitted int `json:"omitted,omitempty"`
 }
 
 // ContextRef names one context item a claim hands a Run: what to download
@@ -68,6 +85,24 @@ type ContextItem struct {
 	AddedAt time.Time `json:"addedAt"`
 	Phase   string    `json:"phase"`
 	Note    string    `json:"note,omitempty"`
+}
+
+// KnowledgeSource is one bundle a pack drew from and its content digest.
+type KnowledgeSource struct {
+	Name   string `json:"name"`
+	Digest string `json:"digest"`
+}
+
+// Learning is one thing a Run proposes Ploeg should know next time, in the
+// shape of an OKF concept. It is a proposal: a person reviews it before any
+// Run is briefed with it.
+type Learning struct {
+	Type        string   `json:"type"`
+	Title       string   `json:"title"`
+	Description string   `json:"description,omitempty"`
+	Resource    string   `json:"resource,omitempty"`
+	Tags        []string `json:"tags,omitempty"`
+	Body        string   `json:"body"`
 }
 
 // Finding is one earlier Run's contribution to the blackboard, attributed to
@@ -149,6 +184,11 @@ type OutcomeReport struct {
 	// Ploeg stores each within the Team's created-work limits and records a
 	// reason for every entry it rejects. The agent never dispatches them.
 	CreatedWorkItems []CreatedWorkItem `json:"createdWorkItems,omitempty"`
+	// Learnings are what this Run proposes later Runs should know: a pitfall
+	// it hit, a convention it had to discover, a fact about the repository.
+	// The worker keeps at most MaxLearnings and writes them as OKF concepts
+	// for a person to review; none reaches a briefing unreviewed.
+	Learnings []Learning `json:"learnings,omitempty"`
 	// Verification is the worker's own run of the configured checks on a
 	// writing Run's checkout. The worker sets it and discards any value an
 	// adapter or agent reported; absent on a payload from an older worker.

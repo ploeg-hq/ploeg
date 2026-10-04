@@ -53,6 +53,7 @@ func ComposePrompt(spec harness.TaskSpec, writes bool, priorPR string, onReviewB
 		writeOpenSpec(&b, spec, openSpecForReader, base)
 	}
 	writeBriefing(&b, spec.Briefing)
+	writeKnowledge(&b, spec)
 
 	if !writes {
 		if onReviewBranch {
@@ -174,6 +175,7 @@ func ComposePlannerPrompt(spec harness.TaskSpec) string {
 	writeContext(&b, spec)
 	writeOpenSpec(&b, spec, openSpecForPlanner, base)
 	writeBriefing(&b, spec.Briefing)
+	writeKnowledge(&b, spec)
 	fmt.Fprintf(&b, `## Delivery contract (planning only)
 
 - You are planning this Work Item, not implementing it. The repository

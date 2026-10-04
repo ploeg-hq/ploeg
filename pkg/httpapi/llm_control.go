@@ -151,10 +151,26 @@ func (c *LLMControl) Block(ctx context.Context, runToken string) error {
 	}
 	spend, err := c.Broker.SpendForRun(ctx, runToken)
 	if err != nil {
+		if evidence, gone := c.keysGone(ctx, a); gone {
+			return c.Store.RecordLLMKeyGone(ctx, runToken, evidence)
+		}
 		c.markUnknown(runToken)
 		return fmt.Errorf("gateway accounting identity unavailable; reconciliation required")
 	}
 	return c.Store.RecordLLMBlocked(ctx, runToken, &spend)
+}
+
+func (c *LLMControl) keysGone(ctx context.Context, a store.LLMAccount) (string, bool) {
+	prober, ok := c.Broker.(llmbroker.KeyProber)
+	if !ok {
+		return "", false
+	}
+	gone, err := prober.RunKeysGone(ctx, a.RunToken, []string{a.GatewayKeyID})
+	if err != nil || !gone {
+		return "", false
+	}
+	return fmt.Sprintf("litellm:key-absent alias=%s prior-state=%s recorded-key=%t read-at=%s",
+		a.Alias, a.State, a.GatewayKeyID != "", time.Now().UTC().Format(time.RFC3339)), true
 }
 
 func (c *LLMControl) Spend(ctx context.Context, runToken string) (float64, error) {

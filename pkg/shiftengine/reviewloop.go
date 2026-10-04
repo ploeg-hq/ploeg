@@ -6,6 +6,7 @@ import (
 	"github.com/ploeg-hq/ploeg/pkg/harness"
 	"github.com/ploeg-hq/ploeg/pkg/plan"
 	"github.com/ploeg-hq/ploeg/pkg/store"
+	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
 // The review loop (ADR-0017). A plan that has run out is not necessarily
@@ -19,13 +20,14 @@ import (
 
 // Close reasons, distinct so "why did this item stop" stays a query.
 const (
-	reasonPlanExhausted = "plan_exhausted"
-	reasonApproved      = "review_approved"
-	reasonFixCap        = "fix_round_cap_reached"
-	reasonLoopBudget    = "budget_exhausted_before_fix_round"
-	reasonPoolExhausted = "budget exhausted"
-	reasonReviewFailed  = "review_failed"
-	reasonPoolHeld      = "budget held by unsettled runs"
+	reasonPlanExhausted   = "plan_exhausted"
+	reasonApproved        = "review_approved"
+	reasonFixCap          = "fix_round_cap_reached"
+	reasonLoopBudget      = "budget_exhausted_before_fix_round"
+	reasonPoolExhausted   = "budget exhausted"
+	reasonReviewFailed    = "review_failed"
+	reasonPoolHeld        = "budget held by unsettled runs"
+	reasonChecksNotPassed = "checks_not_passed"
 )
 
 func closeMessage(reason string) string {
@@ -40,6 +42,8 @@ func closeMessage(reason string) string {
 		return "the budget could not fund the next round; a person is asked to take over"
 	case reasonReviewFailed:
 		return "not reviewed by an agent: a reading Run failed. Agent review unavailable; a person is asked to review and merge"
+	case reasonChecksNotPassed:
+		return "the configured checks did not pass on the pushed commit and no fix round can run; the pull request stays open and a person is asked to take over"
 	case reasonPoolHeld:
 		return "the budget is still held by finished runs whose model spend was never settled; a person is asked to check the model gateway and take over"
 	default:
@@ -87,7 +91,7 @@ func (e *Engine) nextFixRound(ctx context.Context, si store.ShiftInfo, tp plan.T
 		return tp.Rounds[len(tp.Rounds)-1], "", true
 	}
 
-	if !requestsChanges(reports, si.Round) && !e.reviewPending(ctx, si.WorkItemID) {
+	if !requestsChanges(reports, si.Round) && !checksHoldBackReview(reports) && !e.reviewPending(ctx, si.WorkItemID) {
 		if approves(reports, si.Round) {
 			return plan.Round{}, reasonApproved, false
 		}
@@ -117,6 +121,36 @@ func (e *Engine) nextFixRound(ctx context.Context, si store.ShiftInfo, tp plan.T
 	e.Log.Info("fix round opening", "shift", si.ID, "from_round", si.Round,
 		"writer_round", writerIdx+1, "fix_rounds_run", fixRoundsRun(si.Round, tp))
 	return tp.Rounds[writerIdx], "", true
+}
+
+// checksHoldBackReview reports whether the pull request's current commit
+// failed or did not finish the worker's checks. The current commit is the one
+// the last writing Run that opened or updated the pull request verified: a
+// later writer that delivered nothing left that commit at the head.
+func checksHoldBackReview(reports []store.RunReport) bool {
+	for i := len(reports) - 1; i >= 0; i-- {
+		r := reports[i]
+		if r.Writes && (r.Outcome == string(work.OutcomePROpened) || r.Outcome == string(work.OutcomePRUpdated)) {
+			return r.Verification.HoldsBackReview()
+		}
+	}
+	return false
+}
+
+// checksCloseReason names why a Shift whose pull request failed its checks
+// closes. A close that would have been ready for review becomes
+// checks_not_passed; a fix loop that ran out keeps its reason and says the
+// checks are what still fail.
+func checksCloseReason(reason, message string, reports []store.RunReport) (string, string) {
+	switch {
+	case readyForReview(reason, reports):
+		return reasonChecksNotPassed, closeMessage(reasonChecksNotPassed)
+	case reason == reasonFixCap:
+		return reason, "the configured checks still did not pass on the pushed commit when the fix-round cap was reached; the pull request stays open and a person is asked to take over"
+	case reason == reasonLoopBudget:
+		return reason, "the configured checks did not pass on the pushed commit and the budget could not fund another fix round; the pull request stays open and a person is asked to take over"
+	}
+	return reason, message
 }
 
 // minViableFixRound is the floor below which opening another pair is
