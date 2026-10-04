@@ -132,6 +132,7 @@ func contextSpec() harness.TaskSpec {
 		Context: []harness.ContextItem{{ID: "ctx_1", Name: "steer.md", SHA256: strings.Repeat("0", 64), Files: 1, Bytes: 9,
 			AddedAt: addedAt, Phase: "while_steering"}},
 		ContextIndex: "# Context from people\n\n1 item(s), oldest first.\n\n## 01-steer-md: steer.md\n\n- Added 2026-10-04T09:00:00Z **while steering**: newer than the Work Item description.\n",
+		Knowledge:    &harness.KnowledgeBrief{Index: "# Knowledge pack\n\n- [x](repo/x.md)\n", Concepts: []string{"repo/x.md"}},
 	}
 }
 
@@ -148,9 +149,9 @@ func TestComposePrompt_ContextFollowsTheDescription(t *testing.T) {
 			}
 		}
 		description, section := strings.Index(prompt, "## Work Item description"), strings.Index(prompt, "## Context from people")
-		contract := strings.Index(prompt, "## Delivery contract")
-		if !(description < section && section < contract) {
-			t.Errorf("%s prompt order: description %d, context %d, contract %d", role, description, section, contract)
+		knowledge, contract := strings.Index(prompt, "## Knowledge pack"), strings.Index(prompt, "## Delivery contract")
+		if !(description < section && section < knowledge && knowledge < contract) {
+			t.Errorf("%s prompt order: description %d, context %d, knowledge %d, contract %d", role, description, section, knowledge, contract)
 		}
 	}
 	spec.Context, spec.ContextIndex = nil, ""
@@ -163,7 +164,7 @@ func TestComposePrompt_LongContextIndexIsCut(t *testing.T) {
 	spec := contextSpec()
 	spec.ContextIndex = "# Context from people\n\n" + strings.Repeat("  - 01-x/some/long/path/file.md\n", 400)
 	prompt := ComposePrompt(spec, true, "", false)
-	section := prompt[strings.Index(prompt, "## Context from people"):strings.Index(prompt, "## Delivery contract")]
+	section := prompt[strings.Index(prompt, "## Context from people"):strings.Index(prompt, "## Knowledge pack")]
 	if len(section) > maxContextIndexBytes+1000 || !strings.Contains(section, "read index.md for the rest") {
 		t.Errorf("context section is %d bytes, want it cut near %d with a pointer to index.md", len(section), maxContextIndexBytes)
 	}
@@ -190,7 +191,7 @@ func runWithContext(t *testing.T, refs []harness.ContextRef, bodies map[string][
 	adapter := &contextAdapter{}
 	w := New(Config{APIURL: contextAPI(t, bodies), ForgeURL: forgeURL, DefaultForge: harness.ForgeForgejo, BuilderToken: "tok",
 		ForgeTokenAccess: ForgeTokenReadOnly, RepoOwner: "webgrip", RepoName: "example", BaseBranch: "development",
-		WorkDir: t.TempDir()},
+		WorkDir: t.TempDir(), RepoKnowledgeDir: "-"},
 		adapter, llmbroker.Static{}, discardLog())
 	claimed := &ClaimResponse{RunToken: "rt", Role: "reviewer", PreAuthor: true, WorkItem: item, Context: refs}
 	return w.execute(context.Background(), claimed, "agent/vik-7", "trace", "", ""), adapter
@@ -230,6 +231,13 @@ func TestExecute_ContextReachesTheHarnessOutsideTheClone(t *testing.T) {
 	}
 	if !strings.Contains(adapter.prompt, "## Context from people") || !strings.Contains(adapter.prompt, "01-design-zip/mockup.txt") {
 		t.Error("the prompt does not carry the context index")
+	}
+	k := adapter.spec.Knowledge
+	if k == nil || len(k.Concepts) != 1 || k.Concepts[0] != "context/01-design-zip/decisions/login-button.md" {
+		t.Fatalf("knowledge pack %+v, want the OKF concept from the context selected", k)
+	}
+	if k.Sources[0].Name != contextKnowledgeSource || envValue(adapter.env, knowledgeDirEnv) == "" {
+		t.Errorf("knowledge sources %+v", k.Sources)
 	}
 }
 
