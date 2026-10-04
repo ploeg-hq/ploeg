@@ -866,6 +866,13 @@
         "dind": {
           "type": "boolean"
         },
+        "credentialIsolation": {
+          "enum": [
+            "",
+            "proxy"
+          ],
+          "description": "Explicit per-workload setting for both credential proxies (ADR-0034). Unset = executor.forgeTokenIsolation and executor.litellm.keyIsolation apply to a qualified harness without DinD, and every other workload runs with both off."
+        },
         "timeout": {
           "type": "string",
           "pattern": "^$|^0$|^[0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h)$"

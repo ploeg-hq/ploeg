@@ -162,8 +162,11 @@ executor:
   # "proxy" keeps a writer's forge token inside ploeg-worker: git and the forge
   # API reach only the Run's own repository through a loopback proxy that adds
   # the token, and the harness sees a placeholder. "" hands the token over.
-  # Qualify per harness: one that pushes from inside DinD cannot reach it.
-  forgeTokenIsolation: ""
+  # Applies only to a qualified harness without DinD (openhands, acp profile
+  # openhands, exec; docs/research/2026-10-04-isolation-qualification.md); any
+  # other workload renders with it off, and ploeg-worker logs why. A team's or
+  # Role's harness.credentialIsolation overrides both proxies explicitly.
+  forgeTokenIsolation: proxy
   # Node selector for worker pods, e.g. {node-role.example/agents: "true"} to
   # keep privileged DinD off control-plane nodes. Empty = any schedulable node.
   nodeSelector: {}
@@ -287,10 +290,11 @@ executor:
     keyDuration: 4h
     # "proxy" keeps the per-Run key inside ploeg-worker: the harness gets a
     # placeholder and a loopback URL, and the worker swaps in the real key on
-    # the way to LiteLLM. "" hands the key to the harness. Qualify it per
-    # harness first: one that calls the model from inside a DinD container
-    # cannot reach the worker's loopback.
-    keyIsolation: ""
+    # the way to LiteLLM. "" hands the key to the harness. Like
+    # forgeTokenIsolation, it applies only to a qualified harness without DinD,
+    # because a harness calling the model from inside a DinD container cannot
+    # reach the worker's loopback.
+    keyIsolation: proxy
   workerAuth:
     mode: managed
     signingKeySecret:

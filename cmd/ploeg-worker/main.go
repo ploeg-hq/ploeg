@@ -6,6 +6,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -219,6 +220,7 @@ func run(log *slog.Logger) error {
 	nodeName := os.Getenv("NODE_NAME")
 	podUID := os.Getenv("POD_UID")
 	log.Info("ploeg-worker starting", "version", version, "team", cfg.Team, "harness", hc.Name, "node", nodeName, "pod_uid", podUID)
+	warnWhenCredentialIsolationOff(log, cfg, hc)
 
 	// A worker pod is killed for reasons that have nothing to do with the
 	// agent: an eviction, a drain, a Job deadline, a node going away. Without
@@ -230,6 +232,21 @@ func run(log *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	return worker.New(cfg, adapter, broker, log).RunContext(ctx)
+}
+
+func warnWhenCredentialIsolationOff(log *slog.Logger, cfg worker.Config, hc worker.HarnessConfig) {
+	if cfg.LLMKeyIsolation == worker.KeyIsolationProxy && cfg.ForgeTokenIsolation == worker.ForgeTokenIsolationProxy {
+		return
+	}
+	harnessName := hc.Name
+	if hc.Name == "acp" {
+		harnessName = "acp/" + cmp.Or(hc.ACP.Profile, "opencode")
+	}
+	log.Warn("credential isolation is off: the harness can read the Run's model key or forge token",
+		"harness", harnessName,
+		"reason", envOr("PLOEG_CREDENTIAL_ISOLATION_OFF_REASON", "disabled"),
+		"llm_key_isolation", cfg.LLMKeyIsolation,
+		"forge_token_isolation", cfg.ForgeTokenIsolation)
 }
 
 func rejectAdministrativeEnvironment() error {

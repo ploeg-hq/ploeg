@@ -1,17 +1,4 @@
 ---
-# Source: ploeg/templates/sandbox.yaml
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: ploeg-sandbox-launcher
-  labels:
-    app.kubernetes.io/name: ploeg
-    app.kubernetes.io/instance: ploeg
-    app.kubernetes.io/version: "CHART-VERSION"
-    helm.sh/chart: ploeg-CHART-VERSION
-    app.kubernetes.io/managed-by: Helm
-automountServiceAccountToken: false
----
 # Source: ploeg/templates/serviceaccount.yaml
 apiVersion: v1
 kind: ServiceAccount
@@ -49,42 +36,6 @@ metadata:
     helm.sh/chart: ploeg-CHART-VERSION
     app.kubernetes.io/managed-by: Helm
 automountServiceAccountToken: false
----
-# Source: ploeg/templates/sandbox.yaml
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  name: ploeg-sandbox-launcher
-  labels:
-    app.kubernetes.io/name: ploeg
-    app.kubernetes.io/instance: ploeg
-    app.kubernetes.io/version: "CHART-VERSION"
-    helm.sh/chart: ploeg-CHART-VERSION
-    app.kubernetes.io/managed-by: Helm
-rules:
-  - apiGroups: ["extensions.agents.x-k8s.io"]
-    resources: ["sandboxclaims"]
-    verbs: ["create", "get", "delete"]
----
-# Source: ploeg/templates/sandbox.yaml
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: ploeg-sandbox-launcher
-  labels:
-    app.kubernetes.io/name: ploeg
-    app.kubernetes.io/instance: ploeg
-    app.kubernetes.io/version: "CHART-VERSION"
-    helm.sh/chart: ploeg-CHART-VERSION
-    app.kubernetes.io/managed-by: Helm
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: Role
-  name: ploeg-sandbox-launcher
-subjects:
-  - kind: ServiceAccount
-    name: ploeg-sandbox-launcher
-    namespace: default
 ---
 # Source: ploeg/templates/service.yaml
 apiVersion: v1
@@ -206,7 +157,7 @@ spec:
                   name: ploeg-worker-bootstrap
                   key: registry.json
             - name: PLOEG_WORKER_LLM_POLICIES
-              value: "[{\"budgetUsd\":4,\"models\":[\"deepseek-chat\"],\"role\":\"\",\"team\":\"silver\",\"ttl\":\"4h\"},{\"budgetUsd\":1,\"models\":[\"deepseek-chat\"],\"role\":\"\",\"team\":\"copper\",\"ttl\":\"4h\"}]"
+              value: "[{\"budgetUsd\":1,\"models\":[\"deepseek-chat\"],\"role\":\"\",\"team\":\"qualified\",\"ttl\":\"4h\"}]"
           readinessProbe:
             httpGet:
               path: /readyz
@@ -226,153 +177,6 @@ spec:
               cpu: 100m
               memory: 256Mi
 ---
-# Source: ploeg/templates/sandbox.yaml
-apiVersion: extensions.agents.x-k8s.io/v1beta1
-kind: SandboxTemplate
-metadata:
-  name: ploeg-worker-copper
-  labels:
-    app.kubernetes.io/name: ploeg
-    app.kubernetes.io/instance: ploeg
-    app.kubernetes.io/version: "CHART-VERSION"
-    helm.sh/chart: ploeg-CHART-VERSION
-    app.kubernetes.io/managed-by: Helm
-spec:
-  podTemplate:
-    metadata:
-      labels:
-        app.kubernetes.io/name: ploeg-worker
-        ploeg.webgrip.dev/team: copper
-    spec:
-      activeDeadlineSeconds: 7200
-      automountServiceAccountToken: false
-      containers:
-      - command:
-        - /mnt/bin/ploeg-worker
-        env:
-        - name: PLOEG_API_URL
-          value: http://ploeg:8080
-        - name: PLOEG_TEAM
-          value: copper
-        - name: PLOEG_HARNESS
-          value: exec
-        - name: PLOEG_HARNESS_ARGS
-          value: '["/bin/cat","{taskspec}"]'
-        - name: PLOEG_HARNESS_TIMEOUT
-          value: 100m
-        - name: PLOEG_HARNESS_IDLE_TIMEOUT
-          value: 15m
-        - name: LLM_MODEL
-          value: litellm_proxy/deepseek-chat
-        - name: LITELLM_KEY_BUDGET
-          value: "1"
-        - name: LITELLM_KEY_DURATION
-          value: 4h
-        - name: LLM_BASE_URL
-          value: http://litellm.ai.svc.cluster.local:4000/v1
-        - name: PLOEG_LLM_KEY_ISOLATION
-          value: proxy
-        - name: PLOEG_FORGE_TOKEN_ISOLATION
-          value: proxy
-        - name: PLOEG_LLM_CREDENTIAL_MODE
-          value: managed
-        - name: PLOEG_WORKER_BOOTSTRAP_TOKEN
-          valueFrom:
-            secretKeyRef:
-              key: copper--default
-              name: ploeg-worker-bootstrap
-        - name: PLOEG_TARGET_FORGE
-          value: forgejo
-        - name: FORGE_URL
-          value: http://forgejo-http.forgejo.svc.cluster.local:3000
-        - name: AGENT_BUILDER_TOKEN
-          valueFrom:
-            secretKeyRef:
-              key: FORGEJO_TOKEN
-              name: agent-builder-token
-        - name: NODE_NAME
-          valueFrom:
-            fieldRef:
-              fieldPath: spec.nodeName
-        - name: POD_UID
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.uid
-        - name: WORK_DIR
-          value: /mnt/ci-shared
-        image: registry.example/agent-runner:1.3.0
-        name: worker
-        resources:
-          limits:
-            cpu: "1"
-            memory: 1Gi
-          requests:
-            cpu: "1"
-            memory: 1Gi
-        volumeMounts:
-        - mountPath: /mnt/bin
-          name: worker-bin
-          readOnly: true
-        - mountPath: /mnt/ci-shared
-          name: ci-shared
-      dnsPolicy: ClusterFirst
-      initContainers:
-      - command:
-        - /usr/local/bin/ploeg-worker
-        - install
-        - /mnt/bin/ploeg-worker
-        image: ghcr.io/ploeg-hq/ploegd:CHART-VERSION
-        name: worker-bin
-        resources:
-          limits:
-            cpu: 50m
-            memory: 64Mi
-          requests:
-            cpu: 50m
-            memory: 64Mi
-        securityContext:
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop:
-            - ALL
-          runAsNonRoot: true
-          runAsUser: 65532
-          seccompProfile:
-            type: RuntimeDefault
-        volumeMounts:
-        - mountPath: /mnt/bin
-          name: worker-bin
-      restartPolicy: Never
-      securityContext:
-        fsGroup: 1000
-      serviceAccountName: ploeg-worker
-      terminationGracePeriodSeconds: 90
-      volumes:
-      - emptyDir: {}
-        name: worker-bin
-      - emptyDir:
-          sizeLimit: 8Gi
-        name: ci-shared
-  service: false
-  networkPolicyManagement: Unmanaged
-  envVarsInjectionPolicy: Disallowed
----
-# Source: ploeg/templates/sandbox.yaml
-apiVersion: extensions.agents.x-k8s.io/v1beta1
-kind: SandboxWarmPool
-metadata:
-  name: ploeg-worker-copper
-  labels:
-    app.kubernetes.io/name: ploeg
-    app.kubernetes.io/instance: ploeg
-    app.kubernetes.io/version: "CHART-VERSION"
-    helm.sh/chart: ploeg-CHART-VERSION
-    app.kubernetes.io/managed-by: Helm
-spec:
-  replicas: 0
-  sandboxTemplateRef:
-    name: ploeg-worker-copper
----
 # Source: ploeg/templates/scaledjob.yaml
 # One ScaledJob per (team, Role) — the flagship executor. A team without a
 # plan has exactly one Role-less workload, byte-identical to the pre-Shift
@@ -386,7 +190,7 @@ spec:
 apiVersion: keda.sh/v1alpha1
 kind: ScaledJob
 metadata:
-  name: ploeg-worker-silver
+  name: ploeg-worker-qualified
   labels:
     app.kubernetes.io/name: ploeg
     app.kubernetes.io/instance: ploeg
@@ -414,7 +218,7 @@ spec:
       metadata:
         labels:
           app.kubernetes.io/name: ploeg-worker
-          ploeg.webgrip.dev/team: silver
+          ploeg.webgrip.dev/team: qualified
       spec:
         restartPolicy: Never
         # The shutdown budget for ploeg-worker's SIGTERM path: abort the harness,
@@ -462,7 +266,7 @@ spec:
               - name: PLOEG_API_URL
                 value: "http://ploeg:8080"
               - name: PLOEG_TEAM
-                value: "silver"
+                value: "qualified"
               - name: PLOEG_HARNESS
                 value: "openhands"
               - name: PLOEG_HARNESS_TIMEOUT
@@ -472,22 +276,20 @@ spec:
               - name: LLM_MODEL
                 value: "litellm_proxy/deepseek-chat"
               - name: LITELLM_KEY_BUDGET
-                value: "4"
+                value: "1"
               - name: LITELLM_KEY_DURATION
                 value: "4h"
               - name: LLM_BASE_URL
                 value: "http://litellm.ai.svc.cluster.local:4000/v1"
-              - name: PLOEG_LLM_KEY_ISOLATION
-                value: "proxy"
-              - name: PLOEG_FORGE_TOKEN_ISOLATION
-                value: "proxy"
+              - name: PLOEG_CREDENTIAL_ISOLATION_OFF_REASON
+                value: "disabled"
               - name: PLOEG_LLM_CREDENTIAL_MODE
                 value: "managed"
               - name: PLOEG_WORKER_BOOTSTRAP_TOKEN
                 valueFrom:
                   secretKeyRef:
                     name: ploeg-worker-bootstrap
-                    key: "silver--default"
+                    key: "qualified--default"
               - name: PLOEG_TARGET_FORGE
                 value: "forgejo"
               - name: FORGE_URL
@@ -548,130 +350,7 @@ spec:
         sslmode: "require"
         # The one poll-query shape: served index-only by work_items_claimable
         # (backlog #24/#47). Must stay in sync with store.Claim.
-        query: "SELECT COUNT(*) FROM work_items WHERE team = 'silver' AND state = 'queued' AND NOT operator_owned AND (next_eligible_at IS NULL OR next_eligible_at <= now())"
-        targetQueryValue: "1"
-        activationTargetQueryValue: "0"
-      authenticationRef:
-        name: ploeg-scaler
----
-# Source: ploeg/templates/scaledjob.yaml
-# One ScaledJob per (team, Role) — the flagship executor. A team without a
-# plan has exactly one Role-less workload, byte-identical to the pre-Shift
-# shape; a team with a plan gets one per Role, which is what makes "different
-# agents, different harnesses, different images" literally true: pod shape is
-# fixed at render time. The shape lives in the shared ploeg.workerPodTemplate
-# helper (also used by the CronJob executor): privileged DinD sidecar when the
-# harness needs Docker, a shared disk-backed workspace mounted at the SAME
-# path in both containers, and zero Kubernetes API authority for the
-# LLM-driven process.
-apiVersion: keda.sh/v1alpha1
-kind: ScaledJob
-metadata:
-  name: ploeg-worker-copper
-  labels:
-    app.kubernetes.io/name: ploeg
-    app.kubernetes.io/instance: ploeg
-    app.kubernetes.io/version: "CHART-VERSION"
-    helm.sh/chart: ploeg-CHART-VERSION
-    app.kubernetes.io/managed-by: Helm
-spec:
-  pollingInterval: 30
-  minReplicaCount: 0
-  maxReplicaCount: 1
-  successfulJobsHistoryLimit: 3
-  failedJobsHistoryLimit: 3
-  rollout:
-    strategy: gradual # spec updates never kill in-flight runs (backlog #50)
-  scalingStrategy:
-    strategy: accurate # never eager: open over-scaling bug kedacore/keda#6416 (backlog #47)
-  jobTargetRef:
-    parallelism: 1
-    completions: 1
-    backoffLimit: 0 # ploeg owns retries; every pod is one auditable run (backlog #51)
-    activeDeadlineSeconds: 7800
-    template:
-      
-      metadata:
-        labels:
-          app.kubernetes.io/name: ploeg-sandbox-launcher
-          ploeg.webgrip.dev/team: copper
-      spec:
-        restartPolicy: Never
-        serviceAccountName: ploeg-sandbox-launcher
-        automountServiceAccountToken: true
-        containers:
-          - name: launcher
-            image: ghcr.io/ploeg-hq/ploegd:CHART-VERSION
-            command: ["/usr/local/bin/ploeg-worker", "sandbox-launch"]
-            env:
-              - name: POD_NAME
-                valueFrom:
-                  fieldRef:
-                    fieldPath: metadata.name
-              - name: POD_NAMESPACE
-                valueFrom:
-                  fieldRef:
-                    fieldPath: metadata.namespace
-              - name: PLOEG_SANDBOX_JOB_NAME
-                valueFrom:
-                  fieldRef:
-                    fieldPath: metadata.labels['batch.kubernetes.io/job-name']
-              - name: PLOEG_SANDBOX_JOB_UID
-                valueFrom:
-                  fieldRef:
-                    fieldPath: metadata.labels['batch.kubernetes.io/controller-uid']
-              - name: PLOEG_SANDBOX_WARM_POOL
-                value: "ploeg-worker-copper"
-              - name: PLOEG_SANDBOX_RUN_DEADLINE
-                value: "7200s"
-              - name: PLOEG_SANDBOX_SHUTDOWN_MARGIN
-                value: "600s"
-              - name: PLOEG_SANDBOX_START_TIMEOUT
-                value: "600s"
-              - name: PLOEG_SANDBOX_TTL_SECONDS_AFTER_FINISHED
-                value: "60"
-              - name: PLOEG_API_URL
-                value: "http://ploeg:8080"
-              - name: PLOEG_TEAM
-                value: "copper"
-              - name: PLOEG_WORKER_ID
-                valueFrom:
-                  fieldRef:
-                    fieldPath: metadata.uid
-              - name: PLOEG_WORKER_BOOTSTRAP_TOKEN
-                valueFrom:
-                  secretKeyRef:
-                    name: ploeg-worker-bootstrap
-                    key: "copper--default"
-            securityContext:
-              runAsNonRoot: true
-              runAsUser: 65532
-              allowPrivilegeEscalation: false
-              readOnlyRootFilesystem: true
-              capabilities:
-                drop: [ALL]
-              seccompProfile:
-                type: RuntimeDefault
-            resources:
-              limits:
-                cpu: 50m
-                memory: 32Mi
-              requests:
-                cpu: 10m
-                memory: 32Mi
-  triggers:
-    - type: postgresql
-      metadata:
-        # Resolved by the KEDA operator from ITS namespace, not this one —
-        # a bare in-namespace service name never resolves there.
-        host: "ploeg-db-rw.default.svc.cluster.local"
-        port: "5432"
-        userName: "ploeg_scaler"
-        dbName: "app"
-        sslmode: "require"
-        # The one poll-query shape: served index-only by work_items_claimable
-        # (backlog #24/#47). Must stay in sync with store.Claim.
-        query: "SELECT COUNT(*) FROM work_items WHERE team = 'copper' AND state = 'queued' AND NOT operator_owned AND (next_eligible_at IS NULL OR next_eligible_at <= now())"
+        query: "SELECT COUNT(*) FROM work_items WHERE team = 'qualified' AND state = 'queued' AND NOT operator_owned AND (next_eligible_at IS NULL OR next_eligible_at <= now())"
         targetQueryValue: "1"
         activationTargetQueryValue: "0"
       authenticationRef:

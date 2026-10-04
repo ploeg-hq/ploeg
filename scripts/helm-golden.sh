@@ -61,6 +61,8 @@ for case in ":default" \
 	"ops/helm/ploeg/ci/executor-sandbox-values.yaml:executor-sandbox" \
 	"ops/helm/ploeg/ci/executor-sandbox-runtimeclass-values.yaml:executor-sandbox-runtimeclass" \
 	"ops/helm/ploeg/ci/executor-sandbox-team-values.yaml:executor-sandbox-team" \
+	"ops/helm/ploeg/ci/executor-isolation-values.yaml:executor-isolation" \
+	"ops/helm/ploeg/ci/executor-isolation-disabled-values.yaml:executor-isolation-disabled" \
 	"ops/helm/ploeg/ci/monitoring-values.yaml:monitoring"; do
 	values=${case%%:*}
 	name=${case##*:}

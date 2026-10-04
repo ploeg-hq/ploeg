@@ -301,6 +301,8 @@ spec:
                 value: "4h"
               - name: LLM_BASE_URL
                 value: "http://litellm.ai.svc.cluster.local:4000/v1"
+              - name: PLOEG_CREDENTIAL_ISOLATION_OFF_REASON
+                value: "unqualified"
               - name: PLOEG_LLM_CREDENTIAL_MODE
                 value: "managed"
               - name: PLOEG_WORKER_BOOTSTRAP_TOKEN
@@ -491,6 +493,8 @@ spec:
                 value: "4h"
               - name: LLM_BASE_URL
                 value: "http://litellm.ai.svc.cluster.local:4000/v1"
+              - name: PLOEG_CREDENTIAL_ISOLATION_OFF_REASON
+                value: "unqualified"
               - name: PLOEG_LLM_CREDENTIAL_MODE
                 value: "managed"
               - name: PLOEG_WORKER_BOOTSTRAP_TOKEN
@@ -681,6 +685,8 @@ spec:
                 value: "4h"
               - name: LLM_BASE_URL
                 value: "http://litellm.ai.svc.cluster.local:4000/v1"
+              - name: PLOEG_CREDENTIAL_ISOLATION_OFF_REASON
+                value: "unqualified"
               - name: PLOEG_LLM_CREDENTIAL_MODE
                 value: "managed"
               - name: PLOEG_WORKER_BOOTSTRAP_TOKEN
