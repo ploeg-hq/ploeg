@@ -136,9 +136,9 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | Key | Type | Default | Description | Source |
 | --- | --- | --- | --- | --- |
 | `config` | object | `{}` | ploegd's routing and roster as a file (mounted at /etc/ploeg/ploeg.yaml). Projects are NAMED and resolved to tracker ids at boot, so no magic numbers live in cluster config. `targets:` registers repositories a `repo/<key>` label may select, and a project's `default:`/`allow:` name them (ADR-0038). A project's `gates:` maps its statuses or bucket titles to the delivery gates development, test, acceptance and done (ADR-0051). A team's `cards:` names the people who referee its disputed cracks and the labels that mark a hotfix (ADR-0052), and `prComment: true` keeps one card comment with the card image on its merged pull requests (ADR-0055). A target's or project's `rarity:` sets the Run card rarity path rules: `attentionPaths` add sensitive ground, `sensitivePaths` and `sizeExclude` replace the defaults (ADR-0056). A project with `gates:` or `statusKinds:` records every tracker status move, and `statusKinds:` sorts its statuses into active, waiting, blocked and done for the Run card's flow figures; a team's `workingHours:` (timezone, days, start, end, holidays) is the calendar their working seconds count in, Monday to Friday 09:00 to 17:00 Europe/Amsterdam by default (ADR-0057). A target's or project's `cardShape:` sets which files a Run card counts as tests (`testPaths`) and documentation (`docPaths`), each replacing its defaults (ADR-0058). Empty = the legacy PLOEG_TARGET_MAP/PLOEG_TEAM_MAP/PLOEG_TEAM_PLANS env vars still apply. | values.yaml, values.schema.json |
-| `database.existingSecret` |  |  | CNPG auto-creates <cluster>-app with a `uri` key; ploegd consumes it whole. | values.yaml |
+| `database.existingSecret` |  |  | REQUIRED: the Secret holding ploegd's PostgreSQL connection URI. The render fails without a name. CNPG creates <cluster>-app with a `uri` key; ploegd consumes it whole. | values.yaml |
 | `database.existingSecret.key` |  | `uri` |  | values.yaml |
-| `database.existingSecret.name` |  | `ploeg-db-app` |  | values.yaml |
+| `database.existingSecret.name` |  | `""` |  | values.yaml |
 | `deploys` | object | `{}` | ADR-0047: POST /api/v1/deploys, where a pipeline reports "commit X is live in environment Y". tokenSecret names an existing Secret key holding the bearer token (32+ bytes) and becomes PLOEG_DEPLOY_TOKEN on ploegd only. Unset = the endpoint answers 404. | values.yaml, values.schema.json |
 | `deploys.tokenSecret` | object |  | Secret name and key of the deploy bearer token, forwarded to ploegd only as `PLOEG_DEPLOY_TOKEN`. Unset disables `POST /api/v1/deploys`. | values.schema.json |
 | `deploys.tokenSecret.key` | string |  |  | values.schema.json |
@@ -158,7 +158,7 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `executor.defaultTarget.baseBranch` | string | `""` |  | values.yaml, values.schema.json |
 | `executor.defaultTarget.name` | string | `""` |  | values.yaml, values.schema.json |
 | `executor.defaultTarget.owner` | string | `""` |  | values.yaml, values.schema.json |
-| `executor.dindImage` | string | `harbor.webgrip.dev/dockerhub/library/docker:29.8.2-dind@sha256:7dcdfc4a20246236f558175182ccace1eb15a41bd3eb119dd2284f393498b7c1` |  | values.yaml, values.schema.json |
+| `executor.dindImage` | string | `docker.io/library/docker:29.8.2-dind@sha256:7dcdfc4a20246236f558175182ccace1eb15a41bd3eb119dd2284f393498b7c1` | Docker Hub's official image. A cluster behind a pull-through proxy sets its own copy; the digest is the same. | values.yaml, values.schema.json |
 | `executor.dindResources.limits.cpu` |  | `1` |  | values.yaml |
 | `executor.dindResources.limits.memory` |  | `1536Mi` |  | values.yaml |
 | `executor.dindResources.requests.cpu` |  | `1` |  | values.yaml |
@@ -171,7 +171,7 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `executor.forgejo.publicUrl` | string | `""` | ploegd's forge URL (PLOEG_FORGEJO_URL). Empty = url. Set it to the public https URL when url is in-cluster: ploegd matches Vloer's https repository URLs against it and accepts only https or ssh ones. | values.yaml, values.schema.json |
 | `executor.forgejo.readTokenSecret` | [readTokenSecretRef](#readtokensecretref) | `{}` | ADR-0013 tier 1: read-only credential for reading Roles. Required (name and key) when any team has a reading Role: the render fails without it rather than hand readers the read-write builder token. | values.yaml, values.schema.json |
 | `executor.forgejo.tokenSecret` | [secretRef](#secretref) | `{"name": "agent-builder-token", "key": "FORGEJO_TOKEN"}` | Shared bot token every Run uses when no admin token mints per-run push tokens. | values.yaml, values.schema.json |
-| `executor.forgejo.url` | string | `http://forgejo-http.forgejo.svc.cluster.local:3000` | The workers' forge URL (FORGE_URL): clone, push, pull-request API and the forge proxy upstream. An in-cluster URL keeps Run traffic off the public gateway. | values.yaml, values.schema.json |
+| `executor.forgejo.url` | string | `""` | The workers' forge URL (FORGE_URL): clone, push, pull-request API and the forge proxy upstream. An in-cluster URL keeps Run traffic off the public gateway. Required when the executor is enabled on this forge; empty with the executor off = ploegd has no forge provider. | values.yaml, values.schema.json |
 | `executor.forgejo.webhookSecret` | [secretRef](#secretref) | `{}` | HMAC secret that verifies X-Forgejo-Signature on POST /webhooks/forge/forgejo. Unset = every forge webhook is rejected: merges are still found by the periodic pull request reconcile, but human reviews and failed checks never reach Ploeg. | values.yaml, values.schema.json |
 | `executor.gitlab.publicUrl` | string | `""` | ploegd's GitLab URL when it differs from the workers' url. Empty = url. | values.yaml, values.schema.json |
 | `executor.gitlab.readTokenSecret` | [readTokenSecretRef](#readtokensecretref) | `{}` | ADR-0013 tier 1, as for forgejo: a read-only credential for reading Roles, so the reader/writer split is enforced at the forge and not only by scheduling. On GitLab a second project access token at read_repository scope. Required (name and key) when any team has a reading Role: the render fails without it rather than hand readers the read-write token. | values.yaml, values.schema.json |
@@ -190,24 +190,23 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `executor.harness.dind` |  | `true` | privileged DinD sidecar + DOCKER_* wiring (OpenHands + gates need it) | values.yaml |
 | `executor.harness.entrypoint` |  | `""` | binary override (PLOEG_HARNESS_ENTRYPOINT); "" = adapter default | values.yaml |
 | `executor.harness.idleTimeout` |  | `15m` | Stops a harness that prints nothing and makes no model call for this long (`PLOEG_HARNESS_IDLE_TIMEOUT`). | values.yaml |
-| `executor.harness.image` |  | `""` | agent image; "" = runnerImage below | values.yaml |
+| `executor.harness.image` |  | `""` | Agent image. REQUIRED with the executor enabled, here, in runnerImage or per team: Ploeg publishes no agent image, so the render fails without one. | values.yaml |
 | `executor.harness.name` |  | `openhands` | openhands \| exec \| claude-code \| acp (PLOEG_HARNESS) | values.yaml |
 | `executor.harness.outcomeFile` |  | `""` | exec harness only: OutcomeReport JSON path override | values.yaml |
 | `executor.harness.timeout` |  | `100m` | Stops a harness that runs longer than this (`PLOEG_HARNESS_TIMEOUT`). | values.yaml |
 | `executor.harness.toolchains` |  | `[]` | Language toolchains mounted read-only at /opt/ploeg/toolchains/<name> as image volumes (Kubernetes >= 1.35), pulled by the kubelet, so a Run can run the target repository's checks without registry egress. `path` lists directories inside the image to put on PATH (default /bin); `env` is set in the harness environment (PLOEG_TOOLCHAINS). | values.yaml |
 | `executor.harness.verify` |  | `[]` | Shell command lines a Run is told to run before it hands off, and that ploeg-worker runs itself after a writing Run that opened or updated a pull request; the result is posted on the pull request (PLOEG_VERIFY_COMMANDS). Write a formatter check so it fails on output, e.g. test -z "$(gofmt -l .)". | values.yaml |
 | `executor.harness.verifyTimeout` |  | `""` | Go duration for the worker's own run; "" = 15m (PLOEG_VERIFY_TIMEOUT) | values.yaml |
-| `executor.litellm.adminUrl` |  | `http://litellm.ai.svc.cluster.local:4000` |  | values.yaml |
-| `executor.litellm.baseUrl` |  | `http://litellm.ai.svc.cluster.local:4000/v1` |  | values.yaml |
+| `executor.litellm.adminUrl` |  | `""` | ploegd's LiteLLM management URL (LITELLM_ADMIN_URL), e.g. http://litellm.<namespace>.svc.cluster.local:4000. REQUIRED while workerAuth.mode is managed: ploegd refuses to start without it. | values.yaml |
+| `executor.litellm.baseUrl` |  | `""` | The model gateway workers call (LLM_BASE_URL), e.g. http://litellm.<namespace>.svc.cluster.local:4000/v1. REQUIRED with the executor enabled. | values.yaml |
 | `executor.litellm.keyDuration` |  | `4h` | Per-run key lifetime; a positive Go duration between one second and 24 hours. | values.yaml |
 | `executor.litellm.keyIsolation` |  | `""` | "proxy" keeps the per-Run key inside ploeg-worker: the harness gets a placeholder and a loopback URL, and the worker swaps in the real key on the way to LiteLLM. "" hands the key to the harness. Qualify it per harness first: one that calls the model from inside a DinD container cannot reach the worker's loopback. | values.yaml |
 | `executor.litellm.masterKeySecret` |  |  | Controller-only LiteLLM management Secret reference. | values.yaml |
 | `executor.litellm.masterKeySecret.key` |  | `LITELLM_MASTER_KEY` |  | values.yaml |
 | `executor.litellm.masterKeySecret.name` |  | `agent-litellm-master` |  | values.yaml |
-| `executor.nodeSelector` | object or null |  | Node selector for WORKER pods, not ploegd (that is the top-level nodeSelector). Keeps agent Jobs off control-plane nodes (ADR-0002: no DinD beside etcd). The default label exists in the homelab and on no other cluster, so a different estate must override it with its own label or clear it with null — Helm deep-merges maps, so {} leaves the default in place and only null removes the block. | values.yaml, values.schema.json |
-| `executor.nodeSelector.node.webgrip.io/pool` |  | `worker` |  | values.yaml |
+| `executor.nodeSelector` | object or null | `{}` | Node selector for WORKER pods, not ploegd (that is the top-level nodeSelector). Empty by default, so workers schedule on any node. Set your own label to keep agent Jobs and their privileged DinD sidecar off control-plane nodes (ADR-0002: no DinD beside etcd). | values.yaml, values.schema.json |
 | `executor.pollingInterval` |  | `30` |  | values.yaml |
-| `executor.runnerImage` | string | `harbor.webgrip.dev/webgrip/agent-runner:1.3.0@sha256:ab0a56f12a33b2af542663e0f2079261f5b9aca5596a5d497583f211a284684f` | DEPRECATED in favor of harness.image (kept as the fallback so existing value overrides keep working). agent-runner >=1.0.1 only: 1.0.0 mints LiteLLM keys without key_alias (400). | values.yaml, values.schema.json |
+| `executor.runnerImage` | string | `""` | DEPRECATED in favor of harness.image (kept as the fallback so existing value overrides keep working). agent-runner >=1.0.1 only: 1.0.0 mints LiteLLM keys without key_alias (400). | values.yaml, values.schema.json |
 | `executor.sandbox` | object |  | type=sandbox only: runs each Run in a kubernetes-sigs/agent-sandbox v1beta1 Sandbox created by a launcher pod. | values.yaml, values.schema.json |
 | `executor.sandbox.launcherResources.limits.cpu` |  | `50m` |  | values.yaml |
 | `executor.sandbox.launcherResources.limits.memory` |  | `32Mi` |  | values.yaml |
@@ -221,7 +220,7 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `executor.sandbox.startTimeoutSeconds` | integer | `600` | A claim that is not Ready this long after creation is deleted and its launcher fails with the controller's reason, instead of holding the Team's slot until the shutdown deadline. Covers a cold image pull. | values.yaml, values.schema.json |
 | `executor.sandbox.ttlSecondsAfterFinished` | integer | `60` | A finished claim is deleted by its launcher; this TTL is the fallback. | values.yaml, values.schema.json |
 | `executor.scaler.dbName` |  | `app` |  | values.yaml |
-| `executor.scaler.host` |  | `""` | Empty = ploeg-db-rw.<release namespace>.svc.cluster.local. Must be a name the KEDA operator can resolve from its own namespace (FQDN). | values.yaml |
+| `executor.scaler.host` |  | `""` | REQUIRED for the keda and sandbox executors: the PostgreSQL host KEDA polls, e.g. ploeg-db-rw.<namespace>.svc.cluster.local. Must be a name the KEDA operator can resolve from its own namespace (FQDN). | values.yaml |
 | `executor.scaler.passwordSecret.key` |  | `password` |  | values.yaml |
 | `executor.scaler.passwordSecret.name` |  | `ploeg-scaler` |  | values.yaml |
 | `executor.scaler.port` |  | `5432` |  | values.yaml |
@@ -273,9 +272,9 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `executor.workerResources.limits.memory` |  | `1Gi` |  | values.yaml |
 | `executor.workerResources.requests.cpu` |  | `1` |  | values.yaml |
 | `executor.workerResources.requests.memory` |  | `1Gi` |  | values.yaml |
-| `image.repository` |  | `ghcr.io/ploeg-hq/ploegd` |  | values.yaml |
+| `image.repository` |  | `ghcr.io/ploeg-hq/ploegd` | The public release image. Point repository at a copy of the same digest, with imagePullSecrets, when the cluster pulls from a private registry. | values.yaml |
 | `image.tag` |  | `""` | empty = .Chart.AppVersion (kept in lockstep with the chart by the release train) | values.yaml |
-| `imagePullSecrets` |  | `[]` | homelab sets [{name: harbor-pull}] | values.yaml |
+| `imagePullSecrets` |  | `[]` | e.g. [{name: harbor-pull}] for a private registry | values.yaml |
 | `monitoring` | object |  | Prometheus Operator objects for ploegd's GET /metrics. Both are off by default: they need the monitoring.coreos.com CRDs. The alerts and what to do about each are in docs/ops/alerts.md. | values.yaml, values.schema.json |
 | `monitoring.prometheusRule.alerts.expiredLease.enabled` | boolean | `true` |  | values.yaml, values.schema.json |
 | `monitoring.prometheusRule.alerts.expiredLease.for` | string | `5m` |  | values.yaml, values.schema.json |
@@ -304,7 +303,7 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `monitoring.serviceMonitor.interval` | string | `30s` |  | values.yaml, values.schema.json |
 | `monitoring.serviceMonitor.labels` | object | `{}` | e.g. {release: kube-prometheus-stack}, whatever your Prometheus selects on | values.yaml, values.schema.json |
 | `monitoring.serviceMonitor.scrapeTimeout` | string | `10s` |  | values.yaml, values.schema.json |
-| `nodeSelector.node.webgrip.io/pool` |  | `worker` |  | values.yaml |
+| `nodeSelector` |  | `{}` | Node selector for the ploegd pod. Empty = any schedulable node. | values.yaml |
 | `operator.consumers` | array | `[]` | Operator read consumers, forwarded as `PLOEG_OPERATOR_CONSUMERS`. | values.yaml, values.schema.json |
 | `operator.consumers[].execute` | boolean |  | Grants execution commands. Defaults to false. | values.schema.json |
 | `operator.consumers[].maxBudgetUsd` | number |  | Budget ceiling for an executing consumer, 0.01 to 10000. Defaults to 25. | values.schema.json |
@@ -334,8 +333,8 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `tracker.clickup.webhookSecret` | [secretRef](#secretref) | `{}` | Verifies X-Signature on POST /webhooks/tracker/clickup. ClickUp generates this on webhook registration — capture it, never invent it. Empty = deliveries are rejected. | values.yaml, values.schema.json |
 | `tracker.tokenSecret` | [secretRef](#secretref) | `{}` | Vikunja API token Secret. Unset keeps write-backs a logged no-op; ingest needs no token. | values.yaml, values.schema.json |
 | `tracker.url` | string | `""` | e.g. https://vikunja.example/api/v1 | values.yaml, values.schema.json |
-| `webhook.existingSecret.key` |  | `PLOEG_VIKUNJA_SECRET` |  | values.yaml |
-| `webhook.existingSecret.name` |  | `ploeg-webhook-secret` |  | values.yaml |
+| `webhook` |  |  | The Vikunja webhook secret (PLOEG_VIKUNJA_SECRET). Unset = no env is rendered and every Vikunja webhook is rejected; ploegd still starts. | values.yaml |
+| `webhook.existingSecret` |  | `{}` |  | values.yaml |
 
 ## Shared value shapes
 

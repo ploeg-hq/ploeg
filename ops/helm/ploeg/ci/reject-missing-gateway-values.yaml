@@ -1,0 +1,6 @@
+# CI-only values that MUST fail to render (scripts/helm-golden.sh). Workers
+# call the model gateway, and the chart names no gateway by default.
+executor:
+  enabled: true
+  litellm:
+    baseUrl: ""

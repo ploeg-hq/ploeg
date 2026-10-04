@@ -1,0 +1,5 @@
+# CI-only values that MUST fail to render (scripts/helm-golden.sh). In managed
+# worker mode ploegd refuses to start without the LiteLLM management URL.
+executor:
+  litellm:
+    adminUrl: ""
