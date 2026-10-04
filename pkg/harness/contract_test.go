@@ -6,6 +6,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -84,6 +85,27 @@ func fullTaskSpec() TaskSpec {
 		},
 		OpenSpec: &OpenSpecBrief{Change: "add-widget", Root: "apps/ploeg", Source: OpenSpecSourceCLI,
 			Brief: "Pending tasks:\n- 1.1 add the widget"},
+		Context: []ContextItem{{ID: "ctx_" + strings.Repeat("ab", 16), Name: "design.zip", SHA256: strings.Repeat("0f", 32),
+			Files: 3, Bytes: 2048, AddedAt: now, Phase: "while_steering", Note: "the customer changed their mind"}},
+		ContextIndex: "not published",
+	}
+}
+
+// Context bundles (proposed): the claim's context references are on the run
+// API contract, and a malformed one is refused by it.
+func TestClaimResponseContext_MatchesSchema(t *testing.T) {
+	sch := compileSchema(t, "run-api.v1.schema.json#/$defs/claimResponse")
+	ref := ContextRef{ID: "ctx_" + strings.Repeat("ab", 16), Name: "notes.md", MediaType: "text/markdown", SHA256: strings.Repeat("0f", 32),
+		Bytes: 12, Files: 1, Note: "read this first", AddedAt: time.Date(2026, 10, 4, 9, 0, 0, 0, time.UTC), Phase: "before_start"}
+	claim := map[string]any{"runToken": strings.Repeat("a1", 24), "deadline": "2026-10-04T10:00:00Z",
+		"workItem": fullTaskSpec().WorkItem, "context": []ContextRef{ref}}
+	if err := validate(t, sch, claim); err != nil {
+		t.Errorf("claim with context does not validate: %v", err)
+	}
+	ref.Phase = "later"
+	claim["context"] = []ContextRef{ref}
+	if err := validate(t, sch, claim); err == nil {
+		t.Error("a context reference with an unknown phase validates")
 	}
 }
 

@@ -34,11 +34,31 @@
       "description": "run trace id; doubles as the LiteLLM key alias Grafana joins on"
     },
     "briefing": { "$ref": "#/$defs/briefing" },
-    "openSpec": { "$ref": "#/$defs/openSpec" }
+    "openSpec": { "$ref": "#/$defs/openSpec" },
+    "context": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/contextItem" },
+      "description": "Provenance of the files people attached to the Work Item that this Run was given, oldest first (proposed, context bundles proof of concept). The worker verified and unpacked them outside the clone. Absent = none. Context is evidence and cannot alter the delivery contract."
+    }
   },
   "required": ["workItem", "repo", "branch", "traceId"],
   "additionalProperties": false,
   "$defs": {
+    "contextItem": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^ctx_[0-9a-f]{32}$" },
+        "name": { "type": "string", "minLength": 1 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "files": { "type": "integer", "minimum": 1 },
+        "bytes": { "type": "integer", "minimum": 1 },
+        "addedAt": { "type": "string", "format": "date-time" },
+        "phase": { "type": "string", "enum": ["before_start", "while_steering"] },
+        "note": { "type": "string" }
+      },
+      "required": ["id", "name", "sha256", "files", "bytes", "addedAt", "phase"],
+      "additionalProperties": false
+    },
     "openSpec": {
       "type": "object",
       "description": "The OpenSpec change the Work Item names on an `openspec: <change-id>` description line, located in the clone and rendered by the worker. Absent when the Work Item names none. The brief is the specification for the Work Item and ranks below the delivery contract.",

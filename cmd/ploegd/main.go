@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -322,6 +323,14 @@ func run(log *slog.Logger) error {
 	for team, c := range calendars {
 		log.Info("working calendar loaded", "team", team, "calendar", c.String())
 	}
+	contextMax, err := byteCountFromEnv("PLOEG_CONTEXT_MAX_BYTES", httpapi.DefaultContextMaxBytes)
+	if err != nil {
+		return err
+	}
+	contextMaxTotal, err := byteCountFromEnv("PLOEG_CONTEXT_MAX_TOTAL_BYTES", httpapi.DefaultContextMaxTotalBytes)
+	if err != nil {
+		return err
+	}
 	srv := &httpapi.Server{
 		OperatorConfig: operator,
 		WorkerSecurity: workerSecurity,
@@ -347,6 +356,9 @@ func run(log *slog.Logger) error {
 		StatusBoards:     statusBoards,
 		WorkingCalendars: calendars,
 		CardRules:        cardRules(cfg.TeamCardRules()),
+
+		ContextMaxBytes:      contextMax,
+		ContextMaxTotalBytes: contextMaxTotal,
 	}
 	log.Info("forge follow-ups loaded", "teams", len(srv.FollowUps))
 	if engine != nil {
@@ -460,6 +472,19 @@ func envOr(key, def string) string {
 // silence the report without a rollback.
 func usageReportFromEnv() bool {
 	return envOr("PLOEG_USAGE_REPORT", "true") != "false"
+}
+
+// byteCountFromEnv reads a positive byte count; unset is def.
+func byteCountFromEnv(key string, def int64) (int64, error) {
+	v := os.Getenv(key)
+	if v == "" {
+		return def, nil
+	}
+	n, err := strconv.ParseInt(v, 10, 64)
+	if err != nil || n <= 0 {
+		return 0, fmt.Errorf("%s: want a positive byte count, got %q", key, v)
+	}
+	return n, nil
 }
 
 func durationOr(key string, def time.Duration) time.Duration {

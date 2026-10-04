@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -54,6 +56,9 @@ type ClaimResponse struct {
 	// Shift. Only such a Run reviews the base branch when the Shift's branch
 	// is absent; any other reader fails instead.
 	PreAuthor bool `json:"preAuthor,omitempty"`
+	// Context names the files people attached to the Work Item before this
+	// claim. The worker downloads and verifies each before the harness runs.
+	Context []harness.ContextRef `json:"context,omitempty"`
 }
 
 // Claim returns nil when the queue is empty (HTTP 204) — the empty-handed
@@ -118,6 +123,21 @@ func (a *APIClient) Checkpoint(token string, cp work.Checkpoint) error {
 // inline instead of a separate call.
 func (a *APIClient) Outcome(token string, rep harness.OutcomeReport) error {
 	return a.post("/api/v1/runs/"+token+"/outcome", rep)
+}
+
+// ContextBundle downloads one context item with the Run's capability. It
+// reads at most one byte more than the claim declared, so a longer body is
+// caught by the caller's size check rather than read without bound.
+func (a *APIClient) ContextBundle(ctx context.Context, runToken string, ref harness.ContextRef) ([]byte, error) {
+	resp, err := a.request(ctx, http.MethodGet, "/api/v1/runs/"+runToken+"/context/"+url.PathEscape(ref.ID), nil, a.runCredential(runToken))
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("context download: HTTP %d", resp.StatusCode)
+	}
+	return io.ReadAll(io.LimitReader(resp.Body, ref.Bytes+1))
 }
 
 func (a *APIClient) post(path string, v any) error {

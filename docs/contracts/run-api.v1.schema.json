@@ -59,9 +59,35 @@
         "preAuthor": {
           "type": "boolean",
           "description": "True for a reading Run when no writing Run precedes its Round in the Shift, so the Shift's branch may not exist yet. Only then does the worker review the base branch when that branch is absent; otherwise an absent branch ends the Run stuck. Absent = false."
+        },
+        "context": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/contextRef" },
+          "description": "The files people attached to the Work Item before this Run was claimed, oldest first (proposed, context bundles proof of concept). References only: the worker downloads each from GET /api/v1/runs/{token}/context/{id} with the Run's capability and verifies sha256 and bytes before the harness starts. Absent = none."
         }
       },
       "required": ["runToken", "deadline", "workItem"],
+      "additionalProperties": false
+    },
+    "contextRef": {
+      "type": "object",
+      "description": "One context item a claim hands a Run (proposed, context bundles proof of concept).",
+      "properties": {
+        "id": { "type": "string", "pattern": "^ctx_[0-9a-f]{32}$" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "mediaType": { "type": "string" },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "bytes": { "type": "integer", "minimum": 1 },
+        "files": { "type": "integer", "minimum": 1 },
+        "note": { "type": "string", "maxLength": 500 },
+        "addedAt": { "type": "string", "format": "date-time" },
+        "phase": {
+          "type": "string",
+          "enum": ["before_start", "while_steering"],
+          "description": "while_steering = a Run of the Work Item had already started when the person attached it"
+        }
+      },
+      "required": ["id", "name", "mediaType", "sha256", "bytes", "files", "addedAt", "phase"],
       "additionalProperties": false
     },
     "renewResponse": {

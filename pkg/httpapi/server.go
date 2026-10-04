@@ -110,6 +110,11 @@ type Server struct {
 	// CardClock is the clock card comments count days live with (ADR-0055).
 	// Nil = time.Now.
 	CardClock func() time.Time
+	// ContextMaxBytes bounds one context upload and ContextMaxTotalBytes a
+	// Work Item's context together (proposed, context bundles proof of
+	// concept). Zero = DefaultContextMaxBytes and DefaultContextMaxTotalBytes.
+	ContextMaxBytes      int64
+	ContextMaxTotalBytes int64
 
 	cardWork      sync.WaitGroup
 	pipelineWork  sync.WaitGroup
@@ -185,6 +190,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/v1/runs/{token}/renew", s.handleRenew)
 	mux.HandleFunc("POST /api/v1/runs/{token}/checkpoint", s.handleCheckpoint)
 	mux.HandleFunc("POST /api/v1/runs/{token}/outcome", s.handleOutcome)
+	mux.HandleFunc("GET /api/v1/runs/{token}/context/{id}", s.handleRunContext)
 	mux.HandleFunc("GET /api/v1/queue/{team}", s.handleQueue)
 	mux.HandleFunc("/api/v1/deploys", s.handleDeploy)
 	mux.Handle("/api/v1/operator/", s.operatorHandler())
@@ -465,6 +471,9 @@ type claimResponse struct {
 	// the Shift: only such a Run may review the base branch when the Shift's
 	// branch does not exist.
 	PreAuthor bool `json:"preAuthor,omitempty"`
+	// Context names the files people attached to the Work Item before this
+	// claim (proposed, context bundles proof of concept); never the bytes.
+	Context []harness.ContextRef `json:"context,omitempty"`
 }
 
 // handleClaim leases the next unit of work for a team. 204 = empty-handed
@@ -516,7 +525,8 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.Log.Info("lease acquired", "team", req.Team, "work_item", claimed.Item.ID, "deadline", claimed.Deadline)
-	writeJSON(w, http.StatusOK, claimResponse{RunToken: claimed.RunToken, Deadline: claimed.Deadline, WorkItem: claimed.Item})
+	writeJSON(w, http.StatusOK, claimResponse{RunToken: claimed.RunToken, Deadline: claimed.Deadline, WorkItem: claimed.Item,
+		Context: s.claimContext(r.Context(), claimed.RunToken)})
 }
 
 // claimRole serves a Shift-scoped claim, carrying everything the Run needs
@@ -577,6 +587,7 @@ func (s *Server) respondClaimedRun(w http.ResponseWriter, r *http.Request, req c
 			})
 		}
 	}
+	resp.Context = s.claimContext(r.Context(), run.RunToken)
 	if notes, err := s.Store.ShiftReviews(r.Context(), run.ShiftID, run.Round); err != nil {
 		s.Log.Error("review briefing read failed; run proceeds without it", "shift", run.ShiftID, "err", err)
 	} else {
@@ -599,7 +610,7 @@ func (s *Server) respondClaimedRun(w http.ResponseWriter, r *http.Request, req c
 
 	s.Log.Info("run claimed", "team", req.Team, "role", run.Role, "shift", run.ShiftID,
 		"round", run.Round, "writes", run.Writes, "authorized", run.Authorized,
-		"briefing", len(resp.Briefing), "deadline", run.Deadline)
+		"briefing", len(resp.Briefing), "context", len(resp.Context), "deadline", run.Deadline)
 	writeJSON(w, http.StatusOK, resp)
 }
 

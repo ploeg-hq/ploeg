@@ -49,6 +49,8 @@ The generator follows each binary's imports inside the module and records every 
 | `PLOEG_CLICKUP_TOKEN` | ploegd |  | Personal ClickUp token for reads and write-backs (chart `tracker.clickup.tokenSecret`). | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_CLICKUP_URL` | ploegd |  | ClickUp API root (chart `tracker.clickup.url`). Empty means `https://api.clickup.com/api/v2`. | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_CONFIG` | ploegd |  | Path of the routing and roster file (the chart's `config:` value, mounted at `/etc/ploeg/ploeg.yaml`). Unset means the legacy `PLOEG_TARGET_MAP`, `PLOEG_TEAM_MAP` and `PLOEG_TEAM_PLANS` variables still apply. | [main.go](../../cmd/ploegd/main.go) |
+| `PLOEG_CONTEXT_MAX_BYTES` | ploegd | `20 << 20` |  | [main.go](../../cmd/ploegd/main.go) |
+| `PLOEG_CONTEXT_MAX_TOTAL_BYTES` | ploegd | `50 << 20` |  | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_DATABASE_URL` | ploeg-worker |  | Controller-only. The worker refuses to start when it is set. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_DATABASE_URL` | ploegd | required | PostgreSQL connection URI. The chart reads the whole `uri` key of the CNPG app Secret named by `database.existingSecret`. | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_DEFAULT_TEAM` | ploegd | `default` | Team that receives work from an assignee no Team lists. | [main.go](../../cmd/ploegd/main.go), [operator.go](../../cmd/ploegd/operator.go) |
