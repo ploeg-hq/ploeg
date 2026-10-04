@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 	"time"
 )
@@ -58,8 +59,12 @@ func gitAuthenticationEnvironment(repositoryURL, token string) []string {
 
 const gitWaitDelay = 5 * time.Second
 
+// testGitConfig holds `-c key=value` arguments that runGit passes before every
+// Git subcommand. It stays empty outside tests.
+var testGitConfig []string
+
 func runGit(ctx context.Context, dir, repositoryURL, token string, args ...string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd := exec.CommandContext(ctx, "git", slices.Concat(testGitConfig, args)...)
 	cmd.Dir = dir
 	cmd.WaitDelay = gitWaitDelay
 	for _, key := range []string{"PATH", "LANG", "LC_ALL", "TZ"} {
