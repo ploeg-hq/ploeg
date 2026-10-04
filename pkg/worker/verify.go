@@ -178,7 +178,7 @@ func verifyPushedCommit(ctx context.Context, c pushedCandidate, env, cmds []stri
 	if v.Stopped != "" {
 		return v
 	}
-	after := readBranchHead(ctx, c.dir, c.cloneURL, c.token, c.branch)
+	after := readBranchHeadOutsideAnyRepository(ctx, c.cloneURL, c.token, c.branch)
 	switch {
 	case after.err != nil:
 		v.Stopped = "Ploeg could not confirm that branch " + c.branch + " still points at the verified commit: " + after.err.Error()
@@ -273,7 +273,12 @@ func runVerification(ctx context.Context, dir string, env, cmds []string, limit 
 }
 
 func gitOutput(ctx context.Context, dir string, args ...string) string {
-	out, err := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...).Output()
+	repo, err := openWorkerRepository(ctx, dir, "", "")
+	if err != nil {
+		return ""
+	}
+	defer repo.remove()
+	out, err := repo.local(ctx, repo.workTree, args...).Output()
 	if err != nil {
 		return ""
 	}

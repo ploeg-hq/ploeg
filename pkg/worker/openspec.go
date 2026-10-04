@@ -335,26 +335,19 @@ func validateOpenSpecChange(ctx context.Context, root, id, home string) openSpec
 	return openSpecGate{Ran: true, Output: capText(b.String(), maxOpenSpecGateBytes)}
 }
 
-func gateCheckout(ctx context.Context, cloneDir, cloneURL, token, branch string) error {
-	for _, args := range [][]string{
-		{"fetch", "--depth", "50", "origin", "+refs/heads/" + branch + ":refs/ploeg/gate"},
-		{"checkout", "--force", "--detach", "refs/ploeg/gate"},
-		{"clean", "-ffdx"},
-	} {
-		if out, err := runGit(ctx, cloneDir, cloneURL, token, args...); err != nil {
-			return fmt.Errorf("git %s: %v: %s", args[0], err, tail(out, 1000))
-		}
-	}
-	return nil
-}
-
 func runOpenSpecGate(ctx context.Context, ch openSpecChange, cloneURL, token, branch, home string) openSpecGate {
 	gateCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), openSpecTimeout+30*time.Second)
 	defer cancel()
-	if err := gateCheckout(gateCtx, ch.repo, cloneURL, token, branch); err != nil {
+	repo, err := openWorkerRepository(gateCtx, ch.repo, cloneURL, token)
+	if err != nil {
 		return openSpecGate{Output: "could not check out the pushed branch " + branch + " to validate it: " + err.Error()}
 	}
-	root := filepath.Join(ch.repo, filepath.FromSlash(ch.RelRoot))
+	defer repo.remove()
+	tree, err := repo.exportBranch(gateCtx, branch)
+	if err != nil {
+		return openSpecGate{Output: "could not check out the pushed branch " + branch + " to validate it: " + err.Error()}
+	}
+	root := filepath.Join(tree, filepath.FromSlash(ch.RelRoot))
 	return validateOpenSpecChange(gateCtx, root, ch.ID, home)
 }
 
