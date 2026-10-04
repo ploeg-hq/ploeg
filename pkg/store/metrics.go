@@ -35,7 +35,6 @@ type OperationalMetrics struct {
 	// Runs are never deleted, so each count only grows. Every known reason is
 	// present, at zero when no Run has failed that way.
 	FailedRuns map[string]int
-
 	// RunsWithoutObservedDeliveryLastDay counts, per delivery source
 	// (DeliveryUnobservedSources), the Runs finished in the last day whose
 	// report carried no delivery record (legacy) or one that did not match

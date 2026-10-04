@@ -80,3 +80,15 @@ func TestAPushWhileTheChecksRunLeavesTheVerificationIncomplete(t *testing.T) {
 		t.Errorf("summary = %q claims a pass", report.Summary)
 	}
 }
+
+func TestBranchProbeAfterTheChecksIgnoresGitConfigurationTheChecksWrote(t *testing.T) {
+	forge := newWriterForge(t, false, pullsForPushedBranch)
+	adapter := &verifyingAdapter{t: t, outcome: work.OutcomePROpened, delivers: true}
+	redirect := `case "$PWD" in *verify-vik-*) git config url.http://127.0.0.1:9/.insteadOf "$(git remote get-url origin)";; esac`
+	report := runWithSandboxOn(t, forge, writerClaim(), adapter, Config{VerifyCommands: []string{redirect}})
+
+	v := report.Verification
+	if v == nil || v.Result != harness.VerificationPassed {
+		t.Fatalf("verification = %+v, want passed: the branch probe followed an insteadOf the checks planted in the fresh clone", v)
+	}
+}

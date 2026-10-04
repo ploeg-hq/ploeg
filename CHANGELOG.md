@@ -4,10 +4,12 @@
 
 ### Changes
 
+- A Run can be briefed from OKF knowledge packs: the repository's `knowledge/` directory, configured bundles and OKF concepts inside attached context, written outside the clone and indexed in the prompt; `TaskSpec.knowledge` records what was used. A Run may propose up to 10 learnings, which the worker keeps for a person to review and never briefs a Run with (#60, ADR 0065 and 0066, both proposed).
 - The worker drops `CAP_SYS_PTRACE` before it runs a harness with credential isolation on, and refuses to start if the capability survives, so a Run never claims an isolation it cannot give (#63, ADR 0034).
 - Both loopback proxies forward only requests that carry the Run's placeholder; anything else on the pod's loopback gets 403 (#64, ADR 0034).
 - The forge proxy lets a writer push only `refs/heads/<run branch>`: other branches, tags, deleting the Run's branch, push certificates and unparseable pushes get 403 (#65, ADR 0034).
-- A Run whose forge requests or pushed commits carry its model key, its forge token or a per-Run canary credential fails with the new reason `credential_leak`; its forge writes stop and its commits stay on the branch for inspection (#66).
+- A Run whose forge requests, pushed commits or proposed learnings carry its model key, its forge token or a per-Run canary credential fails with the new reason `credential_leak`; its forge writes stop and its commits stay on the branch for inspection, and it keeps no learnings (#66, #68).
+- The branch probe after pushed-commit verification asks the forge by explicit URL outside the verify clone, so a check cannot redirect the token-carrying request with `url.*.insteadOf` (#72).
 - `ploeg_runs_failed_total{reason}` counts failed Runs per reason, and the chart's PrometheusRule gains `PloegCredentialLeak` (critical) on its `credential_leak` series.
 - Every git command the worker runs itself after the harness (the unpublished-work check, the leak scan, the OpenSpec gate, verification reads) runs in a worker-owned git directory, so `.git/config`, hooks or `include.path` the harness writes cannot redirect, observe or run inside it (#72).
 - An Inference Account whose gateway key LiteLLM no longer holds (absent under its alias and `/key/info` 404) moves to `blocked` and settles from the gateway's spend logs, so `PloegModelKeyPastTTL` fires only for a key the gateway may still accept (#70).
@@ -19,6 +21,7 @@
 
 ### Upgrade notes
 
+- Knowledge packs are off until a repository has `knowledge/` or the worker sets `PLOEG_KNOWLEDGE_DIRS`, `PLOEG_KNOWLEDGE_OUTBOX`, `PLOEG_KNOWLEDGE_BUDGET_BYTES` or `PLOEG_REPO_KNOWLEDGE_DIR`; without them a Run is unchanged.
 - A harness that brings its own credentials instead of the placeholders Ploeg hands it now gets 403 from the proxies while `keyIsolation` or `forgeTokenIsolation` is `proxy`.
 - A writer whose pod grants `CAP_SYS_PTRACE` and cannot drop it no longer starts with isolation on.
 - The outcome contract's `failureReason` enum gains `credential_leak`; consumers that switch on it should treat it as a failure.

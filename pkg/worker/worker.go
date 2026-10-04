@@ -21,6 +21,7 @@ import (
 
 	"github.com/ploeg-hq/ploeg/pkg/harness"
 	"github.com/ploeg-hq/ploeg/pkg/harness/skills"
+	"github.com/ploeg-hq/ploeg/pkg/knowledge"
 	"github.com/ploeg-hq/ploeg/pkg/litellm"
 	"github.com/ploeg-hq/ploeg/pkg/llmbroker"
 	"github.com/ploeg-hq/ploeg/pkg/work"
@@ -82,6 +83,19 @@ type Config struct {
 	// SkillDirs are the directories under the Run's HOME where the harness
 	// discovers skills, besides skills.CanonicalDir.
 	SkillDirs []string
+	// KnowledgeDirs are OKF bundles every Run may be briefed from
+	// (PLOEG_KNOWLEDGE_DIRS), besides the repository's own.
+	KnowledgeDirs []string
+	// RepoKnowledgeDir is the repository's own OKF bundle, relative to its
+	// root (PLOEG_REPO_KNOWLEDGE_DIR); "" is DefaultRepoKnowledgeDir and "-"
+	// reads none.
+	RepoKnowledgeDir string
+	// KnowledgeBudget bounds a knowledge pack in bytes
+	// (PLOEG_KNOWLEDGE_BUDGET_BYTES); 0 is knowledge.DefaultBudgetBytes.
+	KnowledgeBudget int
+	// KnowledgeOutbox is where a Run's proposed learnings are written as OKF
+	// bundles for review (PLOEG_KNOWLEDGE_OUTBOX); "" keeps none.
+	KnowledgeOutbox string
 }
 
 // IsolationRequested reports whether either credential isolation flag keeps a
@@ -331,6 +345,7 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	// Context people attached is verified and unpacked before anything else
 	// reads it; a Run never starts on context it could not verify.
 	var contextEnv []string
+	var contextConcepts []knowledge.Source
 	if len(claimed.Context) > 0 {
 		contextDir := filepath.Join(scratchDir, "context")
 		items, index, err := PrepareContext(ctx, w.API, claimed.RunToken, claimed.Context, contextDir)
@@ -339,6 +354,7 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 		}
 		spec.Context, spec.ContextIndex = items, index
 		contextEnv = append(contextEnv, contextDirEnv+"="+contextDir)
+		contextConcepts = w.contextKnowledge(contextDir)
 		w.Log.Info("unpacked the context people attached", "items", len(items), "dir", contextDir)
 	}
 	model := w.Cfg.LLMModel
@@ -383,9 +399,20 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 		leaks.watch.guard(credentialForgeToken, forgeToken)
 		runEnv = append(runEnv, canaryEnv+"="+canary)
 	}
+	knowledgeDir := filepath.Join(scratchDir, "knowledge")
+	if brief := w.knowledgePack(cloneDir, item, knowledgeDir, contextConcepts...); brief != nil {
+		spec.Knowledge = brief
+		runEnv = append(runEnv, knowledgeDirEnv+"="+knowledgeDir)
+		w.Log.Info("briefed from the knowledge pack", "concepts", len(brief.Concepts), "bytes", brief.Bytes, "omitted", brief.Omitted)
+	}
 	var support string
 	if !planner {
 		support = runSupportSection(skillPaths, w.Cfg.Toolchains, verifyCommands, writes)
+		if w.Cfg.KnowledgeOutbox != "" {
+			var invitation strings.Builder
+			writeLearningsInvitation(&invitation)
+			support += invitation.String()
+		}
 	}
 	w.Log.Info("prepared the Run's sandbox", "skills", len(skillSet), "toolchains", len(w.Cfg.Toolchains), "verify_commands", len(verifyCommands))
 	harnessSpec, harnessForgeToken := spec, forgeToken
@@ -476,9 +503,11 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	}
 	scanCtx, cancelScan := context.WithTimeout(context.WithoutCancel(ctx), leakScanTimeout)
 	defer cancelScan()
-	return guardCredentialLeaks(scanCtx, final, leaks, pushedCommitScan{
+	final = guardCredentialLeaks(scanCtx, final, leaks, pushedCommitScan{
 		dir: cloneDir, cloneURL: cloneURL, token: forgeToken, branch: branch, start: baseline.start, publishedBefore: baseline.branch,
 	}, writes)
+	final = withholdLeakedLearnings(final, leaks, branch)
+	return w.keepLearnings(final, trace, work.Reference(item))
 }
 
 // runAgent mints the per-run credential, runs the harness adapter, and
@@ -647,6 +676,9 @@ func resolveOutcome(adapterName string, report harness.OutcomeReport, runErr, ct
 		}
 		if r.CreatedWorkItems == nil {
 			r.CreatedWorkItems = report.CreatedWorkItems
+		}
+		if r.Learnings == nil {
+			r.Learnings = report.Learnings
 		}
 		if r.Problem == "" && r.Solution == "" {
 			r.Problem, r.Solution = report.Problem, report.Solution

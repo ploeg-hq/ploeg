@@ -236,6 +236,7 @@ func credentialLeakReport(report harness.OutcomeReport, leak credentialLeak, bra
 	report.Verdict = ""
 	report.Findings = ""
 	report.CreatedWorkItems = nil
+	report.Learnings = nil
 	return report
 }
 
@@ -255,4 +256,31 @@ func guardCredentialLeaks(ctx context.Context, report harness.OutcomeReport, sco
 		report.Verdict = ""
 	}
 	return report
+}
+
+func withholdLeakedLearnings(report harness.OutcomeReport, scope leakScope, branch string) harness.OutcomeReport {
+	if len(report.Learnings) == 0 {
+		return report
+	}
+	if _, leaked := scope.watch.leak(); leaked {
+		report.Learnings = nil
+		return report
+	}
+	if kind, found := scope.watch.find(learningsText(report.Learnings)); found {
+		leak := credentialLeak{kind: kind, where: "the Run's proposed learnings"}
+		scope.report(leak)
+		return credentialLeakReport(report, leak, branch)
+	}
+	return report
+}
+
+func learningsText(learnings []harness.Learning) []byte {
+	var text bytes.Buffer
+	for _, l := range learnings {
+		for _, field := range append([]string{l.Type, l.Title, l.Description, l.Resource, l.Body}, l.Tags...) {
+			text.WriteString(field)
+			text.WriteByte('\n')
+		}
+	}
+	return text.Bytes()
 }
