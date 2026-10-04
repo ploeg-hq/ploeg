@@ -9,6 +9,9 @@
 - The forge proxy lets a writer push only `refs/heads/<run branch>`: other branches, tags, deleting the Run's branch, push certificates and unparseable pushes get 403 (#65, ADR 0034).
 - A Run whose forge requests or pushed commits carry its model key, its forge token or a per-Run canary credential fails with the new reason `credential_leak`; its forge writes stop and its commits stay on the branch for inspection (#66).
 - `ploeg_runs_failed_total{reason}` counts failed Runs per reason, and the chart's PrometheusRule gains `PloegCredentialLeak` (critical) on its `credential_leak` series.
+- Every git command the worker runs itself after the harness (the unpublished-work check, the leak scan, the OpenSpec gate, verification reads) runs in a worker-owned git directory, so `.git/config`, hooks or `include.path` the harness writes cannot redirect, observe or run inside it (#72).
+- An Inference Account whose gateway key LiteLLM no longer holds (absent under its alias and `/key/info` 404) moves to `blocked` and settles from the gateway's spend logs, so `PloegModelKeyPastTTL` fires only for a key the gateway may still accept (#70).
+- **The chart defaults `executor.litellm.keyIsolation` and `executor.forgeTokenIsolation` to `proxy`** for qualified harnesses (`openhands`, `acp/openhands`, `exec`; see `docs/research/2026-10-04-isolation-qualification.md`). A Role with DinD or an unqualified harness renders with both proxies off, and the worker logs one WARN naming the harness and the reason (#71).
 
 ### Upgrade notes
 
@@ -16,6 +19,8 @@
 - A writer whose pod grants `CAP_SYS_PTRACE` and cannot drop it no longer starts with isolation on.
 - The outcome contract's `failureReason` enum gains `credential_leak`; consumers that switch on it should treat it as a failure.
 - `monitoring.prometheusRule.alerts.credentialLeak` is on whenever the PrometheusRule is.
+- Breaking: installs that left the isolation values unset now run qualified harnesses behind both proxies. Opt out with `""` globally, or per team or Role with `harness.credentialIsolation: ""`; opt an unqualified harness in with `harness.credentialIsolation: proxy`.
+- Verification and the OpenSpec gate now read the writer's checkout through the worker-owned git directory instead of force-checking-out the pushed branch; a clone the harness corrupted fails closed (`stuck`).
 
 ## 0.2.0-rc.3
 
