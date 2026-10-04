@@ -3,6 +3,9 @@ env:
     ploegd: PostgreSQL connection URI. The chart reads the whole `uri` key of the CNPG app Secret named by `database.existingSecret`.
     ploeg-worker: Controller-only. The worker refuses to start when it is set.
   PLOEG_CONFIG: Path of the routing and roster file (the chart's `config:` value, mounted at `/etc/ploeg/ploeg.yaml`). Unset means the legacy `PLOEG_TARGET_MAP`, `PLOEG_TEAM_MAP` and `PLOEG_TEAM_PLANS` variables still apply.
+  PLOEG_LLM_KEY_ISOLATION: "`proxy` keeps the per-Run model key in ploeg-worker and hands the harness a placeholder and a loopback URL (ADR-0034). The chart sets it only for a qualified harness without DinD."
+  PLOEG_FORGE_TOKEN_ISOLATION: "`proxy` keeps a writer's forge token in ploeg-worker behind a loopback proxy limited to the Run's repository (ADR-0034). The chart sets it only for a qualified harness without DinD."
+  PLOEG_CREDENTIAL_ISOLATION_OFF_REASON: "Why the chart left a credential proxy off for this workload: `unqualified`, `dind` or `disabled`. ploeg-worker logs it in one boot WARN with the harness name."
   PLOEG_DEFAULT_TEAM: Team that receives work from an assignee no Team lists.
   PLOEG_TEAM_MAP: Legacy assignee roster, replaced by `teams.<name>.assignees` in the `PLOEG_CONFIG` file.
   PLOEG_TEAM_PLANS: Legacy Shift plans, replaced by `teams.<name>.plan` in the `PLOEG_CONFIG` file. A malformed plan stops ploegd at boot.

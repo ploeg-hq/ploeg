@@ -30,6 +30,10 @@ func readBranchHead(ctx context.Context, dir, cloneURL, token, branch string) br
 	readCtx, cancel := context.WithTimeout(ctx, branchReadTimeout)
 	defer cancel()
 	out, err := runGit(readCtx, dir, cloneURL, token, remoteBranchProbeArgs(branch)...)
+	return parseBranchHead(branch, out, err)
+}
+
+func parseBranchHead(branch string, out []byte, err error) branchHead {
 	switch {
 	case err == nil:
 		fields := strings.Fields(string(out))
@@ -77,38 +81,6 @@ type checkoutChanges struct {
 
 func (c checkoutChanges) any() bool { return len(c.commits) > 0 || len(c.files) > 0 }
 
-func commitIsLocal(ctx context.Context, dir, commit string) bool {
-	_, err := runGit(ctx, dir, "", "", "cat-file", "-e", commit+"^{commit}")
-	return err == nil
-}
-
-func inspectCheckout(ctx context.Context, dir, start, publishedHead string) (checkoutChanges, error) {
-	var changes checkoutChanges
-	out, err := runGit(ctx, dir, "", "", "status", "--porcelain", "--untracked-files=all")
-	if err != nil {
-		return changes, fmt.Errorf("git status: %v: %s", err, tail(out, 400))
-	}
-	for _, line := range strings.Split(strings.TrimRight(string(out), "\n"), "\n") {
-		if len(line) > 3 {
-			changes.files = append(changes.files, line[3:])
-		}
-	}
-	args := []string{"rev-list", "--oneline", "HEAD", "--branches", "--not", start, "--remotes"}
-	if publishedHead != "" && commitIsLocal(ctx, dir, publishedHead) {
-		args = append(args, publishedHead)
-	}
-	out, err = runGit(ctx, dir, "", "", args...)
-	if err != nil {
-		return changes, fmt.Errorf("git rev-list: %v: %s", err, tail(out, 400))
-	}
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		if line != "" {
-			changes.commits = append(changes.commits, line)
-		}
-	}
-	return changes, nil
-}
-
 func (c checkoutChanges) describe() string {
 	var parts []string
 	if n := len(c.commits); n > 0 {
@@ -151,7 +123,12 @@ func guardUnpublishedWork(ctx context.Context, report harness.OutcomeReport, c d
 	if c.baseline.branch.err != nil {
 		return unknown(c.baseline.branch.err)
 	}
-	after := readBranchHead(ctx, c.dir, c.cloneURL, c.token, c.branch)
+	repo, err := openWorkerRepository(ctx, c.dir, c.cloneURL, c.token)
+	if err != nil {
+		return stuck("could not inspect the writer's checkout for unpublished changes", err.Error())
+	}
+	defer repo.remove()
+	after := repo.branchHead(ctx, c.branch)
 	if after.err != nil {
 		return unknown(after.err)
 	}
@@ -164,7 +141,7 @@ func guardUnpublishedWork(ctx context.Context, report harness.OutcomeReport, c d
 			fmt.Sprintf("branch %s changed on the forge during the Run (%s to %s), but no pull request was found for it, so nothing was delivered",
 				c.branch, c.baseline.branch, after))
 	}
-	changes, err := inspectCheckout(ctx, c.dir, c.baseline.start, after.commit)
+	changes, err := repo.inspect(ctx, c.baseline.start, after.commit)
 	if err != nil {
 		return stuck("could not inspect the writer's checkout for unpublished changes", err.Error())
 	}

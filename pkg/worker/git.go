@@ -51,10 +51,13 @@ func plainURL(base, owner, repo string) (string, error) {
 func gitAuthenticationEnvironment(repositoryURL, token string) []string {
 	env := []string{"GIT_TERMINAL_PROMPT=0", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null"}
 	if token != "" {
-		header := "Authorization: Basic " + base64.StdEncoding.EncodeToString([]byte("agent-builder:"+token))
-		env = append(env, "GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=http."+repositoryURL+".extraheader", "GIT_CONFIG_VALUE_0="+header)
+		env = append(env, "GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=http."+repositoryURL+".extraheader", "GIT_CONFIG_VALUE_0="+forgeAuthorizationHeader(token))
 	}
 	return env
+}
+
+func forgeAuthorizationHeader(token string) string {
+	return "Authorization: Basic " + base64.StdEncoding.EncodeToString([]byte("agent-builder:"+token))
 }
 
 const gitWaitDelay = 5 * time.Second
@@ -71,13 +74,18 @@ func gitCommand(ctx context.Context, dir, repositoryURL, token string, args ...s
 	cmd := exec.CommandContext(ctx, "git", slices.Concat(testGitConfig, args)...)
 	cmd.Dir = dir
 	cmd.WaitDelay = gitWaitDelay
+	cmd.Env = append(processEnvironment(), gitAuthenticationEnvironment(repositoryURL, token)...)
+	return cmd
+}
+
+func processEnvironment() []string {
+	var env []string
 	for _, key := range []string{"PATH", "LANG", "LC_ALL", "TZ"} {
 		if value, ok := os.LookupEnv(key); ok {
-			cmd.Env = append(cmd.Env, key+"="+value)
+			env = append(env, key+"="+value)
 		}
 	}
-	cmd.Env = append(cmd.Env, gitAuthenticationEnvironment(repositoryURL, token)...)
-	return cmd
+	return env
 }
 
 // scrubSecrets removes forge credentials from the environment handed to a

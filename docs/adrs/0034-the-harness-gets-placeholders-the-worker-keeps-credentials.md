@@ -150,3 +150,9 @@ Any one of these reopens this record:
 * Related: [0013](0013-push-rights-are-minted-per-run.md) (forge tokens are
   minted per Run), [0030](0030-target-repository-instructions-rank-below-the-delivery-contract.md)
   (repository instructions rank below the delivery contract).
+* 2026-10-04 — The chart now defaults both proxies to `proxy` (VIK-576). They
+  apply to a qualified harness without DinD (`openhands`, `acp` profile
+  `openhands`, `exec`); every other workload renders them off and
+  `ploeg-worker` logs why. Qualification record:
+  [research/2026-10-04-isolation-qualification.md](../research/2026-10-04-isolation-qualification.md).
+  The status and the decision above are unchanged.

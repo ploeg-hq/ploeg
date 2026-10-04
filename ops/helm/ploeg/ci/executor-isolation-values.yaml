@@ -1,0 +1,36 @@
+executor:
+  enabled: true
+  forgejo:
+    readTokenSecret:
+      name: agent-reader-token
+      key: FORGEJO_TOKEN
+  teams:
+    - name: qualified
+      model: litellm_proxy/deepseek-chat
+      budget: "1"
+      harness: {name: openhands, dind: false}
+    - name: dind
+      model: litellm_proxy/deepseek-chat
+      budget: "1"
+      harness: {name: openhands, dind: true}
+    - name: unqualified
+      model: litellm_proxy/claude-sonnet-5
+      budget: "1"
+      harness: {name: claude-code, dind: false}
+    - name: acp-opencode
+      model: litellm_proxy/deepseek-chat
+      budget: "1"
+      harness: {name: acp, dind: false}
+    - name: acp-openhands
+      model: litellm_proxy/deepseek-chat
+      budget: "1"
+      harness: {name: acp, dind: false, acp: {profile: openhands}}
+    - name: override
+      model: litellm_proxy/deepseek-chat
+      budget: "2"
+      harness: {name: openhands, dind: false, credentialIsolation: ""}
+      plan:
+        - roles:
+            - {name: optin, writes: false, cap: "0.50", harness: {name: claude-code, credentialIsolation: proxy}}
+        - roles:
+            - {name: builder, writes: true, cap: "1.00"}
