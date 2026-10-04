@@ -112,6 +112,11 @@ func renderMetrics(m store.OperationalMetrics, webhooks *WebhookCoverage) []byte
 	b.family("ploeg_settled_spend_usd_last_hour", "gauge", "Spend settled onto Shifts during the last hour, in USD.")
 	b.sample("ploeg_settled_spend_usd_last_hour", m.SettledSpendLastHourUSD)
 
+	b.family("ploeg_runs_failed_total", "counter", "Runs that ended failed, by failure reason. A credential_leak Run carried one of its credentials or its canary to the forge.")
+	for _, reason := range sortedKeys(m.FailedRuns) {
+		b.sample("ploeg_runs_failed_total", float64(m.FailedRuns[reason]), "reason", reason)
+	}
+
 	if webhooks != nil {
 		if c, ok := webhooks.snapshot(); ok {
 			b.family("ploeg_tracker_webhooks_missing", "gauge", "Configured Vikunja projects whose assignment webhook was not found at the last check.")

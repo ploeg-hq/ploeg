@@ -216,10 +216,7 @@ func TestOutcomeReport_MatchesSchema(t *testing.T) {
 
 	// failureReason is posted by the worker and stored in agent_runs; every
 	// value of the taxonomy must be on the wire contract.
-	for _, fr := range []work.FailureReason{
-		work.FailureInfraNode, work.FailureInfraLLM,
-		work.FailureAgentError, work.FailureBudget, work.FailureLeaseLost, work.FailureTimeout,
-	} {
+	for _, fr := range work.FailureReasons() {
 		r := OutcomeReport{Outcome: work.OutcomeFailed, Summary: "failed", FailureReason: string(fr)}
 		if err := validate(t, sch, r); err != nil {
 			t.Errorf("failureReason %q does not validate: %v", fr, err)
