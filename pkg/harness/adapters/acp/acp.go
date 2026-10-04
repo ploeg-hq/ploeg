@@ -259,8 +259,10 @@ func (a *Adapter) Run(ctx context.Context, spec harness.TaskSpec, env harness.Ru
 		if stop.err != nil {
 			res.phase = phasePrompt // died mid-flight, not a clean stop reason
 		}
-	case stopTimeout:
-		res.timedOut = true
+	case stopIdle:
+		res.watchdog = &watchdogFire{kind: watchdogIdle, limit: a.opts.IdleTimeout, events: state.eventCount()}
+	case stopPromptWall:
+		res.watchdog = &watchdogFire{kind: watchdogPromptWall, limit: a.opts.PromptTimeout}
 	case stopStorm:
 		res.permStorm = true
 	case stopCancelled:
@@ -298,7 +300,8 @@ type stopWhy int
 
 const (
 	stopNormal stopWhy = iota
-	stopTimeout
+	stopIdle
+	stopPromptWall
 	stopStorm
 	stopCancelled
 )
@@ -338,7 +341,7 @@ func (a *Adapter) awaitPrompt(
 
 		case <-hard.C:
 			log.Warn("acp: prompt exceeded its hard wall", "timeout", a.opts.PromptTimeout)
-			return promptOutcome{}, stopTimeout
+			return promptOutcome{}, stopPromptWall
 
 		case <-idle.C:
 			// Progress is any protocol event at all. Two consecutive ticks
@@ -346,7 +349,7 @@ func (a *Adapter) awaitPrompt(
 			n := state.eventCount()
 			if n == lastEvents {
 				log.Warn("acp: no protocol activity", "idleTimeout", a.opts.IdleTimeout, "events", n)
-				return promptOutcome{}, stopTimeout
+				return promptOutcome{}, stopIdle
 			}
 			lastEvents = n
 
