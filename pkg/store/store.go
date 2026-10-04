@@ -264,15 +264,20 @@ func trackerEstimate(item work.WorkItem) *int64 {
 }
 
 // RefuseRoute records a tracker item that routing refused (ADR-0038): an
-// audit row and no Work Item, so nothing is queued anywhere.
-func (s *Store) RefuseRoute(ctx context.Context, item work.WorkItem, reason string) error {
+// audit row and no Work Item, so nothing is queued anywhere. code is a
+// target.Refusal code and allowed the repo/ labels the board allows.
+func (s *Store) RefuseRoute(ctx context.Context, item work.WorkItem, code, reason string, allowed []string) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
+	if allowed == nil {
+		allowed = []string{}
+	}
 	detail := map[string]any{"external_id": item.ExternalID, "team": item.Team, "title": item.Title,
-		"external_scope": item.ExternalScope, "labels": item.Labels, "reason": reason}
+		"external_scope": item.ExternalScope, "labels": item.Labels, "reason": reason,
+		"code": code, "allowed_labels": allowed}
 	if err := audit(ctx, tx, "webhook:"+item.Provider, "work_item.route_refused", nil, detail); err != nil {
 		return err
 	}

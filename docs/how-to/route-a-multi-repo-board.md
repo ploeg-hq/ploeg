@@ -103,10 +103,10 @@ The Forgejo and GitLab forges report readiness. On GitLab, a pull mirror counts 
    FROM work_items WHERE provider = 'vikunja' ORDER BY id DESC LIMIT 10;
    ```
 
-4. List refusals, which have an audit row and no Work Item:
+4. List refusals, which have an audit row and no Work Item. An operator consumer reads them from `GET /api/v1/operator/route-refusals`: the newest refusal of each task from the last 14 days, newest first and at most 50, within the consumer's teams. Each row carries a stable `code` (`label_missing`, `label_not_allowed`, `label_unregistered`, `multiple_labels`, `labels_unread`, `no_board_rule`, `target_not_ready`, or `unclassified` for a row recorded before codes existed), the `reason` Ploeg commented on the task and the `allowedLabels` of the board, for example `["repo/homelab-cluster", "repo/unfold"]`. A task that was queued after its refusal drops out. [The operator API schema](../contracts/operator-api.v1.schema.json) defines the response. Older history is still in the audit log:
 
    ```sql
-   SELECT at, detail->>'external_id' AS ticket, detail->>'reason' AS reason
+   SELECT at, detail->>'external_id' AS ticket, detail->>'code' AS code, detail->>'reason' AS reason
    FROM audit_log WHERE action = 'work_item.route_refused' ORDER BY id DESC LIMIT 20;
    ```
 

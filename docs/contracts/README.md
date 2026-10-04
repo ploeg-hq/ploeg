@@ -97,6 +97,13 @@ change either side and the test tells you.
   carries `missing` and `review.reworkRounds`. A consumer of an older Ploeg
   sees them absent. The grade is computed on read under the current formula,
   so a card read after a formula change shows the new version.
+- `GET /api/v1/operator/route-refusals` is a new response,
+  `routeRefusalsResponse`: the tracker tasks that routing refused under
+  [ADR-0038](../adrs/0038-a-repo-label-selects-among-registered-targets-and-the-board-default-is-the-fallback.md)
+  in the last 14 days, which have no Work Item. Each row carries a stable
+  `code`, the `reason` sentence and the board's `allowedLabels`. A row
+  recorded before codes existed answers `unclassified`. An older Ploeg
+  answers 404.
 - `deploy-api.v1` is the body of a pipeline's deploy report. It refuses
   unknown fields, unlike the response contracts, so a misspelled field fails
   the pipeline step instead of being dropped.
