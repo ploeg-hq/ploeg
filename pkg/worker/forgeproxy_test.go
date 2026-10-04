@@ -2,6 +2,7 @@ package worker
 
 import (
 	"encoding/base64"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -48,7 +49,7 @@ func startTestForgeProxy(t *testing.T, repo harness.RepoRef) *forgeTokenProxy {
 
 func startTestForgeProxyFor(t *testing.T, repo harness.RepoRef, access forgeAccess) *forgeTokenProxy {
 	t.Helper()
-	p, err := startForgeTokenProxy(repo, "real-forge-token", access)
+	p, err := startForgeTokenProxy(repo, "real-forge-token", access, writerBranch)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +59,19 @@ func startTestForgeProxyFor(t *testing.T, repo harness.RepoRef, access forgeAcce
 
 func send(t *testing.T, p *forgeTokenProxy, method, path string, header http.Header) int {
 	t.Helper()
-	req, err := http.NewRequest(method, p.baseURL+"/", nil)
+	return sendBody(t, p, method, path, header, bodyGitSendsFirst(method, path))
+}
+
+func bodyGitSendsFirst(method, path string) io.Reader {
+	if method == http.MethodPost && strings.HasSuffix(path, "/git-receive-pack") {
+		return strings.NewReader(flushPkt)
+	}
+	return nil
+}
+
+func sendBody(t *testing.T, p *forgeTokenProxy, method, path string, header http.Header, body io.Reader) int {
+	t.Helper()
+	req, err := http.NewRequest(method, p.baseURL+"/", body)
 	if err != nil {
 		t.Fatal(err)
 	}

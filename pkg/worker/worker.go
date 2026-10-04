@@ -364,7 +364,7 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 		gitEnv = gitAuthenticationEnvironment(cloneURL, forgeToken)
 	}
 	if writes && forgeToken != "" && w.Cfg.ForgeTokenIsolation == ForgeTokenIsolationProxy {
-		forgeProxy, err := startForgeTokenProxy(ref, forgeToken, forgeWriter)
+		forgeProxy, err := startForgeTokenProxy(ref, forgeToken, forgeWriter, branch)
 		if err != nil {
 			return stuckReport("could not isolate the forge token", err.Error())
 		}

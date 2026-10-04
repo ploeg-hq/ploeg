@@ -29,7 +29,7 @@ type forgeTokenProxy struct {
 	placeholder string
 }
 
-func startForgeTokenProxy(repo harness.RepoRef, token string, access forgeAccess) (*forgeTokenProxy, error) {
+func startForgeTokenProxy(repo harness.RepoRef, token string, access forgeAccess, runBranch string) (*forgeTokenProxy, error) {
 	target, err := url.Parse(repo.ForgeURL)
 	if err != nil || target.Host == "" || (target.Scheme != "http" && target.Scheme != "https") {
 		return nil, fmt.Errorf("forge URL %q is not absolute", repo.ForgeURL)
@@ -37,6 +37,10 @@ func startForgeTokenProxy(repo harness.RepoRef, token string, access forgeAccess
 	if token == "" {
 		return nil, fmt.Errorf("no forge token to isolate")
 	}
+	if access == forgeWriter && runBranch == "" {
+		return nil, fmt.Errorf("a writer's forge proxy needs the Run's branch to fence pushes to")
+	}
+	fence := newPushFence(runBranch)
 	placeholder, err := randomPlaceholder()
 	if err != nil {
 		return nil, err
@@ -68,6 +72,12 @@ func startForgeTokenProxy(repo harness.RepoRef, token string, access forgeAccess
 		if !presentsForgePlaceholder(r.Header, placeholder) {
 			http.Error(w, "this Run's forge proxy serves only requests that present the Run's placeholder", http.StatusForbidden)
 			return
+		}
+		if isReceivePack(r) {
+			if err := fence.admit(r); err != nil {
+				http.Error(w, err.Error(), http.StatusForbidden)
+				return
+			}
 		}
 		proxy.ServeHTTP(w, r)
 	})
