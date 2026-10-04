@@ -199,14 +199,10 @@ func (e *Engine) evaluate(ctx context.Context, si store.ShiftInfo) error {
 		}
 	}
 
-	// A WRITING Run that failed leaves the branch unwritten, so the plan must
-	// not step over it (ADR-0019).
-	//
-	// The spec's "a swept Run does not block its Round forever" was reasoned
-	// about readers, and for a reader it still holds — a missing opinion is
-	// not worth stalling an item over. For a writer the same rule means the
-	// reviewer reviews work that does not exist, which is how a Shift closed
-	// `review_approved` having produced no pull request at all.
+	// A Run that failed re-opens its Round in place, capped: a WRITING Run
+	// because the plan must not step over an unwritten branch (ADR-0019), a
+	// READING Run because a review that never happened must not read as one
+	// (ADR-0043).
 	//
 	// `failed` is the sweeper's verdict on a pod that stopped renewing, so it
 	// is retryable by construction, and retrying is what R2 promises: a node
@@ -216,7 +212,7 @@ func (e *Engine) evaluate(ctx context.Context, si store.ShiftInfo) error {
 	// run's own Outcome, and `failed` maps to queued — the attempt-capped
 	// requeue R5 requires. There is no later Round there to step over.
 	if !synthesized {
-		handled, err := e.retryFailedWriter(ctx, si, reports)
+		handled, err := e.retryFailedRuns(ctx, si, reports)
 		if err != nil || handled {
 			return err
 		}
@@ -231,7 +227,11 @@ func (e *Engine) evaluate(ctx context.Context, si store.ShiftInfo) error {
 		// Past the plan: the review loop decides whether anything more runs.
 		loopRound, reason, ok := e.nextFixRound(ctx, si, tp, reports)
 		if !ok {
-			return e.close(ctx, si, reason, closeMessage(reason), synthesized, reports)
+			message := closeMessage(reason)
+			if missing, found := missingReview(reports); found && reason == reasonPlanExhausted {
+				reason, message = reasonReviewFailed, missing.message()
+			}
+			return e.close(ctx, si, reason, message, synthesized, reports)
 		}
 		next = loopRound
 	}
@@ -315,7 +315,7 @@ func (e *Engine) close(ctx context.Context, si store.ShiftInfo, closeReason, hum
 				budget = &l
 			}
 		}
-		e.notifyTracker(ctx, si, settled, humanReason, budget)
+		e.notifyTracker(ctx, si, settled, closeReason, humanReason, budget)
 		if budget != nil {
 			e.publishBudgetExhausted(ctx, si, *budget)
 		}
@@ -349,14 +349,15 @@ func (e *Engine) remandForReview(ctx context.Context, workItemID int64) bool {
 	return true
 }
 
-// readyForReview reports whether a configured plan closed successfully: its
-// reviewer approved, or it ran to completion without the last review of the
-// pull request asking for changes, and a writer opened or updated it.
+// readyForReview reports whether a configured plan closed with a pull request
+// a person can review: its reviewer approved, or it ran to completion, with or
+// without an agent review, without the last review asking for changes, and a
+// writer opened or updated it.
 func readyForReview(closeReason string, reports []store.RunReport) bool {
-	if closeReason != reasonApproved && closeReason != reasonPlanExhausted {
+	if closeReason != reasonApproved && closeReason != reasonPlanExhausted && closeReason != reasonReviewFailed {
 		return false
 	}
-	if closeReason == reasonPlanExhausted && lastReviewRequestsChanges(reports) {
+	if closeReason != reasonApproved && lastReviewRequestsChanges(reports) {
 		return false
 	}
 	for _, r := range reports {
