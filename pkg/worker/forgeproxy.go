@@ -56,8 +56,17 @@ func startForgeTokenProxy(repo harness.RepoRef, token string, access forgeAccess
 		FlushInterval: -1,
 	}
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if scope.kind(r) == forgeOutOfScope {
+		kind := scope.kind(r)
+		if kind == forgeOutOfScope {
 			http.Error(w, "this Run's forge access is limited to what its Role needs in "+repo.ProjectPath(), http.StatusForbidden)
+			return
+		}
+		if kind == forgeGit && !carriesForgeCredential(r.Header) {
+			challengeGitForPlaceholder(w)
+			return
+		}
+		if !presentsForgePlaceholder(r.Header, placeholder) {
+			http.Error(w, "this Run's forge proxy serves only requests that present the Run's placeholder", http.StatusForbidden)
 			return
 		}
 		proxy.ServeHTTP(w, r)
@@ -82,9 +91,47 @@ func (p *forgeTokenProxy) gitEnvironment() []string {
 	return []string{
 		"GIT_TERMINAL_PROMPT=0", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null",
 		"GIT_CONFIG_COUNT=1",
-		"GIT_CONFIG_KEY_0=url." + p.baseURL + "/.insteadOf",
+		"GIT_CONFIG_KEY_0=url." + p.placeholderBaseURL() + "/.insteadOf",
 		"GIT_CONFIG_VALUE_0=" + p.upstream + "/",
 	}
+}
+
+func (p *forgeTokenProxy) placeholderBaseURL() string {
+	u, _ := url.Parse(p.baseURL)
+	u.User = url.UserPassword(forgeGitUser, p.placeholder)
+	return u.String()
+}
+
+const forgeGitUser = "agent-builder"
+
+func carriesForgeCredential(h http.Header) bool {
+	return h.Get("Authorization") != "" || h.Get("Private-Token") != ""
+}
+
+func challengeGitForPlaceholder(w http.ResponseWriter) {
+	w.Header().Set("WWW-Authenticate", `Basic realm="ploeg"`)
+	http.Error(w, "present the Run's placeholder as the Basic password", http.StatusUnauthorized)
+}
+
+func presentsForgePlaceholder(h http.Header, placeholder string) bool {
+	if equalSecret(h.Get("Private-Token"), placeholder) {
+		return true
+	}
+	for _, scheme := range []string{"token", "Bearer"} {
+		if credential, ok := authorizationCredential(h, scheme); ok {
+			return equalSecret(credential, placeholder)
+		}
+	}
+	encoded, ok := authorizationCredential(h, "Basic")
+	if !ok {
+		return false
+	}
+	decoded, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return false
+	}
+	_, password, _ := strings.Cut(string(decoded), ":")
+	return equalSecret(password, placeholder)
 }
 
 type forgeRequestKind int
@@ -310,7 +357,7 @@ func attachForgeToken(h http.Header, kind forgeRequestKind, dialect, token strin
 	h.Del("Private-Token")
 	switch {
 	case kind == forgeGit:
-		h.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte("agent-builder:"+token)))
+		h.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(forgeGitUser+":"+token)))
 	case kind == forgeAPI && dialect == harness.ForgeGitLab:
 		h.Set("Private-Token", token)
 	case kind == forgeAPI:

@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -36,19 +37,14 @@ func startLLMKeyProxy(upstream, key string, activity *harness.Activity) (*llmKey
 	if err != nil {
 		return nil, err
 	}
-	p, err := startLLMProxy(upstream, key, activity)
-	if err != nil {
-		return nil, err
-	}
-	p.placeholder = placeholder
-	return p, nil
+	return startLLMProxy(upstream, key, placeholder, activity)
 }
 
 func startLLMObserver(upstream string, activity *harness.Activity) (*llmKeyProxy, error) {
-	return startLLMProxy(upstream, "", activity)
+	return startLLMProxy(upstream, "", "", activity)
 }
 
-func startLLMProxy(upstream, key string, activity *harness.Activity) (*llmKeyProxy, error) {
+func startLLMProxy(upstream, key, placeholder string, activity *harness.Activity) (*llmKeyProxy, error) {
 	target, err := url.Parse(upstream)
 	if err != nil || target.Scheme == "" || target.Host == "" {
 		return nil, fmt.Errorf("model gateway URL %q is not absolute", upstream)
@@ -74,12 +70,17 @@ func startLLMProxy(upstream, key string, activity *harness.Activity) (*llmKeyPro
 		},
 		FlushInterval: -1,
 	}
+	var handler http.Handler = proxy
+	if placeholder != "" {
+		handler = requireModelPlaceholder(placeholder, proxy)
+	}
 	p := &llmKeyProxy{
 		server: &http.Server{
-			Handler:           proxy,
+			Handler:           handler,
 			ReadHeaderTimeout: 30 * time.Second,
 		},
-		baseURL: "http://" + ln.Addr().String() + strings.TrimRight(target.Path, "/"),
+		baseURL:     "http://" + ln.Addr().String() + strings.TrimRight(target.Path, "/"),
+		placeholder: placeholder,
 	}
 	go func() { _ = p.server.Serve(ln) }()
 	return p, nil
@@ -102,6 +103,33 @@ func (b activityBody) Read(p []byte) (int, error) {
 		b.activity.Touch()
 	}
 	return n, err
+}
+
+func requireModelPlaceholder(placeholder string, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !presentsModelPlaceholder(r.Header, placeholder) {
+			http.Error(w, "this Run's model proxy serves only requests that present the Run's placeholder", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func presentsModelPlaceholder(h http.Header, placeholder string) bool {
+	bearer, isBearer := authorizationCredential(h, "Bearer")
+	return (isBearer && equalSecret(bearer, placeholder)) || equalSecret(h.Get("X-Api-Key"), placeholder)
+}
+
+func authorizationCredential(h http.Header, scheme string) (string, bool) {
+	value := h.Get("Authorization")
+	if len(value) <= len(scheme) || value[len(scheme)] != ' ' || !strings.EqualFold(value[:len(scheme)], scheme) {
+		return "", false
+	}
+	return strings.TrimSpace(value[len(scheme)+1:]), true
+}
+
+func equalSecret(presented, want string) bool {
+	return want != "" && subtle.ConstantTimeCompare([]byte(presented), []byte(want)) == 1
 }
 
 func swapModelKey(h http.Header, key string) {

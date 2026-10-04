@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -183,7 +184,7 @@ func assertRefusedUnforwarded(t *testing.T, p *forgeTokenProxy, seen *forgeSeen,
 func assertForwardedWithToken(t *testing.T, p *forgeTokenProxy, seen *forgeSeen, method, path, header, want string) {
 	t.Helper()
 	before := seen.count()
-	send(t, p, method, path, nil)
+	send(t, p, method, path, http.Header{"Authorization": {"token " + p.placeholder}})
 	if seen.count() != before+1 {
 		t.Errorf("%s %s was not forwarded to the forge", method, path)
 		return
@@ -333,4 +334,75 @@ func TestForgeProxyScopesTheGitLabAPIToTheEncodedProject(t *testing.T) {
 	} {
 		assertRefusedUnforwarded(t, p, seen, c.method, c.path)
 	}
+}
+
+func TestForgeProxyRefusesRequestsWithoutThePlaceholder(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		repo harness.RepoRef
+		api  string
+	}{
+		{"forgejo", harness.RepoRef{Owner: "webgrip", Name: "example"}, "/api/v1/repos/webgrip/example/pulls"},
+		{"gitlab", harness.RepoRef{Forge: harness.ForgeGitLab, Owner: "group/sub", Name: "example"}, "/api/v4/projects/group%2Fsub%2Fexample/merge_requests"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			forge, seen := fakeForge(t)
+			c.repo.ForgeURL = forge.URL
+			p := startTestForgeProxy(t, c.repo)
+			git := "/" + c.repo.ProjectPath() + ".git/git-receive-pack"
+			for name, header := range map[string]http.Header{
+				"wrong token":                {"Authorization": {"token ploeg-isolated-guess"}},
+				"wrong private token":        {"Private-Token": {"ploeg-isolated-guess"}},
+				"wrong basic password":       {"Authorization": {basicAuth("agent-builder", "ploeg-isolated-guess")}},
+				"placeholder as basic user":  {"Authorization": {basicAuth(p.placeholder, "")}},
+				"placeholder prefix":         {"Authorization": {"token " + p.placeholder[:len(p.placeholder)-1]}},
+				"placeholder without scheme": {"Authorization": {p.placeholder}},
+				"undecodable basic":          {"Authorization": {"Basic " + p.placeholder}},
+				"the real token itself":      {"Authorization": {"token real-forge-token"}},
+				"real token as basic":        {"Authorization": {basicAuth("agent-builder", "real-forge-token")}},
+				"two wrong credentials":      {"Authorization": {"token ploeg-isolated-guess"}, "Private-Token": {"x"}},
+			} {
+				for _, path := range []string{git, c.api} {
+					if status := send(t, p, http.MethodPost, path, header); status != http.StatusForbidden {
+						t.Errorf("%s on %s: status %d, want 403", name, path, status)
+					}
+				}
+			}
+			if status := send(t, p, http.MethodPost, c.api, nil); status != http.StatusForbidden {
+				t.Errorf("an API call with no credential: status %d, want 403", status)
+			}
+			if status := send(t, p, http.MethodPost, git, nil); status != http.StatusUnauthorized {
+				t.Errorf("git with no credential: status %d, want the 401 challenge git answers with the placeholder", status)
+			}
+			if n := seen.count(); n != 0 {
+				t.Fatalf("%d requests without the placeholder reached the forge", n)
+			}
+			for _, header := range []http.Header{
+				{"Authorization": {basicAuth("agent-builder", p.placeholder)}},
+				{"Authorization": {"token " + p.placeholder}},
+				{"Authorization": {"Bearer " + p.placeholder}},
+				{"Private-Token": {p.placeholder}},
+			} {
+				before := seen.count()
+				send(t, p, http.MethodPost, git, header)
+				send(t, p, http.MethodPost, c.api, header)
+				if seen.count() != before+2 {
+					t.Errorf("%v: the Run's placeholder was not forwarded", header)
+				}
+			}
+		})
+	}
+}
+
+func TestForgeProxyGitEnvironmentCarriesThePlaceholderAsTheBasicPassword(t *testing.T) {
+	forge, _ := fakeForge(t)
+	p := startTestForgeProxy(t, harness.RepoRef{ForgeURL: forge.URL, Owner: "webgrip", Name: "example"})
+	want := "GIT_CONFIG_KEY_0=url.http://agent-builder:" + p.placeholder + "@" + strings.TrimPrefix(p.baseURL, "http://") + "/.insteadOf"
+	if !slices.Contains(p.gitEnvironment(), want) {
+		t.Fatalf("git environment %v, want %s", p.gitEnvironment(), want)
+	}
+}
+
+func basicAuth(user, password string) string {
+	return "Basic " + base64.StdEncoding.EncodeToString([]byte(user+":"+password))
 }
