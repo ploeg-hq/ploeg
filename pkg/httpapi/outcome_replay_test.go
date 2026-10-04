@@ -13,7 +13,7 @@ import (
 	"github.com/ploeg-hq/ploeg/pkg/store"
 )
 
-const outcomeWithCheckpoint = `{"outcome":"no_change_needed","summary":"nothing to change","checkpoint":{"phase":"reviewed","branch":"agent/vik-replay"}}`
+const outcomeWithCheckpoint = `{"outcome":"no_change_needed","summary":"nothing to change","checkpoint":{"phase":"reviewed"}}`
 
 func checkpointCount(t *testing.T, runToken string) int {
 	t.Helper()

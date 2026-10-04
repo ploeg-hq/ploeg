@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"regexp"
 	"strconv"
 	"strings"
 
@@ -23,31 +22,14 @@ import (
 // pipeline or lose an Outcome. Failures are logged, never returned into the
 // lifecycle, and never block a state transition (blackboard spec).
 
-// prNumber extracts a pull request number from a forge URL. Forgejo and Gitea
-// both end the path with the number; anything else yields 0, which is treated
-// as "no PR known" rather than an error.
-var prPathRe = regexp.MustCompile(`/(?:pulls?|merge_requests)/(\d+)/?$`)
-
-func prNumber(link string) int {
-	m := prPathRe.FindStringSubmatch(strings.TrimSpace(link))
-	if m == nil {
-		return 0
-	}
-	n, err := strconv.Atoi(m[1])
-	if err != nil {
-		return 0
-	}
-	return n
-}
-
-// pullRequest finds the Shift's pull request from what its Runs reported.
-// The writer's links carry it; readers do not open one.
-func pullRequest(reports []store.RunReport) (link string, number int) {
+// pullRequest finds the Shift's pull request in repository ("owner/name")
+// from its Runs' stored facts: a Run's admitted delivery record, or for a Run
+// from an older worker its last link to a pull request of repository. The
+// last Run that names one wins.
+func pullRequest(reports []store.RunReport, repository string) (link string, number int) {
 	for _, r := range reports {
-		for _, l := range r.Links {
-			if n := prNumber(l); n > 0 {
-				link, number = l, n
-			}
+		if l, n := store.RunPullRequest(r.Delivery, r.Links, repository); n > 0 {
+			link, number = l, n
 		}
 	}
 	return link, number
@@ -94,15 +76,16 @@ func (e *Engine) publishRound(ctx context.Context, si store.ShiftInfo, reports [
 // pullRequestThread resolves the forge, repository and number of the Shift's
 // pull request. A non-empty skip says why there is nowhere to comment.
 func (e *Engine) pullRequestThread(ctx context.Context, si store.ShiftInfo, reports []store.RunReport) (fp provider.ForgeProvider, repo string, pr int, skip string) {
-	if _, pr = pullRequest(reports); pr == 0 {
-		return nil, "", 0, "no pull request on this shift yet"
-	}
 	item, err := e.Store.WorkItem(ctx, si.WorkItemID)
 	if err != nil {
 		return nil, "", 0, "work item read failed"
 	}
 	if item.Target == nil {
 		return nil, "", 0, "work item has no resolved target"
+	}
+	repo = item.Target.Owner + "/" + item.Target.Repo
+	if _, pr = pullRequest(reports, repo); pr == 0 {
+		return nil, "", 0, "no pull request on this shift yet"
 	}
 	forgeID := item.Target.Forge
 	if forgeID == "" {
@@ -112,7 +95,7 @@ func (e *Engine) pullRequestThread(ctx context.Context, si store.ShiftInfo, repo
 	if !ok {
 		return nil, "", 0, "no provider for forge " + strconv.Quote(forgeID)
 	}
-	return fp, item.Target.Owner + "/" + item.Target.Repo, pr, ""
+	return fp, repo, pr, ""
 }
 
 // budgetExhausted reports whether a close reason says the Shift's pool could
@@ -285,7 +268,11 @@ func (e *Engine) notifyTracker(ctx context.Context, si store.ShiftInfo, settled 
 	if err != nil {
 		e.Log.Error("tracker write-back: reports read failed", "shift", si.ID, "err", err)
 	}
-	link, _ := pullRequest(reports)
+	var repository string
+	if item.Target != nil {
+		repository = item.Target.Owner + "/" + item.Target.Repo
+	}
+	link, _ := pullRequest(reports, repository)
 
 	body := trackerMessage(settled, reason, link, len(reports), si.Round, budget, closeReason == reasonReviewFailed)
 

@@ -157,7 +157,7 @@
     },
     "delivery": {
       "$ref": "#/$defs/delivery",
-      "description": "What the worker read on the forge about the Run's pull request before and after the harness ran (ADR-0059, proposed). Only the worker sets it: an adapter or agent never reports pr_opened, pr_updated, links, a checkpoint, a failure reason, a verification or a delivery. A writer's pr_opened follows observed=opened. Optional: a report from an older worker has none."
+      "description": "What the worker read on the forge about the Run's pull request before and after the harness ran (ADR-0059, proposed). Only the worker sets it: an adapter or agent never reports pr_opened, pr_updated, links, a checkpoint, a failure reason, a verification or a delivery. A writer's pr_opened follows observed=opened. ploegd stores it only when it names the Work Item's forge, repository and the Run's branch, and stores observed=unknown otherwise; a writer's pr_opened or pr_updated stands only when the stored record observed that delivery. Optional: a report from an older worker has none."
     }
   },
   "$defs": {

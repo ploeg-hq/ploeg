@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ploeg-hq/ploeg/pkg/harness"
 	"github.com/ploeg-hq/ploeg/pkg/provider"
 	"github.com/ploeg-hq/ploeg/pkg/store"
 	"github.com/ploeg-hq/ploeg/pkg/work"
@@ -155,36 +156,47 @@ func (f *fakeTracker) SetStatus(_ context.Context, _ string, s work.State) error
 	return nil
 }
 
-// --- unit: PR link parsing --------------------------------------------------
+// --- unit: which pull request a Shift names ---------------------------------
 
-func TestPRNumber(t *testing.T) {
-	for in, want := range map[string]int{
-		"https://forgejo.webgrip.dev/webgrip/ploeg/pulls/7":  7,
-		"https://forgejo.webgrip.dev/webgrip/ploeg/pulls/7/": 7,
-		"https://github.com/o/r/pull/123":                    123,
-		"https://forgejo/webgrip/ploeg/issues/7":             0,
-		"https://forgejo/webgrip/ploeg":                      0,
-		"":                                                   0,
-		"not a url":                                          0,
-	} {
-		if got := prNumber(in); got != want {
-			t.Errorf("prNumber(%q) = %d, want %d", in, got, want)
-		}
-	}
-}
-
-// The writer's links carry the PR; readers open none. The most recent one
-// wins so a re-opened PR supersedes an earlier link.
+// The writer's links carry the PR for a Run from an older worker; readers
+// open none. The most recent one wins so a re-opened PR supersedes an earlier
+// link.
 func TestPullRequestFromReports(t *testing.T) {
 	link, n := pullRequest([]store.RunReport{
 		{Role: "analyst", Round: 1},
 		{Role: "builder", Round: 2, Writes: true, Links: []string{"https://forgejo/webgrip/ploeg/pulls/7"}},
-	})
+	}, "webgrip/ploeg")
 	if n != 7 || !strings.HasSuffix(link, "/7") {
 		t.Errorf("pullRequest = (%q, %d)", link, n)
 	}
-	if _, n := pullRequest([]store.RunReport{{Role: "analyst", Round: 1}}); n != 0 {
+	if _, n := pullRequest([]store.RunReport{{Role: "analyst", Round: 1}}, "webgrip/ploeg"); n != 0 {
 		t.Errorf("a shift with no PR reported %d", n)
+	}
+}
+
+// VIK-1732 (ADR-0059): a link to a pull request of another repository or
+// host path never names the Shift's pull request, and a stored delivery
+// record wins over every link.
+func TestPullRequestIgnoresForeignLinksAndPrefersDelivery(t *testing.T) {
+	foreign := []store.RunReport{{Role: "builder", Writes: true, Outcome: "pr_opened",
+		Links: []string{"https://forgejo/other/repo/pulls/123"}}}
+	if link, n := pullRequest(foreign, "webgrip/ploeg"); n != 0 {
+		t.Errorf("a link to other/repo named pull request (%q, %d)", link, n)
+	}
+
+	delivered := []store.RunReport{{Role: "builder", Writes: true, Outcome: "pr_opened",
+		Links: []string{"https://forgejo/webgrip/ploeg/pulls/9"},
+		Delivery: &harness.Delivery{Repository: "webgrip/ploeg", Branch: "agent/vik-1", Observed: harness.DeliveryOpened,
+			Number: 4, URL: "https://forgejo/webgrip/ploeg/pulls/4", Head: strings.Repeat("a", 40)}}}
+	if link, n := pullRequest(delivered, "webgrip/ploeg"); n != 4 || link != "https://forgejo/webgrip/ploeg/pulls/4" {
+		t.Errorf("pullRequest = (%q, %d), want the delivery record's 4", link, n)
+	}
+
+	unknown := []store.RunReport{{Role: "builder", Writes: true, Outcome: "stuck",
+		Links:    []string{"https://forgejo/webgrip/ploeg/pulls/9"},
+		Delivery: &harness.Delivery{Repository: "webgrip/ploeg", Branch: "agent/vik-1", Observed: harness.DeliveryUnknown}}}
+	if link, n := pullRequest(unknown, "webgrip/ploeg"); n != 0 {
+		t.Errorf("an unknown delivery named pull request (%q, %d)", link, n)
 	}
 }
 
