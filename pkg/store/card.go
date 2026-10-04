@@ -161,6 +161,9 @@ type CardOptions struct {
 	// Flow computes the card's flow figures (ADR-0057). When it is nil,
 	// Flow is nil and no status move is read.
 	Flow *FlowOptions
+	// TaskURL names the tracker page for a Work Item stored without one.
+	// Nil leaves such a card without a link.
+	TaskURL func(provider, externalID string) string
 }
 
 // LiveUsage is what the gateway has recorded so far for one running Run.
@@ -388,6 +391,9 @@ func (s *Store) OperatorCard(ctx context.Context, id int64, teams []string, opts
 	}
 	card.flowFacts.provider, card.flowFacts.firstSeen = provider, card.flowFacts.firstSeen.UTC()
 	card.flowFacts.trackerCreated = utcPtr(card.flowFacts.trackerCreated)
+	if card.URL == "" && opts.TaskURL != nil {
+		card.URL = opts.TaskURL(provider, externalID)
+	}
 	if owner != "" && repo != "" {
 		card.Target = &OperatorCardTarget{Forge: forge, Owner: owner, Repo: repo}
 	}

@@ -32,7 +32,7 @@ Budgets have two levels ([ADR-0012](../adrs/0012-two-level-budgets-authorized-an
 
 - **Settled** grows in two ways. A managed Run adds its reconciled amount when the sweeper settles its account. A Run without an account adds the `costUsd` its harness reported, which is the agent's own claim, when it reports its outcome.
 
-The pool is empty when `budget − spent − reserved` is below the minimum a Run needs. Claims are then refused, and the engine parks the Shift at `needs_human` with a reason such as `budget exhausted: pool 6.00, spent 2.10, reserved 3.95`.
+The pool is empty when `budget − spent − reserved` is below the minimum a Run needs. Claims are then refused. When settling the holds of finished Runs could not refill it, the engine parks the Shift at `needs_human` with a reason such as `budget exhausted: pool 6.00, spent 2.10, reserved 3.95`. When it could, the Shift waits with its Run pending until settlement releases the holds. If they are still unsettled 24 hours after their Runs finished, the Shift parks with `budget held by unsettled runs: pool 8.00, spent 0.00, held 8.00` ([ADR-0048](../adrs/0048-a-pool-held-by-unsettled-runs-waits-for-settlement-before-it-parks.md)).
 
 ## Inference account states
 
@@ -156,6 +156,7 @@ WHERE a.run_token = '<run_token>' ORDER BY j.id;
 | --- | --- | --- |
 | Pool looks exhausted, nothing runs, `reserved` is high | Finished Runs whose accounts are not yet `reconciled` still hold their authorization | Wait for the quiet period; otherwise work through step 6 |
 | Shift parked at `needs_human` with `budget exhausted: …` | `budget − spent − reserved` fell below the minimum for a Run | Check that the holds are real. A Shift's pool is fixed when it opens: raise the team's budget in configuration for new Shifts, then re-assign the ticket |
+| Shift parked at `needs_human` with `budget held by unsettled runs: …` | Finished Runs kept their holds for 24 hours because their keys could not be blocked or settled, usually because the model gateway was down | Fix the gateway and check `ploegd` for `managed key block retry unresolved` or `managed settlement unresolved`. Once the holds are released, re-assign the ticket |
 | Account `blocked` for hours | Gateway spend logs or key list unavailable | Fix the gateway; the sweep retries |
 | Account `unknown` for hours | Key already deleted, or the gateway cannot report it | Keep the hold; reconcile from evidence (no command yet) |
 | `spent` lower than the gateway total | Entries arrived after settlement | Record the correction with evidence (no command yet) |

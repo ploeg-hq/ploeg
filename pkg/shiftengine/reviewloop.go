@@ -25,6 +25,7 @@ const (
 	reasonLoopBudget    = "budget_exhausted_before_fix_round"
 	reasonPoolExhausted = "budget exhausted"
 	reasonReviewFailed  = "review_failed"
+	reasonPoolHeld      = "budget held by unsettled runs"
 )
 
 func closeMessage(reason string) string {
@@ -39,6 +40,8 @@ func closeMessage(reason string) string {
 		return "the budget could not fund the next round; a person is asked to take over"
 	case reasonReviewFailed:
 		return "not reviewed by an agent: a reading Run failed. Agent review unavailable; a person is asked to review and merge"
+	case reasonPoolHeld:
+		return "the budget is still held by finished runs whose model spend was never settled; a person is asked to check the model gateway and take over"
 	default:
 		return "plan complete; a person is asked to review and merge"
 	}

@@ -159,7 +159,7 @@ kubectl -n keda logs deployment/keda-operator --since=30m | grep -i ploeg
 
 - **No workload for the Role:** the chart renders one workload per team and Role from `executor.teams[].plan`. A Role that `ploegd` knows but the chart does not render is never claimed. Make the plan in the GitOps values match.
 - **Scaler errors:** the KEDA PostgreSQL trigger connects as `executor.scaler.userName` with the `ploeg-scaler` Secret. Fix its credentials or host.
-- **Budget exhausted:** `ploegd` logs `claim refused: shift budget exhausted`. The Shift's pool cannot fund another Run, often because unsettled holds are still counted. The engine parks such a Shift at `needs_human` with reason `budget exhausted: pool …`. See [Investigate a Run's spend](investigate-a-runs-spend.md).
+- **Budget exhausted:** `ploegd` logs `claim refused: shift budget exhausted`. The Shift's pool cannot fund another Run, often because unsettled holds are still counted. While settling those holds could refill the pool, the Shift waits. Otherwise the engine parks it at `needs_human` with reason `budget exhausted: pool …`, or with `budget held by unsettled runs: …` after 24 hours of waiting. See [Investigate a Run's spend](investigate-a-runs-spend.md).
 - **Workers paused on purpose:** see [Drain workers](drain-workers.md#6-resume).
 
 ### A Shift Lease whose Run is not running

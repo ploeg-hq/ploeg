@@ -869,19 +869,38 @@ func (s *Store) RoundReports(ctx context.Context, shiftID int64) ([]RunReport, e
 }
 
 // ShiftsBelowFloor finds live Shifts whose pool can no longer fund the work
-// still pending for them. Retrying cannot fix running out of money, so the
-// sweeper parks these — needs_human with a reason naming the spend, no Run
-// spawned, no key minted, no attempt burned (shift-orchestration spec).
-func (s *Store) ShiftsBelowFloor(ctx context.Context) ([]ShiftLedgerEntry, error) {
+// still pending for them and that settling will not fund either. The sweeper
+// parks these: needs_human with a reason naming the spend, no Run spawned, no
+// key minted, no attempt burned (shift-orchestration spec, ADR-0048).
+//
+// A hold of a finished Run whose model-key account is not yet reconciled is
+// awaiting settlement, not spent. While such holds that finished less than
+// patience ago would lift the pool back above the floor, the Shift is left
+// open: claims stay refused, and the settlement sweep decides. Each entry
+// reports every awaiting hold in Unsettled, so a caller can tell a pool that
+// is spent from one that is still held.
+func (s *Store) ShiftsBelowFloor(ctx context.Context, patience time.Duration) ([]ShiftLedgerEntry, error) {
+	if patience < 0 {
+		return nil, errors.New("negative settlement patience")
+	}
 	rows, err := s.pool.Query(ctx, `
 		SELECT sh.id, sh.work_item_id, sh.team, sh.budget, sh.spent,
-		       COALESCE((SELECT SUM(reserved) FROM run_budget_holds
-		                 WHERE shift_id = sh.id), 0)
+		       COALESCE(h.reserved, 0), COALESCE(h.unsettled, 0), COALESCE(h.recent, 0)
 		FROM shifts sh
+		LEFT JOIN LATERAL (
+			SELECT SUM(b.reserved) AS reserved,
+			       SUM(b.reserved) FILTER (WHERE r.state = 'finished' AND a.state <> 'reconciled') AS unsettled,
+			       SUM(b.reserved) FILTER (WHERE r.state = 'finished' AND a.state <> 'reconciled'
+			                                 AND r.finished_at > now() - make_interval(secs => $1)) AS recent
+			FROM run_budget_holds b
+			JOIN agent_runs r USING (run_token)
+			LEFT JOIN run_llm_accounts a USING (run_token)
+			WHERE b.shift_id = sh.id
+		) h ON true
 		WHERE sh.closed_at IS NULL AND sh.budget > 0
 		  AND NOT EXISTS(SELECT 1 FROM operator_executions e WHERE e.shift_id=sh.id)
 		  AND EXISTS (SELECT 1 FROM agent_runs
-		              WHERE shift_id = sh.id AND state = 'pending')`)
+		              WHERE shift_id = sh.id AND state = 'pending')`, patience.Seconds())
 	if err != nil {
 		return nil, err
 	}
@@ -889,11 +908,12 @@ func (s *Store) ShiftsBelowFloor(ctx context.Context) ([]ShiftLedgerEntry, error
 	var out []ShiftLedgerEntry
 	for rows.Next() {
 		var e ShiftLedgerEntry
+		var recent float64
 		if err := rows.Scan(&e.ShiftID, &e.WorkItemID, &e.Team,
-			&e.Ledger.Budget, &e.Ledger.Spent, &e.Ledger.Reserved); err != nil {
+			&e.Ledger.Budget, &e.Ledger.Spent, &e.Ledger.Reserved, &e.Unsettled, &recent); err != nil {
 			return nil, err
 		}
-		if e.Ledger.Remaining() < minViableAuthorization {
+		if e.Ledger.Remaining() < minViableAuthorization && e.Ledger.Remaining()+recent < minViableAuthorization {
 			out = append(out, e)
 		}
 	}
@@ -906,6 +926,15 @@ type ShiftLedgerEntry struct {
 	WorkItemID int64
 	Team       string
 	Ledger     ShiftLedger
+	// Unsettled is the part of Ledger.Reserved held by finished Runs whose
+	// model-key account is not reconciled yet.
+	Unsettled float64
+}
+
+// SettlementCouldFund reports whether releasing every unsettled hold would
+// lift the pool to the floor a claim needs.
+func (e ShiftLedgerEntry) SettlementCouldFund() bool {
+	return e.Ledger.Remaining()+e.Unsettled >= minViableAuthorization
 }
 
 // ShiftLedger is the money view of a Shift.

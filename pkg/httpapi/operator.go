@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/ploeg-hq/ploeg/pkg/playkpi"
+	"github.com/ploeg-hq/ploeg/pkg/provider"
 	"github.com/ploeg-hq/ploeg/pkg/rarity"
 	"github.com/ploeg-hq/ploeg/pkg/store"
 )
@@ -246,6 +247,9 @@ func (s *Server) handleOperatorItems(w http.ResponseWriter, r *http.Request) {
 		operatorReadError(w, err)
 		return
 	}
+	for i := range items {
+		s.linkTask(&items[i])
+	}
 	var cursor *string
 	if more {
 		last := items[len(items)-1].ID
@@ -268,10 +272,25 @@ func (s *Server) handleOperatorItem(w http.ResponseWriter, r *http.Request) {
 		operatorReadError(w, err)
 		return
 	}
+	s.linkTask(&detail.Item)
 	operatorJSON(w, 200, struct {
 		SchemaVersion string `json:"schemaVersion"`
 		store.OperatorDetail
 	}{SchemaVersion: "1.0", OperatorDetail: detail})
+}
+
+func (s *Server) linkTask(item *store.OperatorItem) {
+	if item.URL == "" {
+		item.URL = s.taskURL(item.Provider, item.ExternalID)
+	}
+}
+
+func (s *Server) taskURL(providerName, externalID string) string {
+	linker, ok := s.Trackers[providerName].(provider.TaskLinker)
+	if !ok {
+		return ""
+	}
+	return linker.TaskURL(externalID)
 }
 
 func (s *Server) handleOperatorRun(w http.ResponseWriter, r *http.Request) {
