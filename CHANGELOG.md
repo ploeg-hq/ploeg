@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.2.0-rc.4
+
+### Changes
+
+- A Run can be briefed from OKF knowledge packs: the repository's `knowledge/` directory, configured bundles and OKF concepts inside attached context, written outside the clone and indexed in the prompt; `TaskSpec.knowledge` records what was used. A Run may propose up to 10 learnings, which the worker keeps for a person to review and never briefs a Run with (#60, ADR 0065 and 0066, both proposed).
+- The worker drops `CAP_SYS_PTRACE` before it runs a harness with credential isolation on, and refuses to start if the capability survives, so a Run never claims an isolation it cannot give (#63, ADR 0034).
+- Both loopback proxies forward only requests that carry the Run's placeholder; anything else on the pod's loopback gets 403 (#64, ADR 0034).
+- The forge proxy lets a writer push only `refs/heads/<run branch>`: other branches, tags, deleting the Run's branch, push certificates and unparseable pushes get 403 (#65, ADR 0034).
+- A Run whose forge requests, pushed commits or proposed learnings carry its model key, its forge token or a per-Run canary credential fails with the new reason `credential_leak`; its forge writes stop and its commits stay on the branch for inspection, and it keeps no learnings (#66, #68).
+- The branch probe after pushed-commit verification asks the forge by explicit URL outside the verify clone, so a check cannot redirect the token-carrying request with `url.*.insteadOf` (#72).
+- `ploeg_runs_failed_total{reason}` counts failed Runs per reason, and the chart's PrometheusRule gains `PloegCredentialLeak` (critical) on its `credential_leak` series.
+- Every git command the worker runs itself after the harness (the unpublished-work check, the leak scan, the OpenSpec gate, verification reads) runs in a worker-owned git directory, so `.git/config`, hooks or `include.path` the harness writes cannot redirect, observe or run inside it (#72).
+- An Inference Account whose gateway key LiteLLM no longer holds (absent under its alias and `/key/info` 404) moves to `blocked` and settles from the gateway's spend logs, so `PloegModelKeyPastTTL` fires only for a key the gateway may still accept (#70).
+- **The chart defaults `executor.litellm.keyIsolation` and `executor.forgeTokenIsolation` to `proxy`** for qualified harnesses (`openhands`, `acp/openhands`, `exec`; see `docs/research/2026-10-04-isolation-qualification.md`). A Role with DinD or an unqualified harness renders with both proxies off, and the worker logs one WARN naming the harness and the reason (#71).
+- A Work Item reaches `awaiting_review` only when its configured checks passed on the pushed commit: the worker runs them in a fresh clone at the pull request's head, and a different head or a push during the checks makes the result `incomplete`. Failed or incomplete checks re-open the writing Round while fix rounds remain, otherwise park the item at `needs_human` with close reason `checks_not_passed` (#74, ADR 0070).
+- ploegd binds a writing Run's delivery record to the Work Item's forge, repository, base branch, Shift branch and pull request before it believes it. A record that does not match is stored as `observed: unknown` and parks the item for a person; a checkpoint naming another branch or repository gets 400; publication, the review watch and readiness read the stored record (#75, ADR 0059).
+- `ploeg_runs_without_observed_delivery_last_day{source=legacy|mismatch}` counts Runs that finished without a matching delivery record (#75).
+- A Run Card's grade carries `evidenceComplete`, and the card image and pull request comment say whether the grade's evidence is complete or which inputs are missing (#73, ADR 0061).
+
+### Upgrade notes
+
+- Knowledge packs are off until a repository has `knowledge/` or the worker sets `PLOEG_KNOWLEDGE_DIRS`, `PLOEG_KNOWLEDGE_OUTBOX`, `PLOEG_KNOWLEDGE_BUDGET_BYTES` or `PLOEG_REPO_KNOWLEDGE_DIR`; without them a Run is unchanged.
+- A harness that brings its own credentials instead of the placeholders Ploeg hands it now gets 403 from the proxies while `keyIsolation` or `forgeTokenIsolation` is `proxy`.
+- A writer whose pod grants `CAP_SYS_PTRACE` and cannot drop it no longer starts with isolation on.
+- The outcome contract's `failureReason` enum gains `credential_leak`; consumers that switch on it should treat it as a failure.
+- `monitoring.prometheusRule.alerts.credentialLeak` is on whenever the PrometheusRule is.
+- Breaking: installs that left the isolation values unset now run qualified harnesses behind both proxies. Opt out with `""` globally, or per team or Role with `harness.credentialIsolation: ""`; opt an unqualified harness in with `harness.credentialIsolation: proxy`.
+- Verification now runs in a fresh clone at the pull request's head instead of the writer's checkout, and the OpenSpec gate reads the writer's checkout through the worker-owned git directory; a clone the harness corrupted fails closed (`stuck`).
+- More Work Items may park at `needs_human`: failed or incomplete checks, a forge read that failed, and a delivery record that names another forge, repository, branch or pull request. A writing Round that pushed nothing reports `no_change_needed` instead of `pr_updated`.
+- `0039_run_delivery.sql` adds `agent_runs.delivery` and `delivery_source` when `ploegd` starts; rows from before it stay empty.
+- `cardGrade.evidenceComplete` is a new required boolean in `operator-api.v1`, and Shifts can close with the new reason `checks_not_passed`.
+
 ## 0.2.0-rc.3
 
 ### Changes
