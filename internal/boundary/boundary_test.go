@@ -4,6 +4,7 @@ package boundary
 
 import (
 	"bytes"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -56,15 +57,59 @@ func isRecord(path string) bool {
 }
 
 func TestPloegNamesNoConsumer(t *testing.T) {
-	base := root(t)
+	mentions, err := consumerMentions(root(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, mention := range mentions {
+		t.Errorf("%s; describe it as an operator consumer instead", mention)
+	}
+}
+
+func TestAGitFileNamingTheSuperprojectIsNotAMention(t *testing.T) {
+	base := t.TempDir()
+	write := func(name, content string) {
+		if err := os.WriteFile(filepath.Join(base, name), []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(".git", "gitdir: /src/unfold/.git/modules/apps/ploeg\n")
+	write("README.md", "Ploeg serves any operator consumer.\n")
+
+	mentions, err := consumerMentions(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(mentions) != 0 {
+		t.Fatalf("a submodule's .git file was scanned: %v", mentions)
+	}
+
+	write("README.md", "Ploeg serves Unfold.\n")
+	mentions, err = consumerMentions(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(mentions) != 1 {
+		t.Fatalf("mentions = %v, want the README line", mentions)
+	}
+}
+
+func consumerMentions(base string) ([]string, error) {
+	var mentions []string
 	err := filepath.WalkDir(base, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		rel := filepath.ToSlash(strings.TrimPrefix(path, base+string(filepath.Separator)))
+		if entry.Name() == ".git" {
+			if entry.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
 		if entry.IsDir() {
 			switch entry.Name() {
-			case ".git", "node_modules", ".venv", "vendor":
+			case "node_modules", ".venv", "vendor":
 				return filepath.SkipDir
 			}
 			return nil
@@ -81,12 +126,10 @@ func TestPloegNamesNoConsumer(t *testing.T) {
 		}
 		for number, line := range strings.Split(string(data), "\n") {
 			if match := downstream.FindString(line); match != "" {
-				t.Errorf("%s:%d names a consumer (%q); describe it as an operator consumer instead", rel, number+1, match)
+				mentions = append(mentions, fmt.Sprintf("%s:%d names a consumer (%q)", rel, number+1, match))
 			}
 		}
 		return nil
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	return mentions, err
 }
