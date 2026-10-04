@@ -2,10 +2,13 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/ploeg-hq/ploeg/pkg/harness"
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
@@ -19,6 +22,9 @@ type ReviewItem struct {
 	// Links are what the most recent writer Run that opened or updated a pull
 	// request reported.
 	Links []string
+	// Delivery is that Run's admitted delivery record (ADR-0059); nil for a
+	// Run from an older worker.
+	Delivery *harness.Delivery
 }
 
 // AwaitingReview lists every Work Item in awaiting_review that Ploeg owns,
@@ -27,12 +33,13 @@ func (s *Store) AwaitingReview(ctx context.Context) ([]ReviewItem, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT w.id, w.provider, w.external_id,
 		       w.target_forge, w.target_owner, w.target_repo, w.target_base_branch,
-		       COALESCE((SELECT r.links FROM agent_runs r
-		                 WHERE r.work_item_id = w.id AND r.writes AND r.state = 'finished'
-		                   AND r.outcome IN ('pr_opened', 'pr_updated')
-		                 ORDER BY r.finished_at DESC NULLS LAST, r.id DESC
-		                 LIMIT 1), '{}')
+		       COALESCE(last.links, '{}'), last.delivery
 		FROM work_items w
+		LEFT JOIN LATERAL (SELECT r.links, r.delivery FROM agent_runs r
+		                   WHERE r.work_item_id = w.id AND r.writes AND r.state = 'finished'
+		                     AND r.outcome IN ('pr_opened', 'pr_updated')
+		                   ORDER BY r.finished_at DESC NULLS LAST, r.id DESC
+		                   LIMIT 1) last ON true
 		WHERE w.state = 'awaiting_review' AND NOT w.operator_owned
 		ORDER BY w.id`)
 	if err != nil {
@@ -43,9 +50,16 @@ func (s *Store) AwaitingReview(ctx context.Context) ([]ReviewItem, error) {
 	for rows.Next() {
 		var it ReviewItem
 		var t work.Target
+		var delivery []byte
 		if err := rows.Scan(&it.WorkItemID, &it.Provider, &it.ExternalID,
-			&t.Forge, &t.Owner, &t.Repo, &t.BaseBranch, &it.Links); err != nil {
+			&t.Forge, &t.Owner, &t.Repo, &t.BaseBranch, &it.Links, &delivery); err != nil {
 			return nil, err
+		}
+		if delivery != nil {
+			it.Delivery = new(harness.Delivery)
+			if err := json.Unmarshal(delivery, it.Delivery); err != nil {
+				return nil, fmt.Errorf("decode run delivery: %w", err)
+			}
 		}
 		if t.Resolved() {
 			it.Target = &t

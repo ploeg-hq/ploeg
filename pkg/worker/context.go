@@ -7,12 +7,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
 	"github.com/ploeg-hq/ploeg/pkg/contextbundle"
 	"github.com/ploeg-hq/ploeg/pkg/harness"
+	"github.com/ploeg-hq/ploeg/pkg/knowledge"
+	"github.com/ploeg-hq/ploeg/pkg/okf"
 )
 
 // Context bundles (proposed, proof of concept): files people attached to the
@@ -21,10 +22,9 @@ import (
 // contextDirEnv names the directory holding the Run's context.
 const contextDirEnv = "PLOEG_CONTEXT_DIR"
 
-// contextIndexFile is the context directory's table of contents.
-const contextIndexFile = "index.md"
-
-var contextSlugUnsafe = regexp.MustCompile(`[^a-z0-9]+`)
+// contextKnowledgeSource names the OKF concepts found inside context when
+// they join the knowledge pack selection.
+const contextKnowledgeSource = "context"
 
 // maxContextIndexBytes caps how much of the context index the prompt
 // carries; the rest stays in index.md.
@@ -68,7 +68,7 @@ func PrepareContext(ctx context.Context, api *APIClient, runToken string, refs [
 	}
 	index := fmt.Sprintf("# Context from people\n\n%d item(s), oldest first. Each directory holds one item as the person attached it.\n\n%s",
 		len(refs), strings.Join(sections, "\n"))
-	if err := os.WriteFile(filepath.Join(dir, contextIndexFile), []byte(index), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, okf.IndexFile), []byte(index), 0o644); err != nil {
 		return nil, "", err
 	}
 	return items, index, nil
@@ -98,7 +98,7 @@ func contextIndexSection(sub string, ref harness.ContextRef, m contextbundle.Man
 
 // contextSlug turns an item's name into a short directory name.
 func contextSlug(name string) string {
-	slug := strings.Trim(contextSlugUnsafe.ReplaceAllString(strings.ToLower(name), "-"), "-")
+	slug := strings.Trim(learningSlugUnsafe.ReplaceAllString(strings.ToLower(name), "-"), "-")
 	if len(slug) > 40 {
 		slug = strings.Trim(slug[:40], "-")
 	}
@@ -106,6 +106,17 @@ func contextSlug(name string) string {
 		return "item"
 	}
 	return slug
+}
+
+// contextKnowledge offers the OKF concepts inside the Run's context to the
+// knowledge pack selection. Context that is not OKF is simply not a source.
+func (w *Worker) contextKnowledge(dir string) []knowledge.Source {
+	b, problems, err := okf.ReadBundle(contextKnowledgeSource, os.DirFS(dir))
+	if err != nil || len(b.Concepts) == 0 {
+		return nil
+	}
+	w.Log.Info("context carries OKF concepts", "concepts", len(b.Concepts), "other_documents", len(problems))
+	return []knowledge.Source{{Name: contextKnowledgeSource, Bundle: b}}
 }
 
 // writeContext puts the context index in the prompt, framed as evidence from

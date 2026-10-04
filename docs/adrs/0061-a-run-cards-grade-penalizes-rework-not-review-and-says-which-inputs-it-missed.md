@@ -44,12 +44,13 @@ Chosen option: "**Formula 2026.3, computed on read**", because it removes the in
    * A grade with a missing input carries no label. A black or gold label says every input was seen.
    * `notCollected` keeps its meaning: inputs with no source on any card (survival, CI on the first check, reviewer findings). They are absent from every card alike, so they move no grade and cap nothing.
 4. **Old grades.** Ploeg keeps computing the grade when the card is read, always under the current formula. A card read after this change shows `2026.3` and the grade 2026.3 gives, even if an earlier read showed `2026.2`. The card names the version on its back, and the docs no longer promise that old grades never change. No grade is stored, so no migration is needed.
-5. **Contract.** `cardGrade.formula` accepts `2026.3`; `cardGradeInputs` gains `missing` and `review.reworkRounds`, both always sent. The code is `pkg/store/card_grade.go`.
+5. **Evidence next to the grade.** `cardGrade.evidenceComplete` is true when `inputs.missing` is empty. Ploeg's card image prints "evidence complete" or "evidence incomplete" after the formula on the grade slab and in its text description, and the pull request summary prints "evidence complete" or "missing" followed by the missing inputs. A reader sees how complete the evidence is beside the grade, without opening the inputs. The field derives from `inputs.missing` and does not change the formula, so the version stays `2026.3`.
+6. **Contract.** `cardGrade.formula` accepts `2026.3`; `cardGrade` gains `evidenceComplete` and `cardGradeInputs` gains `missing` and `review.reworkRounds`, all always sent. The code is `pkg/store/card_grade.go` and `pkg/cardimage`.
 
 ### Consequences
 
 * Good, because asking for another look, approving a fixed commit or leaving comments never lowers a card. Only rework does.
-* Good, because a card states which facts it lacks, and a perfect grade or a label needs every fact Ploeg can collect.
+* Good, because a card states which facts it lacks, beside the grade, and a perfect grade or a label needs every fact Ploeg can collect.
 * Good, because the docs now match the code: one formula, named on the card, applied to every card read.
 * Bad, because a card's grade can change when the formula changes, so a grade quoted last month may differ today. The version on the card shows that it changed, not what it was. If the owner needs a grade that never changes once given, that is a stored snapshot and a new decision.
 * Bad, because Work Items whose harness reports no cost, and boards without gates, now top out at a delivery of 9 and no label until those facts exist. That is the point, but teams on such boards will see it.
@@ -57,9 +58,10 @@ Chosen option: "**Formula 2026.3, computed on read**", because it removes the in
 
 ### Confirmation
 
-In `.forgejo/workflows/on_pull_request.yml`, `go test ./...` in `apps/ploeg` covers:
+In `.github/workflows/ci.yml`, `mise run verify` runs `go test ./...`, which covers:
 
-* `pkg/store`: `TestComputeGradeFormula` (approved and comment-only rounds lower nothing, rework rounds cost 1 each, the 2026.3 version), `TestCardGradeCountsReworkRoundsNotReviews` (rounds and rework counted from a card's reviews, several reviewers on one commit are one rework round), `TestComputeGradeMissingInputsCapTheirSubgradeAndWithholdTheLabel` (each missing input listed, delivery capped at 9, known penalties below the cap kept, no label) and `TestComputeGradeInputsKeepUnknownsUnknown`.
+* `pkg/store`: `TestComputeGradeFormula` (approved and comment-only rounds lower nothing, rework rounds cost 1 each, the 2026.3 version), `TestCardGradeCountsReworkRoundsNotReviews` (rounds and rework counted from a card's reviews, several reviewers on one commit are one rework round), `TestComputeGradeMissingInputsCapTheirSubgradeAndWithholdTheLabel` (each missing input listed, delivery capped at 9, known penalties below the cap kept, no label, `evidenceComplete` false) and `TestComputeGradeInputsKeepUnknownsUnknown`.
+* `pkg/cardimage`: `TestTheGradeSaysWhetherItsEvidenceIsComplete` (the slab, the image description and the summary say whether the evidence is complete, and the summary names the missing inputs).
 * `pkg/httpapi`: a card with a 2026.3 grade validates against `operator-api.v1`.
 
 `go test ./internal/ledger/` gates this record.

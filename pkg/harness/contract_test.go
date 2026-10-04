@@ -85,6 +85,12 @@ func fullTaskSpec() TaskSpec {
 		},
 		OpenSpec: &OpenSpecBrief{Change: "add-widget", Root: "apps/ploeg", Source: OpenSpecSourceCLI,
 			Brief: "Pending tasks:\n- 1.1 add the widget"},
+		Knowledge: &KnowledgeBrief{
+			Index:    "# Knowledge pack\n\n- [Commits](repo/conventions/commits.md)\n",
+			Concepts: []string{"repo/conventions/commits.md"},
+			Sources:  []KnowledgeSource{{Name: "repo", Digest: "sha256:2238c0e05ac88b70"}},
+			Bytes:    512, Omitted: 1,
+		},
 		Context: []ContextItem{{ID: "ctx_" + strings.Repeat("ab", 16), Name: "design.zip", SHA256: strings.Repeat("0f", 32),
 			Files: 3, Bytes: 2048, AddedAt: now, Phase: "while_steering", Note: "the customer changed their mind"}},
 		ContextIndex: "not published",
@@ -136,9 +142,14 @@ func TestOutcomeReport_MatchesSchema(t *testing.T) {
 		Links:      []string{"https://forgejo.example/webgrip/example/pulls/7"},
 		Checkpoint: &work.Checkpoint{Phase: "pr_opened", Branch: "agent/vik-596", PRURL: "https://forgejo.example/webgrip/example/pulls/7"},
 		Usage:      &Usage{InputTokens: 100, OutputTokens: 50, CostUSD: 0.42, SessionID: "sess-1"},
+		Learnings: []Learning{{Type: "Pitfall", Title: "Registry pulls time out", Description: "the sandbox reaches only its gateway",
+			Resource: "https://example.test/AGENTS.md", Tags: []string{"sandbox"}, Body: "Skip the gate and list it."}},
 	}
 	if err := validate(t, sch, full); err != nil {
 		t.Errorf("full OutcomeReport does not validate: %v", err)
+	}
+	if err := validate(t, sch, OutcomeReport{Outcome: work.OutcomeNoChangeNeeded, Learnings: []Learning{{Type: "Pitfall", Title: "no body"}}}); err == nil {
+		t.Error("a learning without a body validates")
 	}
 
 	// ADR-0045: every usage figure a harness can report is on the contract.

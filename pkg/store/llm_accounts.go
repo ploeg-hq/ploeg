@@ -193,6 +193,27 @@ func (s *Store) RecordLLMBlocked(ctx context.Context, token string, spend *float
 	return err
 }
 
+// RecordLLMKeyGone moves a minting, issued or unknown account to blocked on
+// the gateway's report that it holds no key for the account, recording that
+// report as evidence on the llm.blocked audit event. The hold stays until
+// settlement, which reads the spend logs as it does for any blocked account.
+func (s *Store) RecordLLMKeyGone(ctx context.Context, token, evidence string) error {
+	if evidence == "" {
+		return ErrLLMAccountState
+	}
+	tag, err := s.pool.Exec(ctx, `WITH changed AS (UPDATE run_llm_accounts SET state='blocked',updated_at=now()
+		WHERE run_token=$1 AND state IN ('minting','issued','unknown')
+		RETURNING run_token,alias,observed_spend)
+		INSERT INTO audit_log(actor,action,work_item_id,detail)
+		SELECT 'ploegd:llm','llm.blocked',r.work_item_id,jsonb_build_object('alias',a.alias,'observedSpend',a.observed_spend,
+			'gatewayKeyAbsent',true,'evidence',$2::text)
+		FROM changed a JOIN agent_runs r USING(run_token)`, token, evidence)
+	if err == nil && tag.RowsAffected() != 1 {
+		return ErrLLMAccountState
+	}
+	return err
+}
+
 func (s *Store) RecordLLMObserved(ctx context.Context, token string, spend float64) error {
 	if !validSpend(spend) {
 		return ErrLLMAccountState
