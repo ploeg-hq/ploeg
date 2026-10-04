@@ -4,6 +4,8 @@ import (
 	"context"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
 // OperationalMetrics is the database state that operator alerts read. Ages
@@ -29,6 +31,10 @@ type OperationalMetrics struct {
 	// hour: managed reconciliation deltas plus harness-reported cost of
 	// finished Shift Runs that have no managed inference account.
 	SettledSpendLastHourUSD float64
+	// FailedRuns counts every Run ever recorded with each failure reason.
+	// Runs are never deleted, so each count only grows. Every known reason is
+	// present, at zero when no Run has failed that way.
+	FailedRuns map[string]int
 }
 
 // KeyStates are the inference account states that can hold a live gateway
@@ -42,6 +48,10 @@ func (s *Store) OperationalMetrics(ctx context.Context) (OperationalMetrics, err
 		ShiftIdleSeconds:     map[string]float64{},
 		KeysPastTTL:          map[string]int{},
 		KeyTTLOverrunSeconds: map[string]float64{},
+		FailedRuns:           map[string]int{},
+	}
+	for _, reason := range work.FailureReasons() {
+		m.FailedRuns[string(reason)] = 0
 	}
 	for _, state := range KeyStates {
 		m.KeysPastTTL[state] = 0
@@ -124,5 +134,32 @@ func (s *Store) OperationalMetrics(ctx context.Context) (OperationalMetrics, err
 		)::float8`).Scan(&m.SettledSpendLastHourUSD); err != nil {
 		return m, err
 	}
+
+	rows, err = tx.Query(ctx, `SELECT failure_reason, count(*) FROM agent_runs
+		WHERE failure_reason = ANY($1) GROUP BY failure_reason`, knownFailureReasons())
+	if err != nil {
+		return m, err
+	}
+	for rows.Next() {
+		var reason string
+		var n int
+		if err := rows.Scan(&reason, &n); err != nil {
+			rows.Close()
+			return m, err
+		}
+		m.FailedRuns[reason] = n
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return m, err
+	}
 	return m, tx.Commit(ctx)
+}
+
+func knownFailureReasons() []string {
+	var reasons []string
+	for _, reason := range work.FailureReasons() {
+		reasons = append(reasons, string(reason))
+	}
+	return reasons
 }

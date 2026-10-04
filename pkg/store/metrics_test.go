@@ -203,3 +203,33 @@ func TestSettledSpendCountsUnmanagedShiftRunCost(t *testing.T) {
 		t.Fatalf("settled spend = %v, want 0.75", m.SettledSpendLastHourUSD)
 	}
 }
+
+func TestOperationalMetricsCountFailedRunsByReason(t *testing.T) {
+	ctx := context.Background()
+	_, shift := openShift(t, 5)
+	if _, err := testStore.OpenRound(ctx, shift, 0, []Role{{Name: "builder", Writes: true, Cap: 2}}); err != nil {
+		t.Fatal(err)
+	}
+	m, err := testStore.OperationalMetrics(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, reason := range work.FailureReasons() {
+		if n, ok := m.FailedRuns[string(reason)]; !ok || n != 0 {
+			t.Fatalf("failure reason %s must be reported as zero before any Run fails, got %v (present=%v)", reason, n, ok)
+		}
+	}
+	run, err := testStore.ClaimRole(ctx, "silver", "builder", time.Minute, 1)
+	if err != nil || run == nil {
+		t.Fatalf("claim: %v %v", run, err)
+	}
+	mustExec(t, `UPDATE agent_runs SET state = 'finished', finished_at = now(), outcome = 'failed', failure_reason = $2 WHERE run_token = $1`,
+		run.RunToken, string(work.FailureCredentialLeak))
+	m, err = testStore.OperationalMetrics(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.FailedRuns[string(work.FailureCredentialLeak)] != 1 || m.FailedRuns[string(work.FailureTimeout)] != 0 {
+		t.Fatalf("failed runs = %+v, want one credential_leak", m.FailedRuns)
+	}
+}
