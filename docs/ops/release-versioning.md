@@ -4,8 +4,8 @@ The new `github.com/ploeg-hq/ploeg` module starts at **v0.1.0**. Ploeg remains e
 
 ## Cut a release
 
-1. Review and merge changes into `main`; CI must pass. Update both `version` and `appVersion` in `ops/helm/ploeg/Chart.yaml` in the release preparation pull request. Include compatibility and migration notes.
-2. Create an immutable annotated `v0.x.y` tag on the reviewed commit (or `v0.x.y-rc.N` for a candidate) and push that tag. Do not use 1.x without a separate maturity decision.
+1. Work lands on `development`, the trunk ([ADR 0064](../adrs/0064-development-is-trunk-and-release-candidates-come-from-it.md)); CI runs on every push and pull request. For a release, update both `version` and `appVersion` in `ops/helm/ploeg/Chart.yaml` in a release preparation commit with compatibility and migration notes.
+2. Create an immutable annotated tag on that commit and push the tag. A candidate `v0.x.y-rc.N` may sit on `development` or `main`; a stable `v0.x.y` only on `main`, after `development` is merged into it. Do not use 1.x without a separate maturity decision.
 3. The [release workflow](../../.github/workflows/release.yml) checks tag ancestry and chart versions, then runs the full standalone gates before publication. A maintainer can dispatch the workflow with the same existing tag; publication refuses existing releases or artifacts.
 4. Verify the published release assets, image digest, Helm pull and an unauthenticated image pull. Set newly created GHCR packages public if the organization's package policy creates them private.
 5. Consumers update their pins through reviewed changes and run their own integration qualification. A release does not update a deployment.

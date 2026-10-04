@@ -7,7 +7,11 @@ tag=${2:?expected v0.x.y or v0.x.y-rc.N}
 [[ "$tag" =~ ^v0\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-rc\.[1-9][0-9]*)?$ ]]
 version=${tag#v}
 commit=$(git rev-parse --verify "refs/tags/$tag^{commit}")
-git merge-base --is-ancestor "$commit" origin/main
+if [[ "$tag" == *-rc.* ]]; then
+  git merge-base --is-ancestor "$commit" origin/development 2>/dev/null || git merge-base --is-ancestor "$commit" origin/main
+else
+  git merge-base --is-ancestor "$commit" origin/main
+fi
 [[ "$(git rev-parse HEAD)" == "$commit" ]]
 [[ "$(sed -n 's/^version: *//p' ops/helm/ploeg/Chart.yaml)" == "$version" ]]
 [[ "$(sed -n 's/^appVersion: *//p' ops/helm/ploeg/Chart.yaml)" == "$version" ]]

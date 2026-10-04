@@ -24,4 +24,25 @@ git add -- ops/helm/ploeg/Chart.yaml
 git commit --quiet -m unreviewed
 git tag v0.1.1
 if bash scripts/release.sh validate v0.1.1; then echo 'accepted off-main tag' >&2; exit 1; fi
+git checkout --quiet -b development
+printf 'version: 0.2.0-rc.1\nappVersion: 0.2.0-rc.1\n' > ops/helm/ploeg/Chart.yaml
+git add -- ops/helm/ploeg/Chart.yaml
+git commit --quiet -m candidate
+git update-ref refs/remotes/origin/development HEAD
+git tag v0.2.0-rc.1
+bash scripts/release.sh validate v0.2.0-rc.1
+printf 'version: 0.2.0\nappVersion: 0.2.0\n' > ops/helm/ploeg/Chart.yaml
+git add -- ops/helm/ploeg/Chart.yaml
+git commit --quiet -m stable-on-development
+git update-ref refs/remotes/origin/development HEAD
+git tag v0.2.0
+if bash scripts/release.sh validate v0.2.0; then echo 'accepted a stable tag that is only on development' >&2; exit 1; fi
+git update-ref refs/remotes/origin/main HEAD
+bash scripts/release.sh validate v0.2.0
+git checkout --quiet -b elsewhere
+printf 'version: 0.3.0-rc.1\nappVersion: 0.3.0-rc.1\n' > ops/helm/ploeg/Chart.yaml
+git add -- ops/helm/ploeg/Chart.yaml
+git commit --quiet -m candidate-elsewhere
+git tag v0.3.0-rc.1
+if bash scripts/release.sh validate v0.3.0-rc.1; then echo 'accepted a candidate on neither development nor main' >&2; exit 1; fi
 echo 'Release tag, version and ancestry checks passed'
