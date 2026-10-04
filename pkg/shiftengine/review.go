@@ -127,13 +127,8 @@ func (w *ReviewWatch) targets(ctx context.Context) ([]reviewTarget, error) {
 		if it.Target == nil {
 			continue
 		}
-		var link string
-		var pr int
-		for _, l := range it.Links {
-			if n := prNumber(l); n > 0 {
-				link, pr = l, n
-			}
-		}
+		repo := it.Target.Owner + "/" + it.Target.Repo
+		link, pr := store.RunPullRequest(it.Delivery, it.Links, repo)
 		if pr == 0 {
 			continue
 		}
@@ -145,8 +140,7 @@ func (w *ReviewWatch) targets(ctx context.Context) ([]reviewTarget, error) {
 		if fp == nil {
 			continue
 		}
-		out = append(out, reviewTarget{item: it, forge: fp,
-			repo: it.Target.Owner + "/" + it.Target.Repo, pr: pr, link: link})
+		out = append(out, reviewTarget{item: it, forge: fp, repo: repo, pr: pr, link: link})
 	}
 	return out, nil
 }

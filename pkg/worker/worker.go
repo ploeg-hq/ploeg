@@ -465,9 +465,12 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	}
 	if writes && len(verifyCommands) > 0 && verifiesOutcome(final.Outcome) && ctx.Err() == nil {
 		verifyEnv := withToolchains(harnessEnvironment(os.Environ(), home, scratchDir, false, "", w.Cfg.LLMBaseURL, harnessModelName(w.Cfg)), w.Cfg.Toolchains)
-		v := runVerification(ctx, cloneDir, verifyEnv, verifyCommands, w.Cfg.VerifyTimeout)
+		v := verifyPushedCommit(ctx, pushedCandidate{
+			dir: filepath.Join(w.Cfg.WorkDir, "verify-vik-"+item.ExternalID), cloneURL: cloneURL, token: forgeToken,
+			branch: branch, commit: after.HeadSHA,
+		}, verifyEnv, verifyCommands, w.Cfg.VerifyTimeout)
 		failedCheck, failed := v.failed()
-		w.Log.Info("verified the writing Run's checkout", "commit", v.Commit, "dirty", v.Dirty,
+		w.Log.Info("verified the pushed commit", "commit", v.Commit, "expected", after.HeadSHA, "fresh", v.Fresh,
 			"failed", failed, "failed_check", failedCheck.Command, "stopped", v.Stopped)
 		final = withVerification(final, v)
 	}

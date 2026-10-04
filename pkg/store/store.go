@@ -418,6 +418,8 @@ func (s *Store) Renew(ctx context.Context, runToken string, ttl time.Duration) (
 }
 
 // Checkpoint records durable progress for the item owned by the run token.
+// It returns ErrCheckpointRefused for a checkpoint that names another branch
+// than the Run's or a pull request outside the Work Item's repository.
 func (s *Store) Checkpoint(ctx context.Context, runToken string, cp work.Checkpoint) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -442,6 +444,13 @@ func (s *Store) Checkpoint(ctx context.Context, runToken string, cp work.Checkpo
 			return ErrUnknownRun
 		}
 		return err
+	}
+	if binding, running, err := loadRunBinding(ctx, tx, runToken); err != nil {
+		return err
+	} else if running {
+		if why := checkpointMismatch(cp, binding); why != "" {
+			return fmt.Errorf("%w: %s", ErrCheckpointRefused, why)
+		}
 	}
 	if _, err := tx.Exec(ctx,
 		`INSERT INTO checkpoints (work_item_id, phase, branch, pr_url, node_name, pod_uid) VALUES ($1, $2, $3, $4, $5, $6)`,
@@ -483,22 +492,17 @@ type OutcomeResult struct {
 // the item's whole engagement, so its report transitions the item per
 // StateForOutcome, exactly as always. A Shift run is one voice among several —
 // three readers reporting must not flip the item's state three times — so the
-// item moves only when the shift engine closes the Shift.
+// item moves only when the shift engine closes the Shift. A pull request whose
+// checks did not pass on the pushed commit is not ready for review, so a legacy
+// run with one parks at needs_human (ADR-0070).
 func (s *Store) ReportOutcome(ctx context.Context, runToken string, rep harnessReport) (OutcomeResult, error) {
 	if rep.Outcome == work.OutcomeStuck && rep.StuckReason == "" {
 		return OutcomeResult{}, errors.New("stuck outcome requires a stuck_reason (R4)")
 	}
 	rep = rep.normalized()
-	next := work.StateForOutcome(rep.Outcome)
 	digest, err := rep.digest()
 	if err != nil {
 		return OutcomeResult{}, err
-	}
-	var verification []byte
-	if rep.Verification != nil {
-		if verification, err = json.Marshal(rep.Verification); err != nil {
-			return OutcomeResult{}, err
-		}
 	}
 
 	tx, err := s.pool.Begin(ctx)
@@ -506,6 +510,34 @@ func (s *Store) ReportOutcome(ctx context.Context, runToken string, rep harnessR
 		return OutcomeResult{}, err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
+
+	var admitted deliveryAdmission
+	binding, running, err := loadRunBinding(ctx, tx, runToken)
+	if err != nil {
+		return OutcomeResult{}, err
+	}
+	if running {
+		rep, admitted = admitDelivery(rep, binding)
+	}
+	next := work.StateForOutcome(rep.Outcome)
+	if next == work.StateAwaitingReview && rep.Verification.HoldsBackReview() {
+		next = work.StateNeedsHuman
+	}
+	var verification, delivery []byte
+	if rep.Verification != nil {
+		if verification, err = json.Marshal(rep.Verification); err != nil {
+			return OutcomeResult{}, err
+		}
+	}
+	if rep.Delivery != nil {
+		if delivery, err = json.Marshal(rep.Delivery); err != nil {
+			return OutcomeResult{}, err
+		}
+	}
+	var deliverySource *string
+	if admitted.source != "" {
+		deliverySource = &admitted.source
+	}
 
 	// The advance-once compare-and-swap. This used to be the lease DELETE, but
 	// readers hold no Lease (ADR-0010), so the lease can no longer be the thing
@@ -522,12 +554,12 @@ func (s *Store) ReportOutcome(ctx context.Context, runToken string, rep harnessR
 		    verdict = CASE WHEN writes THEN '' ELSE $8 END, outcome_digest = $10,
 		    problem = CASE WHEN writes THEN $11 ELSE '' END, solution = CASE WHEN writes THEN $12 ELSE '' END,
 		    verification = CASE WHEN writes THEN $13::jsonb ELSE NULL END,
-		    evidence_version = $14
+		    evidence_version = $14, delivery = $15::jsonb, delivery_source = $16
 		WHERE run_token = $9 AND state = 'running'
 		RETURNING id, work_item_id, team, shift_id`,
 		string(rep.Outcome), rep.Summary, rep.StuckReason, rep.Links, rep.Usage,
 		rep.FailureReason, rep.Findings, rep.Verdict, runToken, digest, rep.Problem, rep.Solution, verification,
-		CurrentEvidenceVersion).Scan(&runID, &id, &team, &shiftID); err != nil {
+		CurrentEvidenceVersion, delivery, deliverySource).Scan(&runID, &id, &team, &shiftID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			if err := tx.QueryRow(ctx, `SELECT work_item_id,shift_id FROM agent_runs
 				WHERE run_token=$1 AND state='finished' AND outcome_digest=$2
@@ -574,8 +606,17 @@ func (s *Store) ReportOutcome(ctx context.Context, runToken string, rep harnessR
 			}
 		}
 	}
-	if err := audit(ctx, tx, "team:"+team, "outcome."+string(rep.Outcome), &id,
-		map[string]any{"summary": rep.Summary, "stuck_reason": rep.StuckReason, "links": rep.Links}); err != nil {
+	outcomeDetail := map[string]any{"summary": rep.Summary, "stuck_reason": rep.StuckReason, "links": rep.Links}
+	if admitted.source != "" {
+		outcomeDetail["delivery_source"] = admitted.source
+	}
+	if rep.Delivery != nil {
+		outcomeDetail["delivery"] = rep.Delivery
+	}
+	if admitted.changed != "" {
+		outcomeDetail["delivery_changed_outcome"] = admitted.changed
+	}
+	if err := audit(ctx, tx, "team:"+team, "outcome."+string(rep.Outcome), &id, outcomeDetail); err != nil {
 		return OutcomeResult{}, err
 	}
 	created, err := createWorkItems(ctx, tx, runID, id, team, rep)
@@ -634,6 +675,7 @@ type harnessReport struct {
 	Solution      string                    `json:",omitempty"`
 	Created       []harness.CreatedWorkItem `json:",omitempty"`
 	Verification  *harness.Verification     `json:",omitempty"` // the worker's own check run; stored for a writing Run only
+	Delivery      *harness.Delivery         `json:",omitempty"` // the worker's forge observation (ADR-0059); bound to the Run before it is stored
 	policyFor     func(team string) followup.Policy
 	knownTeam     func(string) bool
 }
@@ -676,6 +718,13 @@ func (r harnessReport) WithProblemAndSolution(problem, solution string) harnessR
 // writing Run. ReportOutcome drops it from a reading Run.
 func (r harnessReport) WithVerification(v *harness.Verification) harnessReport {
 	r.Verification = v
+	return r
+}
+
+// WithDelivery attaches the worker's delivery record (ADR-0059).
+// ReportOutcome checks it against the Run before it stores it.
+func (r harnessReport) WithDelivery(d *harness.Delivery) harnessReport {
+	r.Delivery = d
 	return r
 }
 

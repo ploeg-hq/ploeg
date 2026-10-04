@@ -82,13 +82,16 @@ type checkResult struct {
 }
 
 type verification struct {
-	Commit     string
-	Dirty      bool
+	Commit string
+	Dirty  bool
+	// Fresh says the checks ran on a fresh checkout of the pushed commit.
+	Fresh      bool
 	Checks     []checkResult
 	StartedAt  time.Time
 	FinishedAt time.Time
-	// Stopped says why checks after the failing one did not run; empty when
-	// every check ran.
+	// Stopped says why the result is not a pass when no check failed, or why
+	// checks after the failing one did not run; empty when every check ran
+	// and passed on a commit that stayed the pull request's head.
 	Stopped string
 }
 
@@ -132,6 +135,15 @@ func (v verification) record() *harness.Verification {
 	return rec
 }
 
+func (v verification) ran() bool {
+	for _, c := range v.Checks {
+		if c.Ran {
+			return true
+		}
+	}
+	return false
+}
+
 func (v verification) failed() (checkResult, bool) {
 	for _, c := range v.Checks {
 		if c.Ran && c.ExitCode != 0 {
@@ -139,6 +151,78 @@ func (v verification) failed() (checkResult, bool) {
 		}
 	}
 	return checkResult{}, false
+}
+
+// pushedCandidate is the commit a writing Run delivered: the head of its pull
+// request as the forge reported it, on the Run's branch.
+type pushedCandidate struct {
+	dir      string
+	cloneURL string
+	token    string
+	branch   string
+	commit   string
+}
+
+// verifyPushedCommit runs cmds on a fresh clone of the candidate's branch,
+// never on the agent's checkout, so an uncommitted fix or a local file cannot
+// make the pushed commit pass. The clone must be at the candidate's commit,
+// and the branch must still point there after the checks; otherwise the
+// verification is incomplete and names why.
+func verifyPushedCommit(ctx context.Context, c pushedCandidate, env, cmds []string, limit time.Duration) verification {
+	defer os.RemoveAll(c.dir)
+	if err := c.checkout(ctx); err != nil {
+		return notVerified(c.commit, cmds, err.Error())
+	}
+	v := runVerification(ctx, c.dir, env, cmds, limit)
+	v.Fresh = true
+	if v.Stopped != "" {
+		return v
+	}
+	after := readBranchHead(ctx, c.dir, c.cloneURL, c.token, c.branch)
+	switch {
+	case after.err != nil:
+		v.Stopped = "Ploeg could not confirm that branch " + c.branch + " still points at the verified commit: " + after.err.Error()
+	case after.commit != c.commit:
+		v.Stopped = fmt.Sprintf("branch %s moved from %s to %s while the checks ran, so they describe a commit that is no longer the pull request's head",
+			c.branch, shortCommit(c.commit), after)
+	}
+	return v
+}
+
+func (c pushedCandidate) checkout(ctx context.Context) error {
+	if c.commit == "" {
+		return errors.New("the forge reported no head commit for the pull request, so there was no pushed commit to verify")
+	}
+	if err := os.RemoveAll(c.dir); err != nil {
+		return fmt.Errorf("could not prepare a fresh checkout: %v", err)
+	}
+	if out, err := runGit(ctx, "", c.cloneURL, c.token, cloneArgs(c.branch, c.cloneURL, c.dir)...); err != nil {
+		return fmt.Errorf("could not clone branch %s to verify commit %s: %s", c.branch, shortCommit(c.commit), strings.TrimSpace(tail(out, 400)))
+	}
+	if head := gitOutput(ctx, c.dir, "rev-parse", "HEAD"); head != c.commit {
+		return fmt.Errorf("branch %s is at %s, not at the pull request's head %s, so a newer push replaced the commit before it was verified",
+			c.branch, shortCommit(head), shortCommit(c.commit))
+	}
+	return nil
+}
+
+func notVerified(commit string, cmds []string, reason string) verification {
+	now := time.Now()
+	v := verification{StartedAt: now, FinishedAt: now, Stopped: reason}
+	if objectName(commit) {
+		v.Commit = commit
+	}
+	for _, c := range cmds {
+		v.Checks = append(v.Checks, checkResult{Command: c})
+	}
+	return v
+}
+
+func objectName(s string) bool {
+	if len(s) != 40 && len(s) != 64 {
+		return false
+	}
+	return strings.Trim(s, "0123456789abcdef") == ""
 }
 
 // runVerification runs cmds in order in dir with env, stopping at the first
@@ -210,7 +294,17 @@ func (v verification) markdown() string {
 	if v.Commit != "" {
 		commit = "commit `" + v.shortCommit() + "`"
 	}
-	fmt.Fprintf(&b, "Ploeg ran the configured checks on %s after the agent finished.", commit)
+	switch {
+	case !v.ran():
+		fmt.Fprintf(&b, "Ploeg could not run the configured checks on %s: %s.", commit, v.Stopped)
+	case v.Fresh:
+		fmt.Fprintf(&b, "Ploeg ran the configured checks on a fresh checkout of %s, the pushed head of the pull request, after the agent finished.", commit)
+	default:
+		fmt.Fprintf(&b, "Ploeg ran the configured checks on %s after the agent finished.", commit)
+	}
+	if _, failed := v.failed(); !failed && v.ran() && v.Stopped != "" {
+		b.WriteString(" The result is incomplete: " + v.Stopped + ".")
+	}
 	if v.Dirty {
 		b.WriteString(" The working tree had uncommitted changes, so the result may not match what was pushed.")
 	}

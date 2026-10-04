@@ -143,6 +143,8 @@ type gradeView struct {
 	provisional bool
 	formula     string
 	qualifiers  string
+	complete    bool
+	missing     []string
 }
 
 func newView(card store.OperatorCard, now time.Time) view {
@@ -190,7 +192,7 @@ func newView(card store.OperatorCard, now time.Time) view {
 	}
 	if g := card.Grade; g != nil {
 		gv := &gradeView{overall: strconv.FormatFloat(g.Overall, 'f', 1, 64), provisional: g.Provisional, formula: g.Formula,
-			qualifiers: strings.Join(g.Qualifiers, " ")}
+			qualifiers: strings.Join(g.Qualifiers, " "), complete: g.EvidenceComplete, missing: g.Inputs.Missing}
 		if g.Label != nil {
 			gv.label = strings.ToUpper((*g.Label)[:1]) + (*g.Label)[1:] + " Label"
 		}

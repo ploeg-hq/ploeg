@@ -24,13 +24,16 @@ const (
 type Verification struct {
 	// Result is passed, failed or incomplete.
 	Result string `json:"result"`
-	// Commit is the full object name of HEAD when the checks ran; empty when
-	// git could not tell.
+	// Commit is the full object name of the pushed commit the checks ran on,
+	// in a fresh checkout of the Run's branch; when the checks could not run,
+	// the pull request's head they were meant for. Empty when neither is known.
 	Commit string `json:"commit,omitempty"`
-	// Dirty is true when the working tree had uncommitted changes, so the
-	// result may not describe Commit.
+	// Dirty is true when the checkout had uncommitted changes before the
+	// checks ran, so the result may not describe Commit. A fresh checkout of
+	// the pushed commit is never dirty; older workers ran in the agent's.
 	Dirty bool `json:"dirty"`
-	// Stopped says why checks after the failing one did not run.
+	// Stopped says why checks after the failing one did not run, or why a
+	// verification in which no check failed is incomplete.
 	Stopped    string              `json:"stopped,omitempty"`
 	StartedAt  time.Time           `json:"startedAt"`
 	FinishedAt time.Time           `json:"finishedAt"`
@@ -45,6 +48,14 @@ type VerificationCheck struct {
 	ExitCode   *int       `json:"exitCode,omitempty"`
 	StartedAt  *time.Time `json:"startedAt,omitempty"`
 	FinishedAt *time.Time `json:"finishedAt,omitempty"`
+}
+
+// HoldsBackReview reports whether the worker's checks keep a writing Run's
+// pull request from being ready for review: they ran and did not pass on the
+// pushed commit (ADR-0070). A nil record, a Run with no configured checks,
+// holds nothing back.
+func (v *Verification) HoldsBackReview() bool {
+	return v != nil && v.Result != VerificationPassed
 }
 
 var objectNameRe = regexp.MustCompile(`^([0-9a-f]{40}|[0-9a-f]{64})$`)

@@ -117,6 +117,11 @@ func renderMetrics(m store.OperationalMetrics, webhooks *WebhookCoverage) []byte
 		b.sample("ploeg_runs_failed_total", float64(m.FailedRuns[reason]), "reason", reason)
 	}
 
+	b.family("ploeg_runs_without_observed_delivery_last_day", "gauge", "Runs finished in the last day whose report carried no delivery record from the worker (legacy) or one that did not match the Run (mismatch).")
+	for _, source := range sortedKeys(m.RunsWithoutObservedDeliveryLastDay) {
+		b.sample("ploeg_runs_without_observed_delivery_last_day", float64(m.RunsWithoutObservedDeliveryLastDay[source]), "source", source)
+	}
+
 	if webhooks != nil {
 		if c, ok := webhooks.snapshot(); ok {
 			b.family("ploeg_tracker_webhooks_missing", "gauge", "Configured Vikunja projects whose assignment webhook was not found at the last check.")

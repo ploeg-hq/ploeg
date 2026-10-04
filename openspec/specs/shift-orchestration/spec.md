@@ -137,7 +137,7 @@ When the Role's budgets are spent, the Round SHALL complete and the plan SHALL
 advance. If the plan then ends and the last reading Round after the last
 writing Round has a Role with no non-failed Outcome, the Shift SHALL close with
 reason `review_failed` instead of `plan_exhausted`. With a writer's pull
-request the Work Item SHALL still reach `awaiting_review`, and the tracker
+request whose checks did not fail the Work Item SHALL still reach `awaiting_review`, and the tracker
 comment SHALL say that no agent reviewed it and name the failure reason; it
 SHALL NOT say the plan completed or that anything was approved.
 
@@ -176,13 +176,47 @@ release the item's live-Shift slot so a later re-mandate can open a fresh one.
 
 - **WHEN** the last Round of a Team's plan completes
 - **THEN** the Shift closes with a recorded reason
-- **AND** the Work Item reaches `awaiting_review` when a writer opened or updated a pull request, so a person reviews and merges it; otherwise it reaches `needs_human`
+- **AND** the Work Item reaches `awaiting_review` when a writer opened or updated a pull request whose checks did not fail, so a person reviews and merges it; otherwise it reaches `needs_human`
 
 #### Scenario: A stuck Outcome freezes the plan
 
 - **GIVEN** any Run reports `stuck` with a reason (R4)
 - **THEN** the Shift closes, no further Round opens, and the item goes
   `needs_human` carrying that reason
+
+### Requirement: A pull request is ready for review only when its checks passed on the pushed commit
+
+After a writing Run opens or updates a pull request, the worker SHALL run the
+configured checks on a fresh clone of the Run's branch at the pull request's
+head, never in the agent's checkout, and SHALL report `incomplete` when the
+clone is at another commit or the branch moves while the checks run
+(ADR-0070). A Work Item SHALL NOT reach `awaiting_review` while the last
+writing Run that opened or updated its pull request reported a `failed` or
+`incomplete` verification. The pull request SHALL stay open. A configured plan
+with fix rounds and budget left SHALL re-open its writing Round, whatever a
+reviewer's verdict. Otherwise the Work Item SHALL reach `needs_human`: the
+Shift SHALL close `checks_not_passed` when it would have been ready for review,
+and keep the fix-round cap or budget reason when the fix loop ran out.
+
+#### Scenario: The agent fixed the failure only in its checkout
+
+- **GIVEN** a writer that pushed a commit failing a configured check and then
+  fixed the file without committing it
+- **WHEN** the worker verifies the Run
+- **THEN** the verification is `failed` and names the pushed commit
+
+#### Scenario: Failed checks with fix rounds left
+
+- **GIVEN** a writer whose verification failed and a reviewer that approved
+- **WHEN** the plan ends with fix rounds and budget left
+- **THEN** the writing Round re-opens and the Work Item is not `awaiting_review`
+
+#### Scenario: Failed checks with no fix round left
+
+- **GIVEN** a writer whose verification failed or was incomplete
+- **WHEN** the plan allows no fix round
+- **THEN** the Shift closes `checks_not_passed` and the Work Item reaches
+  `needs_human`
 
 ### Requirement: An exhausted budget pool parks the item rather than failing it
 
