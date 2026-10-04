@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -97,7 +98,9 @@ func TestKeyProxyStreamsWithoutBuffering(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer p.close()
-	resp, err := http.Get(p.baseURL + "/v1/chat/completions")
+	req, _ := http.NewRequest(http.MethodGet, p.baseURL+"/v1/chat/completions", nil)
+	req.Header.Set("Authorization", "Bearer "+p.placeholder)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,6 +117,73 @@ func TestKeyProxyStreamsWithoutBuffering(t *testing.T) {
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("the proxy buffered a streaming response; tokens would arrive only at the end")
+	}
+}
+
+func TestKeyProxyRefusesRequestsWithoutThePlaceholder(t *testing.T) {
+	var forwarded atomic.Int32
+	gw := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		forwarded.Add(1)
+	}))
+	defer gw.Close()
+	p, err := startLLMKeyProxy(gw.URL, "sk-real-run-key", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.close()
+	for name, header := range map[string]http.Header{
+		"no credential":                 {},
+		"wrong bearer":                  {"Authorization": {"Bearer ploeg-isolated-guess"}},
+		"wrong x-api-key":               {"X-Api-Key": {"ploeg-isolated-guess"}},
+		"placeholder without a scheme":  {"Authorization": {p.placeholder}},
+		"placeholder as basic password": {"Authorization": {"Basic " + p.placeholder}},
+		"placeholder prefix":            {"Authorization": {"Bearer " + p.placeholder[:len(p.placeholder)-1]}},
+		"placeholder with a suffix":     {"X-Api-Key": {p.placeholder + "x"}},
+		"placeholder in another header": {"Api-Key": {p.placeholder}},
+		"the real key itself":           {"Authorization": {"Bearer sk-real-run-key"}},
+	} {
+		req, _ := http.NewRequest(http.MethodPost, p.baseURL+"/v1/chat/completions", strings.NewReader(`{}`))
+		req.Header = header
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusForbidden {
+			t.Errorf("%s: status %d, want 403", name, resp.StatusCode)
+		}
+	}
+	if n := forwarded.Load(); n != 0 {
+		t.Fatalf("%d requests without the placeholder reached the gateway", n)
+	}
+	req, _ := http.NewRequest(http.MethodPost, p.baseURL+"/v1/chat/completions", strings.NewReader(`{}`))
+	req.Header.Set("Authorization", "bearer "+p.placeholder)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || forwarded.Load() != 1 {
+		t.Fatalf("the placeholder got status %d and %d forwards, want 200 and 1", resp.StatusCode, forwarded.Load())
+	}
+}
+
+func TestModelObserverForwardsWithoutAPlaceholder(t *testing.T) {
+	gw, seen := fakeGateway(t)
+	p, err := startLLMObserver(gw.URL, harness.NewActivity())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.close()
+	req, _ := http.NewRequest(http.MethodPost, p.baseURL+"/v1/chat/completions", strings.NewReader(`{}`))
+	req.Header.Set("Authorization", "Bearer sk-harness-held-key")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || seen.authorization != "Bearer sk-harness-held-key" {
+		t.Fatalf("observer answered %d and forwarded %q, want 200 and the harness's own key", resp.StatusCode, seen.authorization)
 	}
 }
 
