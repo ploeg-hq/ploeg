@@ -66,6 +66,7 @@ const (
 	pullsNone pullListing = iota
 	pullsForPushedBranch
 	pullsFailAfterFirstRead
+	pullsFailAlways
 )
 
 type writerForge struct {
@@ -119,15 +120,17 @@ func newWriterForge(t *testing.T, branchExists bool, listing pullListing) *write
 	var srvURL string
 	mux.HandleFunc("/api/v1/repos/webgrip/example/pulls", func(w http.ResponseWriter, _ *http.Request) {
 		read := forge.reads.Add(1)
-		if pullListing(forge.listing.Load()) == pullsFailAfterFirstRead && read > 1 {
+		listing := pullListing(forge.listing.Load())
+		if listing == pullsFailAlways || (listing == pullsFailAfterFirstRead && read > 1) {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
-		if pullListing(forge.listing.Load()) == pullsNone || !forge.hasBranch() {
+		if listing == pullsNone || !forge.hasBranch() {
 			fmt.Fprint(w, `[]`)
 			return
 		}
-		fmt.Fprintf(w, `[{"html_url":%q,"head":{"ref":%q},"base":{"ref":"development"}}]`, srvURL+"/webgrip/example/pulls/3", writerBranch)
+		fmt.Fprintf(w, `[{"number":3,"html_url":%q,"head":{"ref":%q,"sha":%q,"repo":{"full_name":"webgrip/example"}},"base":{"ref":"development","repo":{"full_name":"webgrip/example"}}}]`,
+			srvURL+"/webgrip/example/pulls/3", writerBranch, forge.branchHead())
 	})
 	srv := httptest.NewServer(mux)
 	srvURL = srv.URL
@@ -137,7 +140,15 @@ func newWriterForge(t *testing.T, branchExists bool, listing pullListing) *write
 }
 
 func (f *writerForge) hasBranch() bool {
-	return exec.Command("git", "--git-dir", f.bare, "rev-parse", "--verify", "--quiet", "refs/heads/"+writerBranch).Run() == nil
+	return f.branchHead() != ""
+}
+
+func (f *writerForge) branchHead() string {
+	out, err := exec.Command("git", "--git-dir", f.bare, "rev-parse", "--verify", "--quiet", "refs/heads/"+writerBranch).Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }
 
 func runWriterAgainst(t *testing.T, forge *writerForge, adapter harness.Adapter) harness.OutcomeReport {
