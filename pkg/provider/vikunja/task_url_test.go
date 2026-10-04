@@ -1,7 +1,6 @@
 package vikunja
 
 import (
-	"bytes"
 	"context"
 	"net/http"
 	"net/http/httptest"
@@ -32,9 +31,8 @@ func TestTaskURLIsTheTaskPageBesideTheAPIRoot(t *testing.T) {
 }
 
 func TestParseWebhookCarriesTheTaskURL(t *testing.T) {
-	p := &Provider{DefaultTeam: "default", BaseURL: "https://vikunja.example/api/v1"}
-	r := httptest.NewRequest("POST", "/webhooks/tracker/vikunja", bytes.NewReader([]byte(assignedBody)))
-	events, err := p.ParseWebhook(r)
+	p := &Provider{Secret: fixtureSecret, DefaultTeam: "default", BaseURL: "https://vikunja.example/api/v1"}
+	events, err := p.ParseWebhook(signedHook(assignedBody))
 	if err != nil || len(events) != 1 {
 		t.Fatalf("ParseWebhook = %v, %v", events, err)
 	}
