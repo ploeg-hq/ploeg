@@ -66,6 +66,8 @@ func TestMetricsExposeAlertingStateFromTheDatabase(t *testing.T) {
 		`ploeg_llm_keys_past_ttl{state="issued"} 0`,
 		`ploeg_llm_keys_past_ttl{state="unknown"} 0`,
 		"ploeg_settled_spend_usd_last_hour 0",
+		`ploeg_runs_without_observed_delivery_last_day{source="legacy"} 0`,
+		`ploeg_runs_without_observed_delivery_last_day{source="mismatch"} 0`,
 	)
 	for _, prefix := range []string{`ploeg_shift_idle_seconds_max{team="bronze"} 7`, "ploeg_lease_overdue_seconds_max 3"} {
 		if !strings.Contains(body, "\n"+prefix) {

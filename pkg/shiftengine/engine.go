@@ -348,7 +348,8 @@ func (e *Engine) remandForReview(ctx context.Context, workItemID int64) bool {
 // readyForReview reports whether a configured plan closed with a pull request
 // a person can review: its reviewer approved, or it ran to completion, with or
 // without an agent review, without the last review asking for changes, and a
-// writer opened or updated it.
+// writer opened or updated it. A writer whose stored delivery record did not
+// observe that delivery does not count (ADR-0059).
 func readyForReview(closeReason string, reports []store.RunReport) bool {
 	if closeReason != reasonApproved && closeReason != reasonPlanExhausted && closeReason != reasonReviewFailed {
 		return false
@@ -357,7 +358,7 @@ func readyForReview(closeReason string, reports []store.RunReport) bool {
 		return false
 	}
 	for _, r := range reports {
-		if r.Writes && (r.Outcome == string(work.OutcomePROpened) || r.Outcome == string(work.OutcomePRUpdated)) {
+		if r.Writes && work.Outcome(r.Outcome).AssertsDelivery() && (r.Delivery == nil || r.Delivery.Observed.Delivered()) {
 			return true
 		}
 	}

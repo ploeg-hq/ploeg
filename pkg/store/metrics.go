@@ -29,7 +29,16 @@ type OperationalMetrics struct {
 	// hour: managed reconciliation deltas plus harness-reported cost of
 	// finished Shift Runs that have no managed inference account.
 	SettledSpendLastHourUSD float64
+	// RunsWithoutObservedDeliveryLastDay counts, per delivery source
+	// (DeliveryUnobservedSources), the Runs finished in the last day whose
+	// report carried no delivery record (legacy) or one that did not match
+	// the Run (mismatch).
+	RunsWithoutObservedDeliveryLastDay map[string]int
 }
+
+// DeliveryUnobservedSources are the delivery sources the
+// RunsWithoutObservedDeliveryLastDay gauge reports.
+var DeliveryUnobservedSources = []string{DeliverySourceLegacy, DeliverySourceMismatch}
 
 // KeyStates are the inference account states that can hold a live gateway
 // key.
@@ -42,6 +51,11 @@ func (s *Store) OperationalMetrics(ctx context.Context) (OperationalMetrics, err
 		ShiftIdleSeconds:     map[string]float64{},
 		KeysPastTTL:          map[string]int{},
 		KeyTTLOverrunSeconds: map[string]float64{},
+
+		RunsWithoutObservedDeliveryLastDay: map[string]int{},
+	}
+	for _, source := range DeliveryUnobservedSources {
+		m.RunsWithoutObservedDeliveryLastDay[source] = 0
 	}
 	for _, state := range KeyStates {
 		m.KeysPastTTL[state] = 0
@@ -122,6 +136,26 @@ func (s *Store) OperationalMetrics(ctx context.Context) (OperationalMetrics, err
 			AND jsonb_typeof(r.usage->'costUsd') = 'number'
 			AND NOT EXISTS (SELECT 1 FROM run_llm_accounts a WHERE a.run_token = r.run_token)), 0)
 		)::float8`).Scan(&m.SettledSpendLastHourUSD); err != nil {
+		return m, err
+	}
+
+	rows, err = tx.Query(ctx, `SELECT delivery_source, count(*) FROM agent_runs
+		WHERE delivery_source IN ('legacy', 'mismatch') AND finished_at > now() - interval '1 day'
+		GROUP BY delivery_source`)
+	if err != nil {
+		return m, err
+	}
+	for rows.Next() {
+		var source string
+		var n int
+		if err := rows.Scan(&source, &n); err != nil {
+			rows.Close()
+			return m, err
+		}
+		m.RunsWithoutObservedDeliveryLastDay[source] = n
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
 		return m, err
 	}
 	return m, tx.Commit(ctx)
