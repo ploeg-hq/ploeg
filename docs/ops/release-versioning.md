@@ -1,6 +1,6 @@
 # Independent releases
 
-The new `github.com/ploeg-hq/ploeg` module starts at **v0.1.0**. Ploeg remains experimental. The version reset applies only to this new module and artifact namespace. Never rewrite old versions in `webgrip/ploeg` or Unfold.
+The new `github.com/ploeg-hq/ploeg` module starts at **v0.1.0**. Ploeg remains experimental. The version reset applies only to this new module and artifact namespace. Never rewrite old versions in `webgrip/ploeg`.
 
 ## Cut a release
 

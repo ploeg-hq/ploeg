@@ -16,7 +16,7 @@ import (
 func TestOperatorDeliveryWorkbenchQualification(t *testing.T) {
 	workbench := os.Getenv("PLOEG_WORKBENCH_PATH")
 	if workbench == "" {
-		t.Skip("PLOEG_WORKBENCH_PATH opts into the real De Vloer delivery qualification")
+		t.Skip("PLOEG_WORKBENCH_PATH opts into the real De Console delivery qualification")
 	}
 	if !filepath.IsAbs(workbench) {
 		t.Fatal("PLOEG_WORKBENCH_PATH must be absolute")
@@ -64,7 +64,7 @@ func TestOperatorDeliveryWorkbenchQualification(t *testing.T) {
 	if !ok {
 		t.Fatal("fixture policy missing")
 	}
-	raw, _ := json.Marshal([]any{map[string]any{"repositoryId": policy["repositoryId"], "policySha256": prepared["policySha256"], "verifierId": "de-vloer-docker-v1", "minTests": 2, "publicationEnabled": false}})
+	raw, _ := json.Marshal([]any{map[string]any{"repositoryId": policy["repositoryId"], "policySha256": prepared["policySha256"], "verifierId": "docker-verifier-v1", "minTests": 2, "publicationEnabled": false}})
 	policies, err := ParseDeliveryPolicies(string(raw))
 	if err != nil {
 		t.Fatalf("prepared verifier policy: %v", err)
@@ -83,5 +83,5 @@ func TestOperatorDeliveryWorkbenchQualification(t *testing.T) {
 	}
 	encoded, _ := json.Marshal(result)
 	safe := strings.ReplaceAll(strings.ReplaceAll(string(encoded), ownerToken, "[redacted]"), verifierToken, "[redacted]")
-	t.Logf("De Vloer delivery qualification: %s", safe)
+	t.Logf("De Console delivery qualification: %s", safe)
 }

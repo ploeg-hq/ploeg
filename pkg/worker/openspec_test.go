@@ -78,13 +78,13 @@ func TestLocateOpenSpecChange(t *testing.T) {
 			t.Fatalf("got %+v, %v; want root .", got, err)
 		}
 	})
-	t.Run("nested application like Glide", func(t *testing.T) {
+	t.Run("nested application", func(t *testing.T) {
 		repo := t.TempDir()
-		writeTree(t, repo, changeFiles("apps/ploeg", "add-widget", "why"))
-		writeTree(t, repo, map[string]string{"apps/vloer/openspec/changes/other/proposal.md": "x"})
+		writeTree(t, repo, changeFiles("services/engine", "add-widget", "why"))
+		writeTree(t, repo, map[string]string{"apps/console/openspec/changes/other/proposal.md": "x"})
 		got, err := locateOpenSpecChange(repo, "add-widget")
-		if err != nil || got.RelRoot != "apps/ploeg" || !strings.HasSuffix(got.Root, filepath.Join("apps", "ploeg")) {
-			t.Fatalf("got %+v, %v; want root apps/ploeg", got, err)
+		if err != nil || got.RelRoot != "services/engine" || !strings.HasSuffix(got.Root, filepath.Join("services", "engine")) {
+			t.Fatalf("got %+v, %v; want root services/engine", got, err)
 		}
 	})
 	t.Run("missing", func(t *testing.T) {
@@ -130,7 +130,7 @@ func TestLocateOpenSpecChange(t *testing.T) {
 func TestOpenSpecBriefFromTheCLI(t *testing.T) {
 	fakeOpenSpec(t, fakeOpenSpecScript)
 	real, home := t.TempDir(), t.TempDir()
-	writeTree(t, real, changeFiles("apps/ploeg", "add-widget", "why"))
+	writeTree(t, real, changeFiles("services/engine", "add-widget", "why"))
 	repo := filepath.Join(t.TempDir(), "clone")
 	if err := os.Symlink(real, repo); err != nil {
 		t.Fatal(err)
@@ -140,11 +140,11 @@ func TestOpenSpecBriefFromTheCLI(t *testing.T) {
 		t.Fatal(err)
 	}
 	brief := openSpecBriefFor(context.Background(), ch, home)
-	if brief.Source != harness.OpenSpecSourceCLI || brief.Change != "add-widget" || brief.Root != "apps/ploeg" {
-		t.Fatalf("brief = %+v, want a CLI brief for apps/ploeg", brief)
+	if brief.Source != harness.OpenSpecSourceCLI || brief.Change != "add-widget" || brief.Root != "services/engine" {
+		t.Fatalf("brief = %+v, want a CLI brief for services/engine", brief)
 	}
 	for _, want := range []string{
-		"proposal: apps/ploeg/openspec/changes/add-widget/proposal.md",
+		"proposal: services/engine/openspec/changes/add-widget/proposal.md",
 		"Progress: 1 of 2 tasks complete",
 		"- 1.2 pending thing",
 		"ranks below the delivery contract",
@@ -328,11 +328,11 @@ func TestOpenSpecGateApplies(t *testing.T) {
 func TestComposePromptCarriesTheOpenSpecBrief(t *testing.T) {
 	spec := testTaskSpec()
 	spec.Repo.BaseBranch = "development"
-	spec.OpenSpec = &harness.OpenSpecBrief{Change: "add-widget", Root: "apps/ploeg", Source: harness.OpenSpecSourceCLI, Brief: "Pending tasks:\n- 1.2 pending thing"}
+	spec.OpenSpec = &harness.OpenSpecBrief{Change: "add-widget", Root: "services/engine", Source: harness.OpenSpecSourceCLI, Brief: "Pending tasks:\n- 1.2 pending thing"}
 
 	writer := ComposePrompt(spec, true, "", false)
-	for _, want := range []string{"## OpenSpec change add-widget", "the directory apps/ploeg",
-		"apps/ploeg/openspec/changes/add-widget/tasks.md", "openspec validate add-widget --type change --strict",
+	for _, want := range []string{"## OpenSpec change add-widget", "the directory services/engine",
+		"services/engine/openspec/changes/add-widget/tasks.md", "openspec validate add-widget --type change --strict",
 		"contract wins", "### Brief (from the openspec CLI)", "- 1.2 pending thing"} {
 		if !strings.Contains(writer, want) {
 			t.Errorf("writer prompt lacks %q", want)
@@ -343,7 +343,7 @@ func TestComposePromptCarriesTheOpenSpecBrief(t *testing.T) {
 	}
 
 	reader := ComposePrompt(spec, false, "", true)
-	for _, want := range []string{"git diff development...HEAD -- apps/ploeg/openspec/changes/add-widget",
+	for _, want := range []string{"git diff development...HEAD -- services/engine/openspec/changes/add-widget",
 		"replaced by request_changes", "### Brief (from the openspec CLI)"} {
 		if !strings.Contains(reader, want) {
 			t.Errorf("reader prompt lacks %q", want)
@@ -430,8 +430,8 @@ func (a *openSpecAdapter) Run(_ context.Context, spec harness.TaskSpec, env harn
 func runOpenSpecWorkItem(t *testing.T, description string, claimed ClaimResponse, branchProposal string, adapter *openSpecAdapter) harness.OutcomeReport {
 	t.Helper()
 	const branch = "agent/vik-7"
-	forge := newOpenSpecForge(t, changeFiles("apps/ploeg", "add-widget", "## Why\n\nWidgets.\n"), branch,
-		map[string]string{"apps/ploeg/openspec/changes/add-widget/proposal.md": branchProposal})
+	forge := newOpenSpecForge(t, changeFiles("services/engine", "add-widget", "## Why\n\nWidgets.\n"), branch,
+		map[string]string{"services/engine/openspec/changes/add-widget/proposal.md": branchProposal})
 	var rec checkpointRecorder
 	w := New(Config{APIURL: rec.server(t), ForgeURL: forge.url, DefaultForge: harness.ForgeForgejo, BuilderToken: "tok",
 		ForgeTokenAccess: ForgeTokenReadOnly, RepoOwner: "webgrip", RepoName: "example", BaseBranch: "development",
@@ -447,9 +447,9 @@ func TestOpenSpecWorkItem_WriterBriefedAndGated(t *testing.T) {
 		fakeOpenSpec(t, fakeOpenSpecScript)
 		adapter := &openSpecAdapter{}
 		report := runOpenSpecWorkItem(t, "<p>Build it.</p><p>openspec: add-widget</p>", writer, "## Why\n\nWidgets, done.\n", adapter)
-		if !adapter.ran || adapter.spec.OpenSpec == nil || adapter.spec.OpenSpec.Root != "apps/ploeg" ||
+		if !adapter.ran || adapter.spec.OpenSpec == nil || adapter.spec.OpenSpec.Root != "services/engine" ||
 			adapter.spec.OpenSpec.Source != harness.OpenSpecSourceCLI {
-			t.Fatalf("harness spec = %+v, want an OpenSpec brief for apps/ploeg", adapter.spec.OpenSpec)
+			t.Fatalf("harness spec = %+v, want an OpenSpec brief for services/engine", adapter.spec.OpenSpec)
 		}
 		if !strings.Contains(adapter.prompt, "## OpenSpec change add-widget") {
 			t.Error("the writer prompt carries no OpenSpec section")
@@ -469,7 +469,7 @@ func TestOpenSpecWorkItem_WriterBriefedAndGated(t *testing.T) {
 	t.Run("a valid fix left in the working tree is not delivered", func(t *testing.T) {
 		fakeOpenSpec(t, fakeOpenSpecScript)
 		adapter := &openSpecAdapter{edit: func(repo string) {
-			writeTree(t, repo, map[string]string{"apps/ploeg/openspec/changes/add-widget/proposal.md": "fixed locally, never pushed"})
+			writeTree(t, repo, map[string]string{"services/engine/openspec/changes/add-widget/proposal.md": "fixed locally, never pushed"})
 		}}
 		report := runOpenSpecWorkItem(t, "openspec: add-widget", writer, "BROKEN", adapter)
 		if report.Outcome != work.OutcomeStuck || !strings.Contains(report.StuckReason, "add-widget/proposal.md") ||

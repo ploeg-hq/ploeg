@@ -10,7 +10,7 @@ context: |
 
   Ploeg authorizes and coordinates agent work from tracker events and explicit
   operator admission. Trackers retain work content and priorities. Ploeg records
-  execution authority; unattended workers or De Vloer perform the work. Read
+  execution authority; unattended workers or operator consumers perform the work. Read
   docs/index.md for current guidance. Go plus a Helm chart, Apache-2.0.
 
   Read before designing anything non-trivial:

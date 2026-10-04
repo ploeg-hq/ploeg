@@ -2,25 +2,14 @@ project: Ploeg
 owner: ploeg
 description: >
   Ploeg schedules and runs work handed to agents, tracks progress and cost,
-  and supports cooperation between agents. It is Unfold's only execution engine
-  and the Authority for every Run (Unfold ADR-0002). De Vloer is its front end,
-  where people work on tickets, give work to agents and review the results.
-  Vloer Start requests Ploeg admission; a manual-origin request need not have a
-  tracker ticket. Until Vloer's own engine is retired, Vloer still performs
-  delegated operator Runs. Trackers keep their work content and priorities.
+  and supports cooperation between agents. It is the Authority for every Run
+  it executes. Work reaches it from trackers, from authenticated Operator
+  Consumers and from other work. Trackers keep their work content and
+  priorities. Ploeg knows its consumers only through its published contracts.
   This vocabulary includes intended domain rules; it is not a database or API
   field inventory. The architecture and published contracts identify current
-  implementation limits. Vloer uses these execution terms.
+  implementation limits.
 version: 0.6.0
-combined_glossary: https://github.com/webgrip/unfold/blob/9c1d53f01fbfb65733800aa75e288341734dc23f/docs/reference/glossary.md
-references:
-  - label: Unfold ADR-0002
-    path: https://github.com/webgrip/unfold/blob/9c1d53f01fbfb65733800aa75e288341734dc23f/docs/adr/adr-0002-ploeg-is-the-only-engine.md
-    note: Ploeg is the only execution engine and Vloer is its front end.
-imports:
-  - model: consumer-terms.yaml
-    terms: [Ready, Model, Result, Review, Session, Crew, Step]
-
 contexts:
   - name: Dispatch
     description: >
@@ -67,7 +56,7 @@ terms:
   - name: Operator Execution
     definition: >
       A Ploeg record admitted for an authenticated Operator Consumer and linked
-      to its session. Vloer Start requests admission even when the person will
+      to its session. A consumer requests admission even when a person will
       steer the work live. It links one Work Item, Shift and Run and retains its
       identity through changes in supervision.
     context: Dispatch
@@ -97,8 +86,8 @@ terms:
     definition: >
       A unit of work: something we have decided to do, or a problem described
       well enough that a solution can be formulated or at least conceived. It
-      comes from a Tracker Item, from an Operator Execution admitted through
-      Vloer, or from other work (a Follow-Up). Ploeg keeps one record per Work
+      comes from a Tracker Item, from an Operator Execution admitted for an
+      Operator Consumer, or from other work (a Follow-Up). Ploeg keeps one record per Work
       Item and runs Shifts against it; a failed Shift leaves it in place.
       Tracker-originated content remains owned by the Tracker Item.
       Manual-origin content is registered by an authenticated Operator Consumer
@@ -143,8 +132,6 @@ terms:
         note: >
           A retired product term for the same attempt. The word still names a
           bounded context and is part of Operator Execution.
-      - term: Session
-        note: Vloer's record of a person's interaction; a started session links to one Shift.
     see_also: [Lease, Run, Round, Team, Work Item]
 
   - name: Lease
@@ -196,9 +183,6 @@ terms:
       Target, not the Team's.
     context: Dispatch
     avoid: [crew]
-    not_to_be_confused_with:
-      - term: Crew
-        note: Vloer's registered list of Roles for a session; it maps to a Team.
     examples: ["implementer + reviewer-on-a-different-model-family + tester"]
     see_also: [Role, Shift, Work Target]
 
@@ -219,15 +203,12 @@ terms:
       as a Kubernetes Job or a delegated workbench execution. A Lease may accumulate several Runs (roles,
       retries, resumes). The runner reports its outcome; controller expiry and
       reconciliation recover missing reports while preserving operator stop intent. "Job" is reserved for the Kubernetes
-      object and is never a domain term. A delegated Run may contain several
-      Vloer Steps until Vloer's engine is retired (Unfold ADR-0002).
+      object and is never a domain term.
     context: Execution
     avoid: [job (as a domain term), role run]
     not_to_be_confused_with:
       - term: Shift
         note: The whole attempt on a Work Item, which contains one or more Runs.
-      - term: Step
-        note: A Vloer-internal part of one Run; older Vloer text says "role run".
     see_also: [Role, Outcome, Outcome Report, Executor, Lease]
 
   - name: Outcome
@@ -239,8 +220,6 @@ terms:
       tracker or operator recovery policy; it does not universally authorize retry.
     context: Dispatch
     not_to_be_confused_with:
-      - term: Result
-        note: The deliverable and evidence that a person reviews against the Acceptance Conditions.
       - term: Verdict
         note: A reading Run's opinion of the work; an Outcome classifies how the Run itself ended.
     see_also: [Outcome Report, Run]
@@ -365,8 +344,8 @@ terms:
   - name: Executor
     definition: >
       The component that performs admitted Runs and reports progress and outcomes.
-      Current unattended execution uses Kubernetes workers; Vloer performs delegated
-      operator execution until Unfold ADR-0002 moves it to ploeg-worker. The
+      Current unattended execution uses Kubernetes workers; an Operator Consumer
+      performs delegated operator execution and reports it to Ploeg. The
       controller recovers missing reports through expiry and reconciliation,
       without a Kubernetes Job watcher.
     context: Execution
@@ -380,6 +359,14 @@ terms:
       Adapter — because this boundary churns fastest of any in the system.
     context: Harness
     see_also: [Harness Adapter, Agent Container, Model]
+
+  - name: Model
+    definition: >
+      The trained system a Harness sends requests to through the model
+      gateway. Ploeg authorizes and accounts for its use per Run through the
+      Run's Inference Account; it never runs a model itself.
+    context: Harness
+    see_also: [Harness, Inference Account]
 
   - name: Harness Adapter
     definition: >
@@ -419,19 +406,14 @@ terms:
     definition: >
       A reading Run's answer to "is this done?", reported in its Outcome Report:
       approve or request_changes, or empty for no opinion. A request_changes
-      Verdict can open a capped fix Round (Ploeg ADR-0017). Vloer's reviewer
-      prompt also accepts inconclusive.
+      Verdict can open a capped fix Round (Ploeg ADR-0017).
     context: Harness
-    not_to_be_confused_with:
-      - term: Review
-        note: A judgement of a Result against its Acceptance Conditions. A Verdict is Evidence for it, not acceptance.
     see_also: [Outcome Report, Round, Role]
 
   - name: Admission
     definition: >
       Ploeg's decision to accept work for execution and record it. Operator work
-      is admitted when an authenticated Operator Consumer asks, for example on
-      Vloer Start; tracker work enters through an Assignment and the Routing
+      is admitted when an authenticated Operator Consumer asks; tracker work enters through an Assignment and the Routing
       Rules. No Run starts before its work is admitted.
     context: Dispatch
     see_also: [Authority, Operator Execution, Operator Consumer, Assignment, Work Item]
@@ -439,7 +421,7 @@ terms:
   - name: Authority
     definition: >
       The one party entitled to approve a Run, set its budget and grant or revoke
-      its credentials. Ploeg is the Authority for every Run (Unfold ADR-0002). A
+      its credentials. Ploeg is the Authority for every Run it executes. A
       Run never switches to another authority because a connection fails.
     context: Dispatch
     see_also: [Admission, Inference Account, Push Credential, Run]
@@ -485,7 +467,7 @@ entities:
     relationships:
       - {to: Work Item, kind: has_one, description: One manual item or atomically adopted pristine tracker item outside unattended queue claims.}
       - {to: Shift, kind: has_one, description: One retained authorization pool.}
-      - {to: Run, kind: has_one, description: One operator Role whose delegated Steps Vloer performs until Unfold ADR-0002 is implemented.}
+      - {to: Run, kind: has_one, description: One operator Role whose delegated work the consumer performs and reports.}
 
   - name: Work Item
     description: Ploeg's execution record for tracker, follow-up or operator work.
@@ -916,7 +898,7 @@ entities:
 
 rules:
   - id: R18
-    statement: An Operator Execution requires authenticated admission. Creating a queued Vloer session alone does not admit it; Start does, including hands-on work. Vloer's deterministic demo, and its standalone mode until Unfold ADR-0002 retires it, do not create these Ploeg records.
+    statement: An Operator Execution requires authenticated admission. A consumer's own record of the work does not admit it; an admission request does, including for hands-on work. Work a consumer runs without asking Ploeg creates no Ploeg records.
     rationale: Admission follows the configured execution mode and explicit start, not whether a person is currently watching the work.
     applies_to: [Work Item, Operator Execution]
     context: Dispatch
@@ -1167,16 +1149,6 @@ ambiguities:
     status: open
 
 dialogues:
-  - title: Working on a ticket in De Vloer
-    lines:
-      - speaker: Developer
-        text: Where do I start working?
-      - speaker: Product owner
-        text: In De Vloer. A ticket can supply the objective. Start requests Ploeg admission; without Ploeg, De Vloer runs only its deterministic demo.
-      - speaker: Developer
-        text: Does that require OpenCode?
-      - speaker: Product owner
-        text: No. The tool running the agent is replaceable. De Vloer is the place you use.
   - title: Research can recommend stopping
     lines:
       - speaker: Developer

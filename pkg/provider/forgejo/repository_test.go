@@ -16,9 +16,9 @@ func repositoryForge(t *testing.T, repo string, agentsOn map[string]bool) *Provi
 			t.Errorf("missing token auth: %q", r.Header.Get("Authorization"))
 		}
 		switch r.URL.Path {
-		case "/api/v1/repos/webgrip/glide":
+		case "/api/v1/repos/webgrip/app":
 			_, _ = w.Write([]byte(repo))
-		case "/api/v1/repos/webgrip/glide/contents/AGENTS.md":
+		case "/api/v1/repos/webgrip/app/contents/AGENTS.md":
 			if !agentsOn[r.URL.Query().Get("ref")] {
 				http.NotFound(w, r)
 				return
@@ -54,7 +54,7 @@ func TestInspectRepositoryReadsArchiveMirrorAndAgentsFile(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got, err := repositoryForge(t, c.repo, c.agents).InspectRepository(ctx, "webgrip", "glide", c.branch)
+			got, err := repositoryForge(t, c.repo, c.agents).InspectRepository(ctx, "webgrip", "app", c.branch)
 			if err != nil {
 				t.Fatal(err)
 			}

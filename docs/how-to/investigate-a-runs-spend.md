@@ -3,7 +3,7 @@ type: how-to
 audience: [operator]
 owner: ploeg
 last_verified: 2026-09-28
-verified_by: "Read apps/ploeg migrations 0008 and 0012 (shifts, agent_runs.authorized, run_llm_accounts, run_budget_holds), pkg/store/{llm_accounts,llm_settlement,llm_block_queue,store,shift,operator}.go, pkg/httpapi/llm_control.go (Block, Settle), pkg/llmbroker/litellm.go, pkg/litellm/client.go and cmd/ploegd/sweep.go"
+verified_by: "Read migrations 0008 and 0012 (shifts, agent_runs.authorized, run_llm_accounts, run_budget_holds), pkg/store/{llm_accounts,llm_settlement,llm_block_queue,store,shift,operator}.go, pkg/httpapi/llm_control.go (Block, Settle), pkg/llmbroker/litellm.go, pkg/litellm/client.go and cmd/ploegd/sweep.go"
 ---
 
 # Investigate a Run's spend
@@ -73,7 +73,7 @@ WHERE s.id = :shift
 GROUP BY s.id;
 ```
 
-Ploeg's operator API, which Vloer reads, returns the same three figures as `budgetUsd`, `spentUsd` and `reservedUsd` ([operator.go](../../pkg/store/operator.go)).
+Ploeg's operator API returns the same three figures as `budgetUsd`, `spentUsd` and `reservedUsd` ([operator.go](../../pkg/store/operator.go)).
 
 ## 3. Read each Run's account and hold
 
@@ -141,7 +141,7 @@ WHERE a.run_token = '<run_token>' ORDER BY j.id;
    ```
 
    `managed settlement unresolved … gateway spend logs unavailable` means the gateway's `/spend/logs` or `/key/list` fails. Fix the gateway; the sweep retries every interval.
-3. **The account is `minting`, `issued` or `unknown` on a finished Run.** The block sweep retries it. `managed key block retry unresolved` repeating means the gateway cannot revoke the key or report its spend, often because the key is already gone. The account keeps its full hold. `GET /api/v1/operator/unsettled-accounts` lists every such Run in the consumer's Teams, oldest first, with its Work Item, account state, held amount and since when, plus the count and held total. Vloer shows them in a callout on Now. **Not implemented yet:** a command that settles such an account from evidence you have gathered. Follow [Reconcile uncertainty](../ops/managed-workers.md#reconcile-uncertainty): keep the hold, collect the gateway and provider evidence, and record it.
+3. **The account is `minting`, `issued` or `unknown` on a finished Run.** The block sweep retries it. `managed key block retry unresolved` repeating means the gateway cannot revoke the key or report its spend, often because the key is already gone. The account keeps its full hold. `GET /api/v1/operator/unsettled-accounts` lists every such Run in the consumer's Teams, oldest first, with its Work Item, account state, held amount and since when, plus the count and held total. **Not implemented yet:** a command that settles such an account from evidence you have gathered. Follow [Reconcile uncertainty](../ops/managed-workers.md#reconcile-uncertainty): keep the hold, collect the gateway and provider evidence, and record it.
 4. **The Run is still `running`.** Its hold is its authorization. See [Recover a stuck Lease or Run](recover-a-stuck-lease-or-run.md) if it should have ended.
 
 ## Verify

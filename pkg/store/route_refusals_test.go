@@ -40,7 +40,7 @@ func refusalIDs(refusals []RouteRefusal) string {
 
 func TestRecentRouteRefusalsReturnTheStoredCodeAndAllowedLabels(t *testing.T) {
 	resetTables(t)
-	refuseTask(t, refusedTask("700", "silver"), "label_missing", "board rule \"10\" requires a repository label", []string{"repo/unfold", "repo/homelab-cluster"})
+	refuseTask(t, refusedTask("700", "silver"), "label_missing", "board rule \"10\" requires a repository label", []string{"repo/app", "repo/homelab-cluster"})
 
 	got := recentRefusals(t, nil)
 	if len(got) != 1 {
@@ -49,7 +49,7 @@ func TestRecentRouteRefusalsReturnTheStoredCodeAndAllowedLabels(t *testing.T) {
 	r := got[0]
 	if r.Provider != "vikunja" || r.ExternalID != "700" || r.ExternalScope != "10" || r.Team != "silver" || r.Title != "task 700" ||
 		strings.Join(r.Labels, ",") != "do-next" || r.Code != "label_missing" || !strings.Contains(r.Reason, "requires a repository label") ||
-		strings.Join(r.AllowedLabels, ",") != "repo/unfold,repo/homelab-cluster" || r.RefusedAt.IsZero() {
+		strings.Join(r.AllowedLabels, ",") != "repo/app,repo/homelab-cluster" || r.RefusedAt.IsZero() {
 		t.Errorf("refusal = %+v", r)
 	}
 }
@@ -57,7 +57,7 @@ func TestRecentRouteRefusalsReturnTheStoredCodeAndAllowedLabels(t *testing.T) {
 func TestRecentRouteRefusalsKeepOnlyTheNewestRefusalOfATask(t *testing.T) {
 	resetTables(t)
 	refuseTask(t, refusedTask("701", "silver"), "label_missing", "older", []string{})
-	refuseTask(t, refusedTask("701", "silver"), "label_not_allowed", "newer", []string{"repo/unfold"})
+	refuseTask(t, refusedTask("701", "silver"), "label_not_allowed", "newer", []string{"repo/app"})
 	refuseTask(t, refusedTask("702", "silver"), "label_missing", "other task", []string{})
 
 	got := recentRefusals(t, nil)

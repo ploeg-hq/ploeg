@@ -23,7 +23,7 @@ func deliveryFixture(t *testing.T) (OperatorExecution, DeliveryAccess, DeliveryP
 		t.Fatal(err)
 	}
 	a := DeliveryAccess{Consumer: "verifier", Actor: "alice", Verifier: true}
-	p := DeliveryPolicy{RepositoryID: in.RepositoryID, PolicySHA256: strings.Repeat("a", 64), VerifierID: "de-vloer-docker-v1", MinTests: 2, PublicationEnabled: true}
+	p := DeliveryPolicy{RepositoryID: in.RepositoryID, PolicySHA256: strings.Repeat("a", 64), VerifierID: "docker-verifier-v1", MinTests: 2, PublicationEnabled: true}
 	candidate := AdmitDeliveryCandidate{Generation: e.Generation, RepositoryID: in.RepositoryID, RepositoryURL: in.RepositoryURL, BaseSHA: strings.Repeat("b", 40), CanonicalSHA: strings.Repeat("c", 40), TreeSHA: strings.Repeat("d", 40), ArtifactSHA256: strings.Repeat("e", 64), PolicySHA256: p.PolicySHA256}
 	return e, a, p, candidate
 }
@@ -161,7 +161,7 @@ func TestPublicationBarrierGrantsOneEffectAndNeverRetriesUnknown(t *testing.T) {
 	ctx := context.Background()
 	e, verifier, p, c, receipt, approval := approvedDeliveryFixture(t)
 	owner := DeliveryAccess{Consumer: "workbench", Actor: "alice"}
-	in := ReservePublication{OperationID: "publish-one", CandidateID: c.ID, ReceiptID: receipt.ID, ApprovalID: approval.ID, PolicySHA256: p.PolicySHA256, Branch: "vloer/publish-one"}
+	in := ReservePublication{OperationID: "publish-one", CandidateID: c.ID, ReceiptID: receipt.ID, ApprovalID: approval.ID, PolicySHA256: p.PolicySHA256, Branch: "console/publish-one"}
 	var wg sync.WaitGroup
 	grants := make(chan bool, 8)
 	errs := make(chan error, 8)
@@ -240,7 +240,7 @@ func TestPublicationRequiresCurrentPolicyExactApprovalAndExplicitEnablement(t *t
 	ctx := context.Background()
 	e, _, p, c, receipt, approval := approvedDeliveryFixture(t)
 	owner := DeliveryAccess{Consumer: "workbench", Actor: "alice"}
-	in := ReservePublication{OperationID: "publish-one", CandidateID: c.ID, ReceiptID: receipt.ID, ApprovalID: approval.ID, PolicySHA256: p.PolicySHA256, Branch: "vloer/publish-one"}
+	in := ReservePublication{OperationID: "publish-one", CandidateID: c.ID, ReceiptID: receipt.ID, ApprovalID: approval.ID, PolicySHA256: p.PolicySHA256, Branch: "console/publish-one"}
 	disabled := p
 	disabled.PublicationEnabled = false
 	if _, _, err := testStore.ReservePublication(ctx, e.ID, owner, disabled, in); !errors.Is(err, ErrExecutionConflict) {

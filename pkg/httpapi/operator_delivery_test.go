@@ -18,7 +18,7 @@ func deliveryHTTPFixture(t *testing.T) (*Server, string, string, store.OperatorE
 	verifiers, verifierToken := operatorTestConsumers(t, []string{"silver"}, false)
 	verifiers[0].Principal.Name = "verifier"
 	verifiers[0].Principal.CanVerify = true
-	policy := DeliveryPolicy{RepositoryID: "example", PolicySHA256: strings.Repeat("a", 64), VerifierID: "de-vloer-docker-v1", MinTests: 2, PublicationEnabled: true}
+	policy := DeliveryPolicy{RepositoryID: "example", PolicySHA256: strings.Repeat("a", 64), VerifierID: "docker-verifier-v1", MinTests: 2, PublicationEnabled: true}
 	s := &Server{Store: testStore, OperatorConfig: OperatorConfig{Consumers: append(owners, verifiers...), DeliveryPolicies: map[string]DeliveryPolicy{"example": policy}}}
 	input := operatorHTTPInput("delivery-http")
 	input.Demo = false
@@ -63,7 +63,7 @@ func TestOperatorDeliveryHTTPSeparatesVerifierAndExecutionAuthority(t *testing.T
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
 	}
-	receipt := store.AdmitVerificationReceipt{CandidateID: body.Candidate.ID, PolicySHA256: candidate.PolicySHA256, CanonicalSHA: candidate.CanonicalSHA, TreeSHA: candidate.TreeSHA, ArtifactSHA256: candidate.ArtifactSHA256, Passed: true, TestCount: 2, VerifierID: "de-vloer-docker-v1", EvidenceSHA256: strings.Repeat("f", 64)}
+	receipt := store.AdmitVerificationReceipt{CandidateID: body.Candidate.ID, PolicySHA256: candidate.PolicySHA256, CanonicalSHA: candidate.CanonicalSHA, TreeSHA: candidate.TreeSHA, ArtifactSHA256: candidate.ArtifactSHA256, Passed: true, TestCount: 2, VerifierID: "docker-verifier-v1", EvidenceSHA256: strings.Repeat("f", 64)}
 	if w := operatorExecutionRequest(s, "POST", path+"/verification", owner, "alice", receipt); w.Code != 403 {
 		t.Fatalf("worker verification accepted: %d %s", w.Code, w.Body)
 	}
@@ -96,7 +96,7 @@ func TestOperatorDeliveryHTTPSeparatesVerifierAndExecutionAuthority(t *testing.T
 	if err := json.Unmarshal(w.Body.Bytes(), &approved); err != nil {
 		t.Fatal(err)
 	}
-	publication := store.ReservePublication{OperationID: "publication-one", CandidateID: body.Candidate.ID, ReceiptID: verified.Receipt.ID, ApprovalID: approved.Approval.ID, PolicySHA256: candidate.PolicySHA256, Branch: "vloer/publication-one"}
+	publication := store.ReservePublication{OperationID: "publication-one", CandidateID: body.Candidate.ID, ReceiptID: verified.Receipt.ID, ApprovalID: approved.Approval.ID, PolicySHA256: candidate.PolicySHA256, Branch: "console/publication-one"}
 	w = operatorExecutionRequest(s, "POST", path+"/publication", owner, "alice", publication)
 	if w.Code != 201 || !strings.Contains(w.Body.String(), `"effectAuthorized":true`) {
 		t.Fatalf("first reservation: %d %s", w.Code, w.Body)
@@ -134,7 +134,7 @@ func TestDeliveryPoliciesFailClosedAndRejectUnregisteredInputs(t *testing.T) {
 	if err != nil || len(policies) != 0 {
 		t.Fatalf("default policy: %v %v", policies, err)
 	}
-	p := DeliveryPolicy{RepositoryID: "example", PolicySHA256: strings.Repeat("a", 64), VerifierID: "de-vloer-docker-v1", MinTests: 2}
+	p := DeliveryPolicy{RepositoryID: "example", PolicySHA256: strings.Repeat("a", 64), VerifierID: "docker-verifier-v1", MinTests: 2}
 	data, _ := json.Marshal([]DeliveryPolicy{p})
 	policies, err = ParseDeliveryPolicies(string(data))
 	if err != nil || policies["example"].PublicationEnabled {

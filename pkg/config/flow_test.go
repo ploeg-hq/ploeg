@@ -15,8 +15,8 @@ func TestFlowBoards_RecordEveryBoardWithGatesOrStatusKinds(t *testing.T) {
 trackers:
   vikunja:
     projects:
-      - name: "Unfold"
-        repo: webgrip/glide
+      - name: "App"
+        repo: webgrip/app
         gates:
           development: ["Doing"]
           acceptance: ["UAT"]
@@ -43,14 +43,14 @@ trackers:
 	if err != nil {
 		t.Fatal(err)
 	}
-	boards, err := f.FlowBoards(context.Background(), fakeResolver{projects: map[string]string{"Unfold": "10"}}, discard())
+	boards, err := f.FlowBoards(context.Background(), fakeResolver{projects: map[string]string{"App": "10"}}, discard())
 	if err != nil {
 		t.Fatal(err)
 	}
-	unfold, ok := boards.Lookup("vikunja", "10")
-	if !ok || unfold.Kind("uat", gate.Acceptance) != flow.Active || unfold.Kind("Parked", "") != flow.Blocked ||
-		unfold.Kind("Doing", gate.Development) != flow.Active {
-		t.Fatalf("Unfold's kinds: %v %+v", ok, unfold)
+	app, ok := boards.Lookup("vikunja", "10")
+	if !ok || app.Kind("uat", gate.Acceptance) != flow.Active || app.Kind("Parked", "") != flow.Blocked ||
+		app.Kind("Doing", gate.Development) != flow.Active {
+		t.Fatalf("App's kinds: %v %+v", ok, app)
 	}
 	if ploeg, ok := boards.Lookup("vikunja", "11"); !ok || ploeg.Configured("In test") || ploeg.Kind("In test", gate.Test) != flow.Active {
 		t.Fatalf("a gated board without statusKinds records statuses with the defaults: %v", ok)
@@ -76,7 +76,7 @@ trackers:
   vikunja:
     projects:
       - id: "10"
-        repo: webgrip/glide
+        repo: webgrip/app
         statusKinds:
           paused: ["Parked"]
 `, "field paused not found"},
@@ -85,7 +85,7 @@ trackers:
   vikunja:
     projects:
       - id: "10"
-        repo: webgrip/glide
+        repo: webgrip/app
         statusKinds:
           active: ["UAT"]
           waiting: ["uat"]
@@ -95,7 +95,7 @@ trackers:
   vikunja:
     projects:
       - id: "10"
-        repo: webgrip/glide
+        repo: webgrip/app
         statusKinds:
           blocked: [" Parked"]
 `, "surrounding space"},
@@ -104,12 +104,12 @@ trackers:
   vikunja:
     projects:
       - id: "10"
-        repo: webgrip/glide
+        repo: webgrip/app
         team: a
         statusKinds:
           active: ["UAT"]
       - id: "10"
-        repo: webgrip/glide
+        repo: webgrip/app
         team: b
         statusKinds:
           waiting: ["UAT"]

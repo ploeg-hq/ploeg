@@ -129,7 +129,7 @@ func (s *Store) AdmitOperatorExecution(ctx context.Context, consumer, actor stri
 VALUES('manual',$1,$2,$3,'leased','operator',$4,$5,$6,'operator-registration',true) RETURNING id`, key, fingerprint, input.Team, input.Title, input.Objective, input.RepositoryURL).Scan(&itemID); err != nil {
 		return existing, false, err
 	}
-	if err = tx.QueryRow(ctx, `INSERT INTO shifts(work_item_id,team,branch,budget) VALUES($1,$2,$3,$4) RETURNING id`, itemID, input.Team, "vloer/"+input.SessionID, input.BudgetUSD).Scan(&shiftID); err != nil {
+	if err = tx.QueryRow(ctx, `INSERT INTO shifts(work_item_id,team,branch,budget) VALUES($1,$2,$3,$4) RETURNING id`, itemID, input.Team, "operator/"+input.SessionID, input.BudgetUSD).Scan(&shiftID); err != nil {
 		return existing, false, err
 	}
 	expiry := time.Now().UTC().Add(ttl)

@@ -230,7 +230,7 @@ def gen_glossary(model):
              "*Generated from `model.yaml` — do not edit by hand.*", ""]
     combined = model.get("combined_glossary")
     if combined:
-        lines += [f"The [combined Unfold glossary]({combined}) lists every term of every model once, "
+        lines += [f"The [combined glossary]({combined}) lists every term of every model once, "
                   "with its owner and the words it must not be confused with.", ""]
     terms = sorted(model.get("terms", []), key=lambda t: str(t.get("name", "")).lower())
     retired = model.get("retired_terms", []) or []
@@ -463,8 +463,7 @@ def gen_combined(models, path):
     lines = ["# Glossary", "",
              f"*Generated from the {sources} domain models by `mise run domain`. Do not edit by hand; "
              "change a `model.yaml` and regenerate.*", "",
-             "Each term appears once and names the context and application that own it. "
-             "Ploeg owns the execution terms, and Vloer uses them with Ploeg's meaning.", ""]
+             "Each term appears once and names the context and application that own it.", ""]
     refs = {}
     for m in models:
         for r in m.get("references", []) or []:
@@ -515,7 +514,7 @@ def main():
     args = ap.parse_args()
 
     if args.glossary:
-        content = front_matter("unfold") + gen_combined([load(p) for p in args.model], args.glossary)
+        content = front_matter(str(load(args.model[0]).get("owner", "domain"))) + gen_combined([load(p) for p in args.model], args.glossary)
         if args.stdout:
             sys.stdout.write(content)
         else:
@@ -542,7 +541,7 @@ def main():
     }
     if model.get("events"):
         files["events.md"] = gen_events(model)
-    owner = str(model.get("owner") or model.get("project", "unfold")).lower()
+    owner = str(model.get("owner") or model.get("project", "domain")).lower()
     for name, content in files.items():
         (out / name).write_text(front_matter(owner) + content)
         print(f"wrote {out / name}")

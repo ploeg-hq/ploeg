@@ -24,9 +24,6 @@ type Options struct {
 	// Now is the clock that counts days live; the image never reads the
 	// system clock.
 	Now time.Time
-	// Skin is the Work Target's card skin. Only its colours are used; an
-	// unknown skin draws with the default skin's colours.
-	Skin string
 }
 
 const (
@@ -42,13 +39,12 @@ type canvas struct {
 
 func (c *canvas) f(format string, args ...any) { fmt.Fprintf(&c.b, format, args...) }
 
-// Render draws card as a standalone SVG document in the layout of Vloer's
-// Native card face: header, title, state and days live, cost ring, diff and
+// Render draws card as a standalone SVG document, Ploeg's own card face: header, title, state and days live, cost ring, diff and
 // pull request tiles, grade slab, crack and mend marks, crew line, steward and
 // ids. Every text from the card is XML-escaped and truncated to its slot.
 func Render(card store.OperatorCard, opts Options) []byte {
 	v := newView(card, opts.Now)
-	p := paletteFor(opts.Skin)
+	p := cardPalette
 	body := &canvas{p: p}
 	body.header(v)
 	y := body.title(v)
@@ -125,7 +121,7 @@ func (c *canvas) header(v view) {
 		sub = "No repository"
 	}
 	c.f(`<text x="62" y="49" font-size="12" fill="%s">%s</text>`, c.p.muted, esc(fit(sub, 32)))
-	c.f(`<text x="%d" y="33" font-size="12" font-weight="800" letter-spacing="1.5" text-anchor="end" fill="%s">UNFOLD</text>`, Width-pad, c.p.accentFg)
+	c.f(`<text x="%d" y="33" font-size="12" font-weight="800" letter-spacing="1.5" text-anchor="end" fill="%s">PLOEG</text>`, Width-pad, c.p.accentFg)
 	if v.demo {
 		c.f(`<rect x="%d" y="39" width="44" height="16" rx="8" fill="%s" fill-opacity="0.16" stroke="%s"/>`, Width-pad-44, c.p.tones[toneAttention], c.p.tones[toneAttention])
 		c.f(`<text x="%d" y="51" font-size="10" font-weight="700" text-anchor="middle" fill="%s">Demo</text>`, Width-pad-22, c.p.text)

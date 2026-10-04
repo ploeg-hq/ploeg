@@ -2,9 +2,9 @@
 
 [GitHub Actions](../../.github/workflows/ci.yml) runs the standalone Go, PostgreSQL-backed tests, Helm positive and negative fixtures, golden renders, license, brand, OpenSpec and documentation checks on public Ubuntu runners. Pull-request jobs have read-only repository permission and need no private estate credentials.
 
-The [release workflow](../../.github/workflows/release.yml) alone publishes independent Ploeg artifacts using its repository-scoped token. [Release instructions](release-versioning.md) describe gates, version policy and recovery. Forgejo is a pull mirror, with no Ploeg release authority. Optional estate integration checks belong to Unfold or the deployment repository.
+The [release workflow](../../.github/workflows/release.yml) alone publishes independent Ploeg artifacts using its repository-scoped token. [Release instructions](release-versioning.md) describe gates, version policy and recovery. Forgejo is a pull mirror, with no Ploeg release authority. Optional estate integration checks belong to a consumer or the deployment repository.
 
-A passing standalone job does not qualify real gateways, model spend or production clusters. Cross-service tests remain in Unfold against its pinned Ploeg source; live Kubernetes and inference qualification remain explicit opt-in work.
+A passing standalone job does not qualify real gateways, model spend or production clusters. Cross-service tests belong to each consumer, against the Ploeg release it pins; live Kubernetes and inference qualification remain explicit opt-in work.
 
 ## Forgejo pull mirror
 

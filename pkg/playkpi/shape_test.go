@@ -80,7 +80,7 @@ func TestRules_DefaultsReplacementsAndRefusals(t *testing.T) {
 		{"src/main/java/CardTest.java", true, false},
 		{"pkg/store/testdata/fixture.json", true, false},
 		{"docs/index.md", false, true},
-		{"apps/ploeg/docs/adrs/0058.md", false, true},
+		{"services/engine/docs/adrs/0058.md", false, true},
 		{"README", false, true},
 		{"CHANGELOG.md", false, true},
 		{"pkg/store/card.go", false, false},

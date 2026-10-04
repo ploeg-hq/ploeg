@@ -1,24 +1,24 @@
 operator:
   consumers:
-    - name: vloer
+    - name: console
       teams:
         - silver
       execute: true
       maxBudgetUsd: 3
       tokenSecret:
-        name: ploeg-vloer-operator
+        name: ploeg-console-operator
         key: token
     - name: verifier
       teams:
         - silver
       verify: true
       tokenSecret:
-        name: ploeg-vloer-verifier
+        name: ploeg-console-verifier
         key: token
   deliveryPolicies:
     - repositoryId: example
       policySha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-      verifierId: de-vloer-docker-v1
+      verifierId: docker-verifier-v1
       minTests: 2
       publicationEnabled: false
 deploys:

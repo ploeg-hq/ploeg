@@ -8,8 +8,8 @@ import (
 func TestReleaseEnvironments_TargetsAndInlineRepos(t *testing.T) {
 	f, err := Load(write(t, `
 targets:
-  glide:
-    repo: webgrip/Glide
+  app:
+    repo: webgrip/App
     release:
       environment: live
   homelab:
@@ -21,13 +21,13 @@ trackers:
         id: "11"
         repo: webgrip/ploeg
         release: {environment: acceptance}
-      - name: "Glide"
+      - name: "App"
         id: "10"
-        default: glide
+        default: app
         allow: [homelab]
-      - name: "Glide again"
+      - name: "App again"
         id: "12"
-        repo: webgrip/glide
+        repo: webgrip/app
         release: {environment: live}
 `))
 	if err != nil {
@@ -37,7 +37,7 @@ trackers:
 	if err != nil {
 		t.Fatal(err)
 	}
-	if environments["webgrip/glide"] != "live" || environments["webgrip/ploeg"] != "acceptance" || len(environments) != 2 {
+	if environments["webgrip/app"] != "live" || environments["webgrip/ploeg"] != "acceptance" || len(environments) != 2 {
 		t.Errorf("environments = %+v; a target without release is not listed", environments)
 	}
 }
@@ -46,43 +46,43 @@ func TestReleaseEnvironments_InvalidConfigurationFailsAtLoad(t *testing.T) {
 	for name, tc := range map[string]struct{ body, want string }{
 		"uppercase": {`
 targets:
-  glide:
-    repo: webgrip/glide
+  app:
+    repo: webgrip/app
     release: {environment: Production}
-`, "targets.glide.release: environment"},
+`, "targets.app.release: environment"},
 		"empty": {`
 targets:
-  glide:
-    repo: webgrip/glide
+  app:
+    repo: webgrip/app
     release: {}
-`, "targets.glide.release: environment"},
+`, "targets.app.release: environment"},
 		"unknown key": {`
 targets:
-  glide:
-    repo: webgrip/glide
+  app:
+    repo: webgrip/app
     release: {env: production}
 `, "env"},
 		"release without repo": {`
 targets:
-  glide:
-    repo: webgrip/glide
+  app:
+    repo: webgrip/app
 trackers:
   vikunja:
     projects:
-      - name: "Glide"
-        default: glide
+      - name: "App"
+        default: app
         release: {environment: production}
 `, "release requires repo"},
 		"conflicting environments": {`
 targets:
-  glide:
-    repo: webgrip/glide
+  app:
+    repo: webgrip/app
     release: {environment: production}
 trackers:
   vikunja:
     projects:
-      - name: "Glide"
-        repo: WebGrip/Glide
+      - name: "App"
+        repo: WebGrip/App
         release: {environment: live}
 `, "differs"},
 	} {

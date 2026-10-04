@@ -13,7 +13,7 @@ func TestFetchItemPassesLabelTitlesThroughUnmodified(t *testing.T) {
 		_, _ = w.Write([]byte(`{"id":585,"title":"t","project_id":10,"updated":"u","done":false,"labels":[
 			{"id":174,"title":"repo/frontend-toolkit"},
 			{"id":175,"title":"repo/frontend-toolkit"},
-			{"id":9,"title":" Repo/Glide "},
+			{"id":9,"title":" Repo/App "},
 			{"id":3,"title":"do-next"}]}`))
 	}))
 	defer srv.Close()
@@ -22,7 +22,7 @@ func TestFetchItemPassesLabelTitlesThroughUnmodified(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FetchItem: %v", err)
 	}
-	want := []string{"repo/frontend-toolkit", "repo/frontend-toolkit", " Repo/Glide ", "do-next"}
+	want := []string{"repo/frontend-toolkit", "repo/frontend-toolkit", " Repo/App ", "do-next"}
 	if !reflect.DeepEqual(item.Labels, want) {
 		t.Errorf("labels = %q, want %q", item.Labels, want)
 	}
