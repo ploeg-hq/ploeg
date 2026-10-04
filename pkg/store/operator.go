@@ -73,7 +73,17 @@ type OperatorLease struct {
 //
 // ChangesRequestedBy lists each distinct reviewer login that asked for changes,
 // ordered by its newest request first, and is empty when nobody did.
+// Number is the pull request's number, nil when the link names none.
+// MergeState is clean, conflicted or unknown as the review poll last
+// confirmed it (ADR-0040); it is unknown until a forge that reports
+// mergeability is polled. BaseBranch is the branch the forge said the pull
+// request targets, falling back to the Work Item's target, and CheckedAt is
+// when the merge state was last read; each is nil when unknown.
 type OperatorPullRequest struct {
+	Number                *int                        `json:"number"`
+	MergeState            string                      `json:"mergeState"`
+	BaseBranch            *string                     `json:"baseBranch"`
+	CheckedAt             *time.Time                  `json:"checkedAt"`
 	URL                   string                      `json:"url"`
 	AgentVerdict          string                      `json:"agentVerdict"`
 	AgentVerdictRound     *int                        `json:"agentVerdictRound"`
@@ -273,7 +283,17 @@ const operatorItemJSON = `jsonb_build_object(
 		'humanChangesRequested', EXISTS (SELECT 1 FROM work_item_reviews w WHERE w.work_item_id = i.id AND w.state = 'changes_requested'),
 		'changesRequestedBy', ` + operatorChangesRequestedByJSON + `,
 		'repairFollowUps', (SELECT count(*) FROM work_items f WHERE f.source_work_item_id = i.id AND f.source_run_id IS NULL))
-		|| COALESCE(` + operatorPullRequestFactsJSON + `, '{"reviews": []}'::jsonb) ELSE NULL END)`
+		|| COALESCE(` + operatorPullRequestFactsJSON + `, '{"reviews": []}'::jsonb)
+		|| COALESCE(` + operatorPullRequestMergeJSON + `, jsonb_build_object(
+			'number', substring((` + operatorPullRequestURL + `) from '/(?:pulls?|merge_requests)/([0-9]{1,9})/?$')::int,
+			'mergeState', 'unknown', 'baseBranch', NULLIF(left(i.target_base_branch, 1024), ''), 'checkedAt', NULL))
+		ELSE NULL END)`
+
+const operatorPullRequestMergeJSON = `(SELECT jsonb_build_object(
+	'number', p.number, 'mergeState', COALESCE(p.merge_state, 'unknown'),
+	'baseBranch', COALESCE(left(p.base_branch, 1024), NULLIF(left(i.target_base_branch, 1024), '')),
+	'checkedAt', p.merge_checked_at)
+	FROM pull_requests p WHERE p.work_item_id = i.id ORDER BY p.updated_at DESC, p.id DESC LIMIT 1)`
 
 const operatorChangesRequestedByJSON = `(SELECT COALESCE(jsonb_agg(c.reviewer ORDER BY c.newest DESC, c.last_id DESC), '[]'::jsonb)
 	FROM (SELECT left(w.reviewer, 256) AS reviewer, max(w.received_at) AS newest, max(w.id) AS last_id

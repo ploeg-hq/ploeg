@@ -80,13 +80,17 @@ func (w *ReviewWatch) Reconcile(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
-		facts, err := t.forge.PullRequestFacts(ctx, t.repo, t.pr)
+		read, reportsMergeability, err := provider.ReadPullRequest(ctx, t.forge, t.repo, t.pr)
 		if err != nil {
 			w.log().Warn("review reconcile: pull request state unavailable",
 				"work_item", t.item.WorkItemID, "repo", t.repo, "pr", t.pr, "err", err)
 			continue
 		}
+		facts := read.Facts
 		w.recordFacts(ctx, t, facts)
+		if reportsMergeability && facts.State == provider.PullRequestOpen {
+			w.recordMergeCheck(ctx, t, read)
+		}
 		var kind provider.ForgeEventKind
 		switch facts.State {
 		case provider.PullRequestMerged:
@@ -166,6 +170,16 @@ func (w *ReviewWatch) recordFacts(ctx context.Context, t reviewTarget, facts pro
 	key := store.PullRequestKey{Forge: t.forge.Name(), Repo: t.repo, Number: t.pr}
 	if _, err := w.Store.RefreshPullRequestKPIs(ctx, key, time.Now(), w.Bots); err != nil {
 		w.log().Error("review reconcile: pull request figures not recomputed",
+			"work_item", t.item.WorkItemID, "repo", t.repo, "pr", t.pr, "err", err)
+	}
+}
+
+func (w *ReviewWatch) recordMergeCheck(ctx context.Context, t reviewTarget, read provider.PullRequestMergeability) {
+	key := store.PullRequestKey{Forge: t.forge.Name(), Repo: t.repo, Number: t.pr}
+	if _, _, err := w.Store.RecordMergeCheck(ctx, key, t.item.WorkItemID, store.MergeObservation{
+		Mergeable: read.Mergeable, HeadSHA: read.Facts.HeadSHA, BaseBranch: read.BaseBranch,
+	}, time.Now()); err != nil {
+		w.log().Error("review reconcile: merge state not recorded",
 			"work_item", t.item.WorkItemID, "repo", t.repo, "pr", t.pr, "err", err)
 	}
 }

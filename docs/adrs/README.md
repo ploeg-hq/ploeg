@@ -137,6 +137,7 @@ fails otherwise.
 | [0061](0061-a-run-cards-grade-penalizes-rework-not-review-and-says-which-inputs-it-missed.md) | A Run card's grade penalizes rework, not review, and says which inputs it missed | proposed | 2026-10-03 |
 | [0062](0062-github-is-the-independent-project-home.md) | GitHub is the independent project home | accepted | 2026-10-03 |
 | [0063](0063-independent-releases-start-at-zero-point-one.md) | Independent releases start at 0.1.0 | accepted | 2026-10-03 |
+| [0064](0064-development-is-trunk-and-release-candidates-come-from-it.md) | Development is trunk, and release candidates come from it | accepted | 2026-10-04 |
 
 ## Review calendar
 

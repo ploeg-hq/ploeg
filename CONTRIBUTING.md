@@ -35,4 +35,4 @@ one, not a pull request that quietly reverses it.
 
 Use [GitHub Issues](https://github.com/ploeg-hq/ploeg/issues) for bugs and feature requests and [SECURITY.md](SECURITY.md) for security reports.
 
-Open pull requests against `main`. Run `mise run setup`, `mise run verify` and `mise run docs-check` before review. Sign off your own commits with `git commit -s` to certify the [Developer Certificate of Origin](https://developercertificate.org/). Do not sign on another contributor's behalf.
+Open pull requests against `development`. Run `mise run setup`, `mise run verify` and `mise run docs-check` before review. Sign off your own commits with `git commit -s` to certify the [Developer Certificate of Origin](https://developercertificate.org/). Do not sign on another contributor's behalf.

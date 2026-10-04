@@ -110,6 +110,50 @@
         "repairFollowUps"
       ],
       "properties": {
+        "number": {
+          "description": "The pull request's number. Null when the link names none.",
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mergeState": {
+          "type": "string",
+          "enum": [
+            "clean",
+            "conflicted",
+            "unknown"
+          ],
+          "description": "Whether the pull request merges into its base branch, as the review poll last confirmed it (ADR-0040). conflicted needs two polls in a row at one head that report a conflict; a new head resets it to unknown. unknown until a forge that reports mergeability is polled, and on a forge that does not. It never changes the Work Item's state."
+        },
+        "baseBranch": {
+          "description": "The branch the forge said the pull request targets, or the Work Item's target branch when the forge has not said. Null when neither is known.",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "checkedAt": {
+          "description": "When the review poll last read the merge state. Null until it has; a failed forge read leaves it unchanged.",
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "url": {
           "type": "string"
         },

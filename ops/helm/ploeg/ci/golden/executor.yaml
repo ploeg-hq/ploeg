@@ -511,7 +511,7 @@ spec:
                 memory: 64Mi
         containers:
           - name: worker
-            image: harbor.webgrip.dev/webgrip/custom-agent:CHART-VERSION
+            image: harbor.webgrip.dev/webgrip/custom-agent:0.1.0
             command: ["/mnt/bin/ploeg-worker"]
             env:
               - name: PLOEG_API_URL
@@ -1228,7 +1228,7 @@ spec:
                 memory: 1536Mi
         containers:
           - name: worker
-            image: harbor.webgrip.dev/webgrip/opencode-runner:CHART-VERSION
+            image: harbor.webgrip.dev/webgrip/opencode-runner:0.1.0
             command: ["/mnt/bin/ploeg-worker"]
             env:
               - name: PLOEG_API_URL
