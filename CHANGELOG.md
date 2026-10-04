@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.2.0-rc.3
+
+### Changes
+
+- A person can attach a zip, a tar.gz or a single file to a Work Item, and every Run claimed afterwards receives it verified, unpacked outside the clone and listed under "Context from people" in its prompt. A file attached after work has started reaches the next Run only (#61, ADR 0067 and 0068).
+- `POST|GET /api/v1/operator/work-items/{id}/context`, `POST /api/v1/operator/executions/{id}/context` and `GET /api/v1/runs/{token}/context/{id}` serve them; `taskspec.v1` gains `context` and `run-api.v1` `claimResponse.context`.
+- ADR 0034 (the harness gets placeholders, the worker keeps the credentials) is accepted.
+
+### Upgrade notes
+
+- `0038_work_item_context.sql` adds the `work_item_context` table when `ploegd` starts.
+- `PLOEG_CONTEXT_MAX_BYTES` (default 20 MiB per upload) and `PLOEG_CONTEXT_MAX_TOTAL_BYTES` (default 50 MiB per Work Item) bound uploads. The chart does not set them yet.
+- ploegd's 30-second read timeout bounds an upload, so large files need a fast link until the context routes get their own timeouts.
+- The new fields are optional; a consumer or worker that does not know them keeps working.
+
 ## 0.2.0-rc.2
 
 ### Changes
