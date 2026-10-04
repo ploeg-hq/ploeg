@@ -43,7 +43,8 @@
         "budget",
         "lease_lost",
         "timeout",
-        "idle"
+        "idle",
+        "credential_leak"
       ]
     },
     "findings": {

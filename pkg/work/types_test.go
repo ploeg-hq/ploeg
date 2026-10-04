@@ -38,7 +38,7 @@ func TestFailureReason_IsString(t *testing.T) {
 
 func TestFailureReason_IsInfra(t *testing.T) {
 	infra := []FailureReason{FailureInfraNode, FailureInfraLLM, FailureLeaseLost}
-	agent := []FailureReason{FailureAgentError, FailureBudget, FailureTimeout}
+	agent := []FailureReason{FailureAgentError, FailureBudget, FailureTimeout, FailureIdle, FailureCredentialLeak}
 
 	for _, f := range infra {
 		if !f.IsInfra() {
@@ -72,5 +72,16 @@ func TestInfraFailureReasons_MatchesIsInfra(t *testing.T) {
 		if f.IsInfra() && !listed[string(f)] {
 			t.Errorf("%q is infra but missing from InfraFailureReasons — the SQL would charge it to the agent", f)
 		}
+	}
+}
+
+func TestFailureReasonsListsEveryValidReason(t *testing.T) {
+	for _, f := range FailureReasons() {
+		if !f.Valid() {
+			t.Errorf("FailureReasons lists %q, which Valid rejects", f)
+		}
+	}
+	if string(FailureCredentialLeak) != "credential_leak" {
+		t.Errorf("FailureCredentialLeak = %q, want credential_leak", FailureCredentialLeak)
 	}
 }

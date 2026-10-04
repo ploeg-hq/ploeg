@@ -114,12 +114,22 @@ const (
 	// FailureIdle is written when PLOEG_HARNESS_IDLE_TIMEOUT stopped the
 	// harness: it printed nothing and made no model call for that long.
 	FailureIdle FailureReason = "idle"
+	// FailureCredentialLeak is written when the worker found one of the Run's
+	// credentials, or its canary, in a forge request or a pushed commit. The
+	// Run's pushed commits stay on its branch for forensics.
+	FailureCredentialLeak FailureReason = "credential_leak"
 )
+
+// FailureReasons lists every known failure reason, for metrics and SQL that
+// must cover the whole enum.
+func FailureReasons() []FailureReason {
+	return []FailureReason{FailureInfraNode, FailureInfraLLM, FailureAgentError, FailureBudget, FailureLeaseLost, FailureTimeout, FailureIdle, FailureCredentialLeak}
+}
 
 // Valid reports whether f is a known failure reason enum value.
 func (f FailureReason) Valid() bool {
 	switch f {
-	case FailureInfraNode, FailureInfraLLM, FailureAgentError, FailureBudget, FailureLeaseLost, FailureTimeout, FailureIdle:
+	case FailureInfraNode, FailureInfraLLM, FailureAgentError, FailureBudget, FailureLeaseLost, FailureTimeout, FailureIdle, FailureCredentialLeak:
 		return true
 	}
 	return false
@@ -145,9 +155,8 @@ func (f FailureReason) IsInfra() bool {
 // runs the same way. Derived from the enum so a new reason cannot be added to
 // one and forgotten in the other.
 func InfraFailureReasons() []string {
-	all := []FailureReason{FailureInfraNode, FailureInfraLLM, FailureAgentError, FailureBudget, FailureLeaseLost, FailureTimeout, FailureIdle}
-	out := make([]string, 0, len(all))
-	for _, f := range all {
+	var out []string
+	for _, f := range FailureReasons() {
 		if f.IsInfra() {
 			out = append(out, string(f))
 		}

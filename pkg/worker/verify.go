@@ -189,7 +189,12 @@ func runVerification(ctx context.Context, dir string, env, cmds []string, limit 
 }
 
 func gitOutput(ctx context.Context, dir string, args ...string) string {
-	out, err := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...).Output()
+	repo, err := openWorkerRepository(ctx, dir, "", "")
+	if err != nil {
+		return ""
+	}
+	defer repo.remove()
+	out, err := repo.local(ctx, repo.workTree, args...).Output()
 	if err != nil {
 		return ""
 	}

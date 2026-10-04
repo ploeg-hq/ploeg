@@ -1,9 +1,11 @@
 package worker
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -29,7 +31,7 @@ type forgeTokenProxy struct {
 	placeholder string
 }
 
-func startForgeTokenProxy(repo harness.RepoRef, token string, access forgeAccess) (*forgeTokenProxy, error) {
+func startForgeTokenProxy(repo harness.RepoRef, token string, access forgeAccess, runBranch string, leaks leakScope) (*forgeTokenProxy, error) {
 	target, err := url.Parse(repo.ForgeURL)
 	if err != nil || target.Host == "" || (target.Scheme != "http" && target.Scheme != "https") {
 		return nil, fmt.Errorf("forge URL %q is not absolute", repo.ForgeURL)
@@ -37,6 +39,11 @@ func startForgeTokenProxy(repo harness.RepoRef, token string, access forgeAccess
 	if token == "" {
 		return nil, fmt.Errorf("no forge token to isolate")
 	}
+	if access == forgeWriter && runBranch == "" {
+		return nil, fmt.Errorf("a writer's forge proxy needs the Run's branch to fence pushes to")
+	}
+	fence := newPushFence(runBranch)
+	leaks.watch.guard(credentialForgeToken, token)
 	placeholder, err := randomPlaceholder()
 	if err != nil {
 		return nil, err
@@ -68,6 +75,22 @@ func startForgeTokenProxy(repo harness.RepoRef, token string, access forgeAccess
 		if !presentsForgePlaceholder(r.Header, placeholder) {
 			http.Error(w, "this Run's forge proxy serves only requests that present the Run's placeholder", http.StatusForbidden)
 			return
+		}
+		if _, leaked := leaks.watch.leak(); leaked && writesToTheForge(kind, r) {
+			http.Error(w, "a credential leak stopped this Run's writes to the forge", http.StatusForbidden)
+			return
+		}
+		if kind == forgeAPI {
+			if err := inspectAPIRequestForLeaks(r, leaks); err != nil {
+				http.Error(w, err.Error(), http.StatusForbidden)
+				return
+			}
+		}
+		if isReceivePack(r) {
+			if err := fence.admit(r); err != nil {
+				http.Error(w, err.Error(), http.StatusForbidden)
+				return
+			}
 		}
 		proxy.ServeHTTP(w, r)
 	})
@@ -103,6 +126,35 @@ func (p *forgeTokenProxy) placeholderBaseURL() string {
 }
 
 const forgeGitUser = "agent-builder"
+
+const maxInspectedAPIBody = 8 << 20
+
+func writesToTheForge(kind forgeRequestKind, r *http.Request) bool {
+	return isReceivePack(r) || (kind == forgeAPI && !slices.Contains(readMethods, r.Method))
+}
+
+func inspectAPIRequestForLeaks(r *http.Request, leaks leakScope) error {
+	route := r.Method + " " + r.URL.Path
+	if encoding := r.Header.Get("Content-Encoding"); encoding != "" && !strings.EqualFold(encoding, "identity") {
+		return fmt.Errorf("the forge proxy cannot inspect an API body with Content-Encoding %q", encoding)
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxInspectedAPIBody+1))
+	if err != nil {
+		return fmt.Errorf("read the API request body: %w", err)
+	}
+	if len(body) > maxInspectedAPIBody {
+		return fmt.Errorf("the API request body exceeds the %d bytes the forge proxy inspects", maxInspectedAPIBody)
+	}
+	r.Body = io.NopCloser(bytes.NewReader(body))
+	query, _ := url.QueryUnescape(r.URL.RawQuery)
+	for _, part := range [][]byte{body, []byte(r.URL.RawQuery), []byte(query)} {
+		if kind, found := leaks.watch.find(part); found {
+			leaks.report(credentialLeak{kind: kind, where: "the forge API request " + route})
+			return fmt.Errorf("refused %s: the request carries one of this Run's credentials", route)
+		}
+	}
+	return nil
+}
 
 func carriesForgeCredential(h http.Header) bool {
 	return h.Get("Authorization") != "" || h.Get("Private-Token") != ""
