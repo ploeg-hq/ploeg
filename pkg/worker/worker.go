@@ -322,6 +322,19 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	if err := os.MkdirAll(home, 0o700); err != nil {
 		return stuckReport("workspace home allocation failed", err.Error())
 	}
+	// Context people attached is verified and unpacked before anything else
+	// reads it; a Run never starts on context it could not verify.
+	var contextEnv []string
+	if len(claimed.Context) > 0 {
+		contextDir := filepath.Join(scratchDir, "context")
+		items, index, err := PrepareContext(ctx, w.API, claimed.RunToken, claimed.Context, contextDir)
+		if err != nil {
+			return stuckReport("could not verify the context people attached to the Work Item", err.Error())
+		}
+		spec.Context, spec.ContextIndex = items, index
+		contextEnv = append(contextEnv, contextDirEnv+"="+contextDir)
+		w.Log.Info("unpacked the context people attached", "items", len(items), "dir", contextDir)
+	}
 	model := w.Cfg.LLMModel
 	if len(w.Cfg.LLMModels) > 0 {
 		model = w.Cfg.LLMModels[0]
@@ -353,6 +366,7 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 		runEnv = append(runEnv, verifyScriptEnv+"="+script)
 	}
 	runEnv = append(runEnv, skillsDirectoryEnv+"="+filepath.Join(home, skills.CanonicalDir))
+	runEnv = append(runEnv, contextEnv...)
 	var support string
 	if !planner {
 		support = runSupportSection(skillPaths, w.Cfg.Toolchains, verifyCommands, writes)

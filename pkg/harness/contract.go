@@ -9,6 +9,7 @@ package harness
 import (
 	"fmt"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/ploeg-hq/ploeg/pkg/work"
@@ -30,7 +31,43 @@ type TaskSpec struct {
 	// OpenSpec is the OpenSpec change the Work Item names, located in the
 	// clone and rendered as a brief by the worker. Nil when it names none.
 	OpenSpec *OpenSpecBrief `json:"openSpec,omitempty"`
+	// Context records the files people attached to the Work Item that this
+	// Run was given, oldest first (proposed, context bundles proof of
+	// concept). The worker unpacked them outside the clone.
+	Context []ContextItem `json:"context,omitempty"`
+	// ContextIndex is the index of the unpacked context as the prompt
+	// carries it. The worker composes the prompt; it is not part of the
+	// published Task Spec.
+	ContextIndex string `json:"-"`
 	// Credentials are delivered out-of-band (env, mounted secrets), never here (R8).
+}
+
+// ContextRef names one context item a claim hands a Run: what to download
+// with the Run's capability and how to verify it. Never the bytes.
+type ContextRef struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	MediaType string    `json:"mediaType"`
+	SHA256    string    `json:"sha256"`
+	Bytes     int64     `json:"bytes"`
+	Files     int       `json:"files"`
+	Note      string    `json:"note,omitempty"`
+	AddedAt   time.Time `json:"addedAt"`
+	// Phase is before_start or while_steering: whether a Run of the Work
+	// Item had already started when the person attached it.
+	Phase string `json:"phase"`
+}
+
+// ContextItem is the provenance of one context item a Run was given.
+type ContextItem struct {
+	ID      string    `json:"id"`
+	Name    string    `json:"name"`
+	SHA256  string    `json:"sha256"`
+	Files   int       `json:"files"`
+	Bytes   int64     `json:"bytes"`
+	AddedAt time.Time `json:"addedAt"`
+	Phase   string    `json:"phase"`
+	Note    string    `json:"note,omitempty"`
 }
 
 // Finding is one earlier Run's contribution to the blackboard, attributed to

@@ -179,6 +179,9 @@ func (s *Server) operatorAuth(next http.Handler) http.Handler {
 		if r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/api/v1/operator/executions/") && strings.HasSuffix(r.URL.Path, "/credential") {
 			timeout = 30 * time.Second
 		}
+		if isContextUpload(r) {
+			timeout = 60 * time.Second
+		}
 		ctx, cancel := context.WithTimeout(context.WithValue(r.Context(), operatorPrincipalKey{}, *principal), timeout)
 		defer cancel()
 		next.ServeHTTP(w, r.WithContext(ctx))
@@ -204,6 +207,7 @@ func (s *Server) operatorHandler() http.Handler {
 	s.registerOperatorDelivery(mux)
 	s.registerOperatorProposed(mux)
 	s.registerCracks(mux)
+	s.registerContext(mux)
 	return s.operatorAuth(mux)
 }
 

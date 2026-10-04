@@ -46,6 +46,7 @@ func ComposePrompt(spec harness.TaskSpec, writes bool, priorPR string, onReviewB
 	if item.Description != "" {
 		fmt.Fprintf(&b, "## Work Item description\n\n%s\n\n", item.Description)
 	}
+	writeContext(&b, spec)
 	if writes {
 		writeOpenSpec(&b, spec, openSpecForWriter, base)
 	} else {
@@ -170,6 +171,7 @@ func ComposePlannerPrompt(spec harness.TaskSpec) string {
 	if item.Description != "" {
 		fmt.Fprintf(&b, "## Work Item description\n\n%s\n\n", item.Description)
 	}
+	writeContext(&b, spec)
 	writeOpenSpec(&b, spec, openSpecForPlanner, base)
 	writeBriefing(&b, spec.Briefing)
 	fmt.Fprintf(&b, `## Delivery contract (planning only)
