@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.0-rc.5
+
+### Changes
+
+- The consumer-name boundary check skips a `.git` file as well as a `.git` directory, so Ploeg's tests pass when it is built as another repository's submodule or from a git worktree.
+
 ## 0.2.0-rc.4
 
 ### Changes
