@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"testing"
+	"time"
 
 	"github.com/ploeg-hq/ploeg/pkg/harness"
 	"github.com/ploeg-hq/ploeg/pkg/work"
@@ -14,6 +15,15 @@ import (
 //
 // Found by probing the running stack: `failureReason: "vibes"` returned 204 and
 // was stored verbatim.
+var verifiedAt = time.Date(2026, 10, 3, 9, 0, 0, 0, time.UTC)
+
+func passedVerification() *harness.Verification {
+	zero, finished := 0, verifiedAt.Add(time.Second)
+	return &harness.Verification{Result: harness.VerificationPassed, StartedAt: verifiedAt, FinishedAt: finished,
+		Checks: []harness.VerificationCheck{{Command: "go test ./...", Result: harness.VerificationPassed, ExitCode: &zero,
+			StartedAt: &verifiedAt, FinishedAt: &finished}}}
+}
+
 func TestValidateOutcomeReport(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
@@ -37,8 +47,16 @@ func TestValidateOutcomeReport(t *testing.T) {
 		{"near-miss failureReason", harness.OutcomeReport{Outcome: work.OutcomeFailed, FailureReason: "infra-llm"}, true},
 
 		// VIK-1733: the worker's verification record is checked like the enums.
-		{"verification passed", harness.OutcomeReport{Outcome: work.OutcomePROpened,
-			Verification: &harness.Verification{Result: harness.VerificationPassed, Checks: []harness.VerificationCheck{}}}, false},
+		{"verification passed", harness.OutcomeReport{Outcome: work.OutcomePROpened, Verification: passedVerification()}, false},
+		// VIK-1780: a pass with no check behind it is not evidence.
+		{"verification passed without any check", harness.OutcomeReport{Outcome: work.OutcomePROpened,
+			Verification: &harness.Verification{Result: harness.VerificationPassed, StartedAt: verifiedAt, FinishedAt: verifiedAt,
+				Checks: []harness.VerificationCheck{}}}, true},
+		{"verification passed check with a nonzero exit", harness.OutcomeReport{Outcome: work.OutcomePROpened, Verification: func() *harness.Verification {
+			v, one := passedVerification(), 1
+			v.Checks[0].ExitCode = &one
+			return v
+		}()}, true},
 		{"verification invented result", harness.OutcomeReport{Outcome: work.OutcomePROpened,
 			Verification: &harness.Verification{Result: "green"}}, true},
 		{"verification abbreviated commit", harness.OutcomeReport{Outcome: work.OutcomePROpened,

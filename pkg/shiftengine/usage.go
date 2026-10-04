@@ -47,6 +47,9 @@ type Evidence struct {
 	Result string // e.g. "passed", "failed (go test ./...)", "incomplete (...)", "unknown"
 	Commit string // the verified commit; "" when absent
 	Dirty  bool   // the working tree had uncommitted changes when the checks ran
+	// Historical is true when Result and Commit come from the prose of a Run
+	// stored before ploegd kept only the worker's record: unverified text.
+	Historical bool
 }
 
 // money formats a US dollar amount the way the Unfold — Loop dashboard does:
@@ -240,6 +243,14 @@ func evidenceSection(ev Evidence) string {
 		b.WriteString("Verification: not recorded — Ploeg observed no check result for the writing Run.\n")
 		return b.String()
 	}
+	if ev.Historical {
+		fmt.Fprintf(&b, "Verification (historical prose, not a worker record): %s, unverified\n", ev.Result)
+		if ev.Commit != "" {
+			fmt.Fprintf(&b, "\nCommit named in that prose (unverified): `%s`\n", ev.Commit)
+		}
+		b.WriteString("\nThis Run was stored before Ploeg kept only the worker's own check record, so this text is not evidence that the checks passed.\n")
+		return b.String()
+	}
 	fmt.Fprintf(&b, "Verification: %s\n", ev.Result)
 	if ev.Commit != "" {
 		fmt.Fprintf(&b, "\nCommit verified: `%s`\n", ev.Commit)
@@ -296,11 +307,12 @@ var (
 // parseEvidence derives the writing Run's verification from the Shift's
 // reports. It takes the LAST Run that wrote — the one whose commit is at the
 // branch tip. Its structured Verification, when present, is the whole answer;
-// agent-written prose cannot change it. Only a Run reported before the
-// worker sent that record falls back to the prose the worker appended. It
-// returns the zero Evidence when there is no writing Run or it carries no
-// verification at all, which the report renders as "not recorded" rather
-// than a blank that could read as a pass.
+// agent-written prose cannot change it. A Run ploegd stored with the current
+// evidence version and no record has no verification, whatever its prose
+// says. Only a Run stored before that falls back to the prose the worker
+// appended, marked Historical. It returns the zero Evidence when there is no
+// writing Run or it carries no verification at all, which the report renders
+// as "not recorded" rather than a blank that could read as a pass.
 func parseEvidence(reports []store.RunReport) Evidence {
 	for i := len(reports) - 1; i >= 0; i-- {
 		r := reports[i]
@@ -309,6 +321,9 @@ func parseEvidence(reports []store.RunReport) Evidence {
 		}
 		if r.Verification != nil {
 			return structuredEvidence(*r.Verification)
+		}
+		if r.EvidenceVersion >= store.CurrentEvidenceVersion {
+			return Evidence{}
 		}
 		return legacyEvidence(r)
 	}
@@ -345,7 +360,7 @@ func legacyEvidence(r store.RunReport) Evidence {
 		return Evidence{}
 	}
 	section := r.Findings[at:]
-	ev := Evidence{Dirty: strings.Contains(section, "The working tree had uncommitted changes")}
+	ev := Evidence{Dirty: strings.Contains(section, "The working tree had uncommitted changes"), Historical: true}
 	if m := verificationSummaryRe.FindAllStringSubmatch(r.Summary, -1); m != nil {
 		ev.Result = describeVerification(m[len(m)-1][1])
 	}

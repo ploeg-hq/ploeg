@@ -115,7 +115,9 @@ func TestVerificationRecordCarriesEachCheckAndTheFullCommit(t *testing.T) {
 		t.Errorf("checks = %+v", rec.Checks)
 	}
 
-	incomplete := verification{Checks: []checkResult{{Command: "true", Ran: true}, {Command: "go test ./..."}}, Stopped: "the Run was cancelled"}.record()
+	finished := before.Add(time.Second)
+	incomplete := verification{StartedAt: before, FinishedAt: finished, Stopped: "the Run was cancelled",
+		Checks: []checkResult{{Command: "true", Ran: true, StartedAt: before, FinishedAt: finished}, {Command: "go test ./..."}}}.record()
 	if incomplete.Result != harness.VerificationIncomplete || incomplete.Stopped == "" || incomplete.Validate() != nil {
 		t.Errorf("checks stopped without a failure recorded %+v", incomplete)
 	}

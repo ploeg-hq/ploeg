@@ -73,6 +73,32 @@ func TestVerificationValidateRejectsInconsistentRecords(t *testing.T) {
 		"abbreviated commit":       func(v *Verification) { v.Commit = "bbbbbbbbbbbb" },
 		"unknown result":           func(v *Verification) { v.Result = "unknown" },
 		"unknown check result":     func(v *Verification) { v.Checks[2].Result = "skipped" },
+		"passed check with a nonzero exit": func(v *Verification) {
+			one := 1
+			v.Checks[0].ExitCode = &one
+		},
+		"failed check with a zero exit": func(v *Verification) {
+			zero := 0
+			v.Checks[1].ExitCode = &zero
+		},
+		"finished before it started": func(v *Verification) { v.FinishedAt = v.StartedAt.Add(-time.Second) },
+		"no start time":              func(v *Verification) { v.StartedAt = time.Time{} },
+		"check finished before it started": func(v *Verification) {
+			before := v.Checks[1].StartedAt.Add(-time.Second)
+			v.Checks[1].FinishedAt = &before
+		},
+		"check outside the record's time": func(v *Verification) {
+			late := v.FinishedAt.Add(time.Minute)
+			v.Checks[1].FinishedAt = &late
+		},
+		"check ran without times": func(v *Verification) { v.Checks[0].StartedAt = nil },
+		"not run with an exit code": func(v *Verification) {
+			zero := 0
+			v.Checks[2].ExitCode = &zero
+		},
+		"passed without any check": func(v *Verification) {
+			v.Result, v.Stopped, v.Checks = VerificationPassed, "", []VerificationCheck{}
+		},
 	} {
 		v := sampleVerification()
 		mutate(v)
