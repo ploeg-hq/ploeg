@@ -1,0 +1,16 @@
+# CI-only values: the values the chart requires, which every CI render and
+# lint starts from (scripts/helm-golden.sh, scripts/verify.mjs). The chart
+# README lists what each one is; a real install names its own.
+database:
+  existingSecret:
+    name: ploeg-db-app
+executor:
+  litellm:
+    baseUrl: http://litellm.ai.svc.cluster.local:4000/v1
+    adminUrl: http://litellm.ai.svc.cluster.local:4000
+  forgejo:
+    url: http://forgejo-http.forgejo.svc.cluster.local:3000
+  scaler:
+    host: ploeg-db-rw.default.svc.cluster.local
+  harness:
+    image: registry.example/agent-runner:1.3.0

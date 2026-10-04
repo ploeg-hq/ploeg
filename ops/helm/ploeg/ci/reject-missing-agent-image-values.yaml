@@ -1,0 +1,10 @@
+# CI-only values that MUST fail to render (scripts/helm-golden.sh). Ploeg
+# publishes no agent image, so a worker without one cannot start.
+executor:
+  enabled: true
+  harness:
+    image: ""
+  teams:
+    - name: bronze
+      model: litellm_proxy/deepseek-chat
+      budget: "1"

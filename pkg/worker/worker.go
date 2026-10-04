@@ -301,10 +301,14 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	//
 	// Looked up before the prompt is composed, not after: the contract has to
 	// tell a writer whether to open a PR or update the one already there.
-	priorPR, priorErr := findOpenChangeRequest(ref, forgeToken, branch)
+	prior, priorErr := readChangeRequest(ref, forgeToken, branch)
 	if priorErr != nil {
+		if writes {
+			return forgeUnreadableBeforeRun(ref, branch, priorErr)
+		}
 		w.Log.Warn("pre-run PR lookup failed", "err", priorErr)
 	}
+	priorPR := prior.URL
 	if priorPR != "" {
 		w.Log.Info("branch already has an open PR", "pr", priorPR, "branch", branch)
 	}
@@ -412,16 +416,18 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	}
 
 	// The PR is the ground truth (git/forge state stays the durable medium).
-	prURL, prErr := findOpenChangeRequest(ref, forgeToken, branch)
+	after, prErr := readChangeRequest(ref, forgeToken, branch)
 	if prErr != nil {
 		w.Log.Warn("PR lookup failed", "err", prErr)
 	}
-	final := resolveOutcome(w.Adapter.Name(), report, runErr, context.Cause(ctx), prURL, priorPR != "",
+	prURL := after.URL
+	final := resolveOutcome(w.Adapter.Name(), report, runErr, context.Cause(ctx), prURL, samePullRequest(prior, after),
 		item.Title, branch, logTail.Bytes(), w.Adapter.ExpectsLLM(), writes)
 	final = withReviewedCommit(final, branch, prURL, reviewedCommit)
 	final = guardUnpublishedWork(context.WithoutCancel(ctx), final, deliveryCheck{
 		writes: writes, dir: cloneDir, cloneURL: cloneURL, token: forgeToken, branch: branch, baseline: baseline, prErr: prErr,
 	})
+	final.Delivery = observedDelivery(ref, branch, prior, after, errors.Join(priorErr, prErr))
 	if openSpec != nil && openSpecGateApplies(final, writes, onReviewBranch) {
 		gate := runOpenSpecGate(ctx, *openSpec, cloneURL, forgeToken, branch, home)
 		w.Log.Info("OpenSpec gate", "change", openSpec.ID, "ran", gate.Ran, "passed", gate.Passed)
@@ -585,12 +591,13 @@ func noLLMTraffic(u *harness.Usage) bool {
 // telemetry keep the default no_change_needed so exec-harness smoke runs do
 // not burn attempts.
 //
-// The adapter's Verification is always discarded: only the worker's own run
-// of the configured checks sets it, after this returns.
+// The adapter's delivery claims are always discarded (ADR-0059): a pr_opened
+// or pr_updated outcome, links, a checkpoint, a verification and a delivery
+// are the worker's to set from what it read on the forge.
 func resolveOutcome(adapterName string, report harness.OutcomeReport, runErr, ctxErr error,
 	prURL string, prExisted bool, itemTitle, branch string, logTail []byte, expectsLLM, writes bool) harness.OutcomeReport {
 
-	report.Verification = nil
+	report = withoutDeliveryClaims(report)
 	resolved := func(r harness.OutcomeReport) harness.OutcomeReport {
 		if r.Usage == nil {
 			r.Usage = report.Usage

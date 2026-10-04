@@ -123,6 +123,7 @@ When this is implemented, `go test ./...` in `apps/ploeg`, run by `.forgejo/work
 
 * Technical story: VIK-1732, from the 2026-10-02 code-quality review (EXEC-01, AUTH-04).
 * 2026-10-03: proposed.
+* 2026-10-03: worker side implemented while the record is still proposed (VIK-1732, first slice): the drop box and every adapter drop the agent's `pr_*` outcome, links, checkpoint, failure reason, verification and delivery; the worker sends `delivery` and refuses fork pull requests. Two choices differ from the text above until the owner decides: a failed read before the harness ends the Run `failed` with the existing `infra_node` (the reviewer's fetch failure already does), not a new `infra_forge`; a failed read after it ends `stuck` with no failure reason. `pr_updated` without a moved head, ploegd's binding check, storage and the readers in `pkg/shiftengine` are the next slice.
 * Refines [ADR-0018](0018-the-outcome-drop-box-is-every-harnesss-return-path.md): the drop box carries narrative only, and its rule "Outcome and Summary fill only a gap the adapter left" no longer applies to `pr_opened` and `pr_updated`.
 * Precedent: PR #152 (`7bfd8a3`, VIK-1733) made `verification` worker-owned.
 * Related: [ADR-0011](0011-the-pull-request-is-the-blackboard.md), [ADR-0017](0017-the-review-loop-is-verdict-driven-and-capped.md), [ADR-0021](0021-infra-failures-and-agent-failures-get-separate-retry-budgets.md), [ADR-0045](0045-keep-run-usage-and-merge-facts.md).

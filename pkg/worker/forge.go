@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/ploeg-hq/ploeg/pkg/harness"
@@ -16,15 +17,22 @@ var errUnsupportedForge = errors.New("unsupported forge dialect")
 
 type changeRequest struct {
 	URL        string
+	Number     int
 	HeadBranch string
 	BaseBranch string
+	HeadSHA    string
+	fromFork   bool
 }
 
 func isRunChangeRequest(cr changeRequest, runBranch, requiredBase string) bool {
-	if cr.HeadBranch != runBranch {
+	if cr.HeadBranch != runBranch || cr.fromFork {
 		return false
 	}
 	return requiredBase == "" || cr.BaseBranch == requiredBase
+}
+
+func differentRepository(head, base string) bool {
+	return head != "" && base != "" && !strings.EqualFold(head, base)
 }
 
 const (
@@ -34,7 +42,22 @@ const (
 
 var errTooManyOpenPullRequests = errors.New("too many open pull requests to search")
 
-func findOpenChangeRequest(ref harness.RepoRef, token, runBranch string) (string, error) {
+var forgeReadBackoff = []time.Duration{0, 2 * time.Second, 5 * time.Second}
+
+func readChangeRequest(ref harness.RepoRef, token, runBranch string) (changeRequest, error) {
+	var err error
+	for _, wait := range forgeReadBackoff {
+		time.Sleep(wait)
+		var cr changeRequest
+		cr, err = findOpenChangeRequest(ref, token, runBranch)
+		if err == nil || errors.Is(err, errUnsupportedForge) {
+			return cr, err
+		}
+	}
+	return changeRequest{}, err
+}
+
+func findOpenChangeRequest(ref harness.RepoRef, token, runBranch string) (changeRequest, error) {
 	match := func(cr changeRequest) bool { return isRunChangeRequest(cr, runBranch, ref.BaseBranch) }
 	switch ref.Dialect() {
 	case harness.ForgeForgejo:
@@ -42,37 +65,37 @@ func findOpenChangeRequest(ref harness.RepoRef, token, runBranch string) (string
 	case harness.ForgeGitLab:
 		open, err := listGitLabMergeRequests(ref, token, runBranch)
 		if err != nil {
-			return "", err
+			return changeRequest{}, err
 		}
 		for _, cr := range open {
 			if match(cr) {
-				return cr.URL, nil
+				return cr, nil
 			}
 		}
-		return "", nil
+		return changeRequest{}, nil
 	default:
-		return "", fmt.Errorf("%w: %q", errUnsupportedForge, ref.Forge)
+		return changeRequest{}, fmt.Errorf("%w: %q", errUnsupportedForge, ref.Forge)
 	}
 }
 
-func findForgejoPullRequest(ref harness.RepoRef, token string, match func(changeRequest) bool) (string, error) {
+func findForgejoPullRequest(ref harness.RepoRef, token string, match func(changeRequest) bool) (changeRequest, error) {
 	seen := 0
 	for page := 1; page <= forgejoPullsMaxPages; page++ {
 		pulls, total, err := listForgejoPullRequestsPage(ref, token, page)
 		if err != nil {
-			return "", err
+			return changeRequest{}, err
 		}
 		for _, cr := range pulls {
 			if match(cr) {
-				return cr.URL, nil
+				return cr, nil
 			}
 		}
 		seen += len(pulls)
 		if len(pulls) == 0 || (total >= 0 && seen >= total) || (total < 0 && len(pulls) < forgejoPullsPageSize) {
-			return "", nil
+			return changeRequest{}, nil
 		}
 	}
-	return "", fmt.Errorf("%w: %s/%s has more than %d", errTooManyOpenPullRequests,
+	return changeRequest{}, fmt.Errorf("%w: %s/%s has more than %d", errTooManyOpenPullRequests,
 		ref.Owner, ref.Name, forgejoPullsPageSize*forgejoPullsMaxPages)
 }
 
@@ -85,14 +108,24 @@ func listForgejoPullRequestsPage(ref harness.RepoRef, token string, page int) (p
 	}
 	req.Header.Set("Authorization", "token "+token)
 
+	type branchRef struct {
+		Ref  string `json:"ref"`
+		SHA  string `json:"sha"`
+		Repo *struct {
+			FullName string `json:"full_name"`
+		} `json:"repo"`
+	}
 	var raw []struct {
-		HTMLURL string `json:"html_url"`
-		Head    struct {
-			Ref string `json:"ref"`
-		} `json:"head"`
-		Base struct {
-			Ref string `json:"ref"`
-		} `json:"base"`
+		HTMLURL string    `json:"html_url"`
+		Number  int       `json:"number"`
+		Head    branchRef `json:"head"`
+		Base    branchRef `json:"base"`
+	}
+	repoName := func(r branchRef) string {
+		if r.Repo == nil {
+			return ""
+		}
+		return r.Repo.FullName
 	}
 	header, err := getJSONWithHeader(req, &raw)
 	if err != nil {
@@ -104,7 +137,12 @@ func listForgejoPullRequestsPage(ref harness.RepoRef, token string, page int) (p
 	}
 	pulls = make([]changeRequest, 0, len(raw))
 	for _, p := range raw {
-		pulls = append(pulls, changeRequest{URL: p.HTMLURL, HeadBranch: p.Head.Ref, BaseBranch: p.Base.Ref})
+		baseRepo := repoName(p.Base)
+		if baseRepo == "" {
+			baseRepo = ref.ProjectPath()
+		}
+		pulls = append(pulls, changeRequest{URL: p.HTMLURL, Number: p.Number, HeadBranch: p.Head.Ref, BaseBranch: p.Base.Ref,
+			HeadSHA: p.Head.SHA, fromFork: differentRepository(repoName(p.Head), baseRepo)})
 	}
 	return pulls, total, nil
 }
@@ -119,16 +157,22 @@ func listGitLabMergeRequests(ref harness.RepoRef, token, sourceBranch string) ([
 	req.Header.Set("PRIVATE-TOKEN", token)
 
 	var merges []struct {
-		WebURL       string `json:"web_url"`
-		SourceBranch string `json:"source_branch"`
-		TargetBranch string `json:"target_branch"`
+		WebURL          string `json:"web_url"`
+		IID             int    `json:"iid"`
+		SourceBranch    string `json:"source_branch"`
+		TargetBranch    string `json:"target_branch"`
+		SHA             string `json:"sha"`
+		SourceProjectID int64  `json:"source_project_id"`
+		TargetProjectID int64  `json:"target_project_id"`
 	}
 	if err := getJSON(req, &merges); err != nil {
 		return nil, err
 	}
 	open := make([]changeRequest, 0, len(merges))
 	for _, m := range merges {
-		open = append(open, changeRequest{URL: m.WebURL, HeadBranch: m.SourceBranch, BaseBranch: m.TargetBranch})
+		fork := m.SourceProjectID != 0 && m.TargetProjectID != 0 && m.SourceProjectID != m.TargetProjectID
+		open = append(open, changeRequest{URL: m.WebURL, Number: m.IID, HeadBranch: m.SourceBranch, BaseBranch: m.TargetBranch,
+			HeadSHA: m.SHA, fromFork: fork})
 	}
 	return open, nil
 }

@@ -55,7 +55,7 @@ spec:
       metadata:
         # Resolved by the KEDA operator from ITS namespace, not this one —
         # a bare in-namespace service name never resolves there.
-        host: {{ $root.Values.executor.scaler.host | default (printf "ploeg-db-rw.%s.svc.cluster.local" $root.Release.Namespace) | quote }}
+        host: {{ required "executor.scaler.host is required for the keda and sandbox executors: the PostgreSQL host KEDA polls, e.g. ploeg-db-rw.<namespace>.svc.cluster.local" $root.Values.executor.scaler.host | quote }}
         port: {{ $root.Values.executor.scaler.port | quote }}
         userName: {{ $root.Values.executor.scaler.userName | quote }}
         dbName: {{ $root.Values.executor.scaler.dbName | quote }}

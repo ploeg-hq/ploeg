@@ -18,6 +18,7 @@ set -eu
 
 cd "$(dirname "$0")/.."
 GOLDEN=ops/helm/ploeg/ci/golden
+REQUIRED=ops/helm/ploeg/ci/required-values.yaml
 mode="${1:-check}"
 
 # The chart version is substituted out before the diff. semantic-release rewrites
@@ -46,9 +47,9 @@ drop_blank_lines_before_separators() {
 
 render() { # <values-file-or-empty>
 	if [ -n "$1" ]; then
-		helm template ploeg ops/helm/ploeg -f "$1"
+		helm template ploeg ops/helm/ploeg -f "$REQUIRED" -f "$1"
 	else
-		helm template ploeg ops/helm/ploeg
+		helm template ploeg ops/helm/ploeg -f "$REQUIRED"
 	fi | sed -e "s/$version_re/CHART-VERSION/g" -e "s/$app_version_re/CHART-VERSION/g" | drop_blank_lines_before_separators
 }
 
@@ -83,10 +84,16 @@ fi
 for case in "ops/helm/ploeg/ci/reject-reader-without-read-token-values.yaml:readTokenSecret is not set" \
 	"ops/helm/ploeg/ci/reject-team-executor-type-under-cronjob-values.yaml:executorType is only honoured" \
 	"ops/helm/ploeg/ci/reject-forge-admin-token-values.yaml:adminTokenSecret is not supported" \
-	"ops/helm/ploeg/ci/reject-runtimeclass-non-string-values.yaml:runtimeClassName"; do
+	"ops/helm/ploeg/ci/reject-runtimeclass-non-string-values.yaml:runtimeClassName" \
+	"ops/helm/ploeg/ci/reject-missing-database-values.yaml:database.existingSecret.name is required" \
+	"ops/helm/ploeg/ci/reject-missing-litellm-admin-url-values.yaml:executor.litellm.adminUrl is required" \
+	"ops/helm/ploeg/ci/reject-missing-gateway-values.yaml:executor.litellm.baseUrl is required" \
+	"ops/helm/ploeg/ci/reject-missing-forge-url-values.yaml:executor.forgejo.url is required" \
+	"ops/helm/ploeg/ci/reject-missing-scaler-host-values.yaml:executor.scaler.host is required" \
+	"ops/helm/ploeg/ci/reject-missing-agent-image-values.yaml:no agent image"; do
 	values=${case%%:*}
 	expected=${case#*:}
-	if out=$(helm template ploeg ops/helm/ploeg -f "$values" 2>&1); then
+	if out=$(helm template ploeg ops/helm/ploeg -f "$REQUIRED" -f "$values" 2>&1); then
 		echo "chart rendered '$values', which it must refuse"
 		status=1
 	elif ! printf '%s' "$out" | grep -qF "$expected"; then

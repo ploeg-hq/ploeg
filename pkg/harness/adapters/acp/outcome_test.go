@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
@@ -83,9 +84,18 @@ func TestBuild_StopReasonMatrix(t *testing.T) {
 		{
 			name:        "idle watchdog is retryable, not stuck",
 			state:       feed(t, editDone),
-			res:         result{phase: phasePrompt, timedOut: true},
+			res:         result{phase: phasePrompt, watchdog: &watchdogFire{kind: watchdogIdle, limit: 10 * time.Minute, events: 29}},
 			wantOutcome: work.OutcomeFailed,
 			wantFailure: work.FailureAgentError,
+			reasonHas:   "no protocol activity",
+		},
+		{
+			name:        "prompt wall is retryable, not stuck",
+			state:       feed(t, editDone),
+			res:         result{phase: phasePrompt, watchdog: &watchdogFire{kind: watchdogPromptWall, limit: 45 * time.Minute}},
+			wantOutcome: work.OutcomeFailed,
+			wantFailure: work.FailureAgentError,
+			reasonHas:   "prompt ran past",
 		},
 		{
 			name:        "transport death mid-prompt is retryable",
@@ -432,4 +442,41 @@ func jsonf(format, arg string) string {
 		panic(err)
 	}
 	return strings.Replace(format, "%q", string(b), 1)
+}
+
+func TestBuild_NamesTheWatchdogThatStoppedTheRun(t *testing.T) {
+	tests := []struct {
+		name        string
+		fire        watchdogFire
+		wantSummary string
+		wantReason  string
+	}{
+		{
+			name:        "idle watchdog",
+			fire:        watchdogFire{kind: watchdogIdle, limit: 10 * time.Minute, events: 29},
+			wantSummary: "acp idle watchdog stopped the agent: no protocol activity for 10m0s",
+			wantReason:  "no protocol activity for 10m0s after 29 events",
+		},
+		{
+			name:        "prompt wall",
+			fire:        watchdogFire{kind: watchdogPromptWall, limit: 45 * time.Minute},
+			wantSummary: "acp prompt wall stopped the agent: the turn ran past 45m0s",
+			wantReason:  "prompt ran past 45m0s",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			fire := tc.fire
+			got := Build(feed(t, jsonf(msg, "still thinking")), result{phase: phasePrompt, watchdog: &fire})
+			if got.Summary != tc.wantSummary {
+				t.Errorf("summary = %q, want %q", got.Summary, tc.wantSummary)
+			}
+			if !strings.HasPrefix(got.StuckReason, tc.wantReason) {
+				t.Errorf("stuckReason = %q, want it to start with %q", got.StuckReason, tc.wantReason)
+			}
+			if !strings.Contains(got.StuckReason, "still thinking") {
+				t.Errorf("stuckReason = %q lost the agent's last message", got.StuckReason)
+			}
+		})
+	}
 }

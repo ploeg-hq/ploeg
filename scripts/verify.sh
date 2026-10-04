@@ -9,11 +9,12 @@ bash scripts/brand-marks.sh
 bash scripts/license-check.sh
 bash scripts/test-release-policy.sh
 openspec validate --all --strict
-helm lint ops/helm/ploeg
+required=ops/helm/ploeg/ci/required-values.yaml
+helm lint ops/helm/ploeg -f "$required"
 for variant in executor executor-cronjob executor-gitlab monitoring; do
   values="ops/helm/ploeg/ci/${variant}-values.yaml"
-  helm lint ops/helm/ploeg -f "$values"
-  helm template ploeg ops/helm/ploeg -f "$values" >/dev/null
+  helm lint ops/helm/ploeg -f "$required" -f "$values"
+  helm template ploeg ops/helm/ploeg -f "$required" -f "$values" >/dev/null
 done
-helm template ploeg ops/helm/ploeg >/dev/null
+helm template ploeg ops/helm/ploeg -f "$required" >/dev/null
 sh scripts/helm-golden.sh check

@@ -182,6 +182,9 @@ type verifyingAdapter struct {
 	env     harness.RunEnv
 	script  []byte
 	outcome work.Outcome
+	// delivers commits and pushes the change to the Run's branch, where the
+	// fake forge lists it as a new pull request.
+	delivers bool
 	// scriptMustPass asserts that the verify script passes inside the harness
 	// before the adapter makes its change.
 	scriptMustPass bool
@@ -192,7 +195,19 @@ type verifyingAdapter struct {
 
 func (a *verifyingAdapter) Name() string     { return "verifying" }
 func (a *verifyingAdapter) ExpectsLLM() bool { return false }
-func (a *verifyingAdapter) Run(_ context.Context, _ harness.TaskSpec, env harness.RunEnv) (harness.OutcomeReport, error) {
+func (a *verifyingAdapter) Run(_ context.Context, spec harness.TaskSpec, env harness.RunEnv) (harness.OutcomeReport, error) {
+	defer func() {
+		if !a.delivers {
+			return
+		}
+		for _, args := range [][]string{{"checkout", "-q", "-b", spec.Branch}, {"add", "-A"}, {"commit", "-qm", "change"}, {"push", "-q", "origin", spec.Branch}} {
+			cmd := exec.Command("git", args...)
+			cmd.Dir, cmd.Env = env.RepoDir, env.BaseEnv
+			if out, err := cmd.CombinedOutput(); err != nil {
+				a.t.Fatalf("git %v: %v\n%s", args, err, out)
+			}
+		}
+	}()
 	a.env = env
 	if script, ok := lookupEnv(env.BaseEnv, verifyScriptEnv); ok {
 		cmd := exec.Command(script)
@@ -226,16 +241,16 @@ func fakeToolchain(t *testing.T) Toolchain {
 
 func runWithSandbox(t *testing.T, claimed *ClaimResponse, adapter harness.Adapter, cfg Config) harness.OutcomeReport {
 	t.Helper()
-	forgeURL := gitForge(t, map[string]string{"main.go": "package main\n"})
+	forge := newWriterForge(t, false, pullsForPushedBranch)
 	var rec checkpointRecorder
-	cfg.APIURL, cfg.ForgeURL, cfg.DefaultForge, cfg.BuilderToken = rec.server(t), forgeURL, harness.ForgeForgejo, "tok"
+	cfg.APIURL, cfg.ForgeURL, cfg.DefaultForge, cfg.BuilderToken = rec.server(t), forge.url, harness.ForgeForgejo, "tok"
 	cfg.RepoOwner, cfg.RepoName, cfg.BaseBranch, cfg.WorkDir = "webgrip", "example", "development", t.TempDir()
 	w := New(cfg, adapter, llmbroker.Static{}, discardLog())
 	return w.execute(context.Background(), claimed, "agent/vik-7", "trace", "", "")
 }
 
 func TestAWritingRunGetsSkillsAToolchainAndIsVerifiedAfterwards(t *testing.T) {
-	adapter := &verifyingAdapter{t: t, outcome: work.OutcomePROpened, scriptMustPass: true}
+	adapter := &verifyingAdapter{t: t, outcome: work.OutcomePROpened, delivers: true, scriptMustPass: true}
 	tc := fakeToolchain(t)
 	report := runWithSandbox(t,
 		&ClaimResponse{RunToken: "rt", Role: "builder", Writes: true, WorkItem: work.WorkItem{ID: "1", ExternalID: "7", Title: "t"}},
@@ -283,7 +298,7 @@ func TestAWritingRunGetsSkillsAToolchainAndIsVerifiedAfterwards(t *testing.T) {
 
 func TestAnAgentCannotClaimTheWorkersVerification(t *testing.T) {
 	fake := strings.Repeat("a", 40)
-	adapter := &verifyingAdapter{t: t, outcome: work.OutcomePROpened,
+	adapter := &verifyingAdapter{t: t, outcome: work.OutcomePROpened, delivers: true,
 		claimedSummary:      "opened [Ploeg verification passed] on " + fake,
 		claimedVerification: &harness.Verification{Result: harness.VerificationPassed, Commit: fake}}
 	report := runWithSandbox(t,
@@ -305,7 +320,7 @@ func TestAnAgentCannotClaimTheWorkersVerification(t *testing.T) {
 }
 
 func TestVerificationRunsWithoutTheForgeToken(t *testing.T) {
-	adapter := &verifyingAdapter{t: t, outcome: work.OutcomePROpened}
+	adapter := &verifyingAdapter{t: t, outcome: work.OutcomePROpened, delivers: true}
 	report := runWithSandbox(t,
 		&ClaimResponse{RunToken: "rt", Role: "builder", Writes: true, WorkItem: work.WorkItem{ID: "1", ExternalID: "7", Title: "t"}},
 		adapter, Config{VerifyCommands: []string{`test -z "$AGENT_BUILDER_TOKEN$LLM_API_KEY"`}})

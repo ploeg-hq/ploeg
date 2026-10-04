@@ -58,8 +58,6 @@ spec:
     spec:
       serviceAccountName: ploeg
       automountServiceAccountToken: false
-      nodeSelector:
-        node.webgrip.io/pool: worker
       securityContext:
         runAsNonRoot: true
         runAsUser: 65532
@@ -85,11 +83,6 @@ spec:
                 secretKeyRef:
                   name: ploeg-db-app
                   key: uri
-            - name: PLOEG_VIKUNJA_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: ploeg-webhook-secret
-                  key: PLOEG_VIKUNJA_SECRET
             - name: PLOEG_FORGEJO_URL
               value: "http://forgejo-http.forgejo.svc.cluster.local:3000"
             - name: PLOEG_FORGEJO_TOKEN
