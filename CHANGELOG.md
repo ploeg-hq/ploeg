@@ -7,9 +7,11 @@
 - A person can attach a zip, a tar.gz or a single file to a Work Item, and every Run claimed afterwards receives it verified, unpacked outside the clone and listed under "Context from people" in its prompt. A file attached after work has started reaches the next Run only (#61, ADR 0067 and 0068).
 - `POST|GET /api/v1/operator/work-items/{id}/context`, `POST /api/v1/operator/executions/{id}/context` and `GET /api/v1/runs/{token}/context/{id}` serve them; `taskspec.v1` gains `context` and `run-api.v1` `claimResponse.context`.
 - ADR 0034 (the harness gets placeholders, the worker keeps the credentials) is accepted.
+- Ploeg names none of its consumers (#62, ADR 0069). Usage report links are four URL templates a deployment sets; a Work Target without a `cardStyle` gets the skin `default`; the pull-request card image is Ploeg's own; Operator Execution Shifts use branch `operator/<session>`.
 
 ### Upgrade notes
 
+- **Breaking (#62):** `PLOEG_REPORT_GRAFANA_URL` and `PLOEG_REPORT_VLOER_URL` are removed. Set `PLOEG_REPORT_WORK_ITEM_URL` (`{id}`), `PLOEG_REPORT_TEAM_DASHBOARD_URL` (`{team}`), `PLOEG_REPORT_RUN_DASHBOARD_URL` (`{run}`) and `PLOEG_REPORT_SPEND_DASHBOARD_URL` instead. The default card skin is `default`. New Operator Execution branches are `operator/<session>`.
 - `0038_work_item_context.sql` adds the `work_item_context` table when `ploegd` starts.
 - `PLOEG_CONTEXT_MAX_BYTES` (default 20 MiB per upload) and `PLOEG_CONTEXT_MAX_TOTAL_BYTES` (default 50 MiB per Work Item) bound uploads. The chart does not set them yet.
 - ploegd's 30-second read timeout bounds an upload, so large files need a fast link until the context routes get their own timeouts.

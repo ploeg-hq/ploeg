@@ -42,8 +42,8 @@ config:
   trackers:
     vikunja:
       projects:
-        - name: "Unfold"
-          default: unfold
+        - name: "App"
+          default: app
           gates:
             development: ["Doing"]
             test: ["In test"]

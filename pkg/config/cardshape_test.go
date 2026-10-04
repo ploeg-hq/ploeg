@@ -9,8 +9,8 @@ import (
 func TestCardShapeRules_TargetsAndInlineRepos(t *testing.T) {
 	f, err := Load(write(t, `
 targets:
-  glide:
-    repo: webgrip/Glide
+  app:
+    repo: webgrip/App
     cardShape:
       testPaths: ["e2e/**", "**/*_test.go"]
   homelab:
@@ -23,9 +23,9 @@ trackers:
         repo: webgrip/ploeg
         cardShape:
           docPaths: []
-      - name: "Glide"
+      - name: "App"
         id: "10"
-        default: glide
+        default: app
         allow: [homelab]
 `))
 	if err != nil {
@@ -35,9 +35,9 @@ trackers:
 	if err != nil {
 		t.Fatal(err)
 	}
-	glide := rules["webgrip/glide"]
-	if glide.DocPaths != nil || !reflect.DeepEqual(glide.TestPaths, []string{"e2e/**", "**/*_test.go"}) {
-		t.Errorf("glide = %#v; an unset list keeps the defaults", glide)
+	app := rules["webgrip/app"]
+	if app.DocPaths != nil || !reflect.DeepEqual(app.TestPaths, []string{"e2e/**", "**/*_test.go"}) {
+		t.Errorf("app = %#v; an unset list keeps the defaults", app)
 	}
 	ploeg := rules["webgrip/ploeg"]
 	if ploeg.TestPaths != nil || ploeg.DocPaths == nil || len(ploeg.DocPaths) != 0 {
@@ -46,12 +46,12 @@ trackers:
 	if _, ok := rules["webgrip/homelab-cluster"]; ok || len(rules) != 2 {
 		t.Errorf("rules = %+v; a target without cardShape is not listed", rules)
 	}
-	m, err := glide.Compile()
+	m, err := app.Compile()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !m.Test("e2e/login.spec.js") || m.Test("src/a.test.ts") || !m.Doc("docs/a.md") {
-		t.Error("glide's test paths replace the defaults and its doc paths stay the defaults")
+		t.Error("app's test paths replace the defaults and its doc paths stay the defaults")
 	}
 }
 
@@ -59,47 +59,47 @@ func TestCardShapeRules_InvalidConfigurationFailsAtLoad(t *testing.T) {
 	for name, tc := range map[string]struct{ body, want string }{
 		"bad pattern": {`
 targets:
-  glide:
-    repo: webgrip/glide
+  app:
+    repo: webgrip/app
     cardShape: {testPaths: ["src/[x"]}
-`, "targets.glide.cardShape.testPaths"},
+`, "targets.app.cardShape.testPaths"},
 		"duplicate pattern": {`
 targets:
-  glide:
-    repo: webgrip/glide
+  app:
+    repo: webgrip/app
     cardShape: {docPaths: ["a", "a"]}
 `, "listed twice"},
 		"unknown key": {`
 targets:
-  glide:
-    repo: webgrip/glide
+  app:
+    repo: webgrip/app
     cardShape: {tests: ["a"]}
 `, "tests"},
 		"cardShape without repo": {`
 targets:
-  glide:
-    repo: webgrip/glide
+  app:
+    repo: webgrip/app
 trackers:
   vikunja:
     projects:
-      - name: "Glide"
+      - name: "App"
         id: "10"
-        default: glide
+        default: app
         cardShape: {testPaths: ["a"]}
 `, "cardShape requires repo"},
 		"two rule sets for one repository": {`
 targets:
-  glide:
-    repo: webgrip/glide
+  app:
+    repo: webgrip/app
     cardShape: {testPaths: ["a"]}
 trackers:
   vikunja:
     projects:
-      - name: "Glide"
+      - name: "App"
         id: "10"
-        repo: webgrip/glide
+        repo: webgrip/app
         cardShape: {testPaths: ["b"]}
-`, "cardShape for webgrip/glide differs"},
+`, "cardShape for webgrip/app differs"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := Load(write(t, tc.body))

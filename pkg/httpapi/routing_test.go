@@ -93,15 +93,15 @@ func (f *fakeForge) set(repo string, state provider.RepositoryState) {
 }
 
 var (
-	glideTarget   = work.Target{Forge: "forgejo", Owner: "webgrip", Repo: "glide", BaseBranch: "development"}
+	appTarget     = work.Target{Forge: "forgejo", Owner: "webgrip", Repo: "app", BaseBranch: "development"}
 	homelabTarget = work.Target{Forge: "forgejo", Owner: "webgrip", Repo: "homelab-cluster", BaseBranch: "main"}
 )
 
 func routingServer(t *testing.T, board *boardFixture, forge *fakeForge, engine *shiftengine.Engine) *Server {
 	t.Helper()
 	targets, err := target.New(target.Table{
-		Targets: map[string]work.Target{"glide": glideTarget, "homelab-cluster": homelabTarget},
-		Rules:   []target.Rule{{Scope: "10", Default: "glide", Allow: []string{"homelab-cluster"}}},
+		Targets: map[string]work.Target{"app": appTarget, "homelab-cluster": homelabTarget},
+		Rules:   []target.Rule{{Scope: "10", Default: "app", Allow: []string{"homelab-cluster"}}},
 	}, "forgejo")
 	if err != nil {
 		t.Fatal(err)
@@ -127,7 +127,7 @@ func routingServer(t *testing.T, board *boardFixture, forge *fakeForge, engine *
 
 func readyForge() *fakeForge {
 	return &fakeForge{states: map[string]provider.RepositoryState{
-		"webgrip/glide":           {AgentsFile: true},
+		"webgrip/app":             {AgentsFile: true},
 		"webgrip/homelab-cluster": {AgentsFile: true},
 	}}
 }
@@ -195,8 +195,8 @@ func TestIngestWithoutARepoLabelKeepsTheBoardDefault(t *testing.T) {
 	assign(t, h, "5001")
 
 	got := pinned(t, "5001")
-	if got.workItems != 1 || got.target != glideTarget || got.rule != "10" || got.hint != "" {
-		t.Errorf("pinned %+v, want project 10's default webgrip/glide@development with no hint", got)
+	if got.workItems != 1 || got.target != appTarget || got.rule != "10" || got.hint != "" {
+		t.Errorf("pinned %+v, want project 10's default webgrip/app@development with no hint", got)
 	}
 }
 
@@ -221,7 +221,7 @@ func TestIngestPinsTheTargetARepoLabelSelects(t *testing.T) {
 func TestIngestRefusalQueuesNothingAndTellsTheTicket(t *testing.T) {
 	cases := map[string][]string{
 		"5003": {"repo/ploeg"},
-		"5004": {"repo/glide", "repo/homelab-cluster"},
+		"5004": {"repo/app", "repo/homelab-cluster"},
 	}
 	for taskID, labels := range cases {
 		t.Run(taskID, func(t *testing.T) {
@@ -351,7 +351,7 @@ func TestClaimRetriesWhenReadinessCannotBeChecked(t *testing.T) {
 	forge.down = false
 	forge.mu.Unlock()
 	status, claimed := postClaim(t, h, `{"team":"bronze"}`)
-	if status != http.StatusOK || claimed.WorkItem.Target == nil || *claimed.WorkItem.Target != glideTarget {
+	if status != http.StatusOK || claimed.WorkItem.Target == nil || *claimed.WorkItem.Target != appTarget {
 		t.Fatalf("claim after the forge recovered = %d %+v", status, claimed.WorkItem.Target)
 	}
 }

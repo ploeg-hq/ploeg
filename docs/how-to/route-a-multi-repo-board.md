@@ -3,7 +3,7 @@ type: how-to
 audience: [operator, owner]
 owner: ploeg
 last_verified: 2026-10-03
-verified_by: "Read apps/ploeg pkg/target/{resolver,readiness}.go, pkg/config/{config,resolve}.go, pkg/httpapi/server.go, pkg/provider/vikunja/vikunja.go, pkg/provider/{forgejo,gitlab}/repository.go and cmd/ploegd/routing.go; go test ./pkg/target ./pkg/config ./pkg/httpapi ./pkg/provider/gitlab ./cmd/ploegd. Not checked against a live deployment."
+verified_by: "Read pkg/target/{resolver,readiness}.go, pkg/config/{config,resolve}.go, pkg/httpapi/server.go, pkg/provider/vikunja/vikunja.go, pkg/provider/{forgejo,gitlab}/repository.go and cmd/ploegd/routing.go; go test ./pkg/target ./pkg/config ./pkg/httpapi ./pkg/provider/gitlab ./cmd/ploegd. Not checked against a live deployment."
 ---
 
 # Route a board that serves several repositories
@@ -21,8 +21,8 @@ Add a `targets:` map to the chart's `config:` value, next to `trackers:`. The ke
 ```yaml
 config:
   targets:
-    unfold:
-      repo: webgrip/glide
+    app:
+      repo: webgrip/app
       branch: development
       forge: forgejo
     homelab-cluster:
@@ -36,7 +36,7 @@ config:
 | `repo` | `owner/name`, required |
 | `branch` | Base branch. Unset means the repository's default branch, which may be a stale stub, so set it |
 | `forge` | Forge instance id. Unset means `PLOEG_TARGET_FORGE`, default `forgejo` |
-| `cardStyle` | Optional `skin` and `theme` for this repository's Run cards ([ADR-0046](../adrs/0046-a-run-card-is-assembled-per-work-item-from-stored-facts.md)). Unset means skin `vloer-native` and no theme. Each is lowercase letters, digits and dashes |
+| `cardStyle` | Optional `skin` and `theme` for this repository's Run cards ([ADR-0046](../adrs/0046-a-run-card-is-assembled-per-work-item-from-stored-facts.md)). Unset means skin `default` and no theme. Ploeg's own pull-request card image ignores both. Each is lowercase letters, digits and dashes |
 | `release` | Optional `environment`: the deploy environment whose first deploy counts as this repository's release on its Run cards ([ADR-0047](../adrs/0047-ploeg-learns-where-a-merged-change-is-deployed-from-a-generic-deploy-endpoint.md)). Unset means `production`. Lowercase letters, digits, dots, underscores and dashes |
 
 Two keys may point at one repository, for example an old and a new label name for the same product. A board with its own `repo:` may set `cardStyle` and `release` too. ploegd refuses to start when one repository has two different card styles or release environments.
@@ -50,9 +50,9 @@ config:
   trackers:
     vikunja:
       projects:
-        - name: "Unfold"
+        - name: "App"
           id: "10"
-          default: unfold
+          default: app
           allow: [homelab-cluster]
 ```
 
@@ -85,7 +85,7 @@ None of these falls back to the default or to a worker's own repository. To retr
 
 ## 4. Check that each target is ready
 
-When ploegd starts, it asks the forge about every registered target and logs `registered target ready` or `registered target not ready` with the reason. A target is not ready when its repository is archived, is a mirror, or has no `AGENTS.md` at the root of its base branch ([prepare a repository](https://github.com/webgrip/unfold/blob/9c1d53f01fbfb65733800aa75e288341734dc23f/docs/how-to/prepare-a-repository.md)).
+When ploegd starts, it asks the forge about every registered target and logs `registered target ready` or `registered target not ready` with the reason. A target is not ready when its repository is archived, is a mirror, or has no `AGENTS.md` at the root of its base branch.
 
 - **At assignment:** a ticket that resolves to a target not ready is refused with that reason. Ploeg asks the forge again first, so a repository you fixed after startup is accepted without a restart.
 - **At claim:** Ploeg checks again before any Run starts. If the target became unready, the Run ends `stuck` with the reason and the Work Item moves to `needs_human`. If the forge cannot be reached, the Run ends as a retryable infrastructure failure and the Work Item goes back in the queue.
@@ -103,7 +103,7 @@ The Forgejo and GitLab forges report readiness. On GitLab, a pull mirror counts 
    FROM work_items WHERE provider = 'vikunja' ORDER BY id DESC LIMIT 10;
    ```
 
-4. List refusals, which have an audit row and no Work Item. An operator consumer reads them from `GET /api/v1/operator/route-refusals`: the newest refusal of each task from the last 14 days, newest first and at most 50, within the consumer's teams. Each row carries a stable `code` (`label_missing`, `label_not_allowed`, `label_unregistered`, `multiple_labels`, `labels_unread`, `no_board_rule`, `target_not_ready`, or `unclassified` for a row recorded before codes existed), the `reason` Ploeg commented on the task and the `allowedLabels` of the board, for example `["repo/homelab-cluster", "repo/unfold"]`. A task that was queued after its refusal drops out. [The operator API schema](../contracts/operator-api.v1.schema.json) defines the response. Older history is still in the audit log:
+4. List refusals, which have an audit row and no Work Item. An operator consumer reads them from `GET /api/v1/operator/route-refusals`: the newest refusal of each task from the last 14 days, newest first and at most 50, within the consumer's teams. Each row carries a stable `code` (`label_missing`, `label_not_allowed`, `label_unregistered`, `multiple_labels`, `labels_unread`, `no_board_rule`, `target_not_ready`, or `unclassified` for a row recorded before codes existed), the `reason` Ploeg commented on the task and the `allowedLabels` of the board, for example `["repo/homelab-cluster", "repo/app"]`. A task that was queued after its refusal drops out. [The operator API schema](../contracts/operator-api.v1.schema.json) defines the response. Older history is still in the audit log:
 
    ```sql
    SELECT at, detail->>'external_id' AS ticket, detail->>'code' AS code, detail->>'reason' AS reason

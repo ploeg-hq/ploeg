@@ -40,7 +40,7 @@ func TestOperatorChartKeepsConsumerCredentialsInController(t *testing.T) {
 		}
 		if doc["kind"] != "Deployment" {
 			encoded, _ := yaml.Marshal(doc)
-			if strings.Contains(string(encoded), "ploeg-vloer-operator") || strings.Contains(string(encoded), "PLOEG_OPERATOR_TOKEN_") || strings.Contains(string(encoded), "PLOEG_OPERATOR_CONSUMERS") ||
+			if strings.Contains(string(encoded), "ploeg-console-operator") || strings.Contains(string(encoded), "PLOEG_OPERATOR_TOKEN_") || strings.Contains(string(encoded), "PLOEG_OPERATOR_CONSUMERS") ||
 				strings.Contains(string(encoded), "PLOEG_DEPLOY_TOKEN") || strings.Contains(string(encoded), "ploeg-deploy-token") {
 				t.Fatalf("operator authority escaped controller into %v", doc["kind"])
 			}
@@ -69,7 +69,7 @@ func TestOperatorChartKeepsConsumerCredentialsInController(t *testing.T) {
 		if err := json.Unmarshal([]byte(env["PLOEG_OPERATOR_CONSUMERS"]["value"].(string)), &policies); err != nil {
 			t.Fatal(err)
 		}
-		if len(policies) != 2 || policies[0].Name != "vloer" || !policies[0].Execute || policies[0].Verify || policies[0].MaxBudgetUSD != 3 || len(policies[0].Teams) != 1 || policies[0].Teams[0] != "silver" || policies[1].Name != "verifier" || !policies[1].Verify || policies[1].Execute {
+		if len(policies) != 2 || policies[0].Name != "console" || !policies[0].Execute || policies[0].Verify || policies[0].MaxBudgetUSD != 3 || len(policies[0].Teams) != 1 || policies[0].Teams[0] != "silver" || policies[1].Name != "verifier" || !policies[1].Verify || policies[1].Execute {
 			t.Fatalf("wrong consumer policy: %+v", policies)
 		}
 		credential := env[policies[0].TokenEnv]
@@ -77,11 +77,11 @@ func TestOperatorChartKeepsConsumerCredentialsInController(t *testing.T) {
 			t.Fatal("operator credential rendered inline")
 		}
 		ref := credential["valueFrom"].(map[string]any)["secretKeyRef"].(map[string]any)
-		if ref["name"] != "ploeg-vloer-operator" || ref["key"] != "token" {
+		if ref["name"] != "ploeg-console-operator" || ref["key"] != "token" {
 			t.Fatalf("wrong operator secret reference: %+v", ref)
 		}
 		verifier := env[policies[1].TokenEnv]
-		if verifier["value"] != nil || verifier["valueFrom"].(map[string]any)["secretKeyRef"].(map[string]any)["name"] != "ploeg-vloer-verifier" {
+		if verifier["value"] != nil || verifier["valueFrom"].(map[string]any)["secretKeyRef"].(map[string]any)["name"] != "ploeg-console-verifier" {
 			t.Fatal("verifier credential must use a separate controller-only Secret reference")
 		}
 		deploy := env["PLOEG_DEPLOY_TOKEN"]

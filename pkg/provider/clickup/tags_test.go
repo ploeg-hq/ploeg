@@ -12,12 +12,12 @@ import (
 )
 
 const taggedTask = `{"id":"abc","name":"tagged","date_updated":"7","status":{"status":"to do","type":"open"},"list":{"id":"901"},
-	"tags":[{"name":"repo/homelab-cluster"},{"name":" Repo/Glide "},{"name":"do-next"}]}`
+	"tags":[{"name":"repo/homelab-cluster"},{"name":" Repo/App "},{"name":"do-next"}]}`
 
 func TestFetchItemFetchExecutionItemAndBoardStatusReadTheSameTags(t *testing.T) {
 	srv, _ := newTaskServer(t, taggedTask)
 	p := &Provider{BaseURL: srv.URL, Token: "pk_x"}
-	want := []string{"repo/homelab-cluster", " Repo/Glide ", "do-next"}
+	want := []string{"repo/homelab-cluster", " Repo/App ", "do-next"}
 
 	item, err := p.FetchItem(context.Background(), "abc")
 	if err != nil || !reflect.DeepEqual(item.Labels, want) {

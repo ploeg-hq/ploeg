@@ -34,7 +34,7 @@ func TestBoardStatusReadsBucketsAndLabels(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath, gotQuery, gotAuth = r.URL.Path, r.URL.RawQuery, r.Header.Get("Authorization")
 		fmt.Fprint(w, `{"id":42,"project_id":10,"created":"2026-09-30T08:15:00+02:00","buckets":[{"id":1,"title":"In test","project_view_id":84},{"id":2,"title":""}],
-			"labels":[{"title":"bounce:defect"},{"title":"repo/unfold"}]}`)
+			"labels":[{"title":"bounce:defect"},{"title":"repo/app"}]}`)
 	}))
 	defer srv.Close()
 	p := &Provider{BaseURL: srv.URL, Token: "tok"}
@@ -45,7 +45,7 @@ func TestBoardStatusReadsBucketsAndLabels(t *testing.T) {
 	if gotPath != "/tasks/42" || gotQuery != "expand=buckets" || gotAuth != "Bearer tok" {
 		t.Fatalf("request %s?%s auth %q", gotPath, gotQuery, gotAuth)
 	}
-	want := provider.BoardStatus{Scope: "10", Statuses: []string{"In test"}, Labels: []string{"bounce:defect", "repo/unfold"},
+	want := provider.BoardStatus{Scope: "10", Statuses: []string{"In test"}, Labels: []string{"bounce:defect", "repo/app"},
 		Created: time.Date(2026, 9, 30, 6, 15, 0, 0, time.UTC)}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("status = %+v", got)

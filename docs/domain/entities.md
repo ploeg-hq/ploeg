@@ -25,7 +25,7 @@ A consumer-owned session binding and serialized execution lifecycle.
 **Relationships**
 - has_one **Work Item** — One manual item or atomically adopted pristine tracker item outside unattended queue claims.
 - has_one **Shift** — One retained authorization pool.
-- has_one **Run** — One operator Role whose delegated Steps Vloer performs until Unfold ADR-0002 is implemented.
+- has_one **Run** — One operator Role whose delegated work the consumer performs and reports.
 
 **Lifecycle**
 

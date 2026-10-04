@@ -20,7 +20,7 @@ type Policy struct {
 	// MaxCreatedPerRun bounds how many Work Items one Run may create.
 	MaxCreatedPerRun int
 	// MaxDepth bounds the chain of created work: a Work Item from a tracker
-	// or Vloer has depth 0, and a created one has its source's depth plus one.
+	// or an operator consumer has depth 0, and a created one has its source's depth plus one.
 	MaxDepth int
 	// MaxOpen bounds how many created Work Items from this Team's Runs may be
 	// open (proposed, queued or leased) at once.

@@ -3,7 +3,7 @@ type: how-to
 audience: [operator, owner]
 owner: ploeg
 last_verified: 2026-10-01
-verified_by: "Read apps/ploeg pkg/gate/gate.go, pkg/config/{config,resolve}.go, pkg/httpapi/{server,gates}.go, pkg/provider/{vikunja,clickup}/*.go and pkg/store/{gates,card,card_grade}.go; go test ./pkg/gate ./pkg/config ./pkg/provider/... ./pkg/store ./pkg/httpapi. Not checked against a live Vikunja or ClickUp."
+verified_by: "Read pkg/gate/gate.go, pkg/config/{config,resolve}.go, pkg/httpapi/{server,gates}.go, pkg/provider/{vikunja,clickup}/*.go and pkg/store/{gates,card,card_grade}.go; go test ./pkg/gate ./pkg/config ./pkg/provider/... ./pkg/store ./pkg/httpapi. Not checked against a live Vikunja or ClickUp."
 ---
 
 # Map tracker statuses to delivery gates
@@ -23,8 +23,8 @@ config:
   trackers:
     vikunja:
       projects:
-        - name: "Unfold"
-          default: unfold
+        - name: "App"
+          default: app
           gates:
             development: ["Doing"]
             test: ["In test"]

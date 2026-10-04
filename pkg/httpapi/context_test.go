@@ -60,7 +60,7 @@ func uploadContext(t *testing.T, s *Server, token, path, name, note string, data
 	}
 	r := httptest.NewRequest(http.MethodPost, path+"?"+q.Encode(), bytes.NewReader(data))
 	r.Header.Set("Authorization", "Bearer "+token)
-	r.Header.Set("X-Ploeg-Actor", "vloer")
+	r.Header.Set("X-Ploeg-Actor", "console")
 	r.Header.Set("X-Ploeg-Acting-User", "ryan")
 	r.Header.Set("Content-Type", "application/octet-stream")
 	w := httptest.NewRecorder()
@@ -222,7 +222,7 @@ func TestClaimCarriesContextAndTheRunRouteServesOnlyItsOwn(t *testing.T) {
 func TestExecutionContextStoresAgainstItsWorkItem(t *testing.T) {
 	reset(t)
 	s, token := contextServer(t, []string{"silver"}, true)
-	w := operatorExecutionRequest(s, "POST", "/api/v1/operator/executions", token, "vloer", operatorHTTPInput("context-session"))
+	w := operatorExecutionRequest(s, "POST", "/api/v1/operator/executions", token, "console", operatorHTTPInput("context-session"))
 	e := executionFromResponse(t, w)
 	code, body := uploadContext(t, s, token, "/api/v1/operator/executions/"+e.ID+"/context", "brief.md", "", []byte("# Brief\n"))
 	if code != 201 || body.Context.WorkItemID != e.WorkItemID {

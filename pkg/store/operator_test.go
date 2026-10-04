@@ -255,7 +255,7 @@ func TestOperatorItemReportsPullRequestState(t *testing.T) {
 	review := func(item int64) {
 		t.Helper()
 		if _, err := testStore.pool.Exec(ctx,
-			`INSERT INTO work_item_reviews (work_item_id, provider, repo, reviewer) VALUES ($1, 'forgejo', 'glide', 'human')`, item); err != nil {
+			`INSERT INTO work_item_reviews (work_item_id, provider, repo, reviewer) VALUES ($1, 'forgejo', 'app', 'human')`, item); err != nil {
 			t.Fatalf("insert review: %v", err)
 		}
 	}
@@ -271,10 +271,10 @@ func TestOperatorItemReportsPullRequestState(t *testing.T) {
 	const (
 		pr11 = "https://forge.example/webgrip/ploeg/pulls/11"
 		pr12 = "https://forge.example/webgrip/ploeg/pulls/12"
-		pr20 = "https://forge.example/glide/glide/pulls/20"
-		pr30 = "https://forge.example/glide/glide/merge_requests/30"
-		pr40 = "https://forge.example/glide/glide/pulls/40"
-		pr50 = "https://forge.example/glide/glide/pulls/50"
+		pr20 = "https://forge.webgrip/app/app/pulls/20"
+		pr30 = "https://forge.webgrip/app/app/merge_requests/30"
+		pr40 = "https://forge.webgrip/app/app/pulls/40"
+		pr50 = "https://forge.webgrip/app/app/pulls/50"
 	)
 
 	fromRun := ingest("pr-from-run")
@@ -392,7 +392,7 @@ func TestOperatorPullRequestNamesWhoAskedForChangesNewestFirst(t *testing.T) {
 			t.Fatalf("ingest %s: %v", external, err)
 		}
 		if _, err := testStore.pool.Exec(ctx,
-			`INSERT INTO checkpoints (work_item_id, phase, pr_url) VALUES ($1, 'branch', 'https://forge.example/glide/glide/pulls/7')`, id); err != nil {
+			`INSERT INTO checkpoints (work_item_id, phase, pr_url) VALUES ($1, 'branch', 'https://forge.webgrip/app/app/pulls/7')`, id); err != nil {
 			t.Fatalf("insert checkpoint: %v", err)
 		}
 		return id
@@ -401,7 +401,7 @@ func TestOperatorPullRequestNamesWhoAskedForChangesNewestFirst(t *testing.T) {
 		t.Helper()
 		if _, err := testStore.pool.Exec(ctx,
 			`INSERT INTO work_item_reviews (work_item_id, provider, repo, reviewer, state, received_at)
-			 VALUES ($1, 'forgejo', 'glide', $2, $3, `+received+`)`, item, reviewer, state); err != nil {
+			 VALUES ($1, 'forgejo', 'app', $2, $3, `+received+`)`, item, reviewer, state); err != nil {
 			t.Fatalf("insert review: %v", err)
 		}
 	}

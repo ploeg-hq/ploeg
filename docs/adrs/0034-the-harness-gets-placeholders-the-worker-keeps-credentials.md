@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-09-26
+status: accepted
+date: 2026-10-04
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -66,6 +66,29 @@ proxies the harness's authenticated traffic over loopback.**
   ([forgeproxy.go](../../pkg/worker/forgeproxy.go)); everything else gets 403.
   Opt-in as `PLOEG_FORGE_TOKEN_ISOLATION=proxy` for the same reason.
 
+### Acceptance
+
+The owner accepted this record on 2026-10-04 for single-tenant Runs without
+DinD. By then the webgrip homelab had been running both proxies on every worker
+shape since 2026-09-28 (homelab-cluster `da9a1917`, `457b9f6c`). On 2026-10-04
+the live silver ScaledJobs and the bronze and copper SandboxTemplates (under
+`runtimeClassName: kata`) all rendered `PLOEG_LLM_KEY_ISOLATION=proxy` and
+`PLOEG_FORGE_TOKEN_ISOLATION=proxy`, and no worker carried the LiteLLM master
+key.
+
+The acceptance holds on three conditions. Until they are released, an install
+cannot rely on the boundary:
+
+* The worker refuses to claim isolation when the harness has
+  `CAP_SYS_PTRACE` (VIK-1473).
+* Both proxies refuse a request that does not present the Run's placeholder
+  (VIK-1474).
+* The forge proxy allows pushes only to the Run's own branch, and only the
+  API routes the delivery contract uses (VIK-1475).
+
+Changing the chart defaults to `proxy` still waits for a per-harness
+qualification record (VIK-576).
+
 ### Consequences
 
 * Good, because a prompt-injected harness can still spend within its budget but
@@ -114,6 +137,10 @@ Any one of these reopens this record:
   injection that can bind a different credential per Run.
 * A Run's pod spec gains `CAP_SYS_PTRACE` or `shareProcessNamespace` for any
   reason.
+* A customer Tenant's Runs share a cluster with another Tenant. The owner's
+  target is a cluster per customer (2026-10-04). Phase 1 also allows a
+  namespace or node pool per customer, and a Tenant placed that way needs the
+  per-Tenant egress gateway (VIK-1483) before its first Run.
 
 ## More Information
 

@@ -19,7 +19,7 @@ import (
 func TestOperatorWorkbenchQualification(t *testing.T) {
 	workbench := os.Getenv("PLOEG_WORKBENCH_PATH")
 	if workbench == "" {
-		t.Skip("PLOEG_WORKBENCH_PATH opts into real De Vloer demo qualification")
+		t.Skip("PLOEG_WORKBENCH_PATH opts into real De Console demo qualification")
 	}
 	reset(t)
 	consumers, token := operatorTestConsumers(t, []string{"delivery"}, true)
@@ -73,7 +73,7 @@ func runWorkbenchQualification(t *testing.T, workbench, name string, server *Ser
 	var stdout, stderr bytes.Buffer
 	command.Stdout, command.Stderr = &stdout, &stderr
 	if err := command.Run(); err != nil {
-		t.Fatalf("De Vloer qualification failed: %v\nstdout: %s\nstderr: %s", err, strings.ReplaceAll(stdout.String(), token, "[redacted]"), strings.ReplaceAll(stderr.String(), token, "[redacted]"))
+		t.Fatalf("De Console qualification failed: %v\nstdout: %s\nstderr: %s", err, strings.ReplaceAll(stdout.String(), token, "[redacted]"), strings.ReplaceAll(stderr.String(), token, "[redacted]"))
 	}
 	var result map[string]any
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
@@ -82,6 +82,6 @@ func runWorkbenchQualification(t *testing.T, workbench, name string, server *Ser
 	if result["ok"] != true {
 		t.Fatalf("qualification did not confirm success: %s", strings.ReplaceAll(stdout.String(), token, "[redacted]"))
 	}
-	t.Logf("De Vloer qualification: %s", strings.ReplaceAll(stdout.String(), token, "[redacted]"))
+	t.Logf("De Console qualification: %s", strings.ReplaceAll(stdout.String(), token, "[redacted]"))
 	return result
 }

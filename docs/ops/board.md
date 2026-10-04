@@ -1,8 +1,8 @@
 # Tracker configuration and historical board notes
 
-The tracker owns current work and priorities. Ploeg receives configured provider events and resolves a Work Target from the registered Scope. De Vloer registers its own task sources and repository mapping; there is no universal project-ID default.
+The tracker owns current work and priorities. Ploeg receives configured provider events and resolves a Work Target from the registered Scope. An operator consumer registers its own task sources and repository mapping; there is no universal project-ID default.
 
-For current integration behavior, read [tracker execution binding](../contracts/tracker-execution.md), the [Vikunja provider](../../pkg/provider/vikunja/vikunja.go), the [ClickUp provider](../../pkg/provider/clickup/clickup.go) and [Vloer's connection guide](https://github.com/webgrip/unfold/blob/9c1d53f01fbfb65733800aa75e288341734dc23f/apps/vloer/docs/operations/task-connections.md).
+For current integration behavior, read [tracker execution binding](../contracts/tracker-execution.md), the [Vikunja provider](../../pkg/provider/vikunja/vikunja.go), the [ClickUp provider](../../pkg/provider/clickup/clickup.go).
 
 To have agents implement an OpenSpec change, put a line `openspec: <change-id>` in the tracker item's description. See [OpenSpec Work Items](../contracts/README.md#openspec-work-items) for what the Run then does.
 

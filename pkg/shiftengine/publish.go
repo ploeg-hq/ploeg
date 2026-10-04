@@ -193,7 +193,7 @@ func (e *Engine) publishUsageReport(ctx context.Context, si store.ShiftInfo) {
 		Ledger:   usage.Ledger,
 		TraceID:  traceAlias(usage.Runs),
 		Evidence: parseEvidence(reports),
-		Links:    reportLinkConfig{GrafanaURL: e.GrafanaURL, VloerURL: e.VloerURL},
+		Links:    e.ReportLinks,
 	})
 
 	comments, err := fp.Comments(ctx, repo, pr)

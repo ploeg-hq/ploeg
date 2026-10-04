@@ -508,7 +508,7 @@
             },
             "publicUrl": {
               "type": "string",
-              "description": "ploegd's forge URL (PLOEG_FORGEJO_URL). Empty = url. Set it to the public https URL when url is in-cluster: ploegd matches Vloer's https repository URLs against it and accepts only https or ssh ones."
+              "description": "ploegd's forge URL (PLOEG_FORGEJO_URL). Empty = url. Set it to the public https URL when url is in-cluster: ploegd matches a consumer's https repository URLs against it and accepts only https or ssh ones."
             },
             "tokenSecret": {
               "$ref": "#/definitions/secretRef"

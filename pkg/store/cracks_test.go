@@ -61,13 +61,13 @@ func (w *crackWorld) card(id int64, opts CardOptions) OperatorCard {
 
 func (w *crackWorld) propose(bug, card int64, by string, severity string) (Crack, error) {
 	return testStore.ProposeCrack(w.ctx, CrackProposal{Bug: bug, Card: card, Severity: severity, Share: "primary",
-		By: Actor{Person: by, Audit: "operator:vloer:" + by}, Teams: []string{"silver"}})
+		By: Actor{Person: by, Audit: "operator:console:" + by}, Teams: []string{"silver"}})
 }
 
 func (w *crackWorld) decision(id string, by string) CrackDecision {
 	var crack int64
 	fmt.Sscan(id, &crack)
-	return CrackDecision{Crack: crack, By: Actor{Person: by, Audit: "operator:vloer:" + by}, Teams: []string{"silver"}}
+	return CrackDecision{Crack: crack, By: Actor{Person: by, Audit: "operator:console:" + by}, Teams: []string{"silver"}}
 }
 
 func refusal(t *testing.T, err error, code string) {

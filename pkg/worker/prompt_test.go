@@ -165,7 +165,7 @@ func TestComposePrompt_WriterIsNotAskedForAVerdict(t *testing.T) {
 	}
 }
 
-// The person who merges reads the writer's problem and solution in Vloer
+// The person who merges reads the writer's problem and solution in Console
 // (ADR-0042), and the pull request a writer opens starts with the same text.
 func TestComposePrompt_WriterReportsItsProblemAndSolution(t *testing.T) {
 	opening := ComposePrompt(roleSpec("builder", nil), true, "", true)

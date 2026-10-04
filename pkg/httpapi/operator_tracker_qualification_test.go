@@ -21,7 +21,7 @@ import (
 func TestOperatorTrackerWorkbenchQualification(t *testing.T) {
 	workbench := os.Getenv("PLOEG_WORKBENCH_PATH")
 	if workbench == "" {
-		t.Skip("PLOEG_WORKBENCH_PATH opts into real De Vloer tracker binding qualification")
+		t.Skip("PLOEG_WORKBENCH_PATH opts into real De Console tracker binding qualification")
 	}
 	if !filepath.IsAbs(workbench) {
 		t.Fatal("PLOEG_WORKBENCH_PATH must be an absolute repository path")
@@ -53,7 +53,7 @@ func TestOperatorTrackerWorkbenchQualification(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	command.Stdout, command.Stderr = &stdout, &stderr
 	if err := command.Run(); err != nil {
-		t.Fatalf("De Vloer tracker qualification failed: %v\nstdout: %s\nstderr: %s", err, strings.ReplaceAll(stdout.String(), f.token, "[redacted]"), strings.ReplaceAll(stderr.String(), f.token, "[redacted]"))
+		t.Fatalf("De Console tracker qualification failed: %v\nstdout: %s\nstderr: %s", err, strings.ReplaceAll(stdout.String(), f.token, "[redacted]"), strings.ReplaceAll(stderr.String(), f.token, "[redacted]"))
 	}
 	var result map[string]any
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil || result["ok"] != true {
@@ -66,5 +66,5 @@ func TestOperatorTrackerWorkbenchQualification(t *testing.T) {
 	if run, err := testStore.ClaimRole(ctx, "delivery", "builder", time.Minute, 2); !errors.Is(err, store.ErrNoWork) {
 		t.Fatalf("unattended roster survived binding: %+v %v", run, err)
 	}
-	t.Logf("De Vloer tracker qualification: %s", strings.ReplaceAll(stdout.String(), f.token, "[redacted]"))
+	t.Logf("De Console tracker qualification: %s", strings.ReplaceAll(stdout.String(), f.token, "[redacted]"))
 }

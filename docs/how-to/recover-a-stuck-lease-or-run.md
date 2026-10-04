@@ -3,7 +3,7 @@ type: how-to
 audience: [operator]
 owner: ploeg
 last_verified: 2026-09-23
-verified_by: "Read apps/ploeg pkg/store/{store,shift,operator_execution}.go (Claim, ClaimRole, Renew, ExpireLeases, ExpireRuns, CloseShift), pkg/shiftengine/engine.go, pkg/worker/worker.go (renewLoop), cmd/ploegd/{main,sweep}.go, migrations 0001, 0008, 0013 and ops/helm/ploeg"
+verified_by: "Read pkg/store/{store,shift,operator_execution}.go (Claim, ClaimRole, Renew, ExpireLeases, ExpireRuns, CloseShift), pkg/shiftengine/engine.go, pkg/worker/worker.go (renewLoop), cmd/ploegd/{main,sweep}.go, migrations 0001, 0008, 0013 and ops/helm/ploeg"
 ---
 
 # Recover a stuck Lease or Run
@@ -19,7 +19,7 @@ Read [Before you start](index.md#before-you-start) for names and the database se
 You rarely need this runbook, because the sweeper in `ploegd` does the work every `PLOEG_SWEEP_INTERVAL` (15 seconds in the chart) ([sweep.go](../../cmd/ploegd/sweep.go)):
 
 - A worker renews its Run's deadline every third of `PLOEG_LEASE_TTL` (5 minutes in the chart). After three failed renewals it cancels its own Run ([worker.go](../../pkg/worker/worker.go)).
-- `ExpireRuns` finishes every `running` Run whose `expires_at` has passed: outcome `failed`, `failure_reason = 'lease_lost'`. It drops the writer's Lease, blocks the Run's gateway key and revokes its push credential ([shift.go](../../pkg/store/shift.go)). Runs that belong to an operator execution (a Vloer session) are skipped here; operator execution reconciliation handles them.
+- `ExpireRuns` finishes every `running` Run whose `expires_at` has passed: outcome `failed`, `failure_reason = 'lease_lost'`. It drops the writer's Lease, blocks the Run's gateway key and revokes its push credential ([shift.go](../../pkg/store/shift.go)). Runs that belong to an operator execution (an operator consumer's session) are skipped here; operator execution reconciliation handles them.
 - `ExpireLeases` does the same for Leases outside a Shift (`shift_id IS NULL`), then re-queues the Work Item with backoff, or marks it `stale` after repeated infrastructure failures ([store.go](../../pkg/store/store.go)).
 - The Shift engine then advances the Round. A failed writer re-opens its own Round, up to a cap ([ADR-0019](../adrs/0019-a-failed-writing-run-reopens-its-round.md)).
 
@@ -143,9 +143,9 @@ WHERE work_item_id = :item AND shift_id IS NULL;
 
 Within one sweep interval the logs show `run deadline expired, run reclaimed` or `lease expired, item released`.
 
-### A Run from a Vloer session
+### A Run from an operator session
 
-If `operator_run` is true, `ExpireRuns` does not touch the Run and moving its deadline does nothing. Stop or cancel the session in Vloer. Ploeg's operator execution reconciliation expires sessions past their own deadline and blocks their keys.
+If `operator_run` is true, `ExpireRuns` does not touch the Run and moving its deadline does nothing. Stop or cancel the session in the operator consumer. Ploeg's operator execution reconciliation expires sessions past their own deadline and blocks their keys.
 
 ### A pending Run that never starts
 
@@ -225,7 +225,7 @@ These are end states, not stuck states. `stale` means the attempt or infrastruct
 | Overdue rows, no sweep errors, `ploegd` not ready | Controller down or crash-looping | Fix `ploegd`; the sweep catches up on start |
 | Run `running` for hours, deadline keeps moving | Worker alive and renewing; harness not progressing | Delete the Job; the worker reports on SIGTERM |
 | Run `running`, pod gone, deadline in the future | Pod killed within the last TTL | Wait one TTL, or set `expires_at = now()` |
-| Run `running` for hours, `operator_run` true | Vloer session; skipped by `ExpireRuns` | Stop or cancel the session in Vloer |
+| Run `running` for hours, `operator_run` true | Operator session; skipped by `ExpireRuns` | Stop or cancel the session in the operator consumer |
 | Runs `pending`, no worker pods | No workload for the Role, KEDA scaler error, or workers paused | Align the plan in values, fix scaler credentials, or resume workers |
 | Runs `pending`, log `claim refused: shift budget exhausted` | Pool spent or held by unsettled accounts | [Investigate a Run's spend](investigate-a-runs-spend.md) |
 | Next writer never starts; a Shift Lease exists for a finished Run | Orphan Shift Lease | Delete it in SQL (not implemented as a command yet) |

@@ -1667,7 +1667,7 @@
     "cardStyle": {
       "type": "object",
       "additionalProperties": false,
-      "description": "The Work Target's cardStyle configuration. A Work Target without one gets skin vloer-native and no theme.",
+      "description": "The Work Target's cardStyle configuration. A Work Target without one gets skin default and no theme.",
       "required": [
         "skin",
         "theme"

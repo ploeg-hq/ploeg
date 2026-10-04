@@ -3,7 +3,7 @@ type: how-to
 audience: [operator, owner]
 owner: ploeg
 last_verified: 2026-10-02
-verified_by: "Read apps/ploeg pkg/rarity/{paths,rarity}.go, pkg/config/config.go, pkg/store/card_rarity.go and pkg/httpapi/card_rarity.go; go test ./pkg/rarity ./pkg/config ./pkg/store ./pkg/httpapi. Not checked against a live forge."
+verified_by: "Read pkg/rarity/{paths,rarity}.go, pkg/config/config.go, pkg/store/card_rarity.go and pkg/httpapi/card_rarity.go; go test ./pkg/rarity ./pkg/config ./pkg/store ./pkg/httpapi. Not checked against a live forge."
 ---
 
 # Mark sensitive paths for card rarity
@@ -21,13 +21,13 @@ Most repositories only need `attentionPaths`: the code where a change deserves e
 ```yaml
 config:
   targets:
-    unfold:
-      repo: webgrip/glide
+    app:
+      repo: webgrip/app
       rarity:
         attentionPaths:
-          - "apps/ploeg/pkg/store/**"     # budgets, leases and the ledger
+          - "pkg/store/**"                # budgets, leases and the ledger
           - "**/budget*.go"
-          - "apps/ploeg/ops/helm/"         # a trailing slash means everything below
+          - "ops/helm/"                    # a trailing slash means everything below
 ```
 
 A pattern without a slash matches a file name at any depth (`Dockerfile`). Any other pattern is anchored at the repository root. `**` spans directories, `*` and `?` stay within one directory, and `{yml,yaml}` lists alternatives.

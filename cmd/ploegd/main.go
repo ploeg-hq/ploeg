@@ -271,8 +271,12 @@ func run(log *slog.Logger) error {
 			Trackers:     trackers,
 			Uniform:      uniform,
 			UsageReport:  usageReport,
-			GrafanaURL:   trimSlash(os.Getenv("PLOEG_REPORT_GRAFANA_URL")),
-			VloerURL:     trimSlash(os.Getenv("PLOEG_REPORT_VLOER_URL")),
+			ReportLinks: shiftengine.ReportLinks{
+				WorkItem:       os.Getenv("PLOEG_REPORT_WORK_ITEM_URL"),
+				TeamDashboard:  os.Getenv("PLOEG_REPORT_TEAM_DASHBOARD_URL"),
+				RunDashboard:   os.Getenv("PLOEG_REPORT_RUN_DASHBOARD_URL"),
+				SpendDashboard: os.Getenv("PLOEG_REPORT_SPEND_DASHBOARD_URL"),
+			},
 		}
 		log.Info("shift engine enabled", "planned_teams", len(plans), "uniform", uniform, "usage_report", usageReport)
 	} else {
