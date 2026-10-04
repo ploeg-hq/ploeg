@@ -95,5 +95,5 @@ func (a *Adapter) ParseOutcome(_ harness.TaskSpec, res harness.ExecResult) (harn
 	if report.Outcome != "" && !report.Outcome.Valid() {
 		return harness.OutcomeReport{}, fmt.Errorf("outcome file %s: unknown outcome %q", res.OutcomeFile, report.Outcome)
 	}
-	return report, nil
+	return harness.MergeDropBox(harness.OutcomeReport{}, report), nil
 }

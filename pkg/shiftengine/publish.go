@@ -262,7 +262,7 @@ func findingsComment(r store.RunReport) string {
 //
 // Called for every TERMINAL settle — see Engine.close. It was called only for
 // needs_human, which meant the successful path said nothing.
-func (e *Engine) notifyTracker(ctx context.Context, si store.ShiftInfo, settled work.State, reason string, budget *store.ShiftLedger) {
+func (e *Engine) notifyTracker(ctx context.Context, si store.ShiftInfo, settled work.State, closeReason, reason string, budget *store.ShiftLedger) {
 	if len(e.Trackers) == 0 {
 		return
 	}
@@ -287,7 +287,7 @@ func (e *Engine) notifyTracker(ctx context.Context, si store.ShiftInfo, settled 
 	}
 	link, _ := pullRequest(reports)
 
-	body := trackerMessage(settled, reason, link, len(reports), si.Round, budget)
+	body := trackerMessage(settled, reason, link, len(reports), si.Round, budget, closeReason == reasonReviewFailed)
 
 	// Write-back failure is logged, never propagated: the Work Item state and
 	// the audit rows are already correct, and losing them to a tracker outage
@@ -320,11 +320,13 @@ func (e *Engine) notifyTracker(ctx context.Context, si store.ShiftInfo, settled 
 // trackerMessage is what the board is told, per terminal state. Pure so the
 // wording is table-testable without an embedded Postgres.
 // A non-nil budget adds the budget-exhaustion notice with the pool's amounts.
-func trackerMessage(settled work.State, reason, link string, runs, rounds int, budget *store.ShiftLedger) string {
+func trackerMessage(settled work.State, reason, link string, runs, rounds int, budget *store.ShiftLedger, reviewMissing bool) string {
 	var b strings.Builder
 	switch {
 	case settled == work.StateStale:
 		b.WriteString("Ploeg gave up on this item after repeated failures.\n\n")
+	case settled == work.StateAwaitingReview && reviewMissing:
+		b.WriteString("Ploeg finished this item, but an agent review of its pull request is missing. Please review it yourself.\n\n")
 	case settled == work.StateAwaitingReview:
 		b.WriteString("Ploeg finished this item. Its pull request is ready for review.\n\n")
 	case link != "":

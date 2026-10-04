@@ -138,8 +138,9 @@ func TestUsageReportEvidenceParsesVerificationAndCommit(t *testing.T) {
 		t.Fatalf("parseEvidence = %+v, want passed/abcdef123456", ev)
 	}
 	body := usageReport(usageReportInput{Shift: store.ShiftUsage{}, Evidence: ev})
-	if !strings.Contains(body, "Verification: passed") || !strings.Contains(body, "`abcdef123456`") {
-		t.Errorf("report did not state the verification and commit:\n%s", body)
+	if !strings.Contains(body, "Verification (historical prose, not a worker record): passed, unverified") ||
+		!strings.Contains(body, "Commit named in that prose (unverified): `abcdef123456`") || strings.Contains(body, "Commit verified") {
+		t.Errorf("report did not state the historical verification and commit as unverified:\n%s", body)
 	}
 }
 

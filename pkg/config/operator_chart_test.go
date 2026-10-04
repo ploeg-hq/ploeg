@@ -18,7 +18,7 @@ func TestOperatorChartKeepsConsumerCredentialsInController(t *testing.T) {
 		t.Skip("Helm is required for chart render qualification")
 	}
 	chart := filepath.Join("..", "..", "ops", "helm", "ploeg")
-	args := []string{"template", "ploeg", chart, "-f", filepath.Join(chart, "ci", "executor-values.yaml"), "-f", filepath.Join(chart, "ci", "operator-values.yaml")}
+	args := []string{"template", "ploeg", chart, "-f", filepath.Join(chart, "ci", "required-values.yaml"), "-f", filepath.Join(chart, "ci", "executor-values.yaml"), "-f", filepath.Join(chart, "ci", "operator-values.yaml")}
 	output, err := exec.Command(helm, args...).CombinedOutput()
 	if err != nil {
 		t.Fatalf("render operator values: %v\n%s", err, output)

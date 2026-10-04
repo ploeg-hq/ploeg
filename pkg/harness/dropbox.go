@@ -63,10 +63,13 @@ func ReadDropBox(path string) (OutcomeReport, error) {
 //     agent's to report and ALWAYS survive. ploegd applies the Team's limits to created work. A
 //     run that produced a review and then failed its shutdown handshake still
 //     did the review, and dropping it loses work that was actually done.
-//   - Outcome and Summary fill in only where the adapter concluded nothing.
+//   - Outcome and Summary fill in only where the adapter concluded nothing,
+//     and never with pr_opened or pr_updated.
 //     An adapter that classified a launch failure, a lost lease or a watchdog
 //     timeout has structured evidence the agent does not, and an agent must
 //     never be able to overwrite that by writing a cheerful file.
+//   - Links, Checkpoint, FailureReason, Verification and Delivery are never
+//     taken from the drop box: they are facts the worker observes (ADR-0059).
 //   - Usage prefers the agent's own accounting when the adapter has none.
 //
 // StuckReason rides with Outcome, so R4 (a stuck outcome always carries a
@@ -87,22 +90,13 @@ func MergeDropBox(base, box OutcomeReport) OutcomeReport {
 	if len(box.CreatedWorkItems) > 0 {
 		base.CreatedWorkItems = box.CreatedWorkItems
 	}
-	if base.Outcome == "" && box.Outcome != "" {
+	if base.Outcome == "" && box.Outcome != "" && !box.Outcome.AssertsDelivery() {
 		base.Outcome = box.Outcome
 		if base.Summary == "" {
 			base.Summary = box.Summary
 		}
 		if base.StuckReason == "" {
 			base.StuckReason = box.StuckReason
-		}
-		if base.FailureReason == "" {
-			base.FailureReason = box.FailureReason
-		}
-		if len(base.Links) == 0 {
-			base.Links = box.Links
-		}
-		if base.Checkpoint == nil {
-			base.Checkpoint = box.Checkpoint
 		}
 	}
 	if base.Usage == nil && box.Usage != nil {

@@ -51,6 +51,27 @@ func (s *Server) handleOperatorSummary(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) handleOperatorUnsettledAccounts(w http.ResponseWriter, r *http.Request) {
+	if !operatorGET(w, r) {
+		return
+	}
+	if r.URL.RawQuery != "" || r.URL.ForceQuery {
+		operatorError(w, 400, "invalid_request", "Unsettled accounts does not accept query parameters.")
+		return
+	}
+	principal, _ := OperatorPrincipalFromContext(r.Context())
+	now := time.Now().UTC().Truncate(time.Second)
+	page, err := s.Store.UnsettledFinishedAccounts(r.Context(), principal.Teams, 200)
+	if err != nil {
+		operatorReadError(w, err)
+		return
+	}
+	operatorJSON(w, 200, map[string]any{
+		"schemaVersion": "1.0", "generatedAt": now, "accounts": page.Accounts,
+		"totals": map[string]any{"count": page.Count, "heldUsd": page.HeldUSD},
+	})
+}
+
 func (s *Server) handleOperatorRuns(w http.ResponseWriter, r *http.Request) {
 	if !operatorGET(w, r) {
 		return

@@ -1,0 +1,10 @@
+# CI-only values that MUST fail to render (scripts/helm-golden.sh). KEDA polls
+# PostgreSQL directly, and the chart names no database host by default.
+executor:
+  enabled: true
+  scaler:
+    host: ""
+  teams:
+    - name: bronze
+      model: litellm_proxy/deepseek-chat
+      budget: "1"

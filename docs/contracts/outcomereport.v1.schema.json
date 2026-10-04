@@ -153,10 +153,73 @@
     },
     "verification": {
       "$ref": "#/$defs/verification",
-      "description": "The worker's own run of the configured checks on a writing Run's checkout after the harness exited (VIK-1733). Only the worker sets it: it discards any value an adapter or agent reported, and ploegd stores it for a writing Run only. Readers take a Run's verification result and commit from this record, never from the summary or findings prose. Optional: a report from an older worker has none and is read through the prose the worker appended."
+      "description": "The worker's own run of the configured checks on a writing Run's checkout after the harness exited (VIK-1733). Only the worker sets it: it discards any value an adapter or agent reported, and ploegd stores it for a writing Run only. Readers take a Run's verification result and commit from this record, never from the summary or findings prose. ploegd refuses a report whose record contradicts itself: a passed record needs at least one check, a passed check exit code 0 and a failed one a nonzero exit code, a check that ran start and finish times inside the record's, and a check that did not run no exit code or times. Optional: absent means the worker ran no checks (none configured, a reading Run, a cancelled Run or no pull request), which readers show as not recorded. Only a Run ploegd stored before it kept agent_runs.evidence_version (VIK-1780) is read through the prose of its time, labelled historical and unverified."
+    },
+    "delivery": {
+      "$ref": "#/$defs/delivery",
+      "description": "What the worker read on the forge about the Run's pull request before and after the harness ran (ADR-0059, proposed). Only the worker sets it: an adapter or agent never reports pr_opened, pr_updated, links, a checkpoint, a failure reason, a verification or a delivery. A writer's pr_opened follows observed=opened. Optional: a report from an older worker has none."
     }
   },
   "$defs": {
+    "delivery": {
+      "type": "object",
+      "properties": {
+        "forge": {
+          "type": "string",
+          "description": "the forge id of the Work Item's target; empty means the default forge"
+        },
+        "repository": {
+          "type": "string",
+          "minLength": 1,
+          "description": "owner/name of the Work Item's repository, the only repository a pull request is read from"
+        },
+        "branch": {
+          "type": "string",
+          "minLength": 1,
+          "description": "the Run's branch; a pull request counts only when its head is this branch in the same repository (never a fork) and its base is the target's base branch"
+        },
+        "observed": {
+          "type": "string",
+          "enum": [
+            "opened",
+            "updated",
+            "none",
+            "unknown"
+          ],
+          "description": "opened: no pull request before the Run, one after; updated: the same pull request before and after and its head commit moved; none: no pull request after, or the same one with the same head; unknown: a forge read failed"
+        },
+        "number": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "url": {
+          "type": "string"
+        },
+        "base": {
+          "type": "string"
+        },
+        "head": {
+          "type": "string",
+          "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$",
+          "description": "the pull request's head commit after the Run"
+        },
+        "headBefore": {
+          "type": "string",
+          "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$",
+          "description": "the pull request's head commit before the Run, when it was already open"
+        },
+        "reason": {
+          "type": "string",
+          "description": "why observed is unknown"
+        }
+      },
+      "required": [
+        "repository",
+        "branch",
+        "observed"
+      ],
+      "additionalProperties": false
+    },
     "modelUsage": {
       "type": "object",
       "properties": {

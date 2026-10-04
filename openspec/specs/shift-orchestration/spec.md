@@ -3,7 +3,7 @@
 ## Purpose
 How ploegd drives a Shift through its Team's plan: one live Shift per queued
 Work Item, Rounds that advance only when all their Runs have finished, a failed
-writing Run that re-opens its Round, closing on plan exhaustion or a terminal
+Run that re-opens its Round, closing on plan exhaustion or a terminal
 Outcome, and parking the Work Item when the budget pool runs out. Archived from
 the change `2026-07-29-run-multi-agent-shifts`.
 ## Requirements
@@ -56,7 +56,10 @@ well).
 
 - **GIVEN** a reading Run whose pod died without reporting
 - **WHEN** `ExpireRuns` reclaims it
-- **THEN** the Round can complete and the Shift advances
+- **THEN** the same Round re-opens with that reading Role only, and the round
+  counter does not advance
+- **AND** once the Role's attempt budget is spent the Round completes and the
+  Shift advances
 - **AND** the Round's remaining findings still reach the next Round
 
 ### Requirement: A failed writing Run re-opens its Round rather than advancing the plan
@@ -82,9 +85,8 @@ which is what distinguishes it from a `stuck` Outcome, where a human is needed
 and no retry fixes it (R4). The attempt counts SHALL be derived from the Runs
 in the Round, not held in a counter.
 
-A reading Run's failure costs an opinion; a writing Run's failure costs the
-work. Advancing over the latter means every later Round reasons about a branch
-that was never written.
+A writing Run's failure costs the work. Advancing over it means every later
+Round reasons about a branch that was never written.
 
 #### Scenario: The writer's pod dies
 
@@ -120,6 +122,48 @@ that was never written.
 - **THEN** the Shift closes at `needs_human`
 - **AND** the close reason names the infrastructure failure, distinctly from
   the reason used when the agent itself kept failing
+
+### Requirement: A failed reading Run is retried, and a review that never came closes review_failed
+
+A Round with a READING Role whose Runs all ended `failed` SHALL re-open in
+place for that Role only, under the same two attempt budgets a failed writer
+uses (ADR-0043). Readers of the same Round that succeeded SHALL NOT be re-run,
+and the round counter SHALL NOT advance. A writing Run's failure in the Round
+SHALL be handled first. The pool SHALL be checked when the retry is claimed,
+so an unfundable retry opens no Run and parks the Shift as any unfundable Run
+does.
+
+When the Role's budgets are spent, the Round SHALL complete and the plan SHALL
+advance. If the plan then ends and the last reading Round after the last
+writing Round has a Role with no non-failed Outcome, the Shift SHALL close with
+reason `review_failed` instead of `plan_exhausted`. With a writer's pull
+request the Work Item SHALL still reach `awaiting_review`, and the tracker
+comment SHALL say that no agent reviewed it and name the failure reason; it
+SHALL NOT say the plan completed or that anything was approved.
+
+#### Scenario: One of two reviewers fails
+
+- **GIVEN** a review Round of two readers where one reported and the other's
+  Run ended `failed`
+- **WHEN** the orchestrator evaluates the Shift
+- **THEN** the Round re-opens with the failed reader only
+- **AND** the reader that reported is not run again
+
+#### Scenario: The reviewer never reviews
+
+- **GIVEN** a writer that opened a pull request and a reviewer that failed
+  `MaxRunAttempts` times
+- **WHEN** the orchestrator evaluates the Shift
+- **THEN** the Shift closes `review_failed` and the Work Item reaches
+  `awaiting_review`
+- **AND** the tracker comment says the pull request was not reviewed by an
+  agent and names the reviewer's failure reason
+
+#### Scenario: A retried reviewer reviews
+
+- **GIVEN** a reviewer that failed once and then reported on its retry
+- **WHEN** the plan ends
+- **THEN** the Shift closes as that review decides, never `review_failed`
 
 ### Requirement: A Shift closes on plan exhaustion or a terminal Outcome
 

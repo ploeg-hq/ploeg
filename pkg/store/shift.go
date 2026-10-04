@@ -822,14 +822,26 @@ type RunReport struct {
 	// checks; nil when the Run reported none, as a Run from an older worker
 	// did.
 	Verification *harness.Verification
+	// FailureReason is why a failed Run failed (work.FailureReason); empty
+	// when the Run did not fail or recorded no reason.
+	FailureReason string
+	// EvidenceVersion is CurrentEvidenceVersion for a Run ploegd stored after
+	// it began keeping only the worker's verification record, and 0 for an
+	// older Run whose prose is unverified history.
+	EvidenceVersion int
 }
+
+// CurrentEvidenceVersion is the evidence_version ReportOutcome stores: the
+// Run's verification is its structured record or nothing.
+const CurrentEvidenceVersion = 1
 
 // RoundReports returns every finished Run's report for a Shift, in Round then
 // claim order. Callers filter by Round: prompt injection wants rounds before
 // the one being claimed, publication wants the round that just completed.
 func (s *Store) RoundReports(ctx context.Context, shiftID int64) ([]RunReport, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT role, round, writes, COALESCE(outcome, ''), summary, findings, links, verdict, verification
+		SELECT role, round, writes, COALESCE(outcome, ''), summary, findings, links, verdict, verification,
+		       COALESCE(failure_reason, ''), COALESCE(evidence_version, 0)
 		FROM agent_runs
 		WHERE shift_id = $1 AND state = 'finished'
 		ORDER BY round, id`, shiftID)
@@ -841,7 +853,8 @@ func (s *Store) RoundReports(ctx context.Context, shiftID int64) ([]RunReport, e
 	for rows.Next() {
 		var r RunReport
 		var verification []byte
-		if err := rows.Scan(&r.Role, &r.Round, &r.Writes, &r.Outcome, &r.Summary, &r.Findings, &r.Links, &r.Verdict, &verification); err != nil {
+		if err := rows.Scan(&r.Role, &r.Round, &r.Writes, &r.Outcome, &r.Summary, &r.Findings, &r.Links, &r.Verdict, &verification,
+			&r.FailureReason, &r.EvidenceVersion); err != nil {
 			return nil, err
 		}
 		if verification != nil {

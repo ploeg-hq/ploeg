@@ -77,6 +77,13 @@ func (o Outcome) Valid() bool {
 	return false
 }
 
+// AssertsDelivery reports whether o claims a pull request was opened or
+// updated. Only the worker may report such an outcome, from what it read on
+// the forge (ADR-0059); an agent's claim is discarded.
+func (o Outcome) AssertsDelivery() bool {
+	return o == OutcomePROpened || o == OutcomePRUpdated
+}
+
 // FailureReason classifies why a run failed (agent_runs.failure_reason).
 // Set by the worker or sweeper; queried by dashboards and the run-forensics
 // view (VIK-597). The empty string means "not a failure" or "unclassified".

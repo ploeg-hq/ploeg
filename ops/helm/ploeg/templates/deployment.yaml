@@ -1,3 +1,4 @@
+{{- include "ploeg.requireIntegrations" . }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -57,13 +58,17 @@ spec:
             - name: PLOEG_DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.database.existingSecret.name }}
-                  key: {{ .Values.database.existingSecret.key }}
+                  name: {{ required "database.existingSecret.name is required: name the Secret that holds ploegd's PostgreSQL connection URI (CloudNativePG creates <cluster>-app with a uri key)" .Values.database.existingSecret.name }}
+                  key: {{ .Values.database.existingSecret.key | default "uri" }}
+            {{- with .Values.webhook.existingSecret }}
+            {{- if .name }}
             - name: PLOEG_VIKUNJA_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.webhook.existingSecret.name }}
-                  key: {{ .Values.webhook.existingSecret.key }}
+                  name: {{ .name }}
+                  key: {{ .key }}
+            {{- end }}
+            {{- end }}
             {{- /* Team plans (run-multi-agent-shifts): ploegd's shift engine
                  reads the same plan the workload templates partition on, so
                  there is exactly one source of truth — executor.teams[].plan.
@@ -94,13 +99,6 @@ spec:
                  is not pushing, so no second credential — but without a URL
                  there is no ForgeProvider and findings stay in the database. */}}
             {{- with .Values.executor.forgejo }}
-            - name: PLOEG_FORGEJO_URL
-              value: {{ .publicUrl | default .url | quote }}
-            - name: PLOEG_FORGEJO_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .tokenSecret.name }}
-                  key: {{ .tokenSecret.key }}
             {{- /* ADR-0013 tier 2: the bot's password MINTS per-run push
                  tokens, each limited to the Run's repository. Held only by
                  ploegd, never by a worker (R6). Forgejo creates tokens only
@@ -110,6 +108,14 @@ spec:
             {{- if .adminTokenSecret }}
             {{- fail "executor.forgejo.adminTokenSecret is not supported: Forgejo refuses to create access tokens with a token. Set executor.forgejo.botPasswordSecret to a secret holding the bot user's password" }}
             {{- end }}
+            {{- if .publicUrl | default .url }}
+            - name: PLOEG_FORGEJO_URL
+              value: {{ .publicUrl | default .url | quote }}
+            - name: PLOEG_FORGEJO_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .tokenSecret.name }}
+                  key: {{ .tokenSecret.key }}
             {{- with .botPasswordSecret }}
             - name: PLOEG_FORGEJO_BOT_PASSWORD
               valueFrom:
@@ -127,6 +133,7 @@ spec:
                 secretKeyRef:
                   name: {{ .name }}
                   key: {{ .key }}
+            {{- end }}
             {{- end }}
             {{- end }}
             {{- with .Values.executor.gitlab }}
@@ -191,6 +198,7 @@ spec:
               value: {{ $v | quote }}
             {{- end }}
             {{- with .Values.executor.litellm }}
+            {{- if .adminUrl }}
             - name: LITELLM_ADMIN_URL
               value: {{ .adminUrl | quote }}
             - name: LITELLM_MASTER_KEY
@@ -198,6 +206,7 @@ spec:
                 secretKeyRef:
                   name: {{ .masterKeySecret.name }}
                   key: {{ .masterKeySecret.key }}
+            {{- end }}
             {{- end }}
             {{- with .Values.deploys }}
             {{- with .tokenSecret }}

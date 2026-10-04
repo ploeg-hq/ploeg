@@ -1,0 +1,6 @@
+# CI-only values that MUST fail to render (scripts/helm-golden.sh). Workers
+# clone from and push to the forge, and the chart names no forge by default.
+executor:
+  enabled: true
+  forgejo:
+    url: ""

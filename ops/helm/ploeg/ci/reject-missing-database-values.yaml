@@ -1,0 +1,5 @@
+# CI-only values that MUST fail to render (scripts/helm-golden.sh). ploegd
+# cannot start without PostgreSQL, and the chart names no database by default.
+database:
+  existingSecret:
+    name: ""

@@ -383,7 +383,7 @@ func TestPlanExhaustionClosesAndParks(t *testing.T) {
 
 // A swept Run does not block its Round forever (spec scenario): the reader's
 // pod died, ExpireRuns reclaimed it, and the Shift still advances.
-func TestExpiredReaderDoesNotBlockTheRound(t *testing.T) {
+func TestSweptReaderIsRetriedByTheSweepAndNeverBlocksTheRound(t *testing.T) {
 	ctx := context.Background()
 	resetTables(t)
 	e := newEngine(bronzePlan(6))
@@ -392,7 +392,7 @@ func TestExpiredReaderDoesNotBlockTheRound(t *testing.T) {
 		t.Fatal(err)
 	}
 	r1, _ := testStore.ClaimRole(ctx, "bronze", "analyst", time.Minute, 1)
-	if _, err := testStore.ClaimRole(ctx, "bronze", "tests", -time.Second, 1); err != nil { // dies immediately
+	if _, err := testStore.ClaimRole(ctx, "bronze", "tests", -time.Second, 1); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := testStore.ReportOutcome(ctx, r1.RunToken,
@@ -400,14 +400,24 @@ func TestExpiredReaderDoesNotBlockTheRound(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// The tick: reclaim dead runs, then evaluate.
-	if _, err := testStore.ExpireRuns(ctx); err != nil {
-		t.Fatal(err)
+	for kill := 1; kill <= store.MaxInfraFailures; kill++ {
+		if _, err := testStore.ExpireRuns(ctx); err != nil {
+			t.Fatal(err)
+		}
+		e.EvaluateAll(ctx)
+		if kill == store.MaxInfraFailures {
+			break
+		}
+		if n, _ := testStore.PendingRuns(ctx, "bronze", "tests"); n != 1 {
+			t.Fatalf("after %d sweep(s) the swept reader was not retried in its Round", kill)
+		}
+		if _, err := testStore.ClaimRole(ctx, "bronze", "tests", -time.Second, 1); err != nil {
+			t.Fatal(err)
+		}
 	}
-	e.EvaluateAll(ctx)
 
 	if n, _ := testStore.PendingRuns(ctx, "bronze", "builder"); n != 1 {
-		t.Fatalf("round with a swept reader never advanced")
+		t.Fatalf("the Round never advanced after the swept reader's infrastructure budget ran out")
 	}
 }
 

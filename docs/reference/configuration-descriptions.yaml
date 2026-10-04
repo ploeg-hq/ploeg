@@ -85,7 +85,7 @@ env:
   KUBECONFIG: Administrative configuration. The worker refuses to start when it is set.
   PATH: Passed to `git` and `openspec` subprocesses; also on the harness allowlist.
 helm:
-  executor.enabled: Turns on the executor. Requires the LiteLLM and agent-builder secrets and, for DinD harnesses, the privileged-DinD PolicyException.
+  executor.enabled: Turns on the executor. Requires `executor.litellm.baseUrl`, the forge's `url`, an agent image and, for the keda and sandbox executors, `executor.scaler.host`; the render fails without them. Also requires the LiteLLM and agent-builder secrets and, for DinD harnesses, the privileged-DinD PolicyException.
   executor.workerAuth.mode: "`managed` by default; `legacy` is explicit compatibility and sets the controller's `PLOEG_WORKER_AUTH_MODE=legacy` and the worker's `PLOEG_LLM_CREDENTIAL_MODE=static-compatibility`."
   executor.workerAuth.signingKeySecret: Secret name and key for the controller-only signing material; at least 32 bytes.
   executor.workerAuth.bootstrapSecret: Secret name and `registryKey` for the controller's bootstrap registry.
