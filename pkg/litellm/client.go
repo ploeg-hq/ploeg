@@ -150,6 +150,32 @@ func (c *Client) KeySpend(ctx context.Context, key string) (float64, error) {
 	return *ki.Info.Spend, nil
 }
 
+// KeyExists reports whether the gateway still holds a key, asked through
+// GET /key/info with either the plaintext key or its hashed token. Only a 404
+// answers false; any other failure is an error, so an unreachable gateway is
+// never read as a deleted key.
+func (c *Client) KeyExists(ctx context.Context, key string) (bool, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/key/info?key="+url.QueryEscape(key), nil)
+	if err != nil {
+		return false, fmt.Errorf("litellm: invalid key info endpoint")
+	}
+	req.Header.Set("Authorization", "Bearer "+c.masterKey)
+	resp, err := c.httpCli.Do(req)
+	if err != nil {
+		return false, fmt.Errorf("litellm: key info request failed")
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
+	switch resp.StatusCode {
+	case http.StatusOK:
+		return true, nil
+	case http.StatusNotFound:
+		return false, nil
+	default:
+		return false, fmt.Errorf("litellm: key info got HTTP %d", resp.StatusCode)
+	}
+}
+
 // SpendLogTotal sums the gateway's spend log entries for a hashed key token
 // through GET /spend/logs?api_key=. Spend logs outlive the key row, whose
 // running total is written asynchronously and disappears when a key is
