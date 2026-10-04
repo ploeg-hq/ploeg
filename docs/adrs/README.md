@@ -122,7 +122,7 @@ fails otherwise.
 | [0045](0045-keep-run-usage-and-merge-facts.md) | Ploeg keeps every usage figure a harness reports and every merge and review fact a forge reports | proposed | 2026-10-01 |
 | [0046](0046-a-run-card-is-assembled-per-work-item-from-stored-facts.md) | A Run card is assembled per Work Item from stored facts | proposed | 2026-10-01 |
 | [0047](0047-ploeg-learns-where-a-merged-change-is-deployed-from-a-generic-deploy-endpoint.md) | Ploeg learns where a merged change is deployed from a generic deploy endpoint | proposed | 2026-10-01 |
-| [0048](0048-a-pool-held-by-unsettled-runs-waits-for-settlement-before-it-parks.md) | A pool held by unsettled Runs waits for settlement before it parks | proposed | 2026-10-01 |
+| [0048](0048-a-pool-held-by-unsettled-runs-waits-for-settlement-before-it-parks.md) | A pool held by unsettled Runs waits for settlement before it parks | accepted | 2026-10-04 |
 | [0049](0049-a-run-card-reads-the-gateway-for-usage-so-far-while-a-run-is-running.md) | A Run card reads the gateway for usage so far while a Run is running | proposed | 2026-10-01 |
 | [0050](0050-a-run-cards-grade-is-a-versioned-formula-over-stored-facts.md) | A Run card's grade is a versioned formula over stored facts | proposed | 2026-10-01 |
 | [0051](0051-delivery-gates-are-mapped-per-board-from-tracker-statuses.md) | Delivery gates are mapped per board from tracker statuses | proposed | 2026-10-01 |

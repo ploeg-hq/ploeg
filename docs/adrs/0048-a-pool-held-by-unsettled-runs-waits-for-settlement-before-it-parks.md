@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-01
+status: accepted
+date: 2026-10-04
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
