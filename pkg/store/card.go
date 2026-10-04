@@ -262,6 +262,12 @@ type CardPlay struct {
 	id        int64
 	repo      string
 	forge     string
+
+	// ChangedPaths lists the paths the play changes at HeadSHA, and
+	// ChangedPathsTruncated says it changed more (VIK-1698). Both are absent
+	// while the paths at the current head were not read.
+	ChangedPaths          *[]ChangedPath `json:"changedPaths,omitempty"`
+	ChangedPathsTruncated *bool          `json:"changedPathsTruncated,omitempty"`
 }
 
 // CardCI is the combined commit status Ploeg last read at HeadSHA.
@@ -600,7 +606,10 @@ func (c *OperatorCard) loadPlays(ctx context.Context, tx pgx.Tx, id int64, check
 		p := &c.Plays[byID[pid]]
 		p.Reviews = append(p.Reviews, r)
 	}
-	return reviews.Err()
+	if err := reviews.Err(); err != nil {
+		return err
+	}
+	return c.loadChangedPaths(ctx, tx, ids, byID)
 }
 
 func (c *OperatorCard) loadDeployments(ctx context.Context, tx pgx.Tx) error {

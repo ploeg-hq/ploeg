@@ -1903,6 +1903,48 @@
         },
         "shape": {
           "$ref": "#/$defs/cardPlayShape"
+        },
+        "changedPaths": {
+          "type": "array",
+          "maxItems": 300,
+          "description": "The paths this pull request changes at headSha, in the forge's order. Absent while the paths at the current head have not been read, including after a failed read; an empty array is a read list with no paths.",
+          "items": {
+            "$ref": "#/$defs/cardChangedPath"
+          }
+        },
+        "changedPathsTruncated": {
+          "type": "boolean",
+          "description": "True when the pull request changes more paths than changedPaths holds. Present exactly when changedPaths is."
+        }
+      }
+    },
+    "cardChangedPath": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "One path a pull request changes. previousPath is the source of a rename or copy.",
+      "required": [
+        "path",
+        "status"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "status": {
+          "enum": [
+            "added",
+            "modified",
+            "deleted",
+            "renamed",
+            "copied"
+          ]
+        },
+        "previousPath": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
         }
       }
     },

@@ -92,3 +92,29 @@ func CI(ctx context.Context, fp provider.ForgeProvider, repo, sha string) (*prov
 	}
 	return &status, nil
 }
+
+// RecordChangedPaths reads the paths pr changes and stores them with
+// headSHA when fp can list them and the stored paths are not already from
+// headSHA (VIK-1698). A failed read stores nothing, so the paths stay
+// unknown rather than empty.
+func RecordChangedPaths(ctx context.Context, st *store.Store, fp provider.ForgeProvider, pr PullRequest, headSHA string) error {
+	reader, can := fp.(provider.ChangedPathsReader)
+	if !can || headSHA == "" {
+		return nil
+	}
+	key := store.PullRequestKey{Forge: pr.Forge, Repo: pr.Repo, Number: pr.Number}
+	due, err := st.ChangedPathsDue(ctx, key, headSHA)
+	if err != nil || !due {
+		return err
+	}
+	read, err := reader.ChangedPaths(ctx, pr.Repo, pr.Number)
+	if err != nil {
+		return err
+	}
+	paths := make([]store.ChangedPath, 0, len(read.Paths))
+	for _, p := range read.Paths {
+		paths = append(paths, store.ChangedPath{Path: p.Path, Status: string(p.Status), PreviousPath: p.PreviousPath})
+	}
+	_, err = st.RecordChangedPaths(ctx, store.PullRequestPaths{Key: key, HeadSHA: headSHA, Paths: paths, Truncated: read.Truncated})
+	return err
+}

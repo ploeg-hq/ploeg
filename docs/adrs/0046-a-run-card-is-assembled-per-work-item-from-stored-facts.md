@@ -104,3 +104,15 @@ In `.forgejo/workflows/on_pull_request.yml`, `go test ./...` in `apps/ploeg` cov
 * [ADR-0011](0011-the-pull-request-is-the-blackboard.md): the pull request stays the forge's record; Ploeg only notes what the forge said.
 * [ADR-0038](0038-a-repo-label-selects-among-registered-targets-and-the-board-default-is-the-fallback.md): registered targets, where `cardStyle` is set.
 * Vloer renders the card under its own record (Vloer ADR-0026, proposed).
+* 2026-10-03: plays carry the paths they change (VIK-1698). Point 5 gains a third read: after the
+  facts, Ploeg lists the changed paths through the optional `provider.ChangedPathsReader`
+  (Forgejo `GET /repos/{o}/{r}/pulls/{n}/files`, GitLab `/merge_requests/{iid}/diffs`), up to 300
+  with `changedPathsTruncated` when there are more. Migration
+  `0036_pull_request_changed_paths.sql` keeps one list per pull request, keyed by pull request and
+  head SHA; the list is read only when the recorded head has none, and is stored only while the
+  pull request's recorded head is still that SHA. The card shows `changedPaths` only for the
+  current head, so a failed read or a push not yet read leaves it absent, never empty or stale.
+  Confirmation adds `pkg/provider/forgejo` and `pkg/provider/gitlab` (statuses, the cap, a forge
+  error), `pkg/store` (per-head storage, refresh, cap, empty list), `pkg/httpapi` (one read per
+  head, a failed read at a new head, schema) and `pkg/shiftengine` (the poller records once per
+  head and stores nothing on a failed read).
