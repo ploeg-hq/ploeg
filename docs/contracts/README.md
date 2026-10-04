@@ -96,7 +96,10 @@ change either side and the test tells you.
   the grade's `formula` may be `2026.3`, and `cardGradeInputs` always
   carries `missing` and `review.reworkRounds`. A consumer of an older Ploeg
   sees them absent. The grade is computed on read under the current formula,
-  so a card read after a formula change shows the new version.
+  so a card read after a formula change shows the new version. The grade
+  also carries `evidenceComplete`, true when `inputs.missing` is empty, and
+  the card image and pull request summary print it next to the formula
+  (VIK-1751). A consumer of an older Ploeg sees it absent.
 - `GET /api/v1/operator/route-refusals` is a new response,
   `routeRefusalsResponse`: the tracker tasks that routing refused under
   [ADR-0038](../adrs/0038-a-repo-label-selects-among-registered-targets-and-the-board-default-is-the-fallback.md)
