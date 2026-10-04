@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.3.0-rc.1
+
+### Changes
+
+- Ploeg names none of its consumers (#62, ADR 0069). The usage report's links are four URL templates the deployment sets: `PLOEG_REPORT_WORK_ITEM_URL` (`{id}`), `PLOEG_REPORT_TEAM_DASHBOARD_URL` (`{team}`), `PLOEG_REPORT_RUN_DASHBOARD_URL` (`{run}`) and `PLOEG_REPORT_SPEND_DASHBOARD_URL`. A link whose template is unset, or whose value is missing, is left out.
+- A Work Target without a `cardStyle` reports the skin `default`, meaning the consumer's own default. Skin and theme are opaque names Ploeg passes through.
+- The Run card image Ploeg posts on a pull request is Ploeg's own: one palette, branded PLOEG, marked `<!-- ploeg:run-card -->` and stored as `run-card-<id>.svg`. Ploeg still finds and edits a card comment an earlier release posted under another `<name>:run-card` marker.
+- An Operator Execution's Shift branch is `operator/<session>`.
+- The domain model no longer imports consumer terms and defines Model itself. `internal/boundary` fails when a consumer's name appears outside dated records.
+- ADR 0034 is accepted.
+
+### Upgrade notes
+
+- Breaking: `PLOEG_REPORT_GRAFANA_URL` and `PLOEG_REPORT_VLOER_URL` are removed. Set the new templates; until then, usage reports carry no links. The chart's `env` values are renamed the same way.
+- Breaking for operator consumers: a consumer that names its working branch for an Operator Execution must use `operator/<session>`, the branch Ploeg now records on the Shift.
+- A consumer that maps skins should read `default` as its own default skin.
+- No migration.
+
 ## 0.2.0-rc.2
 
 ### Changes
