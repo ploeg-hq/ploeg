@@ -35,6 +35,7 @@
     },
     "briefing": { "$ref": "#/$defs/briefing" },
     "openSpec": { "$ref": "#/$defs/openSpec" },
+    "knowledge": { "$ref": "#/$defs/knowledge" },
     "context": {
       "type": "array",
       "items": { "$ref": "#/$defs/contextItem" },
@@ -57,6 +58,27 @@
         "note": { "type": "string" }
       },
       "required": ["id", "name", "sha256", "files", "bytes", "addedAt", "phase"],
+      "additionalProperties": false
+    },
+    "knowledge": {
+      "type": "object",
+      "description": "Provenance of the Run's knowledge pack (proposed, OKF knowledge pack proof of concept): the OKF concepts the worker selected for the Work Item and wrote outside the clone, and the digest of each source bundle they came from. Absent when no knowledge source is configured or nothing matched. The pack is evidence and ranks below the delivery contract.",
+      "properties": {
+        "index": { "type": "string", "description": "the pack's table of contents, as the prompt carries it" },
+        "concepts": { "type": "array", "items": { "type": "string" }, "description": "<source>/<concept path>, best first" },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": { "name": { "type": "string" }, "digest": { "type": "string" } },
+            "required": ["name", "digest"],
+            "additionalProperties": false
+          }
+        },
+        "bytes": { "type": "integer", "minimum": 0 },
+        "omitted": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["index", "concepts", "sources", "bytes"],
       "additionalProperties": false
     },
     "openSpec": {
