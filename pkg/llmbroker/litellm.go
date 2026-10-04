@@ -26,6 +26,7 @@ var _ Broker = (*LiteLLM)(nil)
 var _ Sweeper = (*LiteLLM)(nil)
 var _ Metered = (*LiteLLM)(nil)
 var _ Settler = (*LiteLLM)(nil)
+var _ KeyProber = (*LiteLLM)(nil)
 
 // Spend returns provisional gateway usage for a retained accounting identity.
 func (b *LiteLLM) Spend(ctx context.Context, cred Credential) (float64, error) {
@@ -198,6 +199,34 @@ func (b *LiteLLM) SettledSpendForRun(ctx context.Context, runToken string, keyID
 		settled.ByModel = append(settled.ByModel, *models[model])
 	}
 	return settled, nil
+}
+
+// RunKeysGone reports true when /key/list carries no key with the run's alias
+// and /key/info answers 404 for every recorded key identity.
+func (b *LiteLLM) RunKeysGone(ctx context.Context, runToken string, keyIDs []string) (bool, error) {
+	alias := litellm.Alias(runToken)
+	if alias == "" {
+		return false, fmt.Errorf("invalid run identity")
+	}
+	keys, err := b.cli.ListKeys(ctx, alias)
+	if err != nil {
+		return false, err
+	}
+	for _, key := range keys {
+		if key.KeyAlias == alias {
+			return false, nil
+		}
+	}
+	for _, id := range keyIDs {
+		if id == "" {
+			continue
+		}
+		exists, err := b.cli.KeyExists(ctx, id)
+		if err != nil || exists {
+			return false, err
+		}
+	}
+	return true, nil
 }
 
 func (b *LiteLLM) SpendForRun(ctx context.Context, runToken string) (float64, error) {

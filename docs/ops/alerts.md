@@ -78,7 +78,7 @@ SELECT work_item_id, team, run_token, expires_at, renewed_at FROM leases WHERE e
 
 `max by (state) (ploeg_llm_key_ttl_overrun_seconds_max) > graceSeconds`. Default: 900 s, `for: 5m`, critical.
 
-An Inference Account is still `issued` or `unknown` after its key's TTL has passed. Normally a finished or expired Run moves its account to `blocked` and then `reconciled`. `issued` means the block was never recorded. `unknown` means Ploeg does not know whether a key was minted. The gateway should have expired the key at its TTL, but nothing in Ploeg confirms that it did. The settlement sweep never settles these states, so the account also keeps its budget hold until someone reconciles it.
+An Inference Account is still `issued` or `unknown` after its key's TTL has passed. Normally a finished or expired Run moves its account to `blocked` and then `reconciled`. `issued` means the block was never recorded. `unknown` means Ploeg does not know whether a key was minted. The block sweep retries these accounts. It moves an account to `blocked` once the gateway confirms that the key is blocked, or that it holds no key for the account: no key carries the account's alias in `/key/list`, and `/key/info` answers `404` for the recorded key identity. The `llm.blocked` audit event records that answer as `evidence` with `gatewayKeyAbsent: true`. An account that stays in these states therefore has a key the gateway still holds, or a gateway that cannot answer. Ploeg cannot confirm that such a key is unusable. The settlement sweep never settles these states, so the account also keeps its budget hold until it is blocked or reconciled.
 
 **Check first:** find the accounts, then check each alias on the gateway.
 

@@ -30,7 +30,7 @@ The account is independent of the worker outcome and lives in [migration 0012](.
 | `minting` | Durable external-mint intent has been claimed | Authorization remains held; another request cannot mint |
 | `issued` | Gateway identity was recorded after a successful mint | Hold is at least the authorization or higher observed cost |
 | `unknown` | An external effect or response cannot be established | Hold remains; no automatic replacement credential |
-| `blocked` | Gateway blocking was confirmed, or an untouched reservation was atomically prevented from minting | Hold remains because observed spend is provisional |
+| `blocked` | Gateway blocking was confirmed, the gateway reported that it holds no key for the account, or an untouched reservation was atomically prevented from minting | Hold remains because observed spend is provisional |
 | `reconciled` | A trusted caller supplied final evidence for a finished Run | Reconciled cost is charged to its Shift; any subsequently observed positive delta remains held |
 
 Mint intent has one durable winner. If a response is lost, retry does not mint another key or reconstruct the plaintext credential. A controller restart cannot turn an unknown mint into a new paid attempt.

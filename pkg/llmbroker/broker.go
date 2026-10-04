@@ -42,6 +42,14 @@ type Settler interface {
 	SettledSpendForRun(ctx context.Context, runToken string, keyIDs []string) (SettledSpend, error)
 }
 
+// KeyProber is an optional capability: whether the gateway holds no key for
+// a run at all, neither under its alias nor under any recorded key identity.
+// It answers true only on the gateway's own positive report of absence; an
+// unreachable or failing gateway is an error, never an absence.
+type KeyProber interface {
+	RunKeysGone(ctx context.Context, runToken string, keyIDs []string) (bool, error)
+}
+
 // SettledSpend is a run's gateway spend, the size of the record behind it,
 // and the token usage and models that record names. ByModel splits spend and
 // tokens per model, sorted like Models.
