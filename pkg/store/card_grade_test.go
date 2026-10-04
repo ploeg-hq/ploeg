@@ -131,8 +131,12 @@ func TestComputeGradeMissingInputsCapTheirSubgradeAndWithholdTheLabel(t *testing
 			if g.Subgrades.Reliability != 10 || g.Subgrades.Durability != 10 || g.Subgrades.Review != 10 {
 				t.Fatalf("subgrades = %+v; a missing delivery input caps only delivery", g.Subgrades)
 			}
-			if complete := len(tc.missing) == 0; (g.Label != nil) != complete {
+			complete := len(tc.missing) == 0
+			if (g.Label != nil) != complete {
 				t.Fatalf("label = %v with missing %v; only complete evidence earns a label", g.Label, tc.missing)
+			}
+			if g.EvidenceComplete != complete {
+				t.Fatalf("evidenceComplete = %v with missing %v; want %v", g.EvidenceComplete, tc.missing, complete)
 			}
 		})
 	}

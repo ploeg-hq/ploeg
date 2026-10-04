@@ -40,7 +40,14 @@ func Summary(card store.OperatorCard, now time.Time) string {
 		if g.qualifiers != "" {
 			grade += " · " + g.qualifiers
 		}
-		row("Grade", grade+" · formula "+g.formula)
+		evidence := "evidence complete"
+		switch {
+		case len(g.missing) > 0:
+			evidence = "missing " + strings.Join(g.missing, ", ")
+		case !g.complete:
+			evidence = "evidence incomplete"
+		}
+		row("Grade", grade+" · formula "+g.formula+" · "+evidence)
 	}
 	if v.cracks > 0 {
 		condition := "Cracked · " + plural(int64(v.cracks), "crack") + " · " + count(int64(v.mended)) + " mended"
