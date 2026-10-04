@@ -153,7 +153,7 @@
     },
     "verification": {
       "$ref": "#/$defs/verification",
-      "description": "The worker's own run of the configured checks on a writing Run's checkout after the harness exited (VIK-1733). Only the worker sets it: it discards any value an adapter or agent reported, and ploegd stores it for a writing Run only. Readers take a Run's verification result and commit from this record, never from the summary or findings prose. ploegd refuses a report whose record contradicts itself: a passed record needs at least one check, a passed check exit code 0 and a failed one a nonzero exit code, a check that ran start and finish times inside the record's, and a check that did not run no exit code or times. Optional: absent means the worker ran no checks (none configured, a reading Run, a cancelled Run or no pull request), which readers show as not recorded. Only a Run ploegd stored before it kept agent_runs.evidence_version (VIK-1780) is read through the prose of its time, labelled historical and unverified."
+      "description": "The worker's own run of the configured checks on a fresh checkout of the commit a writing Run pushed, after the harness exited (VIK-1733, ADR-0070). A Work Item reaches awaiting_review only when this record is absent or passed. Only the worker sets it: it discards any value an adapter or agent reported, and ploegd stores it for a writing Run only. Readers take a Run's verification result and commit from this record, never from the summary or findings prose. ploegd refuses a report whose record contradicts itself: a passed record needs at least one check, a passed check exit code 0 and a failed one a nonzero exit code, a check that ran start and finish times inside the record's, and a check that did not run no exit code or times. Optional: absent means the worker ran no checks (none configured, a reading Run, a cancelled Run or no pull request), which readers show as not recorded. Only a Run ploegd stored before it kept agent_runs.evidence_version (VIK-1780) is read through the prose of its time, labelled historical and unverified."
     },
     "delivery": {
       "$ref": "#/$defs/delivery",
@@ -298,20 +298,20 @@
             "failed",
             "incomplete"
           ],
-          "description": "failed when a check failed; incomplete when checks stopped without a failure (time limit, cancellation); passed when every check ran and passed"
+          "description": "failed when a check failed; incomplete when no check failed but the result is not a pass (time limit, cancellation, the checkout was not at the pull request's head, or the branch moved while the checks ran); passed when every check ran and passed on a commit that stayed the pull request's head"
         },
         "commit": {
           "type": "string",
           "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$",
-          "description": "the full object name of HEAD when the checks ran; absent when git could not tell"
+          "description": "the full object name of the pushed commit the checks ran on; when they could not run, the pull request's head they were meant for; absent when neither is known"
         },
         "dirty": {
           "type": "boolean",
-          "description": "the working tree had uncommitted changes, so the result may not describe commit"
+          "description": "the checkout had uncommitted changes before the checks ran, so the result may not describe commit; always false for a fresh checkout of the pushed commit"
         },
         "stopped": {
           "type": "string",
-          "description": "why the checks after the last one that ran did not run"
+          "description": "why the checks after the last one that ran did not run, or why a verification with no failed check is incomplete"
         },
         "startedAt": {
           "type": "string",

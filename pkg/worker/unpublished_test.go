@@ -74,6 +74,9 @@ type writerForge struct {
 	bare    string
 	listing atomic.Int32
 	reads   atomic.Int32
+	// staleHead, when set, is the head commit the pull request listing
+	// reports instead of the branch's.
+	staleHead atomic.Value
 }
 
 func newWriterForge(t *testing.T, branchExists bool, listing pullListing) *writerForge {
@@ -130,13 +133,20 @@ func newWriterForge(t *testing.T, branchExists bool, listing pullListing) *write
 			return
 		}
 		fmt.Fprintf(w, `[{"number":3,"html_url":%q,"head":{"ref":%q,"sha":%q,"repo":{"full_name":"webgrip/example"}},"base":{"ref":"development","repo":{"full_name":"webgrip/example"}}}]`,
-			srvURL+"/webgrip/example/pulls/3", writerBranch, forge.branchHead())
+			srvURL+"/webgrip/example/pulls/3", writerBranch, forge.listedHead())
 	})
 	srv := httptest.NewServer(mux)
 	srvURL = srv.URL
 	forge.url = srv.URL
 	t.Cleanup(srv.Close)
 	return forge
+}
+
+func (f *writerForge) listedHead() string {
+	if stale, ok := f.staleHead.Load().(string); ok && stale != "" {
+		return stale
+	}
+	return f.branchHead()
 }
 
 func (f *writerForge) hasBranch() bool {

@@ -2,15 +2,15 @@
 type: how-to
 audience: [operator]
 owner: ploeg
-last_verified: 2026-09-27
-verified_by: "Read apps/ploeg ops/helm/ploeg/{values.yaml,values.schema.json,templates/_helpers.tpl}, pkg/worker/{toolchain,verify,worker}.go, pkg/harness/skills and cmd/ploeg-worker/main.go"
+last_verified: 2026-10-04
+verified_by: "Read ops/helm/ploeg/{values.yaml,values.schema.json,templates/_helpers.tpl}, pkg/worker/{toolchain,verify,worker}.go, pkg/shiftengine/{engine,reviewloop}.go, pkg/harness/skills and cmd/ploeg-worker/main.go"
 ---
 
 # Give Runs a toolchain and checks
 
 **Symptom:** agents open pull requests that fail formatting, linting or tests in CI, and the pull request says the checks were "left to CI" because the Run had no toolchain.
 
-**Goal:** mount the target repository's toolchain into every Run, tell the agent which checks to run, and have the worker run them again after a writing Run and post the result on the pull request. [ADR-0035](../adrs/0035-runs-get-ploeg-owned-skills-mounted-toolchains-and-worker-verification.md) records the design.
+**Goal:** mount the target repository's toolchain into every Run, tell the agent which checks to run, and have the worker run them again on the pushed commit after a writing Run and post the result on the pull request. A Work Item reaches `awaiting_review` only when those checks passed. [ADR-0035](../adrs/0035-runs-get-ploeg-owned-skills-mounted-toolchains-and-worker-verification.md) records the design, and [ADR-0070](../adrs/0070-a-pull-request-is-ready-for-review-only-when-its-checks-passed-on-the-pushed-commit.md) the rule for review.
 
 Read [Before you start](index.md#before-you-start) for names. Make the change in the GitOps repository's HelmRelease values, not with `kubectl`.
 
@@ -57,9 +57,9 @@ After Flux applies the release:
 
 1. A worker pod starts only when every toolchain directory exists. If one is missing, the pod log says `toolchain "<name>": ...` and the pod exits before it claims anything.
 2. The pod log of a Run has `prepared the Run's sandbox` with the counts of skills, toolchains and verify commands.
-3. After a writing Run opens or updates a pull request, the pod log has `verified the writing Run's checkout`, the Run's summary ends with `[Ploeg verification passed]` or `[Ploeg verification failed: <command>]`, and the pull request has a comment headed "Ploeg verification" when the Run belongs to a Shift.
+3. After a writing Run opens or updates a pull request, the pod log has `verified the pushed commit`, the Run's summary ends with `[Ploeg verification passed]`, `[Ploeg verification failed: <command>]` or `[Ploeg verification incomplete: <reason>]`, and the pull request has a comment headed "Ploeg verification" when the Run belongs to a Shift.
 
-The worker also sends the result as a structured `verification` record on the Run's outcome: the full commit, whether the working tree was dirty, and each check with its exit status and times. Ploeg stores it with the Run, and the usage report on the pull request takes the result and commit from it. The summary and findings text is for people to read; an agent cannot change the reported result by writing a marker of its own.
+The worker runs the checks in a fresh clone of the Run's branch, not in the agent's checkout, and only when that clone is at the pull request's head. If the branch moves while the checks run, the result is `incomplete`. The worker also sends the result as a structured `verification` record on the Run's outcome: the full commit, and each check with its exit status and times. Ploeg stores it with the Run, and the usage report on the pull request takes the result and commit from it. The summary and findings text is for people to read; an agent cannot change the reported result by writing a marker of its own.
 
 ## What the agent gets
 
@@ -69,5 +69,6 @@ Every writing and reading Run gets Ploeg's own skills under its `HOME`: `ploeg-v
 | --- | --- | --- |
 | The pod exits with `toolchain "<name>": ... no such file or directory` | The image volume did not mount, or `path` names a directory the image lacks | Check the image reference and the path inside the image, and that the nodes run Kubernetes 1.35 or later |
 | `go test` fails with `dial tcp ... i/o timeout` | Module downloads are blocked | Follow [step 3](#3-check-dependency-downloads) |
+| The pull request is open but the Work Item went back to its writer or to `needs_human` | The checks failed or were incomplete on the pushed commit; a configured plan re-opens the writing Round while fix rounds remain, otherwise the Shift closes as `checks_not_passed` | Read the "Ploeg verification" comment, fix the code or the check, and re-assign the Work Item |
 | The summary has no `Ploeg verification` part | The Run did not open or update a pull request, or it read rather than wrote | Only writing Runs with a pull request are verified by the worker |
 | `go: downloading go1.x` then a timeout | `go.mod` asks for a newer toolchain | Set `GOTOOLCHAIN: local` and use an image at least as new as `go.mod` asks |
