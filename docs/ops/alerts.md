@@ -22,7 +22,7 @@ The exposition is written by hand in the Prometheus text format (`version=0.0.4`
 | `ploeg_tracker_webhooks_unchecked` | | Configured Vikunja projects the webhook check could not read |
 | `ploeg_tracker_webhook_check_timestamp_seconds` | | Unix time of the last webhook check |
 
-Run progress means a Run of the Shift starting or finishing, or a checkpoint on its Work Item. Opening the Shift also counts. Lease and deadline renewals do not count, because a hung harness keeps renewing. A key's TTL is measured from the Run's start, which comes a few seconds before the key is minted. `ploeg_runs_failed_total{reason="credential_leak"}` counts Runs whose forge traffic or pushed commits carried one of the Run's credentials or its canary. Every increase needs a person: rotate the credential and read the commits the Run left on its branch. Alert on `increase(ploeg_runs_failed_total{reason="credential_leak"}[15m]) > 0`. Settled spend is the sum of trusted reconciliation deltas (`llm.reconciled` in the audit log) plus the `costUsd` that finished Shift Runs without a managed Inference Account reported. A managed Run's own cost report is not counted, because it is not settlement. The three tracker webhook series appear only once a webhook check has finished, and only when the Vikunja URL and token are configured. See [tracker configuration](board.md).
+Run progress means a Run of the Shift starting or finishing, or a checkpoint on its Work Item. Opening the Shift also counts. Lease and deadline renewals do not count, because a hung harness keeps renewing. A key's TTL is measured from the Run's start, which comes a few seconds before the key is minted. `ploeg_runs_failed_total{reason="credential_leak"}` counts Runs whose forge traffic or pushed commits carried one of the Run's credentials or its canary. Every increase needs a person: rotate the credential and read the commits the Run left on its branch. [PloegCredentialLeak](#ploegcredentialleak) alerts on it. Settled spend is the sum of trusted reconciliation deltas (`llm.reconciled` in the audit log) plus the `costUsd` that finished Shift Runs without a managed Inference Account reported. A managed Run's own cost report is not counted, because it is not settlement. The three tracker webhook series appear only once a webhook check has finished, and only when the Vikunja URL and token are configured. See [tracker configuration](board.md).
 
 `/metrics` has no authentication, the same as `/readyz`. It exposes team names and aggregate spend. It exposes no tokens, Work Item titles or per-Run data. If the ploegd port is reachable from outside the cluster, block the path at that ingress.
 
@@ -114,3 +114,18 @@ If one Work Item or team accounts for most of it, compare that Shift's `budget` 
 At the last hourly check, at least one configured Vikunja project had no webhook sending `task.assignee.created` to Ploeg. This is the same count `/readyz` reports as `vikunjaWebhooks.missingProjects`. Assignments on those boards never reach Ploeg, and nothing else will tell you.
 
 **Check first:** ploegd's warning log from the check, which names each project. Then add the webhook in Vikunja, or set `PLOEG_VIKUNJA_WEBHOOK_REGISTER=true` as described in [tracker configuration](board.md). A non-zero `ploeg_tracker_webhooks_unchecked` means the check could not read some projects. That is usually a token without access to them.
+
+## PloegCredentialLeak
+
+`max(increase(ploeg_runs_failed_total{reason="credential_leak"}[15m])) > 0`. Default: `for: 0m`, critical.
+
+A Run ended `failed` with `credential_leak`: the forge proxy saw the Run's real model key, real forge token or canary in a forge API request, or the worker found one in the commits the Run pushed. The worker refused the request and every later forge write of the Run, and the Run reported no pull request. The commits it had already pushed stay on its branch.
+
+**Check first:** ploegd's ERROR line `credential leak: the Run's output carried one of its credentials`, which names the Run's trace, the Work Item, the credential kind and the route. Rotate that Run's credentials: revoke its model key in LiteLLM if it is still live, and its forge token (a per-Run push token is revoked when the Run settles; the shared builder token is not). Then read the commits on the Run's branch and any pull request it opened before the leak, and delete or close them once you have what you need.
+
+```sql
+SELECT r.id, r.finished_at, w.external_id, r.summary
+FROM agent_runs r JOIN work_items w ON w.id = r.work_item_id
+WHERE r.failure_reason = 'credential_leak'
+ORDER BY r.finished_at DESC LIMIT 10;
+```
