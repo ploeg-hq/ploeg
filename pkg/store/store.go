@@ -492,7 +492,9 @@ type OutcomeResult struct {
 // the item's whole engagement, so its report transitions the item per
 // StateForOutcome, exactly as always. A Shift run is one voice among several —
 // three readers reporting must not flip the item's state three times — so the
-// item moves only when the shift engine closes the Shift.
+// item moves only when the shift engine closes the Shift. A pull request whose
+// checks did not pass on the pushed commit is not ready for review, so a legacy
+// run with one parks at needs_human (ADR-0070).
 func (s *Store) ReportOutcome(ctx context.Context, runToken string, rep harnessReport) (OutcomeResult, error) {
 	if rep.Outcome == work.OutcomeStuck && rep.StuckReason == "" {
 		return OutcomeResult{}, errors.New("stuck outcome requires a stuck_reason (R4)")
@@ -518,6 +520,9 @@ func (s *Store) ReportOutcome(ctx context.Context, runToken string, rep harnessR
 		rep, admitted = admitDelivery(rep, binding)
 	}
 	next := work.StateForOutcome(rep.Outcome)
+	if next == work.StateAwaitingReview && rep.Verification.HoldsBackReview() {
+		next = work.StateNeedsHuman
+	}
 	var verification, delivery []byte
 	if rep.Verification != nil {
 		if verification, err = json.Marshal(rep.Verification); err != nil {

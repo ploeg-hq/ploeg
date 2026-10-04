@@ -185,6 +185,9 @@ type verifyingAdapter struct {
 	// delivers commits and pushes the change to the Run's branch, where the
 	// fake forge lists it as a new pull request.
 	delivers bool
+	// fixesLocally removes the failing file after the push, leaving the fix
+	// uncommitted in the checkout.
+	fixesLocally bool
 	// scriptMustPass asserts that the verify script passes inside the harness
 	// before the adapter makes its change.
 	scriptMustPass bool
@@ -205,6 +208,11 @@ func (a *verifyingAdapter) Run(_ context.Context, spec harness.TaskSpec, env har
 			cmd.Dir, cmd.Env = env.RepoDir, env.BaseEnv
 			if out, err := cmd.CombinedOutput(); err != nil {
 				a.t.Fatalf("git %v: %v\n%s", args, err, out)
+			}
+		}
+		if a.fixesLocally {
+			if err := os.Remove(filepath.Join(env.RepoDir, "bad.go")); err != nil {
+				a.t.Fatal(err)
 			}
 		}
 	}()
@@ -241,7 +249,11 @@ func fakeToolchain(t *testing.T) Toolchain {
 
 func runWithSandbox(t *testing.T, claimed *ClaimResponse, adapter harness.Adapter, cfg Config) harness.OutcomeReport {
 	t.Helper()
-	forge := newWriterForge(t, false, pullsForPushedBranch)
+	return runWithSandboxOn(t, newWriterForge(t, false, pullsForPushedBranch), claimed, adapter, cfg)
+}
+
+func runWithSandboxOn(t *testing.T, forge *writerForge, claimed *ClaimResponse, adapter harness.Adapter, cfg Config) harness.OutcomeReport {
+	t.Helper()
 	var rec checkpointRecorder
 	cfg.APIURL, cfg.ForgeURL, cfg.DefaultForge, cfg.BuilderToken = rec.server(t), forge.url, harness.ForgeForgejo, "tok"
 	cfg.RepoOwner, cfg.RepoName, cfg.BaseBranch, cfg.WorkDir = "webgrip", "example", "development", t.TempDir()

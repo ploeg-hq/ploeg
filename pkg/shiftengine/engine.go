@@ -227,6 +227,9 @@ func (e *Engine) evaluate(ctx context.Context, si store.ShiftInfo) error {
 			if missing, found := missingReview(reports); found && reason == reasonPlanExhausted {
 				reason, message = reasonReviewFailed, missing.message()
 			}
+			if checksHoldBackReview(reports) {
+				reason, message = checksCloseReason(reason, message, reports)
+			}
 			return e.close(ctx, si, reason, message, synthesized, reports)
 		}
 		next = loopRound
@@ -263,6 +266,9 @@ func storeRoles(r plan.Round) []store.Role {
 // A SYNTHESIZED plan — uniform dispatch giving a plan-less team a Shift —
 // takes the outcome-derived state instead, which is exactly what
 // ReportOutcome writes for the same outcome.
+//
+// Neither reaches awaiting_review while the pull request's checks did not
+// pass on its pushed commit (ADR-0070).
 func (e *Engine) close(ctx context.Context, si store.ShiftInfo, closeReason, humanReason string,
 	synthesized bool, reports []store.RunReport) error {
 	next := work.StateNeedsHuman
@@ -272,6 +278,9 @@ func (e *Engine) close(ctx context.Context, si store.ShiftInfo, closeReason, hum
 		}
 	} else if readyForReview(closeReason, reports) {
 		next = work.StateAwaitingReview
+	}
+	if next == work.StateAwaitingReview && checksHoldBackReview(reports) {
+		next = work.StateNeedsHuman
 	}
 	closed, settled, err := e.Store.CloseShiftAndSettle(ctx, si.ID, closeReason, next, humanReason)
 	if err != nil {
