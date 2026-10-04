@@ -132,6 +132,11 @@ func run(log *slog.Logger) error {
 	if cfg.ForgeTokenIsolation != "" && cfg.ForgeTokenIsolation != worker.ForgeTokenIsolationProxy {
 		return fmt.Errorf("PLOEG_FORGE_TOKEN_ISOLATION must be empty or %q, got %q", worker.ForgeTokenIsolationProxy, cfg.ForgeTokenIsolation)
 	}
+	if cfg.IsolationRequested() {
+		if err := worker.ShedPtraceCapability(); err != nil {
+			return err
+		}
+	}
 	if cfg.ForgeTokenAccess, err = forgeTokenAccess(); err != nil {
 		return err
 	}

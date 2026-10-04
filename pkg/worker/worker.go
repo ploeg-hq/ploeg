@@ -84,6 +84,12 @@ type Config struct {
 	SkillDirs []string
 }
 
+// IsolationRequested reports whether either credential isolation flag keeps a
+// credential behind the worker's loopback proxy.
+func (c Config) IsolationRequested() bool {
+	return c.LLMKeyIsolation == KeyIsolationProxy || c.ForgeTokenIsolation == ForgeTokenIsolationProxy
+}
+
 type Worker struct {
 	Cfg     Config
 	Log     *slog.Logger

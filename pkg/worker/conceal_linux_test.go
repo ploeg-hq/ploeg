@@ -51,6 +51,7 @@ func harnessView(t *testing.T, apply bool) string {
 }
 
 func TestHarnessCannotReadConcealedWorkerEnvironment(t *testing.T) {
+	skipWhenHarnessCanPtrace(t)
 	if got := harnessView(t, true); got != "concealed" {
 		t.Fatalf("a same-user child read the concealed worker's environment: %s", got)
 	}
@@ -59,5 +60,20 @@ func TestHarnessCannotReadConcealedWorkerEnvironment(t *testing.T) {
 func TestHarnessReadsUnconcealedWorkerEnvironment(t *testing.T) {
 	if got := harnessView(t, false); got != "readable" {
 		t.Skipf("this kernel already hides same-user environments (%s); the concealment test proves nothing here", got)
+	}
+}
+
+func skipWhenHarnessCanPtrace(t *testing.T) {
+	t.Helper()
+	status, err := readOwnStatus()
+	if err != nil {
+		t.Fatalf("read own capabilities: %v", err)
+	}
+	sets, err := ParseCapabilitySets(status)
+	if err != nil {
+		t.Fatalf("parse own capabilities: %v", err)
+	}
+	if sets.HoldsInEffective(capSysPtrace) {
+		t.Skip("CAP_SYS_PTRACE is effective here, so a child reads even a non-dumpable worker; ploeg-worker refuses isolation in such a pod (VIK-1473)")
 	}
 }
