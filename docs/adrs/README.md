@@ -150,6 +150,7 @@ fails otherwise.
 | [0073](0073-ploeg-stays-in-go-and-admits-rust-only-as-a-separately-deployed-component.md) | Ploeg stays in Go, and admits Rust only as a separately deployed component | proposed | 2026-10-05 |
 | [0074](0074-ploeg-publishes-execution-facts-and-consumers-own-presentation-and-delivery-analytics.md) | Ploeg publishes execution facts, and consumers own presentation and delivery analytics | proposed | 2026-10-05 |
 | [0075](0075-a-stopped-writing-run-leaves-a-checkpoint-its-retry-starts-from.md) | A stopped writing Run leaves a checkpoint its retry starts from | proposed | 2026-10-05 |
+| [0076](0076-run-health-is-observable-by-team-and-role-through-one-correlation-key.md) | Run health is observable by Team and Role through one correlation key | proposed | 2026-10-05 |
 
 ## Review calendar
 
@@ -194,4 +195,5 @@ triggers.
 | 2027-01-31 | [0072](0072-ploegd-launches-each-runs-sandbox-and-keda-leaves-the-sandbox-path.md) — or sooner, when Runs in flight pass 200, agent-sandbox publishes a light Go client or renames `PodScheduled`, or a security review moves claim authority out of ploegd |
 | 2027-01-31 | [0074](0074-ploeg-publishes-execution-facts-and-consumers-own-presentation-and-delivery-analytics.md) — or sooner, when a second consumer needs the same card, a Ploeg decision needs a fact moved out, or a consumer cannot read a needed fact from the tracker or forge |
 | 2027-01-31 | [0075](0075-a-stopped-writing-run-leaves-a-checkpoint-its-retry-starts-from.md) — or sooner, when agent-sandbox ships pause and resume, a forge drops refs outside heads and tags, or checkpointed retries fail more than cold ones |
+| 2027-01-31 | [0076](0076-run-health-is-observable-by-team-and-role-through-one-correlation-key.md) — or sooner, when the worker sandbox can reach an OTLP collector, a Team passes 200 series, or an incident is diagnosed from logs alone |
 | 2027-04-01 | [0005](0005-build-a-dedicated-dispatch-plane.md), [0032](0032-keep-the-dispatch-plane-and-compete-on-authorized-spend.md), [0071](0071-ploeg-keeps-its-state-in-postgresql-and-is-not-a-kubernetes-operator.md), [0073](0073-ploeg-stays-in-go-and-admits-rust-only-as-a-separately-deployed-component.md) — the project review gate (`design.md` §10) |
