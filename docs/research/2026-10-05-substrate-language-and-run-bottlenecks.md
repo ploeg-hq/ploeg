@@ -23,7 +23,7 @@ The decisions are recorded in [ADR-0071](../adrs/0071-ploeg-keeps-its-state-in-p
 | Rust for ploegd | No. 30–65 person-weeks for no measurable gain on a low-QPS, Postgres-bound service | ADR-0073 |
 | Rust for the launcher or worker | No. The claim must stay one Postgres transaction in Go; the worker's hardening is reachable in Go | ADR-0073 |
 | Rust for Unfold | Only as a Tauri host, if a native shell is ever needed. Not for the server or a shared core | Unfold ADR-0026 |
-| Wasm | Not as the agent sandbox, not for provider plugins now. Shared formulas get conformance vectors instead | ADR-0074 |
+| Wasm | Not as the agent sandbox, not for provider plugins now. The duplicated formulas leave Ploeg with the card, so there is nothing to share | ADR-0074 |
 | Desktop and mobile | An installable PWA that notifies from the server. Off-LAN reachability is a homelab decision first | Unfold ADR-0026, RFC-0004 |
 | Biggest bottlenecks | Discarded Runs, silence towards people, cold retries, and capacity treated as failure. Language and substrate are not among them | ADR-0072, ADR-0075; tickets on the board |
 
@@ -178,7 +178,7 @@ The cheap Go equivalents are:
   * the rarity score: `pkg/rarity/rarity.go`, with copies in Unfold `src/rarity.ts` and `public/cards/card-model.js`;
   * the working-time calendar: `pkg/flow/calendar.go`, with a copy in `src/ploeg-demo-kpis.ts`.
 
-  The copies already differ subtly: the TypeScript rarity percentile counts the card in its own cohort, while Go excludes it. Shared test vectors pin this for no runtime cost (ADR-0074).
+  The copies already differ subtly: the TypeScript rarity percentile counts the card in its own cohort, while Go excludes it. Both formulas belong to the card, which leaves Ploeg under ADR-0074, so the consumer's copy becomes the only one and nothing needs to be shared. See the [boundary audit](2026-10-05-ploeg-boundary-audit.md).
 * **For small, pure, operator-supplied functions:** a future option. A custom grader or a policy predicate could run in wazero with no WASI, plus fuel and memory limits. No such extension point exists.
 * **Policy as code:** Cedar has a native Go implementation (cedar-go 1.8). Consider it only when admission rules outgrow Team, Role, model and budget caps. Budget arithmetic stays in `pkg/store`.
 
@@ -189,7 +189,7 @@ The cheap Go equivalents are:
 * **Unfold never reads the schemas.** `src/ploeg.ts:135-540` re-derives shapes, enums and caps by hand.
 * **Drift has already happened.** Unfold commit `33004aa` removed a client call to a route that no Ploeg release ever had; only a TypeScript fake had tested it.
 
-The remedy is in Unfold's ADR-0027 and this repository's ADR-0074: schema-checked fixtures in Unfold, and conformance vectors published by Ploeg.
+The remedy is in Unfold's ADR-0027: Unfold's tests check its client and fakes against Ploeg's published schemas. Ploeg's ADR-0074 removes most of the surface that drifts, because 3,205 of the operator schema's 5,033 lines are card definitions.
 
 ## 7. Desktop and mobile
 
