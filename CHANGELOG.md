@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.2.0-rc.6
+
+### Changes
+
+- Operators restart stopped work from a chosen Round: `POST /api/v1/operator/work-items/{id}/requeue` with optional `fromRound`, `poolUsd`, `note`, `commandId` and `expectedState` (ADR-0044). Allowed from `needs_human`, `stale` and `awaiting_review`. A restart past a writing Round reuses the earlier pull request, and the new Runs are briefed with the previous close reason, the failed Runs and the note. Replays by `commandId` return the first result.
+- `/metrics` adds `ploeg_runs_finished_total{team,role,outcome,reason}`, `ploeg_shift_runs_without_pr_max{team}`, `ploeg_llm_accounts_unsettled{state}` and `ploeg_work_item_oldest_queued_seconds{team}`. `ploeg_runs_failed_total{reason}` is still emitted.
+- `ploeg_shift_idle_seconds_max` no longer counts a failed Run as progress, so repeated idle kills keep the Shift idle and `PloegShiftStuck` can fire.
+- The chart's PrometheusRule adds `PloegRunsIdleKilled`, `PloegRunsFailingRepeatedly`, `PloegSandboxStartFailing`, `PloegShiftNoDelivery`, `PloegQueueStalled` and `PloegSettlementBacklog`. Each is on by default when the rule is enabled and can be turned off in values.
+- Every worker log line after a claim carries `trace`, `work_item`, `external_id`, `team`, `role`, `shift` and `round`.
+
+### Migration notes
+
+- Migrations `0040` (`work_item_requeues`) and `0041` (`agent_runs.trace_alias`, a stored generated column) run at startup. `0041` rewrites `agent_runs` once and holds its lock while it does; on a large table, deploy outside busy hours.
+- Dashboards or alerts built on `ploeg_shift_idle_seconds_max` see higher values while failed Runs repeat; that is the fix.
+- A log shipper that maps a trace field should read the `trace` key.
+
 ## 0.2.0-rc.5
 
 ### Changes
