@@ -260,6 +260,26 @@ running Runs are finished and their model keys blocked, and the Work Item
 becomes `withdrawn`. A repeated call returns `withdrawn: false`. An item bound
 to an Operator Execution returns 409; cancel the execution instead.
 
+`POST /api/v1/operator/work-items/{id}/requeue` restarts stopped work
+([ADR-0044](../adrs/0044-an-operator-restarts-stopped-work-from-a-round-they-choose.md)).
+It needs `execute` permission, `X-Ploeg-Actor` and team scope. Without a body
+it restarts from Round 1. A body `{fromRound, poolUsd, note, commandId,
+expectedState}` must carry `commandId`; a repeated `commandId` returns the
+first result with `replayed: true`, and the same `commandId` with a different
+body returns 409 `command_conflict`. Only `needs_human`, `stale` and
+`awaiting_review` items with no open Shift restart (409 `not_requeueable`);
+an `expectedState` the item is no longer in returns 409 `state_changed`, and
+an operator-owned item 409 `operator_owned`. `fromRound` must be a Round of
+the Team's current plan (422 `round_not_in_plan`); when the Rounds before it
+include a writing Round, an earlier Shift must have recorded `pr_opened` or
+`pr_updated` (422 `nothing_to_review`). `poolUsd` defaults to the plan's pool
+and may not exceed the consumer's `maxBudgetUsd` (400 `pool_above_limit`). The
+item is queued with its attempt counters reset, a new Shift opens on the same
+branch at `fromRound`, its Runs are briefed with the previous Shift's close
+reason, failed Runs and the `note`, the request is audited as
+`work_item.requeued`, and the tracker task and pull request are told who
+restarted it.
+
 Execution requests additionally require `X-Ploeg-Actor`, the stable session
 owner identity asserted by the authenticated consumer. Commands may carry
 `X-Ploeg-Acting-User` when an authorized administrator acts for that owner.

@@ -216,10 +216,7 @@ func (s *Store) IngestAssigned(ctx context.Context, item work.WorkItem) (int64, 
 			target_base_branch = CASE WHEN work_items.operator_owned OR work_items.state = 'leased' THEN work_items.target_base_branch ELSE EXCLUDED.target_base_branch END,
 			route_rule         = CASE WHEN work_items.operator_owned OR work_items.state = 'leased' THEN work_items.route_rule         ELSE EXCLUDED.route_rule         END,
 			route_hint         = CASE WHEN work_items.operator_owned OR work_items.state = 'leased' THEN work_items.route_hint         ELSE EXCLUDED.route_hint         END,
-			state    = CASE WHEN NOT work_items.operator_owned AND work_items.state IN ('ingested', 'stale', 'done', 'needs_human', 'awaiting_review', 'withdrawn') THEN 'queued' ELSE work_items.state END,
-			attempts = CASE WHEN NOT work_items.operator_owned AND work_items.state IN ('stale', 'done', 'needs_human', 'awaiting_review', 'withdrawn') THEN 0 ELSE work_items.attempts END,
 			next_eligible_at  = CASE WHEN work_items.operator_owned THEN work_items.next_eligible_at ELSE NULL END,
-			infra_failures = CASE WHEN NOT work_items.operator_owned AND work_items.state IN ('stale', 'done', 'needs_human', 'awaiting_review', 'withdrawn') THEN 0 ELSE work_items.infra_failures END,
 			updated_at = now()
 		RETURNING id, state`,
 		item.Provider, item.ExternalID, item.Revision, item.Team,
@@ -227,6 +224,9 @@ func (s *Store) IngestAssigned(ctx context.Context, item work.WorkItem) (int64, 
 		item.ExternalScope, t.Forge, t.Owner, t.Repo, t.BaseBranch, item.RouteRule, item.RouteHint,
 		trackerCreated(item), trackerEstimate(item)).Scan(&id, &state)
 	if err != nil {
+		return 0, "", err
+	}
+	if state, err = queueAssigned(ctx, tx, id, state); err != nil {
 		return 0, "", err
 	}
 	action := "work_item.refreshed"

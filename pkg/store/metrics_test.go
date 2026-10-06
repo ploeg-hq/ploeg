@@ -233,3 +233,156 @@ func TestOperationalMetricsCountFailedRunsByReason(t *testing.T) {
 		t.Fatalf("failed runs = %+v, want one credential_leak", m.FailedRuns)
 	}
 }
+
+func TestShiftIdleDoesNotCountAFailedRunAsProgress(t *testing.T) {
+	ctx := context.Background()
+	_, shift := openShift(t, 5)
+	mustExec(t, `UPDATE shifts SET opened_at = now() - interval '10 hours' WHERE id = $1`, shift)
+	if _, err := testStore.OpenRound(ctx, shift, 0, []Role{{Name: "builder", Writes: true, Cap: 1}}); err != nil {
+		t.Fatal(err)
+	}
+	run, err := testStore.ClaimRole(ctx, "silver", "builder", time.Minute, 1)
+	if err != nil || run == nil {
+		t.Fatalf("claim: %v %v", run, err)
+	}
+	mustExec(t, `UPDATE agent_runs SET started_at = now() - interval '45 minutes' WHERE run_token = $1`, run.RunToken)
+	reason := string(work.FailureIdle)
+	if _, err := testStore.ReportOutcome(ctx, run.RunToken, Report(work.OutcomeFailed, "killed", "", nil, nil, &reason)); err != nil {
+		t.Fatal(err)
+	}
+	m, err := testStore.OperationalMetrics(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if idle := m.ShiftIdleSeconds["silver"]; idle < 10*3600-60 {
+		t.Fatalf("a Run that ended failed counted as Shift progress: idle=%v, want about 10h", idle)
+	}
+}
+
+func TestOperationalMetricsReplayIdleKillsWithoutAPullRequest(t *testing.T) {
+	ctx := context.Background()
+	itemID, shift := openShift(t, 8)
+	idle := string(work.FailureIdle)
+	builder := RunOutcomeKey{Team: "silver", Role: "builder", Outcome: string(work.OutcomeFailed), Reason: idle}
+	timeout := RunOutcomeKey{Team: "silver", Role: "builder", Outcome: string(work.OutcomeFailed), Reason: string(work.FailureTimeout)}
+
+	if _, err := testStore.OpenRound(ctx, shift, 0, []Role{{Name: "builder", Writes: true, Cap: 1}}); err != nil {
+		t.Fatal(err)
+	}
+	m, err := testStore.OperationalMetrics(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n, ok := m.FinishedRuns[builder]; !ok || n != 0 {
+		t.Fatalf("a pending builder must seed its failure series at zero, got %v (present=%v)", n, ok)
+	}
+	if n, ok := m.ShiftRunsWithoutPRMax["silver"]; !ok || n != 0 {
+		t.Fatalf("an open Shift with no finished Run: %v (present=%v)", n, ok)
+	}
+
+	for round := 1; round <= 2; round++ {
+		run, err := testStore.ClaimRole(ctx, "silver", "builder", time.Minute, 1)
+		if err != nil || run == nil {
+			t.Fatalf("round %d claim: %v %v", round, run, err)
+		}
+		if _, err := testStore.ReportOutcome(ctx, run.RunToken, Report(work.OutcomeFailed, "no output within the idle timeout", "", nil, nil, &idle)); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := testStore.OpenRound(ctx, shift, round, []Role{{Name: "builder", Writes: true, Cap: 1}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	m, err = testStore.OperationalMetrics(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.FinishedRuns[builder] != 2 || m.FinishedRuns[timeout] != 0 {
+		t.Fatalf("finished runs = %+v, want two idle-failed builders", m.FinishedRuns)
+	}
+	if m.FailedRuns[idle] != 2 {
+		t.Fatalf("the compatibility counter moved apart: %+v", m.FailedRuns)
+	}
+	if m.ShiftRunsWithoutPRMax["silver"] != 2 {
+		t.Fatalf("runs without a pull request = %+v, want 2", m.ShiftRunsWithoutPRMax)
+	}
+	if m.ShiftIdleSeconds["silver"] > 60 {
+		t.Fatalf("the pending builder's Shift opened just now, idle=%v", m.ShiftIdleSeconds["silver"])
+	}
+
+	mustExec(t, `INSERT INTO pull_requests (forge, repo_owner, repo_name, number, work_item_id, shift_id, state)
+		VALUES ('forgejo', 'o', 'r', 7, $1, $2, 'open')`, itemID, shift)
+	m, err = testStore.OperationalMetrics(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.ShiftRunsWithoutPRMax["silver"] != 0 {
+		t.Fatalf("a Shift with a recorded pull request still counted: %+v", m.ShiftRunsWithoutPRMax)
+	}
+}
+
+func TestOperationalMetricsReportOldestClaimableQueuedWorkItem(t *testing.T) {
+	ctx := context.Background()
+	resetTables(t)
+	itemID, _ := ingestItem(t)
+	mustExec(t, `UPDATE work_items SET updated_at = now() - interval '2 hours' WHERE id = $1`, itemID)
+	m, err := testStore.OperationalMetrics(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if age := m.OldestQueuedSeconds["silver"]; age < 7200-60 || age > 7200+60 {
+		t.Fatalf("oldest queued = %v, want about 2h", age)
+	}
+
+	mustExec(t, `UPDATE work_items SET next_eligible_at = now() + interval '5 minutes' WHERE id = $1`, itemID)
+	if m, err = testStore.OperationalMetrics(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := m.OldestQueuedSeconds["silver"]; ok {
+		t.Fatalf("an item in backoff counted as waiting: %+v", m.OldestQueuedSeconds)
+	}
+
+	mustExec(t, `UPDATE work_items SET next_eligible_at = now() - interval '10 minutes' WHERE id = $1`, itemID)
+	if m, err = testStore.OperationalMetrics(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if age := m.OldestQueuedSeconds["silver"]; age < 600-60 || age > 600+60 {
+		t.Fatalf("oldest queued after backoff = %v, want about 10m", age)
+	}
+
+	mustExec(t, `UPDATE work_items SET state = 'leased' WHERE id = $1`, itemID)
+	if m, err = testStore.OperationalMetrics(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(m.OldestQueuedSeconds) != 0 {
+		t.Fatalf("a leased item counted as queued: %+v", m.OldestQueuedSeconds)
+	}
+}
+
+func TestOperationalMetricsCountUnsettledAccountsOfFinishedRuns(t *testing.T) {
+	ctx := context.Background()
+	_, run := managedRunFixture(t)
+	m, err := testStore.OperationalMetrics(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.UnsettledLLMAccounts["reserved"] != 0 || m.UnsettledLLMAccounts["blocked"] != 0 {
+		t.Fatalf("a running Run's account counted as unsettled: %+v", m.UnsettledLLMAccounts)
+	}
+	mustExec(t, `UPDATE agent_runs SET state = 'finished', finished_at = now(), outcome = 'no_change_needed' WHERE run_token = $1`, run.RunToken)
+	for state, want := range map[string]map[string]int{
+		"reserved":   {"reserved": 1, "blocked": 0},
+		"blocked":    {"reserved": 0, "blocked": 1},
+		"reconciled": {"reserved": 0, "blocked": 0},
+	} {
+		mustExec(t, `UPDATE run_llm_accounts SET state = $2 WHERE run_token = $1`, run.RunToken, state)
+		if m, err = testStore.OperationalMetrics(ctx); err != nil {
+			t.Fatal(err)
+		}
+		for s, n := range want {
+			if m.UnsettledLLMAccounts[s] != n {
+				t.Fatalf("account %s: unsettled = %+v, want %+v", state, m.UnsettledLLMAccounts, want)
+			}
+		}
+	}
+}

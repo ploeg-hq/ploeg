@@ -844,14 +844,20 @@ const CurrentEvidenceVersion = 1
 // the one being claimed, publication wants the round that just completed.
 func (s *Store) RoundReports(ctx context.Context, shiftID int64) ([]RunReport, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT role, round, writes, COALESCE(outcome, ''), summary, findings, links, verdict, verification,
-		       COALESCE(failure_reason, ''), COALESCE(evidence_version, 0), delivery
+		SELECT `+runReportColumns+`
 		FROM agent_runs
 		WHERE shift_id = $1 AND state = 'finished'
 		ORDER BY round, id`, shiftID)
 	if err != nil {
 		return nil, err
 	}
+	return collectRunReports(rows)
+}
+
+const runReportColumns = `role, round, writes, COALESCE(outcome, ''), summary, findings, links, verdict, verification,
+		       COALESCE(failure_reason, ''), COALESCE(evidence_version, 0), delivery`
+
+func collectRunReports(rows pgx.Rows) ([]RunReport, error) {
 	defer rows.Close()
 	var out []RunReport
 	for rows.Next() {

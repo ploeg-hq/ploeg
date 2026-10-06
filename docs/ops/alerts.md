@@ -12,18 +12,22 @@ The exposition is written by hand in the Prometheus text format (`version=0.0.4`
 | --- | --- | --- |
 | `ploeg_shifts_open` | `team` | Open Shifts |
 | `ploeg_shift_idle_seconds_max` | `team` | Longest time an open Shift of the team has gone without Run progress |
+| `ploeg_shift_runs_without_pr_max` | `team` | The most finished Runs in any open Shift of the team that has no recorded pull request. Present at `0` for every team with an open Shift |
+| `ploeg_work_item_oldest_queued_seconds` | `team` | How long the team's longest-waiting claimable queued Work Item has waited since it last became queued or its backoff ended. Absent for a team with nothing claimable |
 | `ploeg_leases_expired` | | Leases past their expiry that the sweep has not released yet |
 | `ploeg_lease_overdue_seconds_max` | | How long the most overdue Lease has been expired, or `0` |
 | `ploeg_llm_keys_past_ttl` | `state` | Inference Accounts in `issued` or `unknown` whose key TTL has passed |
 | `ploeg_llm_key_ttl_overrun_seconds_max` | `state` | How far past its TTL the oldest such account is, or `0` |
+| `ploeg_llm_accounts_unsettled` | `state` | Inference Accounts of finished Runs that still hold Shift budget: `reserved`, or `blocked` and waiting for settlement. Both states are always present |
 | `ploeg_settled_spend_usd_last_hour` | | Spend settled onto Shifts in the last hour, in USD |
-| `ploeg_runs_failed_total` | `reason` | Runs ever recorded failed with each failure reason. A counter: Runs are never deleted. Every known reason is present at `0` |
+| `ploeg_runs_finished_total` | `team`, `role`, `outcome`, `reason` | Runs ever finished, by Team, Role and outcome. `reason` is the failure reason of a `failed` Run and empty otherwise. A counter. Every Team and Role with a Run carries `outcome="failed"` for every known reason, at `0` until a Run fails that way. An outcome or reason Ploeg does not know is reported as `other` |
+| `ploeg_runs_failed_total` | `reason` | Runs ever recorded failed with each failure reason. A counter: Runs are never deleted. Every known reason is present at `0`. Kept for one release beside `ploeg_runs_finished_total`, which replaces it ([ADR-0076](../adrs/0076-run-health-is-observable-by-team-and-role-through-one-correlation-key.md)); move dashboards and rules to `sum by (reason) (ploeg_runs_finished_total{outcome="failed"})` |
 | `ploeg_runs_without_observed_delivery_last_day` | `source` | Runs finished in the last day whose report had no delivery record from the worker (`legacy`) or one that named another forge, repository, branch or pull request (`mismatch`) |
 | `ploeg_tracker_webhooks_missing` | | Configured Vikunja projects with no assignment webhook to Ploeg |
 | `ploeg_tracker_webhooks_unchecked` | | Configured Vikunja projects the webhook check could not read |
 | `ploeg_tracker_webhook_check_timestamp_seconds` | | Unix time of the last webhook check |
 
-Run progress means a Run of the Shift starting or finishing, or a checkpoint on its Work Item. Opening the Shift also counts. Lease and deadline renewals do not count, because a hung harness keeps renewing. A key's TTL is measured from the Run's start, which comes a few seconds before the key is minted. `ploeg_runs_failed_total{reason="credential_leak"}` counts Runs whose forge traffic, pushed commits or proposed learnings carried one of the Run's credentials or its canary. Every increase needs a person: rotate the credential and read the commits the Run left on its branch. [PloegCredentialLeak](#ploegcredentialleak) alerts on it. Settled spend is the sum of trusted reconciliation deltas (`llm.reconciled` in the audit log) plus the `costUsd` that finished Shift Runs without a managed Inference Account reported. A managed Run's own cost report is not counted, because it is not settlement. A `legacy` Run comes from a worker older than [ADR-0059](../adrs/0059-delivery-facts-come-from-the-forge-never-from-the-agents-outcome.md); when the gauge has read zero for two weeks, the older-worker path can go. A `mismatch` Run is a worker or caller reporting delivery for something other than its own branch; it parks the Work Item for a person. The three tracker webhook series appear only once a webhook check has finished, and only when the Vikunja URL and token are configured. See [tracker configuration](board.md).
+Run progress means a Run of the Shift starting or finishing, or a checkpoint on its Work Item. A Run that ended `failed` made no progress, so neither its start nor its finish counts: a Shift whose Runs are killed one after another stays idle. Opening the Shift also counts. Lease and deadline renewals do not count, because a hung harness keeps renewing. A key's TTL is measured from the Run's start, which comes a few seconds before the key is minted. `ploeg_runs_failed_total{reason="credential_leak"}` counts Runs whose forge traffic, pushed commits or proposed learnings carried one of the Run's credentials or its canary. Every increase needs a person: rotate the credential and read the commits the Run left on its branch. [PloegCredentialLeak](#ploegcredentialleak) alerts on it. Settled spend is the sum of trusted reconciliation deltas (`llm.reconciled` in the audit log) plus the `costUsd` that finished Shift Runs without a managed Inference Account reported. A managed Run's own cost report is not counted, because it is not settlement. A Shift's pull request is recorded when Ploeg stores the forge's facts about it: a row in `pull_requests` for the Shift, or an open one for its Work Item. Every finished Run counts toward `ploeg_shift_runs_without_pr_max`, readers included. A queued Work Item's wait starts at its last state change (`work_items.updated_at`), so a Work Item that goes back to `queued` after a failed Run starts waiting again; an assignment webhook redelivery also resets it. `ploeg_llm_accounts_unsettled` uses the predicate of the settlement sweep without its quiet period, so a `blocked` account appears for up to `PLOEG_LLM_SETTLE_AFTER` in normal operation. A `legacy` Run comes from a worker older than [ADR-0059](../adrs/0059-delivery-facts-come-from-the-forge-never-from-the-agents-outcome.md); when the gauge has read zero for two weeks, the older-worker path can go. A `mismatch` Run is a worker or caller reporting delivery for something other than its own branch; it parks the Work Item for a person. The three tracker webhook series appear only once a webhook check has finished, and only when the Vikunja URL and token are configured. See [tracker configuration](board.md).
 
 `/metrics` has no authentication, the same as `/readyz`. It exposes team names and aggregate spend. It exposes no tokens, Work Item titles or per-Run data. If the ploegd port is reachable from outside the cluster, block the path at that ingress.
 
@@ -51,6 +55,8 @@ The SQL below is for `psql` against the Ploeg database. It only reads.
 `max by (team) (ploeg_shift_idle_seconds_max) > idleHours × 3600`. Default: 6 hours, `for: 15m`, warning.
 
 A Shift has been open for longer than the threshold without any Run starting, finishing or checkpointing. Usually its next Run is pending and no worker claims it: the executor is not scaling for that team and Role, or pods are failing before they claim. It can also be a Run that is running and renewing but doing nothing.
+
+A Shift whose Runs keep failing does not reset the clock, because a failed Run is not progress. [PloegRunsIdleKilled](#ploegrunsidlekilled) and [PloegRunsFailingRepeatedly](#ploegrunsfailingrepeatedly) usually fire first in that case.
 
 **Check first:** find the Shift and the state of its Runs.
 
@@ -130,3 +136,94 @@ FROM agent_runs r JOIN work_items w ON w.id = r.work_item_id
 WHERE r.failure_reason = 'credential_leak'
 ORDER BY r.finished_at DESC LIMIT 10;
 ```
+
+## PloegRunsIdleKilled
+
+`sum by (team) (increase(ploeg_runs_finished_total{outcome="failed",reason=~"idle|timeout"}[window])) >= kills`. Default: 2 kills in `2h`, `for: 0m`, warning.
+
+At least two Runs of the team were stopped by the harness watchdog: `idle` is `PLOEG_HARNESS_IDLE_TIMEOUT` (no output and no model call), `timeout` is `PLOEG_HARNESS_TIMEOUT` (total time). Each kill throws away the Run's work and its spend, and the Round retries the Role. In [Work Item 138](../research/2026-09-29-incident-work-item-138.md), a harness that printed nothing while it worked died at every attempt.
+
+**Check first:** whether the killed Runs were busy or hung. Their model calls in the gateway's spend logs (the alias is the Run's trace) show a busy Run. Then decide between a longer timeout for that Team and Role, and pausing the Team.
+
+```sql
+SELECT r.id, r.work_item_id, r.role, r.failure_reason, r.started_at, r.finished_at - r.started_at AS lived, r.summary
+FROM agent_runs r
+WHERE r.team = '<team>' AND r.failure_reason IN ('idle', 'timeout') AND r.finished_at > now() - interval '2 hours'
+ORDER BY r.finished_at;
+```
+
+## PloegRunsFailingRepeatedly
+
+`sum by (team, role) (increase(ploeg_runs_finished_total{outcome="failed"}[window])) >= failures`. Default: 3 failures in `1h`, `for: 0m`, critical.
+
+One Role of one team failed three or more Runs within the hour, whatever the reason. Each Shift retries a failed Role up to its attempt limit, so repeated failure burns attempts and spend across every Work Item the Role touches.
+
+**Check first:** the reasons. `sum by (reason) (increase(ploeg_runs_finished_total{team="<team>",role="<role>",outcome="failed"}[1h]))` splits them. `infra_node`, `infra_llm` and `lease_lost` point at the cluster or the gateway; `agent_error`, `budget`, `idle` and `timeout` point at the harness, its model or its limits. Read the newest Run's summary:
+
+```sql
+SELECT r.id, r.work_item_id, r.failure_reason, r.finished_at, r.summary
+FROM agent_runs r
+WHERE r.team = '<team>' AND r.role = '<role>' AND r.outcome = 'failed' AND r.finished_at > now() - interval '1 hour'
+ORDER BY r.finished_at DESC;
+```
+
+## PloegSandboxStartFailing
+
+`sum by (team) (increase(ploeg_runs_finished_total{outcome="failed",reason="infra_node"}[window])) > 0`. Default: `30m`, `for: 0m`, warning.
+
+A Run of the team failed with `infra_node`: its sandbox or pod did not become ready within `PLOEG_SANDBOX_START_TIMEOUT`, or the node failed under it. The launcher fails whichever Run of the team and Role is pending, so the failed Run may belong to another Work Item than the one that waited. These failures use the infrastructure retry budget, not the agent's attempts, so the cost is time.
+
+**Check first:** whether the team's sandbox pods schedule. Look for `Pending` pods and `FailedScheduling` events in the worker namespace, and compare the Run's CPU and memory requests with free node capacity.
+
+## PloegShiftNoDelivery
+
+`max by (team) (ploeg_shift_runs_without_pr_max) >= runs`. Default: 3 Runs, `for: 15m`, warning.
+
+An open Shift of the team has finished three or more Runs and has no recorded pull request. Retries, killed builders and reviewers of a branch that was never pushed all count. A builder that exits without a pull request is recorded `no_change_needed`, so this can also be a Shift whose Runs all look successful.
+
+**Check first:** the Shift's Runs and their outcomes.
+
+```sql
+SELECT sh.id AS shift, sh.work_item_id, r.id, r.round, r.role, r.outcome, r.failure_reason, r.summary
+FROM shifts sh JOIN agent_runs r ON r.shift_id = sh.id
+WHERE sh.closed_at IS NULL AND sh.team = '<team>' AND r.state = 'finished'
+  AND NOT EXISTS (SELECT 1 FROM pull_requests p WHERE p.shift_id = sh.id
+      OR (p.work_item_id = sh.work_item_id AND COALESCE(p.state, 'open') = 'open'))
+ORDER BY sh.id, r.id;
+```
+
+If a pull request exists on the forge but not here, the forge's facts did not reach Ploeg; check the forge webhook. Otherwise cancel the Shift or give the Work Item to a person.
+
+## PloegQueueStalled
+
+`max by (team) (ploeg_work_item_oldest_queued_seconds) > waitSeconds`. Default: 3600 s, `for: 10m`, warning.
+
+A claimable Work Item of the team has waited more than an hour for a worker. Items in backoff (`next_eligible_at` in the future) and operator-owned items are not counted. Usually the team's builder slots are all taken (its ScaledJob's `maxReplicaCount`), or the executor is not scaling.
+
+**Check first:** what the team is running and what waits.
+
+```sql
+SELECT w.id, w.external_id, w.updated_at, w.attempts,
+       (SELECT count(*) FROM agent_runs r WHERE r.team = w.team AND r.state = 'running') AS team_running
+FROM work_items w
+WHERE w.team = '<team>' AND w.state = 'queued' AND NOT w.operator_owned
+  AND (w.next_eligible_at IS NULL OR w.next_eligible_at <= now())
+ORDER BY w.updated_at;
+```
+
+## PloegSettlementBacklog
+
+`max by (state) (ploeg_llm_accounts_unsettled) > 0`. Default: `for: 1h`, warning.
+
+Inference Accounts of finished Runs have stayed `reserved` or `blocked` for an hour. They still hold Shift budget, so the Shift's pool looks smaller than it is. The settlement sweep settles a `reserved` account at once and a `blocked` one after `PLOEG_LLM_SETTLE_AFTER`; a backlog means the sweep is failing, usually because the gateway's spend logs cannot be read.
+
+**Check first:** ploegd's logs for settlement errors, then the accounts:
+
+```sql
+SELECT r.id, a.alias, a.state, a.updated_at, a.gateway_key_id
+FROM run_llm_accounts a JOIN agent_runs r USING (run_token)
+WHERE r.state = 'finished' AND a.state IN ('reserved', 'blocked')
+ORDER BY a.updated_at;
+```
+
+See [reconcile uncertainty](managed-workers.md#reconcile-uncertainty) before settling anything by hand.

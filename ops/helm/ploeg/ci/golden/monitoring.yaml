@@ -222,6 +222,60 @@ spec:
             summary: "A Run carried one of its credentials to the forge"
             description: "{{ $value | printf \"%.0f\" }} Run(s) failed with credential_leak in the last 15 minutes. Rotate the Run's model key and forge token, then read the commits the Run left on its branch; ploegd's log names the Run and the route."
             runbook_url: https://docs.example/ploeg/ops/alerts/#ploegcredentialleak
+        - alert: PloegRunsIdleKilled
+          expr: sum by (team) (increase(ploeg_runs_finished_total{outcome="failed",reason=~"idle|timeout",job="ploeg",namespace="default"}[2h])) >= 2
+          for: 0m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Team {{ $labels.team }} had 2 or more Runs killed by the idle or total timeout within 2h"
+            description: "{{ $value | printf \"%.0f\" }} Run(s) of team {{ $labels.team }} failed with reason idle or timeout. Each kill throws away the Run's work and spend, and the Round retries the Role."
+            runbook_url: https://docs.example/ploeg/ops/alerts/#ploegrunsidlekilled
+        - alert: PloegRunsFailingRepeatedly
+          expr: sum by (team, role) (increase(ploeg_runs_finished_total{outcome="failed",job="ploeg",namespace="default"}[1h])) >= 3
+          for: 0m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Role {{ $labels.role }} of team {{ $labels.team }} failed 3 or more Runs within 1h"
+            description: "{{ $value | printf \"%.0f\" }} Run(s) of Role {{ $labels.role }} on team {{ $labels.team }} ended failed, whatever the reason. ploeg_runs_finished_total{outcome=\"failed\"} by reason says which."
+            runbook_url: https://docs.example/ploeg/ops/alerts/#ploegrunsfailingrepeatedly
+        - alert: PloegSandboxStartFailing
+          expr: sum by (team) (increase(ploeg_runs_finished_total{outcome="failed",reason="infra_node",job="ploeg",namespace="default"}[30m])) > 0
+          for: 0m
+          labels:
+            severity: warning
+          annotations:
+            summary: "A Run of team {{ $labels.team }} failed on its node within 30m"
+            description: "A Run of team {{ $labels.team }} failed with infra_node: its sandbox or pod did not start, or its node failed under it. The failure lands on whichever Run of the team was pending, not necessarily the one that waited."
+            runbook_url: https://docs.example/ploeg/ops/alerts/#ploegsandboxstartfailing
+        - alert: PloegShiftNoDelivery
+          expr: max by (team) (ploeg_shift_runs_without_pr_max{job="ploeg",namespace="default"}) >= 3
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "An open Shift of team {{ $labels.team }} has finished 3 or more Runs without a pull request"
+            description: "An open Shift of team {{ $labels.team }} has {{ $value }} finished Runs and no recorded pull request."
+            runbook_url: https://docs.example/ploeg/ops/alerts/#ploegshiftnodelivery
+        - alert: PloegQueueStalled
+          expr: max by (team) (ploeg_work_item_oldest_queued_seconds{job="ploeg",namespace="default"}) > 3600
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "A Work Item of team {{ $labels.team }} has waited over 3600 seconds for a worker"
+            description: "The longest-waiting claimable Work Item of team {{ $labels.team }} has been queued for {{ $value | humanizeDuration }}."
+            runbook_url: https://docs.example/ploeg/ops/alerts/#ploegqueuestalled
+        - alert: PloegSettlementBacklog
+          expr: max by (state) (ploeg_llm_accounts_unsettled{job="ploeg",namespace="default"}) > 0
+          for: 1h
+          labels:
+            severity: warning
+          annotations:
+            summary: "Inference accounts of finished Runs stay {{ $labels.state }} and unsettled"
+            description: "{{ $value }} inference account(s) in state {{ $labels.state }} belong to finished Runs and still hold Shift budget. The settlement sweep has not settled them."
+            runbook_url: https://docs.example/ploeg/ops/alerts/#ploegsettlementbacklog
 ---
 # Source: ploeg/templates/servicemonitor.yaml
 apiVersion: monitoring.coreos.com/v1

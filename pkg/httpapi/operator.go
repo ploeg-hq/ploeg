@@ -197,6 +197,7 @@ func (s *Server) operatorHandler() http.Handler {
 	mux.HandleFunc("GET /api/v1/operator/work-items/{id}/card", s.handleOperatorCard)
 	mux.HandleFunc("GET /api/v1/operator/cards", s.handleOperatorCards)
 	mux.HandleFunc("POST /api/v1/operator/work-items/{id}/cancel", s.handleOperatorCancel)
+	mux.HandleFunc("POST /api/v1/operator/work-items/{id}/requeue", s.handleOperatorRequeue)
 	mux.HandleFunc("GET /api/v1/operator/summary", s.handleOperatorSummary)
 	mux.HandleFunc("GET /api/v1/operator/unsettled-accounts", s.handleOperatorUnsettledAccounts)
 	mux.HandleFunc("GET /api/v1/operator/runs", s.handleOperatorRuns)
