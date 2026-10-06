@@ -1,6 +1,6 @@
 ---
 status: proposed
-date: 2026-10-05
+date: 2026-10-06
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -67,7 +67,34 @@ Chosen option: "**ploegd launches through a Postgres launch outbox, and KEDA lea
   A ResourceQuota on that namespace is the cluster-side ceiling. An admission policy restricts claim pod metadata to Ploeg's own label keys.
 * **Client.** The existing raw-HTTP client is extended with list-by-label and status reads. The upstream Go clientset is not imported: it lives inside the `sigs.k8s.io/agent-sandbox` module, which pulls in controller-runtime, client-go, OpenTelemetry and gRPC. This partly revises [ADR-0032](0032-keep-the-dispatch-plane-and-compete-on-authorized-spend.md)'s intent to use the generated clientset.
 
-The `keda` and `cronjob` executors stay for clusters without agent-sandbox. They are not extended, and a later record sets their deprecation date.
+### What KEDA does well today, and how each part is kept
+
+KEDA is the running executor today. These are its real strengths:
+
+* **Ploeg needs no Kubernetes rights.** ploegd never touches the Kubernetes API; KEDA and the Job controller do. Push launch gives that up, bounded to SandboxClaims in one namespace (above).
+* **It keeps trying.** As long as the count is above zero, KEDA starts another Job every poll, whatever happened to the last one. Push launch keeps this property through the launch outbox and the reconciler: an unsent, vanished or unbound launch is retried, never forgotten.
+* **It is a second, independent loop.** If ploegd's dispatcher had a bug, KEDA would still spawn workers. But those workers could only claim through ploegd, so this independence buys nothing a ploegd bug would not also break.
+* **It is mature and observed.** Its errors are already exported (`keda_scaled_job_errors_total`), and an alert covers them.
+
+What KEDA does badly is the case the owner asked about: **when the cluster has no room**.
+* KEDA starts a Job. The Job's pod or sandbox stays Pending.
+* After the 10-minute start timeout, `FailUnstartedRun` claims and fails whichever Run is pending next. That is the wrong Work Item, and it burns its retry budget.
+* KEDA then starts the next Job into the same full cluster.
+
+Under push launch, the launch for a specific Run waits as `waiting_capacity`. The scheduler's reason is shown on that Work Item and the wait is alerted. No Run fails, and after the requeue limit the claim is withdrawn and retried with backoff, so a full cluster costs time and never budget.
+
+### Phased removal
+
+KEDA stays the sandbox executor until push launch has proven itself:
+
+1. **Push launch ships behind `executor.launch: push` per Team,** with KEDA remaining the default.
+2. **One Team runs on push for two weeks,** with these conditions held:
+   * no Run fails as `infra_node` for lack of capacity;
+   * no launch is stranded (outbox and reconciler alerts quiet);
+   * every capacity wait is attributed to the right Work Item.
+3. **Then every sandbox Team moves,** the sandbox ScaledJob and TriggerAuthentication are removed, and the KEDA database role is dropped.
+
+The `keda` and `cronjob` executors remain for clusters without agent-sandbox. They are not extended, and a later record sets their deprecation date.
 
 The full design and tasks are in the OpenSpec change `openspec/changes/launch-sandboxes-from-ploegd/`.
 
@@ -138,3 +165,4 @@ The full design and tasks are in the OpenSpec change `openspec/changes/launch-sa
   * [ADR-0010](0010-shift-owns-the-item-lease-owns-the-branch.md), [ADR-0021](0021-infra-failures-and-agent-failures-get-separate-retry-budgets.md), [ADR-0025](0025-management-authority-stays-in-the-control-plane.md), [ADR-0032](0032-keep-the-dispatch-plane-and-compete-on-authorized-spend.md), [ADR-0060](0060-authenticated-webhooks-go-through-a-durable-inbox-and-required-publications-through-an-outbox.md)
 * Homelab follow-up, outside this repository: remove the KEDA-to-database NetworkPolicy opening. Either grant `ploeg_scaler` access to named tables only, or retire it.
 * 2026-10-05: proposed after the owner agreed that ploegd should call agent-sandbox directly.
+* 2026-10-06: KEDA's strengths and the no-capacity case stated explicitly; removal is phased behind a per-Team switch and a two-week trial.

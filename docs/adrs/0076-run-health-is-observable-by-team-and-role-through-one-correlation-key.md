@@ -28,7 +28,7 @@ What must Ploeg emit so that a failing Team, a silent Shift or a slow phase is v
 * An operator learns about repeated failure from an alert, not from a person noticing.
 * Every signal is attributable to a Team and a Role, because placement, models and caps are set per Team and Role.
 * One key joins Ploeg's logs, its metrics, the gateway's spend and the gateway's spans.
-* Ploeg emits signals and does not own dashboards or alert routing ([ADR-0074](0074-ploeg-publishes-execution-facts-and-consumers-own-presentation-and-delivery-analytics.md)). The chart ships default rules; a deployment decides where alerts go.
+* Ploeg emits signals and does not own dashboards or alert routing ([ADR-0074](0074-ploeg-exposes-delivery-facts-and-consumers-own-the-card-and-every-formula-over-them.md)). The chart ships default rules; a deployment decides where alerts go.
 * The worker sandbox reaches only its model gateway and forge, so no worker signal may depend on new egress.
 
 ## Considered Options
@@ -115,6 +115,6 @@ ploegd emits one trace per Run, with the alias as an attribute and spans for cla
 ## More Information
 
 * Evidence: [observability and decisions without code](../research/2026-10-05-observability-and-unfinished-decisions.md), §1.
-* Related: [ADR-0072](0072-ploegd-launches-each-runs-sandbox-and-keda-leaves-the-sandbox-path.md), [ADR-0074](0074-ploeg-publishes-execution-facts-and-consumers-own-presentation-and-delivery-analytics.md), [ADR-0075](0075-a-stopped-writing-run-leaves-a-checkpoint-its-retry-starts-from.md), and the [alerts guide](../ops/alerts.md).
+* Related: [ADR-0072](0072-ploegd-launches-each-runs-sandbox-and-keda-leaves-the-sandbox-path.md), [ADR-0074](0074-ploeg-exposes-delivery-facts-and-consumers-own-the-card-and-every-formula-over-them.md), [ADR-0075](0075-a-stopped-writing-run-leaves-a-checkpoint-its-retry-starts-from.md), and the [alerts guide](../ops/alerts.md).
 * Homelab follow-up, outside this repository: map `trace_id` from `trace` in the log shipper, and add LiteLLM, agent-sandbox and KEDA rules.
 * 2026-10-05: proposed.

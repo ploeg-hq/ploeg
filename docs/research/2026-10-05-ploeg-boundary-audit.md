@@ -6,7 +6,7 @@ The owner asked two questions:
 1. What is Ploeg doing outside its business of admitting, budgeting and executing agent work?
 2. Where do its dependencies point the wrong way?
 
-The decision is [ADR-0074](../adrs/0074-ploeg-publishes-execution-facts-and-consumers-own-presentation-and-delivery-analytics.md).
+The decision is [ADR-0074](../adrs/0074-ploeg-exposes-delivery-facts-and-consumers-own-the-card-and-every-formula-over-them.md). It was revised on 2026-10-06: the collectors for pull request activity, CI runs, changed files, reverts, tracker status transitions, deploys and relations stay in Ploeg and are exposed as raw facts. The card, its formulas, its rendering and the crack workflow leave. The removal estimate below therefore overstates what leaves: about 9,000 of the 13,000 production lines.
 
 ## Summary
 
