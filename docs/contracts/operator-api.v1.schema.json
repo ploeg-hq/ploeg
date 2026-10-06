@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://webgrip.dev/ploeg/contracts/operator-api.v1.schema.json",
   "title": "Ploeg authenticated operator API v1",
-  "description": "GET /api/v1/operator/{teams,summary,unsettled-accounts,work-items,work-items/{id},work-items/{id}/card,cards,runs,runs/{id},events,route-refusals}, and POST /api/v1/operator/work-items/{id}/cancel, which requires execute permission and X-Ploeg-Actor, takes no body and withdraws tracker-originated work; repeating it on a withdrawn or settled item changes nothing and reports withdrawn false. POST /api/v1/operator/work-items/{id}/approve and /reject decide a proposed Work Item a Run created (ADR-0031); both require execute permission and X-Ploeg-Actor and take a JSON body {\"reason\": string}, required for reject. Approve queues the item; reject closes it as done and releases its allotted budget. Any other state answers 409 not_proposed. Bearer consumers have team scope. Collection after is a decimal bigint cursor; limit defaults 50, maximum 200. Work items filter on team, state, needsHuman=true and the tracker identity provider plus externalId, which must be given together and match across every team in scope unless team narrows it. Detail returns the most recent 200 records per collection, with explicit truncation flags. Audit pagination has snapshot consistency and is not a lossless changefeed: IDs are allocated before commit. Unbound events are omitted. Missing costs and unsupported team pause state remain unknown/null. Text is bounded (16384 characters for descriptions/findings, 4096 for summaries/reasons/URLs), recognizable credentials are redacted, URL queries/fragments are removed. Other credential-bearing structural fields are never selected. A recorded cost is an observation, not proof of final gateway settlement. Summary takes window=24h|7d|30d (default 7d): Work Item counts, pending and running Runs and reservedUsd are current; finished, failed and stuck count Runs finished inside the window by outcome, and settledUsd is spend settled inside the window; lastActivityAt is the Team's latest bound audit event. The Run list is newest first by id with limit 1..200 (default 50), filters team, state and outcome, and pages with before=<runId>, returning nextBefore; teams are scoped by the owning Work Item and externalRef is the tracker reference used in trailers, or empty for manual work. Events take order=asc|desc (default asc); order=desc returns newest first, pages with before=<eventId> and returns that cursor as nextCursor, and lastCursor is the newest event id in the page (0 when empty); after with order=desc, or before without it, is rejected. Timestamps in summary and Run list responses are UTC. The card of a Work Item (ADR-0046) answers schemaVersion 1, a number, and 404 when the Work Item is not in the consumer's scope; a Work Item without a Shift still has a card in state drafting. The card list (ADR-0054) takes member=<login>, repeatable 1..20 times and matched without case, and optional since=<RFC 3339>, team, before=<cursor> and limit 1..50 (default 20). It answers schemaVersion 1, a number, as the card does, with cards in the shape of the card endpoint: the consumer's team-scoped Work Items whose roster or steward names a member, newest activity first. Activity is the latest of the first Run's start, a play first seen or merged, a merged play's first deploy to its release environment, and a confirmed crack's confirmation, mend or mend confirmation, falling back to the Work Item's creation; since keeps cards whose activity is at or after it. nextBefore is an opaque cursor or null; a page examines at most twice its limit, so it can hold fewer cards, or none, while nextBefore is set. Unsettled-accounts takes no query parameters and lists, oldest first and at most 200, the finished Runs in scope whose gateway key the block sweep cannot block (account minting, issued or unknown), each with the budget it still holds; totals cover every such Run in scope, also past the 200th. Route refusals (ADR-0038) lists tracker tasks that routing refused and that therefore have no Work Item: it takes no query parameters and answers the newest refusal of each task refused in the last windowDays (14) days, newest first and at most 50, within the consumer's team scope. A task queued or refreshed after its newest refusal is left out. code is stable; a refusal recorded before codes existed answers unclassified with allowedLabels empty, and reason is the sentence Ploeg also commented on the task. allowedLabels are the repo/ labels the matched board rule allows, empty when no rule matched or the reason is target_not_ready.",
+  "description": "GET /api/v1/operator/{teams,summary,unsettled-accounts,work-items,work-items/{id},work-items/{id}/card,cards,runs,runs/{id},events,route-refusals}, and POST /api/v1/operator/work-items/{id}/cancel, which requires execute permission and X-Ploeg-Actor, takes no body and withdraws tracker-originated work; repeating it on a withdrawn or settled item changes nothing and reports withdrawn false. POST /api/v1/operator/work-items/{id}/approve and /reject decide a proposed Work Item a Run created (ADR-0031); both require execute permission and X-Ploeg-Actor and take a JSON body {\"reason\": string}, required for reject. Approve queues the item; reject closes it as done and releases its allotted budget. Any other state answers 409 not_proposed. Bearer consumers have team scope. Collection after is a decimal bigint cursor; limit defaults 50, maximum 200. Work items filter on team, state, needsHuman=true and the tracker identity provider plus externalId, which must be given together and match across every team in scope unless team narrows it. Detail returns the most recent 200 records per collection, with explicit truncation flags. Audit pagination has snapshot consistency and is not a lossless changefeed: IDs are allocated before commit. Unbound events are omitted. Missing costs and unsupported team pause state remain unknown/null. Text is bounded (16384 characters for descriptions/findings, 4096 for summaries/reasons/URLs), recognizable credentials are redacted, URL queries/fragments are removed. Other credential-bearing structural fields are never selected. A recorded cost is an observation, not proof of final gateway settlement. Summary takes window=24h|7d|30d (default 7d): Work Item counts, pending and running Runs and reservedUsd are current; finished, failed and stuck count Runs finished inside the window by outcome, and settledUsd is spend settled inside the window; lastActivityAt is the Team's latest bound audit event. The Run list is newest first by id with limit 1..200 (default 50), filters team, state and outcome, and pages with before=<runId>, returning nextBefore; teams are scoped by the owning Work Item and externalRef is the tracker reference used in trailers, or empty for manual work. Events take order=asc|desc (default asc); order=desc returns newest first, pages with before=<eventId> and returns that cursor as nextCursor, and lastCursor is the newest event id in the page (0 when empty); after with order=desc, or before without it, is rejected. Timestamps in summary and Run list responses are UTC. The card of a Work Item (ADR-0046) answers schemaVersion 1, a number, and 404 when the Work Item is not in the consumer's scope; a Work Item without a Shift still has a card in state drafting. The card list (ADR-0054) takes member=<login>, repeatable 1..20 times and matched without case, and optional since=<RFC 3339>, team, before=<cursor> and limit 1..50 (default 20). It answers schemaVersion 1, a number, as the card does, with cards in the shape of the card endpoint: the consumer's team-scoped Work Items whose roster or steward names a member, newest activity first. Activity is the latest of the first Run's start, a play first seen or merged, a merged play's first deploy to its release environment, and a confirmed crack's confirmation, mend or mend confirmation, falling back to the Work Item's creation; since keeps cards whose activity is at or after it. nextBefore is an opaque cursor or null; a page examines at most twice its limit, so it can hold fewer cards, or none, while nextBefore is set. Unsettled-accounts takes no query parameters and lists, oldest first and at most 200, the finished Runs in scope whose gateway key the block sweep cannot block (account minting, issued or unknown), each with the budget it still holds; totals cover every such Run in scope, also past the 200th. Route refusals (ADR-0038) lists tracker tasks that routing refused and that therefore have no Work Item: it takes no query parameters and answers the newest refusal of each task refused in the last windowDays (14) days, newest first and at most 50, within the consumer's team scope. A task queued or refreshed after its newest refusal is left out. code is stable; a refusal recorded before codes existed answers unclassified with allowedLabels empty, and reason is the sentence Ploeg also commented on the task. allowedLabels are the repo/ labels the matched board rule allows, empty when no rule matched or the reason is target_not_ready. POST /api/v1/operator/work-items/{id}/requeue restarts a needs_human, stale or awaiting_review Work Item with no open Shift (ADR-0044); it requires execute permission and X-Ploeg-Actor. Without a body it restarts from Round 1; a body is a requeueRequest and must carry commandId, and a repeated commandId returns the first result with replayed true. A live, settled, withdrawn or operator-owned item, an expectedState mismatch and a commandId reused with another body answer 409; a fromRound outside the Team's current plan answers 422 round_not_in_plan, and a fromRound past a writing Round when no earlier Shift recorded pr_opened or pr_updated answers 422 nothing_to_review; a pool above the consumer's maxBudgetUsd answers 400 pool_above_limit.",
   "oneOf": [
     {
       "$ref": "#/$defs/teamsResponse"
@@ -51,6 +51,9 @@
     },
     {
       "$ref": "#/$defs/routeRefusalsResponse"
+    },
+    {
+      "$ref": "#/$defs/requeueResponse"
     },
     {
       "$ref": "#/$defs/errorResponse"
@@ -1190,6 +1193,112 @@
             "approved": {
               "type": "boolean",
               "description": "True when approval queued the Work Item; false when rejection closed it as done (ADR-0031)."
+            }
+          }
+        }
+      }
+    },
+    "requeueRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "commandId"
+      ],
+      "description": "Optional body of POST /api/v1/operator/work-items/{id}/requeue (ADR-0044).",
+      "properties": {
+        "fromRound": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The planned Round the new Shift starts at, counted from 1. Default 1."
+        },
+        "poolUsd": {
+          "type": "number",
+          "minimum": 0,
+          "description": "The new Shift's pool. Default the Team plan's pool; at most the consumer's maxBudgetUsd."
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 4096,
+          "description": "Operator text added to every Run's briefing in the new Shift."
+        },
+        "commandId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+          "description": "Idempotency key. A replay returns the first result."
+        },
+        "expectedState": {
+          "$ref": "#/$defs/item/properties/state",
+          "description": "The state the caller saw. A mismatch answers 409 state_changed."
+        }
+      }
+    },
+    "requeueResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "requeue"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "1.0"
+        },
+        "requeue": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "workItemId",
+            "team",
+            "state",
+            "fromRound",
+            "poolUsd",
+            "shiftId",
+            "previousShiftId",
+            "commandId",
+            "replayed"
+          ],
+          "properties": {
+            "workItemId": {
+              "type": "string"
+            },
+            "team": {
+              "type": "string"
+            },
+            "state": {
+              "$ref": "#/$defs/item/properties/state"
+            },
+            "fromRound": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "poolUsd": {
+              "type": "number",
+              "minimum": 0,
+              "description": "The pool authorized for the new Shift; 0 is unmetered."
+            },
+            "shiftId": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The Shift the requeue opened; null for a Team without Shifts."
+            },
+            "previousShiftId": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The item's most recent closed Shift, which stays closed with its close reason."
+            },
+            "commandId": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "replayed": {
+              "type": "boolean",
+              "description": "True when commandId repeated an earlier requeue and nothing changed."
             }
           }
         }

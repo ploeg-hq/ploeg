@@ -175,6 +175,14 @@ func (e *Engine) evaluate(ctx context.Context, si store.ShiftInfo) error {
 	if err != nil {
 		return err
 	}
+	// A Shift an operator restarted past a writing Round did not run that
+	// writer again (ADR-0044); the earlier Shift's delivery stands in for it,
+	// at Round 0 so no per-Round rule counts it as this Shift's own.
+	inherited, err := e.Store.InheritedDelivery(ctx, si.ID)
+	if err != nil {
+		return err
+	}
+	reports = append(inherited, reports...)
 	// Findings reach the pull request as soon as their Round finishes, not at
 	// close: a human watching the thread sees the review while the writer is
 	// still working on it (ADR-0011).

@@ -593,6 +593,11 @@ func (s *Server) respondClaimedRun(w http.ResponseWriter, r *http.Request, req c
 	} else {
 		resp.Briefing = append(resp.Briefing, reviewBriefing(notes)...)
 	}
+	if brief, restarted, err := s.Store.ShiftRestartBrief(r.Context(), run.ShiftID); err != nil {
+		s.Log.Error("restart briefing read failed; run proceeds without it", "shift", run.ShiftID, "err", err)
+	} else if restarted {
+		resp.Briefing = append([]harness.Finding{restartBriefing(brief)}, resp.Briefing...)
+	}
 	// Push rights are minted per writing Run, so holding the Lease and being
 	// able to push are one fact rather than two that can disagree. A reader
 	// gets nothing here — it has no Lease and no business pushing.
