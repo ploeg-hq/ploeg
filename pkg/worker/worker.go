@@ -168,9 +168,11 @@ func (w *Worker) RunContext(parent context.Context) error {
 		branch = work.Branch(item)
 	}
 	trace := litellm.Alias(claimed.RunToken)
-	w.Log.Info("claimed work item", "id", item.ID, "external_id", item.ExternalID, "title", item.Title,
-		"trace", trace, "harness", w.Adapter.Name(), "node", nodeName, "pod_uid", podUID,
-		"role", claimed.Role, "shift", claimed.Shift, "round", claimed.Round, "writes", claimed.Writes)
+	unscoped := w.Log
+	w.Log = runLogger(unscoped, w.Cfg.Team, claimed, trace)
+	defer func() { w.Log = unscoped }()
+	w.Log.Info("claimed work item", "title", item.Title,
+		"harness", w.Adapter.Name(), "node", nodeName, "pod_uid", podUID, "writes", claimed.Writes)
 
 	// Deliberately NOT derived from parent: the harness must die with the
 	// parent, but everything after it — revoke, settle, report — has to keep
@@ -202,6 +204,21 @@ func (w *Worker) RunContext(parent context.Context) error {
 	}
 	w.Log.Info("outcome reported", "outcome", report.Outcome, "summary", report.Summary, "links", report.Links)
 	return nil
+}
+
+// runLogger scopes every log line of a claimed Run to the keys that join it
+// across ploegd, the worker, the gateway and the log store (ADR-0076): trace
+// is the gateway alias, the others name the Run's place in its Shift.
+func runLogger(base *slog.Logger, team string, claimed *ClaimResponse, trace string) *slog.Logger {
+	return base.With(
+		"trace", trace,
+		"work_item", claimed.WorkItem.ID,
+		"external_id", claimed.WorkItem.ExternalID,
+		"team", team,
+		"role", claimed.Role,
+		"shift", claimed.Shift,
+		"round", claimed.Round,
+	)
 }
 
 // execute runs clone → prompt → credential mint → harness adapter → PR
