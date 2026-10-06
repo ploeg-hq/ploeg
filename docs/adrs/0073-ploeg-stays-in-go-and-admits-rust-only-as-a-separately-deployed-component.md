@@ -18,7 +18,7 @@ This record re-examines ADR-0002 against the code as it stands. It does not supe
 
 * **Where the time goes.** Wall-clock time per Run is spent on model calls, scheduling and Kata boot, not in Ploeg's own code ([research](../research/2026-10-05-substrate-language-and-run-bottlenecks.md) §1).
 * **Load.** ploegd is low-traffic and Postgres-bound, sized at 100m CPU and 256Mi (`ops/helm/ploeg/values.yaml:113-119`).
-* **The claim transaction.** Launch and claim must stay in one PostgreSQL transaction with the capacity lock ([ADR-0072](0072-ploegd-launches-each-runs-sandbox-and-keda-leaves-the-sandbox-path.md)).
+* **The claim transaction.** Reservation and claim must stay in one PostgreSQL transaction with the capacity lock ([ADR-0072](0072-keda-stays-and-ploegd-reserves-a-run-for-each-launcher.md)).
 * **Agents write most of this repository.** They must be able to build and test it inside the worker sandbox, which cannot reach package registries.
 * **The codebase changes weekly:** 70 ADRs since 2026-07-29.
 
@@ -103,10 +103,10 @@ Any two of these reopen the language question for a superseding record:
 * A component is proposed that meets the three conditions above. That one is built in Rust without reopening this record.
 * Rust-first contributors join, or agent Rust builds inside the worker sandbox reach parity with Go: green in one pass, cold build under two minutes.
 * ADR churn drops below two records a month for a quarter, so a strangler would not chase a moving target.
-* [ADR-0072](0072-ploegd-launches-each-runs-sandbox-and-keda-leaves-the-sandbox-path.md) is superseded by a design whose scheduler runs outside ploegd.
+* A launcher component separate from ploegd is built on ADR-0072's reserve and bind API, which is a candidate for the "separately deployed component" rule above.
 
 ## More Information
 
 * Evidence: [Substrate, language and Run bottlenecks](../research/2026-10-05-substrate-language-and-run-bottlenecks.md), §4.
-* Related: [ADR-0002](0002-go-as-the-implementation-language.md) (still in force), [ADR-0072](0072-ploegd-launches-each-runs-sandbox-and-keda-leaves-the-sandbox-path.md).
+* Related: [ADR-0002](0002-go-as-the-implementation-language.md) (still in force), [ADR-0072](0072-keda-stays-and-ploegd-reserves-a-run-for-each-launcher.md).
 * 2026-10-05: proposed after a research spike sized the port and compared crate maturity.

@@ -13,6 +13,12 @@ The owner asked six questions:
 
 The decisions are recorded in [ADR-0071](../adrs/0071-ploeg-keeps-its-state-in-postgresql-and-is-not-a-kubernetes-operator.md) to [ADR-0075](../adrs/0075-a-stopped-writing-run-leaves-a-checkpoint-its-retry-starts-from.md). The Unfold application decisions are in Unfold's ADR-0026 and ADR-0027 and its RFC-0004. This page holds the evidence.
 
+> **Revised 2026-10-06.** Two verdicts below were overruled by [KEDA, plug-and-play integrations, and card collection](2026-10-06-keda-integrations-and-card-collection.md):
+> * Push launch is withdrawn: KEDA stays, with a demand endpoint and Run reservations (ADR-0072 rewritten).
+> * Ploeg stops collecting card inputs (ADR-0074 rewritten).
+>
+> The evidence in §1–§2 and §4–§8 stands.
+
 ## Summary
 
 | Question | Verdict | Where recorded |

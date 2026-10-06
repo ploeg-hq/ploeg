@@ -1,107 +1,80 @@
-# Sandbox launch
+# Run reservation
 
 ## ADDED Requirements
 
-### Requirement: ploegd dispatches a specific Run under the Team's capacity cap
+### Requirement: ploegd serves the executor's demand
 
-For a Team on the sandbox Executor, ploegd SHALL select the oldest eligible pending Run across the Team's Roles, ordered by Work Item age. In the same transaction that holds the Team's capacity lock, it SHALL move that Run to `launching` and record a launch with an attempt number.
+ploegd SHALL serve `GET /api/v1/executor/demand?team=&role=` to a bearer token scoped to demand reads. It SHALL answer the number of Runs an executor should start: the eligible pending Runs, bounded by the Team's `maxRunning` less its running and reserved Runs.
 
-A Run in `launching` SHALL count against the Team's `maxRunning`.
+The pending count SHALL come from the same predicate as `ClaimRole`.
 
-Dispatch SHALL NOT create a Lease, authorize spend or mint a credential.
+#### Scenario: Demand respects the cap
 
-#### Scenario: Concurrent dispatch respects the cap
+* **WHEN** a Team with `maxRunning: 2` has one running Run, one reserved Run and three pending Runs
+* **THEN** demand for that Team is 0
 
-* **WHEN** two dispatcher transactions run concurrently for a Team with `maxRunning: 1` and two pending Runs
-* **THEN** exactly one Run moves to `launching`, and the other stays `pending`
+#### Scenario: Demand agrees with the claim
 
-#### Scenario: A launching Run holds a slot
+* **WHEN** demand reports N for a Team and Role
+* **THEN** N successive reservations for that Team and Role succeed, and the next one answers 204
 
-* **WHEN** a Team with `maxRunning: 1` has one Run in `launching`
-* **THEN** no further Run of that Team is dispatched until the launch is bound, released or requeued
+### Requirement: A launcher reserves a specific Run before starting a sandbox
 
-### Requirement: Each launch creates one SandboxClaim idempotently
+An executor SHALL call `POST /api/v1/runs/reserve {team, role, launchRef}` before it creates a sandbox. ploegd SHALL move the oldest eligible pending Run to `reserved` under the Team's capacity lock and return its reservation id, or answer 204 when no Run is eligible.
 
-ploegd SHALL create one SandboxClaim per launch:
-* named `ploeg-r<run>-a<attempt>`;
-* labelled with the Run, the launch and `managed-by=ploegd`;
-* referencing a chart-owned SandboxTemplate;
-* optionally referencing a SandboxWarmPool.
+A reservation SHALL count against `maxRunning`. It SHALL NOT create a Lease, authorize spend or mint a credential.
 
-A creation that returns `AlreadyExists` SHALL count as success.
+`launchRef` SHALL be stored as an opaque string.
 
-A launch committed but not yet created SHALL be created after a ploegd restart.
+#### Scenario: Concurrent reservers respect the cap
 
-#### Scenario: Crash between commit and creation
+* **WHEN** two launchers reserve concurrently for a Team with `maxRunning: 1` and two pending Runs
+* **THEN** exactly one Run is reserved, and the other launcher receives 204
 
-* **WHEN** ploegd stops after the dispatch transaction commits and before the SandboxClaim is created
-* **THEN** on restart the outbox creates exactly one SandboxClaim for that launch
+#### Scenario: A launcher that dies releases its Run
 
-#### Scenario: Repeated creation
+* **WHEN** a reservation is not renewed within its TTL
+* **THEN** the sweep returns the Run to `pending`, records no failed Run and consumes no retry budget
 
-* **WHEN** the outbox retries a launch whose SandboxClaim already exists
-* **THEN** no second claim is created and the launch is marked created
+### Requirement: Missing capacity is a wait on the reserved Work Item
+
+While the reserved Run's sandbox cannot be scheduled, the launcher SHALL keep waiting and report `{reason, since}` to ploegd. ploegd SHALL expose the wait on the reserved Work Item through the operator API and `/metrics`.
+
+No Run SHALL fail because the cluster has no capacity.
+
+A template, image-pull or pod failure SHALL fail the reserved Run with failure reason `infra_node`.
+
+#### Scenario: Full cluster
+
+* **WHEN** a reserved Run's sandbox stays unschedulable for 30 minutes
+* **THEN** the Work Item shows "waiting for capacity" with the scheduler's reason, no Run of any Work Item fails, and `ploeg_reservations_waiting_capacity` counts it
+
+#### Scenario: The old failure does not recur
+
+* **WHEN** the sandbox of Work Item A cannot start and Work Item B has a pending Run
+* **THEN** Work Item B's Run stays pending and is not failed
 
 ### Requirement: The worker binds the Run it was launched for
 
-A worker started by a sandbox launch SHALL read its launch identifier from a downwardAPI volume and bind that Run through the run API. ploegd SHALL mint the Lease, inference capability and push right at bind.
+A worker in a reserved sandbox SHALL read the reservation id from a downwardAPI volume and call `POST /api/v1/runs/bind`. ploegd SHALL mint the Lease and capabilities at bind.
 
-A worker whose identifier is absent SHALL wait for it, up to the launch deadline, and SHALL NOT claim any other Run.
+A worker without an id SHALL wait up to the reservation TTL, and SHALL NOT claim any other Run.
 
-#### Scenario: A warm pod is adopted
+#### Scenario: Warm pod adopted
 
-* **WHEN** a SandboxClaim adopts a warm pod and the launch annotation appears on it
-* **THEN** the worker binds the launched Run and starts its harness
+* **WHEN** a claim adopts a warm pod and its reservation annotation appears
+* **THEN** the worker binds that Run and starts its harness
 
-#### Scenario: A bind for the wrong Run
+#### Scenario: Stale reservation
 
-* **WHEN** a worker presents a launch identifier whose launch is released or belongs to another attempt
+* **WHEN** a worker binds a reservation that has expired or was released
 * **THEN** the bind is refused, and no Lease or credential is minted
 
-### Requirement: Missing capacity is a wait, not a failure
+### Requirement: KEDA reads no database
 
-When the Sandbox of a launch reports `PodScheduled=False` with reason `Unschedulable`, ploegd SHALL record the launch as waiting for capacity:
-* with the scheduler's message and the time the wait began;
-* exposed on the Work Item through the operator API and in `/metrics`.
-
-It SHALL NOT record a failed Run for that wait.
-
-A launch that waits past the configured requeue limit SHALL have its SandboxClaim deleted and the Run returned to `pending` with backoff.
-
-Template, warm pool, image-pull and pod failures SHALL fail that launch's Run with failure reason `infra_node`.
-
-#### Scenario: Unschedulable sandbox
-
-* **WHEN** a launched Sandbox stays unschedulable for 15 minutes
-* **THEN** the Work Item shows "waiting for capacity" with the scheduler's message, no Run is failed, and `ploeg_launches_waiting` counts the launch
-
-#### Scenario: Template missing
-
-* **WHEN** a launch's SandboxClaim reports `TemplateNotFound`
-* **THEN** that launch's Run fails with `infra_node`, and no other Run is affected
-
-### Requirement: The reconciler removes orphans and requeues lost launches
-
-About every 30 seconds ploegd SHALL list SandboxClaims labelled `managed-by=ploegd` in the sandbox namespace and compare them with launch rows:
-* It SHALL delete a claim whose launch is released, or whose Run is terminal.
-* It SHALL return a created launch whose claim no longer exists to `pending`, without failing its Run.
-* It SHALL release a launch not bound within the launch deadline.
-
-#### Scenario: Claim deleted out of band
-
-* **WHEN** a created launch's SandboxClaim is deleted by someone other than ploegd before bind
-* **THEN** the reconciler returns the Run to `pending` and records no failed Run
-
-### Requirement: ploegd's Kubernetes authority is bounded
-
-ploegd SHALL hold Kubernetes permissions only in the sandbox namespace:
-* create, get, list, watch and delete on SandboxClaims;
-* get, list and watch on Sandboxes;
-* get and patch on SandboxWarmPool `/scale`.
-
-The chart SHALL render no ScaledJob, TriggerAuthentication or launcher Job for sandbox Teams. It SHALL render a ResourceQuota for the sandbox namespace, and an admission policy that rejects SandboxClaims carrying pod metadata keys outside Ploeg's own label prefix.
+The chart SHALL render the sandbox executor's ScaledJob trigger as KEDA's `metrics-api` scaler with bearer authentication against the demand endpoint. It SHALL render no SQL query and no database credential for KEDA.
 
 #### Scenario: Golden render
 
 * **WHEN** the chart is rendered with `executor.type: sandbox`
-* **THEN** the output contains the Role, RoleBinding, ResourceQuota and admission policy, and contains no ScaledJob or TriggerAuthentication
+* **THEN** the ScaledJob trigger is `metrics-api`, and the TriggerAuthentication references only the demand token Secret

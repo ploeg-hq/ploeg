@@ -146,11 +146,12 @@ fails otherwise.
 | [0069](0069-ploeg-names-none-of-its-consumers.md) | Ploeg names none of its consumers | accepted | 2026-10-04 |
 | [0070](0070-a-pull-request-is-ready-for-review-only-when-its-checks-passed-on-the-pushed-commit.md) | A pull request is ready for review only when its checks passed on the pushed commit | accepted | 2026-10-04 |
 | [0071](0071-ploeg-keeps-its-state-in-postgresql-and-is-not-a-kubernetes-operator.md) | Ploeg keeps its state in PostgreSQL and is not a Kubernetes operator | proposed | 2026-10-05 |
-| [0072](0072-ploegd-launches-each-runs-sandbox-and-keda-leaves-the-sandbox-path.md) | ploegd launches each Run's sandbox, and KEDA leaves the sandbox path | proposed | 2026-10-06 |
+| [0072](0072-keda-stays-and-ploegd-reserves-a-run-for-each-launcher.md) | KEDA stays, and ploegd reserves a Run for each launcher | proposed | 2026-10-06 |
 | [0073](0073-ploeg-stays-in-go-and-admits-rust-only-as-a-separately-deployed-component.md) | Ploeg stays in Go, and admits Rust only as a separately deployed component | proposed | 2026-10-05 |
-| [0074](0074-ploeg-exposes-delivery-facts-and-consumers-own-the-card-and-every-formula-over-them.md) | Ploeg exposes delivery facts, and consumers own the card and every formula over them | proposed | 2026-10-06 |
+| [0074](0074-ploeg-exposes-its-execution-facts-and-consumers-collect-everything-else.md) | Ploeg exposes its execution facts, and consumers collect everything else | proposed | 2026-10-06 |
 | [0075](0075-a-stopped-writing-run-leaves-a-checkpoint-its-retry-starts-from.md) | A stopped writing Run leaves a checkpoint its retry starts from | proposed | 2026-10-05 |
 | [0076](0076-run-health-is-observable-by-team-and-role-through-one-correlation-key.md) | Run health is observable by Team and Role through one correlation key | proposed | 2026-10-05 |
+| [0077](0077-ploeg-knows-work-sources-and-change-destinations-never-vendors.md) | Ploeg knows Work Sources and Change Destinations, never vendors | proposed | 2026-10-06 |
 
 ## Review calendar
 
@@ -192,8 +193,8 @@ triggers.
 | 2027-01-31 | [0059](0059-delivery-facts-come-from-the-forge-never-from-the-agents-outcome.md) — or sooner, when a worker shares a process with its agent, `infra_forge` sends five Work Items a week to a human, a third forge provider is added, or no older worker reports for two weeks |
 | 2027-01-31 | [0060](0060-authenticated-webhooks-go-through-a-durable-inbox-and-required-publications-through-an-outbox.md) — or sooner, when inbox or outbox throughput passes 50 rows a second, a provider signs its delivery id, a tracker strips both markers, a second deployment shares a forge or tracker, or five required publications go dead in a month |
 | 2027-01-31 | [0061](0061-a-run-cards-grade-penalizes-rework-not-review-and-says-which-inputs-it-missed.md) — or sooner, when the owner asks for a grade that never changes, reviewer findings or first-check CI get a source, a quarter of a month's graded cards miss an input, or twenty cards are graded under 2026.3 |
-| 2027-01-31 | [0072](0072-ploegd-launches-each-runs-sandbox-and-keda-leaves-the-sandbox-path.md) — or sooner, when Runs in flight pass 200, agent-sandbox publishes a light Go client or renames `PodScheduled`, or a security review moves claim authority out of ploegd |
-| 2027-01-31 | [0074](0074-ploeg-exposes-delivery-facts-and-consumers-own-the-card-and-every-formula-over-them.md) — or sooner, when a second consumer needs the same card, a fact's ingest passes 10% of ploegd's forge calls or rows, or a Ploeg decision needs a derived figure |
+| 2027-01-31 | [0072](0072-keda-stays-and-ploegd-reserves-a-run-for-each-launcher.md) — or sooner, when KEDA is not acceptable on a target cluster, Runs in flight pass 200, warm starts drop below 30 s, or agent-sandbox drops warm adoption |
+| 2027-01-31 | [0074](0074-ploeg-exposes-its-execution-facts-and-consumers-collect-everything-else.md) — or sooner, when a Ploeg decision needs a dropped feed, two consumers need the same collected facts, or the collector loses status history twice in a quarter |
 | 2027-01-31 | [0075](0075-a-stopped-writing-run-leaves-a-checkpoint-its-retry-starts-from.md) — or sooner, when agent-sandbox ships pause and resume, a forge drops refs outside heads and tags, or checkpointed retries fail more than cold ones |
 | 2027-01-31 | [0076](0076-run-health-is-observable-by-team-and-role-through-one-correlation-key.md) — or sooner, when the worker sandbox can reach an OTLP collector, a Team passes 200 series, or an incident is diagnosed from logs alone |
-| 2027-04-01 | [0005](0005-build-a-dedicated-dispatch-plane.md), [0032](0032-keep-the-dispatch-plane-and-compete-on-authorized-spend.md), [0071](0071-ploeg-keeps-its-state-in-postgresql-and-is-not-a-kubernetes-operator.md), [0073](0073-ploeg-stays-in-go-and-admits-rust-only-as-a-separately-deployed-component.md) — the project review gate (`design.md` §10) |
+| 2027-04-01 | [0005](0005-build-a-dedicated-dispatch-plane.md), [0032](0032-keep-the-dispatch-plane-and-compete-on-authorized-spend.md), [0071](0071-ploeg-keeps-its-state-in-postgresql-and-is-not-a-kubernetes-operator.md), [0073](0073-ploeg-stays-in-go-and-admits-rust-only-as-a-separately-deployed-component.md), [0077](0077-ploeg-knows-work-sources-and-change-destinations-never-vendors.md) — the project review gate (`design.md` §10) |

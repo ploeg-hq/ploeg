@@ -91,7 +91,7 @@ Spend, keys, Leases and credentials are well covered. Run liveness and outcome q
 | Alert | Expression sketch | Would have fired |
 | --- | --- | --- |
 | PloegRunsIdleKilled | `sum by (team) (increase(ploeg_runs_finished_total{outcome="failed",reason=~"idle\|timeout"}[2h])) >= 2`. Stopgap today, without `team`: `increase(ploeg_runs_failed_total{reason=~"idle\|timeout"}[2h]) >= 2` | about 07:20 |
-| PloegSandboxStartFailing | `increase(ploeg_runs_failed_total{reason="infra_node"}[30m]) >= 1`, or `max(kube_pod_status_unschedulable{namespace="ploeg"}) > 0` for 5m. After ADR-0072: `ploeg_launches_waiting > 0` for 15m | about 06:09 |
+| PloegSandboxStartFailing | `increase(ploeg_runs_failed_total{reason="infra_node"}[30m]) >= 1`, or `max(kube_pod_status_unschedulable{namespace="ploeg"}) > 0` for 5m. After ADR-0072: a reservation waiting for capacity past a threshold | about 06:09 |
 | PloegShiftNoDelivery | `ploeg_shift_runs_without_pr_max{team}`: a Shift open over 2 h with 3 or more finished Runs and no PR | about 08:10 |
 | PloegWriterNoPR | `increase(ploeg_runs_finished_total{role="builder",outcome="no_change_needed"}[6h]) >= 1`, to the digest | at Run 200 |
 | PloegQueueWaitHigh | `max by (team) (ploeg_work_items_oldest_age_seconds{state="queued"}) > 3600`, replacing the noisier 900 s rule | about 06:58 |

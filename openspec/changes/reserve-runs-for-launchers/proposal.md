@@ -1,44 +1,44 @@
 ## Why
 
-The sandbox Executor starts a worker first and lets it claim afterwards. A KEDA ScaledJob polls a copy of the claim predicate (`ops/helm/ploeg/templates/scaledjob.yaml:64-78`), using database credentials held by KEDA. It starts a launcher Job whose pod holds a Kubernetes token and creates a SandboxClaim (`pkg/sandboxlaunch/launcher.go`). The worker inside the sandbox then claims *any* eligible Run.
+The sandbox Executor starts a launcher Job through a KEDA ScaledJob. KEDA polls a copy of the claim predicate in Postgres (`ops/helm/ploeg/templates/scaledjob.yaml:64-78`) through a role in `pg_read_all_data`.
 
-When the sandbox cannot be scheduled, `FailUnstartedRun` (`pkg/worker/unstarted.go:16`) claims and fails whichever Run is pending next. In Work Item 138 that turned missing Kata capacity into failed Runs charged to the wrong Work Item ([incident](../../../docs/research/2026-09-29-incident-work-item-138.md), factor 1). Warm pools cannot be used, because a warm pod starts before its Run exists and would claim outside the launcher.
+When the sandbox cannot be scheduled, the launcher gives up after 600 s, and `FailUnstartedRun` (`pkg/worker/unstarted.go:16-34`) claims and fails whichever Run is pending next. In Work Item 138 that charged missing Kata capacity to an unrelated Work Item ([incident](../../../docs/research/2026-09-29-incident-work-item-138.md), factor 1). Warm pools cannot be used, because a warm pod starts before any Run is bound to it.
 
-[ADR-0072](../../../docs/adrs/0072-ploegd-launches-each-runs-sandbox-and-keda-leaves-the-sandbox-path.md) decides that ploegd launches each Run's sandbox itself. This change implements that decision.
+[ADR-0072](../../../docs/adrs/0072-keda-stays-and-ploegd-reserves-a-run-for-each-launcher.md) keeps KEDA. It fixes these problems with a demand endpoint and Run reservations, and gives ploegd no Kubernetes rights.
 
 ## What Changes
 
-* **Dispatch.** A new dispatcher in ploegd selects the oldest eligible pending Run per Team under the existing capacity lock. It moves the Run to a new `launching` state, which counts against `maxRunning`, and records a launch in a new `run_launches` table. This is all one transaction.
-* **Launch outbox.** An outbox worker creates one SandboxClaim per launch with a deterministic name, `ploeg-r<run>-a<attempt>`, and Ploeg-owned labels. `AlreadyExists` counts as success.
-* **Bind instead of claim.** The worker in the sandbox reads its launch identifier from a downwardAPI volume and binds that Run. The Lease, inference capability and push right are minted at bind, not at dispatch. A worker in a warm pod waits until the identifier appears.
-* **Reconciler.** About every 30 s ploegd lists its SandboxClaims by label and compares them with launch rows. It deletes orphans, requeues a launch whose claim vanished, enforces a launch deadline before bind, and reads each Sandbox's `PodScheduled` condition.
-* **Waiting for capacity.** An unschedulable launch is recorded as waiting, with the scheduler's message. It is exposed through the operator API and `/metrics`, and never becomes a failed Run. Template, warm pool, image-pull and pod failures fail that specific Run as `infra_node`.
-* **Warm pool sizing.** ploegd patches each SandboxWarmPool's `/scale` from configuration: default zero, optional minimum per time window.
-* **Chart.** For sandbox Teams the chart drops the ScaledJob, the TriggerAuthentication and the launcher Job. It adds a Role and RoleBinding for ploegd in the sandbox namespace, a ResourceQuota, and an admission policy limiting claim pod metadata to Ploeg's label keys.
-* **BREAKING (chart, sandbox Executor only).** `executor.type: sandbox` no longer renders KEDA objects. A cluster that relied on them for sandbox Teams must give ploegd network access to the Kubernetes API. The `keda` and `cronjob` executors are unchanged.
+* **Demand endpoint.** `GET /api/v1/executor/demand?team=&role=` returns `min(pending, maxRunning − running − reserved)`, computed by `store.PendingRuns`.
+* **Chart.** The ScaledJob trigger becomes KEDA's `metrics-api` scaler with bearer authentication. The SQL query and the TriggerAuthentication's database secret leave the chart.
+* **Reservation.** `POST /api/v1/runs/reserve {team, role, launchRef}` moves the oldest eligible pending Run to `reserved` and returns its reservation id, or returns 204. It creates no Lease, budget or credential. Renewal and expiry back to `pending` follow the Lease pattern.
+* **Wait report.** `POST /api/v1/runs/reservations/{id}/wait {reason, since}` records a capacity wait on the reserved Work Item.
+* **Bind.** `POST /api/v1/runs/bind {reservation}` is called by the worker with the id read from a downwardAPI volume. It mints the Lease and capabilities as the claim does today.
+* **Launcher.**
+  * It reserves before creating its SandboxClaim, and passes the id in `additionalPodMetadata`.
+  * It waits while the Sandbox reports `PodScheduled=Unschedulable`.
+  * It fails only the reserved Run on a real fault.
+* **Worker.** It binds the Run it was launched for. `FailUnstartedRun` is deleted.
+* **Alerts in the chart:** `PloegCapacityWaitLong`, `PloegReservationsExpiring` and `PloegScaledJobErrors`.
+* **BREAKING (chart):** the scaler no longer reads Postgres. A deployment must give KEDA's operator network access to ploegd's demand endpoint, and a bearer token Secret.
 
 ## Capabilities
 
 ### New Capabilities
 
-* `sandbox-launch`: ploegd dispatches, launches, binds and reconciles each unattended Run's sandbox, and reports capacity waits.
+* `run-reservation`: an executor reserves a specific Run before starting its sandbox, reports capacity waits, and binds that Run from inside the sandbox.
 
 ### Modified Capabilities
 
-* None in `openspec/specs/`. The executor contract (`docs/contracts/executor.md`) is updated in the same change: the scale-signal section stops applying to the sandbox Executor.
+* None in `openspec/specs/`. `docs/contracts/executor.md` is updated in the same change: the scale signal becomes the demand endpoint.
 
 ## Impact
 
 * **Code:**
-  * `pkg/store`: the `run_launches` table, the `launching` state, and the dispatch, bind and requeue methods.
-  * `pkg/sandboxlaunch`: becomes a ploegd-side client with list and status reads.
-  * `cmd/ploegd`: wires the outbox and reconciler loops.
-  * `cmd/ploeg-worker` and `pkg/worker`: bind from the downwardAPI identifier; `FailUnstartedRun` is removed for sandbox Teams.
-  * `pkg/httpapi`: the bind route and waiting-reason projection.
+  * `pkg/store`: the `reserved` state; reserve, renew, wait, bind and release; expiry in the sweep.
+  * `pkg/httpapi`: the routes.
+  * `pkg/sandboxlaunch`.
+  * `cmd/ploeg-worker` and `pkg/worker`.
 * **Migration:** the next file in `pkg/store/migrations/`.
-* **Contracts:** `docs/contracts/run-api.v1.schema.json` gains the bind request (additive); `docs/contracts/operator-api.v1.schema.json` gains the waiting reason (additive optional field); `docs/contracts/executor.md` is updated.
-* **Chart:** `ops/helm/ploeg/templates/{scaledjob,triggerauthentication,sandbox}.yaml`, `_sandbox.tpl`, the RBAC templates and the golden renders.
-* **Metrics and alerts:**
-  * `ploeg_launches_waiting{team}` and `ploeg_launch_wait_seconds`;
-  * an alert when a launch waits longer than a configured limit ([alerts](../../../docs/ops/alerts.md)).
-* **Outside this repository:** homelab-cluster removes the KEDA-to-database NetworkPolicy opening. It also either grants `ploeg_scaler` access to named tables only or retires it.
+* **Contracts:** additive changes to `run-api.v1.schema.json`.
+* **Chart:** `scaledjob.yaml`, `triggerauthentication.yaml`, `_sandbox.tpl`, `prometheusrule.yaml` and the golden renders.
+* **Outside this repository:** homelab-cluster replaces the KEDA-to-database NetworkPolicy opening with KEDA-to-ploegd, and narrows `ploeg_scaler` to the exporter's tables.

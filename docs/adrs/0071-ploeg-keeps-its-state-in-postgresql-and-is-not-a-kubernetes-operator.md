@@ -34,7 +34,7 @@ Chosen option: "**Keep execution state in PostgreSQL, and use Kubernetes only as
 
 An operator's reconcile loop is safe because it can run any number of times. Ploeg's core is the opposite: a ledger, plus effects that must not repeat. etcd has no transactions across objects, and a CRD `status` is not an append-only ledger. An operator would end up keeping an outbox, a lock and a ledger in CRDs: a weaker copy of the tables Ploeg already has.
 
-The part of Ploeg that does fit the operator pattern is placing and isolating a pod. agent-sandbox is already that operator, and Ploeg is its client ([ADR-0072](0072-ploegd-launches-each-runs-sandbox-and-keda-leaves-the-sandbox-path.md)).
+The part of Ploeg that does fit the operator pattern is placing and isolating a pod. agent-sandbox is already that operator; Ploeg's launcher is its client, started by KEDA, and ploegd itself holds no Kubernetes rights ([ADR-0072](0072-keda-stays-and-ploegd-reserves-a-run-for-each-launcher.md)).
 
 Configuration CRDs stay a later option. They would only mirror Team, Target and Forge registration into Postgres, and runtime state would never live in them.
 

@@ -6,163 +6,127 @@ supersedes: none
 review-by: 2027-01-31
 ---
 
-# ploegd launches each Run's sandbox, and KEDA leaves the sandbox path
+# KEDA stays, and ploegd reserves a Run for each launcher
 
 ## Context and Problem Statement
 
 Today Ploeg starts a worker first and lets it claim afterwards. A KEDA ScaledJob polls a copy of the claim predicate in Postgres (`ops/helm/ploeg/templates/scaledjob.yaml:64-78`) and starts a launcher Job. The launcher creates a SandboxClaim (`pkg/sandboxlaunch/launcher.go`). The worker inside then asks ploegd for any eligible Run.
 
-This design has five consequences:
+Four things are wrong with this:
 
 * **A third copy of the claim predicate.** It is kept in step only by a comment, which is the duplication [ADR-0010](0010-shift-owns-the-item-lease-owns-the-branch.md) rejected.
-* **Empty pods.** Pods that find nothing exit 0, and the cap has to be clamped into `maxReplicaCount`.
-* **KEDA holds database credentials.** The homelab role behind them is in `pg_read_all_data`.
-* **A launcher pod holds a Kubernetes token.**
-* **The wrong Run fails.** `FailUnstartedRun` (`pkg/worker/unstarted.go:16`) claims and fails whichever Run is pending next. In [Work Item 138](../research/2026-09-29-incident-work-item-138.md) that turned 20 minutes of missing Kata capacity into failed Runs on the wrong Work Item.
+* **KEDA holds a database role in `pg_read_all_data`.** That role can read Run tokens and the audit log.
+* **The wrong Run fails.** After its 600 s start timeout, the launcher calls `FailUnstartedRun` (`pkg/worker/unstarted.go:16-34`), which claims and fails whichever Run is pending next. In [Work Item 138](../research/2026-09-29-incident-work-item-138.md) that charged missing Kata capacity to an unrelated Work Item.
+* **Warm pools are unusable.** A warm pod starts before any Run is bound to it.
 
-Who decides which Run gets a sandbox, and when: the cluster autoscaler or ploegd?
+An earlier version of this record, proposed on 2026-10-05, answered with push launch: ploegd would create each SandboxClaim itself and KEDA would leave the sandbox path. The owner asked for research into what KEDA provides before deciding.
+
+Which component decides that a sandbox starts, and how does a full cluster stay a wait instead of a failure?
 
 ## Decision Drivers
 
-* **One claim predicate,** owned by `pkg/store` (ADR-0010).
-* **Missing capacity is a wait, not a failure,** and a delay must never be charged to an unrelated Work Item.
-* **Management authority stays in the control plane** ([ADR-0025](0025-management-authority-stays-in-the-control-plane.md)), and no workload holds credentials it does not need.
-* **No spend before start.** A Run that never starts must never have authorized spend ([ADR-0012](0012-two-level-budgets-authorized-and-settled.md)).
-* **Launches survive crashes,** with no new deployable ([ADR-0060](0060-authenticated-webhooks-go-through-a-durable-inbox-and-required-publications-through-an-outbox.md)).
+* **ploegd holds no Kubernetes rights.** ploegd mints credentials and receives webhooks from the internet. It is the process whose blast radius matters most.
+* **Ploeg knows as little as possible about the systems around it.** This is the owner's direction, and [ADR-0077](0077-ploeg-knows-work-sources-and-change-destinations-never-vendors.md).
+* **One claim predicate** (ADR-0010).
+* **Missing capacity is a wait, attributed to the right Work Item, and never charged to another.**
+* **No spend before a Run starts** ([ADR-0012](0012-two-level-budgets-authorized-and-settled.md)).
 
 ## Considered Options
 
-* ploegd launches through a Postgres launch outbox, and KEDA leaves the sandbox path
-* ploegd launches, and KEDA keeps sizing SandboxWarmPools
-* Keep spawn-then-claim through KEDA, and fix `FailUnstartedRun`
-* A separate scheduler service, in Go or Rust
+* Keep KEDA. ploegd serves its demand signal over HTTP, and each launcher reserves a specific Run before creating its sandbox
+* Push launch: ploegd creates SandboxClaims through an outbox and a reconciler, and KEDA leaves the sandbox path
+* KEDA's gRPC external scaler served by ploegd
+* Keep everything as it is
 
 ## Decision Outcome
 
-Chosen option: "**ploegd launches through a Postgres launch outbox, and KEDA leaves the sandbox path**". It removes the duplicated predicate, the empty pods, KEDA's database credentials and the launcher's Kubernetes token in one change, and lets ploegd tell a capacity wait from a failure.
+Chosen option: "**Keep KEDA. ploegd serves its demand signal over HTTP, and each launcher reserves a specific Run before creating its sandbox**". It fixes the wrong-Run failure, the copied predicate and the over-broad database role. It keeps ploegd free of Kubernetes rights and knowledge, and it keeps KEDA's pause switch, gradual rollout, Job history and visibility.
 
-### The launch path
+### What changes
 
-* **Dispatch.** A dispatcher transaction:
-  * takes the Team's capacity lock (`pkg/store/team_capacity.go`);
-  * selects the oldest eligible pending Run across Roles with `FOR UPDATE SKIP LOCKED`;
-  * moves it to `launching`, which counts against `maxRunning`;
-  * inserts a `run_launches` row in the next migration.
+1. **Demand.**
+   * ploegd serves `GET /api/v1/executor/demand?team=&role=`. The value is `min(pending, maxRunning − running − reserved)`, computed by the store's `PendingRuns`, which `TestClaimRoleAgreesWithPendingRuns` already ties to `ClaimRole`.
+   * The ScaledJob trigger becomes KEDA's `metrics-api` scaler with bearer authentication, and the SQL predicate leaves the chart.
+   * KEDA needs no database user. Its credential is a token that can only read demand.
+2. **Reservation.**
+   * A launcher calls `POST /api/v1/runs/reserve {team, role, launchRef}` before it creates a SandboxClaim. `launchRef` is an opaque string, the Job's UID, so ploegd learns nothing about Kubernetes.
+   * The Run moves to `reserved`, and no Lease, budget authorization or credential is created. A reservation counts against `maxRunning`.
+   * The launcher renews the reservation as a Lease is renewed. If the launcher dies, the reservation expires back to `pending` with no failure.
+   * A 204 from reserve means no work: the launcher exits without creating a sandbox.
+3. **Bind.**
+   * The launcher passes the reservation id in the claim's `additionalPodMetadata`.
+   * The worker reads it from a downwardAPI volume and binds that Run, which mints the Lease and capabilities as the claim does today.
+   * A worker in a warm pod waits for the annotation. Warm pools become usable.
+4. **Capacity is a wait.**
+   * While the Sandbox's `PodScheduled` condition reads `Unschedulable`, the launcher keeps waiting. It reports `{reservation, reason, since}` to ploegd, which shows "waiting for capacity" on the reserved Work Item.
+   * Template, image-pull and pod failures fail the **reserved** Run as `infra_node` ([ADR-0021](0021-infra-failures-and-agent-failures-get-separate-retry-budgets.md)).
+   * `FailUnstartedRun` is deleted.
+5. **Alerts in Ploeg's chart:**
+   * `PloegCapacityWaitLong`: a reservation waiting for capacity past a threshold;
+   * `PloegReservationsExpiring`: launchers dying before bind;
+   * `PloegScaledJobErrors`: `keda_scaled_job_errors_total` and `keda_scaler_detail_errors_total` for this release's ScaledJobs. KEDA reads a failing scaler as zero and starts nothing, so this alert is the only signal of that stall.
 
-  No Lease, budget authorization or credential is created at dispatch.
-* **Create.** After commit, an outbox worker in ploegd creates a SandboxClaim named `ploeg-r<run>-a<attempt>`, labelled with the Run, the launch and `managed-by=ploegd`. `AlreadyExists` counts as success, so creation is idempotent.
-* **Bind.** The worker in the sandbox reads its launch identifier from a downwardAPI volume. The claim becomes a *bind* of that specific Run, which mints the Lease and capabilities as today. A worker in a warm pod waits for the annotation before it binds.
-* **Recover.**
-  1. The outbox replays unsent launches.
-  2. A reconciler (about every 30 s) lists claims labelled `managed-by=ploegd`, deletes orphans and requeues a launch whose claim vanished, without failing a Run.
-  3. After bind, the Lease TTL and the sweep remain the crash detector.
-* **Wait for capacity.** When the Sandbox's `PodScheduled` condition reads `Unschedulable` (agent-sandbox v1.0.5), the launch is shown as waiting for capacity, with the scheduler's message, and no failed Run is recorded. Template, warm pool, image-pull and pod failures fail that Run as `infra_node` ([ADR-0021](0021-infra-failures-and-agent-failures-get-separate-retry-budgets.md)).
-* **Size warm pools.** ploegd patches each SandboxWarmPool's `/scale`. The default is zero; minimum warm counts per time window are configuration.
-* **Authority.** ploegd gets a Role in the sandbox namespace only:
-  * `sandboxclaims`: create, get, list, watch, delete
-  * `sandboxes`: get, list, watch
-  * `sandboxwarmpools/scale`: get, patch
-  * no pods, Secrets or exec.
-
-  A ResourceQuota on that namespace is the cluster-side ceiling. An admission policy restricts claim pod metadata to Ploeg's own label keys.
-* **Client.** The existing raw-HTTP client is extended with list-by-label and status reads. The upstream Go clientset is not imported: it lives inside the `sigs.k8s.io/agent-sandbox` module, which pulls in controller-runtime, client-go, OpenTelemetry and gRPC. This partly revises [ADR-0032](0032-keep-the-dispatch-plane-and-compete-on-authorized-spend.md)'s intent to use the generated clientset.
-
-### What KEDA does well today, and how each part is kept
-
-KEDA is the running executor today. These are its real strengths:
-
-* **Ploeg needs no Kubernetes rights.** ploegd never touches the Kubernetes API; KEDA and the Job controller do. Push launch gives that up, bounded to SandboxClaims in one namespace (above).
-* **It keeps trying.** As long as the count is above zero, KEDA starts another Job every poll, whatever happened to the last one. Push launch keeps this property through the launch outbox and the reconciler: an unsent, vanished or unbound launch is retried, never forgotten.
-* **It is a second, independent loop.** If ploegd's dispatcher had a bug, KEDA would still spawn workers. But those workers could only claim through ploegd, so this independence buys nothing a ploegd bug would not also break.
-* **It is mature and observed.** Its errors are already exported (`keda_scaled_job_errors_total`), and an alert covers them.
-
-What KEDA does badly is the case the owner asked about: **when the cluster has no room**.
-* KEDA starts a Job. The Job's pod or sandbox stays Pending.
-* After the 10-minute start timeout, `FailUnstartedRun` claims and fails whichever Run is pending next. That is the wrong Work Item, and it burns its retry budget.
-* KEDA then starts the next Job into the same full cluster.
-
-Under push launch, the launch for a specific Run waits as `waiting_capacity`. The scheduler's reason is shown on that Work Item and the wait is alerted. No Run fails, and after the requeue limit the claim is withdrawn and retried with backoff, so a full cluster costs time and never budget.
-
-### Phased removal
-
-KEDA stays the sandbox executor until push launch has proven itself:
-
-1. **Push launch ships behind `executor.launch: push` per Team,** with KEDA remaining the default.
-2. **One Team runs on push for two weeks,** with these conditions held:
-   * no Run fails as `infra_node` for lack of capacity;
-   * no launch is stranded (outbox and reconciler alerts quiet);
-   * every capacity wait is attributed to the right Work Item.
-3. **Then every sandbox Team moves,** the sandbox ScaledJob and TriggerAuthentication are removed, and the KEDA database role is dropped.
-
-The `keda` and `cronjob` executors remain for clusters without agent-sandbox. They are not extended, and a later record sets their deprecation date.
-
-The full design and tasks are in the OpenSpec change `openspec/changes/launch-sandboxes-from-ploegd/`.
+The `cronjob` executor keeps working. It reserves and binds through the same API. The `keda` executor without agent-sandbox uses the same demand endpoint and reserve call from its worker pod.
 
 ### Consequences
 
 * **Good:**
+  * ploegd gains no Kubernetes rights and no Kubernetes code. The launcher keeps its narrow, short-lived token.
   * The claim predicate exists once.
-  * Surplus pods and the `maxReplicaCount` clamp are gone.
-  * KEDA no longer needs Ploeg database credentials or a NetworkPolicy path to the database.
-  * No executor pod holds a Kubernetes token.
-  * Missing capacity is reported as a wait on the right Work Item.
-  * Warm pools become usable, because a warm worker binds a specific Run.
-  * Dispatch can order by Work Item age across Roles, so one Role's queue no longer starves another's.
+  * KEDA's credential shrinks from read-all to a demand-only token.
+  * A full cluster is a wait on the right Work Item. No Run fails for it, and nothing is spent.
+  * Warm pools become usable through bind, without push launch.
+  * KEDA's operability stays: the pause annotation, gradual rollout, `kubectl get scaledjob` and admission webhooks.
 * **Bad:**
-  * ploegd gains Kubernetes write authority over SandboxClaims, a new privilege for the control plane. It is bounded to one namespace and to chart-owned templates.
-  * ploegd gains two loops (outbox and reconciler) and a migration, and must be tested against agent-sandbox's CRD schema version.
-  * The sandbox executor now requires ploegd to reach the Kubernetes API; it is no longer only reached by pods.
+  * Start latency keeps KEDA's poll interval (5 s in the homelab) plus a launcher pod start. This matters only once warm pools make Kata starts take seconds.
+  * The store gains a `reserved` state with renewal and expiry. Push launch would have needed this too.
+  * KEDA remains a dependency of the sandbox executor, though not of Ploeg core.
 
 ### Confirmation
 
-* **Store.**
-  * A regression test in `pkg/store` proves that concurrent dispatch never exceeds `maxRunning`, and that `launching` counts against it.
-  * A test that kills the process between dispatch commit and claim creation proves the outbox replays the launch exactly once.
-* **Launcher.**
-  * `pkg/sandboxlaunch` tests run against `httptest` fakes of the agent-sandbox API.
-  * A contract test against the v1.0.5 CRD schemas covers creation, `AlreadyExists`, list-by-label and `PodScheduled=Unschedulable`.
-* **Waiting.** A test proves an unschedulable launch records no failed Run and leaves the Run `launching` with a waiting reason.
+* **Store.** A `pkg/store` regression test proves that a launcher timing out never fails an unrelated Run. Its old-code counterpart reproduces WI-138's Run 192. Other tests prove:
+  * reserve, renew, expiry back to `pending`, and bind;
+  * a reservation counts against `maxRunning` under concurrent reservers.
+* **Demand.** A test proves `GET /api/v1/executor/demand` equals `min(pending, cap − running − reserved)`, and that it agrees with `ClaimRole`.
+* **Launcher.** A `pkg/sandboxlaunch` test, against an `httptest` agent-sandbox fake, proves `Unschedulable` reports a wait and fails nothing, while a template fault fails the reserved Run.
 * **Chart.**
-  * The golden renders for the sandbox executor contain no ScaledJob and no TriggerAuthentication.
-  * They contain the Role, RoleBinding and ResourceQuota.
-  * `mise run verify` runs them.
-* **Deployed.** After rollout, `kubectl get scaledjobs -n ploeg` lists no sandbox-Team workload, and the `ploeg_scaler` NetworkPolicy opening is removed in homelab-cluster.
+  * The golden render shows the ScaledJob trigger as `metrics-api` with bearer authentication, and no SQL query.
+  * `promtool` tests fire `PloegScaledJobErrors` on a rising error counter, and not on a flat one.
+* **Deployed.** Once the release is deployed, KEDA's TriggerAuthentication references no database secret, and `ploeg_scaler` is no longer used by KEDA.
 
 ## Pros and Cons of the Options
 
-### ploegd launches, and KEDA keeps sizing SandboxWarmPools
+### Push launch: ploegd creates SandboxClaims
 
-* Good, because upstream ships a KEDA example for warm-pool scale-to-zero.
-* Bad, because ploegd already knows the exact queue, so KEDA would need a metric ploegd exports: a circular signal.
-* Bad, because two writers on a pool's `/scale` fight.
-* Bad, because it keeps KEDA in Ploeg's install requirements for a job ploegd does with one PATCH.
+* Good, because there is no launcher pod and no poll delay.
+* Bad, because ploegd, the most exposed process, gains create and delete rights on SandboxClaims and must reach the Kubernetes API.
+* Bad, because ploegd must own an outbox, a reconciler, agent-sandbox schema knowledge and a requeue state machine. That is Kubernetes knowledge in core.
+* Bad, because KEDA's pause, rollout and visibility would have to be rebuilt.
+* Bad, because the latency it saves is seconds, against minutes of Kata scheduling and boot.
 
-### Keep spawn-then-claim through KEDA, and fix `FailUnstartedRun`
+### KEDA's gRPC external scaler served by ploegd
 
-* Good, because it is the smallest change.
-* Bad, because the copied predicate, empty pods, KEDA's database credentials and the launcher's token all remain.
-* Bad, because a warm pool still cannot bind a specific Run.
+* Good, because it also removes the database credential.
+* Bad, because `external-push` does not support ScaledJob, and plain `external` polls just like `metrics-api`.
+* Bad, because it adds gRPC to the binary that mints credentials.
 
-### A separate scheduler service, in Go or Rust
+### Keep everything as it is
 
-* Good, because it would isolate Kubernetes authority from ploegd's process.
-* Bad, because the scheduler must either copy the claim predicate or call ploegd over a new API, with a new deployable.
-* Bad, because a Rust scheduler cannot share the claim transaction in `pkg/store` ([ADR-0073](0073-ploeg-stays-in-go-and-admits-rust-only-as-a-separately-deployed-component.md)).
+* Good, because nothing changes.
+* Bad, because the wrong Run keeps failing on a full cluster, and KEDA keeps read-all database access.
 
 ## Re-evaluation triggers
 
-* Runs in flight exceed 200, where list polling should give way to informers or watches.
-* agent-sandbox publishes its Go client as a separate module with few dependencies.
-* agent-sandbox removes or renames the Sandbox `PodScheduled` condition, or the claim's warm-adoption behaviour.
-* A security review asks for SandboxClaim authority to leave ploegd's process. That reopens the separate-scheduler option.
-* No cluster running Ploeg uses the `keda` or `cronjob` executor for 90 days. That sets their deprecation date.
+* Ploeg must install on clusters where KEDA is not acceptable. A separate launcher component on the same reserve and bind API is built, still outside ploegd.
+* Runs in flight exceed 200, so one launcher pod per Run costs real resources.
+* Warm pools take Kata starts below 30 s, so KEDA's poll interval becomes the largest share of start latency.
+* agent-sandbox drops `additionalPodMetadata` or warm-pod adoption.
+* A KEDA defect in `accurate` scaling or `gradual` rollout affects this path.
 
 ## More Information
 
-* Evidence: [Substrate, language and Run bottlenecks](../research/2026-10-05-substrate-language-and-run-bottlenecks.md), §3.
-* Related:
-  * [executor contract](../contracts/executor.md)
-  * [ADR-0010](0010-shift-owns-the-item-lease-owns-the-branch.md), [ADR-0021](0021-infra-failures-and-agent-failures-get-separate-retry-budgets.md), [ADR-0025](0025-management-authority-stays-in-the-control-plane.md), [ADR-0032](0032-keep-the-dispatch-plane-and-compete-on-authorized-spend.md), [ADR-0060](0060-authenticated-webhooks-go-through-a-durable-inbox-and-required-publications-through-an-outbox.md)
-* Homelab follow-up, outside this repository: remove the KEDA-to-database NetworkPolicy opening. Either grant `ploeg_scaler` access to named tables only, or retire it.
-* 2026-10-05: proposed after the owner agreed that ploegd should call agent-sandbox directly.
-* 2026-10-06: KEDA's strengths and the no-capacity case stated explicitly; removal is phased behind a per-Team switch and a two-week trial.
+* Evidence: [KEDA, plug-and-play integrations, and card collection](../research/2026-10-06-keda-integrations-and-card-collection.md), §1. Also the [2026-10-05 research](../research/2026-10-05-substrate-language-and-run-bottlenecks.md), §3, which this decision overrules.
+* Design and tasks: `openspec/changes/reserve-runs-for-launchers/`.
+* Homelab follow-up, after the release: replace the KEDA-to-database NetworkPolicy opening with KEDA-to-ploegd, and narrow `ploeg_scaler` to the exporter's tables.
+* 2026-10-05: proposed as "ploegd launches each Run's sandbox, and KEDA leaves the sandbox path".
+* 2026-10-06: rewritten after research into KEDA. Push launch is withdrawn, and KEDA stays with a demand endpoint and Run reservations.
