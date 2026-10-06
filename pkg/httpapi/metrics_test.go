@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ploeg-hq/ploeg/pkg/store"
+	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
 func scrape(t *testing.T, h http.Handler) string {
@@ -119,4 +120,61 @@ func TestMetricLabelValuesAreEscaped(t *testing.T) {
 		OpenShifts: map[string]int{"a\"b\\c\nd": 1},
 	}, nil))
 	requireLines(t, body, `ploeg_shifts_open{team="a\"b\\c\nd"} 1`)
+}
+
+func TestMetricsExposeRunOutcomesByTeamAndRole(t *testing.T) {
+	reset(t)
+	ctx := context.Background()
+	shiftFixture(t, "903", 5, []store.Role{{Name: "builder", Writes: true, Cap: 1}})
+	run, err := testStore.ClaimRole(ctx, "bronze", "builder", time.Minute, 1)
+	if err != nil || run == nil {
+		t.Fatalf("claim: %v %v", run, err)
+	}
+	reason := string(work.FailureIdle)
+	if _, err := testStore.ReportOutcome(ctx, run.RunToken, store.Report(work.OutcomeFailed, "killed", "", nil, nil, &reason)); err != nil {
+		t.Fatal(err)
+	}
+	queued, _, err := testStore.IngestAssigned(ctx, work.WorkItem{Provider: "vikunja", ExternalID: "904", Team: "bronze", Title: "t"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := testPool.Exec(ctx, `UPDATE work_items SET updated_at = now() - interval '2 hours' WHERE id = $1`, queued); err != nil {
+		t.Fatal(err)
+	}
+
+	s := &Server{Store: testStore, Log: slog.New(slog.DiscardHandler), MetricsCacheTTL: -1}
+	body := scrape(t, s.Handler())
+	requireLines(t, body,
+		"# TYPE ploeg_runs_finished_total counter",
+		`ploeg_runs_finished_total{team="bronze",role="builder",outcome="failed",reason="idle"} 1`,
+		`ploeg_runs_finished_total{team="bronze",role="builder",outcome="failed",reason="timeout"} 0`,
+		`ploeg_runs_finished_total{team="bronze",role="builder",outcome="failed",reason="infra_node"} 0`,
+		`ploeg_runs_failed_total{reason="idle"} 1`,
+		"# TYPE ploeg_shift_runs_without_pr_max gauge",
+		`ploeg_shift_runs_without_pr_max{team="bronze"} 1`,
+		"# TYPE ploeg_llm_accounts_unsettled gauge",
+		`ploeg_llm_accounts_unsettled{state="blocked"} 0`,
+		`ploeg_llm_accounts_unsettled{state="reserved"} 0`,
+		"# TYPE ploeg_work_item_oldest_queued_seconds gauge",
+	)
+	if !strings.Contains(body, "\n"+`ploeg_work_item_oldest_queued_seconds{team="bronze"} 7`) {
+		t.Errorf("expected the queued item's two-hour wait in:\n%s", body)
+	}
+}
+
+func TestRunOutcomeSeriesAreSortedAndCarryAnEmptyReasonForNonFailures(t *testing.T) {
+	body := string(renderMetrics(store.OperationalMetrics{
+		FinishedRuns: map[store.RunOutcomeKey]int{
+			{Team: "silver", Role: "reviewer", Outcome: "no_change_needed"}:             2,
+			{Team: "bronze", Role: "builder", Outcome: "pr_opened"}:                     1,
+			{Team: "bronze", Role: "builder", Outcome: "failed", Reason: "agent_error"}: 3,
+		},
+	}, nil))
+	want := `ploeg_runs_finished_total{team="bronze",role="builder",outcome="failed",reason="agent_error"} 3
+ploeg_runs_finished_total{team="bronze",role="builder",outcome="pr_opened",reason=""} 1
+ploeg_runs_finished_total{team="silver",role="reviewer",outcome="no_change_needed",reason=""} 2
+`
+	if !strings.Contains(body, want) {
+		t.Fatalf("run outcome series out of order or mislabelled:\n%s", body)
+	}
 }

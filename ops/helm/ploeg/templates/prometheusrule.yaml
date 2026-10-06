@@ -106,4 +106,94 @@ spec:
             {{- end }}
         {{- end }}
         {{- end }}
+        {{- with $a.runsIdleKilled }}
+        {{- if .enabled }}
+        - alert: PloegRunsIdleKilled
+          expr: sum by (team) (increase(ploeg_runs_finished_total{outcome="failed",reason=~"idle|timeout",{{ $sel }}}[{{ .window }}])) >= {{ .kills }}
+          for: {{ .for }}
+          labels:
+            severity: {{ .severity }}
+          annotations:
+            summary: {{ printf "Team {{ $labels.team }} had %v or more Runs killed by the idle or total timeout within %s" .kills .window | quote }}
+            description: "{{ "{{" }} $value | printf \"%.0f\" {{ "}}" }} Run(s) of team {{ "{{" }} $labels.team {{ "}}" }} failed with reason idle or timeout. Each kill throws away the Run's work and spend, and the Round retries the Role."
+            {{- if $runbook }}
+            runbook_url: {{ printf "%s#ploegrunsidlekilled" $runbook }}
+            {{- end }}
+        {{- end }}
+        {{- end }}
+        {{- with $a.runsFailingRepeatedly }}
+        {{- if .enabled }}
+        - alert: PloegRunsFailingRepeatedly
+          expr: sum by (team, role) (increase(ploeg_runs_finished_total{outcome="failed",{{ $sel }}}[{{ .window }}])) >= {{ .failures }}
+          for: {{ .for }}
+          labels:
+            severity: {{ .severity }}
+          annotations:
+            summary: {{ printf "Role {{ $labels.role }} of team {{ $labels.team }} failed %v or more Runs within %s" .failures .window | quote }}
+            description: "{{ "{{" }} $value | printf \"%.0f\" {{ "}}" }} Run(s) of Role {{ "{{" }} $labels.role {{ "}}" }} on team {{ "{{" }} $labels.team {{ "}}" }} ended failed, whatever the reason. ploeg_runs_finished_total{outcome=\"failed\"} by reason says which."
+            {{- if $runbook }}
+            runbook_url: {{ printf "%s#ploegrunsfailingrepeatedly" $runbook }}
+            {{- end }}
+        {{- end }}
+        {{- end }}
+        {{- with $a.sandboxStartFailing }}
+        {{- if .enabled }}
+        - alert: PloegSandboxStartFailing
+          expr: sum by (team) (increase(ploeg_runs_finished_total{outcome="failed",reason="infra_node",{{ $sel }}}[{{ .window }}])) > 0
+          for: {{ .for }}
+          labels:
+            severity: {{ .severity }}
+          annotations:
+            summary: {{ printf "A Run of team {{ $labels.team }} failed on its node within %s" .window | quote }}
+            description: "A Run of team {{ "{{" }} $labels.team {{ "}}" }} failed with infra_node: its sandbox or pod did not start, or its node failed under it. The failure lands on whichever Run of the team was pending, not necessarily the one that waited."
+            {{- if $runbook }}
+            runbook_url: {{ printf "%s#ploegsandboxstartfailing" $runbook }}
+            {{- end }}
+        {{- end }}
+        {{- end }}
+        {{- with $a.shiftNoDelivery }}
+        {{- if .enabled }}
+        - alert: PloegShiftNoDelivery
+          expr: max by (team) (ploeg_shift_runs_without_pr_max{ {{- $sel -}} }) >= {{ .runs }}
+          for: {{ .for }}
+          labels:
+            severity: {{ .severity }}
+          annotations:
+            summary: {{ printf "An open Shift of team {{ $labels.team }} has finished %v or more Runs without a pull request" .runs | quote }}
+            description: "An open Shift of team {{ "{{" }} $labels.team {{ "}}" }} has {{ "{{" }} $value {{ "}}" }} finished Runs and no recorded pull request."
+            {{- if $runbook }}
+            runbook_url: {{ printf "%s#ploegshiftnodelivery" $runbook }}
+            {{- end }}
+        {{- end }}
+        {{- end }}
+        {{- with $a.queueStalled }}
+        {{- if .enabled }}
+        - alert: PloegQueueStalled
+          expr: max by (team) (ploeg_work_item_oldest_queued_seconds{ {{- $sel -}} }) > {{ .waitSeconds }}
+          for: {{ .for }}
+          labels:
+            severity: {{ .severity }}
+          annotations:
+            summary: {{ printf "A Work Item of team {{ $labels.team }} has waited over %v seconds for a worker" .waitSeconds | quote }}
+            description: "The longest-waiting claimable Work Item of team {{ "{{" }} $labels.team {{ "}}" }} has been queued for {{ "{{" }} $value | humanizeDuration {{ "}}" }}."
+            {{- if $runbook }}
+            runbook_url: {{ printf "%s#ploegqueuestalled" $runbook }}
+            {{- end }}
+        {{- end }}
+        {{- end }}
+        {{- with $a.settlementBacklog }}
+        {{- if .enabled }}
+        - alert: PloegSettlementBacklog
+          expr: max by (state) (ploeg_llm_accounts_unsettled{ {{- $sel -}} }) > 0
+          for: {{ .for }}
+          labels:
+            severity: {{ .severity }}
+          annotations:
+            summary: "Inference accounts of finished Runs stay {{ "{{" }} $labels.state {{ "}}" }} and unsettled"
+            description: "{{ "{{" }} $value {{ "}}" }} inference account(s) in state {{ "{{" }} $labels.state {{ "}}" }} belong to finished Runs and still hold Shift budget. The settlement sweep has not settled them."
+            {{- if $runbook }}
+            runbook_url: {{ printf "%s#ploegsettlementbacklog" $runbook }}
+            {{- end }}
+        {{- end }}
+        {{- end }}
 {{- end }}

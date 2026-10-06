@@ -55,6 +55,37 @@ monitoring:
         enabled: true
         for: 0m
         severity: critical
+      runsIdleKilled:
+        enabled: true
+        kills: 2
+        window: 2h
+        for: 0m
+        severity: warning
+      runsFailingRepeatedly:
+        enabled: true
+        failures: 3
+        window: 1h
+        for: 0m
+        severity: critical
+      sandboxStartFailing:
+        enabled: true
+        window: 30m
+        for: 0m
+        severity: warning
+      shiftNoDelivery:
+        enabled: true
+        runs: 3
+        for: 15m
+        severity: warning
+      queueStalled:
+        enabled: true
+        waitSeconds: 3600
+        for: 10m
+        severity: warning
+      settlementBacklog:
+        enabled: true
+        for: 1h
+        severity: warning
 
 operator:
   consumers: []

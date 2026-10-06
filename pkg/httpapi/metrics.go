@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"bytes"
+	"cmp"
 	"fmt"
 	"net/http"
 	"slices"
@@ -83,6 +84,18 @@ func sortedKeys[V any](m map[string]V) []string {
 	return keys
 }
 
+func sortedRunOutcomes(m map[store.RunOutcomeKey]int) []store.RunOutcomeKey {
+	keys := make([]store.RunOutcomeKey, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	slices.SortFunc(keys, func(a, b store.RunOutcomeKey) int {
+		return cmp.Or(cmp.Compare(a.Team, b.Team), cmp.Compare(a.Role, b.Role),
+			cmp.Compare(a.Outcome, b.Outcome), cmp.Compare(a.Reason, b.Reason))
+	})
+	return keys
+}
+
 func renderMetrics(m store.OperationalMetrics, webhooks *WebhookCoverage) []byte {
 	var b metricWriter
 
@@ -90,9 +103,17 @@ func renderMetrics(m store.OperationalMetrics, webhooks *WebhookCoverage) []byte
 	for _, team := range sortedKeys(m.OpenShifts) {
 		b.sample("ploeg_shifts_open", float64(m.OpenShifts[team]), "team", team)
 	}
-	b.family("ploeg_shift_idle_seconds_max", "gauge", "Longest time an open Shift of this team has gone without Run progress (a Run start, finish or checkpoint).")
+	b.family("ploeg_shift_idle_seconds_max", "gauge", "Longest time an open Shift of this team has gone without Run progress (a Run start, finish or checkpoint; a Run that ended failed is no progress).")
 	for _, team := range sortedKeys(m.ShiftIdleSeconds) {
 		b.sample("ploeg_shift_idle_seconds_max", m.ShiftIdleSeconds[team], "team", team)
+	}
+	b.family("ploeg_shift_runs_without_pr_max", "gauge", "Most finished Runs in any open Shift of this team that has no recorded pull request.")
+	for _, team := range sortedKeys(m.ShiftRunsWithoutPRMax) {
+		b.sample("ploeg_shift_runs_without_pr_max", float64(m.ShiftRunsWithoutPRMax[team]), "team", team)
+	}
+	b.family("ploeg_work_item_oldest_queued_seconds", "gauge", "How long the longest-waiting claimable queued Work Item of this team has waited since it last became queued.")
+	for _, team := range sortedKeys(m.OldestQueuedSeconds) {
+		b.sample("ploeg_work_item_oldest_queued_seconds", m.OldestQueuedSeconds[team], "team", team)
 	}
 
 	b.family("ploeg_leases_expired", "gauge", "Leases whose expiry has passed and that the sweep has not yet released.")
@@ -109,12 +130,21 @@ func renderMetrics(m store.OperationalMetrics, webhooks *WebhookCoverage) []byte
 		b.sample("ploeg_llm_key_ttl_overrun_seconds_max", m.KeyTTLOverrunSeconds[state], "state", state)
 	}
 
+	b.family("ploeg_llm_accounts_unsettled", "gauge", "Inference accounts of finished Runs still holding Shift budget, by account state (reserved, or blocked and awaiting settlement).")
+	for _, state := range sortedKeys(m.UnsettledLLMAccounts) {
+		b.sample("ploeg_llm_accounts_unsettled", float64(m.UnsettledLLMAccounts[state]), "state", state)
+	}
+
 	b.family("ploeg_settled_spend_usd_last_hour", "gauge", "Spend settled onto Shifts during the last hour, in USD.")
 	b.sample("ploeg_settled_spend_usd_last_hour", m.SettledSpendLastHourUSD)
 
 	b.family("ploeg_runs_failed_total", "counter", "Runs that ended failed, by failure reason. A credential_leak Run carried one of its credentials or its canary to the forge.")
 	for _, reason := range sortedKeys(m.FailedRuns) {
 		b.sample("ploeg_runs_failed_total", float64(m.FailedRuns[reason]), "reason", reason)
+	}
+	b.family("ploeg_runs_finished_total", "counter", "Runs that finished, by team, Role, outcome and, for a failed Run, failure reason.")
+	for _, k := range sortedRunOutcomes(m.FinishedRuns) {
+		b.sample("ploeg_runs_finished_total", float64(m.FinishedRuns[k]), "team", k.Team, "role", k.Role, "outcome", k.Outcome, "reason", k.Reason)
 	}
 	b.family("ploeg_runs_without_observed_delivery_last_day", "gauge", "Runs finished in the last day whose report carried no delivery record from the worker (legacy) or one that did not match the Run (mismatch).")
 	for _, source := range sortedKeys(m.RunsWithoutObservedDeliveryLastDay) {
