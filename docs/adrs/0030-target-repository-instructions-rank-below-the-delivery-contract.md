@@ -151,6 +151,12 @@ useful while closing the two paths above at the cheapest point for each.
   ([instructions.go](../../pkg/worker/instructions.go)). A reading Role also
   requires a read-only forge token; the chart no longer falls back to the
   read-write one.
+* 2026-10-08 — Amended in part by
+  [0078](0078-runs-reach-read-only-mcp-tools-only-through-the-gateway-bounded-by-a-litellm-team.md)
+  (proposed): a team that opts in gets the LiteLLM gateway's `/mcp` as the one
+  MCP server of a `claude-code` Run, with read-only access groups its LiteLLM
+  team bounds. `--strict-mcp-config` stays, so the target's `.mcp.json` still
+  loads nothing.
 * Related: [0010](0010-shift-owns-the-item-lease-owns-the-branch.md),
   [0011](0011-the-pull-request-is-the-blackboard.md),
   [0013](0013-push-rights-are-minted-per-run.md),

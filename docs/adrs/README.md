@@ -152,6 +152,7 @@ fails otherwise.
 | [0075](0075-a-stopped-writing-run-leaves-a-checkpoint-its-retry-starts-from.md) | A stopped writing Run leaves a checkpoint its retry starts from | proposed | 2026-10-05 |
 | [0076](0076-run-health-is-observable-by-team-and-role-through-one-correlation-key.md) | Run health is observable by Team and Role through one correlation key | proposed | 2026-10-05 |
 | [0077](0077-ploeg-knows-work-sources-and-change-destinations-never-vendors.md) | Ploeg knows Work Sources and Change Destinations, never vendors | proposed | 2026-10-06 |
+| [0078](0078-runs-reach-read-only-mcp-tools-only-through-the-gateway-bounded-by-a-litellm-team.md) | Runs reach read-only MCP tools only through the gateway, bounded by a LiteLLM team | proposed | 2026-10-08 |
 
 ## Review calendar
 
@@ -197,4 +198,5 @@ triggers.
 | 2027-01-31 | [0074](0074-ploeg-exposes-its-execution-facts-and-consumers-collect-everything-else.md) — or sooner, when a Ploeg decision needs a dropped feed, two consumers need the same collected facts, or the collector loses status history twice in a quarter |
 | 2027-01-31 | [0075](0075-a-stopped-writing-run-leaves-a-checkpoint-its-retry-starts-from.md) — or sooner, when agent-sandbox ships pause and resume, a forge drops refs outside heads and tags, or checkpointed retries fail more than cold ones |
 | 2027-01-31 | [0076](0076-run-health-is-observable-by-team-and-role-through-one-correlation-key.md) — or sooner, when the worker sandbox can reach an OTLP collector, a Team passes 200 series, or an incident is diagnosed from logs alone |
+| 2027-01-31 | [0078](0078-runs-reach-read-only-mcp-tools-only-through-the-gateway-bounded-by-a-litellm-team.md) — or sooner, when a team asks for a write-capable access group, LiteLLM stops bounding a key's access groups by its team, `/key/generate` accepts a team alias, or an opted-in Run takes an instruction from a tool result |
 | 2027-04-01 | [0005](0005-build-a-dedicated-dispatch-plane.md), [0032](0032-keep-the-dispatch-plane-and-compete-on-authorized-spend.md), [0071](0071-ploeg-keeps-its-state-in-postgresql-and-is-not-a-kubernetes-operator.md), [0073](0073-ploeg-stays-in-go-and-admits-rust-only-as-a-separately-deployed-component.md), [0077](0077-ploeg-knows-work-sources-and-change-destinations-never-vendors.md) — the project review gate (`design.md` §10) |
