@@ -115,13 +115,23 @@ func requireModelPlaceholder(placeholder string, next http.Handler) http.Handler
 	})
 }
 
+// liteLLMKeyHeader is the header LiteLLM's MCP endpoint reads a virtual key
+// from, as "Bearer <key>" (ADR-0078).
+const liteLLMKeyHeader = "X-Litellm-Api-Key"
+
 func presentsModelPlaceholder(h http.Header, placeholder string) bool {
 	bearer, isBearer := authorizationCredential(h, "Bearer")
-	return (isBearer && equalSecret(bearer, placeholder)) || equalSecret(h.Get("X-Api-Key"), placeholder)
+	litellm, isLiteLLM := headerCredential(h, liteLLMKeyHeader, "Bearer")
+	return (isBearer && equalSecret(bearer, placeholder)) || equalSecret(h.Get("X-Api-Key"), placeholder) ||
+		(isLiteLLM && equalSecret(litellm, placeholder))
 }
 
 func authorizationCredential(h http.Header, scheme string) (string, bool) {
-	value := h.Get("Authorization")
+	return headerCredential(h, "Authorization", scheme)
+}
+
+func headerCredential(h http.Header, name, scheme string) (string, bool) {
+	value := h.Get(name)
 	if len(value) <= len(scheme) || value[len(scheme)] != ' ' || !strings.EqualFold(value[:len(scheme)], scheme) {
 		return "", false
 	}
@@ -133,10 +143,16 @@ func equalSecret(presented, want string) bool {
 }
 
 func swapModelKey(h http.Header, key string) {
+	litellm := h.Get(liteLLMKeyHeader) != ""
 	anthropic := h.Get("X-Api-Key") != ""
 	h.Del("Authorization")
 	h.Del("X-Api-Key")
 	h.Del("Api-Key")
+	h.Del(liteLLMKeyHeader)
+	if litellm {
+		h.Set(liteLLMKeyHeader, "Bearer "+key)
+		return
+	}
 	if anthropic {
 		h.Set("X-Api-Key", key)
 		return

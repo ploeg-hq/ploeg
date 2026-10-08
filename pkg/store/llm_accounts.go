@@ -21,6 +21,11 @@ type LLMAccount struct {
 	State         string
 	GatewayKeyID  string
 	ObservedSpend *float64
+	// GatewayTeamID and MCPAccessGroups are the gateway team the key is
+	// minted in and the MCP access groups it is granted, fixed at
+	// reservation like the budget and model scope (ADR-0078).
+	GatewayTeamID   string
+	MCPAccessGroups []string
 }
 
 type RunControlState struct {
@@ -46,7 +51,18 @@ func (s *Store) ReserveLLMAccount(ctx context.Context, a LLMAccount) error {
 	if !validSpend(a.Authorized) || a.Authorized <= 0 || a.TTLSeconds <= 0 || len(a.Models) == 0 || a.Alias == "" {
 		return ErrLLMAccountState
 	}
+	if len(a.MCPAccessGroups) > 0 && a.GatewayTeamID == "" {
+		return ErrLLMAccountState
+	}
 	models, err := json.Marshal(a.Models)
+	if err != nil {
+		return err
+	}
+	groups := a.MCPAccessGroups
+	if groups == nil {
+		groups = []string{}
+	}
+	mcpGroups, err := json.Marshal(groups)
 	if err != nil {
 		return err
 	}
@@ -69,7 +85,9 @@ func (s *Store) ReserveLLMAccount(ctx context.Context, a LLMAccount) error {
 	}
 	var matches bool
 	err = tx.QueryRow(ctx, `SELECT alias=$2 AND authorized=$3 AND models=$4::jsonb AND ttl_seconds=$5
-		FROM run_llm_accounts WHERE run_token=$1`, a.RunToken, a.Alias, a.Authorized, models, a.TTLSeconds).Scan(&matches)
+		AND gateway_team_id=$6 AND mcp_access_groups=$7::jsonb
+		FROM run_llm_accounts WHERE run_token=$1`, a.RunToken, a.Alias, a.Authorized, models, a.TTLSeconds,
+		a.GatewayTeamID, mcpGroups).Scan(&matches)
 	if err == nil {
 		if !matches {
 			return ErrLLMAccountState
@@ -79,8 +97,8 @@ func (s *Store) ReserveLLMAccount(ctx context.Context, a LLMAccount) error {
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return err
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO run_llm_accounts (run_token, alias, authorized, models, ttl_seconds)
-		VALUES ($1,$2,$3,$4,$5)`, a.RunToken, a.Alias, a.Authorized, models, a.TTLSeconds); err != nil {
+	if _, err := tx.Exec(ctx, `INSERT INTO run_llm_accounts (run_token, alias, authorized, models, ttl_seconds, gateway_team_id, mcp_access_groups)
+		VALUES ($1,$2,$3,$4,$5,$6,$7)`, a.RunToken, a.Alias, a.Authorized, models, a.TTLSeconds, a.GatewayTeamID, mcpGroups); err != nil {
 		return err
 	}
 	if err := audit(ctx, tx, "ploegd:llm", "llm.reserved", &id, map[string]any{"alias": a.Alias, "authorized": a.Authorized}); err != nil {
@@ -91,15 +109,25 @@ func (s *Store) ReserveLLMAccount(ctx context.Context, a LLMAccount) error {
 
 func (s *Store) LLMAccount(ctx context.Context, token string) (LLMAccount, error) {
 	var a LLMAccount
-	var models []byte
-	err := s.pool.QueryRow(ctx, `SELECT run_token, alias, authorized, models, ttl_seconds, state, gateway_key_id, observed_spend
+	var models, mcpGroups []byte
+	err := s.pool.QueryRow(ctx, `SELECT run_token, alias, authorized, models, ttl_seconds, state, gateway_key_id, observed_spend,
+		gateway_team_id, mcp_access_groups
 		FROM run_llm_accounts WHERE run_token = $1`, token).
-		Scan(&a.RunToken, &a.Alias, &a.Authorized, &models, &a.TTLSeconds, &a.State, &a.GatewayKeyID, &a.ObservedSpend)
+		Scan(&a.RunToken, &a.Alias, &a.Authorized, &models, &a.TTLSeconds, &a.State, &a.GatewayKeyID, &a.ObservedSpend,
+			&a.GatewayTeamID, &mcpGroups)
 	if err != nil {
 		return a, err
 	}
-	err = json.Unmarshal(models, &a.Models)
-	return a, err
+	if err = json.Unmarshal(models, &a.Models); err != nil {
+		return a, err
+	}
+	if err = json.Unmarshal(mcpGroups, &a.MCPAccessGroups); err != nil {
+		return a, err
+	}
+	if len(a.MCPAccessGroups) == 0 {
+		a.MCPAccessGroups = nil
+	}
+	return a, nil
 }
 
 func (s *Store) BeginLLMMint(ctx context.Context, token string) (LLMAccount, error) {

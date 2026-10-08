@@ -317,3 +317,29 @@ func TestManagedRunOnUnpooledShiftKeepsRoleCap(t *testing.T) {
 		t.Fatalf("authorized = %v, want the role cap 1", account.Authorized)
 	}
 }
+
+// ADR-0078: the MCP grant is part of the account's immutable policy. Groups
+// without the team that bounds them are refused, and a repeated reservation
+// with a different grant does not widen the account.
+func TestLLMAccountMCPGrantIsBoundedAndImmutable(t *testing.T) {
+	_, run := managedRunFixture(t)
+	ctx := context.Background()
+	base := LLMAccount{RunToken: run.RunToken, Alias: "fixture", Authorized: 3, Models: []string{"model"}, TTLSeconds: 60}
+	unbounded := base
+	unbounded.MCPAccessGroups = []string{"observability"}
+	if err := testStore.ReserveLLMAccount(ctx, unbounded); !errors.Is(err, ErrLLMAccountState) {
+		t.Fatalf("groups without a team: %v", err)
+	}
+	widened := base
+	widened.GatewayTeamID, widened.MCPAccessGroups = "orders-team-id", []string{"observability-read-orders"}
+	if err := testStore.ReserveLLMAccount(ctx, widened); !errors.Is(err, ErrLLMAccountState) {
+		t.Fatalf("a repeated reservation added an MCP grant: %v", err)
+	}
+	if err := testStore.ReserveLLMAccount(ctx, base); err != nil {
+		t.Fatalf("identical repeat reservation: %v", err)
+	}
+	a, err := testStore.LLMAccount(ctx, run.RunToken)
+	if err != nil || a.GatewayTeamID != "" || a.MCPAccessGroups != nil {
+		t.Fatalf("account = %+v %v, want no team and no groups", a, err)
+	}
+}

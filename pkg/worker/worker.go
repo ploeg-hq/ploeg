@@ -584,6 +584,10 @@ func runWatchedAgent(ctx context.Context, log *slog.Logger, broker llmbroker.Bro
 		env.BaseEnv = withEnv(env.BaseEnv, "LLM_BASE_URL", proxy.baseURL)
 	}
 	env.LLM.APIKey = harnessKey
+	if len(cred.MCPAccessGroups) > 0 && harnessKey != "" && env.LLM.BaseURL != "" {
+		env.LLM.MCPURL = gatewayMCPURL(env.LLM.BaseURL)
+		log.Info("gateway MCP tools granted to the Run", "trace", cred.Alias, "groups", cred.MCPAccessGroups)
+	}
 	env.BaseEnv = append(env.BaseEnv, "LLM_TRACE_ID="+spec.TraceID)
 	if harnessKey != "" {
 		env.BaseEnv = append(env.BaseEnv, "LLM_API_KEY="+harnessKey)
@@ -605,6 +609,14 @@ func runWatchedAgent(ctx context.Context, log *slog.Logger, broker llmbroker.Bro
 		}
 	}
 	return report, nil, runErr
+}
+
+// gatewayMCPURL is the model gateway's MCP endpoint: its root, the
+// OpenAI-compatible base URL without the /v1 suffix, plus /mcp. The worker's
+// loopback proxies forward the path unchanged, so this holds for a proxied
+// base URL too.
+func gatewayMCPURL(baseURL string) string {
+	return strings.TrimSuffix(strings.TrimRight(baseURL, "/"), "/v1") + "/mcp"
 }
 
 func runBounded(ctx context.Context, adapter harness.Adapter, spec harness.TaskSpec, env harness.RunEnv, limit time.Duration) (harness.OutcomeReport, error) {

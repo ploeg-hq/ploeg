@@ -227,7 +227,7 @@ func (a *Adapter) Run(ctx context.Context, spec harness.TaskSpec, env harness.Ru
 	sessCtx, cancelSess := context.WithTimeout(ctx, defaultSessionTimeout)
 	sess, err := conn.NewSession(sessCtx, sdk.NewSessionRequest{
 		Cwd:        env.RepoDir,
-		McpServers: []sdk.McpServer{},
+		McpServers: mcpServers(env.LLM, initResp.AgentCapabilities.McpCapabilities),
 	})
 	cancelSess()
 	if err != nil {
@@ -501,3 +501,18 @@ func nonNil(w io.Writer) io.Writer {
 func tailString(t *harness.TailBuffer) string { return strings.TrimSpace(string(t.Bytes())) }
 
 var _ harness.Adapter = (*Adapter)(nil)
+
+// mcpServers is the one MCP server a Run may load: the model gateway's, and
+// only when the Run's key was granted MCP access groups and the agent says it
+// speaks MCP over HTTP. Otherwise the session gets no servers (ADR-0078).
+func mcpServers(llm harness.LLMEnv, caps sdk.McpCapabilities) []sdk.McpServer {
+	if llm.MCPURL == "" || llm.APIKey == "" || !caps.Http {
+		return []sdk.McpServer{}
+	}
+	return []sdk.McpServer{{Http: &sdk.McpServerHttpInline{
+		Name:    "litellm",
+		Type:    "http",
+		Url:     llm.MCPURL,
+		Headers: []sdk.HttpHeader{{Name: "x-litellm-api-key", Value: "Bearer " + llm.APIKey}},
+	}}}
+}

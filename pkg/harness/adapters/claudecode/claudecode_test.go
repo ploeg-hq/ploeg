@@ -31,7 +31,7 @@ func testEnv() harness.RunEnv {
 		Prompt:     "# Ticket VIK-596\n",
 		LLM: harness.LLMEnv{
 			APIKey:  "sk-minted",
-			BaseURL: "http://litellm.ai.svc.cluster.local:4000/v1",
+			BaseURL: "http://litellm.gateway.svc.cluster.local:4000/v1",
 			Model:   "claude-sonnet-5",
 			TraceID: "ploeg-1cd43e1dfd6c",
 		},
@@ -55,7 +55,7 @@ func TestPrepare_ArgvAndEnvMapping(t *testing.T) {
 	for _, kv := range []string{
 		"ANTHROPIC_API_KEY=sk-minted",
 		// /v1 stripped: the Anthropic SDK appends /v1/... itself.
-		"ANTHROPIC_BASE_URL=http://litellm.ai.svc.cluster.local:4000",
+		"ANTHROPIC_BASE_URL=http://litellm.gateway.svc.cluster.local:4000",
 		"ANTHROPIC_MODEL=claude-sonnet-5",
 	} {
 		if !slices.Contains(inv.ExtraEnv, kv) {
@@ -503,4 +503,74 @@ func TestRun_StoppedProcessStaysStoppedWithTheWritersAccount(t *testing.T) {
 			t.Errorf("report = %+v, want the account and no outcome", report)
 		}
 	})
+}
+
+// ADR-0078: a Run whose key was granted MCP access groups loads exactly one
+// MCP server, the gateway's, and --strict-mcp-config still keeps the target's
+// .mcp.json out.
+func TestPrepare_MCPGrantLoadsOnlyTheGatewayServer(t *testing.T) {
+	env := testEnv()
+	env.ScratchDir = t.TempDir()
+	env.LLM.APIKey = "ploeg-isolated-placeholder"
+	env.LLM.MCPURL = "http://127.0.0.1:41234/mcp"
+	inv, err := New("", "").Prepare(harness.TaskSpec{}, env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(inv.Argv, "--strict-mcp-config") {
+		t.Fatalf("argv lets the target's .mcp.json servers start: %q", inv.Argv)
+	}
+	i := slices.Index(inv.Argv, "--mcp-config")
+	if i < 0 || i+1 >= len(inv.Argv) {
+		t.Fatalf("argv names no --mcp-config: %q", inv.Argv)
+	}
+	path := inv.Argv[i+1]
+	if filepath.Dir(path) != env.ScratchDir {
+		t.Fatalf("MCP config %q is not under the scratch directory", path)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Errorf("MCP config mode %v, want 0600", info.Mode().Perm())
+	}
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cfg struct {
+		MCPServers map[string]struct {
+			Type    string            `json:"type"`
+			URL     string            `json:"url"`
+			Headers map[string]string `json:"headers"`
+		} `json:"mcpServers"`
+	}
+	if err := json.Unmarshal(body, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.MCPServers) != 1 {
+		t.Fatalf("MCP config names %d servers, want only the gateway: %s", len(cfg.MCPServers), body)
+	}
+	server, ok := cfg.MCPServers["litellm"]
+	if !ok || server.Type != "http" || server.URL != "http://127.0.0.1:41234/mcp" {
+		t.Fatalf("MCP server = %+v, want litellm over http at the proxy's /mcp", cfg.MCPServers)
+	}
+	if len(server.Headers) != 1 || server.Headers["x-litellm-api-key"] != "Bearer ploeg-isolated-placeholder" {
+		t.Fatalf("MCP headers = %v, want only x-litellm-api-key with the harness's key", server.Headers)
+	}
+}
+
+func TestPrepare_NoMCPConfigWithoutAKey(t *testing.T) {
+	env := testEnv()
+	env.ScratchDir = t.TempDir()
+	env.LLM.APIKey = ""
+	env.LLM.MCPURL = "http://127.0.0.1:41234/mcp"
+	inv, err := New("", "").Prepare(harness.TaskSpec{}, env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(inv.Argv, "--mcp-config") {
+		t.Fatalf("argv names an MCP config with no key to authenticate it: %q", inv.Argv)
+	}
 }

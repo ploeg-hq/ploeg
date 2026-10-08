@@ -245,9 +245,11 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `executor.teams[].budget` | string |  | Per-run key budget in USD. For a Team with a plan it is the Shift pool the Roles share. | values.schema.json |
 | `executor.teams[].executorType` | one of `"keda"`, `"sandbox"` |  | Optional: this team's executor while executor.type is keda or sandbox; unset = executor.type. Lets one team run under the experimental sandbox executor while the others stay on keda. | values.schema.json |
 | `executor.teams[].harness` | [harness](#harness) |  | Overrides the `executor.harness` defaults for this Team. | values.schema.json |
+| `executor.teams[].litellmTeamId` | string |  | ADR-0078: the LiteLLM team_id every Run key of this team is minted in. Optional; empty = no team. | values.schema.json |
 | `executor.teams[].maxFixRounds` | integer |  | ADR-0017: how many times a reviewer request_changes may re-open the writing Round of this plan. 0 = loop off, the plan runs to exhaustion. | values.schema.json |
 | `executor.teams[].maxReplicaCount` | integer |  |  | values.schema.json |
 | `executor.teams[].maxRunning` | integer |  | Concurrency cap: the most Runs this team may have running at once, enforced by ploegd at claim time. A claim over the cap gets no work and the worker exits 0. Every workload's maxReplicaCount is clamped to it. 0 or unset = unlimited. | values.schema.json |
+| `executor.teams[].mcpAccessGroups` | array |  | ADR-0078: read-only LiteLLM MCP access groups granted to this team's Run keys; needs litellmTeamId. Optional; empty = no MCP tools. | values.schema.json |
 | `executor.teams[].model` | string |  | Model the Team's workers use unless a Role overrides it. | values.schema.json |
 | `executor.teams[].name` | string |  | Team name. Give the routing config's Team the same name. | values.schema.json |
 | `executor.teams[].perRunBudget` | string |  | Per-run key ceiling for a team with no plan. Optional; falls back to budget, which for a PLANNED team is the Shift pool and not a per-run figure. | values.schema.json |
@@ -259,7 +261,7 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `executor.teams[].targetSource` | one of `"claim"`, `"env"` |  | `env` ignores the claim's target and uses the fallback repository. | values.schema.json |
 | `executor.terminationGracePeriodSeconds` |  | `90` | Long enough for ploeg-worker to abort the harness, revoke the per-run key, settle its spend and POST the outcome — not long enough to be a hiding place. A worker that needs more than this is not shutting down, and the kubelet's SIGKILL is the right answer. | values.yaml |
 | `executor.type` | one of `"keda"`, `"cronjob"`, `"sandbox"` | `keda` | keda (flagship: ScaledJob + Postgres scaler) \| cronjob (KEDA-free polling executor) \| sandbox (EXPERIMENTAL: the ScaledJob's pod becomes a launcher that runs each Run in a kubernetes-sigs/agent-sandbox v1beta1 Sandbox; needs agent-sandbox v1.0.x with extensions installed, ADR-0032). Any other launcher can implement docs/contracts/executor.md out-of-chart against the run API. | values.yaml, values.schema.json |
-| `executor.workerAuth.additionalLLMPolicies` | array | `[]` | Additional trusted team and role policies with `team`, `role`, `budgetUsd`, `models` and `ttl`, including the `operator` role for a workbench consumer. | values.yaml, values.schema.json |
+| `executor.workerAuth.additionalLLMPolicies` | array | `[]` | Additional trusted team and role policies with `team`, `role`, `budgetUsd`, `models` and `ttl`, and optionally `litellmTeamId` and `mcpAccessGroups` (ADR-0078), including the `operator` role for a workbench consumer. | values.yaml, values.schema.json |
 | `executor.workerAuth.additionalLLMPolicies[].budgetUsd` | number |  |  | values.schema.json |
 | `executor.workerAuth.additionalLLMPolicies[].models` | array |  |  | values.schema.json |
 | `executor.workerAuth.additionalLLMPolicies[].role` | string |  |  | values.schema.json |

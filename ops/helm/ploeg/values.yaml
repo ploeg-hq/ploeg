@@ -472,6 +472,18 @@ executor:
   #   # `sandbox.runtimeClassName` overrides it. Unset = executor.sandbox above.
   #   sandbox:
   #     runtimeClassName: gvisor
+  #   # Optional, ADR-0078: read-only MCP tools through the LiteLLM gateway.
+  #   # Both empty (the default) = no LiteLLM team on the Run's key and no MCP
+  #   # tools for the agent. `litellmTeamId` is the LiteLLM team's team_id
+  #   # (not its alias); every Run key of this team is minted inside it.
+  #   # `mcpAccessGroups` are the MCP access groups the key is granted; the
+  #   # LiteLLM team must allow each one, or the gateway refuses the mint.
+  #   # Name only read-only groups: a write-capable group needs a further ADR.
+  #   # Groups without a team id fail the render. claude-code loads the
+  #   # gateway's /mcp as its only MCP server; acp only when the agent
+  #   # advertises MCP over HTTP; other harnesses ignore it.
+  #   litellmTeamId: "00000000-0000-0000-0000-000000000000"
+  #   mcpAccessGroups: [observability-read-orders]
   #   # Optional: a Shift plan (run-multi-agent-shifts). With one, this team
   #   # runs each work item through ordered Rounds — a fan-out of readers or a
   #   # single writer per round (ADR-0010) — and `budget` becomes the Shift

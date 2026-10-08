@@ -335,6 +335,7 @@ type recordingBroker struct {
 	minted   int
 	revoked  int
 	lastCred llmbroker.Credential
+	groups   []string // MCP access groups the minted credential carries
 }
 
 func (b *recordingBroker) Mint(_ context.Context, req llmbroker.MintRequest) (llmbroker.Credential, error) {
@@ -342,7 +343,7 @@ func (b *recordingBroker) Mint(_ context.Context, req llmbroker.MintRequest) (ll
 	if b.mintErr != nil {
 		return llmbroker.Credential{}, b.mintErr
 	}
-	return llmbroker.Credential{APIKey: b.key, Alias: "ploeg-abc123def456"}, nil
+	return llmbroker.Credential{APIKey: b.key, Alias: "ploeg-abc123def456", MCPAccessGroups: b.groups}, nil
 }
 
 func (b *recordingBroker) Revoke(_ context.Context, cred llmbroker.Credential) error {

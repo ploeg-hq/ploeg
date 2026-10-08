@@ -70,6 +70,10 @@ type LLMEnv struct {
 	BaseURL string // OpenAI-compatible base URL (LLM_BASE_URL passthrough)
 	Model   string // model name with proxy prefixes stripped
 	TraceID string // ploeg-<12hex>
+	// MCPURL is the model gateway's MCP endpoint, set only when the Run's key
+	// was minted with MCP access groups. An adapter that supports it connects
+	// to this one server with APIKey and to no other (ADR-0078). "" = no MCP.
+	MCPURL string
 }
 
 // CommandAdapter is the spawn-and-wait sub-contract: prepare task input,

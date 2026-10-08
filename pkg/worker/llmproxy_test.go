@@ -20,6 +20,7 @@ type gatewaySeen struct {
 	mu            sync.Mutex
 	authorization string
 	apiKey        string
+	litellmKey    string
 	path          string
 }
 
@@ -30,6 +31,7 @@ func fakeGateway(t *testing.T) (*httptest.Server, *gatewaySeen) {
 		seen.mu.Lock()
 		seen.authorization = r.Header.Get("Authorization")
 		seen.apiKey = r.Header.Get("X-Api-Key")
+		seen.litellmKey = r.Header.Get("X-Litellm-Api-Key")
 		seen.path = r.URL.Path
 		seen.mu.Unlock()
 		_, _ = io.WriteString(w, `{"ok":true}`)
@@ -309,5 +311,93 @@ func TestSilentHarnessThatKeepsCallingTheModelIsNotIdle(t *testing.T) {
 	defer seen.mu.Unlock()
 	if seen.authorization != "Bearer sk-real-run-key" {
 		t.Fatalf("the observing proxy changed the key: %q", seen.authorization)
+	}
+}
+
+// ADR-0078: the gateway's MCP endpoint reads the key from x-litellm-api-key.
+// The proxy accepts the placeholder there and forwards the real key in the
+// same header, and never the placeholder or a second credential.
+func TestKeyProxySwapsTheLiteLLMKeyHeaderForMCP(t *testing.T) {
+	gw, seen := fakeGateway(t)
+	p, err := startLLMKeyProxy(gw.URL+"/v1", "sk-real-run-key", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.close()
+	req, _ := http.NewRequest(http.MethodPost, gatewayMCPURL(p.baseURL), strings.NewReader(`{}`))
+	req.Header.Set("x-litellm-api-key", "Bearer "+p.placeholder)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("proxy refused the placeholder in x-litellm-api-key: HTTP %d", resp.StatusCode)
+	}
+	if seen.litellmKey != "Bearer sk-real-run-key" || seen.authorization != "" || seen.apiKey != "" {
+		t.Fatalf("gateway saw x-litellm-api-key %q, Authorization %q, x-api-key %q; want only the real key in x-litellm-api-key",
+			seen.litellmKey, seen.authorization, seen.apiKey)
+	}
+	if seen.path != "/mcp" {
+		t.Fatalf("gateway saw path %q, want /mcp at the gateway root", seen.path)
+	}
+
+	req, _ = http.NewRequest(http.MethodPost, gatewayMCPURL(p.baseURL), strings.NewReader(`{}`))
+	req.Header.Set("x-litellm-api-key", "Bearer sk-someone-elses-key")
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("a foreign key in x-litellm-api-key got HTTP %d, want 403", resp.StatusCode)
+	}
+}
+
+func TestGatewayMCPURLIsTheGatewayRoot(t *testing.T) {
+	for base, want := range map[string]string{
+		"http://litellm.gateway.svc.cluster.local:4000/v1":  "http://litellm.gateway.svc.cluster.local:4000/mcp",
+		"http://litellm.gateway.svc.cluster.local:4000/v1/": "http://litellm.gateway.svc.cluster.local:4000/mcp",
+		"http://127.0.0.1:41234":                       "http://127.0.0.1:41234/mcp",
+		"https://gw.example/litellm/v1":                "https://gw.example/litellm/mcp",
+	} {
+		if got := gatewayMCPURL(base); got != want {
+			t.Errorf("gatewayMCPURL(%q) = %q, want %q", base, got, want)
+		}
+	}
+}
+
+// Only a credential minted with MCP access groups gives the harness the
+// gateway's MCP endpoint, and under isolation it points at the loopback proxy
+// with the placeholder, never at the gateway with the real key.
+func TestRunGetsTheGatewayMCPEndpointOnlyWithAGrant(t *testing.T) {
+	gw, _ := fakeGateway(t)
+	for _, tc := range []struct {
+		name   string
+		groups []string
+	}{{"without a grant", nil}, {"with a grant", []string{"observability-read-orders"}}} {
+		t.Run(tc.name, func(t *testing.T) {
+			adapter := &envCapturingAdapter{}
+			env := runEnv(t)
+			env.LLM.BaseURL = gw.URL + "/v1"
+			_, mintErr, runErr := runAgent(context.Background(), discardLog(), &recordingBroker{key: "sk-real-run-key", groups: tc.groups},
+				adapter, testTaskSpec(), env, llmbroker.MintRequest{RunToken: "abc123def456ff"}, 0, KeyIsolationProxy)
+			if mintErr != nil || runErr != nil {
+				t.Fatalf("mint=%v run=%v", mintErr, runErr)
+			}
+			got := adapter.seen.LLM.MCPURL
+			if tc.groups == nil {
+				if got != "" {
+					t.Fatalf("a Run without MCP access groups got MCP endpoint %q", got)
+				}
+				return
+			}
+			if !strings.HasPrefix(got, "http://127.0.0.1:") || !strings.HasSuffix(got, "/mcp") || strings.Contains(got, "/v1") {
+				t.Fatalf("MCP endpoint %q, want the loopback proxy root plus /mcp", got)
+			}
+			if adapter.seen.LLM.APIKey == "sk-real-run-key" {
+				t.Fatal("the harness received the real per-run key")
+			}
+		})
 	}
 }
