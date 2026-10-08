@@ -5,5 +5,5 @@ type: application
 home: https://github.com/ploeg-hq/ploeg
 sources:
   - https://github.com/ploeg-hq/ploeg
-version: 0.2.0-rc.6
-appVersion: 0.2.0-rc.6
+version: 0.2.0-rc.7
+appVersion: 0.2.0-rc.7

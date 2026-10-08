@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.0-rc.7
+
+### Changes
+
+- `TestCardComment_MergeWebhookPostsTheCard` sets its clock to its fixture's merge date. It read the wall clock, and from 2026-10-08 the fixture's card is seven days live, so its heading became "Foil finish" and the test failed on every run, in this repository and in every consumer that runs the Ploeg suite. No runtime behaviour changes.
+
+### Migration notes
+
+- None.
+
 ## 0.2.0-rc.6
 
 ### Changes
