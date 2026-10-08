@@ -356,7 +356,8 @@ func TestCardComment_OnePublisherAtATime(t *testing.T) {
 }
 
 func TestCardComment_MergeWebhookPostsTheCard(t *testing.T) {
-	s, forge, _ := cardCommentServer(t, true)
+	s, forge, clock := cardCommentServer(t, true)
+	clock.now = time.Date(2026, 10, 1, 10, 30, 0, 0, time.UTC)
 	factsItem(t)
 	if code := forgePostEvent(t, s.Handler(), "shh", "pull_request", "merge-card-1", factsMerge()); code != http.StatusAccepted {
 		t.Fatalf("webhook returned %d", code)
