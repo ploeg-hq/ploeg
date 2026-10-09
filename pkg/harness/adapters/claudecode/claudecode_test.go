@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -362,12 +363,15 @@ type fakeClaude struct {
 	sleep   string
 }
 
-func runFakeClaude(ctx context.Context, t *testing.T, fc fakeClaude, idle time.Duration) (harness.OutcomeReport, error) {
+const fakeClaudeReported = "fake claude: drop box and stdout written"
+
+func runFakeClaude(ctx context.Context, t *testing.T, fc fakeClaude, tune ...func(*harness.RunEnv)) (harness.OutcomeReport, error) {
 	t.Helper()
 	bin := filepath.Join(t.TempDir(), "claude")
 	script := "#!/bin/sh\n" +
 		`if [ -n "$PLOEG_FAKE_DROPBOX" ]; then printf '%s\n' "$PLOEG_FAKE_DROPBOX" > "$PLOEG_OUTCOME_FILE"; fi` + "\n" +
 		`printf '%s' "$PLOEG_FAKE_STDOUT"` + "\n" +
+		`printf '%s\n' '` + fakeClaudeReported + `' >&2` + "\n" +
 		`if [ -n "$PLOEG_FAKE_SLEEP" ]; then exec sleep "$PLOEG_FAKE_SLEEP"; fi` + "\n" +
 		`exit "${PLOEG_FAKE_EXIT:-0}"` + "\n"
 	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
@@ -375,7 +379,6 @@ func runFakeClaude(ctx context.Context, t *testing.T, fc fakeClaude, idle time.D
 	}
 	env := testEnv()
 	env.RepoDir, env.ScratchDir = t.TempDir(), t.TempDir()
-	env.IdleTimeout = idle
 	env.BaseEnv = []string{
 		"PATH=" + os.Getenv("PATH"),
 		"PLOEG_FAKE_DROPBOX=" + fc.dropBox,
@@ -383,7 +386,47 @@ func runFakeClaude(ctx context.Context, t *testing.T, fc fakeClaude, idle time.D
 		"PLOEG_FAKE_EXIT=" + fc.exit,
 		"PLOEG_FAKE_SLEEP=" + fc.sleep,
 	}
+	for _, f := range tune {
+		f(&env)
+	}
 	return harness.RunCommand(New(bin, "")).Run(ctx, harness.TaskSpec{TraceID: "writer-account"}, env)
+}
+
+type lineWatcher struct {
+	line []byte
+	mu   sync.Mutex
+	buf  []byte
+	once sync.Once
+	seen chan struct{}
+}
+
+func watchForLine(line string) *lineWatcher {
+	return &lineWatcher{line: []byte(line + "\n"), seen: make(chan struct{})}
+}
+
+func (w *lineWatcher) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.buf = append(w.buf, p...)
+	if bytes.Contains(w.buf, w.line) {
+		w.once.Do(func() { close(w.seen) })
+	}
+	return len(p), nil
+}
+
+func touchUntil(done <-chan struct{}, abandon <-chan struct{}, activity *harness.Activity) {
+	tick := time.NewTicker(5 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		select {
+		case <-done:
+			return
+		case <-abandon:
+			return
+		case <-tick.C:
+			activity.Touch()
+		}
+	}
 }
 
 const validEnvelope = `{"type":"result","subtype":"success","result":"done","session_id":"sess-1","total_cost_usd":0.42,"usage":{"input_tokens":1200,"output_tokens":300}}`
@@ -418,7 +461,7 @@ func TestRun_MalformedEnvelopeKeepsTheWritersAccount(t *testing.T) {
 		{name: "absent drop box", stdout: "garbage"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			report, err := runFakeClaude(context.Background(), t, fakeClaude{dropBox: tc.dropBox, stdout: tc.stdout}, 0)
+			report, err := runFakeClaude(context.Background(), t, fakeClaude{dropBox: tc.dropBox, stdout: tc.stdout})
 			if err != nil {
 				t.Fatalf("a clean process exit became an error: %v", err)
 			}
@@ -446,7 +489,7 @@ func TestRun_ValidEnvelopeSuppliesUsageBesideTheWritersAccount(t *testing.T) {
 	report, err := runFakeClaude(context.Background(), t, fakeClaude{
 		dropBox: `{"problem":"p","solution":"s","usage":{"costUsd":0,"sessionId":"agent-made-up"}}`,
 		stdout:  validEnvelope + "\n",
-	}, 0)
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -465,7 +508,7 @@ func TestRun_ValidEnvelopeSuppliesUsageBesideTheWritersAccount(t *testing.T) {
 func TestRun_FailedProcessKeepsItsErrorAndTheWritersAccount(t *testing.T) {
 	report, err := runFakeClaude(context.Background(), t, fakeClaude{
 		dropBox: `{"problem":"p","solution":"s"}`, stdout: "garbage", exit: "7",
-	}, 0)
+	})
 	var exitErr *exec.ExitError
 	if !errors.As(err, &exitErr) || exitErr.ExitCode() != 7 {
 		t.Fatalf("err = %v, want the process's exit status 7", err)
@@ -479,10 +522,16 @@ func TestRun_FailedProcessKeepsItsErrorAndTheWritersAccount(t *testing.T) {
 }
 
 func TestRun_StoppedProcessStaysStoppedWithTheWritersAccount(t *testing.T) {
+	writerThenHang := fakeClaude{dropBox: `{"problem":"p","solution":"s"}`, stdout: "garbage", sleep: "30"}
 	t.Run("idle timeout", func(t *testing.T) {
-		report, err := runFakeClaude(context.Background(), t, fakeClaude{
-			dropBox: `{"problem":"p","solution":"s"}`, stdout: "garbage", sleep: "30",
-		}, 200*time.Millisecond)
+		reported := watchForLine(fakeClaudeReported)
+		activity := harness.NewActivity()
+		go touchUntil(reported.seen, t.Context().Done(), activity)
+		report, err := runFakeClaude(context.Background(), t, writerThenHang, func(env *harness.RunEnv) {
+			env.IdleTimeout = 200 * time.Millisecond
+			env.Activity = activity
+			env.Stderr = reported
+		})
 		if !errors.Is(err, harness.ErrIdle) {
 			t.Fatalf("err = %v, want ErrIdle", err)
 		}
@@ -491,13 +540,24 @@ func TestRun_StoppedProcessStaysStoppedWithTheWritersAccount(t *testing.T) {
 		}
 	})
 	t.Run("cancelled", func(t *testing.T) {
+		reported := watchForLine(fakeClaudeReported)
 		ctx, cancel := context.WithCancel(context.Background())
-		go func() { time.Sleep(300 * time.Millisecond); cancel() }()
-		report, err := runFakeClaude(ctx, t, fakeClaude{
-			dropBox: `{"problem":"p","solution":"s"}`, stdout: "garbage", sleep: "30",
-		}, 0)
+		defer cancel()
+		go func() {
+			select {
+			case <-reported.seen:
+				cancel()
+			case <-ctx.Done():
+			}
+		}()
+		report, err := runFakeClaude(ctx, t, writerThenHang, func(env *harness.RunEnv) {
+			env.Stderr = reported
+		})
 		if err == nil {
 			t.Fatal("a cancelled process reported success")
+		}
+		if ctx.Err() == nil {
+			t.Fatalf("the fake exited before it was cancelled: %v", err)
 		}
 		if report.Problem != "p" || report.Solution != "s" || report.Outcome != "" {
 			t.Errorf("report = %+v, want the account and no outcome", report)
