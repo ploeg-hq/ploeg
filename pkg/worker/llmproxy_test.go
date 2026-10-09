@@ -358,8 +358,8 @@ func TestGatewayMCPURLIsTheGatewayRoot(t *testing.T) {
 	for base, want := range map[string]string{
 		"http://litellm.gateway.svc.cluster.local:4000/v1":  "http://litellm.gateway.svc.cluster.local:4000/mcp",
 		"http://litellm.gateway.svc.cluster.local:4000/v1/": "http://litellm.gateway.svc.cluster.local:4000/mcp",
-		"http://127.0.0.1:41234":                       "http://127.0.0.1:41234/mcp",
-		"https://gw.example/litellm/v1":                "https://gw.example/litellm/mcp",
+		"http://127.0.0.1:41234":                            "http://127.0.0.1:41234/mcp",
+		"https://gw.example/litellm/v1":                     "https://gw.example/litellm/mcp",
 	} {
 		if got := gatewayMCPURL(base); got != want {
 			t.Errorf("gatewayMCPURL(%q) = %q, want %q", base, got, want)
