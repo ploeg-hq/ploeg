@@ -88,13 +88,24 @@ type MintRequest struct {
 	BudgetUSD float64
 	Models    []string // model scope; empty = unrestricted
 	TTL       time.Duration
+	// TeamID is the gateway team the credential is minted in; empty = none.
+	TeamID string
+	// MCPAccessGroups are the gateway MCP access groups the credential may
+	// call; empty = no MCP tools. A broker refuses groups without a TeamID,
+	// because the team is what bounds them (ADR-0078).
+	MCPAccessGroups []string
 }
 
 // Credential is a minted per-run credential. Alias is the audit/trace id
 // (exported to the harness as LLM_TRACE_ID); an empty APIKey means the
 // harness image authenticates itself.
+//
+// MCPAccessGroups names the gateway MCP access groups the credential was
+// minted with. A worker gives the harness the gateway's MCP endpoint only
+// when it is non-empty (ADR-0078).
 type Credential struct {
-	APIKey   string `json:"apiKey"`
-	Alias    string `json:"alias"`
-	RunToken string `json:"-"`
+	APIKey          string   `json:"apiKey"`
+	Alias           string   `json:"alias"`
+	MCPAccessGroups []string `json:"mcpAccessGroups,omitempty"`
+	RunToken        string   `json:"-"`
 }

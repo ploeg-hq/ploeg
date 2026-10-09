@@ -51,17 +51,32 @@ func (b *LiteLLM) Mint(ctx context.Context, req MintRequest) (Credential, error)
 	if req.BudgetUSD <= 0 || math.IsNaN(req.BudgetUSD) || math.IsInf(req.BudgetUSD, 0) {
 		return Credential{}, fmt.Errorf("refusing to mint an uncapped key: budget is %v", req.BudgetUSD)
 	}
-	key, err := b.cli.Mint(ctx, litellm.MintRequest{
+	// An MCP grant without a team is bounded only by the master key, which
+	// can grant every group the gateway has. The team is the boundary, so a
+	// grant without one is refused here rather than minted wide (ADR-0078).
+	if len(req.MCPAccessGroups) > 0 && req.TeamID == "" {
+		return Credential{}, fmt.Errorf("refusing to grant MCP access groups without a gateway team")
+	}
+	mint := litellm.MintRequest{
 		KeyType:   "llm_api",
 		KeyAlias:  alias,
 		MaxBudget: req.BudgetUSD,
 		Models:    req.Models,
 		Duration:  ttlString(req.TTL),
-	})
+		TeamID:    req.TeamID,
+	}
+	if len(req.MCPAccessGroups) > 0 {
+		mint.ObjectPermission = &litellm.ObjectPermission{MCPAccessGroups: req.MCPAccessGroups}
+	}
+	key, err := b.cli.Mint(ctx, mint)
 	if err != nil {
 		return Credential{}, err
 	}
-	return Credential{APIKey: key, Alias: alias}, nil
+	cred := Credential{APIKey: key, Alias: alias}
+	if len(req.MCPAccessGroups) > 0 {
+		cred.MCPAccessGroups = append([]string(nil), req.MCPAccessGroups...)
+	}
+	return cred, nil
 }
 
 // ttlString renders a TTL in the duration format LiteLLM parses ("30s",

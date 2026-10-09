@@ -482,3 +482,49 @@ func TestSpendLogsAggregatesTokensAndModels(t *testing.T) {
 		}
 	}
 }
+
+// ADR-0078: without a team the /key/generate body is exactly what it was —
+// no team_id and no object_permission, so the key gets no MCP tools. With a
+// team it carries team_id and object_permission.mcp_access_groups, the pair
+// LiteLLM checks against the team.
+func TestMint_TeamAndMCPAccessGroupsOnTheWire(t *testing.T) {
+	var bodies []map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		bodies = append(bodies, body)
+		_ = json.NewEncoder(w).Encode(map[string]string{"key": "sk-test"})
+	}))
+	defer srv.Close()
+	cli := NewClient(srv.URL, "test-key")
+	ctx := context.Background()
+	if _, err := cli.Mint(ctx, MintRequest{KeyType: "llm_api", KeyAlias: "ploeg-a", MaxBudget: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cli.Mint(ctx, MintRequest{KeyType: "llm_api", KeyAlias: "ploeg-b", MaxBudget: 1, TeamID: "orders-team-id",
+		ObjectPermission: &ObjectPermission{MCPAccessGroups: []string{"observability-read-orders"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if len(bodies) != 2 {
+		t.Fatalf("got %d mint bodies", len(bodies))
+	}
+	for _, field := range []string{"team_id", "object_permission"} {
+		if _, ok := bodies[0][field]; ok {
+			t.Errorf("a mint without a team sent %s: %v", field, bodies[0])
+		}
+	}
+	if bodies[1]["team_id"] != "orders-team-id" {
+		t.Errorf("team_id = %v, want orders-team-id", bodies[1]["team_id"])
+	}
+	perm, _ := bodies[1]["object_permission"].(map[string]any)
+	groups, _ := perm["mcp_access_groups"].([]any)
+	if len(groups) != 1 || groups[0] != "observability-read-orders" {
+		t.Errorf("object_permission = %v, want mcp_access_groups [observability-read-orders]", bodies[1]["object_permission"])
+	}
+	if bodies[1]["key_type"] != "llm_api" {
+		t.Errorf("key_type = %v, want llm_api", bodies[1]["key_type"])
+	}
+}

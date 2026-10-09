@@ -95,7 +95,7 @@ helm:
   executor.workerAuth.signingKeySecret: Secret name and key for the controller-only signing material; at least 32 bytes.
   executor.workerAuth.bootstrapSecret: Secret name and `registryKey` for the controller's bootstrap registry.
   executor.workerAuth.staticInferenceSecret: Legacy mode only. Secret reference for the static inference key.
-  executor.workerAuth.additionalLLMPolicies: Additional trusted team and role policies with `team`, `role`, `budgetUsd`, `models` and `ttl`, including the `operator` role for a workbench consumer.
+  executor.workerAuth.additionalLLMPolicies: Additional trusted team and role policies with `team`, `role`, `budgetUsd`, `models` and `ttl`, and optionally `litellmTeamId` and `mcpAccessGroups` (ADR-0078), including the `operator` role for a workbench consumer.
   executor.litellm.masterKeySecret: Controller-only LiteLLM management Secret reference.
   executor.litellm.keyDuration: Per-run key lifetime; a positive Go duration between one second and 24 hours.
   executor.forgejo.tokenSecret: Shared bot token every Run uses when no admin token mints per-run push tokens.

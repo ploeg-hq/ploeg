@@ -64,6 +64,21 @@ type MintRequest struct {
 	// left an immortal budgeted credential — observed on 2026-07-24..27, when
 	// eight keys for finished runs accumulated and stayed live.
 	Duration string `json:"duration,omitempty"`
+	// TeamID mints the key inside a LiteLLM team, by the team's id. The team
+	// bounds which MCP access groups the key may carry: LiteLLM refuses a
+	// key whose object_permission names a group its team does not allow
+	// (ADR-0078). Empty = no team, as before.
+	TeamID string `json:"team_id,omitempty"`
+	// ObjectPermission grants the key MCP tools. The gateway runs with
+	// require_key_mcp_access_defined, so a key without it lists no tools.
+	// nil = no MCP access, as before.
+	ObjectPermission *ObjectPermission `json:"object_permission,omitempty"`
+}
+
+// ObjectPermission is the subset of LiteLLM's key object_permission Ploeg
+// sets: the MCP access groups whose servers the key may call.
+type ObjectPermission struct {
+	MCPAccessGroups []string `json:"mcp_access_groups"`
 }
 
 // MintResponse is the subset of the /key/generate response we need.

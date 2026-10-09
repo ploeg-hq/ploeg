@@ -1,0 +1,9 @@
+# CI-only values the chart must refuse: MCP access groups without the LiteLLM
+# team that bounds them would mint a key the master key alone scopes (ADR-0078).
+executor:
+  enabled: true
+  teams:
+    - name: copper
+      model: litellm_proxy/deepseek-chat
+      budget: "1"
+      mcpAccessGroups: [observability-read-orders]

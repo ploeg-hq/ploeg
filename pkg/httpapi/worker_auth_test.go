@@ -27,7 +27,7 @@ func (b *managedBrokerFixture) Mint(_ context.Context, r llmbroker.MintRequest) 
 	if b.fail {
 		return llmbroker.Credential{}, errors.New("gateway lost response")
 	}
-	return llmbroker.Credential{APIKey: "fixture-inference", Alias: "ploeg-" + r.RunToken[:12]}, nil
+	return llmbroker.Credential{APIKey: "fixture-inference", Alias: "ploeg-" + r.RunToken[:12], MCPAccessGroups: r.MCPAccessGroups}, nil
 }
 func (*managedBrokerFixture) Revoke(context.Context, llmbroker.Credential) error   { return nil }
 func (*managedBrokerFixture) RevokeForRun(context.Context, string) error           { return nil }

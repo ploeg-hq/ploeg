@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -88,17 +89,63 @@ func (a *Adapter) Prepare(spec harness.TaskSpec, env harness.RunEnv) (harness.In
 	outcomePath := harness.DropBoxPath(env.ScratchDir, spec.TraceID)
 	_ = os.Remove(outcomePath) // never inherit a previous run's report
 
+	argv := []string{bin, "-p", env.Prompt,
+		"--output-format", "json",
+		"--permission-mode", mode,
+		"--settings", TargetHooksDisabled,
+		"--strict-mcp-config",
+	}
+	// --strict-mcp-config stays: the gateway's server is the only one the Run
+	// loads, never the target repository's .mcp.json (ADR-0030, ADR-0078).
+	if env.LLM.MCPURL != "" && env.LLM.APIKey != "" {
+		path, err := writeMCPConfig(env.ScratchDir, env.LLM.MCPURL, env.LLM.APIKey)
+		if err != nil {
+			return harness.Invocation{}, err
+		}
+		argv = append(argv, "--mcp-config", path)
+	}
+
 	return harness.Invocation{
-		Argv: []string{bin, "-p", env.Prompt,
-			"--output-format", "json",
-			"--permission-mode", mode,
-			"--settings", TargetHooksDisabled,
-			"--strict-mcp-config",
-		},
+		Argv:          argv,
 		ExtraEnv:      append(extraEnv, harness.DropBoxEnv+"="+outcomePath),
 		OutcomeFile:   outcomePath,
 		CaptureStdout: true, // the JSON result envelope arrives on stdout
 	}, nil
+}
+
+// MCPServerName is the one MCP server a Run may load: the model gateway's.
+const MCPServerName = "litellm"
+
+// mcpConfig is Claude Code's --mcp-config file shape.
+type mcpConfig struct {
+	MCPServers map[string]mcpServer `json:"mcpServers"`
+}
+
+type mcpServer struct {
+	Type    string            `json:"type"`
+	URL     string            `json:"url"`
+	Headers map[string]string `json:"headers"`
+}
+
+// writeMCPConfig writes the Run's MCP configuration under the scratch
+// directory, outside the clone, readable only by the Run's user. The key is
+// the one the harness already holds (a placeholder under key isolation), so
+// the file grants nothing the Run's environment does not.
+func writeMCPConfig(scratchDir, url, key string) (string, error) {
+	cfg := mcpConfig{MCPServers: map[string]mcpServer{MCPServerName: {
+		Type:    "http",
+		URL:     url,
+		Headers: map[string]string{"x-litellm-api-key": "Bearer " + key},
+	}}}
+	body, err := json.Marshal(cfg)
+	if err != nil {
+		return "", fmt.Errorf("claude-code: encode MCP config: %w", err)
+	}
+	path := filepath.Join(scratchDir, "mcp-config.json")
+	if err := os.WriteFile(path, body, 0o600); err != nil {
+		return "", fmt.Errorf("claude-code: write MCP config: %w", err)
+	}
+	return path, nil
 }
 
 // resultEnvelope is the subset of Claude Code's --output-format json

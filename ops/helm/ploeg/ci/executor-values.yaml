@@ -45,6 +45,10 @@ executor:
       model: litellm_proxy/deepseek-chat
       budget: "1"
       maxReplicaCount: 1
+      # ADR-0078: the team's Run keys are minted inside a LiteLLM team and
+      # granted its read-only MCP access group, so the policy JSON carries both.
+      litellmTeamId: agents-orders
+      mcpAccessGroups: [observability-read-orders]
       # A mounted toolchain and the verification commands: renders the image
       # volume, its read-only mount and PLOEG_TOOLCHAINS / PLOEG_VERIFY_*.
       harness:

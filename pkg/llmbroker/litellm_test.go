@@ -384,3 +384,41 @@ func fixtureKeyID(key string) string {
 	digest := sha256.Sum256([]byte(key))
 	return hex.EncodeToString(digest[:])
 }
+
+func TestMint_TeamAndMCPAccessGroups(t *testing.T) {
+	f := newFakeAdmin()
+	b := f.broker(t)
+	plain, err := b.Mint(context.Background(), MintRequest{RunToken: runToken, BudgetUSD: 1, Models: []string{"m"}, TTL: time.Hour})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.minted[0].TeamID != "" || f.minted[0].ObjectPermission != nil || plain.MCPAccessGroups != nil {
+		t.Fatalf("a mint without a team carried a team or MCP grant: %+v %+v", f.minted[0], plain)
+	}
+	granted, err := b.Mint(context.Background(), MintRequest{RunToken: runToken, BudgetUSD: 1, Models: []string{"m"}, TTL: time.Hour,
+		TeamID: "orders-team-id", MCPAccessGroups: []string{"observability-read-orders"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := f.minted[1]
+	if got.TeamID != "orders-team-id" || got.ObjectPermission == nil ||
+		len(got.ObjectPermission.MCPAccessGroups) != 1 || got.ObjectPermission.MCPAccessGroups[0] != "observability-read-orders" {
+		t.Fatalf("minted %+v, want orders-team-id with observability-read-orders", got)
+	}
+	if len(granted.MCPAccessGroups) != 1 || granted.MCPAccessGroups[0] != "observability-read-orders" {
+		t.Fatalf("credential groups = %v", granted.MCPAccessGroups)
+	}
+}
+
+// The team bounds the groups. Without one, only the master key would, and it
+// can grant every group the gateway has.
+func TestMint_RefusesMCPAccessGroupsWithoutATeam(t *testing.T) {
+	f := newFakeAdmin()
+	if _, err := f.broker(t).Mint(context.Background(), MintRequest{RunToken: runToken, BudgetUSD: 1, TTL: time.Hour,
+		MCPAccessGroups: []string{"observability"}}); err == nil {
+		t.Fatal("minted MCP access groups without a team")
+	}
+	if len(f.minted) != 0 {
+		t.Fatalf("nothing should have been minted, got %+v", f.minted)
+	}
+}

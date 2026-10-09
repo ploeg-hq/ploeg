@@ -24,6 +24,11 @@ type LLMPolicy struct {
 	BudgetUSD float64  `json:"budgetUsd"`
 	Models    []string `json:"models"`
 	TTL       string   `json:"ttl"`
+	// LiteLLMTeamID mints the Run's key inside this LiteLLM team (its
+	// team_id). MCPAccessGroups grants the key those MCP access groups, which
+	// the team must allow. Both empty = no team and no MCP tools (ADR-0078).
+	LiteLLMTeamID   string   `json:"litellmTeamId,omitempty"`
+	MCPAccessGroups []string `json:"mcpAccessGroups,omitempty"`
 }
 
 type ManagedLLMBroker interface {
@@ -62,9 +67,31 @@ func NewLLMControl(st *store.Store, broker ManagedLLMBroker, policiesJSON string
 				return nil, fmt.Errorf("empty model scope")
 			}
 		}
+		if err := validMCPGrant(p); err != nil {
+			return nil, err
+		}
 		seen[key] = true
 	}
 	return c, nil
+}
+
+// validMCPGrant refuses MCP access groups without the LiteLLM team that
+// bounds them, and blank or repeated group names (ADR-0078).
+func validMCPGrant(p LLMPolicy) error {
+	if p.LiteLLMTeamID != strings.TrimSpace(p.LiteLLMTeamID) {
+		return fmt.Errorf("invalid LiteLLM team id")
+	}
+	if len(p.MCPAccessGroups) > 0 && p.LiteLLMTeamID == "" {
+		return fmt.Errorf("MCP access groups need a LiteLLM team id")
+	}
+	groups := map[string]bool{}
+	for _, g := range p.MCPAccessGroups {
+		if strings.TrimSpace(g) == "" || g != strings.TrimSpace(g) || groups[g] {
+			return fmt.Errorf("invalid or duplicate MCP access group")
+		}
+		groups[g] = true
+	}
+	return nil
 }
 
 func (c *LLMControl) Reserve(ctx context.Context, runToken string) error {
@@ -78,7 +105,8 @@ func (c *LLMControl) Reserve(ctx context.Context, runToken string) error {
 			if err != nil {
 				return err
 			}
-			return c.Store.ReserveLLMAccount(ctx, store.LLMAccount{RunToken: runToken, Alias: litellm.Alias(runToken), Authorized: p.BudgetUSD, Models: p.Models, TTLSeconds: int64(ttl.Seconds())})
+			return c.Store.ReserveLLMAccount(ctx, store.LLMAccount{RunToken: runToken, Alias: litellm.Alias(runToken), Authorized: p.BudgetUSD, Models: p.Models, TTLSeconds: int64(ttl.Seconds()),
+				GatewayTeamID: p.LiteLLMTeamID, MCPAccessGroups: p.MCPAccessGroups})
 		}
 	}
 	return fmt.Errorf("run has no managed inference policy")
@@ -103,7 +131,8 @@ func (c *LLMControl) issue(ctx context.Context, runToken string, begin func(cont
 	if err != nil {
 		return llmbroker.Credential{}, err
 	}
-	cred, err := c.Broker.Mint(ctx, llmbroker.MintRequest{RunToken: runToken, BudgetUSD: a.Authorized, Models: a.Models, TTL: time.Duration(a.TTLSeconds) * time.Second})
+	cred, err := c.Broker.Mint(ctx, llmbroker.MintRequest{RunToken: runToken, BudgetUSD: a.Authorized, Models: a.Models, TTL: time.Duration(a.TTLSeconds) * time.Second,
+		TeamID: a.GatewayTeamID, MCPAccessGroups: a.MCPAccessGroups})
 	if err != nil {
 		c.markUnknown(runToken)
 		return llmbroker.Credential{}, fmt.Errorf("credential issuance unresolved; reconciliation required")
