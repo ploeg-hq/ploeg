@@ -435,3 +435,63 @@ func TestOperatorExecutionCloseWithdrawsTheWorkItemOfAnEndedSession(t *testing.T
 		}
 	})
 }
+
+func operatorNeedsHumanReasons(t *testing.T, workItemID string) []string {
+	t.Helper()
+	rows, err := testStore.pool.Query(context.Background(), `SELECT detail->>'reason' FROM audit_log WHERE work_item_id=$1 AND action='work_item.needs_human' ORDER BY id`, workItemID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	reasons := []string{}
+	for rows.Next() {
+		var reason string
+		if err := rows.Scan(&reason); err != nil {
+			t.Fatal(err)
+		}
+		reasons = append(reasons, reason)
+	}
+	return reasons
+}
+
+func TestOperatorExecutionRecordsWhyItsWorkItemNeedsAPerson(t *testing.T) {
+	resetTables(t)
+	ctx := context.Background()
+	e := operatorCommandFixture(t, admitOperatorFixture(t, "needs-human-session"), "start", "start")
+	e = operatorCommandFixture(t, e, "heartbeat", "heartbeat")
+	report := func(id, state string, stopConfirmed bool) {
+		t.Helper()
+		next, err := testStore.CommandOperatorExecution(ctx, e.ID, "workbench", "alice", OperatorExecutionCommand{ID: id, Action: "report", State: state, StopConfirmed: stopConfirmed, ExpectedRevision: e.Revision, Generation: e.Generation, AuthenticatedBy: "owner"}, time.Minute)
+		if err != nil {
+			t.Fatalf("report %s: %v", state, err)
+		}
+		e = next
+	}
+	report("waiting", "waiting_input", false)
+	e = operatorCommandFixture(t, e, "waiting-heartbeat", "heartbeat")
+	report("interrupted", "interrupted", true)
+	if got := operatorNeedsHumanReasons(t, e.WorkItemID); strings.Join(got, ",") != "operator_waiting_input,operator_interrupted" {
+		t.Fatalf("needs_human reasons = %v", got)
+	}
+	var actor, execution string
+	if err := testStore.pool.QueryRow(ctx, `SELECT actor, detail->>'execution' FROM audit_log WHERE work_item_id=$1 AND action='work_item.needs_human' ORDER BY id DESC LIMIT 1`, e.WorkItemID).Scan(&actor, &execution); err != nil {
+		t.Fatal(err)
+	}
+	if actor != "operator:workbench:owner" || execution != e.ID {
+		t.Fatalf("needs_human event actor %q execution %q", actor, execution)
+	}
+
+	expiring := operatorCommandFixture(t, admitOperatorFixture(t, "needs-human-expired"), "start", "start")
+	if _, err := testStore.pool.Exec(ctx, `UPDATE operator_executions SET expires_at=now()-interval '1 second' WHERE id=$1`, expiring.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := testStore.ExpireOperatorExecutions(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := testStore.ExpireOperatorExecutions(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := operatorNeedsHumanReasons(t, expiring.WorkItemID); strings.Join(got, ",") != "operator_expired" {
+		t.Fatalf("expired needs_human reasons = %v", got)
+	}
+}
