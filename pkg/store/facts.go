@@ -26,6 +26,7 @@ const (
 	factsRunLimit        = 1000
 	factsPlayLimit       = 50
 	factsTransitionLimit = 1000
+	factsCheckpointLimit = 200
 )
 
 // ErrInvalidFactsCursor is returned for a facts list cursor Ploeg did not
@@ -57,6 +58,8 @@ type WorkItemFacts struct {
 	PullRequests       []json.RawMessage  `json:"pullRequests"`
 	StatusTransitions  []json.RawMessage  `json:"statusTransitions"`
 	GateTransitions    []json.RawMessage  `json:"gateTransitions"`
+	Checkpoints        []json.RawMessage  `json:"checkpoints"`
+	RunBudgetHolds     []json.RawMessage  `json:"runBudgetHolds"`
 	DeployEnvironments []json.RawMessage  `json:"deployEnvironments"`
 	Roster             []FactsRosterEntry `json:"roster"`
 	BotLogins          []string           `json:"botLogins"`
@@ -77,6 +80,8 @@ type FactsWorkItem struct {
 	UpdatedAt        time.Time         `json:"updatedAt"`
 	TrackerCreatedAt *time.Time        `json:"trackerCreatedAt"`
 	EstimateSeconds  *int64            `json:"estimateSeconds"`
+	ExternalScope    string            `json:"externalScope"`
+	AdmittedAt       *time.Time        `json:"admittedAt"`
 	Target           *FactsTarget      `json:"target"`
 	Epics            []json.RawMessage `json:"epics"`
 	Withdrawals      []json.RawMessage `json:"withdrawals"`
@@ -113,6 +118,7 @@ type FactsTruncated struct {
 	PullRequests      bool `json:"pullRequests"`
 	StatusTransitions bool `json:"statusTransitions"`
 	GateTransitions   bool `json:"gateTransitions"`
+	Checkpoints       bool `json:"checkpoints"`
 }
 
 var factsRoles = []string{"merger", "reviewer", "author", "pusher", "commenter", "mover"}
@@ -221,11 +227,13 @@ func (s *Store) WorkItemFacts(ctx context.Context, id int64, teams []string, opt
 	item := &f.WorkItem
 	var forge, owner, repo, base string
 	err = tx.QueryRow(ctx, `SELECT i.id::text, i.provider, i.external_id, left(i.url, 4096), left(i.title, 4096), i.state, i.team,
-		i.created_at, i.updated_at, i.tracker_created_at, i.estimate_seconds,
+		i.created_at, i.updated_at, i.tracker_created_at, i.estimate_seconds, i.external_scope,
+		(SELECT a.at FROM audit_log a WHERE a.work_item_id = i.id AND a.action IN ('work_item.queued', 'work_item.approved')
+		 ORDER BY a.id LIMIT 1),
 		i.target_forge, i.target_owner, i.target_repo, i.target_base_branch, `+factsActivity+`
 		FROM work_items i WHERE i.id = $1 AND ($2::text[] IS NULL OR i.team = ANY($2))`, id, teams).
 		Scan(&item.ID, &item.Provider, &item.ExternalID, &item.URL, &item.Title, &item.State, &item.Team,
-			&item.CreatedAt, &item.UpdatedAt, &item.TrackerCreatedAt, &item.EstimateSeconds, &forge, &owner, &repo, &base, &f.ActivityAt)
+			&item.CreatedAt, &item.UpdatedAt, &item.TrackerCreatedAt, &item.EstimateSeconds, &item.ExternalScope, &item.AdmittedAt, &forge, &owner, &repo, &base, &f.ActivityAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return WorkItemFacts{}, ErrOperatorNotFound
 	}
@@ -268,6 +276,12 @@ func (s *Store) WorkItemFacts(ctx context.Context, id int64, teams []string, opt
 			'gate', g.gate, 'status', left(g.status, 256), 'actor', left(g.actor, 256), 'reason', g.reason, 'at', g.at,
 			'receivedAt', g.received_at)
 			FROM gate_transitions g WHERE g.work_item_id = $1 ORDER BY g.id LIMIT $2`},
+		{&f.Checkpoints, factsCheckpointLimit, &f.Truncated.Checkpoints, `SELECT jsonb_build_object(
+			'id', c.id::text, 'phase', c.phase, 'branch', left(c.branch, 1024), 'prUrl', left(c.pr_url, 4096), 'createdAt', c.created_at)
+			FROM checkpoints c WHERE c.work_item_id = $1 AND c.pr_url <> '' ORDER BY c.created_at, c.id LIMIT $2`},
+		{&f.RunBudgetHolds, factsRunLimit, nil, `SELECT jsonb_build_object('runId', r.id::text, 'shiftId', r.shift_id::text, 'reservedUsd', h.reserved)
+			FROM agent_runs r JOIN run_budget_holds h ON h.run_token = r.run_token
+			WHERE r.work_item_id = $1 AND h.reserved > 0 ORDER BY r.id LIMIT $2`},
 		{&f.DeployEnvironments, 200, nil, `SELECT jsonb_build_object('forge', d.forge, 'owner', d.repo_owner, 'repo', d.repo_name,
 			'environment', d.environment, 'firstDeployedAt', min(d.deployed_at))
 			FROM deployments d
