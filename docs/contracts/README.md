@@ -138,7 +138,13 @@ change either side and the test tells you.
   measurements, changed paths, reverts and deploys, the tracker status and
   delivery gate moves, the deploy environments of its repositories, and the
   roster with factual roles. They carry no grade, tier, KPI, status kind or
-  working time. `pullRequestCommentResponse` and
+  working time. Four optional, nullable facts were added after the first
+  release of these responses: the Work Item's `externalScope` (its tracker
+  board or project) and `admittedAt` (its first `work_item.queued` or
+  `work_item.approved` audit entry), `checkpoints` that recorded a pull
+  request URL, and `runBudgetHolds`, the budget each Run still holds
+  whether or not it belongs to a Shift. A consumer of an older Ploeg sees
+  them absent. `pullRequestCommentResponse` and
   `pullRequestCommentDeleteResponse` answer the keyed comment, whose request
   `pullRequestCommentRequest` refuses unknown fields. `legacyExportResponse`
   answers `GET /api/v1/operator/card-legacy-export` and is deprecated from

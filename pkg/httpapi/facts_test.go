@@ -119,6 +119,19 @@ func richFactsItem(t *testing.T) (int64, int64) {
 		id, at.Add(7*time.Hour), at.Add(9*time.Hour))
 	execSQL(t, `INSERT INTO work_item_epics (work_item_id, provider, epic_external_id, epic_title) VALUES ($1, 'vikunja', '100', 'The epic')`, id)
 	execSQL(t, `INSERT INTO audit_log (actor, action, work_item_id) VALUES ('operator:workbench:anna', 'work_item.withdrawn', $1)`, id)
+	execSQL(t, `UPDATE work_items SET external_scope = '10' WHERE id = $1`, id)
+	execSQL(t, `UPDATE audit_log SET at = $2 WHERE work_item_id = $1 AND action = 'work_item.queued'`, id, at.Add(-30*time.Hour))
+	execSQL(t, `INSERT INTO audit_log (at, actor, action, work_item_id) VALUES ($2, 'operator:workbench:anna', 'work_item.approved', $1)`,
+		id, at.Add(-40*time.Hour))
+	execSQL(t, `INSERT INTO checkpoints (work_item_id, phase, branch, pr_url, created_at) VALUES
+		($1, 'pushed', 'agent/vik-4242', 'https://forge.example/webgrip/ploeg/pulls/42', $2), ($1, 'cloned', 'agent/vik-4242', '', $3)`,
+		id, at.Add(50*time.Minute), at.Add(10*time.Minute))
+	execSQL(t, `INSERT INTO agent_runs (work_item_id, shift_id, team, role, round, writes, state, started_at, run_token, authorized)
+		VALUES ($1, $2, 'silver', 'reviewer', 1, false, 'running', $3, $4, 1.5)`, id, shift, at.Add(2*time.Hour), strings.Repeat("c", 48))
+	execSQL(t, `INSERT INTO agent_runs (work_item_id, team, role, round, writes, state, started_at, finished_at, run_token, authorized)
+		VALUES ($1, 'silver', 'builder', 1, true, 'finished', $2, $3, $4, 2)`, id, at.Add(3*time.Hour), at.Add(4*time.Hour), strings.Repeat("d", 48))
+	execSQL(t, `INSERT INTO run_llm_accounts (run_token, alias, authorized, models, ttl_seconds, state, observed_spend)
+		VALUES ($1, 'ploeg-dddddddddddd', 2, '[]', 3600, 'issued', 0.5)`, strings.Repeat("d", 48))
 	return id, pr
 }
 
@@ -126,10 +139,12 @@ type factsBody struct {
 	SchemaVersion string `json:"schemaVersion"`
 	Facts         struct {
 		WorkItem struct {
-			ID               string  `json:"id"`
-			ExternalRef      string  `json:"externalRef"`
-			EstimateSeconds  *int64  `json:"estimateSeconds"`
-			TrackerCreatedAt *string `json:"trackerCreatedAt"`
+			ID               string     `json:"id"`
+			ExternalRef      string     `json:"externalRef"`
+			EstimateSeconds  *int64     `json:"estimateSeconds"`
+			TrackerCreatedAt *string    `json:"trackerCreatedAt"`
+			ExternalScope    string     `json:"externalScope"`
+			AdmittedAt       *time.Time `json:"admittedAt"`
 			Epics            []struct {
 				ExternalID string `json:"externalId"`
 			} `json:"epics"`
@@ -164,8 +179,21 @@ type factsBody struct {
 				Paths []json.RawMessage `json:"paths"`
 			} `json:"changedPaths"`
 		} `json:"pullRequests"`
-		StatusTransitions  []json.RawMessage `json:"statusTransitions"`
-		GateTransitions    []json.RawMessage `json:"gateTransitions"`
+		StatusTransitions []json.RawMessage `json:"statusTransitions"`
+		GateTransitions   []json.RawMessage `json:"gateTransitions"`
+		Checkpoints       []struct {
+			Phase     string    `json:"phase"`
+			PRURL     string    `json:"prUrl"`
+			CreatedAt time.Time `json:"createdAt"`
+		} `json:"checkpoints"`
+		RunBudgetHolds []struct {
+			RunID       string  `json:"runId"`
+			ShiftID     *string `json:"shiftId"`
+			ReservedUSD float64 `json:"reservedUsd"`
+		} `json:"runBudgetHolds"`
+		Truncated struct {
+			Checkpoints *bool `json:"checkpoints"`
+		} `json:"truncated"`
 		DeployEnvironments []struct {
 			Environment string `json:"environment"`
 		} `json:"deployEnvironments"`
@@ -199,8 +227,22 @@ func TestWorkItemFacts_ReturnsEveryStoredFactAndMatchesTheSchema(t *testing.T) {
 		f.WorkItem.TrackerCreatedAt == nil || len(f.WorkItem.Epics) != 1 || len(f.WorkItem.Withdrawals) != 1 {
 		t.Errorf("work item = %+v", f.WorkItem)
 	}
-	if len(f.Runs) != 1 || len(f.Shifts) != 1 || len(f.StatusTransitions) != 2 || len(f.GateTransitions) != 2 || len(f.DeployEnvironments) != 2 {
+	if len(f.Runs) != 3 || len(f.Shifts) != 1 || len(f.StatusTransitions) != 2 || len(f.GateTransitions) != 2 || len(f.DeployEnvironments) != 2 {
 		t.Errorf("runs %d shifts %d status %d gates %d envs %d", len(f.Runs), len(f.Shifts), len(f.StatusTransitions), len(f.GateTransitions), len(f.DeployEnvironments))
+	}
+	if f.WorkItem.ExternalScope != "10" {
+		t.Errorf("externalScope = %q", f.WorkItem.ExternalScope)
+	}
+	if want := time.Date(2026, 9, 30, 3, 0, 0, 0, time.UTC); f.WorkItem.AdmittedAt == nil || !f.WorkItem.AdmittedAt.Equal(want) {
+		t.Errorf("admittedAt = %v, want the first queued or approved entry at %v", f.WorkItem.AdmittedAt, want)
+	}
+	if len(f.Checkpoints) != 1 || f.Checkpoints[0].Phase != "pushed" || f.Checkpoints[0].PRURL != "https://forge.example/webgrip/ploeg/pulls/42" ||
+		!f.Checkpoints[0].CreatedAt.Equal(time.Date(2026, 10, 1, 9, 50, 0, 0, time.UTC)) || f.Truncated.Checkpoints == nil || *f.Truncated.Checkpoints {
+		t.Errorf("checkpoints = %+v truncated %v", f.Checkpoints, f.Truncated.Checkpoints)
+	}
+	if len(f.RunBudgetHolds) != 2 || f.RunBudgetHolds[0].ReservedUSD != 1.5 || f.RunBudgetHolds[0].ShiftID == nil ||
+		f.RunBudgetHolds[1].ReservedUSD != 2 || f.RunBudgetHolds[1].ShiftID != nil {
+		t.Errorf("run budget holds = %+v", f.RunBudgetHolds)
 	}
 	if len(f.PullRequests) != 1 {
 		t.Fatalf("pull requests = %d", len(f.PullRequests))
@@ -233,6 +275,38 @@ func TestWorkItemFacts_ReturnsEveryStoredFactAndMatchesTheSchema(t *testing.T) {
 	if want := time.Date(2026, 10, 1, 18, 0, 0, 0, time.UTC); !f.ActivityAt.Equal(want) {
 		t.Errorf("activityAt = %v, want the last gate move at %v", f.ActivityAt, want)
 	}
+}
+
+func TestWorkItemFacts_SchemaAcceptsFactsWithoutTheOptionalFields(t *testing.T) {
+	s, token := factsServer(t, []string{"silver"}, false)
+	id, _ := richFactsItem(t)
+	w := operatorDo(t, s, token, "GET", fmt.Sprintf("/api/v1/operator/work-items/%d/facts", id), "", nil)
+	if w.Code != 200 {
+		t.Fatalf("facts: %d %s", w.Code, w.Body)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	facts := body["facts"].(map[string]any)
+	item := facts["workItem"].(map[string]any)
+	truncated := facts["truncated"].(map[string]any)
+	for _, nulled := range []map[string]any{facts, item} {
+		for _, key := range []string{"checkpoints", "runBudgetHolds", "externalScope", "admittedAt"} {
+			if _, ok := nulled[key]; ok {
+				nulled[key] = nil
+			}
+		}
+	}
+	nulls, _ := json.Marshal(body)
+	validateOperatorSchema(t, nulls)
+	delete(facts, "checkpoints")
+	delete(facts, "runBudgetHolds")
+	delete(item, "externalScope")
+	delete(item, "admittedAt")
+	delete(truncated, "checkpoints")
+	older, _ := json.Marshal(body)
+	validateOperatorSchema(t, older)
 }
 
 func TestWorkItemFacts_StaysInTheConsumersScope(t *testing.T) {

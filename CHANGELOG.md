@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.2.0-rc.10
+
+### Changes
+
+- Ploeg supplies delivery facts and deprecates its Run cards (#91, ADR-0079). New operator endpoints `GET /api/v1/operator/work-items/{id}/facts` and `GET /api/v1/operator/facts` return the raw facts Ploeg records for a Work Item: Shifts and Runs with usage, live usage, pull requests with reviews, events, CI runs and jobs, changed files with line counts and per-file indentation measurements, reverts, deployments, tracker status and gate transitions, epics, the roster and bot logins. No derived card values.
+- A generic keyed pull request comment (#91): `PUT` and `DELETE /api/v1/operator/work-items/{id}/pull-request-comments/{key}` upsert or remove one comment per pull request and key, with an optional SVG image checked for static drawing elements only. It needs execute permission and `X-Ploeg-Actor`, and is audited.
+- A deprecated one-time export (#91): `GET /api/v1/operator/card-legacy-export` pages through the card state only Ploeg holds (cracks in every state, frozen rarities, card comment ids, stored play shapes) so an operator consumer can take it over. It is removed with the card code in a later release.
+- A card switch (#91): `cards: {enabled: false}` stops the card comment, rarity and mend sweeps and the merge-time card comment. The card endpoints keep answering in this release.
+- Delivery facts gain the Work Item's tracker scope and first admission time, checkpoints with a pull request URL, and per-Run budget holds (#92).
+
+### Migration notes
+
+- Migration `0043_delivery_facts` adds per-file indentation measurements to `pull_request_files` and a `pull_request_comments` table. Only pull requests measured after this release carry indentation; older plays' measured shape is in the export.
+- `cards.enabled` defaults to true, so nothing changes until an operator turns it off. Turn it off only after the operator consumer has imported the export and before it adopts the card comment.
+
 ## 0.2.0-rc.9
 
 ### Changes
