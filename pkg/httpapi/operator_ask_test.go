@@ -177,11 +177,15 @@ func TestOperatorAskAdmitsMintsOnceAndBlocksOnFinish(t *testing.T) {
 	if w, _ := askCall(t, s, "POST", path, token, "alice", question); w.Code != 200 || len(g.mints) != 1 {
 		t.Fatalf("replay after finish: %d %s", w.Code, w.Body)
 	}
-	for _, endpoint := range []string{"work-items/" + itoa(id), "work-items/" + itoa(id) + "/facts", "runs/" + admitted.Ask.RunID, "runs?team=silver"} {
+	for _, endpoint := range []string{"work-items/" + itoa(id), "runs/" + admitted.Ask.RunID, "runs?team=silver"} {
 		body := operatorSchemaGET(t, s, token, endpoint)
 		if !strings.Contains(string(body), `"role":"ask"`) {
 			t.Fatalf("%s does not show the Ask Run: %s", endpoint, body)
 		}
+	}
+	facts := string(operatorSchemaGET(t, s, token, "work-items/"+itoa(id)+"/facts"))
+	if strings.Contains(facts, `"role":"ask"`) || !strings.Contains(facts, `"asks":[{`) || !strings.Contains(facts, `"runId":"`+admitted.Ask.RunID+`","state":"finished"`) {
+		t.Fatalf("facts must list the Ask apart from the delivery Runs: %s", facts)
 	}
 }
 

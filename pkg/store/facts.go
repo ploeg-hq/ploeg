@@ -58,16 +58,19 @@ type FactsOptions struct {
 // with no derived figure (ADR-0079). The nested collections are assembled
 // in SQL as the operator contract's JSON and kept raw.
 type WorkItemFacts struct {
-	WorkItem           FactsWorkItem      `json:"workItem"`
-	ActivityAt         time.Time          `json:"activityAt"`
-	Shifts             []OperatorShift    `json:"shifts"`
-	Runs               []OperatorRun      `json:"runs"`
-	LiveUsage          []FactsLiveUsage   `json:"liveUsage"`
-	PullRequests       []json.RawMessage  `json:"pullRequests"`
-	StatusTransitions  []json.RawMessage  `json:"statusTransitions"`
-	GateTransitions    []json.RawMessage  `json:"gateTransitions"`
-	Checkpoints        []json.RawMessage  `json:"checkpoints"`
-	RunBudgetHolds     []json.RawMessage  `json:"runBudgetHolds"`
+	WorkItem          FactsWorkItem     `json:"workItem"`
+	ActivityAt        time.Time         `json:"activityAt"`
+	Shifts            []OperatorShift   `json:"shifts"`
+	Runs              []OperatorRun     `json:"runs"`
+	LiveUsage         []FactsLiveUsage  `json:"liveUsage"`
+	PullRequests      []json.RawMessage `json:"pullRequests"`
+	StatusTransitions []json.RawMessage `json:"statusTransitions"`
+	GateTransitions   []json.RawMessage `json:"gateTransitions"`
+	Checkpoints       []json.RawMessage `json:"checkpoints"`
+	RunBudgetHolds    []json.RawMessage `json:"runBudgetHolds"`
+	// Asks are the Work Item's Asks (ADR-0081). They are not delivery: Runs,
+	// LiveUsage, RunBudgetHolds and ActivityAt leave their Runs out.
+	Asks               []json.RawMessage  `json:"asks"`
 	DeployEnvironments []json.RawMessage  `json:"deployEnvironments"`
 	Roster             []FactsRosterEntry `json:"roster"`
 	BotLogins          []string           `json:"botLogins"`
@@ -127,12 +130,13 @@ type FactsTruncated struct {
 	StatusTransitions bool `json:"statusTransitions"`
 	GateTransitions   bool `json:"gateTransitions"`
 	Checkpoints       bool `json:"checkpoints"`
+	Asks              bool `json:"asks"`
 }
 
 var factsRoles = []string{"merger", "reviewer", "author", "pusher", "commenter", "mover"}
 
 const factsActivity = `GREATEST(
-	(SELECT max(GREATEST(r.started_at, r.finished_at)) FROM agent_runs r WHERE r.work_item_id = i.id),
+	(SELECT max(GREATEST(r.started_at, r.finished_at)) FROM agent_runs r WHERE r.work_item_id = i.id AND r.role <> 'ask'),
 	(SELECT max(GREATEST(p.first_seen_at, p.opened_at, p.merged_at, p.closed_at)) FROM pull_requests p WHERE p.work_item_id = i.id),
 	(SELECT max(v.received_at) FROM pull_request_reviews v JOIN pull_requests p ON p.id = v.pull_request_id WHERE p.work_item_id = i.id),
 	(SELECT max(e.at) FROM pull_request_events e JOIN pull_requests p ON p.id = e.pull_request_id WHERE p.work_item_id = i.id),
@@ -140,6 +144,16 @@ const factsActivity = `GREATEST(
 	(SELECT max(st.at) FROM status_transitions st WHERE st.work_item_id = i.id),
 	(SELECT max(g.at) FROM gate_transitions g WHERE g.work_item_id = i.id),
 	i.created_at)`
+
+const factsAskJSON = `jsonb_build_object('runId', r.id::text,
+	'state', CASE WHEN k.finished_at IS NOT NULL THEN 'finished'
+	              WHEN r.state = 'running' AND r.expires_at > now() THEN 'open' ELSE 'expired' END,
+	'budgetUsd', COALESCE(a.authorized, r.authorized),
+	'costStatus', CASE WHEN a.state = 'reconciled' AND NOT a.cost_known THEN 'unknown'
+	                   WHEN a.state = 'reconciled' AND COALESCE(a.corrections_until > now(), false) THEN 'provisional'
+	                   WHEN a.state = 'reconciled' THEN 'settled' ELSE 'provisional' END,
+	'usd', CASE WHEN a.state = 'reconciled' THEN a.reconciled_spend ELSE a.observed_spend END,
+	'createdAt', k.created_at, 'finishedAt', k.finished_at)`
 
 const factsPeople = `SELECT p.work_item_id AS id, p.merged_by AS login, 1 AS role FROM pull_requests p WHERE COALESCE(p.merged_by, '') <> ''
 	UNION ALL SELECT p.work_item_id, v.reviewer, 2 FROM pull_request_reviews v JOIN pull_requests p ON p.id = v.pull_request_id WHERE v.reviewer <> ''
@@ -273,7 +287,7 @@ func (s *Store) WorkItemFacts(ctx context.Context, id int64, teams []string, opt
 		{&shifts, factsShiftLimit, &f.Truncated.Shifts, `SELECT ` + operatorShiftJSON + `
 			FROM shifts sh WHERE sh.work_item_id = $1 ORDER BY sh.id LIMIT $2`},
 		{&runs, factsRunLimit, &f.Truncated.Runs, `SELECT ` + operatorRunJSON + `
-			FROM agent_runs r WHERE r.work_item_id = $1 ORDER BY r.id LIMIT $2`},
+			FROM agent_runs r WHERE r.work_item_id = $1 AND r.role <> 'ask' ORDER BY r.id LIMIT $2`},
 		{&f.PullRequests, factsPlayLimit, &f.Truncated.PullRequests, `SELECT ` + factsPullRequestJSON + `
 			FROM pull_requests p LEFT JOIN shifts sh ON sh.id = p.shift_id
 			WHERE p.work_item_id = $1 ORDER BY p.first_seen_at, p.id LIMIT $2`},
@@ -289,7 +303,10 @@ func (s *Store) WorkItemFacts(ctx context.Context, id int64, teams []string, opt
 			FROM checkpoints c WHERE c.work_item_id = $1 AND c.pr_url <> '' ORDER BY c.created_at, c.id LIMIT $2`},
 		{&f.RunBudgetHolds, factsRunLimit, nil, `SELECT jsonb_build_object('runId', r.id::text, 'shiftId', r.shift_id::text, 'reservedUsd', h.reserved)
 			FROM agent_runs r JOIN run_budget_holds h ON h.run_token = r.run_token
-			WHERE r.work_item_id = $1 AND h.reserved > 0 ORDER BY r.id LIMIT $2`},
+			WHERE r.work_item_id = $1 AND r.role <> 'ask' AND h.reserved > 0 ORDER BY r.id LIMIT $2`},
+		{&f.Asks, factsRunLimit, &f.Truncated.Asks, `SELECT ` + factsAskJSON + `
+			FROM asks k JOIN agent_runs r ON r.id = k.run_id LEFT JOIN run_llm_accounts a ON a.run_token = r.run_token
+			WHERE k.work_item_id = $1 ORDER BY k.run_id LIMIT $2`},
 		{&f.DeployEnvironments, 200, nil, `SELECT jsonb_build_object('forge', d.forge, 'owner', d.repo_owner, 'repo', d.repo_name,
 			'environment', d.environment, 'firstDeployedAt', min(d.deployed_at))
 			FROM deployments d
@@ -411,7 +428,7 @@ func factsRoster(ctx context.Context, tx pgx.Tx, id int64) ([]FactsRosterEntry, 
 
 func factsRunningRuns(ctx context.Context, tx pgx.Tx, id int64) ([]factsRunning, error) {
 	rows, err := tx.Query(ctx, `SELECT id, run_token FROM agent_runs
-		WHERE work_item_id = $1 AND state = 'running' AND started_at IS NOT NULL AND finished_at IS NULL ORDER BY id LIMIT 50`, id)
+		WHERE work_item_id = $1 AND state = 'running' AND role <> 'ask' AND started_at IS NOT NULL AND finished_at IS NULL ORDER BY id LIMIT 50`, id)
 	if err != nil {
 		return nil, err
 	}

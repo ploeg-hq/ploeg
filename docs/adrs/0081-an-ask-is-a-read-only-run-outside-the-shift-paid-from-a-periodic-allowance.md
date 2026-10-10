@@ -47,7 +47,7 @@ Chosen option: "An Ask Run with no Shift, authorized against a periodic allowanc
 
 **Ploeg keeps no question.** The Ask records the SHA-256 of the question, its asker and its consumer, never the text. The consumer stores the question and the answer.
 
-**Ask spend is not delivery spend.** Facts and usage that report what building a Work Item cost leave Ask Runs out, and report Ask spend and Ask count beside it.
+**Ask spend is not delivery spend.** A Work Item's delivery facts leave Ask Runs out of their Runs, live usage, budget holds and activity time, and list each Ask in `asks` with its budget, spend and cost status, so a consumer reports Ask spend beside, never inside, what building the Work Item cost. A Shift's usage report never sees an Ask, which has no Shift. The team summary's spend and the Work Item detail's Runs still include Asks: they report all of a team's inference, and an Ask Run shows there with the Role `ask` and no Shift.
 
 ### Consequences
 
@@ -60,7 +60,7 @@ Chosen option: "An Ask Run with no Shift, authorized against a periodic allowanc
 
 ### Confirmation
 
-* `go test ./pkg/store/` proves an admitted Ask creates no Shift and no Lease, that two concurrent admissions that together exceed the allowance admit exactly one, that an Ask admitted in one month does not count against the next, that a replayed `askId` returns the same Ask, and that team capacity, settling a closed tracker task, a Work Item's started flag and the context phase ignore Ask Runs.
+* `go test ./pkg/store/` proves an admitted Ask creates no Shift and no Lease, that two concurrent admissions that together exceed the allowance admit exactly one, that an Ask admitted in one month does not count against the next, that a replayed `askId` returns the same Ask, and that team capacity, settling a closed tracker task, a Work Item's started flag, withdrawal, operator source adoption and the context phase ignore Ask Runs, and that a Work Item's facts list its Asks apart from its delivery Runs.
 * `go test ./pkg/httpapi/` validates every Ask and allowance response against `operator-api.v1.schema.json`, checks execute permission, the actor, team scope (404 outside it), 402 on an exhausted allowance, the refusal without a `(team, ask)` policy, that a replay mints no second key, and that finishing blocks the key, against a LiteLLM fake built on `net/http/httptest`.
 * CI runs both with `mise exec -- go test ./...`.
 

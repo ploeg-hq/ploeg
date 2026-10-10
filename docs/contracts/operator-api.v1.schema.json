@@ -3429,8 +3429,19 @@
             "checkpoints": {
               "type": "boolean",
               "description": "Optional: absent from older Ploeg releases."
+            },
+            "asks": {
+              "type": "boolean"
             }
           }
+        },
+        "asks": {
+          "type": "array",
+          "maxItems": 1000,
+          "items": {
+            "$ref": "#/$defs/factsAsk"
+          },
+          "description": "Optional: absent from a Ploeg older than ADR-0081."
         }
       }
     },
@@ -3977,6 +3988,70 @@
         },
         "allowance": {
           "$ref": "#/$defs/allowance"
+        }
+      }
+    },
+    "factsAsk": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "One Ask about the Work Item (ADR-0081). An Ask is not delivery: runs, liveUsage, runBudgetHolds and activityAt leave its Run out, so a consumer reports Ask spend apart from what building the Work Item cost. usd is the settled spend once costStatus is settled, otherwise the highest spend observed so far or null; a settlement inside its correction window stays provisional.",
+      "required": [
+        "runId",
+        "state",
+        "budgetUsd",
+        "costStatus",
+        "usd",
+        "createdAt",
+        "finishedAt"
+      ],
+      "properties": {
+        "runId": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]{0,18}$"
+        },
+        "state": {
+          "enum": [
+            "open",
+            "finished",
+            "expired"
+          ]
+        },
+        "budgetUsd": {
+          "type": "number",
+          "minimum": 0
+        },
+        "costStatus": {
+          "enum": [
+            "provisional",
+            "settled",
+            "unknown"
+          ]
+        },
+        "usd": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "finishedAt": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       }
     }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"testing"
@@ -211,5 +212,49 @@ func TestFinishAskFinishesItsRunOnce(t *testing.T) {
 	}
 	if state != "finished" || finishedAudits != 1 {
 		t.Fatalf("run %s, %d ask.finished events", state, finishedAudits)
+	}
+}
+
+func TestWorkItemFactsReportAsksApartFromDelivery(t *testing.T) {
+	resetTables(t)
+	ctx := context.Background()
+	id, _ := ingestItem(t)
+	before, err := testStore.WorkItemFacts(ctx, id, nil, FactsOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ask := admitOpenAsk(t, id, "silver")
+	if err := testStore.ReserveLLMAccount(ctx, LLMAccount{RunToken: ask.RunToken, Alias: "alias-facts", Authorized: 0.02, Models: []string{"m"}, TTLSeconds: 300}); err != nil {
+		t.Fatal(err)
+	}
+	if err := testStore.RecordLLMObserved(ctx, ask.RunToken, 0.004); err != nil {
+		t.Fatal(err)
+	}
+	live := 0
+	f, err := testStore.WorkItemFacts(ctx, id, nil, FactsOptions{Live: func(context.Context, string) (LiveUsage, error) {
+		live++
+		return LiveUsage{CostUSD: 0.004}, nil
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(f.Runs) != 0 || len(f.RunBudgetHolds) != 0 || len(f.LiveUsage) != 0 || live != 0 || !f.ActivityAt.Equal(before.ActivityAt) {
+		t.Fatalf("an Ask counted as delivery: runs=%d holds=%d live=%d activity %v→%v", len(f.Runs), len(f.RunBudgetHolds), live, before.ActivityAt, f.ActivityAt)
+	}
+	if len(f.Asks) != 1 {
+		t.Fatalf("asks: %s", f.Asks)
+	}
+	var got struct {
+		RunID      string   `json:"runId"`
+		State      string   `json:"state"`
+		CostStatus string   `json:"costStatus"`
+		USD        *float64 `json:"usd"`
+		BudgetUSD  float64  `json:"budgetUsd"`
+	}
+	if err := json.Unmarshal(f.Asks[0], &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.RunID != ask.RunID || got.State != "open" || got.CostStatus != "provisional" || got.USD == nil || *got.USD != 0.004 || got.BudgetUSD != 0.02 {
+		t.Fatalf("ask fact: %s", f.Asks[0])
 	}
 }

@@ -104,6 +104,9 @@ change either side and the test tells you.
   key. `allowanceRefusalResponse` (402) and `allowanceResponse` (`GET
   /api/v1/operator/allowances?team=`) report the team's monthly Ask
   Allowance and when it resets. Ploeg keeps only the question's SHA-256.
+  A Work Item's facts leave Ask Runs out of `runs`, `liveUsage`,
+  `runBudgetHolds` and `activityAt` and list them in the optional `asks`
+  (`factsAsk`), so Ask spend is reported apart from delivery spend.
 - `deploy-api.v1` is the body of a pipeline's deploy report. It refuses
   unknown fields, unlike the response contracts, so a misspelled field fails
   the pipeline step instead of being dropped.
