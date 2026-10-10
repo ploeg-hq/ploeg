@@ -142,15 +142,16 @@ func (s *Store) ClaimStoppedTrackerChecks(ctx context.Context, providers []strin
 	if len(providers) == 0 || limit <= 0 {
 		return nil, nil
 	}
-	rows, err := s.pool.Query(ctx, `UPDATE work_items SET tracker_checked_at = now()
-		WHERE id IN (
+	rows, err := s.pool.Query(ctx, `WITH due AS MATERIALIZED (
 			SELECT id FROM work_items
 			WHERE state IN ('needs_human', 'awaiting_review') AND NOT operator_owned AND provider = ANY($1)
 				AND (tracker_checked_at IS NULL OR tracker_checked_at <= now() - make_interval(secs => $2))
 			ORDER BY tracker_checked_at NULLS FIRST, id
 			LIMIT $3
 			FOR UPDATE SKIP LOCKED)
-		RETURNING id, provider, external_id`, providers, every.Seconds(), limit)
+		UPDATE work_items w SET tracker_checked_at = now()
+		FROM due WHERE w.id = due.id
+		RETURNING w.id, w.provider, w.external_id`, providers, every.Seconds(), limit)
 	if err != nil {
 		return nil, err
 	}
