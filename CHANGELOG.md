@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.0-rc.11
+
+### Changes
+
+- A finished Run whose key identity was never recorded, such as one whose mint timed out, now settles from the spend logs that carry its key alias (`GET /spend/logs/ui?key_alias=`, LiteLLM 1.102.1 and later; #90). Only entries with exactly that alias count. No entries settles with its cost unknown, and a capped or unreadable result keeps the hold. Before this, such an account kept its hold for good.
+- Spend logs that total less than the spend Ploeg observed during the Run settle at the observation, with both amounts in the evidence, instead of being refused (#90). The store's guard against settling below an observation is unchanged.
+- "gateway spend logs unavailable" now names its cause.
+
+### Migration notes
+
+- None. The alias read needs the gateway's `/spend/logs/ui` endpoint; on an older LiteLLM without it, a keyless account keeps its hold as before and the log names the HTTP status.
+
 ## 0.2.0-rc.10
 
 ### Changes
