@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.2.0-rc.12
+
+### Breaking changes
+
+- Ploeg keeps no Run card code (#93, ADR-0080, which also accepts ADR-0079). Grade, rarity, flow and pull request KPIs, cracks, sets, the card list, the card image and the card comment are removed. These operator routes now answer 404: `GET work-items/{id}/card`, `GET cards`, `GET work-items/{id}/crack-candidates`, `GET`/`POST work-items/{id}/cracks`, `POST work-items/{id}/evolved`, `POST cracks/{crack}/confirm|dispute|resolve` and `GET card-legacy-export`. Their schema definitions are gone; operator API v1 stays whole under the exception ADR-0080 records.
+- A revert is audited as `pull_request.reverted` instead of `card.reverted`.
+- Status moves are recorded only for boards with `gates:`; `statusKinds` alone no longer turns recording on.
+
+### Changes
+
+- The delivery facts API, the keyed pull request comment and status and gate recording are unchanged.
+- Retired configuration keys (`cards`, a target's `cardStyle`, `rarity`, `cardShape` and `release`, a team's `cards` and `workingHours`, a project's `statusKinds`) are accepted and logged once at boot as `retired configuration key ignored`. A misspelt key still stops the boot.
+
+### Migration notes
+
+- Migration `0044_remove_run_cards` drops `card_cracks`, `card_rarity` and `card_comments` and the columns `pull_requests.kpis`, `kpis_computed_at` and `shape`. Upgrade only after the operator consumer has imported `card-legacy-export` (rc.10 or rc.11) in this environment: this release no longer offers it, and the dropped rows cannot be recovered.
+
 ## 0.2.0-rc.11
 
 ### Changes
