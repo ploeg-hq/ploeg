@@ -20,6 +20,8 @@ import (
 	"strings"
 
 	"go.yaml.in/yaml/v3"
+
+	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
 // Role is one slot in a Round, as the orchestrator sees it.
@@ -164,6 +166,9 @@ func Validate(tp TeamPlan) error {
 		for _, r := range round.Roles {
 			if !roleName.MatchString(r.Name) {
 				return fmt.Errorf("round %d: role name %q must be a lowercase DNS label", i+1, r.Name)
+			}
+			if r.Name == work.AskRole {
+				return fmt.Errorf("round %d: role name %q is reserved for Asks (ADR-0081)", i+1, r.Name)
 			}
 			if len(r.Name) > 30 {
 				return fmt.Errorf("round %d: role name %q exceeds 30 characters (it becomes a workload name suffix)", i+1, r.Name)

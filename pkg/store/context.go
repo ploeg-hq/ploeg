@@ -132,7 +132,7 @@ func (s *Store) AddWorkItemContext(ctx context.Context, in NewWorkItemContext) (
 	if err := tx.QueryRow(ctx, `
 		SELECT (SELECT id FROM shifts WHERE work_item_id = $1 AND closed_at IS NULL),
 		       EXISTS (SELECT 1 FROM agent_runs r LEFT JOIN shifts sh ON sh.id = r.shift_id
-		               WHERE r.work_item_id = $1 AND r.started_at IS NOT NULL
+		               WHERE r.work_item_id = $1 AND r.started_at IS NOT NULL AND r.role <> 'ask'
 		                 AND ((r.shift_id IS NOT NULL AND sh.closed_at IS NULL) OR r.state = 'running'))`,
 		in.WorkItemID).Scan(&shiftID, &steering); err != nil {
 		return WorkItemContext{}, false, err

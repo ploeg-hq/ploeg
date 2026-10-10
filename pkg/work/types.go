@@ -279,3 +279,8 @@ type InstructionFile struct {
 	Path   string `json:"path"`
 	SHA256 string `json:"sha256"`
 }
+
+// AskRole is the Role of an Ask: a read-only Run about a Work Item with no
+// Shift, no Round and no Lease, paid from an allowance (ADR-0081). No crew
+// Role may take this name.
+const AskRole = "ask"
