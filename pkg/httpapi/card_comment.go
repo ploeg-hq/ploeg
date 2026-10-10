@@ -42,6 +42,9 @@ func (s *Server) cardCommentTeams() []string {
 // last seven days. It finds a release, a finish climbed and a mend; the
 // forge webhook usually posts a merge first. Failures are logged.
 func (s *Server) SweepCardComments(ctx context.Context) {
+	if s.CardsDisabled {
+		return
+	}
 	teams := s.cardCommentTeams()
 	if len(teams) == 0 || len(s.Forges) == 0 {
 		return
@@ -60,7 +63,7 @@ func (s *Server) SweepCardComments(ctx context.Context) {
 }
 
 func (s *Server) publishMergedCard(ctx context.Context, fp provider.ForgeProvider, ev provider.ForgeEvent) {
-	if len(s.cardCommentTeams()) == 0 {
+	if s.CardsDisabled || len(s.cardCommentTeams()) == 0 {
 		return
 	}
 	id, team, ok, err := s.Store.PlayWorkItem(ctx, fp.Name(), ev.Repo, ev.PR)
@@ -83,6 +86,9 @@ func (s *Server) publishMergedCard(ctx context.Context, fp provider.ForgeProvide
 // otherwise the comment carries the summary table alone. A Work Item of a
 // team that did not opt in, or one another publisher holds, is skipped.
 func (s *Server) PublishCardComment(ctx context.Context, id int64) error {
+	if s.CardsDisabled {
+		return nil
+	}
 	ctx, cancel := context.WithTimeout(ctx, cardCommentTimeout)
 	defer cancel()
 	unlock, held, err := s.Store.LockCardComment(ctx, id)

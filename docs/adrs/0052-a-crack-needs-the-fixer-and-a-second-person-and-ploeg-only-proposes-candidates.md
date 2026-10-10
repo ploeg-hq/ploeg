@@ -84,6 +84,7 @@ In `.forgejo/workflows/on_pull_request.yml`, `go test ./...` in `apps/ploeg` cov
 * The Run cards game-theory research, `docs/research/2026-10-01-run-cards-game-theory.md` at the repository root, sections 2.2 to 2.7 and 3.4, gives the weights, the warranty and the honesty calculation.
 * [ADR-0050](0050-a-run-cards-grade-is-a-versioned-formula-over-stored-facts.md): the formula this extends. [ADR-0046](0046-a-run-card-is-assembled-per-work-item-from-stored-facts.md): the card.
 * 2026-10-03: [ADR-0061](0061-a-run-cards-grade-penalizes-rework-not-review-and-says-which-inputs-it-missed.md) proposes formula 2026.3, which keeps this record's reliability and durability and changes review and missing inputs.
+* 2026-10-10 — [ADR-0079](0079-run-cards-belong-to-the-consumer-and-ploeg-supplies-delivery-facts.md) moves the Run card to the operator consumer. This decision stays in force while the card endpoints are deprecated and is removed with them in the next minor release.
 
 ## Re-evaluation triggers
 

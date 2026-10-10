@@ -68,3 +68,32 @@ teams:
 		t.Errorf("bronze = %+v, gold = %+v; a team that does not opt in posts no card comment", got["bronze"], got["gold"])
 	}
 }
+
+func TestCardsEnabled_DefaultsOnAndTurnsOff(t *testing.T) {
+	for name, tc := range map[string]struct {
+		yaml string
+		want bool
+	}{
+		"omitted":       {"teams: {}\n", true},
+		"empty section": {"cards: {}\n", true},
+		"on":            {"cards:\n  enabled: true\n", true},
+		"off":           {"cards:\n  enabled: false\n", false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f, err := Load(write(t, tc.yaml))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := f.CardsEnabled(); got != tc.want {
+				t.Fatalf("CardsEnabled = %v; want %v", got, tc.want)
+			}
+		})
+	}
+	var missing *File
+	if !missing.CardsEnabled() {
+		t.Error("no config file must keep cards on")
+	}
+	if _, err := Load(write(t, "cards:\n  enable: false\n")); err == nil {
+		t.Error("a misspelt cards key must fail the boot")
+	}
+}

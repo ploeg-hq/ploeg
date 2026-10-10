@@ -75,3 +75,8 @@ func TestManagedSettlementSweep_WithoutControlIsANoop(t *testing.T) {
 func TestManagedCorrectionSweep_WithoutControlIsANoop(t *testing.T) {
 	managedCorrectionSweep(context.Background(), slog.New(slog.DiscardHandler), &httpapi.Server{})
 }
+
+func TestCardSweeps_DoNothingWhenCardsAreDisabled(t *testing.T) {
+	server := &httpapi.Server{CardsDisabled: true, Log: slog.New(slog.DiscardHandler)}
+	cardSweeps(context.Background(), slog.New(slog.DiscardHandler), nil, server)
+}

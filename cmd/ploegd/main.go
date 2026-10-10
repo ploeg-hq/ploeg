@@ -360,11 +360,13 @@ func run(log *slog.Logger) error {
 		StatusBoards:     statusBoards,
 		WorkingCalendars: calendars,
 		CardRules:        cardRules(cfg.TeamCardRules()),
+		CardsDisabled:    !cfg.CardsEnabled(),
 
 		ContextMaxBytes:      contextMax,
 		ContextMaxTotalBytes: contextMaxTotal,
 	}
 	log.Info("forge follow-ups loaded", "teams", len(srv.FollowUps))
+	log.Info("run card work", "enabled", !srv.CardsDisabled)
 	if engine != nil {
 		srv.Engine = engine
 	}

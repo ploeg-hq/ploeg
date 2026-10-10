@@ -9,6 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/ploeg-hq/ploeg/pkg/diffmeasure"
 	"github.com/ploeg-hq/ploeg/pkg/playkpi"
 	"github.com/ploeg-hq/ploeg/pkg/rarity"
 )
@@ -420,7 +421,30 @@ func (s *Store) RecordPullRequestShape(ctx context.Context, key PullRequestKey, 
 	if _, err := tx.Exec(ctx, `UPDATE pull_requests SET shape = $2, updated_at = now() WHERE id = $1`, id, raw); err != nil {
 		return false, err
 	}
+	if in.Diff != nil {
+		if err := recordFileIndentation(ctx, tx, id, diffmeasure.Indentation(in.Diff)); err != nil {
+			return false, err
+		}
+	}
 	return true, tx.Commit(ctx)
+}
+
+func recordFileIndentation(ctx context.Context, tx pgx.Tx, id int64, files []diffmeasure.File) error {
+	if len(files) == 0 {
+		return nil
+	}
+	paths := make([]string, 0, len(files))
+	var units, added, removed, depth []int32
+	for _, f := range files {
+		paths = append(paths, f.Path)
+		units, added = append(units, int32(f.Unit)), append(added, int32(f.Added))
+		removed, depth = append(removed, int32(f.Removed)), append(depth, int32(f.MaxDepth))
+	}
+	_, err := tx.Exec(ctx, `UPDATE pull_request_files f SET indent_method = $2, indent_unit = m.unit, indent_added = m.added,
+			indent_removed = m.removed, indent_max_depth = m.depth
+		FROM unnest($3::text[], $4::int[], $5::int[], $6::int[], $7::int[]) AS m(path, unit, added, removed, depth)
+		WHERE f.pull_request_id = $1 AND f.path = m.path`, id, diffmeasure.IndentationMethod, paths, units, added, removed, depth)
+	return err
 }
 
 func (p *CardPlay) loadPipeline(kpis, shape []byte) error {

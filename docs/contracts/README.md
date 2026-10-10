@@ -10,7 +10,7 @@ change either side and the test tells you.
 | [outcomereport.v1.schema.json](outcomereport.v1.schema.json) | Harness output and the body of `POST /api/v1/runs/{token}/outcome`. Stuck requires a reason (R4). The optional `createdWorkItems` carries the Work Items a Run proposes ([ADR-0031](../adrs/0031-runs-create-work-items-held-for-approval-within-limits.md)). The optional `verification` is the worker's own record of the checks it ran on a writing Run; the worker discards any value an agent sent. |
 | [checkpoint.v1.schema.json](checkpoint.v1.schema.json) | The durable progress record (shared by TaskSpec, OutcomeReport, and the checkpoint endpoint). |
 | [run-api.v1.schema.json](run-api.v1.schema.json) | All run-API message bodies (claim/renew/checkpoint/outcome). |
-| [operator-api.v1.schema.json](operator-api.v1.schema.json) | Authenticated, team-scoped read projections of teams, activity summaries, work items, shifts, runs, the Run list, checkpoints and snapshot audit pages, the Run Card of a Work Item ([ADR-0046](../adrs/0046-a-run-card-is-assembled-per-work-item-from-stored-facts.md)) and the card list by roster login ([ADR-0054](../adrs/0054-a-card-list-finds-cards-by-roster-login-newest-activity-first.md)). |
+| [operator-api.v1.schema.json](operator-api.v1.schema.json) | Authenticated, team-scoped read projections of teams, activity summaries, work items, shifts, runs, the Run list, checkpoints and snapshot audit pages, the Run Card of a Work Item ([ADR-0046](../adrs/0046-a-run-card-is-assembled-per-work-item-from-stored-facts.md)) and the card list by roster login ([ADR-0054](../adrs/0054-a-card-list-finds-cards-by-roster-login-newest-activity-first.md)), all deprecated; the delivery facts of a Work Item and the facts list, the keyed pull request comment and the one-time card export ([ADR-0079](../adrs/0079-run-cards-belong-to-the-consumer-and-ploeg-supplies-delivery-facts.md)). |
 | [deploy-api.v1.schema.json](deploy-api.v1.schema.json) | `POST /api/v1/deploys`: a pipeline reports that a commit is live in an environment, with its own bearer token ([ADR-0047](../adrs/0047-ploeg-learns-where-a-merged-change-is-deployed-from-a-generic-deploy-endpoint.md), [how-to](../how-to/send-deploys-from-a-pipeline.md)). |
 | [tracker-execution.md](tracker-execution.md), [v1 schema](tracker-execution.v1.schema.json) | Scoped source lookup and exclusive operator binding of an existing pristine tracker Work Item. |
 | [acp-profiles.md](acp-profiles.md) | The `acp` harness profiles: launch command, gateway wiring, instruction files and approval mapping per agent, and what an image needs to run them. |
@@ -128,6 +128,22 @@ change either side and the test tells you.
   events show it. The merge state never changes the Work Item's state. The
   four fields are optional, so a consumer of an older Ploeg sees them
   absent and must read that as `unknown`, never as clean.
+- Since [ADR-0079](../adrs/0079-run-cards-belong-to-the-consumer-and-ploeg-supplies-delivery-facts.md)
+  the operator API has five new responses, all with `schemaVersion` `"1.0"`.
+  `factsResponse` (`GET /api/v1/operator/work-items/{id}/facts`) and
+  `factsListResponse` (`GET /api/v1/operator/facts`) carry `workItemFacts`:
+  the Work Item, its Shifts and Runs in the Work Item detail's shapes, live
+  usage of running Runs, every stored pull request fact with its reviews,
+  conversation events, CI runs, files with their raw indentation
+  measurements, changed paths, reverts and deploys, the tracker status and
+  delivery gate moves, the deploy environments of its repositories, and the
+  roster with factual roles. They carry no grade, tier, KPI, status kind or
+  working time. `pullRequestCommentResponse` and
+  `pullRequestCommentDeleteResponse` answer the keyed comment, whose request
+  `pullRequestCommentRequest` refuses unknown fields. `legacyExportResponse`
+  answers `GET /api/v1/operator/card-legacy-export` and is deprecated from
+  the start. The card, cards, crack and crack-candidate responses are
+  deprecated and are removed in the next minor release.
 - `deploy-api.v1` is the body of a pipeline's deploy report. It refuses
   unknown fields, unlike the response contracts, so a misspelled field fails
   the pipeline step instead of being dropped.

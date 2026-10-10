@@ -76,6 +76,7 @@ In `.forgejo/workflows/on_pull_request.yml`, `go test ./...` in `apps/ploeg` cov
 * [ADR-0046](0046-a-run-card-is-assembled-per-work-item-from-stored-facts.md): the card the grade is added to.
 * [ADR-0051](0051-delivery-gates-are-mapped-per-board-from-tracker-statuses.md): the bounces delivery counts.
 * 2026-10-03: [ADR-0061](0061-a-run-cards-grade-penalizes-rework-not-review-and-says-which-inputs-it-missed.md) proposes formula 2026.3. Review loses points for rework rounds only, a missing input caps its subgrade at 9 and withholds the label, and grades stay computed on read under the current formula, as the consequence above says.
+* 2026-10-10 — [ADR-0079](0079-run-cards-belong-to-the-consumer-and-ploeg-supplies-delivery-facts.md) moves the Run card to the operator consumer. This decision stays in force while the card endpoints are deprecated and is removed with them in the next minor release.
 
 ## Re-evaluation triggers
 

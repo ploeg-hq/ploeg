@@ -110,6 +110,10 @@ type Server struct {
 	// CardClock is the clock card comments count days live with (ADR-0055).
 	// Nil = time.Now.
 	CardClock func() time.Time
+	// CardsDisabled stops the card comment and rarity sweeps and the card
+	// comment posted on merge (cards.enabled: false, ADR-0079). The card
+	// routes keep answering.
+	CardsDisabled bool
 	// ContextMaxBytes bounds one context upload and ContextMaxTotalBytes a
 	// Work Item's context together (proposed, context bundles proof of
 	// concept). Zero = DefaultContextMaxBytes and DefaultContextMaxTotalBytes.

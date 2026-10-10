@@ -76,6 +76,7 @@ In `apps/vloer`, `npm test` covers the proxy passing `live` through validated, a
 * [ADR-0046](0046-a-run-card-is-assembled-per-work-item-from-stored-facts.md): the card `live` is added to.
 * [ADR-0012](0012-two-level-budgets-authorized-and-settled.md): settlement, which this reading leaves alone.
 * The settlement read this reuses is `LLMControl.Settle` in `pkg/httpapi/llm_control.go`.
+* 2026-10-10 — [ADR-0079](0079-run-cards-belong-to-the-consumer-and-ploeg-supplies-delivery-facts.md) moves the Run card to the operator consumer. The facts this record keeps stay and are exposed raw through the delivery facts endpoints; the card figures built on them are removed in the next minor release.
 
 ## Re-evaluation triggers
 
