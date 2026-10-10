@@ -168,7 +168,7 @@ func Validate(tp TeamPlan) error {
 				return fmt.Errorf("round %d: role name %q must be a lowercase DNS label", i+1, r.Name)
 			}
 			if r.Name == work.AskRole {
-				return fmt.Errorf("round %d: role name %q is reserved for Asks (ADR-0081)", i+1, r.Name)
+				return fmt.Errorf("round %d: role name %q is reserved for Asks (ADR-0082)", i+1, r.Name)
 			}
 			if len(r.Name) > 30 {
 				return fmt.Errorf("round %d: role name %q exceeds 30 characters (it becomes a workload name suffix)", i+1, r.Name)

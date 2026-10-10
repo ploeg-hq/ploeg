@@ -68,7 +68,7 @@ type WorkItemFacts struct {
 	GateTransitions   []json.RawMessage `json:"gateTransitions"`
 	Checkpoints       []json.RawMessage `json:"checkpoints"`
 	RunBudgetHolds    []json.RawMessage `json:"runBudgetHolds"`
-	// Asks are the Work Item's Asks (ADR-0081). They are not delivery: Runs,
+	// Asks are the Work Item's Asks (ADR-0082). They are not delivery: Runs,
 	// LiveUsage, RunBudgetHolds and ActivityAt leave their Runs out.
 	Asks               []json.RawMessage  `json:"asks"`
 	DeployEnvironments []json.RawMessage  `json:"deployEnvironments"`

@@ -1,4 +1,4 @@
--- ADR-0081: an Ask is a read-only Run with the Role 'ask' and no Shift, no
+-- ADR-0082: an Ask is a read-only Run with the Role 'ask' and no Shift, no
 -- Round and no Lease, authorized against a periodic allowance instead of a
 -- Shift pool.
 --

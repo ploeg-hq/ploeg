@@ -14,7 +14,7 @@ import (
 )
 
 // MaxAskQuestionRunes bounds the question an operator consumer sends with an
-// Ask. Ploeg keeps only its SHA-256 (ADR-0081).
+// Ask. Ploeg keeps only its SHA-256 (ADR-0082).
 const MaxAskQuestionRunes = 4000
 
 func (s *Server) registerOperatorAsk(mux *http.ServeMux) {

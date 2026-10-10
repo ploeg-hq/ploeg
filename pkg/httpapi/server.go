@@ -102,7 +102,7 @@ type Server struct {
 	ContextMaxBytes      int64
 	ContextMaxTotalBytes int64
 	// AskAllowanceUSD is the limit a Team's monthly Ask Allowance opens with
-	// and AskBudgetUSD the per-Ask Budget (ADR-0081). Zero means
+	// and AskBudgetUSD the per-Ask Budget (ADR-0082). Zero means
 	// DefaultAskAllowanceUSD and DefaultAskBudgetUSD.
 	AskAllowanceUSD float64
 	AskBudgetUSD    float64

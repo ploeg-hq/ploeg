@@ -155,7 +155,8 @@ fails otherwise.
 | [0078](0078-runs-reach-read-only-mcp-tools-only-through-the-gateway-bounded-by-a-litellm-team.md) | Runs reach read-only MCP tools only through the gateway, bounded by a LiteLLM team | proposed | 2026-10-08 |
 | [0079](0079-run-cards-belong-to-the-consumer-and-ploeg-supplies-delivery-facts.md) | Run cards belong to the operator consumer, and Ploeg supplies delivery facts | accepted | 2026-10-10 |
 | [0080](0080-ploeg-keeps-no-run-card-code-and-removes-it-in-one-release.md) | Ploeg keeps no Run card code; its card routes, tables and settings go in one release | accepted | 2026-10-10 |
-| [0081](0081-an-ask-is-a-read-only-run-outside-the-shift-paid-from-a-periodic-allowance.md) | An Ask is a read-only Run outside the Shift, paid from a periodic allowance | proposed | 2026-10-10 |
+| [0081](0081-ploeg-serves-its-operator-reads-as-mcp-tools-through-ploeg-mcp.md) | Ploeg serves its operator reads as MCP tools through a separate ploeg-mcp command | accepted | 2026-10-10 |
+| [0082](0082-an-ask-is-a-read-only-run-outside-the-shift-paid-from-a-periodic-allowance.md) | An Ask is a read-only Run outside the Shift, paid from a periodic allowance | proposed | 2026-10-10 |
 
 ## Review calendar
 
@@ -196,5 +197,6 @@ triggers.
 | 2027-01-31 | [0075](0075-a-stopped-writing-run-leaves-a-checkpoint-its-retry-starts-from.md) — or sooner, when agent-sandbox ships pause and resume, a forge drops refs outside heads and tags, or checkpointed retries fail more than cold ones |
 | 2027-01-31 | [0076](0076-run-health-is-observable-by-team-and-role-through-one-correlation-key.md) — or sooner, when the worker sandbox can reach an OTLP collector, a Team passes 200 series, or an incident is diagnosed from logs alone |
 | 2027-01-31 | [0078](0078-runs-reach-read-only-mcp-tools-only-through-the-gateway-bounded-by-a-litellm-team.md) — or sooner, when a team asks for a write-capable access group, LiteLLM stops bounding a key's access groups by its team, `/key/generate` accepts a team alias, or an opted-in Run takes an instruction from a tool result |
-| 2027-01-31 | [0081](0081-an-ask-is-a-read-only-run-outside-the-shift-paid-from-a-periodic-allowance.md) — or sooner, when a consumer needs a Client or Tenant scope, more than one call per Ask, or to raise a limit inside a period |
+| 2027-01-31 | [0082](0082-an-ask-is-a-read-only-run-outside-the-shift-paid-from-a-periodic-allowance.md) — or sooner, when a consumer needs a Client or Tenant scope, more than one call per Ask, or to raise a limit inside a period |
+| 2027-04-30 | [0081](0081-ploeg-serves-its-operator-reads-as-mcp-tools-through-ploeg-mcp.md) — or sooner, when a person asks to propose, approve or cancel work from an AI client, someone needs the tools without a route to ploegd, or the MCP Go SDK ships a major version |
 | 2027-04-01 | [0005](0005-build-a-dedicated-dispatch-plane.md), [0032](0032-keep-the-dispatch-plane-and-compete-on-authorized-spend.md), [0071](0071-ploeg-keeps-its-state-in-postgresql-and-is-not-a-kubernetes-operator.md), [0073](0073-ploeg-stays-in-go-and-admits-rust-only-as-a-separately-deployed-component.md), [0077](0077-ploeg-knows-work-sources-and-change-destinations-never-vendors.md) — the project review gate (`design.md` §10) |

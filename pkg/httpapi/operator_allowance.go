@@ -10,10 +10,10 @@ import (
 )
 
 // DefaultAskAllowanceUSD is the monthly Ask Allowance a Team's period opens
-// with (PLOEG_ASK_ALLOWANCE_USD, ADR-0081).
+// with (PLOEG_ASK_ALLOWANCE_USD, ADR-0082).
 const DefaultAskAllowanceUSD = 2.00
 
-// DefaultAskBudgetUSD is the per-Ask Budget (PLOEG_ASK_BUDGET_USD, ADR-0081).
+// DefaultAskBudgetUSD is the per-Ask Budget (PLOEG_ASK_BUDGET_USD, ADR-0082).
 const DefaultAskBudgetUSD = 0.02
 
 func (s *Server) askAllowanceUSD() float64 {

@@ -24,7 +24,7 @@ var ErrAskConflict = errors.New("ask conflicts with an earlier ask of the same i
 var ErrAllowanceExhausted = errors.New("allowance cannot cover the per-Ask Budget")
 
 // AllowancePurposeAsk and AllowanceScopeTeam are the purpose and scope kind
-// phase 1 of ADR-0081 uses.
+// phase 1 of ADR-0082 uses.
 const (
 	AllowancePurposeAsk = "ask"
 	AllowanceScopeTeam  = "team"
@@ -63,7 +63,7 @@ type AskSpend struct {
 	KeyState   string   `json:"keyState"`
 }
 
-// Ask is a read-only Run about a Work Item, outside any Shift (ADR-0081).
+// Ask is a read-only Run about a Work Item, outside any Shift (ADR-0082).
 // State is open while its Run runs before its deadline, finished once the
 // consumer finished it, and expired when its deadline passed first.
 type Ask struct {
@@ -166,7 +166,7 @@ func (s *Store) AskWorkItemTeam(ctx context.Context, workItemID int64, teams []s
 // allowance for the period, or returns the Ask an earlier admission with the
 // same consumer and askId created. It creates no Shift and no Lease. The
 // period's allowance row is locked for the whole admission, so concurrent
-// admissions see each other's holds (ADR-0012, ADR-0081).
+// admissions see each other's holds (ADR-0012, ADR-0082).
 func (s *Store) AdmitAsk(ctx context.Context, consumer, actor string, in AdmitAsk) (Ask, bool, error) {
 	if in.AskID == "" || !questionDigest.MatchString(in.QuestionSHA256) || !validSpend(in.BudgetUSD) || in.BudgetUSD <= 0 ||
 		!validSpend(in.LimitUSD) || in.TTL < time.Second {
