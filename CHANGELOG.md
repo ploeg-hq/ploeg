@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.2.0-rc.13
+
+### Breaking changes
+
+- None.
+
+### Changes
+
+- An operator execution that pauses, is interrupted, waits for input or fails now records why it hands its Work Item to a person (#94). The `work_item.needs_human` event carries the reason `operator_paused`, `operator_interrupted`, `operator_waiting_input` or `operator_failed`, with the execution, its generation and `stopConfirmed`. Before this, the event had no reason and consumers showed "stopped without a reason".
+- The sweeper records `operator_expired` when it interrupts an operator execution whose lease ran out (#94).
+
+### Migration notes
+
+- None. Only transitions after the upgrade carry a reason; earlier `work_item.needs_human` events stay without one.
+
 ## 0.2.0-rc.12
 
 ### Breaking changes
