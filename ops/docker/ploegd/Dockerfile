@@ -18,7 +18,10 @@ RUN GOOS=$TARGETOS GOARCH=$TARGETARCH \
     -o /out/ploegd ./cmd/ploegd && \
     GOOS=$TARGETOS GOARCH=$TARGETARCH \
     go build -trimpath -ldflags "-s -w -X main.version=${IMAGE_VERSION}" \
-    -o /out/ploeg-worker ./cmd/ploeg-worker
+    -o /out/ploeg-worker ./cmd/ploeg-worker && \
+    GOOS=$TARGETOS GOARCH=$TARGETARCH \
+    go build -trimpath -ldflags "-s -w -X main.version=${IMAGE_VERSION}" \
+    -o /out/ploeg-mcp ./cmd/ploeg-mcp
 
 FROM ${REGISTRY_GCR}/distroless/static-debian13:nonroot@sha256:e2e927ec666bae08560abb3c55d0659eceabb657f56b6782ab500a9fc7f555e3
 ARG IMAGE_CREATED=1970-01-01T00:00:00Z
@@ -37,4 +40,5 @@ COPY --from=builder /out/ploegd /usr/local/bin/ploegd
 # ploeg-worker rides along; the executor's initContainer extracts it via
 # `ploeg-worker install <dst>` (self-copy — distroless has no shell).
 COPY --from=builder /out/ploeg-worker /usr/local/bin/ploeg-worker
+COPY --from=builder /out/ploeg-mcp /usr/local/bin/ploeg-mcp
 ENTRYPOINT ["/usr/local/bin/ploegd"]
