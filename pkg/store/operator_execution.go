@@ -253,6 +253,19 @@ func (s *Store) CommandOperatorExecution(ctx context.Context, id, consumer, acto
 		if terminal || expired || e.State == "interrupted" {
 			return e, ErrExecutionConflict
 		}
+	case "close":
+		switch {
+		case e.State == "failed":
+		case e.State == "interrupted" && expired:
+			e.State = "cancelled"
+		default:
+			return e, ErrExecutionConflict
+		}
+		if closed, err := workItemWithdrawn(ctx, tx, e.WorkItemID); err != nil {
+			return e, err
+		} else if closed {
+			return e, ErrExecutionConflict
+		}
 	case "report":
 		if terminal {
 			return e, ErrExecutionConflict
@@ -299,7 +312,9 @@ func (s *Store) CommandOperatorExecution(ctx context.Context, id, consumer, acto
 		return e, err
 	}
 	itemState := "leased"
-	if e.State == "completed" || e.State == "cancelled" {
+	if c.Action == "close" {
+		itemState = "withdrawn"
+	} else if e.State == "completed" || e.State == "cancelled" {
 		itemState = "done"
 	} else if e.State == "paused" || e.State == "interrupted" || e.State == "failed" || e.State == "waiting_input" {
 		itemState = "needs_human"
@@ -307,7 +322,24 @@ func (s *Store) CommandOperatorExecution(ctx context.Context, id, consumer, acto
 	if _, err = tx.Exec(ctx, `UPDATE work_items SET state=$2,updated_at=now() WHERE id=$1`, e.WorkItemID, itemState); err != nil {
 		return e, err
 	}
-	if e.State == "completed" || e.State == "cancelled" || e.State == "failed" {
+	if c.Action == "close" {
+		if e.State == "cancelled" {
+			if err = closeOperatorExecution(ctx, tx, e, "The session ended; an operator closed its Work Item", CloseReasonWithdrawnSessionEnded); err != nil {
+				return e, err
+			}
+		}
+		workItemID, err := strconv.ParseInt(e.WorkItemID, 10, 64)
+		if err != nil {
+			return e, err
+		}
+		actorName := actor
+		if c.AuthenticatedBy != "" {
+			actorName = c.AuthenticatedBy
+		}
+		if err = audit(ctx, tx, "operator:"+consumer+":"+actorName, "work_item.withdrawn", &workItemID, map[string]any{"reason": CloseReasonWithdrawnSessionEnded, "execution": e.ID}); err != nil {
+			return e, err
+		}
+	} else if e.State == "completed" || e.State == "cancelled" || e.State == "failed" {
 		summary := "Operator execution " + e.State
 		if supplied := strings.TrimSpace(c.Text); supplied != "" {
 			summary = supplied
@@ -332,6 +364,14 @@ func (s *Store) CommandOperatorExecution(ctx context.Context, id, consumer, acto
 		return e, err
 	}
 	return e, tx.Commit(ctx)
+}
+
+func workItemWithdrawn(ctx context.Context, tx pgx.Tx, workItemID string) (bool, error) {
+	var state string
+	if err := tx.QueryRow(ctx, `SELECT state FROM work_items WHERE id=$1`, workItemID).Scan(&state); err != nil {
+		return false, err
+	}
+	return state == "withdrawn", nil
 }
 
 func closeOperatorExecution(ctx context.Context, tx pgx.Tx, e OperatorExecution, summary, reason string) error {
