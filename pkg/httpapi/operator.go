@@ -184,6 +184,7 @@ func (s *Server) operatorHandler() http.Handler {
 	mux.HandleFunc("GET /api/v1/operator/runs/{id}", s.handleOperatorRun)
 	mux.HandleFunc("GET /api/v1/operator/events", s.handleOperatorEvents)
 	mux.HandleFunc("GET /api/v1/operator/route-refusals", s.handleOperatorRouteRefusals)
+	mux.HandleFunc("GET /api/v1/operator/allowances", s.handleOperatorAllowance)
 	s.registerOperatorExecution(mux)
 	s.registerOperatorDelivery(mux)
 	s.registerOperatorProposed(mux)

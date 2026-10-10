@@ -94,6 +94,16 @@ func validMCPGrant(p LLMPolicy) error {
 	return nil
 }
 
+// Policy returns the managed inference policy of a team and Role.
+func (c *LLMControl) Policy(team, role string) (LLMPolicy, bool) {
+	for _, p := range c.Policies {
+		if p.Team == team && p.Role == role {
+			return p, true
+		}
+	}
+	return LLMPolicy{}, false
+}
+
 func (c *LLMControl) Reserve(ctx context.Context, runToken string) error {
 	run, err := c.Store.RunControl(ctx, runToken)
 	if err != nil {
