@@ -22,6 +22,9 @@ const (
 	CloseReasonWithdrawnUnassigned = "withdrawn_unassigned"
 	CloseReasonWithdrawnByOperator = "withdrawn_by_operator"
 	CloseReasonWithdrawnClosed     = "withdrawn_closed"
+	// CloseReasonWithdrawnSessionEnded is recorded when an operator closes
+	// the Work Item of an Operator Execution that has already ended.
+	CloseReasonWithdrawnSessionEnded = "withdrawn_session_ended"
 )
 
 // Withdrawal is what WithdrawWorkItem changed.

@@ -348,3 +348,90 @@ func TestOperatorExpirySweepCancelsAdmissionsThatNeverStarted(t *testing.T) {
 		t.Fatalf("live admission was swept: %+v %v", current, err)
 	}
 }
+
+func TestOperatorExecutionCloseWithdrawsTheWorkItemOfAnEndedSession(t *testing.T) {
+	ctx := context.Background()
+	itemState := func(t *testing.T, e OperatorExecution) string {
+		t.Helper()
+		var state string
+		if err := testStore.pool.QueryRow(ctx, `SELECT state FROM work_items WHERE id=$1`, e.WorkItemID).Scan(&state); err != nil {
+			t.Fatal(err)
+		}
+		return state
+	}
+	closeCommand := func(e OperatorExecution, id string) OperatorExecutionCommand {
+		return OperatorExecutionCommand{ID: id, Action: "close", ExpectedRevision: e.Revision, Generation: e.Generation, AuthenticatedBy: "ryan"}
+	}
+
+	t.Run("failed", func(t *testing.T) {
+		resetTables(t)
+		e := operatorCommandFixture(t, admitOperatorFixture(t, "failed-session"), "start", "start")
+		failed, err := testStore.CommandOperatorExecution(ctx, e.ID, "workbench", "alice", OperatorExecutionCommand{ID: "fail", Action: "report", State: "failed", StopConfirmed: true, ExpectedRevision: e.Revision, Generation: e.Generation}, time.Minute)
+		if err != nil || itemState(t, failed) != "needs_human" {
+			t.Fatalf("failed report: %+v %v", failed, err)
+		}
+		id, _ := strconv.ParseInt(failed.WorkItemID, 10, 64)
+		if _, err := testStore.WithdrawWorkItem(ctx, id, nil, "operator:workbench:ryan", CloseReasonWithdrawnByOperator); !errors.Is(err, ErrOperatorOwned) {
+			t.Fatalf("operator cancel of a session-owned item: %v", err)
+		}
+		closed, err := testStore.CommandOperatorExecution(ctx, e.ID, "workbench", "alice", closeCommand(failed, "close"), time.Minute)
+		if err != nil || closed.State != "failed" || itemState(t, closed) != "withdrawn" {
+			t.Fatalf("close of a failed session: %+v %v", closed, err)
+		}
+		var actor, reason string
+		if err := testStore.pool.QueryRow(ctx, `SELECT actor, detail->>'reason' FROM audit_log WHERE work_item_id=$1 AND action='work_item.withdrawn'`, id).Scan(&actor, &reason); err != nil {
+			t.Fatal(err)
+		}
+		if actor != "operator:workbench:ryan" || reason != CloseReasonWithdrawnSessionEnded {
+			t.Fatalf("audit: %s %s", actor, reason)
+		}
+		var closeReason string
+		if err := testStore.pool.QueryRow(ctx, `SELECT close_reason FROM shifts WHERE id=$1`, closed.ShiftID).Scan(&closeReason); err != nil || closeReason != "operator_failed" {
+			t.Fatalf("the failed Shift's own close reason was overwritten: %q %v", closeReason, err)
+		}
+		if again, err := testStore.CommandOperatorExecution(ctx, e.ID, "workbench", "alice", closeCommand(failed, "close"), time.Minute); err != nil || again.Revision != closed.Revision {
+			t.Fatalf("replayed close: %+v %v", again, err)
+		}
+		if _, err := testStore.CommandOperatorExecution(ctx, e.ID, "workbench", "alice", closeCommand(closed, "close-twice"), time.Minute); !errors.Is(err, ErrExecutionConflict) {
+			t.Fatalf("second close accepted: %v", err)
+		}
+	})
+
+	t.Run("interrupted only after expiry", func(t *testing.T) {
+		resetTables(t)
+		e := operatorCommandFixture(t, admitOperatorFixture(t, "interrupted-session"), "start", "start")
+		interrupted, err := testStore.CommandOperatorExecution(ctx, e.ID, "workbench", "alice", OperatorExecutionCommand{ID: "interrupt", Action: "report", State: "interrupted", ExpectedRevision: e.Revision, Generation: e.Generation}, time.Minute)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := testStore.CommandOperatorExecution(ctx, e.ID, "workbench", "alice", closeCommand(interrupted, "close-live"), time.Minute); !errors.Is(err, ErrExecutionConflict) {
+			t.Fatalf("close accepted while the lease was still live: %v", err)
+		}
+		if _, err := testStore.pool.Exec(ctx, `UPDATE operator_executions SET expires_at=now()-interval '1 second' WHERE id=$1`, e.ID); err != nil {
+			t.Fatal(err)
+		}
+		closed, err := testStore.CommandOperatorExecution(ctx, e.ID, "workbench", "alice", closeCommand(interrupted, "close-expired"), time.Minute)
+		if err != nil || closed.State != "cancelled" || itemState(t, closed) != "withdrawn" {
+			t.Fatalf("close of an expired interrupted session: %+v %v", closed, err)
+		}
+		var closeReason string
+		var leases int
+		if err := testStore.pool.QueryRow(ctx, `SELECT close_reason, (SELECT count(*) FROM leases WHERE work_item_id=$2) FROM shifts WHERE id=$1`, closed.ShiftID, closed.WorkItemID).Scan(&closeReason, &leases); err != nil {
+			t.Fatal(err)
+		}
+		if closeReason != CloseReasonWithdrawnSessionEnded || leases != 0 {
+			t.Fatalf("Shift %q, %d leases left", closeReason, leases)
+		}
+	})
+
+	t.Run("live sessions refuse", func(t *testing.T) {
+		resetTables(t)
+		running := operatorCommandFixture(t, admitOperatorFixture(t, "running-session"), "start", "start")
+		if _, err := testStore.CommandOperatorExecution(ctx, running.ID, "workbench", "alice", closeCommand(running, "close-running"), time.Minute); !errors.Is(err, ErrExecutionConflict) {
+			t.Fatalf("close of a running session: %v", err)
+		}
+		if itemState(t, running) != "leased" {
+			t.Fatal("a refused close changed the Work Item")
+		}
+	})
+}
