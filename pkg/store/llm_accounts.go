@@ -242,12 +242,15 @@ func (s *Store) RecordLLMKeyGone(ctx context.Context, token, evidence string) er
 	return err
 }
 
+// RecordLLMObserved raises a Run's observed spend and records llm.observed.
+// spend is rounded half-up to the column's four decimals first, so a reading
+// that rounds to the stored value records nothing.
 func (s *Store) RecordLLMObserved(ctx context.Context, token string, spend float64) error {
 	if !validSpend(spend) {
 		return ErrLLMAccountState
 	}
-	_, err := s.pool.Exec(ctx, `WITH changed AS (UPDATE run_llm_accounts SET observed_spend=$2,updated_at=now()
-		WHERE run_token=$1 AND (observed_spend IS NULL OR observed_spend<$2)
+	_, err := s.pool.Exec(ctx, `WITH changed AS (UPDATE run_llm_accounts SET observed_spend=round($2::numeric,4),updated_at=now()
+		WHERE run_token=$1 AND (observed_spend IS NULL OR observed_spend<round($2::numeric,4))
 		RETURNING run_token,alias,observed_spend)
 		INSERT INTO audit_log(actor,action,work_item_id,detail)
 		SELECT 'ploegd:llm','llm.observed',r.work_item_id,jsonb_build_object('alias',a.alias,'observedSpend',a.observed_spend)
