@@ -1,9 +1,9 @@
 ---
-status: proposed
-date: 2026-10-01
+status: rejected
+date: 2026-10-10
 decision-makers: Ryan Grippeling
 supersedes: none
-review-by: 2027-01-31
+review-by: none
 ---
 
 # A Run card's grade is a versioned formula over stored facts
@@ -77,6 +77,7 @@ In `.forgejo/workflows/on_pull_request.yml`, `go test ./...` in `apps/ploeg` cov
 * [ADR-0051](0051-delivery-gates-are-mapped-per-board-from-tracker-statuses.md): the bounces delivery counts.
 * 2026-10-03: [ADR-0061](0061-a-run-cards-grade-penalizes-rework-not-review-and-says-which-inputs-it-missed.md) proposes formula 2026.3. Review loses points for rework rounds only, a missing input caps its subgrade at 9 and withholds the label, and grades stay computed on read under the current formula, as the consequence above says.
 * 2026-10-10 — [ADR-0079](0079-run-cards-belong-to-the-consumer-and-ploeg-supplies-delivery-facts.md) moves the Run card to the operator consumer. This decision stays in force while the card endpoints are deprecated and is removed with them in the next minor release.
+* 2026-10-10 — Rejected by [ADR-0080](0080-ploeg-keeps-no-run-card-code-and-removes-it-in-one-release.md): the Run card left Ploeg, and the code, routes and tables this record describes were removed. The operator consumer owns the card.
 
 ## Re-evaluation triggers
 

@@ -19,7 +19,7 @@ func TestPullRequestChange_ReadsTitleLabelsFilesAndCommits(t *testing.T) {
 		auth = append(auth, r.Header.Get("Authorization"))
 		switch r.URL.Path {
 		case "/api/v1/repos/webgrip/ploeg/pulls/7":
-			fmt.Fprint(w, `{"title":"Revert \"Add cards\"","body":"Reverts webgrip/ploeg#5","labels":[{"name":"hotfix"},{"name":""}]}`)
+			fmt.Fprint(w, `{"title":"Revert \"Add billing\"","body":"Reverts webgrip/ploeg#5","labels":[{"name":"hotfix"},{"name":""}]}`)
 		case "/api/v1/repos/webgrip/ploeg/pulls/7/files":
 			if r.URL.Query().Get("page") != "1" {
 				fmt.Fprint(w, `[]`)
@@ -31,7 +31,7 @@ func TestPullRequestChange_ReadsTitleLabelsFilesAndCommits(t *testing.T) {
 			if r.URL.Query().Get("files") != "false" {
 				t.Errorf("commits read with files: %s", r.URL.RawQuery)
 			}
-			fmt.Fprint(w, `[{"commit":{"message":"Revert \"Add cards\"\n\nThis reverts commit abcdef1234567."}}]`)
+			fmt.Fprint(w, `[{"commit":{"message":"Revert \"Add billing\"\n\nThis reverts commit abcdef1234567."}}]`)
 		default:
 			http.NotFound(w, r)
 		}
@@ -41,8 +41,8 @@ func TestPullRequestChange_ReadsTitleLabelsFilesAndCommits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := provider.PullRequestChange{Title: `Revert "Add cards"`, Body: "Reverts webgrip/ploeg#5", Labels: []string{"hotfix"},
-		Files: []string{"a.go", "new.go", "old.go", "bin.dat", "odd.go"}, Commits: []string{"Revert \"Add cards\"\n\nThis reverts commit abcdef1234567."},
+	want := provider.PullRequestChange{Title: `Revert "Add billing"`, Body: "Reverts webgrip/ploeg#5", Labels: []string{"hotfix"},
+		Files: []string{"a.go", "new.go", "old.go", "bin.dat", "odd.go"}, Commits: []string{"Revert \"Add billing\"\n\nThis reverts commit abcdef1234567."},
 		Lines: map[string]provider.FileLines{"a.go": {Additions: 12, Deletions: 3}, "new.go": {Additions: 1}, "old.go": {}}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("change = %+v; want %+v", got, want)

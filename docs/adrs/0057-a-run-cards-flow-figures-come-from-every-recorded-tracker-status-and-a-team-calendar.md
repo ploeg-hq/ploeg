@@ -1,6 +1,6 @@
 ---
 status: proposed
-date: 2026-10-02
+date: 2026-10-10
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -33,6 +33,8 @@ The questions are where every status move is kept, which statuses count as work 
 * Store a computed flow snapshot per card and update it on every event
 
 ## Decision Outcome
+
+**Narrowed on 2026-10-10 by [ADR-0080](0080-ploeg-keeps-no-run-card-code-and-removes-it-in-one-release.md).** Ploeg keeps points 2 and 3, and the recording of point 1 for every board with `gates:` only: `statusKinds:` no longer makes a board record, and the status recorded is the one that decides the gate, else the only status the ticket is in. They reach the consumer as `statusTransitions`, `workItem.trackerCreatedAt` and `workItem.estimateSeconds` in the delivery facts. Points 4 to 9 (status kinds, working time and team calendars, the flow figures, their schema and `pkg/flow`) are gone, and `statusKinds` and `workingHours` are retired keys. The text below is the decision as first recorded.
 
 Chosen option: "**a new `status_transitions` table, with kinds and working time computed on read**", because it keeps the gate ledger's invariant, needs no tracker read when a card is read, and lets a team correct its status kinds or calendar without rewriting history.
 
@@ -68,6 +70,8 @@ Chosen option: "**a new `status_transitions` table, with kinds and working time 
 
 ### Confirmation
 
+Since 2026-10-10 the store and HTTP tests that ADR-0080 names check what this record still decides. The card tests listed below were removed with the card.
+
 In `.forgejo/workflows/on_pull_request.yml`, `go test ./...` in `apps/ploeg` covers:
 
 * `pkg/flow`: default kinds and board overrides, refused kind lists; the calendar over a working day, nights, weekends, a full week, both Europe/Amsterdam daylight saving weekends, a daylight saving change inside working hours, holidays and extra days, refused hours; a released card's statuses, gate and kind totals, lead, cycle and start time, efficiency, reopens, queue, agent and first-play time, `mergeTo`, time to production, restores and `notCollected`; an open card running to now; a merged card without release ending its cycle at the merge; a closed card without lead or cycle time; an unstarted card waiting to start; the 50-status cap; unknowns encoded as null; a benchmark of a long card.
@@ -102,9 +106,10 @@ There is no poll path: like gates, status moves come only from delivered webhook
 ## More Information
 
 * The owner's request of 2026-10-02; forge-side KPIs (pull request timeline, first feedback, CI timings, commits, complexity) are decided separately.
-* [Run cards](https://github.com/webgrip/unfold/blob/9c1d53f01fbfb65733800aa75e288341734dc23f/docs/concepts/run-cards.md) explains the figures; [configure status kinds and working hours](../how-to/configure-status-kinds-and-working-hours.md) is the operator's guide.
+* [Run cards](https://github.com/webgrip/unfold/blob/9c1d53f01fbfb65733800aa75e288341734dc23f/docs/concepts/run-cards.md) explains the figures; [configure status kinds and working hours](https://github.com/ploeg-hq/ploeg/blob/2d9595371064e7528fbda4344b6f116215a1b789/docs/how-to/configure-status-kinds-and-working-hours.md) is the operator's guide.
 * The [works council and DPIA pack](https://github.com/webgrip/unfold/blob/9c1d53f01fbfb65733800aa75e288341734dc23f/docs/reference/run-cards-works-council-pack.md) lists what flow stores.
 * 2026-10-10 — [ADR-0079](0079-run-cards-belong-to-the-consumer-and-ploeg-supplies-delivery-facts.md) moves the Run card to the operator consumer. The facts this record keeps stay and are exposed raw through the delivery facts endpoints; the card figures built on them are removed in the next minor release.
+* 2026-10-10 — Narrowed by [ADR-0080](0080-ploeg-keeps-no-run-card-code-and-removes-it-in-one-release.md) to the facts it records.
 
 ## Re-evaluation triggers
 

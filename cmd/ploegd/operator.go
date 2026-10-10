@@ -8,9 +8,6 @@ import (
 	"github.com/ploeg-hq/ploeg/pkg/config"
 	"github.com/ploeg-hq/ploeg/pkg/httpapi"
 	"github.com/ploeg-hq/ploeg/pkg/plan"
-	"github.com/ploeg-hq/ploeg/pkg/playkpi"
-	"github.com/ploeg-hq/ploeg/pkg/rarity"
-	"github.com/ploeg-hq/ploeg/pkg/store"
 )
 
 func operatorConfig(cfg *config.File, plans plan.Plans) (httpapi.OperatorConfig, error) {
@@ -64,57 +61,8 @@ func operatorConfig(cfg *config.File, plans plan.Plans) (httpapi.OperatorConfig,
 			teams[name] = []string{}
 		}
 	}
-	styles, err := cardStyles(cfg)
-	if err != nil {
-		return httpapi.OperatorConfig{}, err
-	}
-	releases, err := cfg.ReleaseEnvironments()
-	if err != nil {
-		return httpapi.OperatorConfig{}, err
-	}
-	matchers, err := rarityMatchers(cfg)
-	if err != nil {
-		return httpapi.OperatorConfig{}, err
-	}
-	shapes, err := shapeMatchers(cfg)
-	if err != nil {
-		return httpapi.OperatorConfig{}, err
-	}
 	return httpapi.OperatorConfig{Consumers: consumers, Teams: teams, TeamAssignees: assignees, TeamScopes: scopes,
-		DeliveryPolicies: deliveryPolicies, CardStyles: styles, ReleaseEnvironments: releases, RarityMatchers: matchers,
-		ShapeMatchers: shapes}, nil
-}
-
-func shapeMatchers(cfg *config.File) (map[string]playkpi.Matcher, error) {
-	rules, err := cfg.CardShapeRules()
-	if err != nil {
-		return nil, err
-	}
-	out := make(map[string]playkpi.Matcher, len(rules))
-	for repo, r := range rules {
-		m, err := r.Compile()
-		if err != nil {
-			return nil, fmt.Errorf("cardShape rules of %s: %w", repo, err)
-		}
-		out[repo] = m
-	}
-	return out, nil
-}
-
-func rarityMatchers(cfg *config.File) (map[string]rarity.Matcher, error) {
-	rules, err := cfg.RarityRules()
-	if err != nil {
-		return nil, err
-	}
-	out := make(map[string]rarity.Matcher, len(rules))
-	for repo, r := range rules {
-		m, err := r.Compile()
-		if err != nil {
-			return nil, fmt.Errorf("rarity rules of %s: %w", repo, err)
-		}
-		out[repo] = m
-	}
-	return out, nil
+		DeliveryPolicies: deliveryPolicies}, nil
 }
 
 func deployAuth() (*httpapi.DeployAuth, error) {
@@ -123,21 +71,4 @@ func deployAuth() (*httpapi.DeployAuth, error) {
 		return nil, fmt.Errorf("PLOEG_DEPLOY_TOKEN: %w", err)
 	}
 	return auth, nil
-}
-
-func cardStyles(cfg *config.File) (map[string]store.CardStyle, error) {
-	configured, err := cfg.CardStyles()
-	if err != nil {
-		return nil, err
-	}
-	out := make(map[string]store.CardStyle, len(configured))
-	for repo, style := range configured {
-		card := store.CardStyle{Skin: style.Skin}
-		if style.Theme != "" {
-			theme := style.Theme
-			card.Theme = &theme
-		}
-		out[repo] = card
-	}
-	return out, nil
 }

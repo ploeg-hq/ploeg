@@ -4,7 +4,7 @@ import "context"
 
 // Attachment is a file Ploeg stores on a forge for a comment to embed.
 type Attachment struct {
-	// Name is the file name the forge shows, e.g. "run-card-42.svg".
+	// Name is the file name the forge shows, e.g. "comment-42.svg".
 	Name        string
 	ContentType string
 	Data        []byte

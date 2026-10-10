@@ -3,14 +3,14 @@ type: how-to
 audience: [operator, owner]
 owner: ploeg
 last_verified: 2026-10-01
-verified_by: "Read pkg/httpapi/deploys.go, pkg/store/{deployments,card}.go, pkg/provider/{forgejo,gitlab}/ancestry.go, cmd/ploegd/operator.go and ops/helm/ploeg/{values.yaml,templates/deployment.yaml}; go test ./pkg/httpapi ./pkg/store ./pkg/provider/... ./pkg/config. Not checked against a live deployment or a live pipeline."
+verified_by: "Read pkg/httpapi/deploys.go, pkg/store/{deployments,facts}.go, pkg/provider/{forgejo,gitlab}/ancestry.go, cmd/ploegd/operator.go and ops/helm/ploeg/{values.yaml,templates/deployment.yaml}; go test ./pkg/httpapi ./pkg/store ./pkg/provider/... ./pkg/config. Not checked against a live deployment or a live pipeline."
 ---
 
 # Send deploys from a pipeline to Ploeg
 
-**Goal:** every time a pipeline deploys a repository, it tells Ploeg which commit is now live in which environment. Ploeg then marks the pull requests that commit carries, and their Run cards count days live from the first production deploy instead of from the merge ([ADR-0047](../adrs/0047-ploeg-learns-where-a-merged-change-is-deployed-from-a-generic-deploy-endpoint.md)).
+**Goal:** every time a pipeline deploys a repository, it tells Ploeg which commit is now live in which environment. Ploeg then marks the pull requests that commit carries, and an operator consumer reads the first deploy per environment in the delivery facts ([ADR-0047](../adrs/0047-ploeg-learns-where-a-merged-change-is-deployed-from-a-generic-deploy-endpoint.md), [ADR-0079](../adrs/0079-run-cards-belong-to-the-consumer-and-ploeg-supplies-delivery-facts.md)).
 
-Until a repository reports a deploy, its cards count from the merge and say so. Nothing breaks if you never wire this up.
+Until a repository reports a deploy, its pull requests carry no deployments. Nothing breaks if you never wire this up.
 
 ## 1. Give Ploeg a deploy token
 
@@ -85,23 +85,11 @@ send-deploy:
 
 The [deploy-api.v1 schema](../contracts/deploy-api.v1.schema.json) is the contract.
 
-## 4. Choose the release environment
-
-A card's release is the first deploy to `production`. A Work Target that releases elsewhere names it, on a registered target or on a board's own `repo:` ([Route a board that serves several repositories](route-a-multi-repo-board.md)):
-
-```yaml
-targets:
-  shop:
-    repo: acme/shop
-    release:
-      environment: live
-```
-
 ## Verify
 
 1. The pipeline log shows `{"deployId":"…","pullRequests":N}`. `N` counts the pull requests this report marked for the first time; pull requests the sweep marks later are not in it. A repeated call returns the same `deployId` and usually `0`.
 2. ploegd logs `deploy recorded` and one `pull request deployed` per marked pull request.
-3. In an operator consumer, the Work Item's card shows the deploy under its environments. Once production has it, the release says "deploy" instead of "counted from merge".
+3. `GET /api/v1/operator/work-items/{id}/facts` lists the deploy under each marked pull request's `deployments` and in `deployEnvironments`.
 
 ## Troubleshooting
 
@@ -113,4 +101,4 @@ targets:
 | 422 `unknown_forge` | `repo.forge` names a forge ploegd has no provider for | Use `forgejo`, `gitlab` or the configured instance id |
 | `pullRequests` stays 0 and the log says `deploy check failed` | The forge refused the compare call, for example because the bot cannot read the repository | Give the forge token read access; ploegd's sweep retries within the hour |
 | Older merged pull requests stay unmarked for a few minutes | One report checks the 50 newest unmarked merges | ploegd's sweep checks 50 more every minute |
-| A card shows no release after merging | The repository sends production deploys, but none carried this merge yet | Wait for the next production deploy |
+| A merged pull request has no deployments | The repository sends deploys, but none carried this merge yet | Wait for the next deploy |

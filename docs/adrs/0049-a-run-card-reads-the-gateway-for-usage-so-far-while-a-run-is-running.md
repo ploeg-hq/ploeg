@@ -1,6 +1,6 @@
 ---
 status: proposed
-date: 2026-10-01
+date: 2026-10-10
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -29,6 +29,8 @@ On 2026-10-01 the owner looked at a Work Item whose builder had run for 31 minut
 
 ## Decision Outcome
 
+**Narrowed on 2026-10-10 by [ADR-0080](0080-ploeg-keeps-no-run-card-code-and-removes-it-in-one-release.md).** Ploeg keeps only the gateway reading of a running Run, served raw as `liveUsage` (`runId`, `observedAt`, `costUsd`, `inputTokens`, `outputTokens`) by the delivery facts endpoints, under the same three-second deadline and with nothing written. The card's `live` block, its sums with the finished Runs and the display below are gone with the card; the consumer adds them up itself. The text below is the decision as first recorded.
+
 Chosen option: "**the card endpoint reads the gateway for each running Run, into a separate `live` block**". The gateway already holds the figures, and Ploeg already reads the same spend logs to settle a Run. The stored totals stay the record.
 
 1. **When.** `GET /api/v1/operator/work-items/{id}/card` sets `live` while at least one of the Work Item's Runs is `running`, and `null` otherwise.
@@ -45,6 +47,8 @@ Chosen option: "**the card endpoint reads the gateway for each running Run, into
 * Bad, because the reading is provisional. LiteLLM writes spend logs asynchronously, so the last few calls can be missing, and the settled figure can still differ slightly.
 
 ### Confirmation
+
+Since 2026-10-10 the store and HTTP tests that ADR-0080 names check what this record still decides. The card tests listed below were removed with the card.
 
 In `.forgejo/workflows/on_pull_request.yml`, `go test ./...` in `apps/ploeg` covers:
 
@@ -77,6 +81,7 @@ In `apps/vloer`, `npm test` covers the proxy passing `live` through validated, a
 * [ADR-0012](0012-two-level-budgets-authorized-and-settled.md): settlement, which this reading leaves alone.
 * The settlement read this reuses is `LLMControl.Settle` in `pkg/httpapi/llm_control.go`.
 * 2026-10-10 — [ADR-0079](0079-run-cards-belong-to-the-consumer-and-ploeg-supplies-delivery-facts.md) moves the Run card to the operator consumer. The facts this record keeps stay and are exposed raw through the delivery facts endpoints; the card figures built on them are removed in the next minor release.
+* 2026-10-10 — Narrowed by [ADR-0080](0080-ploeg-keeps-no-run-card-code-and-removes-it-in-one-release.md) to the facts it records.
 
 ## Re-evaluation triggers
 

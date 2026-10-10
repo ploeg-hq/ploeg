@@ -1,10 +1,8 @@
 package gate
 
 import (
-	"reflect"
 	"strings"
 	"testing"
-	"time"
 )
 
 func TestParseReason(t *testing.T) {
@@ -77,55 +75,20 @@ func TestMapResolve(t *testing.T) {
 	}
 }
 
-func TestWalkDerivesHistoryBouncesAndRightFirstTime(t *testing.T) {
-	base := time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC)
-	at := func(h int) time.Time { return base.Add(time.Duration(h) * time.Hour) }
-	j, ok := Walk([]Transition{
-		{Gate: Development, At: at(0)},
-		{Gate: Test, At: at(1), Actor: "dev"},
-		{Gate: Test, At: at(2)},
-		{Gate: Development, At: at(3), Actor: "qa", Reason: ReasonDefect},
-		{Gate: Test, At: at(4)},
-		{Gate: Development, At: at(5), Actor: "qa"},
-		{Gate: Test, At: at(6)},
-		{Gate: Acceptance, At: at(7), Actor: "qa"},
-		{Gate: Development, At: at(8), Actor: "po", Reason: ReasonEnvironment},
-		{Gate: Acceptance, At: at(9)},
-		{Gate: "imagined", At: at(10)},
-	})
-	if !ok {
-		t.Fatal("no journey")
-	}
-	if j.Current != Acceptance || len(j.History) != 9 || j.History[8].Left != nil || !j.History[0].Left.Equal(at(1)) {
-		t.Fatalf("history = %+v, current %s", j.History, j.Current)
-	}
-	want := []Bounce{
-		{From: Test, To: Development, At: at(3), Reason: ReasonDefect, Actor: "qa"},
-		{From: Test, To: Development, At: at(5), Reason: ReasonUnknown, Actor: "qa"},
-		{From: Acceptance, To: Development, At: at(8), Reason: ReasonEnvironment, Actor: "po"},
-	}
-	if !reflect.DeepEqual(j.Bounces, want) {
-		t.Fatalf("bounces = %+v", j.Bounces)
-	}
-	if !reflect.DeepEqual(j.RightFirstTime, map[Gate]int{Test: 2, Acceptance: 0}) {
-		t.Fatalf("rightFirstTime = %v; an environment bounce must not count", j.RightFirstTime)
-	}
-	if j.Evolved {
-		t.Fatal("evolved without a requirement bounce")
-	}
-}
-
-func TestWalkMarksARequirementBounceAfterAcceptanceEvolved(t *testing.T) {
-	base := time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC)
-	before, _ := Walk([]Transition{{Gate: Test, At: base}, {Gate: Development, At: base.Add(time.Hour), Reason: ReasonRequirement}})
-	if before.Evolved || before.RightFirstTime[Test] != 0 {
-		t.Fatalf("a requirement bounce out of test: evolved %v, rightFirstTime %v", before.Evolved, before.RightFirstTime)
-	}
-	after, _ := Walk([]Transition{{Gate: Acceptance, At: base}, {Gate: Test, At: base.Add(time.Hour), Reason: ReasonRequirement}})
-	if !after.Evolved || after.RightFirstTime[Acceptance] != 0 {
-		t.Fatalf("a requirement bounce out of acceptance: evolved %v, rightFirstTime %v", after.Evolved, after.RightFirstTime)
-	}
-	if _, ok := Walk(nil); ok {
-		t.Fatal("a journey without transitions")
+func TestIsBounceOnlyForAMoveBackBetweenKnownGates(t *testing.T) {
+	for _, c := range []struct {
+		from, to Gate
+		want     bool
+	}{
+		{Test, Development, true},
+		{Done, Acceptance, true},
+		{Development, Test, false},
+		{Test, Test, false},
+		{"", Development, false},
+		{Test, "review", false},
+	} {
+		if got := IsBounce(c.from, c.to); got != c.want {
+			t.Errorf("IsBounce(%q, %q) = %v, want %v", c.from, c.to, got, c.want)
+		}
 	}
 }

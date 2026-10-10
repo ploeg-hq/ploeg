@@ -1,9 +1,9 @@
 ---
-status: proposed
-date: 2026-10-01
+status: rejected
+date: 2026-10-10
 decision-makers: Ryan Grippeling
 supersedes: none
-review-by: 2027-01-31
+review-by: none
 ---
 
 # Ploeg keeps one card comment with a static card image on the pull request
@@ -89,6 +89,7 @@ In `.forgejo/workflows/on_pull_request.yml`, `go test ./...` in `apps/ploeg` cov
 * The finish ladder is Vloer's: matte, then foil at 7 days, holo at 30, prism at 90, gilded at 180 and infinity at 365 ([Run cards](https://github.com/webgrip/unfold/blob/9c1d53f01fbfb65733800aa75e288341734dc23f/docs/concepts/run-cards.md)).
 * The usage report comment (`pkg/shiftengine/publish.go`) uses the same find-by-marker, edit-in-place pattern.
 * 2026-10-10 — [ADR-0079](0079-run-cards-belong-to-the-consumer-and-ploeg-supplies-delivery-facts.md) moves the Run card to the operator consumer. This decision stays in force while the card endpoints are deprecated and is removed with them in the next minor release.
+* 2026-10-10 — Rejected by [ADR-0080](0080-ploeg-keeps-no-run-card-code-and-removes-it-in-one-release.md): the Run card left Ploeg, and the code, routes and tables this record describes were removed. The operator consumer owns the card.
 
 ## Re-evaluation triggers
 

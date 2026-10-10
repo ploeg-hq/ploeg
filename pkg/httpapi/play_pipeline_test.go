@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -9,11 +8,10 @@ import (
 	"net/http/httptest"
 	"sync"
 	"testing"
+	"time"
 
-	"github.com/ploeg-hq/ploeg/pkg/playkpi"
 	"github.com/ploeg-hq/ploeg/pkg/provider"
 	"github.com/ploeg-hq/ploeg/pkg/provider/forgejo"
-	"github.com/ploeg-hq/ploeg/pkg/store"
 )
 
 type pipelineForge struct {
@@ -33,18 +31,18 @@ func (f *pipelineForge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if f.merged {
 			fmt.Fprint(w, `{"state":"closed","merged":true,"head":{"sha":"bbb"},"merge_commit_sha":"m18","merged_at":"2026-10-01T12:00:00Z",
 				"closed_at":"2026-10-01T12:00:00Z","merged_by":{"login":"anna"},"additions":130,"deletions":20,"changed_files":4,
-				"created_at":"2026-10-01T09:00:00Z","draft":false,"user":{"login":"ploeg-bot"},"title":"add cards","labels":[]}`)
+				"created_at":"2026-10-01T09:00:00Z","draft":false,"user":{"login":"ploeg-bot"},"title":"add the report","labels":[]}`)
 			return
 		}
 		fmt.Fprint(w, `{"state":"open","merged":false,"head":{"sha":"bbb"},"additions":130,"deletions":20,"changed_files":4,
-			"created_at":"2026-10-01T09:00:00Z","draft":false,"user":{"login":"ploeg-bot"},"title":"add cards","labels":[]}`)
+			"created_at":"2026-10-01T09:00:00Z","draft":false,"user":{"login":"ploeg-bot"},"title":"add the report","labels":[]}`)
 	case base + "/commits/bbb/status":
 		fmt.Fprint(w, `{"state":"success","sha":"bbb","total_count":1,"statuses":[{"context":"CI / test (pull_request)","status":"success"}]}`)
 	case base + "/pulls/18/files":
-		fmt.Fprint(w, `[{"filename":"pkg/card.go","additions":90,"deletions":10},{"filename":"pkg/card_test.go","additions":30,"deletions":0},
-			{"filename":"docs/cards.md","additions":5,"deletions":0},{"filename":"go.sum","additions":5,"deletions":10}]`)
+		fmt.Fprint(w, `[{"filename":"pkg/report.go","additions":90,"deletions":10},{"filename":"pkg/report_test.go","additions":30,"deletions":0},
+			{"filename":"docs/report.md","additions":5,"deletions":0},{"filename":"go.sum","additions":5,"deletions":10}]`)
 	case base + "/pulls/18/commits":
-		fmt.Fprint(w, `[{"commit":{"message":"add cards","author":{"date":"2026-10-01T08:00:00Z"}}},
+		fmt.Fprint(w, `[{"commit":{"message":"add the report","author":{"date":"2026-10-01T08:00:00Z"}}},
 			{"commit":{"message":"fix review","author":{"date":"2026-10-01T10:30:00Z"}}}]`)
 	case base + "/issues/18/timeline":
 		f.timelineReads++
@@ -81,7 +79,7 @@ func (f *pipelineForge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			{"id":6,"status":"success","context":"CI / test (pull_request)","description":"Successful in 5m","created_at":"2026-10-01T10:36:00Z"}]`)
 	case base + "/pulls/18.diff":
 		f.diffReads++
-		fmt.Fprint(w, "diff --git a/pkg/card.go b/pkg/card.go\n--- a/pkg/card.go\n+++ b/pkg/card.go\n@@ -1,2 +1,4 @@\n func f() {\n+\tif ok {\n+\t\treturn\n+\t}\n }\n"+
+		fmt.Fprint(w, "diff --git a/pkg/report.go b/pkg/report.go\n--- a/pkg/report.go\n+++ b/pkg/report.go\n@@ -1,2 +1,4 @@\n func f() {\n+\tif ok {\n+\t\treturn\n+\t}\n }\n"+
 			"diff --git a/go.sum b/go.sum\n--- a/go.sum\n+++ b/go.sum\n@@ -1 +1 @@\n+\t\t\t\t\tdeep\n")
 	default:
 		http.NotFound(w, r)
@@ -114,7 +112,50 @@ func pipelineServer(t *testing.T, forge *pipelineForge) (*Server, string) {
 	return s, token
 }
 
-func TestForgeWebhook_MergeCapturesTheTimelineCIAndShapeOfAFullCard(t *testing.T) {
+type pipelinePlay struct {
+	Commits            *int       `json:"commits"`
+	ForcePushes        *int       `json:"forcePushes"`
+	ActivityCapturedAt *time.Time `json:"activityCapturedAt"`
+	CIRunsSource       *string    `json:"ciRunsSource"`
+	Events             []struct {
+		Kind  string `json:"kind"`
+		Actor string `json:"actor"`
+	} `json:"events"`
+	Reviews []struct {
+		Reviewer string `json:"reviewer"`
+	} `json:"reviews"`
+	CIRuns []struct {
+		Status string `json:"status"`
+		Jobs   []struct {
+			Name string `json:"name"`
+		} `json:"jobs"`
+	} `json:"ciRuns"`
+	Files []struct {
+		Path        string `json:"path"`
+		Indentation *struct {
+			Added int `json:"added"`
+		} `json:"indentation"`
+	} `json:"files"`
+}
+
+func pipelinePlays(t *testing.T, s *Server, token string, item int64) []pipelinePlay {
+	t.Helper()
+	raw := operatorSchemaGET(t, s, token, fmt.Sprintf("work-items/%d/facts", item))
+	var body struct {
+		Facts struct {
+			PullRequests []pipelinePlay `json:"pullRequests"`
+		} `json:"facts"`
+	}
+	if err := json.Unmarshal(raw, &body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Facts.PullRequests) != 1 {
+		t.Fatalf("pull requests = %s", raw)
+	}
+	return body.Facts.PullRequests
+}
+
+func TestForgeWebhook_MergeCapturesTheActivityCIRunsAndFileIndentation(t *testing.T) {
 	forge := &pipelineForge{merged: true}
 	s, token := pipelineServer(t, forge)
 	item, _ := factsItem(t)
@@ -123,47 +164,30 @@ func TestForgeWebhook_MergeCapturesTheTimelineCIAndShapeOfAFullCard(t *testing.T
 	}
 	s.pipelineWork.Wait()
 
-	raw := operatorSchemaGET(t, s, token, fmt.Sprintf("work-items/%d/card", item))
-	var body struct {
-		Card store.OperatorCard `json:"card"`
+	p := pipelinePlays(t, s, token, item)[0]
+	if len(p.Events) != 6 || p.Commits == nil || *p.Commits != 2 || p.ForcePushes == nil || *p.ForcePushes != 0 || p.ActivityCapturedAt == nil {
+		t.Fatalf("activity = %+v", p)
 	}
-	if err := json.Unmarshal(raw, &body); err != nil {
-		t.Fatal(err)
+	if len(p.CIRuns) != 2 || p.CIRunsSource == nil || *p.CIRunsSource != "actions" || len(p.CIRuns[0].Jobs) != 1 {
+		t.Fatalf("ci runs = %+v", p.CIRuns)
 	}
-	card := body.Card
-	if len(card.Plays) != 1 {
-		t.Fatalf("plays = %+v", card.Plays)
+	indented := map[string]int{}
+	for _, f := range p.Files {
+		if f.Indentation != nil {
+			indented[f.Path] = f.Indentation.Added
+		}
 	}
-	p := card.Plays[0]
-	tl := p.Timeline
-	if tl == nil || tl.ReadyAt == nil || tl.ToFirstFeedback == nil || *tl.ToFirstFeedback != 3600 || *tl.ToFirstApproval != 7200 ||
-		*tl.ApprovalToMerge != 3600 || *tl.OpenToMerge != 10800 || *tl.Comments != 1 || *tl.Commits != 2 || *tl.ForcePushes != 0 ||
-		*tl.ResponseSeconds != 1800 || *tl.CodingSeconds != 3600 || tl.Reviewers != 1 {
-		t.Fatalf("timeline = %s", raw)
-	}
-	ci := p.CITiming
-	if ci == nil || ci.Runs != 2 || ci.FailedRuns != 1 || *ci.LastGreenSeconds != 300 || *ci.QueueSeconds != 54+54 ||
-		*ci.TimeToGreenSeconds != 5760 || *ci.Minutes != 8 || ci.Source != "actions" || *ci.FirstPassGreen ||
-		len(ci.Slowest) != 1 || ci.Slowest[0].Seconds != 300 {
-		t.Fatalf("ci timing = %+v", ci)
-	}
-	sh := p.Shape
-	if sh == nil || sh.Files != 3 || *sh.CountedLines != 135 || *sh.TestLines != 30 || sh.DocsTouched != 1 || sh.Complexity == nil ||
-		sh.Complexity.Added != 4 || sh.Complexity.Method != playkpi.ComplexityMethod {
-		t.Fatalf("shape = %+v; go.sum is left out of size and complexity", sh)
-	}
-	if card.Pipeline == nil || *card.Pipeline.ToFirstFeedback != 3600 || *card.Pipeline.OpenToMerge != 10800 || card.Pipeline.CI.Runs != 2 ||
-		card.Shape == nil || !card.Shape.Complete || card.Shape.Plays != 1 {
-		t.Fatalf("card pipeline = %+v, shape = %+v", card.Pipeline, card.Shape)
+	if len(p.Files) != 4 || len(indented) != 2 || indented["pkg/report.go"] != 4 {
+		t.Fatalf("files = %+v; each file the diff shows keeps its indentation", p.Files)
 	}
 	if forge.diffReads != 1 {
 		t.Errorf("diff read %d times; it is read once at the merge", forge.diffReads)
 	}
 }
 
-func TestForgeWebhook_ActivityIsReadAtMostOncePerWindowAndReviewsRefreshAtOnce(t *testing.T) {
+func TestForgeWebhook_ActivityIsReadAtMostOncePerWindowAndReviewsAreKeptAtOnce(t *testing.T) {
 	forge := &pipelineForge{}
-	s, _ := pipelineServer(t, forge)
+	s, token := pipelineServer(t, forge)
 	item, _ := factsItem(t)
 	h := s.Handler()
 	for i, head := range []string{"aaa", "bbb"} {
@@ -179,13 +203,14 @@ func TestForgeWebhook_ActivityIsReadAtMostOncePerWindowAndReviewsRefreshAtOnce(t
 		t.Fatalf("webhook returned %d", code)
 	}
 	s.pipelineWork.Wait()
-	card, err := testStore.OperatorCard(context.Background(), item, nil, store.CardOptions{Bots: s.ForgeBots})
-	if err != nil {
-		t.Fatal(err)
+	p := pipelinePlays(t, s, token, item)[0]
+	if len(p.Reviews) == 0 || p.Reviews[len(p.Reviews)-1].Reviewer != "bob" || len(p.CIRuns) == 0 || len(p.Events) == 0 {
+		t.Fatalf("play = %+v; a webhook review joins the stored activity without a new read", p)
 	}
-	tl := card.Plays[0].Timeline
-	if tl == nil || tl.Reviewers != 2 || card.Plays[0].CITiming == nil || card.Plays[0].Shape != nil {
-		t.Fatalf("timeline = %+v; a webhook review joins the stored activity without a new read, and an open play has no shape", tl)
+	for _, f := range p.Files {
+		if f.Indentation != nil {
+			t.Fatalf("files = %+v; an open pull request is not measured", p.Files)
+		}
 	}
 	if forge.timelineReads != 1 || forge.diffReads != 0 {
 		t.Errorf("timeline reads = %d, diff reads = %d", forge.timelineReads, forge.diffReads)
@@ -194,22 +219,18 @@ func TestForgeWebhook_ActivityIsReadAtMostOncePerWindowAndReviewsRefreshAtOnce(t
 
 func TestForgeWebhook_AFailedActivityReadKeepsTheWebhookReviews(t *testing.T) {
 	forge := &pipelineForge{failActivity: true}
-	s, _ := pipelineServer(t, forge)
+	s, token := pipelineServer(t, forge)
 	item, _ := factsItem(t)
 	h := s.Handler()
 	if code := forgePostEvent(t, h, "shh", "pull_request", "pipeline-fail-review", factsReview("approved", "anna", factsBranch)); code != http.StatusAccepted {
 		t.Fatalf("webhook returned %d", code)
 	}
 	s.pipelineWork.Wait()
-	card, err := testStore.OperatorCard(context.Background(), item, nil, store.CardOptions{Bots: s.ForgeBots})
-	if err != nil {
-		t.Fatal(err)
+	p := pipelinePlays(t, s, token, item)[0]
+	if len(p.Reviews) != 1 || p.ActivityCapturedAt != nil || len(p.Events) != 0 {
+		t.Fatalf("play = %+v; without an activity read only the webhook review is known", p)
 	}
-	p := card.Plays[0]
-	if p.Timeline == nil || p.Timeline.FirstApprovalAt == nil || p.Timeline.Comments != nil || p.Timeline.CapturedAt != nil {
-		t.Fatalf("timeline = %+v; without an activity read only the webhook review is known", p.Timeline)
-	}
-	if p.CITiming == nil || p.CITiming.Runs != 2 {
-		t.Errorf("ci timing = %+v; a failed activity read does not stop the CI read", p.CITiming)
+	if len(p.CIRuns) != 2 {
+		t.Errorf("ci runs = %+v; a failed activity read does not stop the CI read", p.CIRuns)
 	}
 }

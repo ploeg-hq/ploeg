@@ -1,9 +1,9 @@
 ---
-status: proposed
-date: 2026-10-01
+status: rejected
+date: 2026-10-10
 decision-makers: Ryan Grippeling
 supersedes: none
-review-by: 2027-01-31
+review-by: none
 ---
 
 # A card list finds cards by roster login, newest activity first
@@ -69,6 +69,7 @@ In `.forgejo/workflows/on_pull_request.yml`, `go test ./...` in `apps/ploeg` cov
 * The owner's card contract addendum (P4), section "Card list for binders and packs", gives the endpoint and response shape.
 * [ADR-0046](0046-a-run-card-is-assembled-per-work-item-from-stored-facts.md) defines the card this list returns.
 * 2026-10-10 — [ADR-0079](0079-run-cards-belong-to-the-consumer-and-ploeg-supplies-delivery-facts.md) moves the Run card to the operator consumer. This decision stays in force while the card endpoints are deprecated and is removed with them in the next minor release.
+* 2026-10-10 — Rejected by [ADR-0080](0080-ploeg-keeps-no-run-card-code-and-removes-it-in-one-release.md): the Run card left Ploeg, and the code, routes and tables this record describes were removed. The operator consumer owns the card.
 
 ## Re-evaluation triggers
 

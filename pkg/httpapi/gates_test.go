@@ -163,23 +163,24 @@ func TestTrackerWebhook_RecordsGateMovesAndBounceReasons(t *testing.T) {
 		WorkItemID: item, State: "open", HeadSHA: "h1", Review: &store.PullRequestReview{Reviewer: "anna", State: "approved", HeadSHA: "h1"}}); err != nil {
 		t.Fatal(err)
 	}
-	raw := operatorSchemaGET(t, s, token, fmt.Sprintf("work-items/%d/card", item))
+	raw := operatorSchemaGET(t, s, token, fmt.Sprintf("work-items/%d/facts", item))
 	var body struct {
-		Card store.OperatorCard `json:"card"`
+		Facts struct {
+			GateTransitions []struct {
+				Gate   string  `json:"gate"`
+				Reason *string `json:"reason"`
+			} `json:"gateTransitions"`
+		} `json:"facts"`
 	}
 	if err := json.Unmarshal(raw, &body); err != nil {
 		t.Fatal(err)
 	}
-	c := body.Card
-	if c.Gates == nil || c.Gates.Current != "development" || len(c.Gates.Bounces) != 3 || c.Gates.RightFirstTime["test"] != 2 ||
-		c.Gates.Bounces[1].Reason != "environment" || c.Gates.Bounces[2].Reason != "unknown" || c.Evolved {
-		t.Fatalf("gates = %s", raw)
+	moves := body.Facts.GateTransitions
+	if len(moves) != 7 || moves[2].Reason == nil || *moves[2].Reason != "defect" || moves[6].Reason != nil {
+		t.Fatalf("gate transitions = %s", raw)
 	}
-	if c.Grade == nil || c.Grade.Formula != store.GradeFormula || *c.Grade.Inputs.Delivery.DefectBounces != 2 {
-		t.Fatalf("grade = %s", raw)
-	}
-	if !strings.Contains(string(raw), `{"name":"quinn","roles":["qa"]}`) {
-		t.Fatalf("roster lacks the qa who moved the ticket out of test: %s", raw)
+	if !strings.Contains(string(raw), `{"login":"quinn","roles":["mover"]}`) {
+		t.Fatalf("roster lacks the person who moved the ticket out of test: %s", raw)
 	}
 }
 

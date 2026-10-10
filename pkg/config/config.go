@@ -29,19 +29,15 @@ import (
 	"fmt"
 	"os"
 	"reflect"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 
 	"go.yaml.in/yaml/v3"
 
-	"github.com/ploeg-hq/ploeg/pkg/flow"
 	"github.com/ploeg-hq/ploeg/pkg/followup"
 	"github.com/ploeg-hq/ploeg/pkg/gate"
 	"github.com/ploeg-hq/ploeg/pkg/plan"
-	"github.com/ploeg-hq/ploeg/pkg/playkpi"
-	"github.com/ploeg-hq/ploeg/pkg/rarity"
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
@@ -54,23 +50,9 @@ type File struct {
 	Targets map[string]Target `yaml:"targets"`
 	// Teams is the roster: what each team is made of and what it may spend.
 	Teams map[string]Team `yaml:"teams"`
-	// Cards switches Ploeg's own Run card work (ADR-0079). Omitted = on.
-	Cards *Cards `yaml:"cards"`
-}
-
-// Cards is the deployment-wide switch for the Run card work Ploeg still
-// does while an operator consumer takes it over (ADR-0079).
-type Cards struct {
-	// Enabled false stops the card comment, rarity and mend sweeps and the
-	// card comment posted on merge. The card routes keep answering. Omitted
-	// = true.
-	Enabled *bool `yaml:"enabled"`
-}
-
-// CardsEnabled reports whether Ploeg runs its card sweeps and card comment
-// publisher: true unless cards.enabled is false.
-func (f *File) CardsEnabled() bool {
-	return f == nil || f.Cards == nil || f.Cards.Enabled == nil || *f.Cards.Enabled
+	// Cards is a retired key (ADR-0080), accepted and ignored for one
+	// release.
+	Cards yaml.Node `yaml:"cards"`
 }
 
 type Trackers struct {
@@ -92,68 +74,13 @@ type Target struct {
 	// Forge names which forge instance holds the repo. Empty = the
 	// deployment's single forge.
 	Forge string `yaml:"forge"`
-	// CardStyle is how the operator consumer draws this repository's Run cards
-	// (ADR-0046); Ploeg passes it through.
-	// Omitted = the default skin and no theme.
-	CardStyle *CardStyle `yaml:"cardStyle"`
-	// Release names the environment whose first deploy releases a merged
-	// change of this repository (ADR-0047). Omitted = production.
-	Release *Release `yaml:"release"`
-	// Rarity sets the path rules of this repository's Run card rarity
-	// (ADR-0056). Omitted = the defaults of rarity.Formula.
-	Rarity *Rarity `yaml:"rarity"`
-	// CardShape sets which paths this repository's Run cards count as
-	// tests and documentation (ADR-0058). Omitted = the defaults.
-	CardShape *CardShape `yaml:"cardShape"`
+	// CardStyle, Release, Rarity and CardShape are retired keys (ADR-0080),
+	// accepted and ignored for one release.
+	CardStyle yaml.Node `yaml:"cardStyle"`
+	Release   yaml.Node `yaml:"release"`
+	Rarity    yaml.Node `yaml:"rarity"`
+	CardShape yaml.Node `yaml:"cardShape"`
 }
-
-// CardShape is one Work Target's change-shape path rules (ADR-0058), in
-// the rarity path syntax.
-type CardShape struct {
-	// TestPaths replaces playkpi.DefaultTestPaths when set; an empty list
-	// means no file is a test.
-	TestPaths []string `yaml:"testPaths"`
-	// DocPaths replaces playkpi.DefaultDocPaths when set; an empty list
-	// means no file is documentation.
-	DocPaths []string `yaml:"docPaths"`
-}
-
-// Rarity is one Work Target's Run card rarity path rules (ADR-0056). Each
-// list holds path patterns: a pattern without a slash matches a file name
-// at any depth, any other is anchored at the repository root, ** spans
-// directories and {a,b} lists alternatives.
-type Rarity struct {
-	// SensitivePaths replaces rarity.DefaultSensitivePaths when set; an
-	// empty list means no default sensitive ground.
-	SensitivePaths []string `yaml:"sensitivePaths"`
-	// AttentionPaths are more paths counted as sensitive ground, on top of
-	// SensitivePaths or the defaults.
-	AttentionPaths []string `yaml:"attentionPaths"`
-	// SizeExclude replaces rarity.DefaultSizeExclude when set: the paths
-	// whose lines a card's size does not count.
-	SizeExclude []string `yaml:"sizeExclude"`
-}
-
-// Release configures when a Work Target's merged change counts as live.
-type Release struct {
-	// Environment is the deploy environment, lowercase, as a pipeline
-	// reports it to POST /api/v1/deploys.
-	Environment string `yaml:"environment"`
-}
-
-// CardStyle names the skin and the optional theme a Run card is drawn with.
-// Ploeg passes both through to the operator consumer, which owns what they
-// look like; Ploeg attaches no meaning to either name.
-type CardStyle struct {
-	// Skin is the card skin; empty means DefaultCardSkin.
-	Skin string `yaml:"skin"`
-	// Theme is a per-client theme on top of the skin; empty means none.
-	Theme string `yaml:"theme"`
-}
-
-// DefaultCardSkin is the skin a Work Target without a cardStyle gets: the
-// consumer's own default.
-const DefaultCardSkin = "default"
 
 // Project routes one tracker container to one repository, or to the
 // registered targets it names.
@@ -182,27 +109,19 @@ type Project struct {
 	// Allow lists the other registered targets a `repo/<key>` label may
 	// select on this project.
 	Allow []string `yaml:"allow"`
-	// CardStyle styles the Run cards of Repo, as on a registered target. It
-	// requires Repo.
-	CardStyle *CardStyle `yaml:"cardStyle"`
-	// Release names Repo's release environment, as on a registered target.
-	// It requires Repo.
-	Release *Release `yaml:"release"`
-	// Rarity sets Repo's Run card rarity path rules, as on a registered
-	// target. It requires Repo.
-	Rarity *Rarity `yaml:"rarity"`
-	// CardShape sets Repo's change-shape path rules, as on a registered
-	// target. It requires Repo.
-	CardShape *CardShape `yaml:"cardShape"`
+	// CardStyle, Release, Rarity and CardShape are retired keys (ADR-0080),
+	// accepted and ignored for one release.
+	CardStyle yaml.Node `yaml:"cardStyle"`
+	Release   yaml.Node `yaml:"release"`
+	Rarity    yaml.Node `yaml:"rarity"`
+	CardShape yaml.Node `yaml:"cardShape"`
 	// Gates maps this board's statuses or bucket titles to delivery gates
-	// (ADR-0051). Omitted = Ploeg records no gate for this board's work.
+	// (ADR-0051), and Ploeg records every status move of a board with gates.
+	// Omitted = Ploeg records neither for this board's work.
 	Gates *gate.Statuses `yaml:"gates"`
-	// StatusKinds says which of this board's statuses or bucket titles are
-	// active, waiting, blocked or done for the Run card's flow figures
-	// (ADR-0057). A status not listed takes flow.DefaultKind. A board with
-	// gates or statusKinds records every status move; an empty
-	// `statusKinds: {}` records them with the defaults only.
-	StatusKinds *flow.Kinds `yaml:"statusKinds"`
+	// StatusKinds is a retired key (ADR-0080), accepted and ignored for one
+	// release. Status moves are recorded for every board with gates.
+	StatusKinds yaml.Node `yaml:"statusKinds"`
 }
 
 // Team is a roster entry: who works, at what cost, in what order.
@@ -221,29 +140,10 @@ type Team struct {
 	// CreatedWork limits the Work Items this Team's Runs may create
 	// (ADR-0031). Absent fields take followup.Default.
 	CreatedWork *CreatedWork `yaml:"createdWork"`
-	// Cards sets this Team's Run card rules (ADR-0052, ADR-0055). Omitted =
-	// anyone uninvolved referees a disputed crack, the label "hotfix" marks a
-	// hotfix, and no card comment is posted on pull requests.
-	Cards *TeamCards `yaml:"cards"`
-	// WorkingHours is the Team's working calendar, which the working
-	// seconds of its Run cards' flow figures count in (ADR-0057). Omitted
-	// fields take flow.DefaultHours: Monday to Friday, 09:00 to 17:00 in
-	// Europe/Amsterdam, without holidays.
-	WorkingHours *flow.Hours `yaml:"workingHours"`
-}
-
-// TeamCards are one Team's Run card rules.
-type TeamCards struct {
-	// Referees are the people, as the operator API names its actor, who
-	// alone may resolve a disputed crack. Empty = anyone uninvolved.
-	Referees []string `yaml:"referees"`
-	// HotfixLabels are the pull request labels that mark a fix as a
-	// hotfix. Empty = "hotfix".
-	HotfixLabels []string `yaml:"hotfixLabels"`
-	// PRComment posts and keeps one card comment, with the card as an
-	// image, on the Team's merged pull requests at each card moment
-	// (ADR-0055). Default false.
-	PRComment bool `yaml:"prComment"`
+	// Cards and WorkingHours are retired keys (ADR-0080), accepted and
+	// ignored for one release.
+	Cards        yaml.Node `yaml:"cards"`
+	WorkingHours yaml.Node `yaml:"workingHours"`
 }
 
 // CreatedWork overrides followup.Default for one Team. Every field is
@@ -392,61 +292,7 @@ func (f *File) Validate() error {
 			return fmt.Errorf("teams.%s.createdWork: %w", name, err)
 		}
 	}
-	if _, err := f.CardStyles(); err != nil {
-		return err
-	}
-	if _, err := f.ReleaseEnvironments(); err != nil {
-		return err
-	}
-	if _, err := f.RarityRules(); err != nil {
-		return err
-	}
-	if _, err := f.CardShapeRules(); err != nil {
-		return err
-	}
-	if err := f.validateCards(); err != nil {
-		return err
-	}
-	if err := f.validateGates(); err != nil {
-		return err
-	}
-	if err := f.validateStatusKinds(); err != nil {
-		return err
-	}
-	_, err := f.WorkingCalendars()
-	return err
-}
-
-func (f *File) validateCards() error {
-	for _, name := range sortedTeamNames(f.Teams) {
-		cards := f.Teams[name].Cards
-		if cards == nil {
-			continue
-		}
-		for field, values := range map[string][]string{"referees": cards.Referees, "hotfixLabels": cards.HotfixLabels} {
-			seen := map[string]bool{}
-			for _, v := range values {
-				key := strings.ToLower(strings.TrimSpace(v))
-				if key == "" || len(v) > 128 || seen[key] {
-					return fmt.Errorf("teams.%s.cards.%s: entries are non-empty, at most 128 characters and unique, got %q", name, field, v)
-				}
-				seen[key] = true
-			}
-		}
-	}
-	return nil
-}
-
-// TeamCardRules returns every Team's card rules that set any (ADR-0052,
-// ADR-0055).
-func (f *File) TeamCardRules() map[string]TeamCards {
-	out := map[string]TeamCards{}
-	for name, t := range f.Teams {
-		if t.Cards != nil && (len(t.Cards.Referees) > 0 || len(t.Cards.HotfixLabels) > 0 || t.Cards.PRComment) {
-			out[name] = *t.Cards
-		}
-	}
-	return out
+	return f.validateGates()
 }
 
 func (f *File) validateGates() error {
@@ -484,216 +330,8 @@ func (f *File) validateTargets() error {
 		if !ownerName(f.Targets[key].Repo) {
 			return fmt.Errorf("targets.%s: repo %q must be owner/name", key, f.Targets[key].Repo)
 		}
-		if err := f.Targets[key].CardStyle.validate(); err != nil {
-			return fmt.Errorf("targets.%s.cardStyle: %w", key, err)
-		}
-		if err := f.Targets[key].Release.validate(); err != nil {
-			return fmt.Errorf("targets.%s.release: %w", key, err)
-		}
 	}
 	return nil
-}
-
-func (r *Release) validate() error {
-	if r == nil {
-		return nil
-	}
-	normalized, ok := work.NormalizeEnvironment(r.Environment)
-	if !ok || normalized != r.Environment {
-		return fmt.Errorf("environment %q must be 1 to 63 lowercase letters, digits, dots, underscores and dashes", r.Environment)
-	}
-	return nil
-}
-
-// ReleaseEnvironments returns the release environment of every repository
-// that names one, keyed by lowercased "owner/name". A repository given two
-// different environments is an error. A repository absent from the result
-// releases in work.DefaultReleaseEnvironment.
-func (f *File) ReleaseEnvironments() (map[string]string, error) {
-	out := map[string]string{}
-	where := map[string]string{}
-	add := func(repo string, release *Release, at string) error {
-		if release == nil || repo == "" {
-			return nil
-		}
-		key := strings.ToLower(repo)
-		if prev, dup := out[key]; dup && prev != release.Environment {
-			return fmt.Errorf("%s: release environment for %s differs from the one at %s", at, repo, where[key])
-		}
-		out[key], where[key] = release.Environment, at
-		return nil
-	}
-	for _, key := range sortedTargetKeys(f.Targets) {
-		if err := add(f.Targets[key].Repo, f.Targets[key].Release, "targets."+key); err != nil {
-			return nil, err
-		}
-	}
-	for _, tr := range []struct {
-		provider string
-		projects []Project
-	}{
-		{"vikunja", f.Trackers.Vikunja.Projects},
-		{"clickup", f.Trackers.Clickup.Projects},
-	} {
-		for i, p := range tr.projects {
-			if err := add(p.Repo, p.Release, fmt.Sprintf("trackers.%s.projects[%d]", tr.provider, i)); err != nil {
-				return nil, err
-			}
-		}
-	}
-	return out, nil
-}
-
-func (r *Rarity) rules() rarity.Rules {
-	return rarity.Rules{SensitivePaths: r.SensitivePaths, AttentionPaths: r.AttentionPaths, SizeExclude: r.SizeExclude}
-}
-
-// RarityRules returns the rarity path rules of every repository that sets
-// them, keyed by lowercased "owner/name" (ADR-0056). A repository given two
-// different sets of rules, or a pattern that does not compile, is an error.
-// A repository absent from the result uses the defaults.
-func (f *File) RarityRules() (map[string]rarity.Rules, error) {
-	out := map[string]rarity.Rules{}
-	where := map[string]string{}
-	add := func(repo string, r *Rarity, at string) error {
-		if r == nil || repo == "" {
-			return nil
-		}
-		rules := r.rules()
-		if _, err := rules.Compile(); err != nil {
-			return fmt.Errorf("%s.rarity.%w", at, err)
-		}
-		key := strings.ToLower(repo)
-		if prev, dup := out[key]; dup && !reflect.DeepEqual(prev, rules) {
-			return fmt.Errorf("%s: rarity for %s differs from the one at %s", at, repo, where[key])
-		}
-		out[key], where[key] = rules, at
-		return nil
-	}
-	for _, key := range sortedTargetKeys(f.Targets) {
-		if err := add(f.Targets[key].Repo, f.Targets[key].Rarity, "targets."+key); err != nil {
-			return nil, err
-		}
-	}
-	for _, tr := range []struct {
-		provider string
-		projects []Project
-	}{
-		{"vikunja", f.Trackers.Vikunja.Projects},
-		{"clickup", f.Trackers.Clickup.Projects},
-	} {
-		for i, p := range tr.projects {
-			if err := add(p.Repo, p.Rarity, fmt.Sprintf("trackers.%s.projects[%d]", tr.provider, i)); err != nil {
-				return nil, err
-			}
-		}
-	}
-	return out, nil
-}
-
-// CardShapeRules returns the change-shape path rules of every repository
-// that sets them, keyed by lowercased "owner/name" (ADR-0058). A repository
-// given two different sets of rules, or a pattern that does not compile, is
-// an error. A repository absent from the result uses the defaults.
-func (f *File) CardShapeRules() (map[string]playkpi.Rules, error) {
-	out := map[string]playkpi.Rules{}
-	where := map[string]string{}
-	add := func(repo string, c *CardShape, at string) error {
-		if c == nil || repo == "" {
-			return nil
-		}
-		rules := playkpi.Rules{TestPaths: c.TestPaths, DocPaths: c.DocPaths}
-		if _, err := rules.Compile(); err != nil {
-			return fmt.Errorf("%s.cardShape.%w", at, err)
-		}
-		key := strings.ToLower(repo)
-		if prev, dup := out[key]; dup && !reflect.DeepEqual(prev, rules) {
-			return fmt.Errorf("%s: cardShape for %s differs from the one at %s", at, repo, where[key])
-		}
-		out[key], where[key] = rules, at
-		return nil
-	}
-	for _, key := range sortedTargetKeys(f.Targets) {
-		if err := add(f.Targets[key].Repo, f.Targets[key].CardShape, "targets."+key); err != nil {
-			return nil, err
-		}
-	}
-	for _, tr := range []struct {
-		provider string
-		projects []Project
-	}{
-		{"vikunja", f.Trackers.Vikunja.Projects},
-		{"clickup", f.Trackers.Clickup.Projects},
-	} {
-		for i, p := range tr.projects {
-			if err := add(p.Repo, p.CardShape, fmt.Sprintf("trackers.%s.projects[%d]", tr.provider, i)); err != nil {
-				return nil, err
-			}
-		}
-	}
-	return out, nil
-}
-
-var cardStyleName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}$`)
-
-func (c *CardStyle) validate() error {
-	if c == nil {
-		return nil
-	}
-	if c.Skin != "" && !cardStyleName.MatchString(c.Skin) {
-		return fmt.Errorf("skin %q must be lowercase letters, digits and dashes, at most 64", c.Skin)
-	}
-	if c.Theme != "" && !cardStyleName.MatchString(c.Theme) {
-		return fmt.Errorf("theme %q must be lowercase letters, digits and dashes, at most 64", c.Theme)
-	}
-	return nil
-}
-
-func (c CardStyle) withDefaults() CardStyle {
-	if c.Skin == "" {
-		c.Skin = DefaultCardSkin
-	}
-	return c
-}
-
-// CardStyles returns the card style of every repository that sets one,
-// keyed by lowercased "owner/name". A repository styled differently in two
-// places is an error. A repository absent from the result uses
-// DefaultCardSkin and no theme.
-func (f *File) CardStyles() (map[string]CardStyle, error) {
-	out := map[string]CardStyle{}
-	where := map[string]string{}
-	add := func(repo string, style *CardStyle, at string) error {
-		if style == nil || repo == "" {
-			return nil
-		}
-		key := strings.ToLower(repo)
-		resolved := style.withDefaults()
-		if prev, dup := out[key]; dup && prev != resolved {
-			return fmt.Errorf("%s: cardStyle for %s differs from the one at %s", at, repo, where[key])
-		}
-		out[key], where[key] = resolved, at
-		return nil
-	}
-	for _, key := range sortedTargetKeys(f.Targets) {
-		if err := add(f.Targets[key].Repo, f.Targets[key].CardStyle, "targets."+key); err != nil {
-			return nil, err
-		}
-	}
-	for _, tr := range []struct {
-		provider string
-		projects []Project
-	}{
-		{"vikunja", f.Trackers.Vikunja.Projects},
-		{"clickup", f.Trackers.Clickup.Projects},
-	} {
-		for i, p := range tr.projects {
-			if err := add(p.Repo, p.CardStyle, fmt.Sprintf("trackers.%s.projects[%d]", tr.provider, i)); err != nil {
-				return nil, err
-			}
-		}
-	}
-	return out, nil
 }
 
 func (f *File) validateRoute(p Project) error {
@@ -705,24 +343,6 @@ func (f *File) validateRoute(p Project) error {
 	}
 	if p.Repo != "" && !ownerName(p.Repo) {
 		return fmt.Errorf("repo %q must be owner/name", p.Repo)
-	}
-	if p.CardStyle != nil && p.Repo == "" {
-		return fmt.Errorf("cardStyle requires repo; style a registered target under targets instead")
-	}
-	if err := p.CardStyle.validate(); err != nil {
-		return fmt.Errorf("cardStyle: %w", err)
-	}
-	if p.Release != nil && p.Repo == "" {
-		return fmt.Errorf("release requires repo; set it on a registered target under targets instead")
-	}
-	if err := p.Release.validate(); err != nil {
-		return fmt.Errorf("release: %w", err)
-	}
-	if p.Rarity != nil && p.Repo == "" {
-		return fmt.Errorf("rarity requires repo; set it on a registered target under targets instead")
-	}
-	if p.CardShape != nil && p.Repo == "" {
-		return fmt.Errorf("cardShape requires repo; set it on a registered target under targets instead")
 	}
 	for _, key := range append([]string{p.Default}, p.Allow...) {
 		if key == "" {

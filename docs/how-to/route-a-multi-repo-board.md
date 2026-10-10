@@ -2,7 +2,7 @@
 type: how-to
 audience: [operator, owner]
 owner: ploeg
-last_verified: 2026-10-03
+last_verified: 2026-10-10
 verified_by: "Read pkg/target/{resolver,readiness}.go, pkg/config/{config,resolve}.go, pkg/httpapi/server.go, pkg/provider/vikunja/vikunja.go, pkg/provider/{forgejo,gitlab}/repository.go and cmd/ploegd/routing.go; go test ./pkg/target ./pkg/config ./pkg/httpapi ./pkg/provider/gitlab ./cmd/ploegd. Not checked against a live deployment."
 ---
 
@@ -36,10 +36,7 @@ config:
 | `repo` | `owner/name`, required |
 | `branch` | Base branch. Unset means the repository's default branch, which may be a stale stub, so set it |
 | `forge` | Forge instance id. Unset means `PLOEG_TARGET_FORGE`, default `forgejo` |
-| `cardStyle` | Optional `skin` and `theme` for this repository's Run cards ([ADR-0046](../adrs/0046-a-run-card-is-assembled-per-work-item-from-stored-facts.md)). Unset means skin `default` and no theme. Ploeg's own pull-request card image ignores both. Each is lowercase letters, digits and dashes |
-| `release` | Optional `environment`: the deploy environment whose first deploy counts as this repository's release on its Run cards ([ADR-0047](../adrs/0047-ploeg-learns-where-a-merged-change-is-deployed-from-a-generic-deploy-endpoint.md)). Unset means `production`. Lowercase letters, digits, dots, underscores and dashes |
-
-Two keys may point at one repository, for example an old and a new label name for the same product. A board with its own `repo:` may set `cardStyle` and `release` too. ploegd refuses to start when one repository has two different card styles or release environments.
+Two keys may point at one repository, for example an old and a new label name for the same product. The Run card keys `cardStyle`, `release`, `rarity` and `cardShape` are retired ([ADR-0080](../adrs/0080-ploeg-keeps-no-run-card-code-and-removes-it-in-one-release.md)): ploegd still starts with them, logs a warning and ignores them.
 
 ## 2. Point the board at the targets
 

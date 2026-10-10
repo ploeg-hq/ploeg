@@ -63,38 +63,38 @@ func (f *assetForge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func TestAttachToCommentUploadsAndReplacesTheEarlierImage(t *testing.T) {
-	forge := &assetForge{assets: []commentAsset{{ID: 5, Name: "run-card-42.svg"}, {ID: 6, Name: "screenshot.png"}}}
+	forge := &assetForge{assets: []commentAsset{{ID: 5, Name: "comment-42.svg"}, {ID: 6, Name: "screenshot.png"}}}
 	srv := httptest.NewServer(forge)
 	defer srv.Close()
 	p := &Provider{BaseURL: srv.URL, Token: "tok", Log: slog.New(slog.DiscardHandler)}
 
 	got, err := p.AttachToComment(context.Background(), "webgrip/ploeg", 12, 7,
-		provider.Attachment{Name: "run-card-42.svg", ContentType: "image/svg+xml", Data: []byte("<svg/>")})
+		provider.Attachment{Name: "comment-42.svg", ContentType: "image/svg+xml", Data: []byte("<svg/>")})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != "https://forge.example/attachments/new-run-card-42.svg" {
+	if got != "https://forge.example/attachments/new-comment-42.svg" {
 		t.Errorf("url = %q", got)
 	}
-	if forge.gotType != "image/svg+xml" || forge.gotName != "run-card-42.svg" || forge.gotQuery != "run-card-42.svg" || forge.gotData != "<svg/>" {
+	if forge.gotType != "image/svg+xml" || forge.gotName != "comment-42.svg" || forge.gotQuery != "comment-42.svg" || forge.gotData != "<svg/>" {
 		t.Errorf("upload = type %q name %q query %q data %q", forge.gotType, forge.gotName, forge.gotQuery, forge.gotData)
 	}
 	if forge.gotAuth != "token tok" {
 		t.Errorf("authorization = %q", forge.gotAuth)
 	}
 	if len(forge.deleted) != 1 || forge.deleted[0] != "5" {
-		t.Errorf("deleted = %v; want only the earlier card image 5", forge.deleted)
+		t.Errorf("deleted = %v; want only the earlier image 5", forge.deleted)
 	}
 }
 
 func TestAttachToCommentReportsARefusedFileAndKeepsTheEarlierImage(t *testing.T) {
-	forge := &assetForge{refuse: true, assets: []commentAsset{{ID: 5, Name: "run-card-42.svg"}}}
+	forge := &assetForge{refuse: true, assets: []commentAsset{{ID: 5, Name: "comment-42.svg"}}}
 	srv := httptest.NewServer(forge)
 	defer srv.Close()
 	p := &Provider{BaseURL: srv.URL, Log: slog.New(slog.DiscardHandler)}
 
 	_, err := p.AttachToComment(context.Background(), "webgrip/ploeg", 12, 7,
-		provider.Attachment{Name: "run-card-42.svg", ContentType: "image/svg+xml", Data: []byte("<svg/>")})
+		provider.Attachment{Name: "comment-42.svg", ContentType: "image/svg+xml", Data: []byte("<svg/>")})
 	if err == nil || !strings.Contains(err.Error(), "HTTP 422") || !strings.Contains(err.Error(), "not allowed") {
 		t.Fatalf("err = %v; want the forge's refusal", err)
 	}

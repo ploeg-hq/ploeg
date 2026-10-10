@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ploeg-hq/ploeg/pkg/playkpi"
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
@@ -30,8 +29,7 @@ func TestWorkItemFacts_KeepsPerFileIndentationAndReadsLiveUsage(t *testing.T) {
 		t.Fatal(ok, err)
 	}
 	diff := "diff --git a/pkg/a.go b/pkg/a.go\n--- a/pkg/a.go\n+++ b/pkg/a.go\n@@ -1 +1,2 @@\n+\tif x {\n+\t\ty()\n"
-	if ok, err := testStore.RecordPullRequestShape(ctx, key, ShapeInput{Size: defaultMatcher, Paths: playkpi.DefaultMatcher, At: time.Now(),
-		Diff: []byte(diff)}); err != nil || !ok {
+	if ok, err := testStore.RecordPullRequestIndentation(ctx, key, []byte(diff)); err != nil || !ok {
 		t.Fatal(ok, err)
 	}
 	token := strings.Repeat("ab", 24)

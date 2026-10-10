@@ -19,7 +19,7 @@ func TestParentsReadsTheParentAndItsName(t *testing.T) {
 		case "/task/abc":
 			fmt.Fprint(w, `{"id":"abc","name":"child","parent":"epic1"}`)
 		case "/task/epic1":
-			fmt.Fprint(w, `{"id":"epic1","name":"Run cards"}`)
+			fmt.Fprint(w, `{"id":"epic1","name":"Billing"}`)
 		case "/task/solo":
 			fmt.Fprint(w, `{"id":"solo","name":"alone","parent":null}`)
 		case "/task/orphan":
@@ -34,7 +34,7 @@ func TestParentsReadsTheParentAndItsName(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := []provider.TrackerParent{{ExternalID: "epic1", Title: "Run cards"}}; !reflect.DeepEqual(got, want) {
+	if want := []provider.TrackerParent{{ExternalID: "epic1", Title: "Billing"}}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("parents = %+v; want %+v", got, want)
 	}
 	if auth[0] != "pk_x" {

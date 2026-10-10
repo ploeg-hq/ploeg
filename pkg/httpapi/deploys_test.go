@@ -382,20 +382,37 @@ func TestDeploys_MarkMergedPullRequestsWhoseMergeCommitIsAnAncestor(t *testing.T
 		t.Errorf("audit rows = %d; one per recorded deploy", audits)
 	}
 
-	raw := operatorSchemaGET(t, s, operatorToken, fmt.Sprintf("work-items/%d/card", item))
-	var card struct {
-		Card store.OperatorCard `json:"card"`
+	raw := operatorSchemaGET(t, s, operatorToken, fmt.Sprintf("work-items/%d/facts", item))
+	var facts struct {
+		Facts struct {
+			PullRequests []struct {
+				Number      int `json:"number"`
+				Deployments []struct {
+					Environment     string    `json:"environment"`
+					FirstDeployedAt time.Time `json:"firstDeployedAt"`
+					URL             string    `json:"url"`
+				} `json:"deployments"`
+			} `json:"pullRequests"`
+		} `json:"facts"`
 	}
-	if err := json.Unmarshal(raw, &card); err != nil {
+	if err := json.Unmarshal(raw, &facts); err != nil {
 		t.Fatal(err)
 	}
-	c := card.Card
-	if c.Release == nil || c.Release.Source != "deploy" || c.Release.Environment != "production" || !c.Release.At.Equal(marks["20/production"]) {
-		t.Errorf("release = %+v; want play 20's first production deploy", c.Release)
+	var environments []string
+	for _, p := range facts.Facts.PullRequests {
+		if p.Number != 18 {
+			continue
+		}
+		for _, d := range p.Deployments {
+			environments = append(environments, d.Environment)
+		}
+		if len(p.Deployments) == 0 || !p.Deployments[0].FirstDeployedAt.Equal(firstAt) ||
+			p.Deployments[0].URL != "https://ci.example/webgrip/ploeg/actions/runs/7" {
+			t.Errorf("deployments of 18 = %+v", p.Deployments)
+		}
 	}
-	if got := fmt.Sprint(envs(c.Deployments)); got != "[production test]" || !c.Deployments[0].FirstDeployedAt.Equal(firstAt) ||
-		c.Deployments[0].URL != "https://ci.example/webgrip/ploeg/actions/runs/7" {
-		t.Errorf("card deployments = %+v", c.Deployments)
+	if fmt.Sprint(environments) != "[production test]" {
+		t.Errorf("deployments of 18 = %v; earliest first", environments)
 	}
 }
 
@@ -410,26 +427,6 @@ func TestDeploys_AForgeWithoutCompareMarksNothing(t *testing.T) {
 	if got := firstDeploys(t); len(got) != 0 {
 		t.Errorf("marks = %v", got)
 	}
-}
-
-func TestOperatorCard_ReleaseFallsBackToTheMergeWithoutDeploys(t *testing.T) {
-	s, operatorToken := deployServer(t, http.NotFoundHandler())
-	item, _ := factsItem(t)
-	merged := time.Now().Add(-time.Hour).UTC().Truncate(time.Second)
-	mergedPullRequest(t, item, 18, sha("1"), merged)
-	s.OperatorConfig.ReleaseEnvironments = map[string]string{"webgrip/ploeg": "live"}
-	raw := operatorSchemaGET(t, s, operatorToken, fmt.Sprintf("work-items/%d/card", item))
-	if !strings.Contains(string(raw), fmt.Sprintf(`"release":{"at":"%s","source":"merge","environment":"live"}`, merged.Format(time.RFC3339))) {
-		t.Errorf("card = %s", raw)
-	}
-}
-
-func envs(ds []store.CardDeployment) []string {
-	out := make([]string, 0, len(ds))
-	for _, d := range ds {
-		out = append(out, d.Environment)
-	}
-	return out
 }
 
 type statuslessForge struct{}

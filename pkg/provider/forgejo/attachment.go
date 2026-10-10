@@ -26,7 +26,7 @@ type commentAsset struct {
 // AttachToComment uploads file as an asset of issue comment commentID
 // (POST /repos/{owner}/{repo}/issues/comments/{id}/assets) and returns its
 // browser download URL. Once the upload succeeded, earlier assets of the
-// comment with the same name are deleted, so an edited card comment keeps
+// comment with the same name are deleted, so an edited keyed comment keeps
 // one image. A failed delete is logged, never returned.
 func (p *Provider) AttachToComment(ctx context.Context, repo string, pr int, commentID int64, file provider.Attachment) (string, error) {
 	owner, name, ok := strings.Cut(repo, "/")
@@ -43,7 +43,7 @@ func (p *Provider) AttachToComment(ctx context.Context, repo string, pr int, com
 		strings.TrimRight(p.BaseURL, "/"), url.PathEscape(owner), url.PathEscape(name), commentID)
 	earlier, listErr := p.commentAssets(ctx, base)
 	if listErr != nil {
-		p.log().Warn("forgejo: comment assets not listed; earlier card images stay", "repo", repo, "pr", pr, "comment", commentID, "err", listErr)
+		p.log().Warn("forgejo: comment assets not listed; earlier comment images stay", "repo", repo, "pr", pr, "comment", commentID, "err", listErr)
 	}
 	uploaded, err := p.uploadCommentAsset(ctx, base, file)
 	if err != nil {
@@ -54,7 +54,7 @@ func (p *Provider) AttachToComment(ctx context.Context, repo string, pr int, com
 			continue
 		}
 		if err := p.deleteCommentAsset(ctx, base+"/"+strconv.FormatInt(a.ID, 10)); err != nil {
-			p.log().Warn("forgejo: earlier card image not deleted", "repo", repo, "pr", pr, "comment", commentID, "asset", a.ID, "err", err)
+			p.log().Warn("forgejo: earlier comment image not deleted", "repo", repo, "pr", pr, "comment", commentID, "asset", a.ID, "err", err)
 		}
 	}
 	if uploaded.DownloadURL == "" {

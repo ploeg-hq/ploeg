@@ -33,6 +33,14 @@ const (
 // issue.
 var ErrInvalidFactsCursor = errors.New("invalid facts list cursor")
 
+// LiveUsage is what the gateway has recorded so far for one running Run
+// (ADR-0049).
+type LiveUsage struct {
+	CostUSD      float64
+	InputTokens  int64
+	OutputTokens int64
+}
+
 // FactsOptions is what reading delivery facts takes from configuration.
 type FactsOptions struct {
 	// Bots are the forge logins Ploeg acts as, reported as botLogins.

@@ -74,8 +74,7 @@ type PullRequestActivity struct {
 
 // PullRequestActivityReader is implemented by a ForgeProvider that can read
 // a pull request's comments, reviews, pushes, draft changes and commits. A
-// forge without it gives a card's timeline only the reviews its webhooks
-// report.
+// forge without it records only the reviews its webhooks report.
 type PullRequestActivityReader interface {
 	PullRequestActivity(ctx context.Context, repo string, pr int) (PullRequestActivity, error)
 }
@@ -151,7 +150,7 @@ type PullRequestCI struct {
 // runs of a pull request with their timings (ADR-0058). branch is the head
 // branch when known, and heads the head commits Ploeg saw; both narrow runs
 // the forge does not tie to the pull request itself. A forge without it
-// leaves a card's CI timing unknown.
+// records no CI runs.
 type CIHistoryReader interface {
 	PullRequestCI(ctx context.Context, repo string, pr int, branch string, heads []string) (PullRequestCI, error)
 }

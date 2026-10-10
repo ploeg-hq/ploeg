@@ -25,23 +25,23 @@ func TestAttachToCommentUploadsToTheProject(t *testing.T) {
 		raw, _ := io.ReadAll(file)
 		name, contentType, data = header.Filename, header.Header.Get("Content-Type"), string(raw)
 		w.WriteHeader(http.StatusCreated)
-		_, _ = w.Write([]byte(`{"id":5,"url":"/uploads/abc/run-card-42.svg","markdown":"![x](/uploads/abc/run-card-42.svg)"}`))
+		_, _ = w.Write([]byte(`{"id":5,"url":"/uploads/abc/comment-42.svg","markdown":"![x](/uploads/abc/comment-42.svg)"}`))
 	}))
 	defer srv.Close()
 	p := &Provider{BaseURL: srv.URL, Token: "tok"}
 
 	got, err := p.AttachToComment(context.Background(), "group/sub/app", 3, 9,
-		provider.Attachment{Name: "run-card-42.svg", ContentType: "image/svg+xml", Data: []byte("<svg/>")})
+		provider.Attachment{Name: "comment-42.svg", ContentType: "image/svg+xml", Data: []byte("<svg/>")})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != "/uploads/abc/run-card-42.svg" {
+	if got != "/uploads/abc/comment-42.svg" {
 		t.Errorf("url = %q", got)
 	}
 	if path != "/api/v4/projects/group%2Fsub%2Fapp/uploads" || token != "tok" {
 		t.Errorf("request = %s token %q", path, token)
 	}
-	if name != "run-card-42.svg" || contentType != "image/svg+xml" || data != "<svg/>" {
+	if name != "comment-42.svg" || contentType != "image/svg+xml" || data != "<svg/>" {
 		t.Errorf("file = %q %q %q", name, contentType, data)
 	}
 }

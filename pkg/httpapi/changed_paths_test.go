@@ -9,19 +9,29 @@ import (
 	"github.com/ploeg-hq/ploeg/pkg/store"
 )
 
-func cardPlayPaths(t *testing.T, s *Server, token string, item int64) store.CardPlay {
+type playPaths struct {
+	HeadSHA   string              `json:"headSha"`
+	Truncated bool                `json:"truncated"`
+	Paths     []store.ChangedPath `json:"paths"`
+}
+
+func factsPlayPaths(t *testing.T, s *Server, token string, item int64) *playPaths {
 	t.Helper()
-	raw := operatorSchemaGET(t, s, token, fmt.Sprintf("work-items/%d/card", item))
+	raw := operatorSchemaGET(t, s, token, fmt.Sprintf("work-items/%d/facts", item))
 	var body struct {
-		Card store.OperatorCard `json:"card"`
+		Facts struct {
+			PullRequests []struct {
+				ChangedPaths *playPaths `json:"changedPaths"`
+			} `json:"pullRequests"`
+		} `json:"facts"`
 	}
 	if err := json.Unmarshal(raw, &body); err != nil {
 		t.Fatal(err)
 	}
-	if len(body.Card.Plays) != 1 {
-		t.Fatalf("card = %s; want one play", raw)
+	if len(body.Facts.PullRequests) != 1 {
+		t.Fatalf("facts = %s; want one pull request", raw)
 	}
-	return body.Card.Plays[0]
+	return body.Facts.PullRequests[0].ChangedPaths
 }
 
 func TestForgeWebhook_CapturesChangedPathsOncePerHead(t *testing.T) {
@@ -29,18 +39,17 @@ func TestForgeWebhook_CapturesChangedPathsOncePerHead(t *testing.T) {
 		pull:  `{"state":"open","merged":false,"head":{"sha":"h1"},"changed_files":2}`,
 		files: `[{"filename":"AGENTS.md","status":"changed"},{"filename":".claude/settings.json","previous_filename":"settings.json","status":"renamed"}]`,
 	}
-	s, token := cardServer(t, forge)
+	s, token := pullRequestServer(t, forge)
 	item, _ := factsItem(t)
 	h := s.Handler()
 	if code := forgePostEvent(t, h, "shh", "pull_request", "paths-open", pullRequestEvent("opened", "h1")); code != http.StatusAccepted {
 		t.Fatalf("webhook returned %d", code)
 	}
-	play := cardPlayPaths(t, s, token, item)
+	paths := factsPlayPaths(t, s, token, item)
 	want := []store.ChangedPath{{Path: "AGENTS.md", Status: "modified"},
 		{Path: ".claude/settings.json", Status: "renamed", PreviousPath: "settings.json"}}
-	if play.ChangedPaths == nil || fmt.Sprint(*play.ChangedPaths) != fmt.Sprint(want) ||
-		play.ChangedPathsTruncated == nil || *play.ChangedPathsTruncated {
-		t.Fatalf("paths %v truncated %v; want %v, false", play.ChangedPaths, play.ChangedPathsTruncated, want)
+	if paths == nil || paths.HeadSHA != "h1" || fmt.Sprint(paths.Paths) != fmt.Sprint(want) || paths.Truncated {
+		t.Fatalf("paths %+v; want %v at h1, not truncated", paths, want)
 	}
 
 	if code := forgePostEvent(t, h, "shh", "pull_request", "paths-again", pullRequestEvent("reopened", "h1")); code != http.StatusAccepted {
@@ -60,8 +69,8 @@ func TestForgeWebhook_CapturesChangedPathsOncePerHead(t *testing.T) {
 	if code := forgePostEvent(t, h, "shh", "pull_request_sync", "paths-sync-fail", pullRequestEvent("synchronized", "h2")); code != http.StatusAccepted {
 		t.Fatalf("webhook returned %d", code)
 	}
-	if play := cardPlayPaths(t, s, token, item); play.ChangedPaths != nil || play.ChangedPathsTruncated != nil {
-		t.Fatalf("paths %v after a failed read at a new head; want absent, never the old list or an empty one", *play.ChangedPaths)
+	if paths := factsPlayPaths(t, s, token, item); paths == nil || paths.HeadSHA != "h1" {
+		t.Fatalf("paths %+v after a failed read at a new head; want the list read at h1, never an empty one at h2", paths)
 	}
 
 	forge.mu.Lock()
@@ -70,9 +79,9 @@ func TestForgeWebhook_CapturesChangedPathsOncePerHead(t *testing.T) {
 	if code := forgePostEvent(t, h, "shh", "pull_request_sync", "paths-sync-ok", pullRequestEvent("synchronized", "h2")); code != http.StatusAccepted {
 		t.Fatalf("webhook returned %d", code)
 	}
-	play = cardPlayPaths(t, s, token, item)
+	paths = factsPlayPaths(t, s, token, item)
 	want = []store.ChangedPath{{Path: "AGENTS.md", Status: "modified"}, {Path: "CLAUDE.md", Status: "added"}}
-	if play.ChangedPaths == nil || fmt.Sprint(*play.ChangedPaths) != fmt.Sprint(want) {
-		t.Fatalf("paths %v after a push; want %v", play.ChangedPaths, want)
+	if paths == nil || paths.HeadSHA != "h2" || fmt.Sprint(paths.Paths) != fmt.Sprint(want) {
+		t.Fatalf("paths %+v after a push; want %v at h2", paths, want)
 	}
 }
