@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.2.0-rc.15
+
+### Breaking changes
+
+- None.
+
+### Changes
+
+- An unchanged gateway spend reading no longer records `llm.observed` (#96). Ploeg compared the raw reading with the four-decimal column, so every operator spend read, which a consumer makes on each heartbeat, wrote another event and reset the account's quiet clock. A finished operator execution's blocked account could therefore never settle, and its Shift kept its budget held after it closed. Readings are now rounded the way settlement rounds them.
+- Claiming stopped tracker checks returns at most the requested number every time (#99).
+
+### Migration notes
+
+- None.
+
 ## 0.2.0-rc.14
 
 ### Breaking changes
