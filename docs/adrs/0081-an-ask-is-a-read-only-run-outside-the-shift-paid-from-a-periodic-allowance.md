@@ -91,5 +91,5 @@ Chosen option: "An Ask Run with no Shift, authorized against a periodic allowanc
 ## More Information
 
 * 2026-10-10 — The owner decided that people ask about a Work Item through a metered, read-only Ask paid from a monthly allowance, in the operator consumer's own decision record; this record is Ploeg's half.
-* Contract: `docs/contracts/operator-api.v1.schema.json`, definitions `askAdmitRequest`, `askResponse` and `allowanceResponse`.
+* Contract: `docs/contracts/operator-api.v1.schema.json`, definitions `askAdmitRequest`, `askAdmitResponse`, `askResponse`, `askFinishResponse`, `allowanceRefusalResponse` and `allowanceResponse`.
 * Related: [ADR-0012](0012-two-level-budgets-authorized-and-settled.md), [ADR-0024](0024-operator-work-uses-one-execution-authority.md), [ADR-0008](0008-litellm-is-the-credential-and-metering-seam.md), [ADR-0069](0069-ploeg-names-none-of-its-consumers.md).

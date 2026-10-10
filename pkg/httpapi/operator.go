@@ -161,6 +161,9 @@ func (s *Server) operatorAuth(next http.Handler) http.Handler {
 		if r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/api/v1/operator/executions/") && strings.HasSuffix(r.URL.Path, "/credential") {
 			timeout = 30 * time.Second
 		}
+		if r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/api/v1/operator/work-items/") && strings.HasSuffix(r.URL.Path, "/asks") {
+			timeout = 30 * time.Second
+		}
 		if isContextUpload(r) {
 			timeout = 60 * time.Second
 		}
@@ -186,6 +189,7 @@ func (s *Server) operatorHandler() http.Handler {
 	mux.HandleFunc("GET /api/v1/operator/route-refusals", s.handleOperatorRouteRefusals)
 	mux.HandleFunc("GET /api/v1/operator/allowances", s.handleOperatorAllowance)
 	s.registerOperatorExecution(mux)
+	s.registerOperatorAsk(mux)
 	s.registerOperatorDelivery(mux)
 	s.registerOperatorProposed(mux)
 	s.registerContext(mux)
