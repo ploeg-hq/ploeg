@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.0-rc.9
+
+### Changes
+
+- An operator can close the Work Item of an Operator Execution that has ended (#89). The new `close` execution command withdraws the Work Item of a `failed` execution, or of an `interrupted` one whose lease has expired, which is then recorded as `cancelled` with its Shift closed as `withdrawn_session_ended`. The withdrawal is audited as `work_item.withdrawn`. Running, waiting and unexpired interrupted executions answer 409, and a second close is refused. Before this, such a Work Item stayed in `needs_human` with no way out.
+
+### Migration notes
+
+- None. The command uses the existing execution command body; no migration and no configuration.
+
 ## 0.2.0-rc.8
 
 ### Changes
