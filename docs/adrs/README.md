@@ -148,11 +148,12 @@ fails otherwise.
 | [0071](0071-ploeg-keeps-its-state-in-postgresql-and-is-not-a-kubernetes-operator.md) | Ploeg keeps its state in PostgreSQL and is not a Kubernetes operator | proposed | 2026-10-05 |
 | [0072](0072-keda-stays-and-ploegd-reserves-a-run-for-each-launcher.md) | KEDA stays, and ploegd reserves a Run for each launcher | proposed | 2026-10-06 |
 | [0073](0073-ploeg-stays-in-go-and-admits-rust-only-as-a-separately-deployed-component.md) | Ploeg stays in Go, and admits Rust only as a separately deployed component | proposed | 2026-10-05 |
-| [0074](0074-ploeg-exposes-its-execution-facts-and-consumers-collect-everything-else.md) | Ploeg exposes its execution facts, and consumers collect everything else | proposed | 2026-10-06 |
+| [0074](0074-ploeg-exposes-its-execution-facts-and-consumers-collect-everything-else.md) | Ploeg exposes its execution facts, and consumers collect everything else | superseded by 0079 | 2026-10-06 |
 | [0075](0075-a-stopped-writing-run-leaves-a-checkpoint-its-retry-starts-from.md) | A stopped writing Run leaves a checkpoint its retry starts from | proposed | 2026-10-05 |
 | [0076](0076-run-health-is-observable-by-team-and-role-through-one-correlation-key.md) | Run health is observable by Team and Role through one correlation key | proposed | 2026-10-05 |
 | [0077](0077-ploeg-knows-work-sources-and-change-destinations-never-vendors.md) | Ploeg knows Work Sources and Change Destinations, never vendors | proposed | 2026-10-06 |
 | [0078](0078-runs-reach-read-only-mcp-tools-only-through-the-gateway-bounded-by-a-litellm-team.md) | Runs reach read-only MCP tools only through the gateway, bounded by a LiteLLM team | proposed | 2026-10-08 |
+| [0079](0079-run-cards-belong-to-the-consumer-and-ploeg-supplies-delivery-facts.md) | Run cards belong to the operator consumer, and Ploeg supplies delivery facts | proposed | 2026-10-10 |
 
 ## Review calendar
 

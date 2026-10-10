@@ -71,6 +71,7 @@ In `.forgejo/workflows/on_pull_request.yml`, `go test ./...` in `apps/ploeg` cov
 
 * The owner's card contract addendum (P4), section "Sets", gives the card shape and the completion rule.
 * The Run cards game-theory research (`docs/research/2026-10-01-run-cards-game-theory.md` at the repository root), sections 3.7 and table row 20, gives the declared-before rule.
+* 2026-10-10 — [ADR-0079](0079-run-cards-belong-to-the-consumer-and-ploeg-supplies-delivery-facts.md) moves the Run card to the operator consumer. The facts this record keeps stay and are exposed raw through the delivery facts endpoints; the card figures built on them are removed in the next minor release.
 
 ## Re-evaluation triggers
 

@@ -21,6 +21,9 @@ func (s *Server) cardRarity() *store.RarityOptions {
 // so a released card is revealed and frozen even when nobody reads it
 // (ADR-0056). Failures are logged.
 func (s *Server) SweepCardRarity(ctx context.Context) {
+	if s.CardsDisabled {
+		return
+	}
 	now := s.cardClock()
 	ids, err := s.Store.RarityCandidates(ctx, now.Add(-cardRarityRecheck), cardRarityBatch)
 	if err != nil {

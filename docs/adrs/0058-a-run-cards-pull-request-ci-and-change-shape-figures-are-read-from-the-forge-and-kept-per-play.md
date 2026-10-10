@@ -115,6 +115,7 @@ In `.forgejo/workflows/on_pull_request.yml`, `go test ./...` in `apps/ploeg` cov
 * Abram Hindle, Michael W. Godfrey and Richard C. Holt, "Reading Beside the Lines: Indentation as a Proxy for Complexity Metrics", 16th IEEE International Conference on Program Comprehension (ICPC 2008), pp. 133–142, doi:10.1109/ICPC.2008.13. It found that the variance and maximum of logical indentation correlate with McCabe and Halstead complexity across languages.
 * [Run cards](https://github.com/webgrip/unfold/blob/9c1d53f01fbfb65733800aa75e288341734dc23f/docs/concepts/run-cards.md) explains what each figure means and where it misleads; [count tests and docs on Run cards](../how-to/count-tests-and-docs-on-run-cards.md) shows the configuration.
 * [ADR-0057](0057-a-run-cards-flow-figures-come-from-every-recorded-tracker-status-and-a-team-calendar.md): the tracker-side flow figures; [ADR-0056](0056-a-run-cards-rarity-is-its-challenge-predicted-at-mint-and-frozen-at-release.md): rarity, its size exclusions and counted lines; [ADR-0050](0050-a-run-cards-grade-is-a-versioned-formula-over-stored-facts.md): the grade's review rounds.
+* 2026-10-10 — [ADR-0079](0079-run-cards-belong-to-the-consumer-and-ploeg-supplies-delivery-facts.md) moves the Run card to the operator consumer. The facts this record keeps stay and are exposed raw through the delivery facts endpoints; the card figures built on them are removed in the next minor release.
 
 ## Re-evaluation triggers
 

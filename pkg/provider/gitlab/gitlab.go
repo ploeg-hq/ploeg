@@ -606,3 +606,40 @@ func approvalState(action string) provider.ForgeReviewState {
 	}
 	return ""
 }
+
+// DeleteComment removes one merge request note. A note that is already gone
+// (404) counts as removed.
+func (p *Provider) DeleteComment(ctx context.Context, repo string, mr int, id int64) error {
+	if err := validRepo(repo); err != nil {
+		return err
+	}
+	if mr <= 0 {
+		return fmt.Errorf("gitlab: merge request iid must be positive, got %d", mr)
+	}
+	if id <= 0 {
+		return fmt.Errorf("gitlab: note id must be positive, got %d", id)
+	}
+	endpoint := fmt.Sprintf("%s/api/v4/projects/%s/merge_requests/%d/notes/%d",
+		strings.TrimRight(p.BaseURL, "/"), url.PathEscape(repo), mr, id)
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, endpoint, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Accept", "application/json")
+	if p.Token != "" {
+		req.Header.Set("PRIVATE-TOKEN", p.Token)
+	}
+	resp, err := p.client().Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return nil
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return fmt.Errorf("gitlab: delete note %d on %s!%d: HTTP %d: %s", id, repo, mr, resp.StatusCode, bytes.TrimSpace(snippet))
+	}
+	return nil
+}

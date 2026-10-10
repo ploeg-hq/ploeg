@@ -54,6 +54,23 @@ type File struct {
 	Targets map[string]Target `yaml:"targets"`
 	// Teams is the roster: what each team is made of and what it may spend.
 	Teams map[string]Team `yaml:"teams"`
+	// Cards switches Ploeg's own Run card work (ADR-0079). Omitted = on.
+	Cards *Cards `yaml:"cards"`
+}
+
+// Cards is the deployment-wide switch for the Run card work Ploeg still
+// does while an operator consumer takes it over (ADR-0079).
+type Cards struct {
+	// Enabled false stops the card comment, rarity and mend sweeps and the
+	// card comment posted on merge. The card routes keep answering. Omitted
+	// = true.
+	Enabled *bool `yaml:"enabled"`
+}
+
+// CardsEnabled reports whether Ploeg runs its card sweeps and card comment
+// publisher: true unless cards.enabled is false.
+func (f *File) CardsEnabled() bool {
+	return f == nil || f.Cards == nil || f.Cards.Enabled == nil || *f.Cards.Enabled
 }
 
 type Trackers struct {

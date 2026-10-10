@@ -104,6 +104,7 @@ There is no poll path: like gates, status moves come only from delivered webhook
 * The owner's request of 2026-10-02; forge-side KPIs (pull request timeline, first feedback, CI timings, commits, complexity) are decided separately.
 * [Run cards](https://github.com/webgrip/unfold/blob/9c1d53f01fbfb65733800aa75e288341734dc23f/docs/concepts/run-cards.md) explains the figures; [configure status kinds and working hours](../how-to/configure-status-kinds-and-working-hours.md) is the operator's guide.
 * The [works council and DPIA pack](https://github.com/webgrip/unfold/blob/9c1d53f01fbfb65733800aa75e288341734dc23f/docs/reference/run-cards-works-council-pack.md) lists what flow stores.
+* 2026-10-10 — [ADR-0079](0079-run-cards-belong-to-the-consumer-and-ploeg-supplies-delivery-facts.md) moves the Run card to the operator consumer. The facts this record keeps stay and are exposed raw through the delivery facts endpoints; the card figures built on them are removed in the next minor release.
 
 ## Re-evaluation triggers
 
