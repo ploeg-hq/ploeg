@@ -5305,6 +5305,25 @@
           "minimum": 0,
           "description": "The tracker's time estimate; null when the tracker keeps none or none was set."
         },
+        "externalScope": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The tracker board or project the Work Item came from, as Ploeg stored it (work_items.external_scope); empty when the tracker gave none. Optional: absent from older Ploeg releases."
+        },
+        "admittedAt": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "When the Work Item was first queued or approved: the time of its first work_item.queued or work_item.approved audit entry. Null when it never was. Optional: absent from older Ploeg releases."
+        },
         "target": {
           "anyOf": [
             {
@@ -6361,6 +6380,68 @@
         }
       }
     },
+    "factsCheckpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "A checkpoint a Run recorded with a pull request URL, oldest first (ADR-0079). Its createdAt can be earlier than the forge's opened time of that pull request.",
+      "required": [
+        "id",
+        "phase",
+        "branch",
+        "prUrl",
+        "createdAt"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]{0,18}$"
+        },
+        "phase": {
+          "type": "string"
+        },
+        "branch": {
+          "type": "string"
+        },
+        "prUrl": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "factsRunBudgetHold": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The budget one Run still holds, as Ploeg's budget accounting counts it (run_budget_holds): the authorized amount of a running Run without a gateway account, the larger of authorized and observed spend while its account is unsettled, and observed spend above the reconciled spend once reconciled. Listed only while above zero, including Runs outside a Shift.",
+      "required": [
+        "runId",
+        "shiftId",
+        "reservedUsd"
+      ],
+      "properties": {
+        "runId": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]{0,18}$"
+        },
+        "shiftId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,18}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reservedUsd": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      }
+    },
     "factsDeployEnvironment": {
       "type": "object",
       "additionalProperties": false,
@@ -6488,6 +6569,28 @@
             "$ref": "#/$defs/factsGateTransition"
           }
         },
+        "checkpoints": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "maxItems": 200,
+          "items": {
+            "$ref": "#/$defs/factsCheckpoint"
+          },
+          "description": "Checkpoints that recorded a pull request URL, oldest first. Optional: absent from older Ploeg releases."
+        },
+        "runBudgetHolds": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "maxItems": 1000,
+          "items": {
+            "$ref": "#/$defs/factsRunBudgetHold"
+          },
+          "description": "The Runs that still hold budget, by Run id. Optional: absent from older Ploeg releases."
+        },
         "deployEnvironments": {
           "type": "array",
           "items": {
@@ -6532,6 +6635,10 @@
             },
             "gateTransitions": {
               "type": "boolean"
+            },
+            "checkpoints": {
+              "type": "boolean",
+              "description": "Optional: absent from older Ploeg releases."
             }
           }
         }
