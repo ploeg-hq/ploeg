@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.2.0-rc.14
+
+### Breaking changes
+
+- None.
+
+### Changes
+
+- `ploeg-mcp` serves the operator API as read-only MCP tools over stdio for a person's own AI client: `ploeg_overview`, `ploeg_find_work`, `ploeg_get_work`, `ploeg_recent_runs` and `ploeg_changes_since` (#95, ADR-0081). It reads `PLOEG_URL` and `PLOEG_MCP_TOKEN`, the token of an Operator Consumer that should have `execute: false`. The ploegd image ships the binary.
+- `pkg/operatorclient` is a typed read client for the operator API, with bearer auth, refused redirects, 5 s and 16 MiB bounds and token redaction (#95).
+
+### Migration notes
+
+- None. ploegd gains no route; to use `ploeg-mcp`, configure a read-only Operator Consumer.
+
 ## 0.2.0-rc.13
 
 ### Breaking changes
