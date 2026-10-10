@@ -10,10 +10,10 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/ploeg-hq/ploeg/pkg/provider"
 	"github.com/ploeg-hq/ploeg/pkg/provider/vikunja"
-	"github.com/ploeg-hq/ploeg/pkg/store"
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
@@ -91,20 +91,34 @@ func TestTrackerWebhook_RecordsEpicsBeforeTheFirstShiftAndShowsTheSet(t *testing
 	}
 	post("task.updated", "2003")
 
-	raw := operatorSchemaGET(t, s, token, fmt.Sprintf("work-items/%d/card", ids[1]))
-	var body struct {
-		Card store.OperatorCard `json:"card"`
+	epicsOf := func(id int64) []struct {
+		ExternalID  string    `json:"externalId"`
+		Title       string    `json:"title"`
+		FirstSeenAt time.Time `json:"firstSeenAt"`
+	} {
+		t.Helper()
+		raw := operatorSchemaGET(t, s, token, fmt.Sprintf("work-items/%d/facts", id))
+		var body struct {
+			Facts struct {
+				WorkItem struct {
+					Epics []struct {
+						ExternalID  string    `json:"externalId"`
+						Title       string    `json:"title"`
+						FirstSeenAt time.Time `json:"firstSeenAt"`
+					} `json:"epics"`
+				} `json:"workItem"`
+			} `json:"facts"`
+		}
+		if err := json.Unmarshal(raw, &body); err != nil {
+			t.Fatal(err)
+		}
+		return body.Facts.WorkItem.Epics
 	}
-	if err := json.Unmarshal(raw, &body); err != nil {
-		t.Fatal(err)
+	child := epicsOf(ids[1])
+	if len(child) != 1 || child[0].ExternalID != "2000" || child[0].Title != "Epic 2000" {
+		t.Fatalf("epics of a child = %+v", child)
 	}
-	set := body.Card.Set
-	if set == nil || set.Role != "child" || set.Size != 2 || *set.Position != 2 || set.Epic.Ref != "VIK-2000" ||
-		set.Epic.Title != "Epic 2000" || set.Epic.WorkItemID != nil || set.Complete {
-		t.Fatalf("set = %s", raw)
-	}
-	lateRaw := operatorSchemaGET(t, s, token, fmt.Sprintf("work-items/%d/card", late))
-	if strings.Contains(string(lateRaw), `"set"`) {
-		t.Fatalf("a child whose relation appeared after its first Shift has a set: %s", lateRaw)
+	if lateEpics := epicsOf(late); len(lateEpics) != 1 || lateEpics[0].ExternalID != "2000" {
+		t.Fatalf("epics of a late child = %+v; the membership is recorded with its first seen time", lateEpics)
 	}
 }

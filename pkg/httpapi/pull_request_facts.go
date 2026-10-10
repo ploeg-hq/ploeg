@@ -47,9 +47,6 @@ func (s *Server) recordPullRequestFacts(ctx context.Context, fp provider.ForgePr
 		s.captureMergedChange(ctx, fp, ev, true)
 	}
 	s.capturePlayPipeline(ctx, fp, pr, head, ev.Kind == provider.ForgePRMerged || ev.Kind == provider.ForgePRClosed)
-	if ev.Kind == provider.ForgePRMerged {
-		s.publishMergedCard(ctx, fp, ev)
-	}
 }
 
 const mergedChangeTimeout = 20 * time.Second
@@ -59,17 +56,6 @@ func (s *Server) captureMergedChange(ctx context.Context, fp provider.ForgeProvi
 	defer cancel()
 	if reader, ok := fp.(provider.PullRequestChangeReader); ok {
 		s.recordMergedChange(ctx, fp, reader, ev, play)
-	}
-	if !play {
-		return
-	}
-	mended, err := s.Store.RecordMends(ctx, fp.Name(), ev.Repo, ev.PR)
-	if err != nil {
-		s.Log.Error("crack mends not recorded", "provider", fp.Name(), "repo", ev.Repo, "pr", ev.PR, "err", err)
-		return
-	}
-	if mended > 0 {
-		s.Log.Info("cracks mended by a merged fix", "provider", fp.Name(), "repo", ev.Repo, "pr", ev.PR, "cracks", mended)
 	}
 }
 
@@ -91,7 +77,7 @@ func (s *Server) recordMergedChange(ctx context.Context, fp provider.ForgeProvid
 			Labels: change.Labels, Files: change.Files, FilesTruncated: change.FilesTruncated, Lines: fileLines(change.Lines)}); err != nil {
 			s.Log.Error("pull request files not recorded", "provider", fp.Name(), "repo", ev.Repo, "pr", ev.PR, "err", err)
 		} else {
-			s.recordPlayShape(ctx, fp, ev.Repo, ev.PR)
+			s.recordPlayIndentation(ctx, fp, ev.Repo, ev.PR)
 		}
 	}
 	claim := forgefacts.Reverts(ev.Repo, change)

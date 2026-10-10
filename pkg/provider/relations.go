@@ -10,8 +10,8 @@ type TrackerParent struct {
 }
 
 // RelationReader is implemented by a TrackerProvider that can read an item's
-// parents, which Ploeg needs to show epics as sets on Run cards (ADR-0053). A
-// provider without it records no sets.
+// parents, which Ploeg records as the Work Item's epics (ADR-0053). A
+// provider without it records no epics.
 type RelationReader interface {
 	Parents(ctx context.Context, externalID string) ([]TrackerParent, error)
 }

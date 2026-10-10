@@ -5,51 +5,7 @@ import (
 	"testing"
 
 	"github.com/ploeg-hq/ploeg/pkg/config"
-	"github.com/ploeg-hq/ploeg/pkg/store"
 )
-
-func TestOperatorConfigCarriesEachTargetsCardStyle(t *testing.T) {
-	t.Setenv("PLOEG_OPERATOR_CONSUMERS", "")
-	t.Setenv("PLOEG_OPERATOR_DELIVERY_POLICIES", "")
-	t.Setenv("PLOEG_DEFAULT_TEAM", "")
-	t.Setenv("PLOEG_TEAM_MAP", "")
-	cfg := &config.File{Targets: map[string]config.Target{
-		"app":   {Repo: "webgrip/App", CardStyle: &config.CardStyle{Theme: "acme"}},
-		"plain": {Repo: "webgrip/plain"},
-	}}
-	operator, err := operatorConfig(cfg, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	app, ok := operator.CardStyles["webgrip/app"]
-	if !ok || app.Skin != store.DefaultCardSkin || app.Theme == nil || *app.Theme != "acme" {
-		t.Fatalf("card styles = %+v", operator.CardStyles)
-	}
-	if _, ok := operator.CardStyles["webgrip/plain"]; ok {
-		t.Error("a target without cardStyle must use the default, not a stored copy")
-	}
-	if config.DefaultCardSkin != store.DefaultCardSkin {
-		t.Errorf("config default skin %q != store default skin %q", config.DefaultCardSkin, store.DefaultCardSkin)
-	}
-}
-
-func TestOperatorConfigCarriesEachTargetsReleaseEnvironment(t *testing.T) {
-	t.Setenv("PLOEG_OPERATOR_CONSUMERS", "")
-	t.Setenv("PLOEG_OPERATOR_DELIVERY_POLICIES", "")
-	t.Setenv("PLOEG_DEFAULT_TEAM", "")
-	t.Setenv("PLOEG_TEAM_MAP", "")
-	cfg := &config.File{Targets: map[string]config.Target{
-		"app":   {Repo: "webgrip/App", Release: &config.Release{Environment: "live"}},
-		"plain": {Repo: "webgrip/plain"},
-	}}
-	operator, err := operatorConfig(cfg, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := map[string]string{"webgrip/app": "live"}; !reflect.DeepEqual(operator.ReleaseEnvironments, want) {
-		t.Fatalf("release environments = %v, want %v; a target without release uses production", operator.ReleaseEnvironments, want)
-	}
-}
 
 func TestDeployAuthComesFromTheDeployToken(t *testing.T) {
 	t.Setenv("PLOEG_DEPLOY_TOKEN", "")

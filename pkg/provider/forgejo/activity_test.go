@@ -40,8 +40,8 @@ func TestPullRequestActivity_ReadsTimelineReviewsAndCommitsWithoutText(t *testin
 			}
 			fmt.Fprint(w, `[
 				{"type":"pull_push","user":{"login":"ploeg-bot"},"created_at":"2026-10-01T09:00:02Z","body":"{\"is_force_push\":false,\"commit_ids\":[\"aaa\",\"bbb\"]}"},
-				{"type":"change_title","user":{"login":"ploeg-bot"},"created_at":"2026-10-01T09:10:00Z","old_title":"WIP: add cards","new_title":"add cards"},
-				{"type":"change_title","user":{"login":"anna"},"created_at":"2026-10-01T09:11:00Z","old_title":"add cards","new_title":"add run cards"},
+				{"type":"change_title","user":{"login":"ploeg-bot"},"created_at":"2026-10-01T09:10:00Z","old_title":"WIP: add billing","new_title":"add billing"},
+				{"type":"change_title","user":{"login":"anna"},"created_at":"2026-10-01T09:11:00Z","old_title":"add billing","new_title":"add billing export"},
 				{"type":"comment","user":{"login":"anna"},"created_at":"2026-10-01T09:30:00Z","body":"secret review text"},
 				{"type":"code","user":{"login":"bob"},"created_at":"2026-10-01T09:40:00Z","body":"nit"},
 				{"type":"review","user":{"login":"anna"},"created_at":"2026-10-01T09:45:00Z","body":"looks fine"},

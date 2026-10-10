@@ -1,6 +1,6 @@
 ---
 status: proposed
-date: 2026-10-01
+date: 2026-10-10
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -28,6 +28,8 @@ The owner's card contract for Unfold makes an epic its own set card: its childre
 
 ## Decision Outcome
 
+**Narrowed on 2026-10-10 by [ADR-0080](0080-ploeg-keeps-no-run-card-code-and-removes-it-in-one-release.md).** Ploeg keeps points 1 and 2: it reads parents from the tracker and keeps `work_item_epics` with first seen, last seen and removed times, served as `workItem.epics` in the delivery facts. Points 3 to 6 (which relations count, set members, the card's `set` and when a set is complete) are the consumer's now. The text below is the decision as first recorded.
+
 Chosen option: "**Ploeg reads parents from the tracker and counts a relation seen before the first Shift**", because the tracker is where people already structure epics, and the time Ploeg first saw a relation is a fact Ploeg can store and nobody can backdate.
 
 1. **Source.** A tracker provider that implements `provider.RelationReader` reports a Work Item's parents: Vikunja from the `parenttask` relations of `GET /tasks/{id}`, ClickUp from `parent` on `GET /task/{id}`, with the parent's name from a second read. Ploeg reads them when a tracker item is assigned (after the Work Item is stored and before its Shift opens), and on every update or close event of an item that has a Work Item. A Vikunja `task.relation.created` or `task.relation.deleted` event counts as an update of both tasks.
@@ -46,6 +48,8 @@ Chosen option: "**Ploeg reads parents from the tracker and counts a relation see
 * Bad, because the research's minimum of three children and six Size points is not applied. Size points do not exist yet, and the contract does not ask for a minimum.
 
 ### Confirmation
+
+Since 2026-10-10 the store and HTTP tests that ADR-0080 names check what this record still decides. The card tests listed below were removed with the card.
 
 In `.forgejo/workflows/on_pull_request.yml`, `go test ./...` in `apps/ploeg` covers:
 
@@ -72,6 +76,7 @@ In `.forgejo/workflows/on_pull_request.yml`, `go test ./...` in `apps/ploeg` cov
 * The owner's card contract addendum (P4), section "Sets", gives the card shape and the completion rule.
 * The Run cards game-theory research (`docs/research/2026-10-01-run-cards-game-theory.md` at the repository root), sections 3.7 and table row 20, gives the declared-before rule.
 * 2026-10-10 — [ADR-0079](0079-run-cards-belong-to-the-consumer-and-ploeg-supplies-delivery-facts.md) moves the Run card to the operator consumer. The facts this record keeps stay and are exposed raw through the delivery facts endpoints; the card figures built on them are removed in the next minor release.
+* 2026-10-10 — Narrowed by [ADR-0080](0080-ploeg-keeps-no-run-card-code-and-removes-it-in-one-release.md) to the facts it records.
 
 ## Re-evaluation triggers
 

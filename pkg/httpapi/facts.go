@@ -23,7 +23,6 @@ func (s *Server) registerFacts(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/operator/facts", s.handleFactsList)
 	mux.HandleFunc("PUT /api/v1/operator/work-items/{id}/pull-request-comments/{key}", s.handlePutPullRequestComment)
 	mux.HandleFunc("DELETE /api/v1/operator/work-items/{id}/pull-request-comments/{key}", s.handleDeletePullRequestComment)
-	mux.HandleFunc("GET /api/v1/operator/card-legacy-export", s.handleLegacyExport)
 }
 
 func (s *Server) factsOptions(ctx context.Context) store.FactsOptions {
@@ -151,42 +150,4 @@ func factsListFilter(w http.ResponseWriter, r *http.Request) (store.FactsListFil
 func validFactsLogin(login string) bool {
 	return len(login) <= factsLoginBytes && utf8.ValidString(login) && strings.TrimSpace(login) == login &&
 		!strings.ContainsFunc(login, unicode.IsControl)
-}
-
-func (s *Server) handleLegacyExport(w http.ResponseWriter, r *http.Request) {
-	if !operatorGET(w, r) {
-		return
-	}
-	q, err := url.ParseQuery(r.URL.RawQuery)
-	if err != nil {
-		operatorError(w, 400, "invalid_request", "Malformed query parameters.")
-		return
-	}
-	for key, values := range q {
-		if (key != "after" && key != "limit") || len(values) != 1 || values[0] == "" {
-			operatorError(w, 400, "invalid_request", "Unknown, repeated or empty query parameter.")
-			return
-		}
-	}
-	after, err := store.OperatorCursor(q.Get("after"))
-	if err != nil {
-		operatorError(w, 400, "invalid_request", "after must be a Work Item id.")
-		return
-	}
-	limit := store.DefaultLegacyExportLimit
-	if raw := q.Get("limit"); raw != "" {
-		limit, err = strconv.Atoi(raw)
-		if err != nil || limit < 1 || limit > store.LegacyExportLimit {
-			operatorError(w, 400, "invalid_request", "Limit must be between 1 and 200.")
-			return
-		}
-	}
-	principal, _ := OperatorPrincipalFromContext(r.Context())
-	page, err := s.Store.LegacyExport(r.Context(), principal.Teams, after, limit)
-	if err != nil {
-		operatorReadError(w, err)
-		return
-	}
-	w.Header().Set("Deprecation", "true")
-	operatorJSON(w, http.StatusOK, map[string]any{"schemaVersion": "1.0", "deprecated": true, "items": page.Items, "nextAfter": page.NextAfter})
 }

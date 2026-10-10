@@ -9,7 +9,6 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/ploeg-hq/ploeg/pkg/flow"
 	"github.com/ploeg-hq/ploeg/pkg/gate"
 )
 
@@ -64,7 +63,7 @@ func (s *Store) RecordStatusMove(ctx context.Context, m StatusMove) (bool, error
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return false, err
 	}
-	if recorded && flow.StatusKey(last) == flow.StatusKey(status) {
+	if recorded && strings.ToLower(strings.TrimSpace(last)) == strings.ToLower(status) {
 		return false, nil
 	}
 	now := time.Now()
@@ -124,34 +123,4 @@ func (s *Store) RecordTrackerFacts(ctx context.Context, f TrackerFacts) error {
 		return ErrWorkItemNotFound
 	}
 	return nil
-}
-
-func cardStatusEntries(ctx context.Context, tx pgx.Tx, id int64) ([]flow.Entry, bool, error) {
-	rows, err := tx.Query(ctx, `SELECT status, COALESCE(gate, ''), at, observed FROM status_transitions
-		WHERE work_item_id = $1 ORDER BY id DESC LIMIT $2`, id, cardTransitionLimit+1)
-	if err != nil {
-		return nil, false, err
-	}
-	defer rows.Close()
-	var out []flow.Entry
-	for rows.Next() {
-		var e flow.Entry
-		var g string
-		if err := rows.Scan(&e.Status, &g, &e.At, &e.Observed); err != nil {
-			return nil, false, err
-		}
-		e.Gate, e.At = gate.Gate(g), e.At.UTC()
-		out = append(out, e)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, false, err
-	}
-	truncated := len(out) > cardTransitionLimit
-	if truncated {
-		out = out[:cardTransitionLimit]
-	}
-	for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
-		out[i], out[j] = out[j], out[i]
-	}
-	return out, truncated, nil
 }

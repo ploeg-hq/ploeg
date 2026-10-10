@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http/httptest"
 	"testing"
 
 	"github.com/ploeg-hq/ploeg/pkg/provider"
@@ -62,20 +61,18 @@ func TestOperatorReadsLinkVikunjaItemsStoredWithoutATaskURL(t *testing.T) {
 		t.Errorf("work item detail url = %q", detail.Item.URL)
 	}
 
-	r := httptest.NewRequest("GET", fmt.Sprintf("/api/v1/operator/work-items/%d/card", unlinked), nil)
-	r.Header.Set("Authorization", "Bearer "+token)
-	w := httptest.NewRecorder()
-	s.Handler().ServeHTTP(w, r)
-	var card struct {
-		Card struct {
-			URL string `json:"url"`
-		} `json:"card"`
+	var facts struct {
+		Facts struct {
+			WorkItem struct {
+				URL string `json:"url"`
+			} `json:"workItem"`
+		} `json:"facts"`
 	}
-	if err := json.Unmarshal(w.Body.Bytes(), &card); err != nil || w.Code != 200 {
-		t.Fatalf("card: %d %s", w.Code, w.Body)
+	if err := json.Unmarshal(operatorSchemaGET(t, s, token, fmt.Sprintf("work-items/%d/facts", unlinked)), &facts); err != nil {
+		t.Fatal(err)
 	}
-	if card.Card.URL != "https://vikunja.example/tasks/1279" {
-		t.Errorf("card url = %q", card.Card.URL)
+	if facts.Facts.WorkItem.URL != "https://vikunja.example/tasks/1279" {
+		t.Errorf("facts url = %q", facts.Facts.WorkItem.URL)
 	}
 
 	s.Trackers = nil

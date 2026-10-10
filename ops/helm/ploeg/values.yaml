@@ -510,25 +510,17 @@ executor:
 # boot, logs what it resolved, and refuses to start if a name matches nothing.
 # A bare project id in cluster config cannot be reviewed and silently routes
 # work to the wrong repository the day the project is rebuilt.
+#
+# The Run card keys `cards`, a target's or project's `cardStyle`, `release`,
+# `rarity` and `cardShape`, a project's `statusKinds` and a team's `cards` and
+# `workingHours` are retired (ADR-0080): ploegd logs a warning and ignores
+# them in this release, and refuses them in the next. Remove them.
 config: {}
-#   cards:
-#     enabled: true                   # ADR-0079: false stops Ploeg's card comment, rarity and mend sweeps once a consumer took Run cards over
 #   targets:                          # ADR-0038: repositories a `repo/<key>` label may select
 #     app:
 #       repo: webgrip/app
 #       branch: development
 #       forge: forgejo
-#       cardStyle:                    # ADR-0046: Run card skin and theme; unset = skin "default", no theme
-#         theme: acme
-#       release:                      # ADR-0047: the deploy environment that releases a merge; unset = production
-#         environment: production
-#       rarity:                       # ADR-0056: Run card rarity path rules; unset = the defaults
-#         attentionPaths: ["pkg/store/**"]  # more sensitive ground, on top of the defaults
-#         # sensitivePaths: [...]       # replaces the default sensitive paths; [] = none
-#         # sizeExclude: [...]          # replaces the default lockfile/generated/vendor list
-#       cardShape:                    # ADR-0058: which files a Run card counts as tests and docs; unset = the defaults
-#         testPaths: ["**/*_test.go", "web/test/**"]  # replaces the default test paths; [] = none
-#         # docPaths: [...]             # replaces the default documentation paths
 #     homelab-cluster:
 #       repo: webgrip/homelab-cluster
 #       branch: main
@@ -543,14 +535,11 @@ config: {}
 #         - name: "App"                # a board serving several repositories
 #           default: app               # a targets key, instead of repo/branch/forge
 #           allow: [homelab-cluster]  # what a repo/<key> label may select here
-#           gates:                    # ADR-0051: bucket titles (Vikunja) or statuses (ClickUp) per delivery gate
+#           gates:                    # ADR-0051: bucket titles (Vikunja) or statuses (ClickUp) per delivery gate; also records every status move (ADR-0080)
 #             development: ["Doing"]
 #             test: ["In test"]
 #             acceptance: ["Acceptance", "UAT"]
 #             done: ["Done"]
-#           statusKinds:              # ADR-0057: active/waiting/blocked/done per status for card flow; unset = the defaults
-#             active: ["UAT"]
-#             blocked: ["Parked"]
 #         - name: "Forgejo Migration" # no default: every ticket needs a repo/<key> label
 #           allow: [app, homelab-cluster]
 #   teams:
@@ -571,13 +560,3 @@ config: {}
 #         repairFailedChecks: true    # a failed check queues a repair Follow-Up
 #         maxRepairs: 2               # repair Follow-Ups per pull request; 0 = 2
 #         reworkOnChangesRequested: true  # a person's "request changes" sends it back
-#       cards:                        # ADR-0052, ADR-0055: Run card rules; omit = anyone uninvolved referees, "hotfix" marks a hotfix, no card comment
-#         referees: [anna, bram]      # the only people who resolve a disputed crack
-#         hotfixLabels: [hotfix]      # pull request labels that mark a fix as a hotfix
-#         prComment: false            # true = keep one card comment, with the card image, on merged pull requests
-#       workingHours:                 # ADR-0057: the calendar card working seconds count in; unset = Mon-Fri 09:00-17:00 Europe/Amsterdam
-#         timezone: Europe/Amsterdam
-#         days: [mon, tue, wed, thu, fri]
-#         start: "09:00"
-#         end: "17:00"
-#         holidays: ["2026-12-25"]    # none by default

@@ -2,13 +2,10 @@ package httpapi
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	"github.com/ploeg-hq/ploeg/pkg/forgefacts"
-	"github.com/ploeg-hq/ploeg/pkg/playkpi"
 	"github.com/ploeg-hq/ploeg/pkg/provider"
-	"github.com/ploeg-hq/ploeg/pkg/rarity"
 	"github.com/ploeg-hq/ploeg/pkg/store"
 )
 
@@ -17,21 +14,6 @@ const (
 	pipelineRecapture      = 10 * time.Minute
 	pipelineConcurrency    = 4
 )
-
-var defaultSizeMatcher = func() rarity.Matcher {
-	m, err := rarity.Rules{}.Compile()
-	if err != nil {
-		panic(err)
-	}
-	return m
-}()
-
-func (s *Server) pipelineClock() time.Time {
-	if s.CardClock != nil {
-		return s.CardClock()
-	}
-	return time.Now()
-}
 
 func (s *Server) pipelineSlot() chan struct{} {
 	s.pipelineOnce.Do(func() { s.pipelineSlots = make(chan struct{}, pipelineConcurrency) })
@@ -46,7 +28,7 @@ func (s *Server) capturePlayPipeline(ctx context.Context, fp provider.ForgeProvi
 	key := pipelineKey(fp, pr)
 	activity, canActivity := fp.(provider.PullRequestActivityReader)
 	history, canCI := fp.(provider.CIHistoryReader)
-	now := s.pipelineClock()
+	now := time.Now()
 	due := final
 	if !due && (canActivity || canCI) {
 		var err error
@@ -55,7 +37,6 @@ func (s *Server) capturePlayPipeline(ctx context.Context, fp provider.ForgeProvi
 		}
 	}
 	if !due || (!canActivity && !canCI) {
-		s.refreshPlayKPIs(ctx, key, now)
 		return
 	}
 	s.pipelineWork.Add(1)
@@ -69,17 +50,10 @@ func (s *Server) capturePlayPipeline(ctx context.Context, fp provider.ForgeProvi
 			defer func() { <-slots }()
 		case <-ctx.Done():
 			s.Log.Warn("pull request activity not read: too many reads at once", "provider", fp.Name(), "repo", pr.Repo, "pr", pr.Number)
-			s.refreshPlayKPIs(context.WithoutCancel(ctx), key, now)
 			return
 		}
 		s.readPlayPipeline(ctx, fp, activity, history, pr, head)
 	}()
-}
-
-func (s *Server) refreshPlayKPIs(ctx context.Context, key store.PullRequestKey, at time.Time) {
-	if _, err := s.Store.RefreshPullRequestKPIs(ctx, key, at, s.ForgeBots); err != nil {
-		s.Log.Error("pull request figures not recomputed", "provider", key.Forge, "repo", key.Repo, "pr", key.Number, "err", err)
-	}
 }
 
 func (s *Server) readPlayPipeline(ctx context.Context, fp provider.ForgeProvider, activityReader provider.PullRequestActivityReader,
@@ -90,7 +64,7 @@ func (s *Server) readPlayPipeline(ctx context.Context, fp provider.ForgeProvider
 	if activityReader != nil {
 		read, err := activityReader.PullRequestActivity(ctx, pr.Repo, pr.Number)
 		if err != nil {
-			s.Log.Warn("pull request activity not read; timeline keeps what is recorded", "provider", fp.Name(),
+			s.Log.Warn("pull request activity not read; Ploeg keeps what is recorded", "provider", fp.Name(),
 				"repo", pr.Repo, "pr", pr.Number, "err", err)
 		} else {
 			activity = storeActivity(read)
@@ -108,13 +82,13 @@ func (s *Server) readPlayPipeline(ctx context.Context, fp provider.ForgeProvider
 	if history != nil {
 		read, err := history.PullRequestCI(ctx, pr.Repo, pr.Number, pr.Branch, heads)
 		if err != nil {
-			s.Log.Warn("pull request CI runs not read; CI timing keeps what is recorded", "provider", fp.Name(),
+			s.Log.Warn("pull request CI runs not read; Ploeg keeps what is recorded", "provider", fp.Name(),
 				"repo", pr.Repo, "pr", pr.Number, "err", err)
 		} else {
 			ci = storeCIRuns(read)
 		}
 	}
-	if _, err := s.Store.RecordPullRequestPipeline(ctx, key, activity, ci, s.pipelineClock(), s.ForgeBots); err != nil {
+	if _, err := s.Store.RecordPullRequestPipeline(ctx, key, activity, ci, time.Now()); err != nil {
 		s.Log.Error("pull request activity and CI runs not recorded", "provider", fp.Name(), "repo", pr.Repo, "pr", pr.Number, "err", err)
 	}
 }
@@ -132,9 +106,9 @@ func storeCIRuns(c provider.PullRequestCI) *store.PullRequestCIRuns {
 	out := &store.PullRequestCIRuns{Source: c.Source, Truncated: c.Truncated, Runs: make([]store.PullRequestCIRun, 0, len(c.Runs))}
 	for _, r := range c.Runs {
 		run := store.PullRequestCIRun{Key: r.ID, HeadSHA: r.SHA, Workflow: r.Workflow, Status: string(r.Status),
-			CreatedAt: r.CreatedAt, StartedAt: r.StartedAt, CompletedAt: r.CompletedAt, Jobs: make([]playkpi.Job, 0, len(r.Jobs))}
+			CreatedAt: r.CreatedAt, StartedAt: r.StartedAt, CompletedAt: r.CompletedAt, Jobs: make([]store.CIJob, 0, len(r.Jobs))}
 		for _, j := range r.Jobs {
-			run.Jobs = append(run.Jobs, playkpi.Job{Name: j.Name, Status: string(j.Status), StartedAt: j.StartedAt, CompletedAt: j.CompletedAt,
+			run.Jobs = append(run.Jobs, store.CIJob{Name: j.Name, Status: string(j.Status), StartedAt: j.StartedAt, CompletedAt: j.CompletedAt,
 				QueuedSeconds: j.QueuedSeconds, Attempt: j.Attempt})
 		}
 		out.Runs = append(out.Runs, run)
@@ -142,26 +116,17 @@ func storeCIRuns(c provider.PullRequestCI) *store.PullRequestCIRuns {
 	return out
 }
 
-func (s *Server) recordPlayShape(ctx context.Context, fp provider.ForgeProvider, repo string, number int) {
-	in := store.ShapeInput{Size: defaultSizeMatcher, Paths: playkpi.DefaultMatcher, At: s.pipelineClock()}
-	if m, ok := s.OperatorConfig.RarityMatchers[strings.ToLower(repo)]; ok {
-		in.Size = m
+func (s *Server) recordPlayIndentation(ctx context.Context, fp provider.ForgeProvider, repo string, number int) {
+	reader, ok := fp.(provider.PullRequestDiffReader)
+	if !ok {
+		return
 	}
-	if m, ok := s.OperatorConfig.ShapeMatchers[strings.ToLower(repo)]; ok {
-		in.Paths = m
+	diff, _, err := reader.PullRequestDiff(ctx, repo, number, provider.MaxDiffBytes)
+	if err != nil {
+		s.Log.Warn("merged pull request diff not read; file indentation stays unknown", "provider", fp.Name(), "repo", repo, "pr", number, "err", err)
+		return
 	}
-	if reader, ok := fp.(provider.PullRequestDiffReader); ok {
-		diff, truncated, err := reader.PullRequestDiff(ctx, repo, number, provider.MaxDiffBytes)
-		if err != nil {
-			s.Log.Warn("merged pull request diff not read; complexity stays unknown", "provider", fp.Name(), "repo", repo, "pr", number, "err", err)
-		} else {
-			if diff == nil {
-				diff = []byte{}
-			}
-			in.Diff, in.DiffTruncated = diff, truncated
-		}
-	}
-	if _, err := s.Store.RecordPullRequestShape(ctx, store.PullRequestKey{Forge: fp.Name(), Repo: repo, Number: number}, in); err != nil {
-		s.Log.Error("pull request change shape not recorded", "provider", fp.Name(), "repo", repo, "pr", number, "err", err)
+	if _, err := s.Store.RecordPullRequestIndentation(ctx, store.PullRequestKey{Forge: fp.Name(), Repo: repo, Number: number}, diff); err != nil {
+		s.Log.Error("pull request file indentation not recorded", "provider", fp.Name(), "repo", repo, "pr", number, "err", err)
 	}
 }

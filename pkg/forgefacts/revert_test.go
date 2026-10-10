@@ -14,14 +14,14 @@ func TestReverts(t *testing.T) {
 		want   RevertClaim
 	}{
 		{"a forge revert names the pull request in its body",
-			provider.PullRequestChange{Title: `Revert "Add run cards"`, Body: "Reverts webgrip/ploeg#68"},
+			provider.PullRequestChange{Title: `Revert "Add billing"`, Body: "Reverts webgrip/ploeg#68"},
 			RevertClaim{Numbers: []int{68}}},
 		{"a hand-written revert names it in the title",
 			provider.PullRequestChange{Title: "revert #12 and !13", Body: "see other/repo#99"},
 			RevertClaim{Numbers: []int{12, 13}}},
 		{"a git revert commit names the reverted commit",
-			provider.PullRequestChange{Title: "Undo the card change", Commits: []string{
-				"Revert \"Add run cards\"\n\nThis reverts commit ABCDEF1234567890abcdef1234567890abcdef12.",
+			provider.PullRequestChange{Title: "Undo the billing change", Commits: []string{
+				"Revert \"Add billing\"\n\nThis reverts commit ABCDEF1234567890abcdef1234567890abcdef12.",
 				"This reverts commit abcdef1, reversing changes made to 0000000."}},
 			RevertClaim{SHAs: []string{"abcdef1", "abcdef1234567890abcdef1234567890abcdef12"}}},
 		{"a pull request that mentions a number but is not a revert claims nothing",

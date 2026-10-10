@@ -89,7 +89,7 @@ func richFactsItem(t *testing.T) (int64, int64) {
 		labels = ARRAY['hotfix'], commits = 3, first_commit_at = $5, force_pushes = 1, activity_captured_at = $6, activity_truncated = false,
 		merge_state = 'clean', merge_head_sha = $3, merge_checked_at = $6, ci_state = 'success', ci_checks = '[{"context":"verify","state":"success"}]',
 		ci_head_sha = $3, ci_captured_at = $6, ci_runs_captured_at = $6, ci_runs_source = 'actions', ci_runs_truncated = false,
-		files_captured_at = $6, files_truncated = false, kpis = '{"secret":"derived"}' WHERE id = $1`,
+		files_captured_at = $6, files_truncated = false WHERE id = $1`,
 		pr, shift, strings.Repeat("a", 40), strings.Repeat("b", 40), at.Add(time.Hour), at.Add(5*time.Hour))
 	execSQL(t, `INSERT INTO pull_request_reviews (pull_request_id, reviewer, state, head_sha, received_at) VALUES
 		($1, 'bram', 'changes_requested', $2, $3), ($1, 'Bram', 'approved', $2, $4)`, pr, strings.Repeat("a", 40), at.Add(2*time.Hour), at.Add(4*time.Hour))

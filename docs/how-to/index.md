@@ -19,11 +19,8 @@ These runbooks cover the recurring operator tasks for a cluster deployment of Pl
 | [Restore after a database outage](restore-after-a-database-outage.md) | PostgreSQL was unavailable or was restored from a backup |
 | [Give Runs a toolchain and checks](give-runs-a-toolchain-and-checks.md) | Agents open pull requests that fail checks they could not run in the sandbox |
 | [Route a board that serves several repositories](route-a-multi-repo-board.md) | One board holds tickets for more than one repository, or a ticket was refused with a `repo/*` label reason |
-| [Send deploys from a pipeline to Ploeg](send-deploys-from-a-pipeline.md) | Run cards should count days live from a deploy, or a card says "counted from merge" |
-| [Map tracker statuses to delivery gates](map-tracker-statuses-to-gates.md) | Run cards should show test and acceptance, and bounces with a reason |
-| [Mark sensitive paths for card rarity](mark-sensitive-paths-for-card-rarity.md) | Run card rarity should count your riskiest code, or leave generated files out of size |
-| [Configure status kinds and working hours](configure-status-kinds-and-working-hours.md) | Run cards should show time in every column, lead and cycle time and flow efficiency in your team's working hours |
-| [Count tests and docs on Run cards](count-tests-and-docs-on-run-cards.md) | A Run card's test ratio or documentation count misses your test or docs layout, or a card shows no CI timing or complexity |
+| [Send deploys from a pipeline to Ploeg](send-deploys-from-a-pipeline.md) | An operator consumer should see where a merged change is live |
+| [Map tracker statuses to delivery gates](map-tracker-statuses-to-gates.md) | An operator consumer should see every board status, the gate a ticket stands in, and bounces with a reason |
 
 For accounts whose final cost is uncertain, [Reconcile uncertainty](../ops/managed-workers.md#reconcile-uncertainty) sets the rules these runbooks follow.
 

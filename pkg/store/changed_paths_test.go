@@ -2,11 +2,10 @@ package store
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"reflect"
-	"strings"
 	"testing"
+	"time"
 )
 
 func TestMigration0036AddsChangedPathTables(t *testing.T) {
@@ -19,19 +18,17 @@ func TestMigration0036AddsChangedPathTables(t *testing.T) {
 	}
 }
 
-func changedPathsCard(t *testing.T, item int64) CardPlay {
+func changedPaths(t *testing.T, item int64) *struct {
+	HeadSHA   string        `json:"headSha"`
+	Truncated bool          `json:"truncated"`
+	Paths     []ChangedPath `json:"paths"`
+} {
 	t.Helper()
-	card, err := testStore.OperatorCard(context.Background(), item, nil, CardOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(card.Plays) != 1 {
-		t.Fatalf("plays = %+v; want one", card.Plays)
-	}
-	return card.Plays[0]
+	w := &world{t: t, ctx: context.Background(), now: time.Now()}
+	return w.play(item).ChangedPaths
 }
 
-func TestChangedPathsAreKeptPerHeadAndShownOnlyForTheCurrentHead(t *testing.T) {
+func TestChangedPathsAreKeptForTheLatestHeadRead(t *testing.T) {
 	ctx := context.Background()
 	resetTables(t)
 	item, _ := pullRequestItem(t, "agent/vik-1698")
@@ -48,8 +45,8 @@ func TestChangedPathsAreKeptPerHeadAndShownOnlyForTheCurrentHead(t *testing.T) {
 		Branch: "agent/vik-1698", State: "open", HeadSHA: "h1"}); err != nil {
 		t.Fatal(err)
 	}
-	if play := changedPathsCard(t, item); play.ChangedPaths != nil || play.ChangedPathsTruncated != nil {
-		t.Fatalf("play = %+v; paths never read stay absent", play)
+	if paths := changedPaths(t, item); paths != nil {
+		t.Fatalf("paths = %+v; paths never read stay absent", paths)
 	}
 	if due, err := testStore.ChangedPathsDue(ctx, key, "h1"); err != nil || !due {
 		t.Fatalf("due = %v (%v) for a head without paths; want true", due, err)
@@ -60,11 +57,11 @@ func TestChangedPathsAreKeptPerHeadAndShownOnlyForTheCurrentHead(t *testing.T) {
 	if ok, err := testStore.RecordChangedPaths(ctx, PullRequestPaths{Key: key, HeadSHA: "h1", Paths: first}); err != nil || !ok {
 		t.Fatalf("recorded = %v (%v)", ok, err)
 	}
-	play := changedPathsCard(t, item)
+	paths := changedPaths(t, item)
 	want := []ChangedPath{{Path: "AGENTS.md", Status: "modified"}, {Path: "CLAUDE.md", Status: "renamed", PreviousPath: "docs/CLAUDE.md"},
 		{Path: "x.go", Status: "modified"}}
-	if play.ChangedPaths == nil || !reflect.DeepEqual(*play.ChangedPaths, want) || play.ChangedPathsTruncated == nil || *play.ChangedPathsTruncated {
-		t.Fatalf("play paths = %v truncated %v; want %v, false", play.ChangedPaths, play.ChangedPathsTruncated, want)
+	if paths == nil || paths.HeadSHA != "h1" || !reflect.DeepEqual(paths.Paths, want) || paths.Truncated {
+		t.Fatalf("paths = %+v; want %v at h1, not truncated", paths, want)
 	}
 	if due, err := testStore.ChangedPathsDue(ctx, key, "h1"); err != nil || due {
 		t.Fatalf("due = %v (%v) for a head already read; want false", due, err)
@@ -78,8 +75,8 @@ func TestChangedPathsAreKeptPerHeadAndShownOnlyForTheCurrentHead(t *testing.T) {
 	if _, err := testStore.RecordPullRequestFacts(ctx, PullRequestFacts{Forge: "forgejo", Repo: "webgrip/ploeg", Number: 21, HeadSHA: "h2"}); err != nil {
 		t.Fatal(err)
 	}
-	if play := changedPathsCard(t, item); play.ChangedPaths != nil {
-		t.Fatalf("paths %v read at h1 shown after a push to h2; want absent until h2 is read", *play.ChangedPaths)
+	if paths := changedPaths(t, item); paths == nil || paths.HeadSHA != "h1" {
+		t.Fatalf("paths = %+v after a push to h2; want the list read at h1, named by its head", paths)
 	}
 	if due, err := testStore.ChangedPathsDue(ctx, key, "h2"); err != nil || !due {
 		t.Fatalf("due = %v (%v) after a push; want true", due, err)
@@ -87,16 +84,9 @@ func TestChangedPathsAreKeptPerHeadAndShownOnlyForTheCurrentHead(t *testing.T) {
 	if ok, err := testStore.RecordChangedPaths(ctx, PullRequestPaths{Key: key, HeadSHA: "h2", Paths: []ChangedPath{}}); err != nil || !ok {
 		t.Fatalf("recorded = %v (%v)", ok, err)
 	}
-	play = changedPathsCard(t, item)
-	if play.ChangedPaths == nil || len(*play.ChangedPaths) != 0 {
-		t.Fatalf("paths = %v; a read list with no paths is empty, not absent", play.ChangedPaths)
-	}
-	raw, err := json.Marshal(play)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(raw), `"changedPaths":[]`) || !strings.Contains(string(raw), `"changedPathsTruncated":false`) {
-		t.Errorf("play json = %s; want an empty list and truncated false", raw)
+	paths = changedPaths(t, item)
+	if paths == nil || paths.HeadSHA != "h2" || paths.Paths == nil || len(paths.Paths) != 0 || paths.Truncated {
+		t.Fatalf("paths = %+v; a read list with no paths is empty, not absent", paths)
 	}
 	var captures int
 	if err := testStore.pool.QueryRow(ctx, `SELECT count(*) FROM pull_request_path_captures`).Scan(&captures); err != nil || captures != 1 {
@@ -120,11 +110,11 @@ func TestChangedPathsAreCappedAndMarkedTruncated(t *testing.T) {
 	if ok, err := testStore.RecordChangedPaths(ctx, PullRequestPaths{Key: key, HeadSHA: "h1", Paths: paths}); err != nil || !ok {
 		t.Fatalf("recorded = %v (%v)", ok, err)
 	}
-	play := changedPathsCard(t, item)
-	if play.ChangedPaths == nil || len(*play.ChangedPaths) != MaxStoredChangedPaths || play.ChangedPathsTruncated == nil || !*play.ChangedPathsTruncated {
-		t.Fatalf("paths %d truncated %v; want %d, true", len(*play.ChangedPaths), play.ChangedPathsTruncated, MaxStoredChangedPaths)
+	stored := changedPaths(t, item)
+	if stored == nil || len(stored.Paths) != MaxStoredChangedPaths || !stored.Truncated {
+		t.Fatalf("paths = %+v; want %d, truncated", stored, MaxStoredChangedPaths)
 	}
-	if got := (*play.ChangedPaths)[0].Path; got != "f000.go" {
+	if got := stored.Paths[0].Path; got != "f000.go" {
 		t.Errorf("first path = %s; the forge's order is kept", got)
 	}
 }

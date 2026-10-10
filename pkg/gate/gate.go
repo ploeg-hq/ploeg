@@ -1,14 +1,12 @@
 // Package gate maps tracker statuses to the delivery gates a Work Item
-// passes and derives bounces from the recorded moves (ADR-0051).
+// passes, and reads the reason a Work Item bounced back (ADR-0051).
 package gate
 
 import (
 	"fmt"
 	"html"
 	"regexp"
-	"sort"
 	"strings"
-	"time"
 )
 
 // Gate is one stage of delivery. Gates are ordered: development, test,
@@ -168,98 +166,7 @@ func (b Boards) Lookup(provider, scope string) (Map, bool) {
 // Has reports whether any board of provider has a gate map.
 func (b Boards) Has(provider string) bool { return len(b[provider]) > 0 }
 
-// Transition is one recorded move of a Work Item into a gate. Reason is the
-// bounce reason found when the move was recorded, empty when none was.
-type Transition struct {
-	Gate   Gate
-	Status string
-	At     time.Time
-	Actor  string
-	Reason Reason
-}
-
 // IsBounce reports whether a move from one gate to another goes back.
 func IsBounce(from, to Gate) bool {
 	return from.Known() && to.Known() && to.Rank() < from.Rank()
-}
-
-// Visit is one stay in a gate. Left is nil for the current gate.
-type Visit struct {
-	Gate    Gate
-	Entered time.Time
-	Left    *time.Time
-}
-
-// Bounce is a move back to an earlier gate.
-type Bounce struct {
-	From   Gate
-	To     Gate
-	At     time.Time
-	Reason Reason
-	Actor  string
-}
-
-// Counts reports whether a bounce counts against delivery: only defect and
-// unknown bounces do.
-func (b Bounce) Counts() bool { return b.Reason == ReasonDefect || b.Reason == ReasonUnknown }
-
-// Journey is what the transitions of one Work Item say, oldest first.
-type Journey struct {
-	Current Gate
-	History []Visit
-	Bounces []Bounce
-	// RightFirstTime has one entry for every gate after the first that the
-	// Work Item entered: the number of counting bounces that left it.
-	RightFirstTime map[Gate]int
-	// Evolved is true when a requirement bounce left acceptance or done.
-	Evolved bool
-}
-
-// Walk derives the journey of transitions, which must be ordered oldest
-// first. A transition into the gate the Work Item is already in changes
-// nothing. It returns false when there is no transition.
-func Walk(transitions []Transition) (Journey, bool) {
-	var j Journey
-	j.RightFirstTime = map[Gate]int{}
-	for _, t := range transitions {
-		if !t.Gate.Known() || t.Gate == j.Current {
-			continue
-		}
-		if n := len(j.History); n > 0 {
-			at := t.At
-			j.History[n-1].Left = &at
-			if IsBounce(j.Current, t.Gate) {
-				reason := t.Reason
-				if reason == "" {
-					reason = ReasonUnknown
-				}
-				b := Bounce{From: j.Current, To: t.Gate, At: t.At, Reason: reason, Actor: t.Actor}
-				j.Bounces = append(j.Bounces, b)
-				if b.Counts() {
-					j.RightFirstTime[b.From]++
-				}
-				if b.Reason == ReasonRequirement && b.From.Rank() >= Acceptance.Rank() {
-					j.Evolved = true
-				}
-			}
-		}
-		if t.Gate != Development {
-			if _, seen := j.RightFirstTime[t.Gate]; !seen {
-				j.RightFirstTime[t.Gate] = 0
-			}
-		}
-		j.History = append(j.History, Visit{Gate: t.Gate, Entered: t.At})
-		j.Current = t.Gate
-	}
-	return j, len(j.History) > 0
-}
-
-// SortedGates returns the keys of counts in gate order.
-func SortedGates(counts map[Gate]int) []Gate {
-	out := make([]Gate, 0, len(counts))
-	for g := range counts {
-		out = append(out, g)
-	}
-	sort.Slice(out, func(i, k int) bool { return out[i].Rank() < out[k].Rank() })
-	return out
 }

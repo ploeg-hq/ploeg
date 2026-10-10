@@ -10,7 +10,7 @@ change either side and the test tells you.
 | [outcomereport.v1.schema.json](outcomereport.v1.schema.json) | Harness output and the body of `POST /api/v1/runs/{token}/outcome`. Stuck requires a reason (R4). The optional `createdWorkItems` carries the Work Items a Run proposes ([ADR-0031](../adrs/0031-runs-create-work-items-held-for-approval-within-limits.md)). The optional `verification` is the worker's own record of the checks it ran on a writing Run; the worker discards any value an agent sent. |
 | [checkpoint.v1.schema.json](checkpoint.v1.schema.json) | The durable progress record (shared by TaskSpec, OutcomeReport, and the checkpoint endpoint). |
 | [run-api.v1.schema.json](run-api.v1.schema.json) | All run-API message bodies (claim/renew/checkpoint/outcome). |
-| [operator-api.v1.schema.json](operator-api.v1.schema.json) | Authenticated, team-scoped read projections of teams, activity summaries, work items, shifts, runs, the Run list, checkpoints and snapshot audit pages, the Run Card of a Work Item ([ADR-0046](../adrs/0046-a-run-card-is-assembled-per-work-item-from-stored-facts.md)) and the card list by roster login ([ADR-0054](../adrs/0054-a-card-list-finds-cards-by-roster-login-newest-activity-first.md)), all deprecated; the delivery facts of a Work Item and the facts list, the keyed pull request comment and the one-time card export ([ADR-0079](../adrs/0079-run-cards-belong-to-the-consumer-and-ploeg-supplies-delivery-facts.md)). |
+| [operator-api.v1.schema.json](operator-api.v1.schema.json) | Authenticated, team-scoped read projections of teams, activity summaries, work items, shifts, runs, the Run list, checkpoints and snapshot audit pages; the delivery facts of a Work Item and the facts list, and the keyed pull request comment ([ADR-0079](../adrs/0079-run-cards-belong-to-the-consumer-and-ploeg-supplies-delivery-facts.md)). |
 | [deploy-api.v1.schema.json](deploy-api.v1.schema.json) | `POST /api/v1/deploys`: a pipeline reports that a commit is live in an environment, with its own bearer token ([ADR-0047](../adrs/0047-ploeg-learns-where-a-merged-change-is-deployed-from-a-generic-deploy-endpoint.md), [how-to](../how-to/send-deploys-from-a-pipeline.md)). |
 | [tracker-execution.md](tracker-execution.md), [v1 schema](tracker-execution.v1.schema.json) | Scoped source lookup and exclusive operator binding of an existing pristine tracker Work Item. |
 | [acp-profiles.md](acp-profiles.md) | The `acp` harness profiles: launch command, gateway wiring, instruction files and approval mapping per agent, and what an image needs to run them. |
@@ -22,84 +22,30 @@ change either side and the test tells you.
   update in the same commit); renames, removals, type changes, or new
   required fields are v2 — a new schema file and explicit adapter
   negotiation, not an edit.
+- **One exception: a deprecated route may leave v1 whole.** A route whose
+  response the schema marked deprecated for at least one release may be
+  removed from v1 together with the definitions only it used, when no
+  response that remains changes. The removal is a breaking change: it is
+  recorded in an ADR, the commit (`feat!:` with a `BREAKING CHANGE:`
+  footer) and the release notes, and the
+  schema's description says the route now answers 404
+  ([ADR-0080](../adrs/0080-ploeg-keeps-no-run-card-code-and-removes-it-in-one-release.md)).
 - Consumers must ignore unknown fields (Go's default decoding already does).
 - The outcome enum is owned by `pkg/work/types.go`; the schema mirrors it.
   `usage` carries tokens, cost and sessionId (backlog #66/#70), and since
   [ADR-0045](../adrs/0045-keep-run-usage-and-merge-facts.md) the optional
   cache, turn, duration, tool-call, context and per-model figures. A harness
   leaves out any figure it did not measure; it never sends a default zero.
-- The Run Card (`GET /api/v1/operator/work-items/{id}/card`) is a new
-  response, not a change to an existing one. Its `schemaVersion` is the
-  number `1`, where the older operator
-  responses send the string `"1.0"`. It follows the same rule: a fact nobody
-  reported is absent, never zero.
-- Since [ADR-0047](../adrs/0047-ploeg-learns-where-a-merged-change-is-deployed-from-a-generic-deploy-endpoint.md)
-  the card always carries `deployments` (earliest first deploy per
-  environment) and `release` (an object or null), and each play carries its
-  own `deployments`. They are required because Ploeg always sends them, empty
-  or null when no deploy was reported. `release.source` is `merge` while the
-  repository has never reported a deploy of its release environment.
-- Since [ADR-0050](../adrs/0050-a-run-cards-grade-is-a-versioned-formula-over-stored-facts.md)
-  the card's `grade` is an object or null, computed under the formula version
-  it names, with the inputs it used. Since
-  [ADR-0051](../adrs/0051-delivery-gates-are-mapped-per-board-from-tracker-statuses.md)
-  the card may carry `gates` (an object or null) and `evolved`, and the roster
-  may name `qa` and `acceptor`. Both new fields are optional, so a consumer
-  of an older Ploeg sees them absent.
-- Since [ADR-0052](../adrs/0052-a-crack-needs-the-fixer-and-a-second-person-and-ploeg-only-proposes-candidates.md)
-  the card's `condition` is a `cardCondition` object or null, the grade's
-  `formula` may be `2026.2`, and the roster may name `cosigner`. A consumer
-  that only knew `condition: null` must accept the object. The attribution
-  endpoints are new responses: `crackCandidatesResponse`, `cracksResponse`
-  and `crackResponse`, all with `schemaVersion` `"1.0"`. Their requests
-  refuse unknown fields.
-- Since [ADR-0053](../adrs/0053-an-epic-is-a-set-of-the-work-items-declared-its-children-before-their-first-shift.md)
-  the card may carry `set`, a `cardSet` object. It is optional and absent
-  when the Work Item belongs to no epic that counts.
-- Since [ADR-0054](../adrs/0054-a-card-list-finds-cards-by-roster-login-newest-activity-first.md)
-  the card list (`GET /api/v1/operator/cards?member=<login>`) is a new
-  response, `cardsResponse`: `schemaVersion` the number `1`, as the single
-  card sends, `cards` in the card's own shape, and `nextBefore`, an opaque
-  cursor or null. A page can hold fewer cards than its `limit`, or none,
-  while `nextBefore` is set.
-- Since [ADR-0056](../adrs/0056-a-run-cards-rarity-is-its-challenge-predicted-at-mint-and-frozen-at-release.md)
-  the card's `rarity` is a `cardRarity` object or null, where it was always
-  null before. A consumer that only knew `rarity: null` must accept the
-  object; the key itself stays required. The object names its `formula`,
-  the `predicted` and `revealed` tiers, the `tier` to show, the `score`,
-  `percentile` and `cohort` it was ranked in, its `inputs` and
-  `revealedAt`. A revealed tier never changes once sent.
-- Since [ADR-0057](../adrs/0057-a-run-cards-flow-figures-come-from-every-recorded-tracker-status-and-a-team-calendar.md)
-  the card read by the card endpoints may carry `flow`, a `cardFlow` object:
-  time in every tracker status, per gate and per kind, lead, cycle and start
-  time, flow efficiency, blocked time, reopens, queue and agent time, the
-  time from the merge to each environment and the time to mend each
-  confirmed crack, each in elapsed and in working seconds. It is optional,
-  so a consumer of an older Ploeg sees it absent. Inside it an unknown
-  figure is `null`, never `0`, and spans that have not ended say
-  `running: true` and grow on every read. These figures describe the card
-  and the team's process; they never name a person.
-- Since [ADR-0058](../adrs/0058-a-run-cards-pull-request-ci-and-change-shape-figures-are-read-from-the-forge-and-kept-per-play.md)
-  each play may carry `timeline` (`cardPlayTimeline`: opened, ready, first
-  feedback, approvals and merge, review rounds, comments, commits and force
-  pushes), `ciTiming` (`cardPlayCITiming`: runs, failures, reruns, queue,
-  last green, time to green, job minutes and the slowest jobs) and, once
-  merged, `shape` (`cardPlayShape`: indentation complexity, counted lines,
-  test ratio, documentation files and languages), and the card may carry
-  `pipeline` (`cardPipeline`) and `shape` (`cardShape`) summing them up. All
-  five are optional and absent until their facts were captured. The existing
-  `ci` keeps its meaning, the combined commit status of ADR-0046. Durations
-  are integer seconds named `…Seconds`; inside the objects an unknown figure
-  is `null`, never `0`. None of them is an input to the grade or the rarity,
-  and waiting for a review describes the team, not a person.
-- Since [ADR-0061](../adrs/0061-a-run-cards-grade-penalizes-rework-not-review-and-says-which-inputs-it-missed.md)
-  the grade's `formula` may be `2026.3`, and `cardGradeInputs` always
-  carries `missing` and `review.reworkRounds`. A consumer of an older Ploeg
-  sees them absent. The grade is computed on read under the current formula,
-  so a card read after a formula change shows the new version. The grade
-  also carries `evidenceComplete`, true when `inputs.missing` is empty, and
-  the card image and pull request summary print it next to the formula
-  (VIK-1751). A consumer of an older Ploeg sees it absent.
+- Since [ADR-0080](../adrs/0080-ploeg-keeps-no-run-card-code-and-removes-it-in-one-release.md)
+  the Run card routes are gone from v1 under the exception above:
+  `GET work-items/{id}/card`, `GET cards`, `GET work-items/{id}/crack-candidates`,
+  `GET` and `POST work-items/{id}/cracks`, `POST work-items/{id}/evolved`,
+  `POST cracks/{crack}/confirm|dispute|resolve` and
+  `GET card-legacy-export` answer 404, and every `card*`, `crack*` and
+  `legacy*` definition is removed. They were deprecated since ADR-0079. No
+  remaining response changed. The fields they carried (grade, rarity,
+  condition, set, flow, timeline, CI timing, shape) are the operator
+  consumer's to compute from the delivery facts.
 - `GET /api/v1/operator/route-refusals` is a new response,
   `routeRefusalsResponse`: the tracker tasks that routing refused under
   [ADR-0038](../adrs/0038-a-repo-label-selects-among-registered-targets-and-the-board-default-is-the-fallback.md)
@@ -107,14 +53,12 @@ change either side and the test tells you.
   `code`, the `reason` sentence and the board's `allowedLabels`. A row
   recorded before codes existed answers `unclassified`. An older Ploeg
   answers 404.
-- Since VIK-1698 each play may carry `changedPaths`, the paths the pull
-  request changes at its `headSha` (`cardChangedPath`: `path`, `status`
-  `added`, `modified`, `deleted`, `renamed` or `copied`, and `previousPath`
-  for a rename or copy), at most 300 in the forge's order, with
-  `changedPathsTruncated` when it changes more. Both are absent until the
-  paths at the current head were read, and stay absent after a failed read;
-  an empty array is a read list with no paths. See
-  [ADR-0046](../adrs/0046-a-run-card-is-assembled-per-work-item-from-stored-facts.md).
+- Since VIK-1698 Ploeg keeps the paths a pull request changes at a head
+  (`path`, `status` `added`, `modified`, `deleted`, `renamed` or `copied`,
+  and `previousPath` for a rename or copy), at most 300 in the forge's
+  order. The delivery facts carry the latest list read as a pull request's
+  `changedPaths`, with its `headSha` and `truncated`; it is null until a
+  list was read, and an empty array is a read list with no paths.
 - Since [ADR-0040](../adrs/0040-a-conflicted-pull-request-becomes-a-priority-ticket-ploeg-resolves.md)
   a Work Item's `pullRequest` carries `number`, `mergeState`, `baseBranch`
   and `checkedAt`. `mergeState` is `clean`, `conflicted` or `unknown`: the
@@ -146,10 +90,8 @@ change either side and the test tells you.
   whether or not it belongs to a Shift. A consumer of an older Ploeg sees
   them absent. `pullRequestCommentResponse` and
   `pullRequestCommentDeleteResponse` answer the keyed comment, whose request
-  `pullRequestCommentRequest` refuses unknown fields. `legacyExportResponse`
-  answers `GET /api/v1/operator/card-legacy-export` and is deprecated from
-  the start. The card, cards, crack and crack-candidate responses are
-  deprecated and are removed in the next minor release.
+  `pullRequestCommentRequest` refuses unknown fields. The card legacy export
+  and the card responses were removed by ADR-0080.
 - `deploy-api.v1` is the body of a pipeline's deploy report. It refuses
   unknown fields, unlike the response contracts, so a misspelled field fails
   the pipeline step instead of being dropped.

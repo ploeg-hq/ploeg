@@ -29,28 +29,6 @@ func forgeOrphanSweep(ctx context.Context, log *slog.Logger, st *store.Store, sw
 	}
 }
 
-func mendSweep(ctx context.Context, log *slog.Logger, st *store.Store) {
-	confirmed, reopened, err := st.ConfirmMends(ctx, time.Now())
-	if err != nil {
-		log.Error("mend sweep failed", "err", err)
-		return
-	}
-	if confirmed > 0 || reopened > 0 {
-		log.Info("mend sweep settled crack mends", "confirmed", confirmed, "reopened", reopened)
-	}
-}
-
-// cardSweeps runs Ploeg's Run card sweeps unless cards.enabled is false
-// (ADR-0079).
-func cardSweeps(ctx context.Context, log *slog.Logger, st *store.Store, server *httpapi.Server) {
-	if server.CardsDisabled {
-		return
-	}
-	mendSweep(ctx, log, st)
-	server.SweepCardComments(ctx)
-	server.SweepCardRarity(ctx)
-}
-
 // orphanSweep revokes gateway credentials that no longer correspond to a
 // live (unfinished) run.
 //
@@ -107,7 +85,6 @@ func sweepLoop(ctx context.Context, log *slog.Logger, st *store.Store, sweeper l
 		case <-orphans.C:
 			orphanSweep(ctx, log, st, sweeper)
 			forgeOrphanSweep(ctx, log, st, forgeSweeper)
-			cardSweeps(ctx, log, st, server)
 			managedCorrectionSweep(ctx, log, server)
 		case <-t.C:
 			if err := server.ReconcileOperatorExecutions(ctx); err != nil {

@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-10
 decision-makers: Ryan Grippeling
 supersedes: 0074
@@ -113,3 +113,4 @@ This record supersedes ADR-0074 for the question of who collects the forge and t
 * [ADR-0074](0074-ploeg-exposes-its-execution-facts-and-consumers-collect-everything-else.md): the proposal this record replaces.
 * [ADR-0069](0069-ploeg-names-none-of-its-consumers.md): why the contract says "operator consumer".
 * Contract: `docs/contracts/operator-api.v1.schema.json`, definitions `workItemFacts`, `pullRequestCommentRequest` and `legacyExportResponse`.
+* 2026-10-10 — Ratified by [ADR-0080](0080-ploeg-keeps-no-run-card-code-and-removes-it-in-one-release.md), which carries out step 3 now that the consumer has imported the export on every live environment.

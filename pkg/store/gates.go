@@ -99,25 +99,3 @@ func (s *Store) RecordGateMove(ctx context.Context, m GateMove) (bool, error) {
 	}
 	return true, tx.Commit(ctx)
 }
-
-const cardTransitionLimit = 500
-
-func cardTransitions(ctx context.Context, tx pgx.Tx, id int64) ([]gate.Transition, error) {
-	rows, err := tx.Query(ctx, `SELECT gate, status, COALESCE(actor, ''), COALESCE(reason, ''), at FROM gate_transitions
-		WHERE work_item_id = $1 ORDER BY id LIMIT $2`, id, cardTransitionLimit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []gate.Transition
-	for rows.Next() {
-		var t gate.Transition
-		var g, reason string
-		if err := rows.Scan(&g, &t.Status, &t.Actor, &reason, &t.At); err != nil {
-			return nil, err
-		}
-		t.Gate, t.Reason, t.At = gate.Gate(g), gate.Reason(reason), t.At.UTC()
-		out = append(out, t)
-	}
-	return out, rows.Err()
-}

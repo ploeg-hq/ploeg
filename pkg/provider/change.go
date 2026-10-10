@@ -34,8 +34,7 @@ type FileLines struct {
 
 // PullRequestChangeReader is implemented by a ForgeProvider that can read a
 // pull request's changed files and commits. A forge without it records no
-// files, so its plays are never crack candidates and its reverts go
-// undetected.
+// files, and its reverts go undetected.
 type PullRequestChangeReader interface {
 	PullRequestChange(ctx context.Context, repo string, pr int) (PullRequestChange, error)
 }

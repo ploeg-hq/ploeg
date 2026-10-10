@@ -15,7 +15,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ploeg-hq/ploeg/pkg/flow"
 	"github.com/ploeg-hq/ploeg/pkg/followup"
 	"github.com/ploeg-hq/ploeg/pkg/forgebroker"
 	"github.com/ploeg-hq/ploeg/pkg/gate"
@@ -94,33 +93,15 @@ type Server struct {
 	// the endpoint, which then answers 404.
 	Deploys *DeployAuth
 	// Gates maps each configured board's statuses to delivery gates
-	// (ADR-0051). A board absent here records no gate moves.
+	// (ADR-0051). Ploeg records the gate moves and every status move of a
+	// board here (ADR-0080); a board absent here records neither.
 	Gates gate.Boards
-	// StatusBoards holds the status kinds of every board whose status
-	// moves Ploeg records for the Run card's flow figures (ADR-0057). A
-	// board absent here records none.
-	StatusBoards flow.Boards
-	// WorkingCalendars are each team's working calendars (ADR-0057). A team
-	// absent here counts working time in flow.DefaultCalendar.
-	WorkingCalendars map[string]flow.Calendar
-	// CardRules are each team's crack attribution rules (ADR-0052). A team
-	// absent here lets anyone uninvolved referee and marks hotfixes with
-	// store.DefaultHotfixLabel.
-	CardRules map[string]CardRules
-	// CardClock is the clock card comments count days live with (ADR-0055).
-	// Nil = time.Now.
-	CardClock func() time.Time
-	// CardsDisabled stops the card comment and rarity sweeps and the card
-	// comment posted on merge (cards.enabled: false, ADR-0079). The card
-	// routes keep answering.
-	CardsDisabled bool
 	// ContextMaxBytes bounds one context upload and ContextMaxTotalBytes a
 	// Work Item's context together (proposed, context bundles proof of
 	// concept). Zero = DefaultContextMaxBytes and DefaultContextMaxTotalBytes.
 	ContextMaxBytes      int64
 	ContextMaxTotalBytes int64
 
-	cardWork      sync.WaitGroup
 	pipelineWork  sync.WaitGroup
 	pipelineOnce  sync.Once
 	pipelineSlots chan struct{}

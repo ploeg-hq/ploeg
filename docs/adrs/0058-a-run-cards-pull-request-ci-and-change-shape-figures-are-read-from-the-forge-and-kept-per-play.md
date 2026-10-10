@@ -1,6 +1,6 @@
 ---
 status: proposed
-date: 2026-10-02
+date: 2026-10-10
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -37,6 +37,8 @@ Which forge reads supply them, when they happen, how they stay bounded, what is 
 * Receive CI timings from a pipeline step, like deploys ([ADR-0047](0047-ploeg-learns-where-a-merged-change-is-deployed-from-a-generic-deploy-endpoint.md))
 
 ## Decision Outcome
+
+**Narrowed on 2026-10-10 by [ADR-0080](0080-ploeg-keeps-no-run-card-code-and-removes-it-in-one-release.md).** Ploeg keeps points 1 to 4: the opening facts, the activity events, the CI runs with their jobs and when they are read. Of point 7 it keeps only the diff read at the merge, which now keeps each changed file's indentation (method `indentation/2026.1`) and never the diff. They reach the consumer in the delivery facts. The rest of point 7 and points 5, 6 and 8 to 11 (timeline, CI timing, change shape, card summaries, `pull_requests.kpis`, `pull_requests.shape` and the `cardShape` rules) are gone; migration 0044 drops the two columns. The text below is the decision as first recorded.
 
 Chosen option: "**read the forge at the existing capture points and store the derived figures per play**", because it needs no forge read and no extra query when a card is read, keeps the raw facts small enough to recompute from, and works for every repository without changing its pipelines.
 
@@ -83,6 +85,8 @@ Chosen option: "**read the forge at the existing capture points and store the de
 
 ### Confirmation
 
+Since 2026-10-10 the store and HTTP tests that ADR-0080 names check what this record still decides. The card tests listed below were removed with the card.
+
 In `.forgejo/workflows/on_pull_request.yml`, `go test ./...` in `apps/ploeg` covers:
 
 * `pkg/playkpi`: the timeline of a draft that became ready, a pull request never marked draft, a draft never made ready, bots, the author and unknown actors left out of feedback, the median response to a request for changes, figures without an activity read, approvals after the merge; CI runs, failures, reruns (a second run and a second attempt), queue, minutes, slowest jobs, last green, time to green across two workflows, first-pass green with and without a rerun and while running, no runs as a known zero; indentation with tabs, two and four spaces, an aligned continuation, excluded files, a truncated diff, a deleted-only diff, binary files and header-like lines, unit detection; the shape's test ratio, documentation, languages, excluded files, unknown lines and truncation; default and configured test and doc patterns; the card summaries.
@@ -113,9 +117,10 @@ In `.forgejo/workflows/on_pull_request.yml`, `go test ./...` in `apps/ploeg` cov
 ## More Information
 
 * Abram Hindle, Michael W. Godfrey and Richard C. Holt, "Reading Beside the Lines: Indentation as a Proxy for Complexity Metrics", 16th IEEE International Conference on Program Comprehension (ICPC 2008), pp. 133–142, doi:10.1109/ICPC.2008.13. It found that the variance and maximum of logical indentation correlate with McCabe and Halstead complexity across languages.
-* [Run cards](https://github.com/webgrip/unfold/blob/9c1d53f01fbfb65733800aa75e288341734dc23f/docs/concepts/run-cards.md) explains what each figure means and where it misleads; [count tests and docs on Run cards](../how-to/count-tests-and-docs-on-run-cards.md) shows the configuration.
+* [Run cards](https://github.com/webgrip/unfold/blob/9c1d53f01fbfb65733800aa75e288341734dc23f/docs/concepts/run-cards.md) explains what each figure means and where it misleads; [count tests and docs on Run cards](https://github.com/ploeg-hq/ploeg/blob/2d9595371064e7528fbda4344b6f116215a1b789/docs/how-to/count-tests-and-docs-on-run-cards.md) shows the configuration.
 * [ADR-0057](0057-a-run-cards-flow-figures-come-from-every-recorded-tracker-status-and-a-team-calendar.md): the tracker-side flow figures; [ADR-0056](0056-a-run-cards-rarity-is-its-challenge-predicted-at-mint-and-frozen-at-release.md): rarity, its size exclusions and counted lines; [ADR-0050](0050-a-run-cards-grade-is-a-versioned-formula-over-stored-facts.md): the grade's review rounds.
 * 2026-10-10 — [ADR-0079](0079-run-cards-belong-to-the-consumer-and-ploeg-supplies-delivery-facts.md) moves the Run card to the operator consumer. The facts this record keeps stay and are exposed raw through the delivery facts endpoints; the card figures built on them are removed in the next minor release.
+* 2026-10-10 — Narrowed by [ADR-0080](0080-ploeg-keeps-no-run-card-code-and-removes-it-in-one-release.md) to the facts it records.
 
 ## Re-evaluation triggers
 

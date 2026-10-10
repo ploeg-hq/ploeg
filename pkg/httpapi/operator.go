@@ -16,9 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ploeg-hq/ploeg/pkg/playkpi"
 	"github.com/ploeg-hq/ploeg/pkg/provider"
-	"github.com/ploeg-hq/ploeg/pkg/rarity"
 	"github.com/ploeg-hq/ploeg/pkg/store"
 )
 
@@ -53,22 +51,6 @@ type OperatorConfig struct {
 	TeamAssignees    map[string][]string
 	TeamScopes       map[string][]string
 	DeliveryPolicies map[string]DeliveryPolicy
-	// CardStyles is the cardStyle of each configured Work Target, keyed by
-	// lowercased "owner/name". A Work Target absent here gets
-	// store.DefaultCardSkin and no theme.
-	CardStyles map[string]store.CardStyle
-	// ReleaseEnvironments is the release environment of each configured
-	// Work Target that names one, keyed by lowercased "owner/name"
-	// (ADR-0047). A Work Target absent here releases in production.
-	ReleaseEnvironments map[string]string
-	// RarityMatchers holds the rarity path rules of each configured Work
-	// Target that sets them, keyed by lowercased "owner/name" (ADR-0056).
-	// A Work Target absent here uses the defaults.
-	RarityMatchers map[string]rarity.Matcher
-	// ShapeMatchers holds the test and documentation path rules of each
-	// configured Work Target that sets them, keyed by lowercased
-	// "owner/name" (ADR-0058). A Work Target absent here uses the defaults.
-	ShapeMatchers map[string]playkpi.Matcher
 }
 
 type operatorPrincipalKey struct{}
@@ -194,8 +176,6 @@ func (s *Server) operatorHandler() http.Handler {
 	mux.HandleFunc("GET /api/v1/operator/work-items", s.handleOperatorItems)
 	mux.HandleFunc("GET /api/v1/operator/work-items/lookup", s.handleOperatorSourceLookup)
 	mux.HandleFunc("GET /api/v1/operator/work-items/{id}", s.handleOperatorItem)
-	mux.HandleFunc("GET /api/v1/operator/work-items/{id}/card", s.handleOperatorCard)
-	mux.HandleFunc("GET /api/v1/operator/cards", s.handleOperatorCards)
 	mux.HandleFunc("POST /api/v1/operator/work-items/{id}/cancel", s.handleOperatorCancel)
 	mux.HandleFunc("POST /api/v1/operator/work-items/{id}/requeue", s.handleOperatorRequeue)
 	mux.HandleFunc("GET /api/v1/operator/summary", s.handleOperatorSummary)
@@ -207,7 +187,6 @@ func (s *Server) operatorHandler() http.Handler {
 	s.registerOperatorExecution(mux)
 	s.registerOperatorDelivery(mux)
 	s.registerOperatorProposed(mux)
-	s.registerCracks(mux)
 	s.registerContext(mux)
 	s.registerFacts(mux)
 	return s.operatorAuth(mux)

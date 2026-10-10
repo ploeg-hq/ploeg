@@ -90,6 +90,7 @@ func run(log *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("PLOEG_CONFIG: %w", err)
 	}
+	warnRetiredKeys(log, cfg)
 
 	// Tracker write-backs are opt-in by credential: without a URL and token
 	// the provider keeps its logging no-op, so a deployment that has not been
@@ -316,17 +317,6 @@ func run(log *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("gates: %w", err)
 	}
-	statusBoards, err := cfg.FlowBoards(ctx, vik, log)
-	if err != nil {
-		return fmt.Errorf("status kinds: %w", err)
-	}
-	calendars, err := cfg.WorkingCalendars()
-	if err != nil {
-		return fmt.Errorf("working hours: %w", err)
-	}
-	for team, c := range calendars {
-		log.Info("working calendar loaded", "team", team, "calendar", c.String())
-	}
 	contextMax, err := byteCountFromEnv("PLOEG_CONTEXT_MAX_BYTES", httpapi.DefaultContextMaxBytes)
 	if err != nil {
 		return err
@@ -352,21 +342,16 @@ func run(log *slog.Logger) error {
 		ForgeCreds:     forgeCreds,
 		CreatedWork:    createdWork,
 
-		MetricsCacheTTL:  durationOr("PLOEG_METRICS_CACHE_TTL", httpapi.DefaultMetricsCacheTTL),
-		FollowUps:        cfg.ForgeFollowUps(),
-		ForgeBots:        forgeBots(),
-		Deploys:          deploys,
-		Gates:            gates,
-		StatusBoards:     statusBoards,
-		WorkingCalendars: calendars,
-		CardRules:        cardRules(cfg.TeamCardRules()),
-		CardsDisabled:    !cfg.CardsEnabled(),
+		MetricsCacheTTL: durationOr("PLOEG_METRICS_CACHE_TTL", httpapi.DefaultMetricsCacheTTL),
+		FollowUps:       cfg.ForgeFollowUps(),
+		ForgeBots:       forgeBots(),
+		Deploys:         deploys,
+		Gates:           gates,
 
 		ContextMaxBytes:      contextMax,
 		ContextMaxTotalBytes: contextMaxTotal,
 	}
 	log.Info("forge follow-ups loaded", "teams", len(srv.FollowUps))
-	log.Info("run card work", "enabled", !srv.CardsDisabled)
 	if engine != nil {
 		srv.Engine = engine
 	}
@@ -378,7 +363,6 @@ func run(log *slog.Logger) error {
 			DefaultForge:    forgeID,
 			Trackers:        trackers,
 			MarkTrackerDone: envOr("PLOEG_TRACKER_DONE_ON_MERGE", "false") == "true",
-			Bots:            forgeBots(),
 			Log:             log,
 		}
 		srv.Reviews = reviews
@@ -450,12 +434,12 @@ func parseTeamMap(s string) map[string]string {
 	return m
 }
 
-func cardRules(teams map[string]config.TeamCards) map[string]httpapi.CardRules {
-	out := make(map[string]httpapi.CardRules, len(teams))
-	for team, cards := range teams {
-		out[team] = httpapi.CardRules{Referees: cards.Referees, HotfixLabels: cards.HotfixLabels, PRComment: cards.PRComment}
+// warnRetiredKeys names each Run card key the configuration still sets
+// (ADR-0080). They do nothing now, and the next release refuses them.
+func warnRetiredKeys(log *slog.Logger, cfg *config.File) {
+	for _, key := range cfg.RetiredKeys() {
+		log.Warn("retired configuration key ignored; remove it before the next release refuses it", "key", key)
 	}
-	return out
 }
 
 func forgeBots() []string {

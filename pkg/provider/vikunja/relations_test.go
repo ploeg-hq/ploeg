@@ -15,7 +15,7 @@ func TestParentsReadsParentTaskRelations(t *testing.T) {
 	var gotPath, gotAuth string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath, gotAuth = r.URL.Path, r.Header.Get("Authorization")
-		fmt.Fprint(w, `{"id":42,"related_tasks":{"parenttask":[{"id":7,"title":"Run cards epic"},{"id":0}],
+		fmt.Fprint(w, `{"id":42,"related_tasks":{"parenttask":[{"id":7,"title":"Billing epic"},{"id":0}],
 			"subtask":[{"id":43,"title":"child"}],"related":[{"id":9,"title":"x"}]}}`)
 	}))
 	defer srv.Close()
@@ -26,7 +26,7 @@ func TestParentsReadsParentTaskRelations(t *testing.T) {
 	if gotPath != "/tasks/42" || gotAuth != "Bearer tok" {
 		t.Errorf("request = %s (%s)", gotPath, gotAuth)
 	}
-	if want := []provider.TrackerParent{{ExternalID: "7", Title: "Run cards epic"}}; !reflect.DeepEqual(got, want) {
+	if want := []provider.TrackerParent{{ExternalID: "7", Title: "Billing epic"}}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("parents = %+v; want %+v", got, want)
 	}
 }

@@ -1,6 +1,6 @@
 ---
 status: proposed
-date: 2026-10-01
+date: 2026-10-10
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -27,6 +27,8 @@ A pull request that merges is not yet delivered. On the boards Unfold serves, a 
 
 ## Decision Outcome
 
+**Narrowed on 2026-10-10 by [ADR-0080](0080-ploeg-keeps-no-run-card-code-and-removes-it-in-one-release.md).** Ploeg keeps points 1 to 3: the mapping, the gate moves in `gate_transitions` with status, actor and time, and the bounce reason read once when a bounce is recorded. They reach the consumer as `gateTransitions` in the delivery facts, whose roster names whoever moved a ticket as `mover`. Points 4 and 5 (the card's `gates` and `evolved`, the `qa` and `acceptor` roles, right-first-time counts and the grade) are gone. The text below is the decision as first recorded.
+
 Chosen option: "**map statuses per project, record moves from delivered webhooks, take reasons from a `bounce:` prefix**".
 
 1. **Mapping.** A project under `trackers.<tracker>.projects` may carry `gates:` with the lists `development`, `test`, `acceptance` and `done`, each naming statuses (ClickUp) or bucket titles (Vikunja). Names compare trimmed and case-insensitively. ploegd refuses to start when a gate key is unknown, a status is empty or padded, a status is in two gates, `gates:` maps nothing, or one board is mapped differently in two entries. Named projects resolve to ids at boot, as routing does.
@@ -45,6 +47,8 @@ Chosen option: "**map statuses per project, record moves from delivered webhooks
 * Bad, because a ticket in two Kanban views whose buckets map to different gates records nothing until they agree.
 
 ### Confirmation
+
+Since 2026-10-10 the store and HTTP tests that ADR-0080 names check what this record still decides. The card tests listed below were removed with the card.
 
 In `.forgejo/workflows/on_pull_request.yml`, `go test ./...` in `apps/ploeg` covers:
 
@@ -74,6 +78,7 @@ In `.forgejo/workflows/on_pull_request.yml`, `go test ./...` in `apps/ploeg` cov
 * [Map tracker statuses to gates](../how-to/map-tracker-statuses-to-gates.md) is the operator's guide.
 * [ADR-0050](0050-a-run-cards-grade-is-a-versioned-formula-over-stored-facts.md): the grade that counts bounces.
 * 2026-10-10 — [ADR-0079](0079-run-cards-belong-to-the-consumer-and-ploeg-supplies-delivery-facts.md) moves the Run card to the operator consumer. The facts this record keeps stay and are exposed raw through the delivery facts endpoints; the card figures built on them are removed in the next minor release.
+* 2026-10-10 — Narrowed by [ADR-0080](0080-ploeg-keeps-no-run-card-code-and-removes-it-in-one-release.md) to the facts it records.
 
 ## Re-evaluation triggers
 
