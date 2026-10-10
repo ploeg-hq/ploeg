@@ -207,6 +207,7 @@ func (s *Store) CommandOperatorExecution(ctx context.Context, id, consumer, acto
 	}
 	expired := !e.ExpiresAt.After(time.Now())
 	terminal := e.State == "completed" || e.State == "cancelled" || e.State == "failed"
+	previousState := e.State
 	switch c.Action {
 	case "start":
 		if e.State != "admitted" || expired {
@@ -322,6 +323,15 @@ func (s *Store) CommandOperatorExecution(ctx context.Context, id, consumer, acto
 	if _, err = tx.Exec(ctx, `UPDATE work_items SET state=$2,updated_at=now() WHERE id=$1`, e.WorkItemID, itemState); err != nil {
 		return e, err
 	}
+	if itemState == "needs_human" && e.State != previousState {
+		actorName := actor
+		if c.AuthenticatedBy != "" {
+			actorName = c.AuthenticatedBy
+		}
+		if err = auditOperatorNeedsHuman(ctx, tx, "operator:"+consumer+":"+actorName, e, OperatorNeedsHumanReasonPrefix+e.State); err != nil {
+			return e, err
+		}
+	}
 	if c.Action == "close" {
 		if e.State == "cancelled" {
 			if err = closeOperatorExecution(ctx, tx, e, "The session ended; an operator closed its Work Item", CloseReasonWithdrawnSessionEnded); err != nil {
@@ -364,6 +374,24 @@ func (s *Store) CommandOperatorExecution(ctx context.Context, id, consumer, acto
 		return e, err
 	}
 	return e, tx.Commit(ctx)
+}
+
+// OperatorNeedsHumanReasonPrefix starts the reason a work_item.needs_human
+// event carries when an operator execution's own state hands its Work Item to
+// a person: operator_paused, operator_interrupted, operator_waiting_input or
+// operator_failed.
+const OperatorNeedsHumanReasonPrefix = "operator_"
+
+// OperatorNeedsHumanReasonExpired is the reason when the sweeper interrupts an
+// operator execution whose lease ran out before its executor confirmed a stop.
+const OperatorNeedsHumanReasonExpired = "operator_expired"
+
+func auditOperatorNeedsHuman(ctx context.Context, tx pgx.Tx, actor string, e OperatorExecution, reason string) error {
+	workItemID, err := strconv.ParseInt(e.WorkItemID, 10, 64)
+	if err != nil {
+		return err
+	}
+	return audit(ctx, tx, actor, "work_item.needs_human", &workItemID, map[string]any{"reason": reason, "execution": e.ID, "generation": e.Generation, "stopConfirmed": e.StopConfirmed})
 }
 
 func workItemWithdrawn(ctx context.Context, tx pgx.Tx, workItemID string) (bool, error) {
@@ -448,6 +476,9 @@ func (s *Store) ExpireOperatorExecutions(ctx context.Context) ([]OperatorExecuti
 			return nil, err
 		}
 		if _, err = tx.Exec(ctx, `INSERT INTO operator_execution_events(execution_id,revision,actor,kind,detail) VALUES($1,$2,'ploegd','execution.expired','{"autoResumed":false,"stopConfirmed":false}')`, e.ID, e.Revision); err != nil {
+			return nil, err
+		}
+		if err = auditOperatorNeedsHuman(ctx, tx, "ploegd:sweeper", *e, OperatorNeedsHumanReasonExpired); err != nil {
 			return nil, err
 		}
 	}
