@@ -343,3 +343,33 @@ func TestLLMAccountMCPGrantIsBoundedAndImmutable(t *testing.T) {
 		t.Fatalf("account = %+v %v, want no team and no groups", a, err)
 	}
 }
+
+func TestRecordLLMObservedIgnoresSubPrecisionRepeats(t *testing.T) {
+	_, run := managedRunFixture(t)
+	ctx := context.Background()
+	if _, err := testStore.BeginLLMMint(ctx, run.RunToken); err != nil {
+		t.Fatal(err)
+	}
+	if err := testStore.RecordLLMIssued(ctx, run.RunToken, "fixture-key-digest"); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 3; i++ {
+		if err := testStore.RecordLLMObserved(ctx, run.RunToken, 0.12341); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := testStore.RecordLLMObserved(ctx, run.RunToken, 0.12344); err != nil {
+		t.Fatal(err)
+	}
+	if err := testStore.RecordLLMObserved(ctx, run.RunToken, 0.1236); err != nil {
+		t.Fatal(err)
+	}
+	var events int
+	if err := testStore.pool.QueryRow(ctx, `SELECT count(*) FROM audit_log a JOIN agent_runs r ON r.work_item_id=a.work_item_id
+		WHERE r.run_token=$1 AND a.action='llm.observed'`, run.RunToken).Scan(&events); err != nil {
+		t.Fatal(err)
+	}
+	if events != 2 {
+		t.Fatalf("an unchanged stored spend recorded llm.observed again: %d events, want 2", events)
+	}
+}
