@@ -116,3 +116,4 @@ In `.forgejo/workflows/on_pull_request.yml`, `go test ./...` in `apps/ploeg` cov
   error), `pkg/store` (per-head storage, refresh, cap, empty list), `pkg/httpapi` (one read per
   head, a failed read at a new head, schema) and `pkg/shiftengine` (the poller records once per
   head and stores nothing on a failed read).
+* 2026-10-10 — [ADR-0079](0079-run-cards-belong-to-the-consumer-and-ploeg-supplies-delivery-facts.md) moves the Run card to the operator consumer. This decision stays in force while the card endpoints are deprecated and is removed with them in the next minor release.

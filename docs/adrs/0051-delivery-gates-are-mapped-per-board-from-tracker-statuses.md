@@ -73,6 +73,7 @@ In `.forgejo/workflows/on_pull_request.yml`, `go test ./...` in `apps/ploeg` cov
 * The Vikunja read assumes a version whose single-task read honours `expand=buckets` (0.24 or later). It was not checked against a live instance.
 * [Map tracker statuses to gates](../how-to/map-tracker-statuses-to-gates.md) is the operator's guide.
 * [ADR-0050](0050-a-run-cards-grade-is-a-versioned-formula-over-stored-facts.md): the grade that counts bounces.
+* 2026-10-10 — [ADR-0079](0079-run-cards-belong-to-the-consumer-and-ploeg-supplies-delivery-facts.md) moves the Run card to the operator consumer. The facts this record keeps stay and are exposed raw through the delivery facts endpoints; the card figures built on them are removed in the next minor release.
 
 ## Re-evaluation triggers
 

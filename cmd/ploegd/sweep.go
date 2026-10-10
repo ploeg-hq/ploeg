@@ -40,6 +40,17 @@ func mendSweep(ctx context.Context, log *slog.Logger, st *store.Store) {
 	}
 }
 
+// cardSweeps runs Ploeg's Run card sweeps unless cards.enabled is false
+// (ADR-0079).
+func cardSweeps(ctx context.Context, log *slog.Logger, st *store.Store, server *httpapi.Server) {
+	if server.CardsDisabled {
+		return
+	}
+	mendSweep(ctx, log, st)
+	server.SweepCardComments(ctx)
+	server.SweepCardRarity(ctx)
+}
+
 // orphanSweep revokes gateway credentials that no longer correspond to a
 // live (unfinished) run.
 //
@@ -96,9 +107,7 @@ func sweepLoop(ctx context.Context, log *slog.Logger, st *store.Store, sweeper l
 		case <-orphans.C:
 			orphanSweep(ctx, log, st, sweeper)
 			forgeOrphanSweep(ctx, log, st, forgeSweeper)
-			mendSweep(ctx, log, st)
-			server.SweepCardComments(ctx)
-			server.SweepCardRarity(ctx)
+			cardSweeps(ctx, log, st, server)
 			managedCorrectionSweep(ctx, log, server)
 		case <-t.C:
 			if err := server.ReconcileOperatorExecutions(ctx); err != nil {

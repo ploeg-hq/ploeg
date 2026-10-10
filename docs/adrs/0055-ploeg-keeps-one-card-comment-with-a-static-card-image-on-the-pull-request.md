@@ -88,6 +88,7 @@ In `.forgejo/workflows/on_pull_request.yml`, `go test ./...` in `apps/ploeg` cov
 * [ADR-0046](0046-a-run-card-is-assembled-per-work-item-from-stored-facts.md) assembles the card that is drawn. [ADR-0047](0047-ploeg-learns-where-a-merged-change-is-deployed-from-a-generic-deploy-endpoint.md) gives the release, [ADR-0050](0050-a-run-cards-grade-is-a-versioned-formula-over-stored-facts.md) the grade and [ADR-0052](0052-a-crack-needs-the-fixer-and-a-second-person-and-ploeg-only-proposes-candidates.md) the cracks and mends.
 * The finish ladder is Vloer's: matte, then foil at 7 days, holo at 30, prism at 90, gilded at 180 and infinity at 365 ([Run cards](https://github.com/webgrip/unfold/blob/9c1d53f01fbfb65733800aa75e288341734dc23f/docs/concepts/run-cards.md)).
 * The usage report comment (`pkg/shiftengine/publish.go`) uses the same find-by-marker, edit-in-place pattern.
+* 2026-10-10 — [ADR-0079](0079-run-cards-belong-to-the-consumer-and-ploeg-supplies-delivery-facts.md) moves the Run card to the operator consumer. This decision stays in force while the card endpoints are deprecated and is removed with them in the next minor release.
 
 ## Re-evaluation triggers
 

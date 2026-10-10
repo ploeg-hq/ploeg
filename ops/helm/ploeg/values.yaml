@@ -511,6 +511,8 @@ executor:
 # A bare project id in cluster config cannot be reviewed and silently routes
 # work to the wrong repository the day the project is rebuilt.
 config: {}
+#   cards:
+#     enabled: true                   # ADR-0079: false stops Ploeg's card comment, rarity and mend sweeps once a consumer took Run cards over
 #   targets:                          # ADR-0038: repositories a `repo/<key>` label may select
 #     app:
 #       repo: webgrip/app

@@ -368,3 +368,33 @@ func TestCardComment_MergeWebhookPostsTheCard(t *testing.T) {
 		t.Fatalf("card comments after the merge webhook = %q", cards)
 	}
 }
+
+func TestCardsDisabled_StopsTheCardSweepsAndPublisher(t *testing.T) {
+	s, forge, clock := cardCommentServer(t, true)
+	s.CardsDisabled = true
+	ctx := context.Background()
+	id := mergedCardItem(t, "cards-off", "silver", 33, "anna", clock.Now().Add(-time.Hour))
+
+	s.SweepCardComments(ctx)
+	s.SweepCardRarity(ctx)
+	if err := s.PublishCardComment(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	s.publishMergedCard(ctx, s.Forges["forgejo"], provider.ForgeEvent{Kind: provider.ForgePRMerged, Repo: "webgrip/ploeg", PR: 33})
+	s.cardWork.Wait()
+	if forge.writes() != 0 || forge.lists != 0 {
+		t.Errorf("forge saw %d writes and %d lists with cards disabled", forge.writes(), forge.lists)
+	}
+	if _, ok, _ := testStore.CardComment(ctx, id); ok {
+		t.Error("cards disabled still recorded a card comment")
+	}
+	var rarity int
+	if err := testPool.QueryRow(ctx, `SELECT count(*) FROM card_rarity WHERE work_item_id = $1`, id).Scan(&rarity); err != nil || rarity != 0 {
+		t.Errorf("cards disabled still checked rarity: %d %v", rarity, err)
+	}
+
+	s.CardsDisabled = false
+	if err := s.PublishCardComment(ctx, id); err != nil || len(forge.cardComments()) != 1 {
+		t.Errorf("cards enabled again: err %v, %d card comments", err, len(forge.cardComments()))
+	}
+}

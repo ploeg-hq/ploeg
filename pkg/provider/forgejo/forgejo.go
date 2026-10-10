@@ -591,3 +591,38 @@ func verify(secret string, body []byte, sigHex string) bool {
 	mac.Write(body)
 	return hmac.Equal(sig, mac.Sum(nil))
 }
+
+// DeleteComment removes one pull request comment. A comment that is already
+// gone (404) counts as removed.
+func (p *Provider) DeleteComment(ctx context.Context, repo string, pr int, id int64) error {
+	owner, name, ok := strings.Cut(repo, "/")
+	if !ok || owner == "" || name == "" {
+		return fmt.Errorf("forgejo: repo %q must be owner/name", repo)
+	}
+	if id <= 0 {
+		return fmt.Errorf("forgejo: comment id must be positive, got %d", id)
+	}
+	url := fmt.Sprintf("%s/api/v1/repos/%s/%s/issues/comments/%d",
+		strings.TrimRight(p.BaseURL, "/"), owner, name, id)
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Accept", "application/json")
+	if p.Token != "" {
+		req.Header.Set("Authorization", "token "+p.Token)
+	}
+	resp, err := p.client().Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return nil
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return fmt.Errorf("forgejo: delete comment %d on %s#%d: HTTP %d: %s", id, repo, pr, resp.StatusCode, bytes.TrimSpace(snippet))
+	}
+	return nil
+}

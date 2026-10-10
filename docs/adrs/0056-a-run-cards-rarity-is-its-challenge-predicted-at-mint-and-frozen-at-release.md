@@ -93,6 +93,7 @@ In `.forgejo/workflows/on_pull_request.yml`, `go test ./...` in `apps/ploeg` cov
 * The owner's decision of 2026-10-02 sets the meaning (challenge), the two moments, the cohort and the tier shares.
 * [Run cards](https://github.com/webgrip/unfold/blob/9c1d53f01fbfb65733800aa75e288341734dc23f/docs/concepts/run-cards.md) explains the five axes; [mark sensitive paths for card rarity](../how-to/mark-sensitive-paths-for-card-rarity.md) shows the configuration.
 * [ADR-0046](0046-a-run-card-is-assembled-per-work-item-from-stored-facts.md): the card; [ADR-0050](0050-a-run-cards-grade-is-a-versioned-formula-over-stored-facts.md): the grade, versioned the same way; [ADR-0052](0052-a-crack-needs-the-fixer-and-a-second-person-and-ploeg-only-proposes-candidates.md): the files kept at merge.
+* 2026-10-10 — [ADR-0079](0079-run-cards-belong-to-the-consumer-and-ploeg-supplies-delivery-facts.md) moves the Run card to the operator consumer. This decision stays in force while the card endpoints are deprecated and is removed with them in the next minor release.
 
 ## Re-evaluation triggers
 

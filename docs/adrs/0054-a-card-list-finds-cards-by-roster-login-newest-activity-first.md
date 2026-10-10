@@ -68,6 +68,7 @@ In `.forgejo/workflows/on_pull_request.yml`, `go test ./...` in `apps/ploeg` cov
 
 * The owner's card contract addendum (P4), section "Card list for binders and packs", gives the endpoint and response shape.
 * [ADR-0046](0046-a-run-card-is-assembled-per-work-item-from-stored-facts.md) defines the card this list returns.
+* 2026-10-10 — [ADR-0079](0079-run-cards-belong-to-the-consumer-and-ploeg-supplies-delivery-facts.md) moves the Run card to the operator consumer. This decision stays in force while the card endpoints are deprecated and is removed with them in the next minor release.
 
 ## Re-evaluation triggers
 

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://webgrip.dev/ploeg/contracts/operator-api.v1.schema.json",
   "title": "Ploeg authenticated operator API v1",
-  "description": "GET /api/v1/operator/{teams,summary,unsettled-accounts,work-items,work-items/{id},work-items/{id}/card,cards,runs,runs/{id},events,route-refusals}, and POST /api/v1/operator/work-items/{id}/cancel, which requires execute permission and X-Ploeg-Actor, takes no body and withdraws tracker-originated work; repeating it on a withdrawn or settled item changes nothing and reports withdrawn false. POST /api/v1/operator/work-items/{id}/approve and /reject decide a proposed Work Item a Run created (ADR-0031); both require execute permission and X-Ploeg-Actor and take a JSON body {\"reason\": string}, required for reject. Approve queues the item; reject closes it as done and releases its allotted budget. Any other state answers 409 not_proposed. Bearer consumers have team scope. Collection after is a decimal bigint cursor; limit defaults 50, maximum 200. Work items filter on team, state, needsHuman=true and the tracker identity provider plus externalId, which must be given together and match across every team in scope unless team narrows it. Detail returns the most recent 200 records per collection, with explicit truncation flags. Audit pagination has snapshot consistency and is not a lossless changefeed: IDs are allocated before commit. Unbound events are omitted. Missing costs and unsupported team pause state remain unknown/null. Text is bounded (16384 characters for descriptions/findings, 4096 for summaries/reasons/URLs), recognizable credentials are redacted, URL queries/fragments are removed. Other credential-bearing structural fields are never selected. A recorded cost is an observation, not proof of final gateway settlement. Summary takes window=24h|7d|30d (default 7d): Work Item counts, pending and running Runs and reservedUsd are current; finished, failed and stuck count Runs finished inside the window by outcome, and settledUsd is spend settled inside the window; lastActivityAt is the Team's latest bound audit event. The Run list is newest first by id with limit 1..200 (default 50), filters team, state and outcome, and pages with before=<runId>, returning nextBefore; teams are scoped by the owning Work Item and externalRef is the tracker reference used in trailers, or empty for manual work. Events take order=asc|desc (default asc); order=desc returns newest first, pages with before=<eventId> and returns that cursor as nextCursor, and lastCursor is the newest event id in the page (0 when empty); after with order=desc, or before without it, is rejected. Timestamps in summary and Run list responses are UTC. The card of a Work Item (ADR-0046) answers schemaVersion 1, a number, and 404 when the Work Item is not in the consumer's scope; a Work Item without a Shift still has a card in state drafting. The card list (ADR-0054) takes member=<login>, repeatable 1..20 times and matched without case, and optional since=<RFC 3339>, team, before=<cursor> and limit 1..50 (default 20). It answers schemaVersion 1, a number, as the card does, with cards in the shape of the card endpoint: the consumer's team-scoped Work Items whose roster or steward names a member, newest activity first. Activity is the latest of the first Run's start, a play first seen or merged, a merged play's first deploy to its release environment, and a confirmed crack's confirmation, mend or mend confirmation, falling back to the Work Item's creation; since keeps cards whose activity is at or after it. nextBefore is an opaque cursor or null; a page examines at most twice its limit, so it can hold fewer cards, or none, while nextBefore is set. Unsettled-accounts takes no query parameters and lists, oldest first and at most 200, the finished Runs in scope whose gateway key the block sweep cannot block (account minting, issued or unknown), each with the budget it still holds; totals cover every such Run in scope, also past the 200th. Route refusals (ADR-0038) lists tracker tasks that routing refused and that therefore have no Work Item: it takes no query parameters and answers the newest refusal of each task refused in the last windowDays (14) days, newest first and at most 50, within the consumer's team scope. A task queued or refreshed after its newest refusal is left out. code is stable; a refusal recorded before codes existed answers unclassified with allowedLabels empty, and reason is the sentence Ploeg also commented on the task. allowedLabels are the repo/ labels the matched board rule allows, empty when no rule matched or the reason is target_not_ready. POST /api/v1/operator/work-items/{id}/requeue restarts a needs_human, stale or awaiting_review Work Item with no open Shift (ADR-0044); it requires execute permission and X-Ploeg-Actor. Without a body it restarts from Round 1; a body is a requeueRequest and must carry commandId, and a repeated commandId returns the first result with replayed true. A live, settled, withdrawn or operator-owned item, an expectedState mismatch and a commandId reused with another body answer 409; a fromRound outside the Team's current plan answers 422 round_not_in_plan, and a fromRound past a writing Round when no earlier Shift recorded pr_opened or pr_updated answers 422 nothing_to_review; a pool above the consumer's maxBudgetUsd answers 400 pool_above_limit.",
+  "description": "GET /api/v1/operator/{teams,summary,unsettled-accounts,work-items,work-items/{id},work-items/{id}/card,cards,runs,runs/{id},events,route-refusals}, and POST /api/v1/operator/work-items/{id}/cancel, which requires execute permission and X-Ploeg-Actor, takes no body and withdraws tracker-originated work; repeating it on a withdrawn or settled item changes nothing and reports withdrawn false. POST /api/v1/operator/work-items/{id}/approve and /reject decide a proposed Work Item a Run created (ADR-0031); both require execute permission and X-Ploeg-Actor and take a JSON body {\"reason\": string}, required for reject. Approve queues the item; reject closes it as done and releases its allotted budget. Any other state answers 409 not_proposed. Bearer consumers have team scope. Collection after is a decimal bigint cursor; limit defaults 50, maximum 200. Work items filter on team, state, needsHuman=true and the tracker identity provider plus externalId, which must be given together and match across every team in scope unless team narrows it. Detail returns the most recent 200 records per collection, with explicit truncation flags. Audit pagination has snapshot consistency and is not a lossless changefeed: IDs are allocated before commit. Unbound events are omitted. Missing costs and unsupported team pause state remain unknown/null. Text is bounded (16384 characters for descriptions/findings, 4096 for summaries/reasons/URLs), recognizable credentials are redacted, URL queries/fragments are removed. Other credential-bearing structural fields are never selected. A recorded cost is an observation, not proof of final gateway settlement. Summary takes window=24h|7d|30d (default 7d): Work Item counts, pending and running Runs and reservedUsd are current; finished, failed and stuck count Runs finished inside the window by outcome, and settledUsd is spend settled inside the window; lastActivityAt is the Team's latest bound audit event. The Run list is newest first by id with limit 1..200 (default 50), filters team, state and outcome, and pages with before=<runId>, returning nextBefore; teams are scoped by the owning Work Item and externalRef is the tracker reference used in trailers, or empty for manual work. Events take order=asc|desc (default asc); order=desc returns newest first, pages with before=<eventId> and returns that cursor as nextCursor, and lastCursor is the newest event id in the page (0 when empty); after with order=desc, or before without it, is rejected. Timestamps in summary and Run list responses are UTC. The card of a Work Item (ADR-0046) answers schemaVersion 1, a number, and 404 when the Work Item is not in the consumer's scope; a Work Item without a Shift still has a card in state drafting. The card list (ADR-0054) takes member=<login>, repeatable 1..20 times and matched without case, and optional since=<RFC 3339>, team, before=<cursor> and limit 1..50 (default 20). It answers schemaVersion 1, a number, as the card does, with cards in the shape of the card endpoint: the consumer's team-scoped Work Items whose roster or steward names a member, newest activity first. Activity is the latest of the first Run's start, a play first seen or merged, a merged play's first deploy to its release environment, and a confirmed crack's confirmation, mend or mend confirmation, falling back to the Work Item's creation; since keeps cards whose activity is at or after it. nextBefore is an opaque cursor or null; a page examines at most twice its limit, so it can hold fewer cards, or none, while nextBefore is set. Unsettled-accounts takes no query parameters and lists, oldest first and at most 200, the finished Runs in scope whose gateway key the block sweep cannot block (account minting, issued or unknown), each with the budget it still holds; totals cover every such Run in scope, also past the 200th. Route refusals (ADR-0038) lists tracker tasks that routing refused and that therefore have no Work Item: it takes no query parameters and answers the newest refusal of each task refused in the last windowDays (14) days, newest first and at most 50, within the consumer's team scope. A task queued or refreshed after its newest refusal is left out. code is stable; a refusal recorded before codes existed answers unclassified with allowedLabels empty, and reason is the sentence Ploeg also commented on the task. allowedLabels are the repo/ labels the matched board rule allows, empty when no rule matched or the reason is target_not_ready. POST /api/v1/operator/work-items/{id}/requeue restarts a needs_human, stale or awaiting_review Work Item with no open Shift (ADR-0044); it requires execute permission and X-Ploeg-Actor. Without a body it restarts from Round 1; a body is a requeueRequest and must carry commandId, and a repeated commandId returns the first result with replayed true. A live, settled, withdrawn or operator-owned item, an expectedState mismatch and a commandId reused with another body answer 409; a fromRound outside the Team's current plan answers 422 round_not_in_plan, and a fromRound past a writing Round when no earlier Shift recorded pr_opened or pr_updated answers 422 nothing_to_review; a pool above the consumer's maxBudgetUsd answers 400 pool_above_limit. Delivery facts (ADR-0079): GET /api/v1/operator/work-items/{id}/facts answers factsResponse, and 404 when the Work Item is not in the consumer's scope. GET /api/v1/operator/facts answers factsListResponse: the consumer's team-scoped Work Items, newest activityAt first, ties by id. It takes member=<login>, repeatable up to 20 and compared without case, to keep Work Items whose roster names one of them, team, since=<RFC 3339> to keep activityAt at or after it, before=<nextBefore> and limit 1..25 (default 10); nextBefore is an opaque cursor or null. Facts are stored values only: no grade, tier, score, KPI, status kind or working time. PUT /api/v1/operator/work-items/{id}/pull-request-comments/{key} takes a pullRequestCommentRequest and keeps one comment per pull request and key, marked <!-- ploeg:comment:<key> -->, posted with Ploeg's forge credentials; it requires execute permission and X-Ploeg-Actor, answers pullRequestCommentResponse, 404 for a Work Item outside the scope or a pull request it does not have, 409 no_pull_request when it has none, 422 unsafe_svg, 422 adopt_not_found when adoptCommentId names no Ploeg-marked comment, 413 for a body over 384 KiB and 502 forge_unavailable when the forge refused; each write is audited as pull_request_comment.upserted. DELETE on the same path removes that key's comment from every pull request where Ploeg recorded it, audited as pull_request_comment.deleted, and answers pullRequestCommentDeleteResponse. GET /api/v1/operator/card-legacy-export takes after=<workItemId> and limit 1..200 (default 50) and answers legacyExportResponse: the Work Items in scope, by ascending id, that hold a crack as the card, a frozen rarity, a card comment record or a stored change shape. It is deprecated and removed with the card tables. Every card route (card, cards, cracks, crack-candidates, evolved) is deprecated by ADR-0079 and removed in the next minor release; a deployment sets cards.enabled: false to stop Ploeg's card sweeps and card comment.",
   "oneOf": [
     {
       "$ref": "#/$defs/teamsResponse"
@@ -54,6 +54,21 @@
     },
     {
       "$ref": "#/$defs/requeueResponse"
+    },
+    {
+      "$ref": "#/$defs/factsResponse"
+    },
+    {
+      "$ref": "#/$defs/factsListResponse"
+    },
+    {
+      "$ref": "#/$defs/pullRequestCommentResponse"
+    },
+    {
+      "$ref": "#/$defs/pullRequestCommentDeleteResponse"
+    },
+    {
+      "$ref": "#/$defs/legacyExportResponse"
     },
     {
       "$ref": "#/$defs/errorResponse"
@@ -2220,7 +2235,7 @@
     "card": {
       "type": "object",
       "additionalProperties": false,
-      "description": "A Run card (ADR-0046): one per Work Item, assembled from stored facts when read. Ploeg sends facts only. state: withdrawn when the Work Item was withdrawn; drafting with no play; in_review while a play is open or its state is unknown; merged when the latest play merged, or a play merged and the Work Item is done; closed otherwise. finish is always matte until that decision is made. rarity is how exceptional the change was (ADR-0056): a cardRarity object once the first Run started, the card was revealed or an epic's set is complete, and null otherwise; older Ploeg versions always sent null. condition holds the confirmed cracks (ADR-0052) and is null without one. grade is computed from stored facts under a versioned formula (ADR-0050) and null until a human approved or requested changes on a play, or a play merged. demo is always false from Ploeg. deployments and release come from the deploys pipelines report to POST /api/v1/deploys (ADR-0047). live is the usage so far while a Run is running, read from the gateway when the card is read, and null otherwise (ADR-0049). gates is the Work Item's path through its board's delivery gates, absent or null when no gate move was recorded; evolved is true when a requirement bounce left acceptance (ADR-0051) or a bug was attributed to the card as a changed requirement (ADR-0052). set places the card in its epic's set from tracker parent relations, and is absent when the Work Item belongs to no epic that counts (ADR-0053). flow holds the card's flow figures (ADR-0057): time in every tracker status, lead, cycle and start time, flow efficiency, blocked time, reopens, queue and agent time, how long the merge took to reach each environment and how long confirmed cracks took to mend, each in elapsed and in working seconds under the team's working calendar; absent from older Ploeg versions. These figures describe the card and the team's process: waiting and blocked time reflect how work flows through the team, never the steward, and they never feed the grade or the rarity. pipeline sums up review and CI across the plays, and shape the change shape of the merged plays (ADR-0058); each is absent when no play carries its figures.",
+      "description": "Deprecated (ADR-0079): Run cards move to the operator consumer, which computes them from GET /api/v1/operator/work-items/{id}/facts and /facts. This endpoint keeps working in this release and is removed in the next minor release, after consumers imported card-legacy-export. A Run card (ADR-0046): one per Work Item, assembled from stored facts when read. Ploeg sends facts only. state: withdrawn when the Work Item was withdrawn; drafting with no play; in_review while a play is open or its state is unknown; merged when the latest play merged, or a play merged and the Work Item is done; closed otherwise. finish is always matte until that decision is made. rarity is how exceptional the change was (ADR-0056): a cardRarity object once the first Run started, the card was revealed or an epic's set is complete, and null otherwise; older Ploeg versions always sent null. condition holds the confirmed cracks (ADR-0052) and is null without one. grade is computed from stored facts under a versioned formula (ADR-0050) and null until a human approved or requested changes on a play, or a play merged. demo is always false from Ploeg. deployments and release come from the deploys pipelines report to POST /api/v1/deploys (ADR-0047). live is the usage so far while a Run is running, read from the gateway when the card is read, and null otherwise (ADR-0049). gates is the Work Item's path through its board's delivery gates, absent or null when no gate move was recorded; evolved is true when a requirement bounce left acceptance (ADR-0051) or a bug was attributed to the card as a changed requirement (ADR-0052). set places the card in its epic's set from tracker parent relations, and is absent when the Work Item belongs to no epic that counts (ADR-0053). flow holds the card's flow figures (ADR-0057): time in every tracker status, lead, cycle and start time, flow efficiency, blocked time, reopens, queue and agent time, how long the merge took to reach each environment and how long confirmed cracks took to mend, each in elapsed and in working seconds under the team's working calendar; absent from older Ploeg versions. These figures describe the card and the team's process: waiting and blocked time reflect how work flows through the team, never the steward, and they never feed the grade or the rarity. pipeline sums up review and CI across the plays, and shape the change shape of the merged plays (ADR-0058); each is absent when no play carries its figures.",
       "required": [
         "workItemId",
         "title",
@@ -3119,6 +3134,7 @@
     "cardResponse": {
       "type": "object",
       "additionalProperties": false,
+      "description": "Deprecated (ADR-0079): Run cards move to the operator consumer, which computes them from GET /api/v1/operator/work-items/{id}/facts and /facts. This endpoint keeps working in this release and is removed in the next minor release, after consumers imported card-legacy-export. ",
       "required": [
         "schemaVersion",
         "card"
@@ -3135,6 +3151,7 @@
     "cardsResponse": {
       "type": "object",
       "additionalProperties": false,
+      "description": "Deprecated (ADR-0079): Run cards move to the operator consumer, which computes them from GET /api/v1/operator/work-items/{id}/facts and /facts. This endpoint keeps working in this release and is removed in the next minor release, after consumers imported card-legacy-export. ",
       "required": [
         "schemaVersion",
         "cards",
@@ -3349,7 +3366,7 @@
     "crack": {
       "type": "object",
       "additionalProperties": false,
-      "description": "One attribution of a bug Work Item to the card whose play caused it (ADR-0052). state: proposed by the fixer; confirmed by a second person who is neither the card's steward nor the proposer; disputed by the steward within five working days of confirmation (disputeUntil); unlinked by a referee; evolved when the requirement changed, which gives the card evolved and no crack. confirmedBy is the proposer and the confirmer once confirmed. severity, share and discovery are null only for an evolved attribution. mended is the bug Work Item's merged fix.",
+      "description": "Deprecated (ADR-0079): Run cards move to the operator consumer, which computes them from GET /api/v1/operator/work-items/{id}/facts and /facts. This endpoint keeps working in this release and is removed in the next minor release, after consumers imported card-legacy-export. One attribution of a bug Work Item to the card whose play caused it (ADR-0052). state: proposed by the fixer; confirmed by a second person who is neither the card's steward nor the proposer; disputed by the steward within five working days of confirmation (disputeUntil); unlinked by a referee; evolved when the requirement changed, which gives the card evolved and no crack. confirmedBy is the proposer and the confirmer once confirmed. severity, share and discovery are null only for an evolved attribution. mended is the bug Work Item's merged fix.",
       "required": [
         "id",
         "team",
@@ -3663,7 +3680,7 @@
     "crackCandidatesResponse": {
       "type": "object",
       "additionalProperties": false,
-      "description": "The candidates for a bug Work Item's cause (ADR-0052): plays of other Work Items of its team, in a repository the fix touched, merged within 365 days before the bug Work Item was created (since, until), ranked by shared paths, then newest. Ploeg only proposes; a crack needs people.",
+      "description": "Deprecated (ADR-0079): Run cards move to the operator consumer, which computes them from GET /api/v1/operator/work-items/{id}/facts and /facts. This endpoint keeps working in this release and is removed in the next minor release, after consumers imported card-legacy-export. The candidates for a bug Work Item's cause (ADR-0052): plays of other Work Items of its team, in a repository the fix touched, merged within 365 days before the bug Work Item was created (since, until), ranked by shared paths, then newest. Ploeg only proposes; a crack needs people.",
       "required": [
         "schemaVersion",
         "crackCandidates"
@@ -3716,7 +3733,7 @@
     "cracksResponse": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Every attribution in which the Work Item is the bug or the card, oldest first, at most 100.",
+      "description": "Deprecated (ADR-0079): Run cards move to the operator consumer, which computes them from GET /api/v1/operator/work-items/{id}/facts and /facts. This endpoint keeps working in this release and is removed in the next minor release, after consumers imported card-legacy-export. Every attribution in which the Work Item is the bug or the card, oldest first, at most 100.",
       "required": [
         "schemaVersion",
         "cracks"
@@ -3737,7 +3754,7 @@
     "crackResponse": {
       "type": "object",
       "additionalProperties": false,
-      "description": "The attribution after a proposal, confirmation, dispute, resolution or evolved mark.",
+      "description": "Deprecated (ADR-0079): Run cards move to the operator consumer, which computes them from GET /api/v1/operator/work-items/{id}/facts and /facts. This endpoint keeps working in this release and is removed in the next minor release, after consumers imported card-legacy-export. The attribution after a proposal, confirmation, dispute, resolution or evolved mark.",
       "required": [
         "schemaVersion",
         "crack"
@@ -5135,6 +5152,2101 @@
           "items": {
             "$ref": "#/$defs/routeRefusal"
           }
+        }
+      }
+    },
+    "factsEpic": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "One tracker parent (epic or parent task) of the Work Item, as Ploeg last read it from work_item_epics. firstSeenAt is when Ploeg first saw the relation; removedAt is set when the tracker stopped reporting it, and a relation reported again starts over with a new firstSeenAt.",
+      "required": [
+        "provider",
+        "externalId",
+        "title",
+        "firstSeenAt",
+        "lastSeenAt",
+        "removedAt"
+      ],
+      "properties": {
+        "provider": {
+          "type": "string"
+        },
+        "externalId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "title": {
+          "type": "string"
+        },
+        "firstSeenAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "lastSeenAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "removedAt": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "factsWithdrawal": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "One withdrawal of the Work Item recorded in the audit log.",
+      "required": [
+        "at",
+        "actor"
+      ],
+      "properties": {
+        "at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "actor": {
+          "type": "string",
+          "description": "The audit actor as recorded: operator:<consumer>:<person> for an operator withdrawal, otherwise the tracker actor."
+        }
+      }
+    },
+    "factsWorkItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "provider",
+        "externalId",
+        "externalRef",
+        "url",
+        "title",
+        "state",
+        "team",
+        "createdAt",
+        "updatedAt",
+        "trackerCreatedAt",
+        "estimateSeconds",
+        "target",
+        "epics",
+        "withdrawals"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]{0,18}$"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "externalId": {
+          "type": "string"
+        },
+        "externalRef": {
+          "type": "string",
+          "description": "The tracker reference used in commit trailers, or empty for manual work."
+        },
+        "url": {
+          "type": "string",
+          "description": "The tracker page, or empty when neither the tracker nor its link template gives one."
+        },
+        "title": {
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "ingested",
+            "proposed",
+            "queued",
+            "leased",
+            "needs_human",
+            "awaiting_review",
+            "stale",
+            "done",
+            "withdrawn"
+          ]
+        },
+        "team": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When Ploeg first stored the Work Item."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "trackerCreatedAt": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "When the tracker says the ticket was created; null until Ploeg read it."
+        },
+        "estimateSeconds": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "The tracker's time estimate; null when the tracker keeps none or none was set."
+        },
+        "target": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/target"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "epics": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "$ref": "#/$defs/factsEpic"
+          }
+        },
+        "withdrawals": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "$ref": "#/$defs/factsWithdrawal"
+          }
+        }
+      }
+    },
+    "factsLiveUsage": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "What the gateway recorded so far for one running Run, read when the facts were read (ADR-0049). A running Run without an entry could not be read.",
+      "required": [
+        "runId",
+        "observedAt",
+        "costUsd",
+        "inputTokens",
+        "outputTokens"
+      ],
+      "properties": {
+        "runId": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]{0,18}$"
+        },
+        "observedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "costUsd": {
+          "type": "number",
+          "minimum": 0
+        },
+        "inputTokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "outputTokens": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "factsPullRequestRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "One recorded pull request: Ploeg's id, the forge dialect, the repository and the number.",
+      "required": [
+        "id",
+        "forge",
+        "owner",
+        "repo",
+        "number"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]{0,18}$"
+        },
+        "forge": {
+          "type": "string"
+        },
+        "owner": {
+          "type": "string"
+        },
+        "repo": {
+          "type": "string"
+        },
+        "number": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "factsCheck": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "context",
+        "state"
+      ],
+      "properties": {
+        "context": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        }
+      }
+    },
+    "factsCommitStatus": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The combined commit status Ploeg last read at headSha.",
+      "required": [
+        "state",
+        "checks",
+        "headSha",
+        "capturedAt"
+      ],
+      "properties": {
+        "state": {
+          "enum": [
+            "success",
+            "failure",
+            "pending",
+            "error"
+          ]
+        },
+        "checks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/factsCheck"
+          }
+        },
+        "headSha": {
+          "type": "string"
+        },
+        "capturedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "factsCIJob": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "One job of a CI run. startedAt, completedAt and queuedSeconds are absent when the forge did not report them.",
+      "required": [
+        "name",
+        "status",
+        "attempt"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "startedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "completedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "queuedSeconds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "attempt": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "factsCIRun": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "One CI run of the pull request (an Actions run, a pipeline or the statuses of one commit), replaced whole by each forge read. Job logs are never kept.",
+      "required": [
+        "key",
+        "headSha",
+        "workflow",
+        "status",
+        "createdAt",
+        "startedAt",
+        "completedAt",
+        "jobs"
+      ],
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "headSha": {
+          "type": "string"
+        },
+        "workflow": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "success",
+            "failure",
+            "error",
+            "cancelled",
+            "skipped",
+            "pending",
+            "running"
+          ]
+        },
+        "createdAt": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "startedAt": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "completedAt": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "jobs": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "$ref": "#/$defs/factsCIJob"
+          }
+        }
+      }
+    },
+    "factsReview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reviewer",
+        "state",
+        "headSha",
+        "receivedAt"
+      ],
+      "properties": {
+        "reviewer": {
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "approved",
+            "changes_requested",
+            "commented",
+            null
+          ]
+        },
+        "headSha": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "receivedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "factsPullRequestEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Who did what on the pull request's conversation and when. No comment or review text is kept.",
+      "required": [
+        "kind",
+        "actor",
+        "at",
+        "state",
+        "headSha"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "comment",
+            "review_comment",
+            "review",
+            "push",
+            "force_push",
+            "ready",
+            "draft"
+          ]
+        },
+        "actor": {
+          "type": "string"
+        },
+        "at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "state": {
+          "enum": [
+            "approved",
+            "changes_requested",
+            "commented",
+            null
+          ]
+        },
+        "headSha": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "factsIndentation": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The raw indentation measurements of one changed file, taken from the unified diff when the pull request merged. The diff itself is never stored.",
+      "required": [
+        "method",
+        "unit",
+        "added",
+        "removed",
+        "maxDepth"
+      ],
+      "properties": {
+        "method": {
+          "type": "string",
+          "description": "The measure's version, e.g. indentation/2026.1."
+        },
+        "unit": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The spaces one indent level counts as in this file's diff; a tab is one level."
+        },
+        "added": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "The sum of the indent levels of the non-blank added lines."
+        },
+        "removed": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "The sum of the indent levels of the non-blank removed lines."
+        },
+        "maxDepth": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "The deepest indent level of an added line."
+        }
+      }
+    },
+    "factsFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "One file the merged pull request changed. A null line count is one the forge did not report; indentation is null when the diff was not measured.",
+      "required": [
+        "path",
+        "additions",
+        "deletions",
+        "indentation"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "additions": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "deletions": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "indentation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/factsIndentation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "factsChangedPath": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "status"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "status": {
+          "enum": [
+            "added",
+            "modified",
+            "deleted",
+            "renamed",
+            "copied"
+          ]
+        },
+        "previousPath": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        }
+      }
+    },
+    "factsChangedPaths": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The paths the pull request changes at headSha, as the forge listed them while open. truncated is true when it changed more than Ploeg keeps.",
+      "required": [
+        "headSha",
+        "truncated",
+        "capturedAt",
+        "paths"
+      ],
+      "properties": {
+        "headSha": {
+          "type": "string"
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "capturedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "paths": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/factsChangedPath"
+          }
+        }
+      }
+    },
+    "factsRevert": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "A merged pull request that reverted this one. It need not be one of Ploeg's. matchedBy is title when its title began with Revert and named this number, and commit when one of its commits said it reverts this pull request's merge or head commit.",
+      "required": [
+        "forge",
+        "owner",
+        "repo",
+        "number",
+        "mergeCommitSha",
+        "mergedAt",
+        "mergedBy",
+        "matchedBy",
+        "detectedAt"
+      ],
+      "properties": {
+        "forge": {
+          "type": "string"
+        },
+        "owner": {
+          "type": "string"
+        },
+        "repo": {
+          "type": "string"
+        },
+        "number": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "mergeCommitSha": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "mergedAt": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mergedBy": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "matchedBy": {
+          "enum": [
+            "title",
+            "commit"
+          ]
+        },
+        "detectedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "factsDeployment": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The first reported deploy of one environment that carried the pull request's merge commit (ADR-0047).",
+      "required": [
+        "environment",
+        "firstDeployedAt",
+        "sha",
+        "deployedAt",
+        "url",
+        "source"
+      ],
+      "properties": {
+        "environment": {
+          "type": "string"
+        },
+        "firstDeployedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "sha": {
+          "type": "string"
+        },
+        "deployedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source": {
+          "enum": [
+            "ci",
+            "gitops",
+            "manual",
+            null
+          ]
+        }
+      }
+    },
+    "factsPullRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "One pull request opened for the Work Item, with every fact the forge reported and Ploeg stored. A null is a fact the forge has not reported, never a zero. Reviews, events, CI runs and deployments are oldest first.",
+      "required": [
+        "id",
+        "forge",
+        "owner",
+        "repo",
+        "number",
+        "url",
+        "shiftId",
+        "branch",
+        "baseBranch",
+        "state",
+        "draft",
+        "author",
+        "headSha",
+        "mergeCommitSha",
+        "openedAt",
+        "firstSeenAt",
+        "mergedAt",
+        "mergedBy",
+        "closedAt",
+        "updatedAt",
+        "additions",
+        "deletions",
+        "changedFiles",
+        "labels",
+        "commits",
+        "firstCommitAt",
+        "forcePushes",
+        "activityCapturedAt",
+        "activityTruncated",
+        "mergeState",
+        "mergeHeadSha",
+        "mergeCheckedAt",
+        "unmergeablePolls",
+        "commitStatus",
+        "ciRunsCapturedAt",
+        "ciRunsSource",
+        "ciRunsTruncated",
+        "ciRuns",
+        "reviews",
+        "events",
+        "filesCapturedAt",
+        "filesTruncated",
+        "files",
+        "changedPaths",
+        "reverts",
+        "deployments"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]{0,18}$"
+        },
+        "forge": {
+          "type": "string"
+        },
+        "owner": {
+          "type": "string"
+        },
+        "repo": {
+          "type": "string"
+        },
+        "number": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "url": {
+          "type": "string",
+          "description": "The pull request link a Run or checkpoint reported, or empty when none named it."
+        },
+        "shiftId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,18}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "branch": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "baseBranch": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "state": {
+          "enum": [
+            "open",
+            "merged",
+            "closed",
+            null
+          ]
+        },
+        "draft": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "author": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "headSha": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "mergeCommitSha": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "openedAt": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The forge's creation time."
+        },
+        "firstSeenAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When Ploeg first recorded the pull request."
+        },
+        "mergedAt": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mergedBy": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "closedAt": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "additions": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "deletions": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "changedFiles": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "labels": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The label names the forge reported at merge; null when not read."
+        },
+        "commits": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "Commits counted by the last activity read; a lower bound when activityTruncated."
+        },
+        "firstCommitAt": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "forcePushes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "Null on a forge that does not report force pushes."
+        },
+        "activityCapturedAt": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "activityTruncated": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "mergeState": {
+          "enum": [
+            "clean",
+            "conflicted",
+            "unknown",
+            null
+          ]
+        },
+        "mergeHeadSha": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "mergeCheckedAt": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "unmergeablePolls": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "commitStatus": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/factsCommitStatus"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ciRunsCapturedAt": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ciRunsSource": {
+          "enum": [
+            "actions",
+            "statuses",
+            "pipelines",
+            null
+          ]
+        },
+        "ciRunsTruncated": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "ciRuns": {
+          "type": "array",
+          "maxItems": 30,
+          "items": {
+            "$ref": "#/$defs/factsCIRun"
+          }
+        },
+        "reviews": {
+          "type": "array",
+          "maxItems": 500,
+          "items": {
+            "$ref": "#/$defs/factsReview"
+          }
+        },
+        "events": {
+          "type": "array",
+          "maxItems": 500,
+          "items": {
+            "$ref": "#/$defs/factsPullRequestEvent"
+          }
+        },
+        "filesCapturedAt": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "filesTruncated": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "files": {
+          "type": "array",
+          "maxItems": 300,
+          "items": {
+            "$ref": "#/$defs/factsFile"
+          }
+        },
+        "changedPaths": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/factsChangedPaths"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reverts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/factsRevert"
+          }
+        },
+        "deployments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/factsDeployment"
+          }
+        }
+      }
+    },
+    "factsStatusTransition": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "One move of the Work Item into another tracker status or bucket, in the order Ploeg recorded it.",
+      "required": [
+        "status",
+        "gate",
+        "at",
+        "observed",
+        "receivedAt"
+      ],
+      "properties": {
+        "status": {
+          "type": "string"
+        },
+        "gate": {
+          "enum": [
+            "development",
+            "test",
+            "acceptance",
+            "done",
+            null
+          ],
+          "description": "The delivery gate the status mapped to when Ploeg recorded the move, or null."
+        },
+        "at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "observed": {
+          "type": "boolean",
+          "description": "True when the tracker did not say when the move happened, or said a time before the previous move, so at is when Ploeg received it."
+        },
+        "receivedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "factsGateTransition": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "One move of the Work Item into another delivery gate (ADR-0051), in the order Ploeg recorded it.",
+      "required": [
+        "gate",
+        "status",
+        "actor",
+        "reason",
+        "at",
+        "receivedAt"
+      ],
+      "properties": {
+        "gate": {
+          "enum": [
+            "development",
+            "test",
+            "acceptance",
+            "done"
+          ]
+        },
+        "status": {
+          "type": "string"
+        },
+        "actor": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The tracker user who made the move, or null when the tracker did not say."
+        },
+        "reason": {
+          "enum": [
+            "defect",
+            "requirement",
+            "misunderstood",
+            "environment",
+            null
+          ],
+          "description": "The bounce reason Ploeg found on the ticket when it recorded a move back to an earlier gate."
+        },
+        "at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "receivedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "factsDeployEnvironment": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "An environment the repository of one of the Work Item's pull requests has reported any deploy of, with its earliest reported deploy.",
+      "required": [
+        "forge",
+        "owner",
+        "repo",
+        "environment",
+        "firstDeployedAt"
+      ],
+      "properties": {
+        "forge": {
+          "type": "string"
+        },
+        "owner": {
+          "type": "string"
+        },
+        "repo": {
+          "type": "string"
+        },
+        "environment": {
+          "type": "string"
+        },
+        "firstDeployedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "factsRosterEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "A login the stored facts name, with what it did: merger merged a pull request, reviewer reviewed one, author opened one, pusher pushed or force-pushed, commenter commented on its conversation or diff, and mover moved the ticket between delivery gates. Ploeg's own forge logins are included; botLogins names them.",
+      "required": [
+        "login",
+        "roles"
+      ],
+      "properties": {
+        "login": {
+          "type": "string"
+        },
+        "roles": {
+          "type": "array",
+          "uniqueItems": true,
+          "minItems": 1,
+          "items": {
+            "enum": [
+              "merger",
+              "reviewer",
+              "author",
+              "pusher",
+              "commenter",
+              "mover"
+            ]
+          }
+        }
+      }
+    },
+    "workItemFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The delivery facts of one Work Item (ADR-0079): what Ploeg stored about its Runs, pull requests, forge and tracker, with no derived figure. Runs and shifts use the same shapes as the Work Item detail; runs oldest first.",
+      "required": [
+        "workItem",
+        "activityAt",
+        "shifts",
+        "runs",
+        "liveUsage",
+        "pullRequests",
+        "statusTransitions",
+        "gateTransitions",
+        "deployEnvironments",
+        "roster",
+        "botLogins",
+        "truncated"
+      ],
+      "properties": {
+        "workItem": {
+          "$ref": "#/$defs/factsWorkItem"
+        },
+        "activityAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The latest timestamp among the facts below, falling back to the Work Item's creation; the facts list orders by it."
+        },
+        "shifts": {
+          "type": "array",
+          "maxItems": 200,
+          "items": {
+            "$ref": "#/$defs/shift"
+          }
+        },
+        "runs": {
+          "type": "array",
+          "maxItems": 1000,
+          "items": {
+            "$ref": "#/$defs/run"
+          }
+        },
+        "liveUsage": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/factsLiveUsage"
+          }
+        },
+        "pullRequests": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "$ref": "#/$defs/factsPullRequest"
+          }
+        },
+        "statusTransitions": {
+          "type": "array",
+          "maxItems": 1000,
+          "items": {
+            "$ref": "#/$defs/factsStatusTransition"
+          }
+        },
+        "gateTransitions": {
+          "type": "array",
+          "maxItems": 1000,
+          "items": {
+            "$ref": "#/$defs/factsGateTransition"
+          }
+        },
+        "deployEnvironments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/factsDeployEnvironment"
+          }
+        },
+        "roster": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/factsRosterEntry"
+          }
+        },
+        "botLogins": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The forge logins Ploeg itself acts as, lowercased."
+        },
+        "truncated": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "shifts",
+            "runs",
+            "pullRequests",
+            "statusTransitions",
+            "gateTransitions"
+          ],
+          "properties": {
+            "shifts": {
+              "type": "boolean"
+            },
+            "runs": {
+              "type": "boolean"
+            },
+            "pullRequests": {
+              "type": "boolean"
+            },
+            "statusTransitions": {
+              "type": "boolean"
+            },
+            "gateTransitions": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    },
+    "factsResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "facts"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "1.0"
+        },
+        "facts": {
+          "$ref": "#/$defs/workItemFacts"
+        }
+      }
+    },
+    "factsListResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "facts",
+        "nextBefore"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "1.0"
+        },
+        "facts": {
+          "type": "array",
+          "maxItems": 25,
+          "items": {
+            "$ref": "#/$defs/workItemFacts"
+          }
+        },
+        "nextBefore": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "maxLength": 128
+        }
+      }
+    },
+    "pullRequestCommentRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "markdown"
+      ],
+      "properties": {
+        "markdown": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32768
+        },
+        "image": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "An SVG Ploeg uploads as an attachment of the comment and shows above the markdown. Ploeg refuses one with scripts, event handlers, foreignObject, external references or entity declarations (422 unsafe_svg). On a forge that takes no attachment the comment carries the markdown alone.",
+          "required": [
+            "svg"
+          ],
+          "properties": {
+            "svg": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 262144
+            },
+            "alt": {
+              "type": "string",
+              "maxLength": 256
+            }
+          }
+        },
+        "number": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The number of one of the Work Item's pull requests. Omitted = the newest one."
+        },
+        "adoptCommentId": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "An existing comment on that pull request that carries a Ploeg marker, to take over instead of posting a new one."
+        }
+      }
+    },
+    "pullRequestComment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "key",
+        "workItemId",
+        "pullRequest",
+        "commentId",
+        "imageUrl",
+        "created",
+        "updatedAt"
+      ],
+      "properties": {
+        "key": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{0,62}$"
+        },
+        "workItemId": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]{0,18}$"
+        },
+        "pullRequest": {
+          "$ref": "#/$defs/factsPullRequestRef"
+        },
+        "commentId": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "description": "The forge's comment id, null when the forge did not list the comment again after posting it."
+        },
+        "imageUrl": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The attachment URL the comment embeds: absolute on Forgejo, project-relative on GitLab. Null without an image or when the forge refused it."
+        },
+        "created": {
+          "type": "boolean"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "pullRequestCommentResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "comment"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "1.0"
+        },
+        "comment": {
+          "$ref": "#/$defs/pullRequestComment"
+        }
+      }
+    },
+    "pullRequestCommentDeleteResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "key",
+        "workItemId",
+        "deleted"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "1.0"
+        },
+        "key": {
+          "type": "string"
+        },
+        "workItemId": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]{0,18}$"
+        },
+        "deleted": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/factsPullRequestRef"
+          }
+        }
+      }
+    },
+    "legacyCrack": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "One card_cracks row as stored, in every state. Deprecated (ADR-0079): removed with the Run card tables in the second step.",
+      "required": [
+        "id",
+        "team",
+        "state",
+        "cardWorkItemId",
+        "bugWorkItemId",
+        "bug",
+        "pullRequest",
+        "severity",
+        "share",
+        "discovery",
+        "steward",
+        "note",
+        "proposedBy",
+        "proposedAt",
+        "confirmedBy",
+        "confirmedAt",
+        "disputeUntil",
+        "disputedBy",
+        "disputedAt",
+        "disputeReason",
+        "resolvedBy",
+        "resolvedAt",
+        "resolution",
+        "evolvedBy",
+        "evolvedAt",
+        "mendPullRequest",
+        "mendNumber",
+        "mendedAt",
+        "mendedBy",
+        "mendBySteward",
+        "mendConfirmedAt",
+        "mendReopenedAt"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]{0,18}$"
+        },
+        "team": {
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "proposed",
+            "confirmed",
+            "disputed",
+            "unlinked",
+            "evolved"
+          ]
+        },
+        "cardWorkItemId": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]{0,18}$"
+        },
+        "bugWorkItemId": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]{0,18}$"
+        },
+        "bug": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "provider",
+            "externalId"
+          ],
+          "properties": {
+            "provider": {
+              "type": "string"
+            },
+            "externalId": {
+              "type": "string"
+            }
+          }
+        },
+        "pullRequest": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/factsPullRequestRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "severity": {
+          "enum": [
+            "S1",
+            "S2",
+            "S3",
+            "S4",
+            null
+          ]
+        },
+        "share": {
+          "enum": [
+            "primary",
+            "contributing",
+            null
+          ]
+        },
+        "discovery": {
+          "enum": [
+            "self",
+            "discovered",
+            "concealed",
+            null
+          ]
+        },
+        "steward": {
+          "type": "string"
+        },
+        "note": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "proposedBy": {
+          "type": "string"
+        },
+        "proposedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "confirmedBy": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "confirmedAt": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "disputeUntil": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "disputedBy": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "disputedAt": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "disputeReason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "resolvedBy": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "resolvedAt": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "resolution": {
+          "enum": [
+            "upheld",
+            "unlinked",
+            null
+          ]
+        },
+        "evolvedBy": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "evolvedAt": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mendPullRequest": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/factsPullRequestRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mendNumber": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "mendedAt": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mendedBy": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "mendBySteward": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "mendConfirmedAt": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mendReopenedAt": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "legacyRarity": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "One frozen card_rarity row. Rows the sweep only checked are left out. Deprecated (ADR-0079): removed with the Run card tables in the second step.",
+      "required": [
+        "formula",
+        "revealedTier",
+        "predictedTier",
+        "score",
+        "predictedScore",
+        "percentile",
+        "cohortTarget",
+        "cohortQuarter",
+        "cohortSize",
+        "inputs",
+        "revealedAt",
+        "recordedAt",
+        "checkedAt"
+      ],
+      "properties": {
+        "formula": {
+          "type": "string"
+        },
+        "revealedTier": {
+          "enum": [
+            "common",
+            "uncommon",
+            "rare",
+            "epic",
+            "legendary"
+          ]
+        },
+        "predictedTier": {
+          "enum": [
+            "common",
+            "uncommon",
+            "rare",
+            "epic",
+            "legendary"
+          ]
+        },
+        "score": {
+          "type": "number"
+        },
+        "predictedScore": {
+          "type": "number"
+        },
+        "percentile": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "cohortTarget": {
+          "type": "string"
+        },
+        "cohortQuarter": {
+          "type": "string"
+        },
+        "cohortSize": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "inputs": {
+          "type": "object"
+        },
+        "revealedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "recordedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "checkedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "legacyComment": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The card_comments row: the one card comment Ploeg keeps, marked <!-- ploeg:run-card -->. Pass commentId as adoptCommentId to take it over with a keyed comment. Deprecated (ADR-0079): removed with the Run card tables in the second step.",
+      "required": [
+        "pullRequest",
+        "moment",
+        "commentId",
+        "image",
+        "publishedAt",
+        "checkedAt"
+      ],
+      "properties": {
+        "pullRequest": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/factsPullRequestRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "moment": {
+          "type": "string"
+        },
+        "commentId": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "image": {
+          "type": "boolean"
+        },
+        "publishedAt": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "checkedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "legacyShape": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "A merged pull request's stored change shape, which cannot be measured again. Deprecated (ADR-0079): removed with the Run card tables in the second step.",
+      "required": [
+        "pullRequest",
+        "shape"
+      ],
+      "properties": {
+        "pullRequest": {
+          "$ref": "#/$defs/factsPullRequestRef"
+        },
+        "shape": {
+          "type": "object",
+          "description": "pull_requests.shape as stored: the change shape measured once at the merge from a diff Ploeg did not keep."
+        }
+      }
+    },
+    "legacyExportItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Every row a person or a freeze created about one Work Item's card. cracks are those where the Work Item is the card. Deprecated (ADR-0079): removed with the Run card tables in the second step.",
+      "required": [
+        "workItemId",
+        "team",
+        "provider",
+        "externalId",
+        "cracks",
+        "rarity",
+        "comment",
+        "shapes"
+      ],
+      "properties": {
+        "workItemId": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]{0,18}$"
+        },
+        "team": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "externalId": {
+          "type": "string"
+        },
+        "cracks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/legacyCrack"
+          }
+        },
+        "rarity": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/legacyRarity"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "comment": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/legacyComment"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "shapes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/legacyShape"
+          }
+        }
+      }
+    },
+    "legacyExportResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Deprecated (ADR-0079): removed with the Run card tables in the second step.",
+      "required": [
+        "schemaVersion",
+        "deprecated",
+        "items",
+        "nextAfter"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "1.0"
+        },
+        "deprecated": {
+          "const": true
+        },
+        "items": {
+          "type": "array",
+          "maxItems": 200,
+          "items": {
+            "$ref": "#/$defs/legacyExportItem"
+          }
+        },
+        "nextAfter": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,18}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       }
     }

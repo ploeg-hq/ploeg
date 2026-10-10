@@ -97,3 +97,4 @@ In `.github/workflows/ci.yml`, `mise run verify` runs `go test ./...`, which cov
 * [ADR-0050](0050-a-run-cards-grade-is-a-versioned-formula-over-stored-facts.md): formula 2026.1 and computing on read. [ADR-0052](0052-a-crack-needs-the-fixer-and-a-second-person-and-ploeg-only-proposes-candidates.md): formula 2026.2.
 * [ADR-0058](0058-a-run-cards-pull-request-ci-and-change-shape-figures-are-read-from-the-forge-and-kept-per-play.md): review rounds and comments as figures that grade nothing.
 * Tracker: VIK-1751.
+* 2026-10-10 — [ADR-0079](0079-run-cards-belong-to-the-consumer-and-ploeg-supplies-delivery-facts.md) moves the Run card to the operator consumer. This decision stays in force while the card endpoints are deprecated and is removed with them in the next minor release.
