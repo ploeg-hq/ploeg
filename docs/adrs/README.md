@@ -100,7 +100,7 @@ fails otherwise.
 | [0024](0024-operator-work-uses-one-execution-authority.md) | Ploeg admits operator work and owns execution while De Vloer provides interaction | proposed | 2026-09-10 |
 | [0025](0025-management-authority-stays-in-the-control-plane.md) | Management authority stays in the control plane and unresolved accounting retains authorization | proposed | 2026-09-10 |
 | [0026](0026-tracker-selections-bind-the-canonical-work-item.md) | Tracker selections bind canonical Work Items under durable operator ownership | proposed | 2026-09-11 |
-| [0027](0027-candidate-delivery-uses-trusted-evidence-and-a-publication-barrier.md) | Candidate delivery uses trusted evidence and a publication barrier | proposed | 2026-09-11 |
+| [0027](0027-candidate-delivery-uses-trusted-evidence-and-a-publication-barrier.md) | Candidate delivery uses trusted evidence and a publication barrier | accepted | 2026-10-10 |
 | [0028](0028-automatic-releases-stay-zero-major-candidates.md) | Automatic releases stay zero-major candidates | superseded by 0063 | 2026-09-11 |
 
 | [0029](0029-qualify-unfold-before-changing-distribution.md) | Qualify Unfold before changing Ploeg distribution | proposed | 2026-09-12 |

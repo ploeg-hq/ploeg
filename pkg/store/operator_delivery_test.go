@@ -197,7 +197,7 @@ func TestPublicationBarrierGrantsOneEffectAndNeverRetriesUnknown(t *testing.T) {
 		t.Fatalf("replacement operation: %v", err)
 	}
 	status := PublicationStatus{State: "unknown", CanonicalSHA: c.CanonicalSHA, Branch: in.Branch}
-	if _, err := testStore.RecordPublicationStatus(ctx, e.ID, in.OperationID, verifier, status); err != nil {
+	if _, _, err := testStore.RecordPublicationStatus(ctx, e.ID, in.OperationID, verifier, status); err != nil {
 		t.Fatal(err)
 	}
 	replay, granted, err := testStore.ReservePublication(ctx, e.ID, owner, p, in)
@@ -205,28 +205,31 @@ func TestPublicationBarrierGrantsOneEffectAndNeverRetriesUnknown(t *testing.T) {
 		t.Fatalf("unknown retry: %+v %v %v", replay, granted, err)
 	}
 	status.State = "not_found"
-	if _, err := testStore.RecordPublicationStatus(ctx, e.ID, in.OperationID, verifier, status); !errors.Is(err, ErrExecutionConflict) {
+	if _, _, err := testStore.RecordPublicationStatus(ctx, e.ID, in.OperationID, verifier, status); !errors.Is(err, ErrExecutionConflict) {
 		t.Fatalf("negative lookup cleared barrier: %v", err)
 	}
 	status.State = "published"
 	status.RemoteID = "42"
 	status.RemoteURL = "https://forge.example/webgrip/example/pulls/42"
 	status.CanonicalSHA = strings.Repeat("1", 40)
-	if _, err := testStore.RecordPublicationStatus(ctx, e.ID, in.OperationID, verifier, status); !errors.Is(err, ErrExecutionConflict) {
+	if _, _, err := testStore.RecordPublicationStatus(ctx, e.ID, in.OperationID, verifier, status); !errors.Is(err, ErrExecutionConflict) {
 		t.Fatalf("wrong canonical publication: %v", err)
 	}
 	status.CanonicalSHA = c.CanonicalSHA
-	if _, err := testStore.RecordPublicationStatus(ctx, e.ID, in.OperationID, owner, status); !errors.Is(err, ErrExecutionConflict) {
+	if _, _, err := testStore.RecordPublicationStatus(ctx, e.ID, in.OperationID, owner, status); !errors.Is(err, ErrExecutionConflict) {
 		t.Fatalf("untrusted status: %v", err)
 	}
-	published, err := testStore.RecordPublicationStatus(ctx, e.ID, in.OperationID, verifier, status)
-	if err != nil || published.State != "published" {
-		t.Fatalf("positive reconciliation: %+v %v", published, err)
+	published, transitioned, err := testStore.RecordPublicationStatus(ctx, e.ID, in.OperationID, verifier, status)
+	if err != nil || published.State != "published" || !transitioned {
+		t.Fatalf("positive reconciliation: %+v %v %v", published, transitioned, err)
+	}
+	if _, transitioned, err := testStore.RecordPublicationStatus(ctx, e.ID, in.OperationID, verifier, status); err != nil || transitioned {
+		t.Fatalf("identical replay changed the operation: %v %v", transitioned, err)
 	}
 	status.State = "unknown"
 	status.RemoteID = ""
 	status.RemoteURL = ""
-	if _, err := testStore.RecordPublicationStatus(ctx, e.ID, in.OperationID, verifier, status); !errors.Is(err, ErrExecutionConflict) {
+	if _, _, err := testStore.RecordPublicationStatus(ctx, e.ID, in.OperationID, verifier, status); !errors.Is(err, ErrExecutionConflict) {
 		t.Fatalf("published state regressed: %v", err)
 	}
 	var rows int

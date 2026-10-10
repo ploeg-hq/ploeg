@@ -88,7 +88,7 @@ The generator follows each binary's imports inside the module and records every 
 | `PLOEG_LLM_SETTLE_AFTER` | ploegd | `15m` | Quiet period after which the settlement sweep settles a blocked Run's account from LiteLLM spend logs. | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_METRICS_CACHE_TTL` | ploegd | `15s` |  | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_OPERATOR_CONSUMERS` | ploegd |  | JSON array of operator read consumers. Each entry names a `tokenEnv`, a further variable that holds that consumer's bearer token (chart `operator.consumers`). No consumers refuses every operator request. | [operator.go](../../cmd/ploegd/operator.go) |
-| `PLOEG_OPERATOR_DELIVERY_POLICIES` | ploegd |  | JSON array of trusted delivery policies with `repositoryId`, `policySha256`, `verifierId`, `minTests` and optional `publicationEnabled` (chart `operator.deliveryPolicies`). | [operator.go](../../cmd/ploegd/operator.go) |
+| `PLOEG_OPERATOR_DELIVERY_POLICIES` | ploegd |  | JSON array of trusted delivery policies with `repositoryId`, `policySha256`, `verifierId`, `minTests`, optional `publicationEnabled` and optional `publisherLogin`, the forge login a published pull request must be opened by (chart `operator.deliveryPolicies`). | [operator.go](../../cmd/ploegd/operator.go) |
 | `PLOEG_OUTCOME_FILE` | ploeg-worker |  | `exec` harness only: OutcomeReport JSON path override (chart `executor.harness.outcomeFile`). | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_REPORT_RUN_DASHBOARD_URL` | ploegd |  | Link template for the usage of the Run behind the report; `{run}` is its escaped gateway alias. Unset omits the link. | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_REPORT_SPEND_DASHBOARD_URL` | ploegd |  | Link to spend across Runs. Unset omits the link. | [main.go](../../cmd/ploegd/main.go) |
@@ -360,6 +360,7 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `operator.deliveryPolicies[].minTests` | integer |  | Minimum number of tests the delivery evidence must report; positive. | values.schema.json |
 | `operator.deliveryPolicies[].policySha256` | string |  |  | values.schema.json |
 | `operator.deliveryPolicies[].publicationEnabled` | boolean |  | Allows publication. Defaults to false. | values.schema.json |
+| `operator.deliveryPolicies[].publisherLogin` | string |  |  | values.schema.json |
 | `operator.deliveryPolicies[].repositoryId` | string |  |  | values.schema.json |
 | `operator.deliveryPolicies[].verifierId` | string |  |  | values.schema.json |
 | `resources` |  |  | Guaranteed QoS: ploegd runs the sweeper — the self-heal backbone (lease expiry, requeue, key revocation). It must survive the node pressure that kills everything else, and only requests==limits keeps it out of the burstable cgroup tree the Talos OOMController sweeps (ADR-0049). | values.yaml |
