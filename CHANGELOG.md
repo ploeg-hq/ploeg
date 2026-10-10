@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.2.0-rc.14
+
+### Breaking changes
+
+- None. A crew Role may no longer be named `ask`; that name is reserved for Asks.
+
+### Changes
+
+- Ploeg admits an **Ask**: a read-only Run about an existing Work Item, with no Shift, Round or Lease, paid from a monthly **Ask Allowance** per Team (#98, ADR-0082). `POST /api/v1/operator/work-items/{id}/asks` returns a key capped at the per-Ask Budget and scoped to the Team's `ask` model policy; the consumer makes one call and `POST …/asks/{askId}/finish` blocks the key. A used-up allowance answers 402 with `resetAt`. `GET /api/v1/operator/allowances?team=` reads a Team's allowance. Ploeg stores only the SHA-256 of a question.
+- Delivery facts leave Ask Runs out and list them in `asks[]`, so asking never adds to what a Work Item cost to build (#98).
+- `ploeg-mcp`, a separate stdio command in the ploegd image, serves the operator API's reads as MCP tools for a person's AI client: overview, find and get work, recent Runs and changes since (#95, ADR-0081).
+
+### Migration notes
+
+- Migration 0045 adds `inference_allowances` and `asks`.
+- New settings: `PLOEG_ASK_ALLOWANCE_USD` (default 2.00) and `PLOEG_ASK_BUDGET_USD` (default 0.02). A Team can ask only with an `ask` entry in `PLOEG_WORKER_LLM_POLICIES`, for example `{"team":"silver","role":"ask","budgetUsd":0.02,"models":["<model>"],"ttl":"2m"}`; without one, admission answers 409 `inference_policy`.
+
 ## 0.2.0-rc.13
 
 ### Breaking changes
