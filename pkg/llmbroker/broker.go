@@ -54,8 +54,11 @@ type KeyProber interface {
 // and the token usage and models that record names. ByModel splits spend and
 // tokens per model, sorted like Models.
 type SettledSpend struct {
-	USD          float64
-	Keys         int
+	USD  float64
+	Keys int
+	// ByAlias is true when no key identity was known and the entries were
+	// found by the Run's key alias instead.
+	ByAlias      bool
 	Entries      int
 	InputTokens  int64
 	OutputTokens int64

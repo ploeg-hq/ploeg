@@ -16,6 +16,9 @@ type UnsettledLLMAccount struct {
 	State        string
 	MintBegan    bool
 	QuietSince   time.Time
+	// ObservedSpend is the highest spend Ploeg observed while the Run ran;
+	// a settlement never goes below it.
+	ObservedSpend float64
 	// ShiftID is the Run's Shift, selected from the existing join so a caller
 	// can refresh that Shift's usage report after settling. Nil for a
 	// historical Run that predates Shifts (migration 0008); such a row has no
@@ -30,7 +33,7 @@ func (s *Store) UnsettledLLMAccounts(ctx context.Context, after int64, quietFor 
 	if after < 0 || quietFor < 0 || limit < 1 || limit > 100 {
 		return nil, errors.New("invalid managed settlement page")
 	}
-	rows, err := s.pool.Query(ctx, `SELECT r.id,a.run_token,a.gateway_key_id,a.alias,a.state,a.updated_at,r.shift_id,
+	rows, err := s.pool.Query(ctx, `SELECT r.id,a.run_token,a.gateway_key_id,a.alias,a.state,a.updated_at,r.shift_id,COALESCE(a.observed_spend,0)::float8,
 		a.gateway_key_id<>'' OR COALESCE(a.observed_spend,0)>0 OR EXISTS(SELECT 1 FROM audit_log l
 			WHERE l.work_item_id=r.work_item_id AND l.action IN ('llm.minting','llm.issued','llm.unknown') AND l.detail->>'alias'=a.alias)
 		FROM run_llm_accounts a JOIN agent_runs r USING(run_token)
@@ -44,7 +47,7 @@ func (s *Store) UnsettledLLMAccounts(ctx context.Context, after int64, quietFor 
 	values := []UnsettledLLMAccount{}
 	for rows.Next() {
 		var v UnsettledLLMAccount
-		if err := rows.Scan(&v.RunID, &v.RunToken, &v.GatewayKeyID, &v.Alias, &v.State, &v.QuietSince, &v.ShiftID, &v.MintBegan); err != nil {
+		if err := rows.Scan(&v.RunID, &v.RunToken, &v.GatewayKeyID, &v.Alias, &v.State, &v.QuietSince, &v.ShiftID, &v.ObservedSpend, &v.MintBegan); err != nil {
 			return nil, err
 		}
 		values = append(values, v)
@@ -61,7 +64,7 @@ func (s *Store) CorrectableLLMAccounts(ctx context.Context, after int64, limit i
 	if after < 0 || limit < 1 || limit > 100 {
 		return nil, errors.New("invalid managed correction page")
 	}
-	rows, err := s.pool.Query(ctx, `SELECT r.id,a.run_token,a.gateway_key_id,a.alias,a.state,a.settled_at,r.shift_id
+	rows, err := s.pool.Query(ctx, `SELECT r.id,a.run_token,a.gateway_key_id,a.alias,a.state,a.settled_at,r.shift_id,COALESCE(a.observed_spend,0)::float8
 		FROM run_llm_accounts a JOIN agent_runs r USING(run_token)
 		WHERE r.state='finished' AND r.id>$1 AND a.state='reconciled' AND a.corrections_until>now()
 		ORDER BY r.id LIMIT $2`, after, limit)
@@ -72,7 +75,7 @@ func (s *Store) CorrectableLLMAccounts(ctx context.Context, after int64, limit i
 	values := []UnsettledLLMAccount{}
 	for rows.Next() {
 		v := UnsettledLLMAccount{MintBegan: true}
-		if err := rows.Scan(&v.RunID, &v.RunToken, &v.GatewayKeyID, &v.Alias, &v.State, &v.QuietSince, &v.ShiftID); err != nil {
+		if err := rows.Scan(&v.RunID, &v.RunToken, &v.GatewayKeyID, &v.Alias, &v.State, &v.QuietSince, &v.ShiftID, &v.ObservedSpend); err != nil {
 			return nil, err
 		}
 		values = append(values, v)
