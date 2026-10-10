@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 )
 
 // schemaStrictHandler is a fake LiteLLM proxy that enforces real request
@@ -526,5 +527,56 @@ func TestMint_TeamAndMCPAccessGroupsOnTheWire(t *testing.T) {
 	}
 	if bodies[1]["key_type"] != "llm_api" {
 		t.Errorf("key_type = %v, want llm_api", bodies[1]["key_type"])
+	}
+}
+
+func TestSpendLogsByAlias_PagesMatchesTheExactAliasAndRefusesWhatItCannotTrust(t *testing.T) {
+	alias := "ploeg-0123456789ab"
+	var pages []string
+	capped, badSpend := false, false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		if r.URL.Path != "/spend/logs/ui" || q.Get("key_alias") != alias || r.Header.Get("Authorization") != "Bearer master" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		if _, err := time.Parse("2006-01-02 15:04:05", q.Get("end_date")); err != nil || q.Get("start_date") == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		pages = append(pages, q.Get("page"))
+		row := func(a string, spend any) map[string]any {
+			return map[string]any{"api_key": "k-" + a, "spend": spend, "model": "coding", "prompt_tokens": 4, "completion_tokens": 1, "metadata": map[string]any{"user_api_key_alias": a}}
+		}
+		var data []map[string]any
+		if q.Get("page") == "1" {
+			data = []map[string]any{row(alias, 0.25), row(alias+"0", 5.0)}
+		} else {
+			spend := any(0.5)
+			if badSpend {
+				spend = nil
+			}
+			data = []map[string]any{row(alias, spend)}
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": data, "total": 3, "page": q.Get("page"), "page_size": 1000, "total_pages": 2, "total_is_capped": capped})
+	}))
+	defer srv.Close()
+	cli := NewClient(srv.URL, "master")
+	ctx := context.Background()
+
+	got, keys, err := cli.SpendLogsByAlias(ctx, alias, time.Now())
+	if err != nil || got.USD != 0.75 || got.Entries != 2 || keys != 1 || got.PromptTokens != 8 || len(pages) != 2 {
+		t.Fatalf("summary=%+v keys=%d pages=%v err=%v; want two pages and only the exact alias", got, keys, pages, err)
+	}
+	badSpend = true
+	if _, _, err := cli.SpendLogsByAlias(ctx, alias, time.Now()); err == nil {
+		t.Fatal("an entry without a spend was summed")
+	}
+	badSpend, capped = false, true
+	if _, _, err := cli.SpendLogsByAlias(ctx, alias, time.Now()); err == nil || !strings.Contains(err.Error(), "cap") {
+		t.Fatalf("a capped result was trusted: %v", err)
+	}
+	if _, _, err := cli.SpendLogsByAlias(ctx, "", time.Now()); err == nil {
+		t.Fatal("an empty alias was read")
 	}
 }

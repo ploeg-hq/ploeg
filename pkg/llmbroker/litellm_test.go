@@ -26,6 +26,10 @@ type fakeAdmin struct {
 	spend    float64 // what /key/info reports for any live key
 	logs     map[string][]float64
 	entries  map[string][]map[string]any
+	// aliasLogs are spend log rows by the alias they carry, served by
+	// /spend/logs/ui; aliasFail makes that endpoint answer 500.
+	aliasLogs map[string][]map[string]any
+	aliasFail bool
 }
 
 func newFakeAdmin() *fakeAdmin {
@@ -129,6 +133,33 @@ func (f *fakeAdmin) server(t *testing.T) *httptest.Server {
 				entries = append(entries, row)
 			}
 			_ = json.NewEncoder(w).Encode(entries)
+		case "/spend/logs/ui":
+			q := r.URL.Query()
+			if f.aliasFail {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			if _, err := time.Parse("2006-01-02 15:04:05", q.Get("start_date")); err != nil {
+				http.Error(w, "start date", http.StatusBadRequest)
+				return
+			}
+			if _, err := time.Parse("2006-01-02 15:04:05", q.Get("end_date")); err != nil {
+				http.Error(w, "end date", http.StatusBadRequest)
+				return
+			}
+			rows := []map[string]any{}
+			for alias, entries := range f.aliasLogs {
+				if strings.Contains(alias, q.Get("key_alias")) {
+					for _, entry := range entries {
+						row := map[string]any{"metadata": map[string]any{"user_api_key_alias": alias}}
+						for k, v := range entry {
+							row[k] = v
+						}
+						rows = append(rows, row)
+					}
+				}
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": rows, "total": len(rows), "page": 1, "page_size": 1000, "total_pages": 1, "total_is_capped": false})
 		default:
 			http.NotFound(w, r)
 		}
@@ -260,8 +291,29 @@ func TestSettledSpend_ReadsSpendLogsThatOutliveTheKey(t *testing.T) {
 	if err != nil || math.Abs(got.USD-0.35) > 1e-9 {
 		t.Fatalf("deleted key lost its spend: %+v %v", got, err)
 	}
+	f.aliasFail = true
 	if _, err := b.SettledSpendForRun(ctx, runToken, []string{""}); err == nil {
-		t.Fatal("no accounting identity settled as zero")
+		t.Fatal("no accounting identity and no readable alias logs settled as zero")
+	}
+}
+
+func TestSettledSpend_FindsTheSpendOfANeverRecordedKeyByItsAlias(t *testing.T) {
+	f := newFakeAdmin()
+	b := f.broker(t)
+	ctx := context.Background()
+	alias := litellm.Alias(runToken)
+	f.aliasLogs = map[string][]map[string]any{
+		alias:       {{"api_key": "lost-key", "spend": 0.1, "model": "coding", "prompt_tokens": 10, "completion_tokens": 2}, {"api_key": "lost-key", "spend": 0.2, "model": "coding"}},
+		alias + "0": {{"api_key": "other-key", "spend": 9.0}},
+	}
+	got, err := b.SettledSpendForRun(ctx, runToken, []string{""})
+	if err != nil || !got.ByAlias || math.Abs(got.USD-0.3) > 1e-9 || got.Entries != 2 || got.Keys != 1 || got.InputTokens != 10 || len(got.ByModel) != 1 {
+		t.Fatalf("settled by alias=%+v err=%v; want only the exact alias's two entries", got, err)
+	}
+	f.aliasLogs = nil
+	got, err = b.SettledSpendForRun(ctx, runToken, []string{""})
+	if err != nil || !got.ByAlias || got.USD != 0 || got.Entries != 0 {
+		t.Fatalf("a key that never spent: %+v %v", got, err)
 	}
 }
 

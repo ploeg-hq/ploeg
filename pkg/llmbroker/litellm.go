@@ -180,7 +180,15 @@ func (b *LiteLLM) SettledSpendForRun(ctx context.Context, runToken string, keyID
 		}
 	}
 	if len(tokens) == 0 {
-		return SettledSpend{}, fmt.Errorf("gateway accounting identity unavailable")
+		logs, keyCount, err := b.cli.SpendLogsByAlias(ctx, alias, time.Now())
+		if err != nil {
+			return SettledSpend{}, err
+		}
+		settled := SettledSpend{USD: logs.USD, Keys: keyCount, ByAlias: true, Entries: logs.Entries, InputTokens: logs.PromptTokens, OutputTokens: logs.CompletionTokens, Models: logs.Models}
+		for _, usage := range logs.ByModel {
+			settled.ByModel = append(settled.ByModel, ModelSpend{Model: usage.Model, USD: usage.USD, InputTokens: usage.PromptTokens, OutputTokens: usage.CompletionTokens})
+		}
+		return settled, nil
 	}
 	settled := SettledSpend{Keys: len(tokens)}
 	models := map[string]*ModelSpend{}

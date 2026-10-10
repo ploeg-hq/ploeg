@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -293,6 +294,103 @@ func (c *Client) SpendLogs(ctx context.Context, token string) (SpendLogSummary, 
 		summary.ByModel = append(summary.ByModel, *models[model])
 	}
 	return summary, nil
+}
+
+// SpendLogsByAlias reads every spend log entry whose key alias is exactly
+// alias, through /spend/logs/ui, for a Run whose key identity was never
+// recorded. It reports the same summary as SpendLogs plus the number of
+// distinct keys the entries name. The endpoint's alias filter matches a
+// substring, so entries carrying another alias are skipped; an entry without
+// a valid spend fails the read, and so does a result the gateway caps.
+func (c *Client) SpendLogsByAlias(ctx context.Context, alias string, until time.Time) (SpendLogSummary, int, error) {
+	if alias == "" {
+		return SpendLogSummary{}, 0, fmt.Errorf("litellm: spend logs need an alias")
+	}
+	var summary SpendLogSummary
+	models := map[string]*ModelUsage{}
+	keys := map[string]struct{}{}
+	for page := 1; ; page++ {
+		query := url.Values{}
+		query.Set("key_alias", alias)
+		query.Set("start_date", "2000-01-01 00:00:00")
+		query.Set("end_date", until.UTC().Add(24*time.Hour).Format("2006-01-02 15:04:05"))
+		query.Set("page", strconv.Itoa(page))
+		query.Set("page_size", "1000")
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/spend/logs/ui?"+query.Encode(), nil)
+		if err != nil {
+			return SpendLogSummary{}, 0, fmt.Errorf("litellm: invalid spend logs endpoint")
+		}
+		req.Header.Set("Authorization", "Bearer "+c.masterKey)
+		resp, err := c.httpCli.Do(req)
+		if err != nil {
+			return SpendLogSummary{}, 0, fmt.Errorf("litellm: spend logs request failed")
+		}
+		var body struct {
+			Data []struct {
+				APIKey           string   `json:"api_key"`
+				Spend            *float64 `json:"spend"`
+				Model            string   `json:"model"`
+				PromptTokens     *float64 `json:"prompt_tokens"`
+				CompletionTokens *float64 `json:"completion_tokens"`
+				Metadata         struct {
+					KeyAlias string `json:"user_api_key_alias"`
+				} `json:"metadata"`
+			} `json:"data"`
+			TotalPages    int  `json:"total_pages"`
+			TotalIsCapped bool `json:"total_is_capped"`
+		}
+		decodeErr := json.NewDecoder(io.LimitReader(resp.Body, 256<<20)).Decode(&body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return SpendLogSummary{}, 0, fmt.Errorf("litellm: spend logs by alias got HTTP %d", resp.StatusCode)
+		}
+		if decodeErr != nil {
+			return SpendLogSummary{}, 0, fmt.Errorf("litellm: invalid spend logs by alias response")
+		}
+		if body.TotalIsCapped {
+			return SpendLogSummary{}, 0, fmt.Errorf("litellm: spend logs by alias exceed the gateway's count cap")
+		}
+		for _, entry := range body.Data {
+			if entry.Metadata.KeyAlias != alias {
+				continue
+			}
+			if entry.Spend == nil || *entry.Spend < 0 || math.IsNaN(*entry.Spend) || math.IsInf(*entry.Spend, 0) {
+				return SpendLogSummary{}, 0, fmt.Errorf("litellm: spend log entry is unavailable or invalid")
+			}
+			if entry.APIKey != "" {
+				keys[entry.APIKey] = struct{}{}
+			}
+			prompt, completion := tokenCount(entry.PromptTokens), tokenCount(entry.CompletionTokens)
+			summary.USD += *entry.Spend
+			summary.Entries++
+			summary.PromptTokens += prompt
+			summary.CompletionTokens += completion
+			if model := strings.TrimSpace(entry.Model); model != "" {
+				m := models[model]
+				if m == nil {
+					m = &ModelUsage{Model: model}
+					models[model] = m
+				}
+				m.USD += *entry.Spend
+				m.Entries++
+				m.PromptTokens += prompt
+				m.CompletionTokens += completion
+			}
+		}
+		if page >= body.TotalPages {
+			break
+		}
+	}
+	summary.Models = make([]string, 0, len(models))
+	for model := range models {
+		summary.Models = append(summary.Models, model)
+	}
+	sort.Strings(summary.Models)
+	summary.ByModel = make([]ModelUsage, 0, len(models))
+	for _, model := range summary.Models {
+		summary.ByModel = append(summary.ByModel, *models[model])
+	}
+	return summary, len(keys), nil
 }
 
 func tokenCount(v *float64) int64 {

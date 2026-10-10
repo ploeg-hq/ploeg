@@ -273,10 +273,18 @@ func (c *LLMControl) settleFromSpendLogs(ctx context.Context, a store.UnsettledL
 	}
 	spend, err := settler.SettledSpendForRun(ctx, a.RunToken, []string{a.GatewayKeyID})
 	if err != nil {
-		return false, fmt.Errorf("gateway spend logs unavailable; reconciliation required")
+		return false, fmt.Errorf("gateway spend logs unavailable: %w; reconciliation required", err)
 	}
-	evidence := fmt.Sprintf("litellm:spend-logs alias=%s keys=%d entries=%d usd=%s unchanged-since=%s read-at=%s",
-		a.Alias, spend.Keys, spend.Entries, strconv.FormatFloat(spend.USD, 'f', -1, 64), a.QuietSince.UTC().Format(time.RFC3339), time.Now().UTC().Format(time.RFC3339))
+	source := "litellm:spend-logs"
+	if spend.ByAlias {
+		source = "litellm:spend-logs-by-alias"
+	}
+	evidence := fmt.Sprintf("%s alias=%s keys=%d entries=%d usd=%s unchanged-since=%s read-at=%s",
+		source, a.Alias, spend.Keys, spend.Entries, strconv.FormatFloat(spend.USD, 'f', -1, 64), a.QuietSince.UTC().Format(time.RFC3339), time.Now().UTC().Format(time.RFC3339))
+	if spend.USD < a.ObservedSpend {
+		evidence += " settled-at-observation=" + strconv.FormatFloat(a.ObservedSpend, 'f', -1, 64)
+		spend.USD = a.ObservedSpend
+	}
 	usage := store.SettledUsage{InputTokens: spend.InputTokens, OutputTokens: spend.OutputTokens, Models: spend.Models}
 	for _, m := range spend.ByModel {
 		usage.ByModel = append(usage.ByModel, store.ModelUsage{Model: m.Model, InputTokens: m.InputTokens, OutputTokens: m.OutputTokens, CostUSD: m.USD})
