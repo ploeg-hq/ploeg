@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.0-rc.8
+
+### Changes
+
+- An executor team can opt in to read-only MCP tools served by the LiteLLM gateway (#79, ADR 0078, proposed). `executor.teams[].litellmTeamId` and `executor.teams[].mcpAccessGroups`, and the same optional `litellmTeamId` and `mcpAccessGroups` on an additional LLM policy, are fixed on the Run's LLM account at reservation; ploegd mints the Run's key with `team_id` and `object_permission.mcp_access_groups`. A `claude-code` Run then loads the gateway's `/mcp` as its only MCP server through the worker's key proxy and keeps `--strict-mcp-config`; an `acp` Run gets it only when its agent advertises MCP over HTTP. Groups without a team id fail the chart render, boot, the store and the broker. Both unset mints exactly what rc.7 minted.
+- The worker's loopback key proxy also swaps the placeholder in an `x-litellm-api-key` header for the Run's real key.
+- `TestRun_StoppedProcessStaysStoppedWithTheWritersAccount` stops its fake `claude` only after the fake has written its account, so a slow exec no longer fails it (#80). No runtime behaviour changes.
+
+### Migration notes
+
+- Migration `0042` adds `run_llm_accounts.gateway_team_id` and `run_llm_accounts.mcp_access_groups` with defaults at startup. Existing accounts keep today's behaviour: no team, no MCP tools.
+- No value is required. A team that sets `mcpAccessGroups` must also set `litellmTeamId`, and the LiteLLM team must allow every group it names, or the gateway refuses the mint.
+
 ## 0.2.0-rc.7
 
 ### Changes
