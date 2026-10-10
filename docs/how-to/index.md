@@ -21,6 +21,7 @@ These runbooks cover the recurring operator tasks for a cluster deployment of Pl
 | [Route a board that serves several repositories](route-a-multi-repo-board.md) | One board holds tickets for more than one repository, or a ticket was refused with a `repo/*` label reason |
 | [Send deploys from a pipeline to Ploeg](send-deploys-from-a-pipeline.md) | An operator consumer should see where a merged change is live |
 | [Map tracker statuses to delivery gates](map-tracker-statuses-to-gates.md) | An operator consumer should see every board status, the gate a ticket stands in, and bounces with a reason |
+| [Ask Ploeg from an AI client over MCP](ask-ploeg-from-an-ai-client.md) | A person wants to ask Claude Code, Codex or Cursor what waits for them, why, and what it cost |
 
 For accounts whose final cost is uncertain, [Reconcile uncertainty](../ops/managed-workers.md#reconcile-uncertainty) sets the rules these runbooks follow.
 
