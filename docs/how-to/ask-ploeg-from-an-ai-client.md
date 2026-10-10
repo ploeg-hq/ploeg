@@ -3,7 +3,7 @@ type: how-to
 audience: [operator, owner]
 owner: ploeg
 last_verified: 2026-10-10
-verified_by: "Read cmd/ploeg-mcp, pkg/operatorclient, pkg/httpapi/operator.go and ops/helm/ploeg/templates/deployment.yaml; go test ./cmd/ploeg-mcp ./pkg/operatorclient. Not checked against a live deployment."
+verified_by: "Read cmd/ploeg-mcp, pkg/operatorclient, pkg/httpapi/operator.go and ops/helm/ploeg/templates/deployment.yaml; go test ./cmd/ploeg-mcp ./pkg/operatorclient; go install of v0.2.0-rc.14 on darwin/arm64 and the release assets of v0.2.0-rc.14 checked. Not checked against a live deployment or a running client."
 ---
 
 # Ask Ploeg from an AI client over MCP
@@ -35,13 +35,14 @@ Use a consumer of its own, never another consumer's token, so you can revoke it 
 
 ## 2. Install the binary
 
-Either build it from a release tag:
+Releases attach no `ploeg-mcp` binary, and the Ploeg image is built for `linux/amd64` only, so on macOS or on an arm64 machine build it from the release tag:
 
 ```sh
-go install github.com/ploeg-hq/ploeg/cmd/ploeg-mcp@<release tag>
+go install -ldflags "-X main.version=<version>" github.com/ploeg-hq/ploeg/cmd/ploeg-mcp@v<version>
+ploeg-mcp --version
 ```
 
-or copy it from the Ploeg image, which ships it at `/usr/local/bin/ploeg-mcp`.
+Go fetches the toolchain the module asks for. Without `-ldflags`, `--version` prints `0.0.0-dev`. On a `linux/amd64` host you can also run it from the image, which ships it at `/usr/local/bin/ploeg-mcp`: `docker run --rm -i -e PLOEG_URL -e PLOEG_MCP_TOKEN --entrypoint /usr/local/bin/ploeg-mcp ghcr.io/ploeg-hq/ploegd:<version>`. A container cannot reach a port-forward on the host's `127.0.0.1` without extra network flags, so prefer the binary on a laptop.
 
 ## 3. Connect a client
 
@@ -51,11 +52,35 @@ or copy it from the Ploeg image, which ships it at `/usr/local/bin/ploeg-mcp`.
 kubectl -n ploeg port-forward svc/ploeg 8080:8080
 ```
 
-Claude Code:
+Never write the token into a client's configuration file. Put it in the environment of the process that starts the client, read from your secret store, and let the configuration refer to the variable.
+
+Claude Code, for every project of the current user:
 
 ```sh
-claude mcp add ploeg --env PLOEG_URL=http://127.0.0.1:8080 --env PLOEG_MCP_TOKEN=<the consumer token> -- ploeg-mcp
+claude mcp add --scope user --transport stdio \
+  --env PLOEG_URL=http://127.0.0.1:8080 \
+  --env 'PLOEG_MCP_TOKEN=${PLOEG_MCP_TOKEN}' \
+  ploeg -- ploeg-mcp
 ```
+
+The single quotes keep `${PLOEG_MCP_TOKEN}` literal in `~/.claude.json`; Claude Code expands it from its own environment when it starts the server. Export `PLOEG_MCP_TOKEN` in the shell before you run `claude`.
+
+VS Code reads environment variables in `mcp.json` only when it was started from a shell that has them. A client started from the Dock does not have that shell environment, so let a shell read the token from the OS keychain when the server starts. On macOS, with the token cached in the keychain as `ploeg-mcp-reader`, add to the user `mcp.json` (command **MCP: Open User Configuration**):
+
+```json
+{
+  "servers": {
+    "ploeg": {
+      "type": "stdio",
+      "command": "/bin/sh",
+      "args": ["-c", "PLOEG_MCP_TOKEN=\"$(security find-generic-password -s ploeg-mcp-reader -w)\" exec \"$HOME/go/bin/ploeg-mcp\""],
+      "env": { "PLOEG_URL": "http://127.0.0.1:8080" }
+    }
+  }
+}
+```
+
+A client started from the Dock also lacks your shell's `PATH`, so name the binary by its full path; `go env GOPATH` shows the directory whose `bin` holds it.
 
 Any other client takes the same command, arguments and two environment variables in its MCP configuration.
 
@@ -79,7 +104,7 @@ Ask the client "what needs a person in Ploeg?". It should call `ploeg_overview` 
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
-| The client says the server failed to start | `PLOEG_URL` or `PLOEG_MCP_TOKEN` is missing, or the token is shorter than 32 bytes | Set both in the client's MCP configuration |
+| The client says the server failed to start | `PLOEG_URL` or `PLOEG_MCP_TOKEN` is missing, or the token is shorter than 32 bytes | Set `PLOEG_URL` in the client's MCP configuration and export `PLOEG_MCP_TOKEN` where the client starts |
 | Every tool answers "Ploeg refused PLOEG_MCP_TOKEN" | The token belongs to no configured Operator Consumer | Check the chart's `operator.consumers` and that ploegd restarted after the change |
 | A tool answers "did not answer within 5 seconds" | The port-forward dropped or ploegd is overloaded | Restart the port-forward; narrow the request with `team` or `limit` |
 | `ploeg_get_work` answers "not found" for an id you can see elsewhere | The Work Item belongs to a Team outside the consumer's `teams` | Add the Team to the consumer, or leave `teams` out |
