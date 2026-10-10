@@ -235,11 +235,40 @@ and the [controller-isolation assertion](../../pkg/config/operator_chart_test.go
 
 `POST /api/v1/operator/work-items/{id}/cancel` withdraws tracker-originated
 work, with the same effect as unassigning its Tracker Item. It needs `execute`
-permission, `X-Ploeg-Actor` and team scope, and it takes no body. The live
-Shift closes with reason `withdrawn_by_operator`, pending Runs are cancelled,
-running Runs are finished and their model keys blocked, and the Work Item
-becomes `withdrawn`. A repeated call returns `withdrawn: false`. An item bound
-to an Operator Execution returns 409; cancel the execution instead.
+permission, `X-Ploeg-Actor` and team scope. The live Shift closes with reason
+`withdrawn_by_operator`, pending Runs are cancelled, running Runs are finished
+and their model keys blocked, and the Work Item becomes `withdrawn`. A
+repeated call returns `withdrawn: false`. An item bound to an Operator
+Execution returns 409; cancel the execution instead.
+
+Cancel takes no body, or a body `{commandId, expectedShiftId}` that guards
+it. `commandId` is required in a body. A cancel whose `commandId` already
+withdrew the item answers 200 with `replayed: true` and the Shift it closed,
+and changes nothing. `expectedShiftId` is the Shift the caller saw; when the
+item's open Shift is another one, or none is open, the cancel answers 409
+`shift_changed` and withdraws nothing, so a stale view cannot withdraw a newer
+attempt. A cancel without a body behaves as before.
+
+`POST /api/v1/operator/work-items/{id}/notes` leaves an instruction for a
+running Work Item ([ADR-0068](../adrs/0068-context-added-while-a-shift-runs-reaches-the-next-run.md):
+steering reaches the next Run, not the running one). It needs `execute`
+permission, `X-Ploeg-Actor` and team scope; `X-Ploeg-Acting-User`, when
+given, is recorded as the author. The body `{commandId, text,
+expectedShiftId}` needs `commandId` and a trimmed `text` of 1 to 4096
+characters. `expectedShiftId` is optional and, when given, must be the open
+Shift (409 `shift_changed`). A new note answers 201; a repeated `commandId`
+answers 200 with the first note and `replayed: true`, and the same
+`commandId` with another body 409 `command_conflict`. A `done`,
+`needs_human`, `awaiting_review`, `stale` or `withdrawn` item answers 409
+`work_item_terminal`, an operator-owned one 409 `operator_owned`. Each note is
+audited as `operator.note.added`.
+
+The next Run of that Work Item that ploegd hands out, other than an Ask, is
+briefed with every unconsumed note as a finding with role `operator note`.
+The same transaction marks them consumed by that Run and audits
+`operator.note.consumed`, so each note reaches exactly one Run. A note is
+consumed when the claim response is built; a claim response lost in transit
+loses its notes with it.
 
 `POST /api/v1/operator/work-items/{id}/requeue` restarts stopped work
 ([ADR-0044](../adrs/0044-an-operator-restarts-stopped-work-from-a-round-they-choose.md)).

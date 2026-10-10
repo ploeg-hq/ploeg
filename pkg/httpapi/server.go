@@ -516,7 +516,7 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 	}
 	s.Log.Info("lease acquired", "team", req.Team, "work_item", claimed.Item.ID, "deadline", claimed.Deadline)
 	writeJSON(w, http.StatusOK, claimResponse{RunToken: claimed.RunToken, Deadline: claimed.Deadline, WorkItem: claimed.Item,
-		Context: s.claimContext(r.Context(), claimed.RunToken)})
+		Context: s.claimContext(r.Context(), claimed.RunToken), Briefing: s.consumeOperatorNotes(r.Context(), claimed.Item.ID, claimed.RunToken, 0)})
 }
 
 // claimRole serves a Shift-scoped claim, carrying everything the Run needs
@@ -601,6 +601,10 @@ func (s *Server) respondClaimedRun(w http.ResponseWriter, r *http.Request, req c
 			resp.ForgeToken = cred.Token
 			resp.ForgeTokenPerRun = true
 		}
+	}
+
+	if run.Role != "ask" {
+		resp.Briefing = append(resp.Briefing, s.consumeOperatorNotes(r.Context(), run.Item.ID, run.RunToken, run.Round)...)
 	}
 
 	s.Log.Info("run claimed", "team", req.Team, "role", run.Role, "shift", run.ShiftID,

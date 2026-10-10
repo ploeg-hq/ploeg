@@ -13,7 +13,11 @@ import (
 )
 
 func (s *Server) withdraw(ctx context.Context, workItemID int64, teams []string, actor, reason string) (store.Withdrawal, bool, error) {
-	wd, err := s.Store.WithdrawWorkItem(ctx, workItemID, teams, actor, reason)
+	return s.withdrawGuarded(ctx, workItemID, teams, actor, reason, store.WithdrawGuard{})
+}
+
+func (s *Server) withdrawGuarded(ctx context.Context, workItemID int64, teams []string, actor, reason string, guard store.WithdrawGuard) (store.Withdrawal, bool, error) {
+	wd, err := s.Store.WithdrawWorkItemGuarded(ctx, workItemID, teams, actor, reason, guard)
 	if err != nil || !wd.Withdrawn {
 		return wd, true, err
 	}
@@ -125,20 +129,34 @@ func (s *Server) handleOperatorCancel(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if r.ContentLength > 0 {
-		operatorError(w, 400, "invalid_request", "Cancel takes no request body.")
-		return
+	var guard store.WithdrawGuard
+	if r.ContentLength != 0 {
+		var body cancelBody
+		if !decodeExecution(w, r, &body) {
+			return
+		}
+		if body.CommandID == nil || !operatorName.MatchString(*body.CommandID) {
+			operatorError(w, 400, "command_required", "A cancel body needs a commandId of 1 to 128 identifier characters.")
+			return
+		}
+		guard.CommandID = *body.CommandID
+		if guard.ExpectedShiftID, ok = parseExpectedShift(w, body.ExpectedShiftID, "invalid_request"); !ok {
+			return
+		}
 	}
 	if acting := r.Header.Get("X-Ploeg-Acting-User"); acting != "" {
 		actor = acting
 	}
-	wd, blocked, err := s.withdraw(r.Context(), id, p.Teams, "operator:"+p.Name+":"+actor, store.CloseReasonWithdrawnByOperator)
+	wd, blocked, err := s.withdrawGuarded(r.Context(), id, p.Teams, "operator:"+p.Name+":"+actor, store.CloseReasonWithdrawnByOperator, guard)
 	switch {
 	case errors.Is(err, store.ErrWorkItemNotFound):
 		operatorError(w, 404, "not_found", "The resource was not found in the consumer's scope.")
 		return
 	case errors.Is(err, store.ErrOperatorOwned):
 		operatorError(w, 409, "operator_owned", "This work item is bound to an execution. Cancel the execution instead.")
+		return
+	case errors.Is(err, store.ErrShiftMismatch):
+		operatorError(w, 409, "shift_changed", "The work item's open Shift is not the one expected. Nothing was withdrawn; refresh it and try again.")
 		return
 	case err != nil:
 		operatorError(w, 503, "unavailable", "Ploeg could not confirm the cancellation.")
@@ -162,6 +180,8 @@ func (s *Server) handleOperatorCancel(w http.ResponseWriter, r *http.Request) {
 			"cancelledRuns": wd.CancelledRuns,
 			"stoppedRuns":   len(wd.StoppedRunTokens),
 			"keysBlocked":   blocked,
+			"commandId":     optionalString(wd.CommandID),
+			"replayed":      wd.Replayed,
 		},
 	})
 }

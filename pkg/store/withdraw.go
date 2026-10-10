@@ -43,6 +43,10 @@ type Withdrawal struct {
 	// ForgeTokenIDs are push credentials of the released Leases, for the
 	// caller to revoke.
 	ForgeTokenIDs []string
+	// CommandID is the operator cancel's idempotency key, empty without one.
+	CommandID string
+	// Replayed is true when CommandID already withdrew the item.
+	Replayed bool
 }
 
 // TrackerWorkItemID finds a Work Item by its tracker identity.
@@ -174,7 +178,22 @@ func (s *Store) ClaimStoppedTrackerChecks(ctx context.Context, providers []strin
 // it is and reported with Withdrawn false. Operator-owned items return
 // ErrOperatorOwned.
 func (s *Store) WithdrawWorkItem(ctx context.Context, workItemID int64, teams []string, actor, closeReason string) (Withdrawal, error) {
-	out := Withdrawal{WorkItemID: workItemID}
+	return s.WithdrawWorkItemGuarded(ctx, workItemID, teams, actor, closeReason, WithdrawGuard{})
+}
+
+// WithdrawGuard binds an operator cancel to the attempt its caller saw. A
+// CommandID makes the cancel replayable; a non-zero ExpectedShiftID refuses
+// with ErrShiftMismatch unless that Shift is the item's open one.
+type WithdrawGuard struct {
+	CommandID       string
+	ExpectedShiftID int64
+}
+
+// WithdrawWorkItemGuarded is WithdrawWorkItem under guard. A CommandID that
+// already withdrew this item returns that withdrawal's Shift with Replayed
+// set and changes nothing.
+func (s *Store) WithdrawWorkItemGuarded(ctx context.Context, workItemID int64, teams []string, actor, closeReason string, guard WithdrawGuard) (Withdrawal, error) {
+	out := Withdrawal{WorkItemID: workItemID, CommandID: guard.CommandID}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return out, err
@@ -195,10 +214,29 @@ func (s *Store) WithdrawWorkItem(ctx context.Context, workItemID int64, teams []
 	if operatorOwned {
 		return out, ErrOperatorOwned
 	}
+	if guard.CommandID != "" {
+		var shift *int64
+		err = tx.QueryRow(ctx, `SELECT (detail->>'shift')::bigint FROM audit_log
+			WHERE work_item_id = $1 AND action = 'work_item.withdrawn' AND detail->>'command_id' = $2
+			ORDER BY id LIMIT 1`, workItemID, guard.CommandID).Scan(&shift)
+		if err == nil {
+			if shift != nil {
+				out.ShiftID = *shift
+			}
+			out.Replayed = true
+			return out, tx.Commit(ctx)
+		}
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return out, err
+		}
+	}
 
 	err = tx.QueryRow(ctx, `SELECT id FROM shifts WHERE work_item_id = $1 AND closed_at IS NULL FOR UPDATE`, workItemID).Scan(&out.ShiftID)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return out, err
+	}
+	if guard.ExpectedShiftID != 0 && guard.ExpectedShiftID != out.ShiftID {
+		return out, ErrShiftMismatch
 	}
 	live := out.ShiftID != 0
 	switch out.State {
@@ -250,6 +288,9 @@ func (s *Store) WithdrawWorkItem(ctx context.Context, workItemID int64, teams []
 		"cancelled_pending": out.CancelledRuns, "stopped_running": len(out.StoppedRunTokens)}
 	if out.ShiftID != 0 {
 		detail["shift"] = out.ShiftID
+	}
+	if guard.CommandID != "" {
+		detail["command_id"] = guard.CommandID
 	}
 	if err := audit(ctx, tx, actor, "work_item.withdrawn", &workItemID, detail); err != nil {
 		return out, err
