@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ploeg-hq/ploeg/pkg/provider"
+	"github.com/ploeg-hq/ploeg/pkg/provider/forgejo"
 	"github.com/ploeg-hq/ploeg/pkg/store"
 )
 
@@ -117,6 +119,8 @@ func TestOperatorDeliveryHTTPSeparatesVerifierAndExecutionAuthority(t *testing.T
 		t.Fatalf("foreign evidence: %d %s", w.Code, w.Body)
 	}
 	status.RemoteURL = "https://forge.example/webgrip/example/pulls/42"
+	forge := &fakePublicationForge{pr: forgePullRequest{State: "open", HeadSHA: candidate.CanonicalSHA, HeadRef: publication.Branch, HeadRepo: "webgrip/example", BaseRef: "development", BaseRepo: "webgrip/example"}}
+	s.Forges = map[string]provider.ForgeProvider{"forgejo": &forgejo.Provider{BaseURL: forge.serve(t).URL}}
 	if w := operatorExecutionRequest(s, "POST", statusPath, owner, "alice", status); w.Code != 403 {
 		t.Fatalf("untrusted positive evidence: %d %s", w.Code, w.Body)
 	}

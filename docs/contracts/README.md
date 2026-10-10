@@ -158,8 +158,10 @@ is 25. A read credential does not authorize execution commands.
 operations. Configure that permission on a distinct consumer identity. The
 chart forwards `operator.deliveryPolicies` as an array through
 `PLOEG_OPERATOR_DELIVERY_POLICIES`; each entry pins `repositoryId`,
-`policySha256`, `verifierId`, `minTests` and optional `publicationEnabled`.
-Publication remains disabled when that last field is omitted. Policies and
+`policySha256`, `verifierId`, `minTests`, optional `publicationEnabled` and
+optional `publisherLogin`. Publication remains disabled when
+`publicationEnabled` is omitted. `publisherLogin` names the forge login that
+must have opened a published pull request. Policies and
 verifier credentials stay in the controller deployment.
 
 The token is supplied as `Authorization: Bearer …`. No consumers configured

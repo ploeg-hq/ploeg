@@ -58,7 +58,7 @@ env:
   PLOEG_REPORT_RUN_DASHBOARD_URL: Link template for the usage of the Run behind the report; `{run}` is its escaped gateway alias. Unset omits the link.
   PLOEG_REPORT_SPEND_DASHBOARD_URL: Link to spend across Runs. Unset omits the link.
   PLOEG_OPERATOR_CONSUMERS: JSON array of operator read consumers. Each entry names a `tokenEnv`, a further variable that holds that consumer's bearer token (chart `operator.consumers`). No consumers refuses every operator request.
-  PLOEG_OPERATOR_DELIVERY_POLICIES: JSON array of trusted delivery policies with `repositoryId`, `policySha256`, `verifierId`, `minTests` and optional `publicationEnabled` (chart `operator.deliveryPolicies`).
+  PLOEG_OPERATOR_DELIVERY_POLICIES: JSON array of trusted delivery policies with `repositoryId`, `policySha256`, `verifierId`, `minTests`, optional `publicationEnabled` and optional `publisherLogin`, the forge login a published pull request must be opened by (chart `operator.deliveryPolicies`).
   PLOEG_DEPLOY_TOKEN: Bearer token, 32 to 4096 bytes, that `POST /api/v1/deploys` accepts from pipelines reporting a deploy (ADR-0047, chart `deploys.tokenSecret`). Unset answers 404 on that endpoint. A shorter token stops ploegd at boot.
   PLOEG_API_URL: ploegd's run API (chart `executor.apiUrl`, default `http://<fullname>:<service.port>`).
   PLOEG_TEAM: Team this worker claims work for.
