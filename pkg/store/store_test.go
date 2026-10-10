@@ -69,7 +69,7 @@ func resetTables(t *testing.T) {
 	t.Helper()
 	// Order matters: leases and agent_runs reference shifts; shifts references
 	// work_items.
-	for _, table := range []string{"deployments", "audit_log", "leases", "agent_runs", "checkpoints", "shifts", "work_items"} {
+	for _, table := range []string{"deployments", "audit_log", "leases", "agent_runs", "checkpoints", "shifts", "work_items", "inference_allowances"} {
 		if _, err := testStore.pool.Exec(context.Background(), "DELETE FROM "+table); err != nil {
 			t.Fatalf("reset %s: %v", table, err)
 		}

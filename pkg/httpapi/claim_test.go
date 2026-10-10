@@ -87,7 +87,7 @@ func TestMain(m *testing.M) {
 // claimed by this one.
 func reset(t *testing.T) {
 	t.Helper()
-	for _, table := range []string{"deployments", "audit_log", "leases", "agent_runs", "checkpoints", "shifts", "work_items"} {
+	for _, table := range []string{"deployments", "audit_log", "leases", "agent_runs", "checkpoints", "shifts", "work_items", "inference_allowances"} {
 		if _, err := testPool.Exec(context.Background(), "DELETE FROM "+table); err != nil {
 			t.Fatalf("reset %s: %v", table, err)
 		}

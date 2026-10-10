@@ -58,12 +58,13 @@ func (s *Store) TrackerWorkItemID(ctx context.Context, provider, externalID stri
 	return id, it, err
 }
 
-// WorkItemStarted reports whether any Run of the Work Item has started or
-// been authorized to spend.
+// WorkItemStarted reports whether any delivery Run of the Work Item has
+// started or been authorized to spend. An Ask is not delivery and does not
+// count.
 func (s *Store) WorkItemStarted(ctx context.Context, workItemID int64) (bool, error) {
 	var started bool
 	err := s.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM agent_runs
-		WHERE work_item_id = $1 AND (started_at IS NOT NULL OR authorized <> 0))`, workItemID).Scan(&started)
+		WHERE work_item_id = $1 AND role <> 'ask' AND (started_at IS NOT NULL OR authorized <> 0))`, workItemID).Scan(&started)
 	return started, err
 }
 
@@ -84,7 +85,7 @@ func (s *Store) SettleClosedInTracker(ctx context.Context, workItemID int64, act
 	var state string
 	var operatorOwned, running bool
 	err = tx.QueryRow(ctx, `SELECT state, operator_owned,
-		EXISTS(SELECT 1 FROM agent_runs WHERE work_item_id = work_items.id AND state = 'running')
+		EXISTS(SELECT 1 FROM agent_runs WHERE work_item_id = work_items.id AND state = 'running' AND role <> 'ask')
 		FROM work_items WHERE id = $1 FOR UPDATE`, workItemID).Scan(&state, &operatorOwned, &running)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return out, ErrWorkItemNotFound
@@ -162,7 +163,8 @@ func (s *Store) ClaimStoppedTrackerChecks(ctx context.Context, providers []strin
 
 // WithdrawWorkItem takes back the mandate for tracker-originated work: its
 // live Shift closes with closeReason, pending Runs are cancelled, running
-// Runs are finished so their next renew fails, Leases are released and the
+// delivery Runs are finished so their next renew fails (an Ask runs on to its
+// own deadline), Leases are released and the
 // item becomes withdrawn. No sweep retries a withdrawn item; a new
 // assignment re-queues it.
 //
@@ -219,7 +221,7 @@ func (s *Store) WithdrawWorkItem(ctx context.Context, workItemID int64, teams []
 	}
 	out.CancelledRuns = tag.RowsAffected()
 	rows, err := tx.Query(ctx, `UPDATE agent_runs SET state = 'finished', finished_at = now(), summary = $2
-		WHERE work_item_id = $1 AND state = 'running' RETURNING run_token`, workItemID, summary)
+		WHERE work_item_id = $1 AND state = 'running' AND role <> 'ask' RETURNING run_token`, workItemID, summary)
 	if err != nil {
 		return out, err
 	}

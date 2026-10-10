@@ -10,7 +10,7 @@ change either side and the test tells you.
 | [outcomereport.v1.schema.json](outcomereport.v1.schema.json) | Harness output and the body of `POST /api/v1/runs/{token}/outcome`. Stuck requires a reason (R4). The optional `createdWorkItems` carries the Work Items a Run proposes ([ADR-0031](../adrs/0031-runs-create-work-items-held-for-approval-within-limits.md)). The optional `verification` is the worker's own record of the checks it ran on a writing Run; the worker discards any value an agent sent. |
 | [checkpoint.v1.schema.json](checkpoint.v1.schema.json) | The durable progress record (shared by TaskSpec, OutcomeReport, and the checkpoint endpoint). |
 | [run-api.v1.schema.json](run-api.v1.schema.json) | All run-API message bodies (claim/renew/checkpoint/outcome). |
-| [operator-api.v1.schema.json](operator-api.v1.schema.json) | Authenticated, team-scoped read projections of teams, activity summaries, work items, shifts, runs, the Run list, checkpoints and snapshot audit pages; the delivery facts of a Work Item and the facts list, and the keyed pull request comment ([ADR-0079](../adrs/0079-run-cards-belong-to-the-consumer-and-ploeg-supplies-delivery-facts.md)). |
+| [operator-api.v1.schema.json](operator-api.v1.schema.json) | Authenticated, team-scoped read projections of teams, activity summaries, work items, shifts, runs, the Run list, checkpoints and snapshot audit pages; the delivery facts of a Work Item and the facts list, and the keyed pull request comment ([ADR-0079](../adrs/0079-run-cards-belong-to-the-consumer-and-ploeg-supplies-delivery-facts.md)); Asks and the Ask Allowance ([ADR-0082](../adrs/0082-an-ask-is-a-read-only-run-outside-the-shift-paid-from-a-periodic-allowance.md)). |
 | [deploy-api.v1.schema.json](deploy-api.v1.schema.json) | `POST /api/v1/deploys`: a pipeline reports that a commit is live in an environment, with its own bearer token ([ADR-0047](../adrs/0047-ploeg-learns-where-a-merged-change-is-deployed-from-a-generic-deploy-endpoint.md), [how-to](../how-to/send-deploys-from-a-pipeline.md)). |
 | [tracker-execution.md](tracker-execution.md), [v1 schema](tracker-execution.v1.schema.json) | Scoped source lookup and exclusive operator binding of an existing pristine tracker Work Item. |
 | [acp-profiles.md](acp-profiles.md) | The `acp` harness profiles: launch command, gateway wiring, instruction files and approval mapping per agent, and what an image needs to run them. |
@@ -92,6 +92,21 @@ change either side and the test tells you.
   `pullRequestCommentDeleteResponse` answer the keyed comment, whose request
   `pullRequestCommentRequest` refuses unknown fields. The card legacy export
   and the card responses were removed by ADR-0080.
+- Since [ADR-0082](../adrs/0082-an-ask-is-a-read-only-run-outside-the-shift-paid-from-a-periodic-allowance.md)
+  an operator consumer with execute permission admits an Ask on a Work Item
+  in its scope with `POST /api/v1/operator/work-items/{id}/asks`
+  (`askAdmitRequest`, answered by `askAdmitResponse`), reads it with `GET
+  .../asks/{askId}` (`askResponse`) and finishes it with `POST
+  .../asks/{askId}/finish` (`askFinishResponse`). An Ask is a read-only Run
+  with the Role `ask` and no Shift; it appears among a Work Item's Runs with
+  `shiftId` null. Admission returns a LiteLLM key capped at the per-Ask
+  Budget once; a replayed `askId` returns the same Ask and never a second
+  key. `allowanceRefusalResponse` (402) and `allowanceResponse` (`GET
+  /api/v1/operator/allowances?team=`) report the team's monthly Ask
+  Allowance and when it resets. Ploeg keeps only the question's SHA-256.
+  A Work Item's facts leave Ask Runs out of `runs`, `liveUsage`,
+  `runBudgetHolds` and `activityAt` and list them in the optional `asks`
+  (`factsAsk`), so Ask spend is reported apart from delivery spend.
 - `deploy-api.v1` is the body of a pipeline's deploy report. It refuses
   unknown fields, unlike the response contracts, so a misspelled field fails
   the pipeline step instead of being dropped.

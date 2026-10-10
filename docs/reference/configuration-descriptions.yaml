@@ -50,6 +50,8 @@ env:
   PLOEG_WORKER_LLM_POLICIES: Trusted team and role inference policies. The chart builds them from each team and role model and budget plus `executor.workerAuth.additionalLLMPolicies`.
   PLOEG_LLM_SETTLE_AFTER: Quiet period after which the settlement sweep settles a blocked Run's account from LiteLLM spend logs.
   PLOEG_LLM_CORRECTION_WINDOW: How long a spend-log settlement stays provisional. Every 15 minutes in this window the correction sweep reads the spend logs again and charges any late entry as an adjustment. `0` makes the first settlement final; a negative value refuses to start. The window is fixed at each account's first settlement.
+  PLOEG_ASK_ALLOWANCE_USD: Monthly Ask Allowance, in US dollars, that a Team's period opens with (ADR-0082). A period keeps the limit its first Ask opened it with. At most 10000 with four decimals; anything else refuses to start.
+  PLOEG_ASK_BUDGET_USD: Per-Ask Budget in US dollars, the cap on the key an Ask is given (ADR-0082). A `(team, ask)` policy in `PLOEG_WORKER_LLM_POLICIES` with a smaller `budgetUsd` lowers it. A Team with no such policy has no Asks.
   PLOEG_USAGE_REPORT: Publish the usage and evidence report on each agent pull request. Default on; "false" is the kill switch (chart `env.PLOEG_USAGE_REPORT`).
   PLOEG_REPORT_WORK_ITEM_URL: Link template for one Work Item in the usage report; `{id}` is the Work Item id. Unset omits the link.
   PLOEG_REPORT_TEAM_DASHBOARD_URL: Link template for a dashboard filtered to the Shift's Team; `{team}` is the escaped Team. Unset omits the link.

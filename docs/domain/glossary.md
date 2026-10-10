@@ -23,6 +23,22 @@ The container a Run executes: a Harness plus its Adapter, invoked with a Task Sp
 
 **See also:** [Run](#run), [Task Spec](#task-spec), [Outcome Report](#outcome-report)  
 
+## Ask
+*Context: Integration*
+
+A read-only Run with the Role ask about an existing Work Item, admitted for an Operator Consumer outside any Shift, Round or Lease. Ploeg authorizes it against an Ask Allowance and returns a key capped at the per-Ask Budget; the consumer makes the model call. Ask spend is reported apart from what delivering the Work Item cost.
+
+**Not to be confused with** [Run](#run): An Ask is a Run, but not a delivery Run; no worker claims it and it never writes.  
+**See also:** [Ask Allowance](#ask-allowance), [Run](#run), [Work Item](#work-item), [Inference Account](#inference-account)  
+
+## Ask Allowance
+*Context: Integration*
+
+The amount of Ask spend a scope may authorize in one period, a Team per UTC calendar month in phase 1. An Ask is admitted only when the limit less settled and held Ask spend covers the per-Ask Budget.
+
+**Not to be confused with** [Shift](#shift): A Shift's Budget pays for delivering one Work Item. An Ask never spends it.  
+**See also:** [Ask](#ask), [Team](#team)  
+
 ## Assignment
 *Context: Dispatch*
 

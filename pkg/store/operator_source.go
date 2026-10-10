@@ -25,8 +25,8 @@ AND NOT EXISTS(SELECT 1 FROM operator_executions e WHERE e.work_item_id=i.id)
 AND NOT EXISTS(SELECT 1 FROM leases l WHERE l.work_item_id=i.id)
 AND NOT EXISTS(SELECT 1 FROM checkpoints c WHERE c.work_item_id=i.id)
 AND NOT EXISTS(SELECT 1 FROM shifts sh WHERE sh.work_item_id=i.id AND (sh.closed_at IS NOT NULL OR sh.spent<>0))
-AND NOT EXISTS(SELECT 1 FROM agent_runs r WHERE r.work_item_id=i.id AND (r.state<>'pending' OR r.started_at IS NOT NULL OR r.authorized<>0))
-AND NOT EXISTS(SELECT 1 FROM run_llm_accounts a JOIN agent_runs r USING(run_token) WHERE r.work_item_id=i.id)`
+AND NOT EXISTS(SELECT 1 FROM agent_runs r WHERE r.work_item_id=i.id AND r.role<>'ask' AND (r.state<>'pending' OR r.started_at IS NOT NULL OR r.authorized<>0))
+AND NOT EXISTS(SELECT 1 FROM run_llm_accounts a JOIN agent_runs r USING(run_token) WHERE r.work_item_id=i.id AND r.role<>'ask')`
 
 func (s *Store) OperatorSourceLookup(ctx context.Context, provider, externalID string, teams []string) (OperatorItem, string, error) {
 	var item OperatorItem

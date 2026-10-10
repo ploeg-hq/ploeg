@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"net/http"
 	"os"
 	"os/signal"
@@ -325,6 +326,14 @@ func run(log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	askAllowance, err := usdFromEnv("PLOEG_ASK_ALLOWANCE_USD", httpapi.DefaultAskAllowanceUSD)
+	if err != nil {
+		return err
+	}
+	askBudget, err := usdFromEnv("PLOEG_ASK_BUDGET_USD", httpapi.DefaultAskBudgetUSD)
+	if err != nil {
+		return err
+	}
 	srv := &httpapi.Server{
 		OperatorConfig: operator,
 		WorkerSecurity: workerSecurity,
@@ -343,6 +352,8 @@ func run(log *slog.Logger) error {
 		CreatedWork:    createdWork,
 
 		MetricsCacheTTL: durationOr("PLOEG_METRICS_CACHE_TTL", httpapi.DefaultMetricsCacheTTL),
+		AskAllowanceUSD: askAllowance,
+		AskBudgetUSD:    askBudget,
 		FollowUps:       cfg.ForgeFollowUps(),
 		ForgeBots:       forgeBots(),
 		Deploys:         deploys,
@@ -473,6 +484,20 @@ func byteCountFromEnv(key string, def int64) (int64, error) {
 	n, err := strconv.ParseInt(v, 10, 64)
 	if err != nil || n <= 0 {
 		return 0, fmt.Errorf("%s: want a positive byte count, got %q", key, v)
+	}
+	return n, nil
+}
+
+// usdFromEnv reads a positive US dollar amount of at most 10000 with at most
+// four decimals; unset is def.
+func usdFromEnv(key string, def float64) (float64, error) {
+	v := os.Getenv(key)
+	if v == "" {
+		return def, nil
+	}
+	n, err := strconv.ParseFloat(v, 64)
+	if err != nil || !(n > 0 && n <= 10000) || math.Abs(math.Round(n*1e4)-n*1e4) > 1e-6 {
+		return 0, fmt.Errorf("%s: want a positive US dollar amount of at most 10000 with at most four decimals, got %q", key, v)
 	}
 	return n, nil
 }
