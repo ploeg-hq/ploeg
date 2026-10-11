@@ -311,6 +311,21 @@ func TestMintRequest_EmptyModels(t *testing.T) {
 	}
 }
 
+func TestMintRequest_SendsMetadata(t *testing.T) {
+	var got map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		_ = json.NewEncoder(w).Encode(map[string]string{"key": "sk-x"})
+	}))
+	defer srv.Close()
+	if _, err := NewClient(srv.URL, "k").Mint(context.Background(), MintRequest{KeyAlias: "ploeg-x", MaxBudget: 1, Metadata: map[string]any{"disable_fallbacks": true}}); err != nil {
+		t.Fatal(err)
+	}
+	if meta, ok := got["metadata"].(map[string]any); !ok || meta["disable_fallbacks"] != true {
+		t.Fatalf("body %v has no metadata.disable_fallbacks", got)
+	}
+}
+
 func TestMint_EmptyKeyResponse(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]string{"key": ""})

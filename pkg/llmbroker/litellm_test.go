@@ -203,6 +203,18 @@ func TestMint_AliasFormatIsLoadBearing(t *testing.T) {
 	}
 }
 
+func TestMint_DisablesFallbacksSoARunCallsOnlyItsRolesModel(t *testing.T) {
+	f := newFakeAdmin()
+	if _, err := f.broker(t).Mint(context.Background(), MintRequest{
+		RunToken: runToken, BudgetUSD: 2, Models: []string{"fireworks-glm-5p3-flash"}, TTL: time.Hour,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.minted) != 1 || f.minted[0].Metadata["disable_fallbacks"] != true {
+		t.Fatalf("minted %+v; a key without disable_fallbacks lets LiteLLM answer from another model (ADR-0039)", f.minted)
+	}
+}
+
 func TestMint_RefusesAnUncappedKey(t *testing.T) {
 	f := newFakeAdmin()
 	// max_budget is omitempty, so budget 0 does not mint a zero-spend key —
