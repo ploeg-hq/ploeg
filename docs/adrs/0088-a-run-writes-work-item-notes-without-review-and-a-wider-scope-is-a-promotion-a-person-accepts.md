@@ -35,6 +35,7 @@ Chosen option: "Work Item Notes written directly, readable within the root Work 
 * **Framing.** The pack lists Work Item Notes separately as notes earlier Runs of this work wrote, unreviewed, below reviewed knowledge and below the delivery contract.
 * **A wider scope is a Promotion.** A learning whose `scope` is wider than `work-item` also creates a pending Promotion in ploegd's store that names the note and the suggested scope. A person may also request a Promotion for any note ([0089](0089-operator-consumers-read-knowledge-and-write-notes-for-a-named-person-within-scopes-ploegd-checks.md)). A Tenant admin accepts it, with edits or a narrower scope, or rejects it; a rejected Promotion is kept so the same suggestion is not raised again.
 * **Accepting writes the concept.** ploegd, as the Tenant's review actor, forks a branch from the knowledge graph's `main`, writes the concept, merges and deletes the branch in one operation. No proposal branch stays open, so schema changes are never blocked by waiting reviews.
+* **Repository scope also goes to git.** Accepting a Promotion with `repository` scope also creates a Work Item for that repository ([0031](0031-runs-create-work-items-held-for-approval-within-limits.md)), already approved by the accepting admin, whose Run adds the concept as one OKF file under the repository's `knowledge/` directory and opens a pull request the repository's owners review and merge. The graph concept is what Runs read until then. Once the file is on the repository's default branch, a pack that finds the same concept in both sources keeps the repository's file, because the client owns their git.
 * **Writing once.** The outcome and a note outbox row are stored in one transaction; ploegd writes outbox rows to the notes graph until the commit is confirmed, with a merge load keyed on the Run's trace and the learning's index, so a replay changes nothing. An acceptance records its branch name before it starts; after a restart ploegd finds the concept on `main` and finishes, or deletes the branch and retries.
 * **Retention.** A Work Item Note is kept while its root Work Item is open and for 90 days after it closes, unless a Promotion references it.
 
@@ -44,6 +45,7 @@ Chosen option: "Work Item Notes written directly, readable within the root Work 
 * Good, because every promoted concept traces back to the note, Run and Work Item it came from, and to the person who accepted it.
 * Bad, because one wrong or injected note can steer later Runs of the same root until it expires; the reviewer of the pull request is the guard, helped by the TaskSpec listing every note the Run was given.
 * Bad, because Promotions add a review queue; an ignored queue means knowledge stays local to its work.
+* Bad, because each accepted repository Promotion costs one small Run to open its pull request.
 * Neutral, because the cap of 10 learnings per Run also caps notes.
 
 ### Confirmation
@@ -54,6 +56,8 @@ Proposed checks, in the existing `go test ./...` CI step once built:
 * `TestPromotion_NothingReachesOtherWorkBeforeAcceptance`: a learning with `scope: repository` is absent from every other root's Runs until a Tenant admin accepts it, and present after.
 * `TestNoteOutbox_WritesOnceAcrossARestart`: ploegd stops after storing the outcome and before the graph confirms; on restart the note exists exactly once.
 * `TestPromotion_AcceptanceSurvivesARestart`: ploegd stops between the merge and the delete; on restart the concept exists once and no branch remains.
+* `TestPromotion_RepositoryScopeCreatesAKnowledgeWorkItem`: accepting a repository-scoped Promotion creates one approved Work Item naming the concept, and accepting it again creates none.
+* `TestKnowledgePack_RepositoryFileWinsOverTheSameGraphConcept`.
 * The OutcomeReport schema case that refuses an unknown `scope`.
 
 ## Pros and Cons of the Options
@@ -80,3 +84,4 @@ Proposed checks, in the existing `go test ./...` CI step once built:
 * Replaces 0066 once accepted; on acceptance set `supersedes: 0066` and mark 0066 superseded in the Records index. Until then both stay proposed, and 0066's cap and fields remain the contract.
 * Unfold system ADR-0034 (proposed) records the product decision.
 * 2026-10-11 — Proposed after the owner chose direct Work Item Notes with review only for a wider scope.
+* 2026-10-11 — Owner answers: a person's session note reaches Runs at once, like a Run's; only a Tenant admin promotes; an accepted repository Promotion opens a pull request to the repository's `knowledge/` now, not later. Kept proposed until the measurement spike (VIK-1859) reports.

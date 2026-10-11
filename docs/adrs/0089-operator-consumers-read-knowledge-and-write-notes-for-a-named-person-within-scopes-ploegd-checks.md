@@ -76,3 +76,4 @@ Proposed checks, in the existing `go test ./...` CI step once built:
 
 * Unfold system ADR-0035 (proposed): interactive sessions reach Tenant knowledge only through Unfold's MCP server.
 * 2026-10-11 — Proposed after the owner chose sessions through Unfold's MCP server.
+* 2026-10-11 — Owner answers: a session note reaches Runs at once; a Tenant member's Promotion request always waits for an admin. Kept proposed until the measurement spike (VIK-1859) reports.

@@ -83,6 +83,25 @@ merging and deleting the branch, after recording the branch name.
 - **WHEN** ploegd stops after the merge and before deleting the branch
 - **THEN** on restart it finds the concept on `main`, deletes the branch and records the Promotion accepted, with one concept
 
+### Requirement: An accepted repository Promotion opens a knowledge pull request
+
+Accepting a Promotion with `repository` scope SHALL create one approved Work
+Item on that repository whose Run adds the concept as an OKF file under
+`knowledge/` and opens a pull request. ploegd SHALL NOT write to the forge
+itself. When a pack finds the same concept in the repository's `knowledge/`
+and in the graph, it SHALL keep the repository's file.
+
+#### Scenario: Acceptance creates the Work Item once
+
+- **WHEN** a Tenant admin accepts a repository-scoped Promotion, and the accept is repeated after a lost response
+- **THEN** exactly one approved Work Item exists for that concept
+
+#### Scenario: The merged file wins
+
+- **GIVEN** the concept's file is on the repository's default branch
+- **WHEN** a Run of that repository is briefed
+- **THEN** its pack holds the repository's file and not the graph copy
+
 ### Requirement: Notes expire with their work
 
 ploegd SHALL delete a Work Item Note 90 days after its root Work Item closes,
