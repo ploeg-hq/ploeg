@@ -133,3 +133,34 @@ func TestUnsettledFinishedAccountsSelectsWhatTheBlockSweepRetries(t *testing.T) 
 		}
 	}
 }
+
+func TestUnsettledFinishedAccountsListsABlockedAccountStuckLongAfterItsRunFinished(t *testing.T) {
+	resetTables(t)
+	ctx := context.Background()
+	stuck := seedUnsettledFixture(t, 0, unsettledFixture{team: "silver", state: "blocked", finished: true, authorized: 0.25, age: 0})
+	recent := seedUnsettledFixture(t, 1, unsettledFixture{team: "silver", state: "blocked", finished: true, authorized: 1, age: 0})
+	if _, err := testStore.pool.Exec(ctx, `UPDATE agent_runs SET finished_at=now()-interval '2 hours' WHERE id=$1`, stuck); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := testStore.pool.Exec(ctx, `UPDATE agent_runs SET finished_at=now()-interval '10 minutes' WHERE id=$1`, recent); err != nil {
+		t.Fatal(err)
+	}
+
+	page, err := testStore.UnsettledFinishedAccounts(ctx, nil, 200)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Accounts) != 1 || page.Accounts[0].RunID != stuck || page.Accounts[0].AccountState != "blocked" || page.Accounts[0].HeldUSD != 0.25 {
+		t.Fatalf("want only the stuck blocked account, got %+v", page.Accounts)
+	}
+	if page.Count != 1 || page.HeldUSD != 0.25 {
+		t.Fatalf("totals: count %d held %v", page.Count, page.HeldUSD)
+	}
+	pending, err := testStore.PendingLLMBlocks(ctx, 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pending) != 0 {
+		t.Fatalf("a blocked account went back to the block sweep: %+v", pending)
+	}
+}
