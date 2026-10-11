@@ -908,6 +908,39 @@
               "description": "List status name applied when a Shift finishes, e.g. 'for review'. Statuses are per-List custom strings; empty leaves the board untouched."
             }
           }
+        },
+        "github": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "apiUrl": {
+              "type": "string",
+              "description": "GitHub REST API root; empty = https://api.github.com. GitHub Enterprise Server uses https://<host>/api/v3."
+            },
+            "appId": {
+              "type": "string",
+              "description": "GitHub App id. With appPrivateKeySecret it enables issue reads and write-backs through repository-scoped installation tokens (issues:write, metadata:read)."
+            },
+            "appPrivateKeySecret": {
+              "$ref": "#/definitions/secretRef",
+              "description": "The GitHub App's PEM private key. Required with appId."
+            },
+            "webhookSecret": {
+              "$ref": "#/definitions/secretRef",
+              "description": "Verifies X-Hub-Signature-256 on POST /webhooks/tracker/github. Empty = deliveries are rejected."
+            },
+            "teamLabelPrefix": {
+              "type": "string",
+              "description": "Label prefix that names a Team on an issue; empty = 'ploeg:'."
+            },
+            "teamMap": {
+              "type": "string",
+              "description": "Comma-separated login=team pairs: assigning one of these GitHub users dispatches the issue to that Team."
+            }
+          }
         }
       },
       "additionalProperties": false

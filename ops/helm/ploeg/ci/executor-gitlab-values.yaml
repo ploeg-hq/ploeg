@@ -7,6 +7,14 @@ tracker:
       name: ploeg-clickup-webhook
       key: PLOEG_CLICKUP_SECRET
     doneStatus: for review
+  github:
+    appId: "123456"
+    appPrivateKeySecret:
+      name: ploeg-github-app
+      key: private-key.pem
+    webhookSecret:
+      name: ploeg-github-webhook
+      key: PLOEG_GITHUB_TRACKER_SECRET
 executor:
   enabled: true
   forge: gitlab

@@ -140,6 +140,13 @@ func run(log *slog.Logger) error {
 			"write_backs", cuToken != "",
 			"done_status", cu.DoneStatus != "")
 	}
+	gh, err := githubTracker(cfg, githubTrackerEnvFromOS(), log)
+	if err != nil {
+		return err
+	}
+	if gh != nil {
+		trackers[gh.Name()] = gh
+	}
 
 	// The forge seam. Ploeg comments as the same bot that opens the pull
 	// requests; commenting is not pushing, so it needs no second credential.

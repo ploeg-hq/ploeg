@@ -18,6 +18,12 @@ env:
   PLOEG_CLICKUP_SECRET: Verifies `X-Signature` on `POST /webhooks/tracker/clickup`. ClickUp generates it when the webhook is registered. ClickUp is registered only when this or `PLOEG_CLICKUP_TOKEN` is set. Unset rejects every ClickUp webhook.
   PLOEG_CLICKUP_TOKEN: Personal ClickUp token for reads and write-backs (chart `tracker.clickup.tokenSecret`).
   PLOEG_CLICKUP_URL: ClickUp API root (chart `tracker.clickup.url`). Empty means `https://api.clickup.com/api/v2`.
+  PLOEG_GITHUB_TRACKER_SECRET: Verifies `X-Hub-Signature-256` on `POST /webhooks/tracker/github` (chart `tracker.github.webhookSecret`). The GitHub Issues tracker is registered when this, `PLOEG_GITHUB_APP_ID` or a `trackers.github.projects` entry is set. Unset rejects every GitHub Issues webhook.
+  PLOEG_GITHUB_API_URL: GitHub REST API root (chart `tracker.github.apiUrl`). Empty means `https://api.github.com`; GitHub Enterprise Server uses `https://<host>/api/v3`.
+  PLOEG_GITHUB_APP_ID: GitHub App id whose installation tokens read issues and write comments back (chart `tracker.github.appId`). Each token is scoped to one repository with `issues:write` and `metadata:read` (ADR-0085). Unset keeps reads and write-backs off.
+  PLOEG_GITHUB_APP_PRIVATE_KEY: The GitHub App's PEM private key (chart `tracker.github.appPrivateKeySecret`). Required with `PLOEG_GITHUB_APP_ID`; ploegd refuses to start with only one of them or an unreadable key.
+  PLOEG_GITHUB_TEAM_LABEL_PREFIX: Label prefix that names a Team on a GitHub issue (chart `tracker.github.teamLabelPrefix`). Empty means `ploeg:`, so the label `ploeg:bronze` dispatches the issue to Team `bronze`.
+  PLOEG_GITHUB_TEAM_MAP: '`login=team,…` pairs (chart `tracker.github.teamMap`): assigning one of these GitHub users to an issue dispatches it to that Team. Kept apart from `PLOEG_TEAM_MAP`, whose usernames belong to other trackers.'
   PLOEG_CLICKUP_DONE_STATUS: List status applied when a Shift finishes (chart `tracker.clickup.doneStatus`). Empty leaves the board untouched.
   PLOEG_FORGEJO_BOT: Forge user whose push tokens ploegd mints, and the identity agents act as (chart `executor.forgejo.botUser`). A review by this user never sends work back under `teams.<name>.forgeFollowUps`.
   PLOEG_GITLAB_BOT: GitLab username Ploeg acts as. Like `PLOEG_FORGEJO_BOT`, a review event from it never sends work back under `teams.<name>.forgeFollowUps`. Unset adds no GitLab identity.
