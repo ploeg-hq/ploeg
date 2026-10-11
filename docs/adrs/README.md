@@ -164,6 +164,7 @@ fails otherwise.
 | [0087](0087-ploegd-holds-a-tenants-knowledge-graphs-and-serves-a-run-only-its-work-items-scopes.md) | ploegd holds a Tenant's knowledge graphs and serves a Run only its Work Item's scopes | proposed | 2026-10-11 |
 | [0088](0088-a-run-writes-work-item-notes-without-review-and-a-wider-scope-is-a-promotion-a-person-accepts.md) | A Run writes Work Item Notes without review, and a wider scope is a Promotion a person accepts | proposed | 2026-10-11 |
 | [0089](0089-operator-consumers-read-knowledge-and-write-notes-for-a-named-person-within-scopes-ploegd-checks.md) | Operator consumers read knowledge and write notes for a named person within scopes ploegd checks | proposed | 2026-10-11 |
+| [0090](0090-a-runs-agent-session-is-kept-as-a-bounded-redacted-transcript.md) | A Run's agent session is kept as a bounded, redacted transcript | proposed | 2026-10-11 |
 
 ## Review calendar
 
@@ -193,6 +194,7 @@ triggers.
 | 2027-01-31 | [0084](0084-a-claude-code-run-can-execute-in-a-teams-self-hosted-claude-environment.md) — or sooner, when self-hosted environments leave beta, Anthropic changes its terms for plan logins, or exposes session usage through an API |
 | 2027-01-31 | [0085](0085-a-team-label-on-an-issue-in-a-configured-github-repository-dispatches-it.md) — or sooner, when the ADR-0060 inbox is built, the GitHub forge provider lands, a deployment needs Projects columns or status labels, or a repository rename duplicates a Work Item |
 | 2027-01-31 | [0086](0086-github-is-a-forge-and-a-run-pushes-with-its-own-github-app-installation-token.md) — or sooner, when GitHub scopes installation tokens to a ref or lists them, ploegd runs more than one replica, or a proxied Run loses push rights at the hour mark |
+| 2027-01-31 | [0090](0090-a-runs-agent-session-is-kept-as-a-bounded-redacted-transcript.md) — or sooner, when transcripts pass 10 GiB, a stored transcript carries a missed credential, a consumer needs faster than polling, a non-ACP harness needs a transcript, or ACP v2 changes `session/update` |
 | 2027-01-31 | [0047](0047-ploeg-learns-where-a-merged-change-is-deployed-from-a-generic-deploy-endpoint.md) — or sooner, when a GitOps controller should report deploys directly, deploys keep filling the 50-pull-request batch, or a third forge provider is added |
 | 2027-01-31 | [0048](0048-a-pool-held-by-unsettled-runs-waits-for-settlement-before-it-parks.md) — or sooner, when a fix round closes on unsettled holds or a Shift parks as held more than once a month |
 | 2027-01-31 | [0049](0049-a-run-card-reads-the-gateway-for-usage-so-far-while-a-run-is-running.md) — or sooner, when a card read during a Run passes 1 s at p95, LiteLLM offers a per-key token total, or the worker reports usage during a Run |
