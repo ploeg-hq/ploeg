@@ -64,6 +64,7 @@ func (b *LiteLLM) Mint(ctx context.Context, req MintRequest) (Credential, error)
 		Models:    req.Models,
 		Duration:  ttlString(req.TTL),
 		TeamID:    req.TeamID,
+		Metadata:  map[string]any{"disable_fallbacks": true},
 	}
 	if len(req.MCPAccessGroups) > 0 {
 		mint.ObjectPermission = &litellm.ObjectPermission{MCPAccessGroups: req.MCPAccessGroups}

@@ -74,6 +74,10 @@ type MintRequest struct {
 	// require_key_mcp_access_defined, so a key without it lists no tools.
 	// nil = no MCP access, as before.
 	ObjectPermission *ObjectPermission `json:"object_permission,omitempty"`
+	// Metadata is the key's LiteLLM metadata. `disable_fallbacks: true`
+	// makes the proxy refuse to answer a call from a fallback model group,
+	// which LiteLLM honours per key (litellm_pre_call_utils, v1.102).
+	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
 // ObjectPermission is the subset of LiteLLM's key object_permission Ploeg
