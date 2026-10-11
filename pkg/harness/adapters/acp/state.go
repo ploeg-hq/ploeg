@@ -95,13 +95,9 @@ func (s *sessionState) applyUpdate(raw json.RawMessage) UpdateKind {
 
 	switch kind {
 	case UpdateAgentMessageChunk:
-		if e.Content != nil {
-			appendBounded(&s.messages, e.Content.Text, maxMessageBytes)
-		}
+		appendBounded(&s.messages, e.contentText(), maxMessageBytes)
 	case UpdateAgentThoughtChunk:
-		if e.Content != nil {
-			appendBounded(&s.thoughts, e.Content.Text, maxThoughtBytes)
-		}
+		appendBounded(&s.thoughts, e.contentText(), maxThoughtBytes)
 	case UpdateUserMessageChunk:
 		// Our own prompt echoed back. Ignored on purpose: including it would
 		// let the ticket text leak into Summary and read as agent output.
@@ -173,8 +169,8 @@ func (s *sessionState) foldToolCall(e updateEnvelope, kind UpdateKind) {
 			tc.Paths = append(tc.Paths, l.Path)
 		}
 	}
-	if tc.Status == ToolFailed && e.Content != nil && e.Content.Text != "" {
-		tc.failMsg = e.Content.Text
+	if text := e.contentText(); tc.Status == ToolFailed && text != "" {
+		tc.failMsg = text
 	}
 }
 

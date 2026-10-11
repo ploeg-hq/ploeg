@@ -109,6 +109,10 @@ type Server struct {
 	// DefaultAskAllowanceUSD and DefaultAskBudgetUSD.
 	AskAllowanceUSD float64
 	AskBudgetUSD    float64
+	// DisableRunTranscripts refuses Run transcripts (ADR-0090): the
+	// ingestion route answers 404 and workers stop sending. Transcripts
+	// already stored stay readable.
+	DisableRunTranscripts bool
 
 	pipelineWork  sync.WaitGroup
 	pipelineOnce  sync.Once
@@ -186,6 +190,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/v1/runs/{token}/context/{id}", s.handleRunContext)
 	mux.HandleFunc("POST /api/v1/runs/{token}/claude-session", s.handleRecordClaudeSession)
 	mux.HandleFunc("GET /api/v1/runs/{token}/claude-session", s.handleClaudeSessionState)
+	mux.HandleFunc("POST /api/v1/runs/{token}/transcript", s.handleRunTranscript)
 	mux.HandleFunc("POST /api/v1/runs/{token}/forge-credential", s.handleRefreshForgeCredential)
 	mux.HandleFunc("POST /api/v1/claude-sessions/forge-credential", s.handleClaudeForgeCredential)
 	mux.HandleFunc("POST /api/v1/claude-sessions/report", s.handleClaudeSessionReport)

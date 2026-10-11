@@ -114,6 +114,9 @@ The generator follows each binary's imports inside the module and records every 
 | `PLOEG_REPO_KNOWLEDGE_DIR` | ploeg-worker |  |  | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_REVIEW_RECONCILE_INTERVAL` | ploegd | `10m` |  | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_ROLE` | ploeg-worker |  |  | [main.go](../../cmd/ploeg-worker/main.go), [sandbox.go](../../cmd/ploeg-worker/sandbox.go) |
+| `PLOEG_RUN_TRANSCRIPTS` | ploeg-worker | `true` | `off` records no transcript of the agent's session (ADR-0090). Default on: the worker sends the ACP session as typed entries every two seconds, and a transcript that cannot be delivered never changes the Run. | [main.go](../../cmd/ploeg-worker/main.go) |
+| `PLOEG_RUN_TRANSCRIPTS` | ploegd | `true` | `off` refuses Run transcripts: `POST /api/v1/runs/{token}/transcript` answers 404 and workers stop sending (ADR-0090). Transcripts already stored stay readable. Default on. | [main.go](../../cmd/ploegd/main.go) |
+| `PLOEG_RUN_TRANSCRIPT_THOUGHTS` | ploeg-worker | `true` | `off` leaves the agent's reasoning (ACP thought chunks) out of the Run's transcript (ADR-0090). Default on. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_SANDBOX_JOB_NAME` | ploeg-worker |  |  | [sandbox.go](../../cmd/ploeg-worker/sandbox.go) |
 | `PLOEG_SANDBOX_JOB_UID` | ploeg-worker |  |  | [sandbox.go](../../cmd/ploeg-worker/sandbox.go) |
 | `PLOEG_SANDBOX_RUN_DEADLINE` | ploeg-worker | `0` |  | [sandbox.go](../../cmd/ploeg-worker/sandbox.go) |

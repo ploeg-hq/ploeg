@@ -24,6 +24,7 @@ import (
 	"github.com/ploeg-hq/ploeg/pkg/knowledge"
 	"github.com/ploeg-hq/ploeg/pkg/litellm"
 	"github.com/ploeg-hq/ploeg/pkg/llmbroker"
+	"github.com/ploeg-hq/ploeg/pkg/transcript"
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
@@ -96,6 +97,11 @@ type Config struct {
 	// KnowledgeOutbox is where a Run's proposed learnings are written as OKF
 	// bundles for review (PLOEG_KNOWLEDGE_OUTBOX); "" keeps none.
 	KnowledgeOutbox string
+	// Transcript records the agent's session for people to follow and ships
+	// it to ploegd (PLOEG_RUN_TRANSCRIPTS, ADR-0090); TranscriptThoughts
+	// includes the agent's reasoning (PLOEG_RUN_TRANSCRIPT_THOUGHTS).
+	Transcript         bool
+	TranscriptThoughts bool
 }
 
 // IsolationRequested reports whether either credential isolation flag keeps a
@@ -477,6 +483,8 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	}
 
 	env.BaseEnv = append(env.BaseEnv, gitEnv...)
+	env.Transcript = w.startTranscript(claimed, leaks.watch)
+	defer closeTranscript(env.Transcript)
 
 	// The Shift's authorization is the ceiling the credential must be minted
 	// at: min(roleCap, poolRemaining), computed under the Shift row lock
@@ -495,6 +503,8 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 		Models:    w.Cfg.LLMModels,
 		TTL:       w.Cfg.KeyTTL,
 	}, w.Cfg.HarnessTimeout, w.Cfg.LLMKeyIsolation, leaks.watch)
+	env.Transcript.Stage(harnessFinished(w.Adapter.Name(), report, mintErr, runErr))
+	closeTranscript(env.Transcript)
 	if mintErr != nil {
 		return stuckReport("failed to mint per-run LiteLLM key", mintErr.Error())
 	}
@@ -536,6 +546,48 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	}, writes)
 	final = withholdLeakedLearnings(final, leaks, branch)
 	return w.keepLearnings(final, trace, work.Reference(item))
+}
+
+// transcriptCloseTimeout bounds how long the last transcript batch may delay
+// the Run's outcome.
+const transcriptCloseTimeout = 10 * time.Second
+
+// startTranscript starts recording the Run's transcript, or returns nil when
+// the worker records none (ADR-0090).
+func (w *Worker) startTranscript(claimed *ClaimResponse, leaks *leakWatch) *transcript.Recorder {
+	if !w.Cfg.Transcript {
+		return nil
+	}
+	token := claimed.RunToken
+	rec := transcript.New(func(ctx context.Context, entries []transcript.Entry) error {
+		return w.API.Transcript(ctx, token, entries)
+	}, transcript.Options{Thoughts: w.Cfg.TranscriptThoughts, Secrets: leaks.values, Log: w.Log})
+	role := claimed.Role
+	if role == "" {
+		role = "default"
+	}
+	rec.Stage(fmt.Sprintf("Harness %s started for role %s", w.Adapter.Name(), role))
+	return rec
+}
+
+func closeTranscript(rec *transcript.Recorder) {
+	ctx, cancel := context.WithTimeout(context.Background(), transcriptCloseTimeout)
+	defer cancel()
+	rec.Close(ctx)
+}
+
+// harnessFinished says in one sentence how the harness ended.
+func harnessFinished(name string, report harness.OutcomeReport, mintErr, runErr error) string {
+	switch {
+	case mintErr != nil:
+		return "The harness did not start: the Run's model key could not be minted"
+	case runErr != nil:
+		return fmt.Sprintf("Harness %s ended with an error: %v", name, runErr)
+	case report.Outcome != "":
+		return fmt.Sprintf("Harness %s finished: %s", name, report.Outcome)
+	default:
+		return fmt.Sprintf("Harness %s finished; the pull request decides the outcome", name)
+	}
 }
 
 // runAgent mints the per-run credential, runs the harness adapter, and

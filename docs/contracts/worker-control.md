@@ -15,6 +15,7 @@ A Run token identifies work; it does not authenticate a managed request. The sig
 | `POST /api/v1/runs/{token}/llm/credential` | Live signed Run capability | One inference key and alias; controller policy selects the budget, models and TTL |
 | `POST /api/v1/runs/{token}/llm/block` | Live signed Run capability | Blocks matching gateway keys while retaining accounting identities |
 | `GET /api/v1/runs/{token}/llm/spend` | Live signed Run capability | Provisional observed cost; absent gateway accounting is an error |
+| `POST /api/v1/runs/{token}/transcript` | Live signed Run capability | Stores a batch of the Run's transcript, clamped and redacted again ([ADR-0090](../adrs/0090-a-runs-agent-session-is-kept-as-a-bounded-redacted-transcript.md)); 404 when ploegd records no transcripts |
 
 Managed worker queue snapshots are unavailable. `GET /api/v1/queue/depth` was removed on 2026-09-23 because nothing consumed it. Human applications use the separately authorized [operator contract](README.md#operator-read-consumers).
 
