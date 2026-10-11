@@ -54,9 +54,14 @@ type UnsettledAccountPage struct {
 	HeldUSD  float64
 }
 
+// StuckBlockedAfter is how long after its Run finished a blocked account that
+// is still unsettled counts as stuck and is listed by UnsettledFinishedAccounts.
+const StuckBlockedAfter = time.Hour
+
 // UnsettledFinishedAccounts lists, oldest first, the accounts PendingLLMBlocks
-// selects, limited to the given Teams (nil means every Team), with the hold
-// each one keeps in run_budget_holds. Limit is between 1 and 200.
+// selects and the blocked accounts whose Run finished more than
+// StuckBlockedAfter ago, limited to the given Teams (nil means every Team),
+// with the hold each one keeps in run_budget_holds. Limit is between 1 and 200.
 func (s *Store) UnsettledFinishedAccounts(ctx context.Context, teams []string, limit int) (UnsettledAccountPage, error) {
 	page := UnsettledAccountPage{Accounts: []UnsettledAccount{}}
 	if limit < 1 || limit > 200 {
@@ -65,8 +70,9 @@ func (s *Store) UnsettledFinishedAccounts(ctx context.Context, teams []string, l
 	rows, err := s.pool.Query(ctx, `SELECT r.id,r.work_item_id,r.team,a.state,h.reserved::float8,a.updated_at,
 		count(*) OVER (),(sum(h.reserved) OVER ())::float8
 		FROM run_llm_accounts a JOIN agent_runs r USING(run_token) JOIN run_budget_holds h USING(run_token)
-		WHERE `+pendingBlockSelection+` AND ($1::text[] IS NULL OR r.team=ANY($1))
-		ORDER BY a.updated_at,r.id LIMIT $2`, teams, limit)
+		WHERE ((`+pendingBlockSelection+`) OR (r.state='finished' AND a.state='blocked' AND r.finished_at<now()-make_interval(secs=>$3)))
+		AND ($1::text[] IS NULL OR r.team=ANY($1))
+		ORDER BY a.updated_at,r.id LIMIT $2`, teams, limit, StuckBlockedAfter.Seconds())
 	if err != nil {
 		return page, err
 	}

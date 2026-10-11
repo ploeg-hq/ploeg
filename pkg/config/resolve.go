@@ -27,7 +27,7 @@ type ScopeResolver interface {
 // The operator writes names; this looks up the ids.
 func (f *File) RoutingTable(ctx context.Context, r ScopeResolver, log *slog.Logger) (target.Table, error) {
 	table := target.Table{Targets: f.registry()}
-	projects := append(append([]Project{}, f.Trackers.Vikunja.Projects...), f.Trackers.Clickup.Projects...)
+	projects := f.allProjects()
 	if len(projects) == 0 {
 		return table, nil
 	}
@@ -107,7 +107,7 @@ func sortedKeys(m map[string]string) []string {
 // back here, this grows with it.
 func (f *File) ScopeTeams() map[string]string {
 	out := map[string]string{}
-	for _, p := range append(append([]Project{}, f.Trackers.Vikunja.Projects...), f.Trackers.Clickup.Projects...) {
+	for _, p := range f.allProjects() {
 		if p.ID != "" && p.Team != "" {
 			out[p.ID] = p.Team
 		}

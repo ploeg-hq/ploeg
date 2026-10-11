@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"net/http"
 	"time"
 
 	"github.com/ploeg-hq/ploeg/pkg/forgebroker"
@@ -14,7 +15,7 @@ const forgeCleanupTimeout = 30 * time.Second
 
 func (s *Server) mintForgeCredential(ctx context.Context, team string, run *store.ClaimedRun) (forgebroker.Credential, bool) {
 	cred, err := s.ForgeCreds.Mint(ctx, forgebroker.MintRequest{
-		RunToken: run.RunToken, Owner: run.Item.Target.Owner, Repo: run.Item.Target.Repo,
+		RunToken: run.RunToken, Owner: run.Item.Target.Owner, Repo: run.Item.Target.Repo, Forge: run.Item.Target.Forge,
 	})
 	if err != nil {
 		s.Log.Error("forge credential mint failed; releasing the run",
@@ -63,4 +64,66 @@ func prefix12(s string) string {
 		return s[:12]
 	}
 	return s
+}
+
+type forgeCredentialResponse struct {
+	ForgeToken          string     `json:"forgeToken"`
+	ForgeTokenExpiresAt *time.Time `json:"forgeTokenExpiresAt,omitempty"`
+}
+
+func (s *Server) handleRefreshForgeCredential(w http.ResponseWriter, r *http.Request) {
+	runToken := r.PathValue("token")
+	if s.ForgeCreds == nil {
+		http.Error(w, "per-run push credentials are not configured", http.StatusConflict)
+		return
+	}
+	target, err := s.Store.WritingRunTarget(r.Context(), runToken)
+	switch {
+	case errors.Is(err, store.ErrNotAWriter):
+		http.Error(w, err.Error(), http.StatusForbidden)
+		return
+	case err != nil:
+		runError(w, err)
+		return
+	}
+	cred, err := s.ForgeCreds.Mint(r.Context(), forgebroker.MintRequest{RunToken: runToken, Owner: target.Owner, Repo: target.Repo, Forge: target.Forge})
+	if err != nil {
+		s.Log.Error("forge credential refresh failed", "run", prefix12(runToken), "err", err)
+		http.Error(w, "could not mint a push credential", http.StatusServiceUnavailable)
+		return
+	}
+	if cred.ID == "" {
+		http.Error(w, "per-run push credentials are not configured", http.StatusConflict)
+		return
+	}
+	previous, err := s.Store.SwapForgeToken(r.Context(), runToken, cred.ID)
+	if err != nil {
+		s.revokeForgeCredential(r.Context(), runToken, cred)
+		if errors.Is(err, store.ErrLeaseLost) {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		runError(w, err)
+		return
+	}
+	if previous != "" && previous != cred.ID {
+		s.revokeForgeCredential(r.Context(), runToken, forgebroker.Credential{ID: previous})
+	}
+	s.Log.Info("push credential refreshed", "run", prefix12(runToken), "repo", target.Owner+"/"+target.Repo)
+	resp := forgeCredentialResponse{ForgeToken: cred.Token}
+	if !cred.ExpiresAt.IsZero() {
+		expires := cred.ExpiresAt.UTC()
+		resp.ForgeTokenExpiresAt = &expires
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func forgeDeliveryID(h http.Header) string {
+	for _, name := range []string{"X-Forgejo-Delivery", "X-Gitea-Delivery"} {
+		if id := h.Get(name); id != "" {
+			return id
+		}
+	}
+	return ""
 }

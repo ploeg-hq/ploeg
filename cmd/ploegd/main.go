@@ -140,6 +140,13 @@ func run(log *slog.Logger) error {
 			"write_backs", cuToken != "",
 			"done_status", cu.DoneStatus != "")
 	}
+	gh, err := githubTracker(cfg, githubTrackerEnvFromOS(), log)
+	if err != nil {
+		return err
+	}
+	if gh != nil {
+		trackers[gh.Name()] = gh
+	}
 
 	// The forge seam. Ploeg comments as the same bot that opens the pull
 	// requests; commenting is not pushing, so it needs no second credential.
@@ -179,6 +186,15 @@ func run(log *slog.Logger) error {
 			log.Warn("PLOEG_GITLAB_SECRET is unset; every GitLab webhook is rejected")
 		}
 	}
+	ghForge, ghApp, err := githubForge(log, githubForgeEnvFromOS())
+	if err != nil {
+		return err
+	}
+	var githubForgeIDs []string
+	if ghForge != nil {
+		forges[ghForge.Name()] = ghForge
+		log.Info("forge provider configured", "dialect", ghForge.Name(), "url", ghForge.BaseURL)
+	}
 	// Bind the INSTANCE id (ADR-0016) to a dialect. PLOEG_TARGET_FORGE names
 	// the instance a Work Target carries; when it happens to equal a dialect
 	// name that binding is already exact. Otherwise a single configured forge
@@ -198,10 +214,14 @@ func run(log *slog.Logger) error {
 			"forge_id", forgeID)
 	}
 	if len(forges) == 0 {
-		log.Info("no forge provider configured (PLOEG_FORGEJO_URL/PLOEG_GITLAB_URL unset); findings will not reach a pull request")
+		log.Info("no forge provider configured (PLOEG_FORGEJO_URL/PLOEG_GITLAB_URL/PLOEG_GITHUB_URL unset); findings will not reach a pull request")
 	}
 
 	forgeCreds, forgeSweeper := forgeCredentials(log)
+	if ghForge != nil {
+		githubForgeIDs = forgeIDsOf(forges, ghForge)
+	}
+	forgeCreds, forgeSweeper = withGitHubCredentials(log, forgeCreds, forgeSweeper, ghApp, githubForgeIDs, forgeID)
 
 	// Gateway credential sweeper (llmbroker.Sweeper) for per-run key
 	// lifecycle: nil = no gateway configured, revocation disabled.
@@ -349,6 +369,7 @@ func run(log *slog.Logger) error {
 		TeamCaps:       runCaps,
 		Forges:         forges,
 		ForgeCreds:     forgeCreds,
+		ClaudeSessions: claudeSessions(log),
 		CreatedWork:    createdWork,
 
 		MetricsCacheTTL: durationOr("PLOEG_METRICS_CACHE_TTL", httpapi.DefaultMetricsCacheTTL),
@@ -457,6 +478,9 @@ func forgeBots() []string {
 	bots := []string{envOr("PLOEG_FORGEJO_BOT", "agent-builder")}
 	if gl := os.Getenv("PLOEG_GITLAB_BOT"); gl != "" {
 		bots = append(bots, gl)
+	}
+	if gh := os.Getenv("PLOEG_GITHUB_BOT"); gh != "" {
+		bots = append(bots, gh)
 	}
 	return bots
 }

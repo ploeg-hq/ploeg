@@ -622,9 +622,38 @@
           "type": "string",
           "enum": [
             "forgejo",
-            "gitlab"
+            "gitlab",
+            "github"
           ],
           "description": "Which forge the workers act against; selects the sibling block of the same name. Also the default dialect for a Work Item whose target names no forge (ADR-0023). One active forge per release: a worker pod holds one forge URL and one credential."
+        },
+        "github": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "url": {
+              "type": "string",
+              "description": "Web root, https://github.com or a GitHub Enterprise Server root; the REST API is derived. Empty = ploegd configures no GitHub forge provider."
+            },
+            "tokenSecret": {
+              "$ref": "#/definitions/secretRef",
+              "description": "The workers' boot credential (AGENT_BUILDER_TOKEN) and, without a GitHub App, the shared credential writing Runs push with. With tracker.github.appId set, writing Runs get a per-Run installation token instead (ADR-0086)."
+            },
+            "readTokenSecret": {
+              "$ref": "#/definitions/readTokenSecretRef",
+              "description": "ADR-0013 tier 1: a read-only fine-grained token for reading Roles. Required (name and key) when any team has a reading Role."
+            },
+            "webhookSecret": {
+              "$ref": "#/definitions/secretRef",
+              "description": "Verifies X-Hub-Signature-256 on POST /webhooks/forge/github. Unset = every GitHub forge webhook is rejected."
+            },
+            "botLogin": {
+              "type": "string",
+              "description": "The GitHub App's bot login, e.g. ploeg[bot], so Ploeg's own reviews never trigger rework."
+            }
+          }
         },
         "gitlab": {
           "type": [
@@ -908,6 +937,39 @@
               "description": "List status name applied when a Shift finishes, e.g. 'for review'. Statuses are per-List custom strings; empty leaves the board untouched."
             }
           }
+        },
+        "github": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "apiUrl": {
+              "type": "string",
+              "description": "GitHub REST API root; empty = https://api.github.com. GitHub Enterprise Server uses https://<host>/api/v3."
+            },
+            "appId": {
+              "type": "string",
+              "description": "GitHub App id. With appPrivateKeySecret it enables issue reads and write-backs through repository-scoped installation tokens (issues:write, metadata:read)."
+            },
+            "appPrivateKeySecret": {
+              "$ref": "#/definitions/secretRef",
+              "description": "The GitHub App's PEM private key. Required with appId."
+            },
+            "webhookSecret": {
+              "$ref": "#/definitions/secretRef",
+              "description": "Verifies X-Hub-Signature-256 on POST /webhooks/tracker/github. Empty = deliveries are rejected."
+            },
+            "teamLabelPrefix": {
+              "type": "string",
+              "description": "Label prefix that names a Team on an issue; empty = 'ploeg:'."
+            },
+            "teamMap": {
+              "type": "string",
+              "description": "Comma-separated login=team pairs: assigning one of these GitHub users dispatches the issue to that Team."
+            }
+          }
         }
       },
       "additionalProperties": false
@@ -986,7 +1048,8 @@
             "openhands",
             "exec",
             "claude-code",
-            "acp"
+            "acp",
+            "claude-environment"
           ]
         },
         "image": {
@@ -1024,6 +1087,9 @@
         },
         "acp": {
           "$ref": "#/definitions/acp"
+        },
+        "claudeEnvironment": {
+          "$ref": "#/definitions/claudeEnvironment"
         },
         "toolchains": {
           "type": "array",
@@ -1076,6 +1142,17 @@
         "name",
         "image"
       ],
+      "additionalProperties": false
+    },
+    "claudeEnvironment": {
+      "description": "claude-environment harness only (ADR-0084): the Team's self-hosted Claude environment and the Secret holding the Team member login that dispatches to it.",
+      "type": "object",
+      "properties": {
+        "environmentId": { "type": "string", "pattern": "^$|^ccpool_.+" },
+        "loginSecret": { "type": "string", "description": "Secret with the keys refreshToken and scopes (CLAUDE_CODE_OAUTH_REFRESH_TOKEN, CLAUDE_CODE_OAUTH_SCOPES)." },
+        "loginVolume": { "type": "string", "description": "PersistentVolumeClaim holding a signed-in Claude config directory, mounted as PLOEG_CLAUDE_CONFIG_DIR. Wins over loginSecret." },
+        "pollInterval": { "type": "string", "pattern": "^$|^[0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h)$" }
+      },
       "additionalProperties": false
     },
     "acp": {

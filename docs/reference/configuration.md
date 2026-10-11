@@ -18,6 +18,8 @@ The generator follows each binary's imports inside the module and records every 
 | Name | Binary | Default | Description | Source |
 | --- | --- | --- | --- | --- |
 | `AGENT_BUILDER_TOKEN` | ploeg-worker | required | Forge token for clone and push. A reading Role gets `executor.forgejo.readTokenSecret` when set. Writers also pass it to the harness. | [main.go](../../cmd/ploeg-worker/main.go) |
+| `CLAUDE_CODE_OAUTH_REFRESH_TOKEN` | ploeg-worker |  | A Team member's claude.ai refresh token. A `claude-environment` worker exchanges it with `claude auth login` in each Run's scratch directory before it dispatches (chart `harness.claudeEnvironment.loginSecret`, key `refreshToken`). Anthropic caps the session-control scope at 30 days, so a person renews it. | [main.go](../../cmd/ploeg-worker/main.go) |
+| `CLAUDE_CODE_OAUTH_SCOPES` | ploeg-worker |  | The scopes the refresh token was issued with, space separated; they must include `user:sessions:claude_code` (chart `harness.claudeEnvironment.loginSecret`, key `scopes`). | [main.go](../../cmd/ploeg-worker/main.go) |
 | `FORGE_URL` | ploeg-worker | required |  | [main.go](../../cmd/ploeg-worker/main.go) |
 | `KUBECONFIG` | ploeg-worker |  | Administrative configuration. The worker refuses to start when it is set. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `KUBERNETES_SERVICE_HOST` | ploeg-worker |  |  | [launcher.go](../../pkg/sandboxlaunch/launcher.go) |
@@ -45,7 +47,12 @@ The generator follows each binary's imports inside the module and records every 
 | `PLOEG_ASK_ALLOWANCE_USD` | ploegd | `2.00` | Monthly Ask Allowance, in US dollars, that a Team's period opens with (ADR-0082). A period keeps the limit its first Ask opened it with. At most 10000 with four decimals; anything else refuses to start. | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_ASK_BUDGET_USD` | ploegd | `0.02` | Per-Ask Budget in US dollars, the cap on the key an Ask is given (ADR-0082). A `(team, ask)` policy in `PLOEG_WORKER_LLM_POLICIES` with a smaller `budgetUsd` lowers it. A Team with no such policy has no Asks. | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_BASE_BRANCH` | ploeg-worker |  | Fallback branch the worker clones, branches from and targets. Unset means the repository default branch. | [main.go](../../cmd/ploeg-worker/main.go) |
+| `PLOEG_CLAUDE_CONFIG_DIR` | ploeg-worker |  | A `CLAUDE_CONFIG_DIR` that already holds a Team member's claude.ai login, which the CLI refreshes in place (chart `harness.claudeEnvironment.loginVolume`, mounted at `/var/lib/ploeg/claude-login`). Unset = the worker logs in per Run from `CLAUDE_CODE_OAUTH_REFRESH_TOKEN`. | [main.go](../../cmd/ploeg-worker/main.go) |
+| `PLOEG_CLAUDE_ENVIRONMENTS` | ploegd |  | `true` enables Runs executed as Claude Code sessions in a Team's self-hosted environment (ADR-0084): a worker records its dispatched session on `POST /api/v1/runs/{token}/claude-session`, and a runner's session hook exchanges Anthropic's session token for the Run's push credential on `POST /api/v1/claude-sessions/forge-credential`. The exchange needs per-run push credentials (`PLOEG_FORGEJO_BOT_PASSWORD`) and `PLOEG_FORGEJO_URL`, under which it names the push remote; the shared token never leaves ploegd. `ops/claude-runner/post-session` is the runner hook that calls it. Anything else leaves both routes answering 404. | [claudesessions.go](../../cmd/ploegd/claudesessions.go) |
+| `PLOEG_CLAUDE_ENVIRONMENT_ID` | ploeg-worker |  | The `ccpool_…` id of the Team's self-hosted Claude environment a `claude-environment` worker dispatches its Runs to (ADR-0084, chart `harness.claudeEnvironment.environmentId`). Required with that harness. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_CLAUDE_PERMISSION_MODE` | ploeg-worker |  |  | [main.go](../../cmd/ploeg-worker/main.go) |
+| `PLOEG_CLAUDE_POLL_INTERVAL` | ploeg-worker |  | How often a `claude-environment` worker asks ploegd whether the runner reported the session's end. Unset = 15s. | [main.go](../../cmd/ploeg-worker/main.go) |
+| `PLOEG_CLAUDE_SESSION_JWKS_URL` | ploegd |  | Where ploegd fetches the keys that sign Claude session tokens. Unset uses Anthropic's published JWKS; tests point it at a fake. | [claudesessions.go](../../cmd/ploegd/claudesessions.go) |
 | `PLOEG_CLICKUP_DONE_STATUS` | ploegd |  | List status applied when a Shift finishes (chart `tracker.clickup.doneStatus`). Empty leaves the board untouched. | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_CLICKUP_SECRET` | ploegd |  | Verifies `X-Signature` on `POST /webhooks/tracker/clickup`. ClickUp generates it when the webhook is registered. ClickUp is registered only when this or `PLOEG_CLICKUP_TOKEN` is set. Unset rejects every ClickUp webhook. | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_CLICKUP_TOKEN` | ploegd |  | Personal ClickUp token for reads and write-backs (chart `tracker.clickup.tokenSecret`). | [main.go](../../cmd/ploegd/main.go) |
@@ -60,14 +67,24 @@ The generator follows each binary's imports inside the module and records every 
 | `PLOEG_DEPLOY_TOKEN` | ploegd |  | Bearer token, 32 to 4096 bytes, that `POST /api/v1/deploys` accepts from pipelines reporting a deploy (ADR-0047, chart `deploys.tokenSecret`). Unset answers 404 on that endpoint. A shorter token stops ploegd at boot. | [operator.go](../../cmd/ploegd/operator.go) |
 | `PLOEG_FORGEJO_ADMIN_TOKEN` | ploeg-worker |  | Controller-only. The worker refuses to start when it is set. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_FORGEJO_ADMIN_TOKEN` | ploegd |  | Ignored with a warning. Forgejo creates access tokens only for a password sign-in, so set `PLOEG_FORGEJO_BOT_PASSWORD` instead. | [forgecreds.go](../../cmd/ploegd/forgecreds.go) |
-| `PLOEG_FORGEJO_BOT` | ploegd | `agent-builder` | Forge user whose push tokens ploegd mints, and the identity agents act as (chart `executor.forgejo.botUser`). A review by this user never sends work back under `teams.<name>.forgeFollowUps`. | [forgecreds.go](../../cmd/ploegd/forgecreds.go), [main.go](../../cmd/ploegd/main.go) |
+| `PLOEG_FORGEJO_BOT` | ploegd | `agent-builder` | Forge user whose push tokens ploegd mints, and the identity agents act as (chart `executor.forgejo.botUser`). A review by this user never sends work back under `teams.<name>.forgeFollowUps`. | [claudesessions.go](../../cmd/ploegd/claudesessions.go), [forgecreds.go](../../cmd/ploegd/forgecreds.go), [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_FORGEJO_BOT_PASSWORD` | ploeg-worker |  | Controller-only. The worker refuses to start when it is set. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_FORGEJO_BOT_PASSWORD` | ploegd |  | Password of `PLOEG_FORGEJO_BOT`. ploegd signs in with it to mint a push token per writing Run, limited to `write:repository` on that Run's repository, and revokes the token when the Run settles (ADR-0013 tier 2, chart `executor.forgejo.botPasswordSecret`). Unset means every Run uses the shared token. | [forgecreds.go](../../cmd/ploegd/forgecreds.go) |
 | `PLOEG_FORGEJO_SECRET` | ploegd |  | HMAC secret that verifies `X-Forgejo-Signature` on `POST /webhooks/forge/forgejo` (chart `executor.forgejo.webhookSecret`). Unset rejects every Forgejo webhook. | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_FORGEJO_TOKEN` | ploegd |  |  | [forgecreds.go](../../cmd/ploegd/forgecreds.go), [main.go](../../cmd/ploegd/main.go) |
-| `PLOEG_FORGEJO_URL` | ploegd |  |  | [forgecreds.go](../../cmd/ploegd/forgecreds.go), [main.go](../../cmd/ploegd/main.go) |
+| `PLOEG_FORGEJO_URL` | ploegd |  |  | [claudesessions.go](../../cmd/ploegd/claudesessions.go), [forgecreds.go](../../cmd/ploegd/forgecreds.go), [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_FORGE_TOKEN_ACCESS` | ploeg-worker |  |  | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_FORGE_TOKEN_ISOLATION` | ploeg-worker |  | `proxy` keeps a writer's forge token in ploeg-worker behind a loopback proxy limited to the Run's repository (ADR-0034). The chart sets it only for a qualified harness without DinD. | [main.go](../../cmd/ploeg-worker/main.go) |
+| `PLOEG_GITHUB_API_URL` | ploegd |  | GitHub REST API root (chart `tracker.github.apiUrl`). Empty means `https://api.github.com`; GitHub Enterprise Server uses `https://<host>/api/v3`. | [github.go](../../cmd/ploegd/github.go), [github_forge.go](../../cmd/ploegd/github_forge.go) |
+| `PLOEG_GITHUB_APP_ID` | ploegd |  | GitHub App id whose installation tokens read issues and write comments back (chart `tracker.github.appId`). Each token is scoped to one repository with `issues:write` and `metadata:read` (ADR-0085). With `PLOEG_GITHUB_URL` set the same App is the GitHub forge's identity, and ploegd mints a revocable installation token per writing Run (ADR-0086). Unset keeps reads and write-backs off. | [github.go](../../cmd/ploegd/github.go), [github_forge.go](../../cmd/ploegd/github_forge.go) |
+| `PLOEG_GITHUB_APP_PRIVATE_KEY` | ploegd |  | The GitHub App's PEM private key (chart `tracker.github.appPrivateKeySecret`). Required with `PLOEG_GITHUB_APP_ID`; ploegd refuses to start with only one of them or an unreadable key. | [github.go](../../cmd/ploegd/github.go), [github_forge.go](../../cmd/ploegd/github_forge.go) |
+| `PLOEG_GITHUB_BOT` | ploegd |  | GitHub login Ploeg acts as, e.g. `ploeg[bot]` (chart `executor.github.botLogin`). A review event from it never sends work back under `teams.<name>.forgeFollowUps`. | [main.go](../../cmd/ploegd/main.go) |
+| `PLOEG_GITHUB_FORGE_SECRET` | ploegd |  | Verifies `X-Hub-Signature-256` on `POST /webhooks/forge/github` (chart `executor.github.webhookSecret`). Unset rejects every GitHub forge webhook. | [github_forge.go](../../cmd/ploegd/github_forge.go) |
+| `PLOEG_GITHUB_TEAM_LABEL_PREFIX` | ploegd |  | Label prefix that names a Team on a GitHub issue (chart `tracker.github.teamLabelPrefix`). Empty means `ploeg:`, so the label `ploeg:bronze` dispatches the issue to Team `bronze`. | [github.go](../../cmd/ploegd/github.go) |
+| `PLOEG_GITHUB_TEAM_MAP` | ploegd |  | `login=team,…` pairs (chart `tracker.github.teamMap`): assigning one of these GitHub users to an issue dispatches it to that Team. Kept apart from `PLOEG_TEAM_MAP`, whose usernames belong to other trackers. | [github.go](../../cmd/ploegd/github.go) |
+| `PLOEG_GITHUB_TOKEN` | ploegd |  | Fine-grained personal access token the GitHub forge uses when no GitHub App is configured (chart `executor.github.tokenSecret`, rendered only without `tracker.github.appId`). Weaker than the App, because Ploeg can neither scope this one shared token per Run nor revoke it. | [github_forge.go](../../cmd/ploegd/github_forge.go) |
+| `PLOEG_GITHUB_TRACKER_SECRET` | ploegd |  | Verifies `X-Hub-Signature-256` on `POST /webhooks/tracker/github` (chart `tracker.github.webhookSecret`). The GitHub Issues tracker is registered when this, `PLOEG_GITHUB_APP_ID` or a `trackers.github.projects` entry is set. Unset rejects every GitHub Issues webhook. | [github.go](../../cmd/ploegd/github.go) |
+| `PLOEG_GITHUB_URL` | ploegd |  | GitHub web root for the GitHub forge, `https://github.com` or a GitHub Enterprise Server root (chart `executor.github.url`). The REST API is derived unless `PLOEG_GITHUB_API_URL` is set. Empty configures no GitHub forge provider (ADR-0086). | [github_forge.go](../../cmd/ploegd/github_forge.go) |
 | `PLOEG_GITLAB_BOT` | ploegd |  | GitLab username Ploeg acts as. Like `PLOEG_FORGEJO_BOT`, a review event from it never sends work back under `teams.<name>.forgeFollowUps`. Unset adds no GitLab identity. | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_GITLAB_SECRET` | ploegd |  | Shared secret GitLab sends as `X-Gitlab-Token` to `POST /webhooks/forge/gitlab` (chart `executor.gitlab.webhookSecret`). Unset rejects every GitLab webhook. | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_GITLAB_TOKEN` | ploegd |  | Token with `api` scope on the target projects, sent as `PRIVATE-TOKEN` (chart `executor.gitlab.tokenSecret`). | [main.go](../../cmd/ploegd/main.go) |
@@ -177,7 +194,7 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `executor.dindResources.requests.cpu` |  | `1` |  | values.yaml |
 | `executor.dindResources.requests.memory` |  | `1536Mi` |  | values.yaml |
 | `executor.enabled` | boolean | `false` | The executor (design §6, docs/contracts/executor.md). Disabled until the ingest path is verified in-cluster; flipping it on requires the LiteLLM + agent-builder secrets and (for dind harnesses) the privileged-DinD PolicyException in the namespace. | values.yaml, values.schema.json |
-| `executor.forge` | one of `"forgejo"`, `"gitlab"` | `forgejo` | Which forge the workers act against; selects the sibling block of the same name. Also the default dialect for a Work Item whose target names no forge (ADR-0023). One active forge per release: a worker pod holds one forge URL and one credential. | values.yaml, values.schema.json |
+| `executor.forge` | one of `"forgejo"`, `"gitlab"`, `"github"` | `forgejo` | Which forge the workers act against; selects the sibling block of the same name. Also the default dialect for a Work Item whose target names no forge (ADR-0023). One active forge per release: a worker pod holds one forge URL and one credential. | values.yaml, values.schema.json |
 | `executor.forgeTokenIsolation` | one of `""`, `"proxy"` | `proxy` | "proxy" keeps a writer's forge token inside ploeg-worker: git and the forge API reach only the Run's own repository through a loopback proxy that adds the token, and the harness sees a placeholder. "" hands the token over. Applies only to a qualified harness without DinD (openhands, acp profile openhands, exec; docs/research/2026-10-04-isolation-qualification.md); any other workload renders with it off, and ploeg-worker logs why. A team's or Role's harness.credentialIsolation overrides both proxies explicitly. | values.yaml, values.schema.json |
 | `executor.forgejo.botPasswordSecret` | [secretRef](#secretref) | `{}` | ADR-0013 tier 2: the password of botUser, which ploegd uses to MINT per-run push tokens limited to the Run's repository. Held only by ploegd, never by a worker. Unset = nothing is minted. | values.yaml, values.schema.json |
 | `executor.forgejo.botUser` | string | `agent-builder` | the forge user whose tokens are minted (default agent-builder) | values.yaml, values.schema.json |
@@ -186,6 +203,11 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `executor.forgejo.tokenSecret` | [secretRef](#secretref) | `{"name": "agent-builder-token", "key": "FORGEJO_TOKEN"}` | Shared bot token every Run uses when no admin token mints per-run push tokens. | values.yaml, values.schema.json |
 | `executor.forgejo.url` | string | `""` | The workers' forge URL (FORGE_URL): clone, push, pull-request API and the forge proxy upstream. An in-cluster URL keeps Run traffic off the public gateway. Required when the executor is enabled on this forge; empty with the executor off = ploegd has no forge provider. | values.yaml, values.schema.json |
 | `executor.forgejo.webhookSecret` | [secretRef](#secretref) | `{}` | HMAC secret that verifies X-Forgejo-Signature on POST /webhooks/forge/forgejo. Unset = every forge webhook is rejected: merges are still found by the periodic pull request reconcile, but human reviews and failed checks never reach Ploeg. | values.yaml, values.schema.json |
+| `executor.github.botLogin` | string | `""` | The GitHub App's bot login, e.g. ploeg[bot], so Ploeg's own reviews never trigger rework. | values.yaml, values.schema.json |
+| `executor.github.readTokenSecret` | [readTokenSecretRef](#readtokensecretref) | `{}` | ADR-0013 tier 1: a read-only fine-grained token for reading Roles. Required (name and key) when any team has a reading Role. | values.yaml, values.schema.json |
+| `executor.github.tokenSecret` | [secretRef](#secretref) | `{"name": "agent-builder-token", "key": "GITHUB_TOKEN"}` | The workers' boot credential (AGENT_BUILDER_TOKEN) and, without a GitHub App, the shared credential writing Runs push with. With tracker.github.appId set, writing Runs get a per-Run installation token instead (ADR-0086). | values.yaml, values.schema.json |
+| `executor.github.url` | string | `""` | Web root, https://github.com or a GitHub Enterprise Server root; the REST API is derived. Empty = ploegd configures no GitHub forge provider. | values.yaml, values.schema.json |
+| `executor.github.webhookSecret` | [secretRef](#secretref) | `{}` | Verifies X-Hub-Signature-256 on POST /webhooks/forge/github. Unset = every GitHub forge webhook is rejected. | values.yaml, values.schema.json |
 | `executor.gitlab.publicUrl` | string | `""` | ploegd's GitLab URL when it differs from the workers' url. Empty = url. | values.yaml, values.schema.json |
 | `executor.gitlab.readTokenSecret` | [readTokenSecretRef](#readtokensecretref) | `{}` | ADR-0013 tier 1, as for forgejo: a read-only credential for reading Roles, so the reader/writer split is enforced at the forge and not only by scheduling. On GitLab a second project access token at read_repository scope. Required (name and key) when any team has a reading Role: the render fails without it rather than hand readers the read-write token. | values.yaml, values.schema.json |
 | `executor.gitlab.tokenSecret` | [secretRef](#secretref) | `{"name": "agent-builder-token", "key": "GITLAB_TOKEN"}` | Token with api scope on the target projects, sent as PRIVATE-TOKEN. ADR-0013 tier 2 does not apply on GitLab: per-run push credentials are minted through a Forgejo admin endpoint with no GitLab equivalent, so this shared token is what writing Runs use. | values.yaml, values.schema.json |
@@ -200,11 +222,16 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `executor.harness.acp.profile` |  | `opencode` | opencode \| qwen-code \| goose \| openhands \| custom (PLOEG_ACP_PROFILE) | values.yaml |
 | `executor.harness.acp.promptTimeout` |  | `""` | Go duration; "" = adapter default (45m) | values.yaml |
 | `executor.harness.args` |  | `[]` | exec harness only: argv template with {taskspec}/{taskfile} | values.yaml |
+| `executor.harness.claudeEnvironment` |  |  | claude-environment harness only (ADR-0084): the Run executes as a Claude Code session in the Team's self-hosted environment, paid by the Team's Claude plan. The agent image needs the claude CLI and git. | values.yaml |
+| `executor.harness.claudeEnvironment.environmentId` |  | `""` | ccpool_… (PLOEG_CLAUDE_ENVIRONMENT_ID) | values.yaml |
+| `executor.harness.claudeEnvironment.loginSecret` |  | `""` |  | values.yaml |
+| `executor.harness.claudeEnvironment.loginVolume` |  | `""` | The Team member login that dispatches, one of two ways. loginVolume names a PersistentVolumeClaim holding a Claude config directory a person signed in to with `claude auth login`; the CLI refreshes it in place. loginSecret names a Secret with keys refreshToken and scopes that each Run exchanges with `claude auth login`. Anthropic caps either login at 30 days, so a person renews it. | values.yaml |
+| `executor.harness.claudeEnvironment.pollInterval` |  | `""` | Go duration; "" = 15s (PLOEG_CLAUDE_POLL_INTERVAL) | values.yaml |
 | `executor.harness.dind` |  | `true` | privileged DinD sidecar + DOCKER_* wiring (OpenHands + gates need it) | values.yaml |
 | `executor.harness.entrypoint` |  | `""` | binary override (PLOEG_HARNESS_ENTRYPOINT); "" = adapter default | values.yaml |
 | `executor.harness.idleTimeout` |  | `15m` | Stops a harness that prints nothing and makes no model call for this long (`PLOEG_HARNESS_IDLE_TIMEOUT`). | values.yaml |
 | `executor.harness.image` |  | `""` | Agent image. REQUIRED with the executor enabled, here, in runnerImage or per team: Ploeg publishes no agent image, so the render fails without one. | values.yaml |
-| `executor.harness.name` |  | `openhands` | openhands \| exec \| claude-code \| acp (PLOEG_HARNESS) | values.yaml |
+| `executor.harness.name` |  | `openhands` | openhands \| exec \| claude-code \| acp \| claude-environment (PLOEG_HARNESS) | values.yaml |
 | `executor.harness.outcomeFile` |  | `""` | exec harness only: OutcomeReport JSON path override | values.yaml |
 | `executor.harness.timeout` |  | `100m` | Stops a harness that runs longer than this (`PLOEG_HARNESS_TIMEOUT`). | values.yaml |
 | `executor.harness.toolchains` |  | `[]` | Language toolchains mounted read-only at /opt/ploeg/toolchains/<name> as image volumes (Kubernetes >= 1.35), pulled by the kubelet, so a Run can run the target repository's checks without registry egress. `path` lists directories inside the image to put on PATH (default /bin); `env` is set in the harness environment (PLOEG_TOOLCHAINS). | values.yaml |
@@ -374,6 +401,13 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `tracker.clickup.tokenSecret` | [secretRef](#secretref) | `{}` | Personal token (pk_…) for reads and write-backs. Empty = the provider logs and no-ops instead of failing runs. | values.yaml, values.schema.json |
 | `tracker.clickup.url` | string | `""` | ClickUp API root; empty = https://api.clickup.com/api/v2 | values.yaml, values.schema.json |
 | `tracker.clickup.webhookSecret` | [secretRef](#secretref) | `{}` | Verifies X-Signature on POST /webhooks/tracker/clickup. ClickUp generates this on webhook registration — capture it, never invent it. Empty = deliveries are rejected. | values.yaml, values.schema.json |
+| `tracker.github` | object or null |  | The GitHub Issues tracker (pkg/provider/githubissues, ADR-0085). A label `ploeg:<team>` on an issue in a repository listed under config.trackers.github.projects dispatches it. webhookSecret verifies deliveries to POST /webhooks/tracker/github; appId with appPrivateKeySecret enables issue reads and write-backs through a GitHub App installation token scoped to one repository, with the permissions issues:write and metadata:read. | values.yaml, values.schema.json |
+| `tracker.github.apiUrl` | string | `""` | GitHub REST API root; empty = https://api.github.com. GitHub Enterprise Server uses https://<host>/api/v3. | values.yaml, values.schema.json |
+| `tracker.github.appId` | string | `""` | GitHub App id. With appPrivateKeySecret it enables issue reads and write-backs through repository-scoped installation tokens (issues:write, metadata:read). | values.yaml, values.schema.json |
+| `tracker.github.appPrivateKeySecret` | [secretRef](#secretref) | `{}` | The GitHub App's PEM private key. Required with appId. | values.yaml, values.schema.json |
+| `tracker.github.teamLabelPrefix` | string | `""` | Label prefix that names a Team on an issue; empty = 'ploeg:'. | values.yaml, values.schema.json |
+| `tracker.github.teamMap` | string | `""` | Comma-separated login=team pairs: assigning one of these GitHub users dispatches the issue to that Team. | values.yaml, values.schema.json |
+| `tracker.github.webhookSecret` | [secretRef](#secretref) | `{}` | Verifies X-Hub-Signature-256 on POST /webhooks/tracker/github. Empty = deliveries are rejected. | values.yaml, values.schema.json |
 | `tracker.tokenSecret` | [secretRef](#secretref) | `{}` | Vikunja API token Secret. Unset keeps write-backs a logged no-op; ingest needs no token. | values.yaml, values.schema.json |
 | `tracker.url` | string | `""` | e.g. https://vikunja.example/api/v1 | values.yaml, values.schema.json |
 | `webhook` |  |  | The Vikunja webhook secret (PLOEG_VIKUNJA_SECRET). Unset = no env is rendered and every Vikunja webhook is rejected; ploegd still starts. | values.yaml |
@@ -412,7 +446,7 @@ name becomes the workload suffix (ploeg-worker-<team>-<role>); writes marks the 
 
 | Key | Type | Description |
 | --- | --- | --- |
-| `name` | one of `"openhands"`, `"exec"`, `"claude-code"`, `"acp"` | `openhands`, `exec`, `claude-code` or `acp`. |
+| `name` | one of `"openhands"`, `"exec"`, `"claude-code"`, `"acp"`, `"claude-environment"` | `openhands`, `exec`, `claude-code` or `acp`. |
 | `image` | string | Agent image. Empty means `executor.runnerImage`. |
 | `entrypoint` | string | Harness binary override. Empty means the adapter default. |
 | `args` | array | `exec` harness only: argv template with `{taskspec}` and `{taskfile}`. |
@@ -422,6 +456,7 @@ name becomes the workload suffix (ploeg-worker-<team>-<role>); writes marks the 
 | `timeout` | string | Stops a harness that runs longer than this. |
 | `idleTimeout` | string | Stops a harness that is silent for this long. |
 | `acp` | [acp](#acp) | `acp` harness settings. |
+| `claudeEnvironment` | [claudeEnvironment](#claudeenvironment) |  |
 | `toolchains` | array |  |
 | `verify` | array |  |
 | `verifyTimeout` | string |  |
@@ -434,6 +469,17 @@ name becomes the workload suffix (ploeg-worker-<team>-<role>); writes marks the 
 | `image` | string |  |
 | `path` | array |  |
 | `env` | object |  |
+
+### claudeEnvironment
+
+claude-environment harness only (ADR-0084): the Team's self-hosted Claude environment and the Secret holding the Team member login that dispatches to it.
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `environmentId` | string |  |
+| `loginSecret` | string | Secret with the keys refreshToken and scopes (CLAUDE_CODE_OAUTH_REFRESH_TOKEN, CLAUDE_CODE_OAUTH_SCOPES). |
+| `loginVolume` | string | PersistentVolumeClaim holding a signed-in Claude config directory, mounted as PLOEG_CLAUDE_CONFIG_DIR. Wins over loginSecret. |
+| `pollInterval` | string |  |
 
 ### acp
 

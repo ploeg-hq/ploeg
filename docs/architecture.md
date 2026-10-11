@@ -51,7 +51,7 @@ Legacy worker authorization and static credential compatibility are explicit mig
 
 ## 6. Providers, harnesses and delivery
 
-The source includes [Vikunja](../pkg/provider/vikunja/), [ClickUp](../pkg/provider/clickup/), [Forgejo](../pkg/provider/forgejo/) and [GitLab](../pkg/provider/gitlab/) integrations. Supported operations differ by provider and configuration. Tracker write-backs, forge operations, team plans and Shift orchestration exist; they are no longer future implementation gaps.
+The source includes [Vikunja](../pkg/provider/vikunja/), [ClickUp](../pkg/provider/clickup/), [GitHub Issues](../pkg/provider/githubissues/), [Forgejo](../pkg/provider/forgejo/), [GitLab](../pkg/provider/gitlab/) and [GitHub](../pkg/provider/github/) integrations. Supported operations differ by provider and configuration. Tracker write-backs, forge operations, team plans and Shift orchestration exist; they are no longer future implementation gaps.
 
 The [harness package](../pkg/harness/) defines Task Spec, Outcome Report and adapters. Published [JSON schemas](contracts/README.md) describe the wire formats. Harness-native conversation state is not a portable checkpoint.
 
@@ -76,7 +76,7 @@ The current boundaries that matter to this audit are:
 - Native harness state is opaque; cross-harness continuation is not guaranteed.
 - Automated checks and a small paid fixture do not qualify arbitrary providers, production deployments or high concurrency.
 - Forge webhooks record and deduplicate every event and settle a Work Item whose pull request was merged or closed. Only a Team's `forgeFollowUps` switches turn a failed check into a repair Follow-Up or a request for changes into rework. A forge without a webhook secret has every delivery rejected. The worker accepts a checkpoint field in its contract but does not automatically populate it from stored progress.
-- The intended Work Target model forbids team-to-repository coupling; legacy executor target defaults remain compatibility behavior. Static forge credentials do not provide per-Run push revocation.
+- The intended Work Target model forbids team-to-repository coupling; legacy executor target defaults remain compatibility behavior. Static forge credentials do not provide per-Run push revocation. GitHub App installation tokens are minted and revoked per Run, but ploegd holds their handles in memory only, so after a restart GitHub's one-hour expiry is the bound ([ADR-0086](adrs/0086-github-is-a-forge-and-a-run-pushes-with-its-own-github-app-installation-token.md)).
 - Historical gap lists and backlog status require a fresh source check before implementing a ticket.
 
 The [pre-audit architecture](https://forgejo.webgrip.dev/webgrip/ploeg/src/commit/94c7c8e2dc07037ee2fd38a69343426e40bd680d/docs/architecture.md) retains the detailed July observations and later additions. It is evidence of earlier understanding, not a second current specification. The [backlog](backlog.md) retains planning history; the tracker owns priority.

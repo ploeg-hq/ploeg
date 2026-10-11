@@ -56,6 +56,33 @@ type RunEnv struct {
 	// stderr touches it; the orchestrator may touch it for other signs of
 	// life, such as model traffic. Nil means output alone counts.
 	Activity *Activity
+	// RemoteSession records and follows a session that runs outside the
+	// worker, such as a Claude Code session in a Team's self-hosted
+	// environment (ADR-0084). Nil = the worker offers none.
+	RemoteSession RemoteSessionAPI
+}
+
+// RemoteSessionAPI is the worker's view of ploegd's record of a remote
+// session.
+type RemoteSessionAPI interface {
+	Record(ctx context.Context, s RemoteSession) error
+	State(ctx context.Context) (RemoteSessionState, error)
+}
+
+// RemoteSession is a session an adapter dispatched for its Run.
+type RemoteSession struct {
+	EnvironmentID, SessionID     string
+	BaseBranch, Title, Reference string
+}
+
+// RemoteSessionState is what the session's runner reported. Reported is
+// false until the runner reported that the session ended.
+type RemoteSessionState struct {
+	Reported     bool
+	ExitReason   string
+	PushedCommit string
+	PullRequest  string
+	FinalMessage string
 }
 
 // ErrIdle is returned by RunCommand when its idle watchdog ended a harness.
