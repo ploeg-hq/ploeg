@@ -60,6 +60,13 @@ The small durable progress record (phase, branch, PR URL) a Run writes via the r
 
 **See also:** [Run](#run), [Task Spec](#task-spec)  
 
+## Client
+*Context: Dispatch*
+
+A customer inside a Tenant that owns some of its tracker sources and repositories. A Work Item takes its Client from them and may have none. Proposed; Ploeg's store does not record it yet.
+
+**See also:** [Tenant](#tenant), [Work Item](#work-item), [Knowledge Scope](#knowledge-scope)  
+
 ## Delivery Candidate
 *Context: Dispatch*
 
@@ -124,6 +131,13 @@ The durable authorization and accounting record for a Run's scoped inference cap
 
 **See also:** [Run](#run), [Operator Execution](#operator-execution)  
 
+## Knowledge Scope
+*Context: Dispatch*
+
+Which Runs a piece of knowledge reaches: the whole Tenant, one Client, one repository, or the Work Items under one root Work Item. Ploeg derives a Run's scopes from its Work Item's records, never from what an agent or request says.
+
+**See also:** [Work Item Note](#work-item-note), [Promotion](#promotion), [Tenant](#tenant)  
+
 ## Lease
 *Context: Dispatch*
 
@@ -168,6 +182,14 @@ The terminal result of a Run, one of: pr_opened, pr_updated, issue_updated, foll
 The output contract of an Agent Container: Outcome, summary, links, and optionally a new Checkpoint, written before exit. An absent report is not a successful outcome; expiry and reconciliation record the recovery state.
 
 **See also:** [Task Spec](#task-spec), [Outcome](#outcome), [Verdict](#verdict)  
+
+## Promotion
+*Context: Dispatch*
+
+A request to turn a Work Item Note into reviewed knowledge for a wider Knowledge Scope. It reaches other work only after a Tenant admin accepts it.
+
+**Do not use:** approval  
+**See also:** [Work Item Note](#work-item-note), [Knowledge Scope](#knowledge-scope)  
 
 ## Publication Operation
 *Context: Integration*
@@ -258,6 +280,13 @@ The ordered set of queued Work Items for one Team — a derived view, not a stor
 **Also known as:** pick-up queue  
 **See also:** [Assignment](#assignment), [Work Item](#work-item)  
 
+## Tenant
+*Context: Dispatch*
+
+The access boundary above Teams: the users, sources, repositories, budgets and knowledge that belong together (one agency in a hosted deployment, one default Tenant self-hosted). Proposed; Ploeg's store does not record it yet.
+
+**See also:** [Team](#team), [Client](#client), [Knowledge Scope](#knowledge-scope)  
+
 ## Tracker Event
 *Context: Integration*
 
@@ -301,6 +330,14 @@ A unit of work: something we have decided to do, or a problem described well eno
 
 **Do not use:** task, ticket  
 **See also:** [Tracker Item](#tracker-item), [Lease](#lease), [Follow-Up](#follow-up), [Work Target](#work-target)  
+
+## Work Item Note
+*Context: Dispatch*
+
+Knowledge a Run, or a person, wrote about one piece of work, stored without review. Only later Runs of Work Items under the same root read it.
+
+**Do not use:** memory  
+**See also:** [Knowledge Scope](#knowledge-scope), [Promotion](#promotion)  
 
 ## Work Target
 *Context: Dispatch*

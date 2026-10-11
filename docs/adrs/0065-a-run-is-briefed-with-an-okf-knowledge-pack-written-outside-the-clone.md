@@ -77,3 +77,4 @@ Chosen option: "Select concepts per Work Item, write them as an OKF directory in
 * Evidence: [OKF knowledge pack proof of concept](../research/2026-10-04-okf-knowledge-pack-poc.md).
 * Unfold system ADR-0020 and the RFC "agents learn from a knowledge base exchanged as OKF" (Unfold `docs/research/2026-10-04-rfc-agent-knowledge.md`).
 * OpenSpec change `add-knowledge-and-context-bundles`.
+* 2026-10-11 — The Tenant graph source is designed in [0085](0085-ploegd-holds-a-tenants-knowledge-graphs-and-serves-a-run-only-its-work-items-scopes.md) (proposed): ploegd serves a Run its scoped concepts and notes through the Run API, and the worker selects them like any other source.
