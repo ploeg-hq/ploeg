@@ -21,7 +21,7 @@ The [configuration reference](../../../docs/reference/configuration.md) lists ev
 | `database.existingSecret.name` | always | Secret holding ploegd's PostgreSQL connection URI under `database.existingSecret.key` (default `uri`). CloudNativePG creates `<cluster>-app` with a `uri` key. |
 | `executor.litellm.adminUrl` | `executor.workerAuth.mode` is `managed` (the default) | LiteLLM management URL, such as `http://litellm.<namespace>.svc.cluster.local:4000`. ploegd refuses to start in managed mode without it. |
 | `executor.litellm.baseUrl` | `executor.enabled` | Model gateway URL the workers call, such as `http://litellm.<namespace>.svc.cluster.local:4000/v1`. |
-| `executor.forgejo.url` or `executor.gitlab.url` | `executor.enabled`, for the forge `executor.forge` names | Forge URL workers clone from and push to. |
+| `executor.forgejo.url`, `executor.gitlab.url` or `executor.github.url` | `executor.enabled`, for the forge `executor.forge` names | Forge URL workers clone from and push to. |
 | `executor.harness.image` | `executor.enabled` | Agent image, unless every team or Role sets its own. |
 | `executor.scaler.host` | `executor.enabled` with the `keda` or `sandbox` executor | PostgreSQL host KEDA polls. It must resolve from the KEDA operator's namespace, so use the full name. |
 
@@ -35,7 +35,7 @@ The chart references these Secrets by name and creates none of them. The names a
 | `agent-litellm-master` (`LITELLM_MASTER_KEY`) | managed worker mode: ploegd's LiteLLM management key |
 | `ploeg-worker-signing` (`key`) | managed worker mode: at least 32 bytes of signing material |
 | `ploeg-worker-bootstrap` (`registry.json`, plus one `<team>--<role>` key per worker) | managed worker mode: the bootstrap registry, a JSON array; `[]` while no team runs |
-| `agent-builder-token` (`FORGEJO_TOKEN` or `GITLAB_TOKEN`) | a forge URL is set |
+| `agent-builder-token` (`FORGEJO_TOKEN`, `GITLAB_TOKEN` or `GITHUB_TOKEN`) | a forge URL is set |
 | `ploeg-scaler` (`password`) | the `keda` or `sandbox` executor |
 
 [Managed workers](../../../docs/ops/managed-workers.md) describes the bootstrap registry and the signing key.

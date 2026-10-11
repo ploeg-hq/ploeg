@@ -1,0 +1,38 @@
+tracker:
+  github:
+    appId: "123456"
+    appPrivateKeySecret:
+      name: ploeg-github-app
+      key: private-key.pem
+    webhookSecret:
+      name: ploeg-github-webhook
+      key: PLOEG_GITHUB_TRACKER_SECRET
+executor:
+  enabled: true
+  forge: github
+  forgejo: null
+  github:
+    url: https://github.com
+    tokenSecret:
+      name: agent-builder-token
+      key: GITHUB_TOKEN
+    readTokenSecret:
+      name: agent-reader-token
+      key: GITHUB_TOKEN
+    webhookSecret:
+      name: ploeg-github-forge-webhook
+      key: PLOEG_GITHUB_FORGE_SECRET
+    botLogin: ploeg[bot]
+  teams:
+    - name: silver
+      model: litellm_proxy/claude-sonnet-5
+      budget: "6"
+      maxReplicaCount: 1
+      harness:
+        name: claude-code
+        dind: false
+      plan:
+        - roles:
+            - {name: builder, writes: true, cap: "3.00"}
+        - roles:
+            - {name: reviewer, writes: false, cap: "0.75", harness: {dind: false}}

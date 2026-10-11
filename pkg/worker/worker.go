@@ -251,6 +251,14 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 		}
 	}
 
+	forgeCred := &forgeCredential{token: forgeToken, log: w.Log}
+	if claimed.ForgeTokenPerRun && claimed.ForgeTokenExpiresAt != nil {
+		forgeCred.expiresAt = *claimed.ForgeTokenExpiresAt
+		forgeCred.refresh = func(ctx context.Context) (string, time.Time, error) {
+			return w.API.RefreshForgeCredential(ctx, claimed.RunToken)
+		}
+	}
+
 	// Resolve the repository BEFORE touching disk: a misconfigured run must
 	// park itself without leaving a clone behind.
 	ref, err := resolveTarget(w.Cfg, item, w.Log)
@@ -407,6 +415,7 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	runEnv = append(runEnv, skillsDirectoryEnv+"="+filepath.Join(home, skills.CanonicalDir))
 	runEnv = append(runEnv, contextEnv...)
 	leaks := leakScope{run: trace, workItem: item.ExternalID, log: w.Log, watch: newLeakWatch()}
+	forgeCred.guard = func(token string) { leaks.watch.guard(credentialForgeToken, token) }
 	if writes {
 		canary, err := newCanaryCredential()
 		if err != nil {
@@ -438,7 +447,7 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 		gitEnv = gitAuthenticationEnvironment(cloneURL, forgeToken)
 	}
 	if writes && forgeToken != "" && w.Cfg.ForgeTokenIsolation == ForgeTokenIsolationProxy {
-		forgeProxy, err := startForgeTokenProxy(ref, forgeToken, forgeWriter, branch, leaks)
+		forgeProxy, err := startForgeTokenProxy(ref, forgeCred, forgeWriter, branch, leaks)
 		if err != nil {
 			return stuckReport("could not isolate the forge token", err.Error())
 		}
@@ -489,6 +498,7 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 		return stuckReport("failed to mint per-run LiteLLM key", mintErr.Error())
 	}
 
+	forgeToken = forgeCred.current(context.WithoutCancel(ctx))
 	// The PR is the ground truth (git/forge state stays the durable medium).
 	after, prErr := readChangeRequest(ref, forgeToken, branch)
 	if prErr != nil {

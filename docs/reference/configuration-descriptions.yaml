@@ -20,7 +20,7 @@ env:
   PLOEG_CLICKUP_URL: ClickUp API root (chart `tracker.clickup.url`). Empty means `https://api.clickup.com/api/v2`.
   PLOEG_GITHUB_TRACKER_SECRET: Verifies `X-Hub-Signature-256` on `POST /webhooks/tracker/github` (chart `tracker.github.webhookSecret`). The GitHub Issues tracker is registered when this, `PLOEG_GITHUB_APP_ID` or a `trackers.github.projects` entry is set. Unset rejects every GitHub Issues webhook.
   PLOEG_GITHUB_API_URL: GitHub REST API root (chart `tracker.github.apiUrl`). Empty means `https://api.github.com`; GitHub Enterprise Server uses `https://<host>/api/v3`.
-  PLOEG_GITHUB_APP_ID: GitHub App id whose installation tokens read issues and write comments back (chart `tracker.github.appId`). Each token is scoped to one repository with `issues:write` and `metadata:read` (ADR-0085). Unset keeps reads and write-backs off.
+  PLOEG_GITHUB_APP_ID: GitHub App id whose installation tokens read issues and write comments back (chart `tracker.github.appId`). Each token is scoped to one repository with `issues:write` and `metadata:read` (ADR-0085). With `PLOEG_GITHUB_URL` set the same App is the GitHub forge's identity, and ploegd mints a revocable installation token per writing Run (ADR-0086). Unset keeps reads and write-backs off.
   PLOEG_GITHUB_APP_PRIVATE_KEY: The GitHub App's PEM private key (chart `tracker.github.appPrivateKeySecret`). Required with `PLOEG_GITHUB_APP_ID`; ploegd refuses to start with only one of them or an unreadable key.
   PLOEG_GITHUB_TEAM_LABEL_PREFIX: Label prefix that names a Team on a GitHub issue (chart `tracker.github.teamLabelPrefix`). Empty means `ploeg:`, so the label `ploeg:bronze` dispatches the issue to Team `bronze`.
   PLOEG_GITHUB_TEAM_MAP: '`login=team,…` pairs (chart `tracker.github.teamMap`): assigning one of these GitHub users to an issue dispatches it to that Team. Kept apart from `PLOEG_TEAM_MAP`, whose usernames belong to other trackers.'
@@ -36,6 +36,10 @@ env:
   PLOEG_FORGEJO_ADMIN_TOKEN:
     ploegd: Ignored with a warning. Forgejo creates access tokens only for a password sign-in, so set `PLOEG_FORGEJO_BOT_PASSWORD` instead.
     ploeg-worker: Controller-only. The worker refuses to start when it is set.
+  PLOEG_GITHUB_URL: GitHub web root for the GitHub forge, `https://github.com` or a GitHub Enterprise Server root (chart `executor.github.url`). The REST API is derived unless `PLOEG_GITHUB_API_URL` is set. Empty configures no GitHub forge provider (ADR-0086).
+  PLOEG_GITHUB_FORGE_SECRET: Verifies `X-Hub-Signature-256` on `POST /webhooks/forge/github` (chart `executor.github.webhookSecret`). Unset rejects every GitHub forge webhook.
+  PLOEG_GITHUB_TOKEN: Fine-grained personal access token the GitHub forge uses when no GitHub App is configured (chart `executor.github.tokenSecret`, rendered only without `tracker.github.appId`). Weaker than the App, because Ploeg can neither scope this one shared token per Run nor revoke it.
+  PLOEG_GITHUB_BOT: GitHub login Ploeg acts as, e.g. `ploeg[bot]` (chart `executor.github.botLogin`). A review event from it never sends work back under `teams.<name>.forgeFollowUps`.
   PLOEG_GITLAB_URL: GitLab base URL without `/api/v4` (chart `executor.gitlab.url`). Empty configures no GitLab provider, so findings never reach a merge request.
   PLOEG_GITLAB_TOKEN: Token with `api` scope on the target projects, sent as `PRIVATE-TOKEN` (chart `executor.gitlab.tokenSecret`).
   PLOEG_GITLAB_SECRET: Shared secret GitLab sends as `X-Gitlab-Token` to `POST /webhooks/forge/gitlab` (chart `executor.gitlab.webhookSecret`). Unset rejects every GitLab webhook.

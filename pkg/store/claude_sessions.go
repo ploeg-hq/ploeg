@@ -5,6 +5,8 @@ import (
 	"errors"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
 // ErrClaudeSessionConflict is returned when a Run already recorded a
@@ -111,4 +113,23 @@ func (s *Store) SwapForgeToken(ctx context.Context, runToken, tokenID string) (s
 		return "", ErrLeaseLost
 	}
 	return previous, err
+}
+
+// WritingRunTarget returns the Work Target of a running writing Run that
+// holds its Lease: the one repository a refreshed push credential may name.
+func (s *Store) WritingRunTarget(ctx context.Context, runToken string) (work.Target, error) {
+	b, found, err := loadRunBinding(ctx, s.pool, runToken)
+	if err != nil {
+		return work.Target{}, err
+	}
+	if !found {
+		return work.Target{}, ErrUnknownRun
+	}
+	if !b.writes {
+		return work.Target{}, ErrNotAWriter
+	}
+	if !b.target.Resolved() {
+		return work.Target{}, ErrUnknownRun
+	}
+	return b.target, nil
 }

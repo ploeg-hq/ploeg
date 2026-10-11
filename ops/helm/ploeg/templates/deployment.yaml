@@ -154,6 +154,33 @@ spec:
             {{- end }}
             {{- end }}
             {{- end }}
+            {{- with .Values.executor.github }}
+            {{- if .url }}
+            {{- /* ADR-0086: the GitHub App id and key are read from
+                 tracker.github, which renders PLOEG_GITHUB_APP_ID and
+                 PLOEG_GITHUB_APP_PRIVATE_KEY once for both. */}}
+            - name: PLOEG_GITHUB_URL
+              value: {{ .url | quote }}
+            {{- if not ((($.Values.tracker | default dict).github | default dict).appId) }}
+            - name: PLOEG_GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .tokenSecret.name }}
+                  key: {{ .tokenSecret.key }}
+            {{- end }}
+            {{- with .webhookSecret }}
+            - name: PLOEG_GITHUB_FORGE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .name }}
+                  key: {{ .key }}
+            {{- end }}
+            {{- with .botLogin }}
+            - name: PLOEG_GITHUB_BOT
+              value: {{ . | quote }}
+            {{- end }}
+            {{- end }}
+            {{- end }}
             - name: PLOEG_TARGET_FORGE
               value: {{ .Values.executor.forge | default "forgejo" | quote }}
             {{- with .Values.tracker }}
