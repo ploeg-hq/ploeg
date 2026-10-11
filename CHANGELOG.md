@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.2.0-rc.18
+
+### Breaking changes
+
+- None. Workers from before this release record no harness and no transcript; ploegd accepts them.
+
+### Changes
+
+- Each Run records the configuration it ran with: its Role's configured model, the harness and its profile (reported by the worker at claim), a hash of its Team plan and the ploegd version (#117, ADR-0091). Settlement also records the LiteLLM model groups that served the Run, and the operator API's Runs carry `modelMismatch`: true when a group other than the configured model served it, such as a fallback. Earlier Runs read these fields as null.
+- The worker records a Run's agent session as a bounded, redacted transcript that operator consumers page through per Run (#113, ADR-0090).
+- Writers open `problem` and `solution` with everyday sentences for a product owner or client and put the technical detail under "For developers" (#116).
+- Ploeg ADR-0083 is accepted and the scoped-knowledge ADRs record the owner's answers (#114, #115); no behaviour change.
+
+### Migration notes
+
+- Migrations 0049 (Run transcripts) and 0050 (Run configuration) add tables and nullable columns only.
+- New settings, all defaulting to on: `PLOEG_RUN_TRANSCRIPTS` (ploegd and ploeg-worker) and `PLOEG_RUN_TRANSCRIPT_THOUGHTS` (ploeg-worker).
+
 ## 0.2.0-rc.17
 
 ### Breaking changes
