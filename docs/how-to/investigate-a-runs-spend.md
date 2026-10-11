@@ -141,6 +141,8 @@ WHERE a.run_token = '<run_token>' ORDER BY j.id;
    ```
 
    `managed settlement unresolved … gateway spend logs unavailable: <cause>` means reading the gateway's spend failed; the cause after the colon says which call and why (`/key/list`, `/spend/logs`, or `/spend/logs/ui` for an account whose key identity was never recorded). Fix the gateway; the sweep retries every interval.
+
+   If `unchanged_for` never grows, something keeps raising the account's observed spend, and each `llm.observed` restarts the quiet period. Before 0.2.0-rc.15, every operator spend read did that even when nothing was spent, so a finished operator execution's account never settled. `GET /api/v1/operator/unsettled-accounts` lists a `blocked` account once its Run finished more than an hour ago, so it shows up there with its hold.
 3. **The account is `minting`, `issued` or `unknown` on a finished Run.** The block sweep retries it. `managed key block retry unresolved` repeating means the gateway cannot revoke the key or report its spend, often because the key is already gone. The account keeps its full hold. `GET /api/v1/operator/unsettled-accounts` lists every such Run in the consumer's Teams, oldest first, with its Work Item, account state, held amount and since when, plus the count and held total. **Not implemented yet:** a command that settles such an account from evidence you have gathered. Follow [Reconcile uncertainty](../ops/managed-workers.md#reconcile-uncertainty): keep the hold, collect the gateway and provider evidence, and record it.
 4. **The Run is still `running`.** Its hold is its authorization. See [Recover a stuck Lease or Run](recover-a-stuck-lease-or-run.md) if it should have ended.
 
