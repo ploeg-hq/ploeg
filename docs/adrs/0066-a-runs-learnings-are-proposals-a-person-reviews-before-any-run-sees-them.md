@@ -68,3 +68,4 @@ Chosen option: "Learnings in the OutcomeReport, stored as proposed OKF concepts,
 * 2026-10-04 — kept proposed by the owner until the measurement spike (VIK-1859) reports. Owner answers recorded meanwhile: a hosted Tenant's knowledge base is an Omnigraph graph per Tenant; an accepted learning lands in the Tenant graph, with an optional pull request to the repository's `knowledge/`; Tenant admins accept or reject learnings, and clients can read learnings about their repositories.
 * Evidence: [OKF knowledge pack proof of concept](../research/2026-10-04-okf-knowledge-pack-poc.md).
 * Unfold system ADR-0020; OpenSpec change `add-knowledge-and-context-bundles`.
+* 2026-10-11 — The owner chose direct Work Item Notes with review only for a wider scope: [0088](0088-a-run-writes-work-item-notes-without-review-and-a-wider-scope-is-a-promotion-a-person-accepts.md) (proposed) replaces this record once accepted.

@@ -106,6 +106,50 @@ terms:
         note: A Shift's Budget pays for delivering one Work Item. An Ask never spends it.
     see_also: [Ask, Team]
 
+  - name: Tenant
+    definition: >
+      The access boundary above Teams: the users, sources, repositories,
+      budgets and knowledge that belong together (one agency in a hosted
+      deployment, one default Tenant self-hosted). Proposed; Ploeg's store
+      does not record it yet.
+    context: Dispatch
+    see_also: [Team, Client, Knowledge Scope]
+
+  - name: Client
+    definition: >
+      A customer inside a Tenant that owns some of its tracker sources and
+      repositories. A Work Item takes its Client from them and may have none.
+      Proposed; Ploeg's store does not record it yet.
+    context: Dispatch
+    see_also: [Tenant, Work Item, Knowledge Scope]
+
+  - name: Knowledge Scope
+    definition: >
+      Which Runs a piece of knowledge reaches: the whole Tenant, one Client,
+      one repository, or the Work Items under one root Work Item. Ploeg derives
+      a Run's scopes from its Work Item's records, never from what an agent or
+      request says.
+    context: Dispatch
+    see_also: [Work Item Note, Promotion, Tenant]
+
+  - name: Work Item Note
+    definition: >
+      Knowledge a Run, or a person, wrote about one piece of work, stored
+      without review. Only later Runs of Work Items under the same root read
+      it.
+    context: Dispatch
+    avoid: [memory]
+    see_also: [Knowledge Scope, Promotion]
+
+  - name: Promotion
+    definition: >
+      A request to turn a Work Item Note into reviewed knowledge for a wider
+      Knowledge Scope. It reaches other work only after a Tenant admin accepts
+      it.
+    context: Dispatch
+    avoid: [approval]
+    see_also: [Work Item Note, Knowledge Scope]
+
   - name: Work Item
     definition: >
       A unit of work: something we have decided to do, or a problem described
