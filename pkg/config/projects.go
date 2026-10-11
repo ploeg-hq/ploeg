@@ -40,7 +40,49 @@ type trackerProjects struct {
 }
 
 func (f *File) trackerProjects() []trackerProjects {
-	return []trackerProjects{{"vikunja", f.Trackers.Vikunja.Projects}, {"clickup", f.Trackers.Clickup.Projects}}
+	return []trackerProjects{{"vikunja", f.Trackers.Vikunja.Projects}, {"clickup", f.Trackers.Clickup.Projects}, {"github", f.githubProjects()}}
+}
+
+func (f *File) allProjects() []Project {
+	var out []Project
+	for _, tr := range f.trackerProjects() {
+		out = append(out, tr.projects...)
+	}
+	return out
+}
+
+func (f *File) githubProjects() []Project {
+	out := make([]Project, 0, len(f.Trackers.Github.Projects))
+	for _, p := range f.Trackers.Github.Projects {
+		if p.ID == "" {
+			p.ID = GitHubScope(p.Name)
+		}
+		out = append(out, p)
+	}
+	return out
+}
+
+// GitHubScope renders a repository "owner/name" as the Scope id the GitHub
+// Issues tracker reports, "owner:name" in lower case, or "" when repo is not
+// owner/name.
+func GitHubScope(repo string) string {
+	owner, name, ok := strings.Cut(strings.ToLower(strings.TrimSpace(repo)), "/")
+	if !ok || owner == "" || name == "" || strings.Contains(name, "/") {
+		return ""
+	}
+	return owner + ":" + name
+}
+
+// GitHubRepositories returns the Scope ids of the configured GitHub
+// repositories, the only ones whose issues are work sources.
+func (f *File) GitHubRepositories() map[string]bool {
+	out := map[string]bool{}
+	for _, p := range f.githubProjects() {
+		if p.ID != "" {
+			out[p.ID] = true
+		}
+	}
+	return out
 }
 
 func gateMap(p Project) (gate.Map, error) {

@@ -58,6 +58,7 @@ for case in ":default" \
 	"ops/helm/ploeg/ci/executor-values.yaml:executor" \
 	"ops/helm/ploeg/ci/executor-cronjob-values.yaml:executor-cronjob" \
 	"ops/helm/ploeg/ci/executor-gitlab-values.yaml:executor-gitlab" \
+	"ops/helm/ploeg/ci/executor-github-values.yaml:executor-github" \
 	"ops/helm/ploeg/ci/executor-sandbox-values.yaml:executor-sandbox" \
 	"ops/helm/ploeg/ci/executor-sandbox-runtimeclass-values.yaml:executor-sandbox-runtimeclass" \
 	"ops/helm/ploeg/ci/executor-sandbox-team-values.yaml:executor-sandbox-team" \

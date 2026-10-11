@@ -186,6 +186,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/v1/runs/{token}/context/{id}", s.handleRunContext)
 	mux.HandleFunc("POST /api/v1/runs/{token}/claude-session", s.handleRecordClaudeSession)
 	mux.HandleFunc("GET /api/v1/runs/{token}/claude-session", s.handleClaudeSessionState)
+	mux.HandleFunc("POST /api/v1/runs/{token}/forge-credential", s.handleRefreshForgeCredential)
 	mux.HandleFunc("POST /api/v1/claude-sessions/forge-credential", s.handleClaudeForgeCredential)
 	mux.HandleFunc("POST /api/v1/claude-sessions/report", s.handleClaudeSessionReport)
 	mux.HandleFunc("GET /api/v1/queue/{team}", s.handleQueue)
@@ -221,6 +222,22 @@ func (s *Server) handleTrackerWebhook(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.Log.Warn("webhook rejected", "provider", name, "err", err)
 		http.Error(w, "webhook rejected", http.StatusBadRequest)
+		return
+	}
+	var delivery string
+	if identifier, ok := tp.(provider.DeliveryIdentifier); ok {
+		delivery = identifier.DeliveryID(r)
+	}
+	deliveryKey := "tracker:" + name
+	recorded, err := s.Store.DeliveryRecorded(r.Context(), deliveryKey, delivery)
+	if err != nil {
+		s.Log.Error("tracker webhook dedup failed", "provider", name, "err", err)
+		http.Error(w, "dedup failed", http.StatusInternalServerError)
+		return
+	}
+	if recorded {
+		s.Log.Info("tracker webhook redelivered; its effects are already recorded", "provider", name, "delivery", delivery)
+		w.WriteHeader(http.StatusAccepted)
 		return
 	}
 	for _, ev := range events {
@@ -280,6 +297,9 @@ func (s *Server) handleTrackerWebhook(w http.ResponseWriter, r *http.Request) {
 		}
 		s.observeGate(r.Context(), name, tp, ev)
 	}
+	if err := s.Store.RecordDelivery(r.Context(), deliveryKey, delivery); err != nil {
+		s.Log.Error("tracker webhook delivery not recorded; a redelivery repeats its idempotent effects", "provider", name, "delivery", delivery, "err", err)
+	}
 	w.WriteHeader(http.StatusAccepted)
 }
 
@@ -301,9 +321,9 @@ func (s *Server) handleForgeWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	delivery := r.Header.Get("X-Forgejo-Delivery")
-	if delivery == "" {
-		delivery = r.Header.Get("X-Gitea-Delivery")
+	delivery := forgeDeliveryID(r.Header)
+	if identifier, ok := fp.(provider.DeliveryIdentifier); ok {
+		delivery = identifier.DeliveryID(r)
 	}
 	seen, err := s.Store.SeenDelivery(r.Context(), name, delivery)
 	if err != nil {
@@ -461,6 +481,10 @@ type claimResponse struct {
 	// Both arrive in the same field, and the worker cannot tell them apart —
 	// which made it log a per-run credential on deployments that have none.
 	ForgeTokenPerRun bool `json:"forgeTokenPerRun,omitempty"`
+	// ForgeTokenExpiresAt is when the forge ends ForgeToken by itself, absent
+	// for a token that lives until it is revoked. The worker refreshes an
+	// expiring token through POST /api/v1/runs/{token}/forge-credential.
+	ForgeTokenExpiresAt *time.Time `json:"forgeTokenExpiresAt,omitempty"`
 	// Planner marks a Role the team's plan configures as a planner
 	// (ADR-0031).
 	Planner bool `json:"planner,omitempty"`
@@ -607,6 +631,10 @@ func (s *Server) respondClaimedRun(w http.ResponseWriter, r *http.Request, req c
 		if cred.ID != "" {
 			resp.ForgeToken = cred.Token
 			resp.ForgeTokenPerRun = true
+			if !cred.ExpiresAt.IsZero() {
+				expires := cred.ExpiresAt.UTC()
+				resp.ForgeTokenExpiresAt = &expires
+			}
 		}
 	}
 

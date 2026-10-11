@@ -49,6 +49,9 @@ type ClaimResponse struct {
 	// token, which arrives in the same field. Only ploegd knows the
 	// difference, so it has to say.
 	ForgeTokenPerRun bool `json:"forgeTokenPerRun,omitempty"`
+	// ForgeTokenExpiresAt is when the forge ends ForgeToken by itself; nil
+	// for a token that lives until it is revoked.
+	ForgeTokenExpiresAt *time.Time `json:"forgeTokenExpiresAt,omitempty"`
 	// Planner selects the planner prompt (ADR-0031): the Run splits or
 	// clarifies its Work Item and returns created Work Items, not code.
 	Planner bool `json:"planner,omitempty"`
@@ -220,6 +223,31 @@ func (a *APIClient) request(ctx context.Context, method, path string, body []byt
 		return nil, fmt.Errorf("run control request failed")
 	}
 	return resp, nil
+}
+
+// RefreshForgeCredential asks ploegd for a new push credential for the Run's
+// repository; ploegd revokes the one it replaces.
+func (a *APIClient) RefreshForgeCredential(ctx context.Context, runToken string) (string, time.Time, error) {
+	resp, err := a.request(ctx, http.MethodPost, "/api/v1/runs/"+runToken+"/forge-credential", nil, a.runCredential(runToken))
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", time.Time{}, fmt.Errorf("forge credential refresh: HTTP %d", resp.StatusCode)
+	}
+	var out struct {
+		ForgeToken          string     `json:"forgeToken"`
+		ForgeTokenExpiresAt *time.Time `json:"forgeTokenExpiresAt"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil || out.ForgeToken == "" {
+		return "", time.Time{}, fmt.Errorf("invalid forge credential response")
+	}
+	var expires time.Time
+	if out.ForgeTokenExpiresAt != nil {
+		expires = *out.ForgeTokenExpiresAt
+	}
+	return out.ForgeToken, expires, nil
 }
 
 func (a *APIClient) Mint(ctx context.Context, req llmbroker.MintRequest) (llmbroker.Credential, error) {

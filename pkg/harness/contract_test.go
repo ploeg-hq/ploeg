@@ -115,6 +115,15 @@ func TestClaimResponseContext_MatchesSchema(t *testing.T) {
 	}
 }
 
+func TestClaimResponseForgeTokenExpiry_MatchesSchema(t *testing.T) {
+	sch := compileSchema(t, "run-api.v1.schema.json#/$defs/claimResponse")
+	claim := map[string]any{"runToken": strings.Repeat("a1", 24), "deadline": "2026-10-04T10:00:00Z",
+		"workItem": fullTaskSpec().WorkItem, "forgeToken": "ghs_x", "forgeTokenPerRun": true, "forgeTokenExpiresAt": "2026-10-04T11:00:00Z"}
+	if err := validate(t, sch, claim); err != nil {
+		t.Errorf("claim with an expiring forge token does not validate: %v", err)
+	}
+}
+
 func TestTaskSpec_MatchesSchema(t *testing.T) {
 	sch := compileSchema(t, "taskspec.v1.schema.json")
 	if err := validate(t, sch, fullTaskSpec()); err != nil {

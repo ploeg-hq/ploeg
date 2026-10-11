@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.2.0-rc.16
+
+### Breaking changes
+
+- None.
+
+### Changes
+
+- `GET /api/v1/operator/unsettled-accounts` also lists a `blocked` account whose Run finished more than an hour ago and that is still unsettled, with `accountState: "blocked"` (#105). Before, such a hold was visible only in `ploeg_llm_accounts_unsettled`, and a consumer's list said nothing was stuck. The block sweep's own selection is unchanged.
+- A `claude-code` Run can execute as a Claude Code session in a Team's self-hosted Claude environment (#104, #106, ADR-0084). A worker records the session it dispatched (`POST /api/v1/runs/{token}/claude-session`); the runner's post-session hook exchanges the session's Anthropic-signed token for the Run's repository-scoped push credential (`POST /api/v1/claude-sessions/forge-credential`). Off unless `PLOEG_CLAUDE_ENVIRONMENTS` is `true`; both routes answer 404 otherwise.
+- Proposed, not built: telling each Run which skills bear on its Work Item (#103, ADR-0083).
+
+### Migration notes
+
+- Migration 0046 adds `claude_sessions`.
+- Consumers that validate `accountState` against the operator schema must accept `blocked` before upgrading. Unfold accepts it from unfold-v0.4.0-rc.69.
+- New settings: `PLOEG_CLAUDE_ENVIRONMENTS` (default off) and `PLOEG_CLAUDE_SESSION_JWKS_URL` (default Anthropic's published JWKS).
+
+## 0.2.0-rc.15
+
+### Breaking changes
+
+- None.
+
+### Changes
+
+- An unchanged gateway spend reading no longer records `llm.observed` (#96). Every operator spend read, which a consumer makes on each heartbeat, wrote another event and restarted a blocked account's quiet period, so a finished operator execution's account never settled and its Shift kept its budget held after it closed.
+- Claiming stopped tracker checks returns at most the requested number every time (#99).
+- The ploeg-mcp how-to keeps the token out of client configuration (#101).
+
+### Migration notes
+
+- None.
+
 ## 0.2.0-rc.14
 
 ### Breaking changes

@@ -41,7 +41,7 @@
           "properties": {
             "forge": {
               "type": "string",
-              "description": "The forge dialect (forgejo, gitlab) or the forge instance id Work Targets carry.",
+              "description": "The forge dialect (forgejo, gitlab, github) or the forge instance id Work Targets carry.",
               "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$"
             },
             "owner": {

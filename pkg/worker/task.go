@@ -6,6 +6,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/ploeg-hq/ploeg/pkg/githubapi"
 	"github.com/ploeg-hq/ploeg/pkg/harness"
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
@@ -239,6 +240,14 @@ func openChangeRequestInstruction(repo harness.RepoRef, base, ref string) string
   and title — sending the token in AGENT_BUILDER_TOKEN as the PRIVATE-TOKEN
   header. Put "%[4]s" in the description.
 `, repo.ForgeURL, url.QueryEscape(repo.ProjectPath()), base, ref)
+	}
+	if repo.Dialect() == harness.ForgeGitHub {
+		return fmt.Sprintf(`- When the work is complete: push the branch and open a pull request with base
+  branch %[3]s via the GitHub API — POST %[1]s/repos/%[2]s/pulls with head,
+  base, title and body — sending the token in AGENT_BUILDER_TOKEN as the
+  "Authorization: Bearer" header. Put "%[4]s" in the PR body. Leave
+  .github/workflows unchanged: the Run's credential cannot push it.
+`, githubapi.APIURL(repo.ForgeURL), repo.ProjectPath(), base, ref)
 	}
 	return fmt.Sprintf(`- When the work is complete: push the branch and open a pull request with base
   branch %[4]s via the Forgejo API (%[1]s/api/v1/repos/%[2]s/%[3]s/pulls)

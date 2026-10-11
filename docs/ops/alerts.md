@@ -215,7 +215,7 @@ ORDER BY w.updated_at;
 
 `max by (state) (ploeg_llm_accounts_unsettled) > 0`. Default: `for: 1h`, warning.
 
-Inference Accounts of finished Runs have stayed `reserved` or `blocked` for an hour. They still hold Shift budget, so the Shift's pool looks smaller than it is. The settlement sweep settles a `reserved` account at once and a `blocked` one after `PLOEG_LLM_SETTLE_AFTER`; a backlog means the sweep is failing, usually because the gateway's spend logs cannot be read.
+Inference Accounts of finished Runs have stayed `reserved` or `blocked` for an hour. They still hold Shift budget, so the Shift's pool looks smaller than it is. The settlement sweep settles a `reserved` account at once and a `blocked` one after `PLOEG_LLM_SETTLE_AFTER`; a backlog means the sweep is failing, usually because the gateway's spend logs cannot be read, or that a `blocked` account never stays quiet because its observed spend keeps being raised (see [Investigate a Run's spend](../how-to/investigate-a-runs-spend.md#6-decide-whether-to-wait-or-act)). `GET /api/v1/operator/unsettled-accounts` lists such an account once its Run finished more than an hour ago.
 
 **Check first:** ploegd's logs for settlement errors, then the accounts:
 
