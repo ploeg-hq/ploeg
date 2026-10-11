@@ -11,7 +11,7 @@ bash scripts/test-release-policy.sh
 openspec validate --all --strict
 required=ops/helm/ploeg/ci/required-values.yaml
 helm lint ops/helm/ploeg -f "$required"
-for variant in executor executor-cronjob executor-gitlab monitoring; do
+for variant in executor executor-cronjob executor-gitlab executor-github monitoring; do
   values="ops/helm/ploeg/ci/${variant}-values.yaml"
   helm lint ops/helm/ploeg -f "$required" -f "$values"
   helm template ploeg ops/helm/ploeg -f "$required" -f "$values" >/dev/null

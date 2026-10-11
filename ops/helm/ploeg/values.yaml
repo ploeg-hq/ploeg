@@ -175,6 +175,22 @@ tracker:
     # Statuses are per-List custom strings, so the finished-status must be
     # NAMED; empty leaves the board untouched.
     doneStatus: ""
+  # The GitHub Issues tracker (pkg/provider/githubissues, ADR-0085). A label
+  # `ploeg:<team>` on an issue in a repository listed under
+  # config.trackers.github.projects dispatches it. webhookSecret verifies
+  # deliveries to POST /webhooks/tracker/github; appId with
+  # appPrivateKeySecret enables issue reads and write-backs through a GitHub
+  # App installation token scoped to one repository, with the permissions
+  # issues:write and metadata:read.
+  github:
+    apiUrl: "" # empty = https://api.github.com; Enterprise Server uses https://<host>/api/v3
+    appId: ""
+    # appPrivateKeySecret: {name: ploeg-github-app, key: private-key.pem}
+    appPrivateKeySecret: {}
+    # webhookSecret: {name: ploeg-github-webhook, key: PLOEG_GITHUB_TRACKER_SECRET}
+    webhookSecret: {}
+    teamLabelPrefix: "" # empty = "ploeg:"
+    teamMap: "" # "login=team,…": assignees that dispatch like a team label
 
 executor:
   # The executor (design §6, docs/contracts/executor.md). Disabled until the
@@ -204,7 +220,7 @@ executor:
   # Global harness defaults; a team's optional `harness:` block overrides
   # these field-by-field (see teams below).
   harness:
-    name: openhands # openhands | exec | claude-code | acp (PLOEG_HARNESS)
+    name: openhands # openhands | exec | claude-code | acp | claude-environment (PLOEG_HARNESS)
     # Agent image. REQUIRED with the executor enabled, here, in runnerImage or
     # per team: Ploeg publishes no agent image, so the render fails without one.
     image: ""
@@ -244,6 +260,20 @@ executor:
       # wholesale, so a wrong provider block is a values edit rather than an
       # agent image rebuild. goose is configured by environment and refuses it.
       configJson: ""
+    # claude-environment harness only (ADR-0084): the Run executes as a Claude
+    # Code session in the Team's self-hosted environment, paid by the Team's
+    # Claude plan. The agent image needs the claude CLI and git.
+    claudeEnvironment:
+      environmentId: "" # ccpool_… (PLOEG_CLAUDE_ENVIRONMENT_ID)
+      # The Team member login that dispatches, one of two ways. loginVolume
+      # names a PersistentVolumeClaim holding a Claude config directory a
+      # person signed in to with `claude auth login`; the CLI refreshes it in
+      # place. loginSecret names a Secret with keys refreshToken and scopes
+      # that each Run exchanges with `claude auth login`. Anthropic caps
+      # either login at 30 days, so a person renews it.
+      loginVolume: ""
+      loginSecret: ""
+      pollInterval: "" # Go duration; "" = 15s (PLOEG_CLAUDE_POLL_INTERVAL)
   # DEPRECATED in favor of harness.image (kept as the fallback so existing
   # value overrides keep working).
   # agent-runner >=1.0.1 only: 1.0.0 mints LiteLLM keys without key_alias (400).
@@ -392,6 +422,40 @@ executor:
     # project access token at read_repository scope.
     readTokenSecret: {}
     webhookSecret: {}
+  github:
+    # GitHub as the forge (ADR-0086): https://github.com, or a GitHub
+    # Enterprise Server web root. The REST API is derived (api.github.com, or
+    # <url>/api/v3); tracker.github.apiUrl overrides it. Empty = ploegd
+    # configures no GitHub forge provider.
+    url: ""
+    # The GitHub App is configured ONCE, under tracker.github.appId and
+    # tracker.github.appPrivateKeySecret, and serves the forge too: ploegd
+    # mints one installation token per writing Run, limited to the Run's
+    # repository with contents:write, pull_requests:write, checks:read,
+    # statuses:read and metadata:read, revokes it when the Run settles, and
+    # GitHub ends it after one hour at the latest. Without an App, writing
+    # Runs use tokenSecret, which Ploeg can neither scope per Run nor revoke.
+    #
+    # tokenSecret is the workers' boot credential (AGENT_BUILDER_TOKEN). With
+    # the App, writing Runs get the minted token instead, so this can be a
+    # read-only fine-grained token; without it, a fine-grained token with
+    # Contents and Pull requests write on the target repositories.
+    tokenSecret:
+      name: agent-builder-token
+      key: GITHUB_TOKEN
+    # As for forgejo: required once a team has a reading Role. A fine-grained
+    # token with Contents, Pull requests, Checks and Commit statuses read.
+    readTokenSecret: {}
+    # Verifies X-Hub-Signature-256 on POST /webhooks/forge/github. A
+    # repository or organization webhook with the pull_request,
+    # pull_request_review, check_run and status events. Unset = every GitHub
+    # forge webhook is rejected.
+    webhookSecret: {}
+    #  name: ploeg-github-forge-webhook
+    #  key: PLOEG_GITHUB_FORGE_SECRET
+    # The App's bot login, e.g. "ploeg[bot]", so reviews Ploeg itself posts
+    # never trigger rework.
+    botLogin: ""
   scaler:
     # REQUIRED for the keda and sandbox executors: the PostgreSQL host KEDA
     # polls, e.g. ploeg-db-rw.<namespace>.svc.cluster.local. Must be a name
@@ -542,6 +606,11 @@ config: {}
 #             done: ["Done"]
 #         - name: "Forgejo Migration" # no default: every ticket needs a repo/<key> label
 #           allow: [app, homelab-cluster]
+#     github:                         # ADR-0085: a `ploeg:<team>` label dispatches an issue
+#       projects:
+#         - name: webgrip/app         # the repository owner/name; no lookup
+#           repo: webgrip/app
+#           branch: development
 #   teams:
 #     bronze:
 #       assignees: [jake, bronze]     # replaces PLOEG_TEAM_MAP

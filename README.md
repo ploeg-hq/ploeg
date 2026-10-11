@@ -22,7 +22,7 @@ An operator consumer supplies the human workbench and delegated workspace execut
 
 Management credentials remain in the controller. [Scoped worker capabilities](docs/contracts/worker-control.md) authorize control and inference. Unknown spending stays unresolved until trusted reconciliation.
 
-The source includes Vikunja and ClickUp tracker integrations, Forgejo and GitLab forge integrations, team plans, tracker write-backs and multiple harness adapters. Capabilities differ by provider. See the [implementation map](docs/architecture.md#6-providers-harnesses-and-delivery) and [published contracts](docs/contracts/README.md).
+The source includes Vikunja, ClickUp and GitHub Issues tracker integrations, Forgejo, GitLab and GitHub forge integrations, team plans, tracker write-backs and multiple harness adapters. Capabilities differ by provider. See the [implementation map](docs/architecture.md#6-providers-harnesses-and-delivery) and [published contracts](docs/contracts/README.md).
 
 Delegated [candidate delivery](docs/contracts/operator-delivery.md) records verified evidence and candidate-bound approval. Its live publisher executor is not enabled. A completed Run is not automatically a published or accepted result.
 
@@ -30,7 +30,7 @@ Delegated [candidate delivery](docs/contracts/operator-delivery.md) records veri
 
 Run `mise run setup`, `mise run verify` and `mise run docs-check`. Run tooling through mise and follow the [repository instructions](AGENTS.md). The [CI workflow](.github/workflows/ci.yml) defines Go build, vet and tests, Helm validation and golden renders, and brand/license checks. The [backlog](docs/backlog.md) records planning history; [GitHub Issues](https://github.com/ploeg-hq/ploeg/issues) owns Ploeg priority.
 
-Hosting Ploeg's backlog on GitHub does not enable GitHub Issues as a runtime tracker. The initial source has no GitHub tracker/forge adapter; that integration is separate planned work.
+GitHub Issues can be a runtime tracker: a `ploeg:<team>` label on an issue in a configured repository dispatches it ([how to connect it](docs/how-to/connect-github-issues.md)). GitHub can also be the forge: a Run pushes and opens its pull request with its own GitHub App installation token ([how to connect it](docs/how-to/connect-github-as-a-forge.md)). Hosting Ploeg's own backlog on GitHub configures nothing; a deployment opts in.
 
 ## Releases
 

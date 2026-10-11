@@ -57,7 +57,7 @@ func gitAuthenticationEnvironment(repositoryURL, token string) []string {
 }
 
 func forgeAuthorizationHeader(token string) string {
-	return "Authorization: Basic " + base64.StdEncoding.EncodeToString([]byte("agent-builder:"+token))
+	return "Authorization: Basic " + base64.StdEncoding.EncodeToString([]byte(gitBasicUser(token)+":"+token))
 }
 
 const gitWaitDelay = 5 * time.Second

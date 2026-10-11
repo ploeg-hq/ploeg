@@ -9,6 +9,7 @@ import (
 	"github.com/ploeg-hq/ploeg/pkg/harness"
 	"github.com/ploeg-hq/ploeg/pkg/harness/adapters/acp"
 	"github.com/ploeg-hq/ploeg/pkg/harness/adapters/claudecode"
+	"github.com/ploeg-hq/ploeg/pkg/harness/adapters/claudeenv"
 	"github.com/ploeg-hq/ploeg/pkg/harness/adapters/execbin"
 	"github.com/ploeg-hq/ploeg/pkg/harness/adapters/openhands"
 )
@@ -16,12 +17,25 @@ import (
 // HarnessConfig selects and configures the harness adapter for this worker
 // (per-team via the Helm harness block → PLOEG_HARNESS* env).
 type HarnessConfig struct {
-	Name           string   // PLOEG_HARNESS: openhands (default) | exec | claude-code | acp
+	Name           string   // PLOEG_HARNESS: openhands (default) | exec | claude-code | acp | claude-environment
 	Entrypoint     string   // PLOEG_HARNESS_ENTRYPOINT: binary override (adapter default when empty)
 	Args           []string // PLOEG_HARNESS_ARGS (JSON array): exec adapter argv template
 	OutcomeFile    string   // PLOEG_OUTCOME_FILE: exec adapter outcome path override
 	PermissionMode string   // PLOEG_CLAUDE_PERMISSION_MODE: claude-code only
 	ACP            ACPConfig
+	// ClaudeEnvironment configures claude-environment (ADR-0084).
+	ClaudeEnvironment ClaudeEnvironmentConfig
+}
+
+// ClaudeEnvironmentConfig configures the claude-environment harness: the
+// Team's self-hosted environment and the Team member login that dispatches
+// to it.
+type ClaudeEnvironmentConfig struct {
+	EnvironmentID string        // PLOEG_CLAUDE_ENVIRONMENT_ID: ccpool_…
+	ConfigDir     string        // PLOEG_CLAUDE_CONFIG_DIR: a CLAUDE_CONFIG_DIR holding the login
+	RefreshToken  string        // CLAUDE_CODE_OAUTH_REFRESH_TOKEN when ConfigDir is empty
+	Scopes        string        // CLAUDE_CODE_OAUTH_SCOPES
+	PollEvery     time.Duration // PLOEG_CLAUDE_POLL_INTERVAL: 0 = adapter default (15s)
 }
 
 // ACPConfig configures the acp harness. Grouped rather than flattened into
@@ -49,6 +63,8 @@ func HarnessBinary(hc HarnessConfig) (string, error) {
 		return firstNonEmpty(hc.Entrypoint, openhands.DefaultEntrypoint), nil
 	case "claude-code":
 		return firstNonEmpty(hc.Entrypoint, claudecode.DefaultBin), nil
+	case claudeenv.Name:
+		return firstNonEmpty(hc.Entrypoint, claudeenv.DefaultBin), nil
 	case "exec":
 		if len(hc.Args) == 0 {
 			return "", fmt.Errorf("exec harness requires a non-empty args template (PLOEG_HARNESS_ARGS)")
@@ -64,7 +80,7 @@ func HarnessBinary(hc HarnessConfig) (string, error) {
 		}
 		return p.Argv[0], nil
 	default:
-		return "", fmt.Errorf("unknown harness %q (known: openhands, exec, claude-code, acp)", hc.Name)
+		return "", fmt.Errorf("unknown harness %q (known: openhands, exec, claude-code, acp, claude-environment)", hc.Name)
 	}
 }
 
@@ -112,6 +128,16 @@ func NewAdapter(hc HarnessConfig) (harness.Adapter, error) {
 		return harness.RunCommand(a), nil
 	case "claude-code":
 		return harness.RunCommand(claudecode.New(hc.Entrypoint, hc.PermissionMode)), nil
+	case claudeenv.Name:
+		c := hc.ClaudeEnvironment
+		if !strings.HasPrefix(c.EnvironmentID, "ccpool_") {
+			return nil, fmt.Errorf("claude-environment needs PLOEG_CLAUDE_ENVIRONMENT_ID set to a ccpool_ id")
+		}
+		if c.ConfigDir == "" && (c.RefreshToken == "" || c.Scopes == "") {
+			return nil, fmt.Errorf("claude-environment needs PLOEG_CLAUDE_CONFIG_DIR, or CLAUDE_CODE_OAUTH_REFRESH_TOKEN with CLAUDE_CODE_OAUTH_SCOPES")
+		}
+		return &claudeenv.Adapter{Bin: hc.Entrypoint, EnvironmentID: c.EnvironmentID, ConfigDir: c.ConfigDir,
+			RefreshToken: c.RefreshToken, Scopes: c.Scopes, PollEvery: c.PollEvery}, nil
 	case "acp":
 		// Session-protocol adapter: implements harness.Adapter directly, so no
 		// RunCommand lift. Profile resolution and permission-mode validation
@@ -131,7 +157,7 @@ func NewAdapter(hc HarnessConfig) (harness.Adapter, error) {
 			IdleTimeout:    hc.ACP.IdleTimeout,
 		})
 	default:
-		return nil, fmt.Errorf("unknown harness %q (known: openhands, exec, claude-code, acp)", hc.Name)
+		return nil, fmt.Errorf("unknown harness %q (known: openhands, exec, claude-code, acp, claude-environment)", hc.Name)
 	}
 }
 

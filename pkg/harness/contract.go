@@ -142,6 +142,7 @@ type RepoRef struct {
 const (
 	ForgeForgejo = "forgejo"
 	ForgeGitLab  = "gitlab"
+	ForgeGitHub  = "github"
 )
 
 func (r RepoRef) Dialect() string {

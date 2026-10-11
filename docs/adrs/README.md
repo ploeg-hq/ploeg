@@ -157,6 +157,10 @@ fails otherwise.
 | [0080](0080-ploeg-keeps-no-run-card-code-and-removes-it-in-one-release.md) | Ploeg keeps no Run card code; its card routes, tables and settings go in one release | accepted | 2026-10-10 |
 | [0081](0081-ploeg-serves-its-operator-reads-as-mcp-tools-through-ploeg-mcp.md) | Ploeg serves its operator reads as MCP tools through a separate ploeg-mcp command | accepted | 2026-10-10 |
 | [0082](0082-an-ask-is-a-read-only-run-outside-the-shift-paid-from-a-periodic-allowance.md) | An Ask is a read-only Run outside the Shift, paid from a periodic allowance | proposed | 2026-10-10 |
+| [0083](0083-a-run-is-told-which-skills-bear-on-its-work-item.md) | A Run is told which skills bear on its Work Item | proposed | 2026-10-11 |
+| [0084](0084-a-claude-code-run-can-execute-in-a-teams-self-hosted-claude-environment.md) | A claude-code Run can execute in its Team's self-hosted Claude environment, paid by the Team's plan | accepted | 2026-10-11 |
+| [0085](0085-a-team-label-on-an-issue-in-a-configured-github-repository-dispatches-it.md) | A team label on an issue in a configured GitHub repository dispatches it, read and written back with a repository-scoped GitHub App token | proposed | 2026-10-11 |
+| [0086](0086-github-is-a-forge-and-a-run-pushes-with-its-own-github-app-installation-token.md) | GitHub is a forge, and a Run pushes with its own GitHub App installation token | proposed | 2026-10-11 |
 
 ## Review calendar
 
@@ -182,6 +186,9 @@ triggers.
 | 2027-01-31 | [0042](0042-a-writing-run-reports-the-problem-and-solution-a-reviewer-reads.md) — or sooner, after the first 20 writer accounts, or when Vloer gains read access to the forge |
 | 2027-01-31 | [0043](0043-a-failed-reading-run-is-retried-and-a-missing-review-closes-review-failed.md), [0044](0044-an-operator-restarts-stopped-work-from-a-round-they-choose.md) — or sooner, when a reading Role reaches `MaxRunAttempts` twice in a month, or restarts from one close reason pass five in a month |
 | 2027-01-31 | [0045](0045-keep-run-usage-and-merge-facts.md) — or sooner, when a third forge provider is added, a harness changes its usage shape, or the first card or KPI query is built on these facts |
+| 2027-01-31 | [0084](0084-a-claude-code-run-can-execute-in-a-teams-self-hosted-claude-environment.md) — or sooner, when self-hosted environments leave beta, Anthropic changes its terms for plan logins, or exposes session usage through an API |
+| 2027-01-31 | [0085](0085-a-team-label-on-an-issue-in-a-configured-github-repository-dispatches-it.md) — or sooner, when the ADR-0060 inbox is built, the GitHub forge provider lands, a deployment needs Projects columns or status labels, or a repository rename duplicates a Work Item |
+| 2027-01-31 | [0086](0086-github-is-a-forge-and-a-run-pushes-with-its-own-github-app-installation-token.md) — or sooner, when GitHub scopes installation tokens to a ref or lists them, ploegd runs more than one replica, or a proxied Run loses push rights at the hour mark |
 | 2027-01-31 | [0047](0047-ploeg-learns-where-a-merged-change-is-deployed-from-a-generic-deploy-endpoint.md) — or sooner, when a GitOps controller should report deploys directly, deploys keep filling the 50-pull-request batch, or a third forge provider is added |
 | 2027-01-31 | [0048](0048-a-pool-held-by-unsettled-runs-waits-for-settlement-before-it-parks.md) — or sooner, when a fix round closes on unsettled holds or a Shift parks as held more than once a month |
 | 2027-01-31 | [0049](0049-a-run-card-reads-the-gateway-for-usage-so-far-while-a-run-is-running.md) — or sooner, when a card read during a Run passes 1 s at p95, LiteLLM offers a per-key token total, or the worker reports usage during a Run |

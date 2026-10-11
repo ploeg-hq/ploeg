@@ -1,0 +1,9 @@
+#!/bin/sh
+# Claude Code Stop hook for runners serving Ploeg (ADR-0084). It keeps the
+# last turn's final message in the checkout's git directory, where the
+# runner's post-session hook reads it and reports it to Ploeg as the Run's
+# outcome. It never fails the turn.
+dir=${CLAUDE_PROJECT_DIR:-$PWD}
+gitdir=$(git -C "$dir" rev-parse --absolute-git-dir 2>/dev/null) || exit 0
+jq -r '.last_assistant_message // empty' > "$gitdir/ploeg-final-message" 2>/dev/null
+exit 0

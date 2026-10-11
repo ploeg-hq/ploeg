@@ -64,6 +64,9 @@ type Server struct {
 	// (ADR-0013 tier 2). Nil = the worker keeps its env credential, which is
 	// the pre-tier-2 behaviour.
 	ForgeCreds forgebroker.Broker
+	// ClaudeSessions enables Runs executed in a Team's self-hosted Claude
+	// environment (ADR-0084). Nil = both of its routes answer 404.
+	ClaudeSessions *ClaudeSessions
 	// RoleCaps supplies the per-Run spending ceiling for a (team, role),
 	// implemented by plan.Plans. Nil = no caps, and the authorization is
 	// bounded by the Shift pool alone.
@@ -181,6 +184,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/v1/runs/{token}/checkpoint", s.handleCheckpoint)
 	mux.HandleFunc("POST /api/v1/runs/{token}/outcome", s.handleOutcome)
 	mux.HandleFunc("GET /api/v1/runs/{token}/context/{id}", s.handleRunContext)
+	mux.HandleFunc("POST /api/v1/runs/{token}/claude-session", s.handleRecordClaudeSession)
+	mux.HandleFunc("GET /api/v1/runs/{token}/claude-session", s.handleClaudeSessionState)
+	mux.HandleFunc("POST /api/v1/runs/{token}/forge-credential", s.handleRefreshForgeCredential)
+	mux.HandleFunc("POST /api/v1/claude-sessions/forge-credential", s.handleClaudeForgeCredential)
+	mux.HandleFunc("POST /api/v1/claude-sessions/report", s.handleClaudeSessionReport)
 	mux.HandleFunc("GET /api/v1/queue/{team}", s.handleQueue)
 	mux.HandleFunc("/api/v1/deploys", s.handleDeploy)
 	mux.Handle("/api/v1/operator/", s.operatorHandler())
@@ -214,6 +222,22 @@ func (s *Server) handleTrackerWebhook(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.Log.Warn("webhook rejected", "provider", name, "err", err)
 		http.Error(w, "webhook rejected", http.StatusBadRequest)
+		return
+	}
+	var delivery string
+	if identifier, ok := tp.(provider.DeliveryIdentifier); ok {
+		delivery = identifier.DeliveryID(r)
+	}
+	deliveryKey := "tracker:" + name
+	recorded, err := s.Store.DeliveryRecorded(r.Context(), deliveryKey, delivery)
+	if err != nil {
+		s.Log.Error("tracker webhook dedup failed", "provider", name, "err", err)
+		http.Error(w, "dedup failed", http.StatusInternalServerError)
+		return
+	}
+	if recorded {
+		s.Log.Info("tracker webhook redelivered; its effects are already recorded", "provider", name, "delivery", delivery)
+		w.WriteHeader(http.StatusAccepted)
 		return
 	}
 	for _, ev := range events {
@@ -273,6 +297,9 @@ func (s *Server) handleTrackerWebhook(w http.ResponseWriter, r *http.Request) {
 		}
 		s.observeGate(r.Context(), name, tp, ev)
 	}
+	if err := s.Store.RecordDelivery(r.Context(), deliveryKey, delivery); err != nil {
+		s.Log.Error("tracker webhook delivery not recorded; a redelivery repeats its idempotent effects", "provider", name, "delivery", delivery, "err", err)
+	}
 	w.WriteHeader(http.StatusAccepted)
 }
 
@@ -294,9 +321,9 @@ func (s *Server) handleForgeWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	delivery := r.Header.Get("X-Forgejo-Delivery")
-	if delivery == "" {
-		delivery = r.Header.Get("X-Gitea-Delivery")
+	delivery := forgeDeliveryID(r.Header)
+	if identifier, ok := fp.(provider.DeliveryIdentifier); ok {
+		delivery = identifier.DeliveryID(r)
 	}
 	seen, err := s.Store.SeenDelivery(r.Context(), name, delivery)
 	if err != nil {
@@ -454,6 +481,10 @@ type claimResponse struct {
 	// Both arrive in the same field, and the worker cannot tell them apart —
 	// which made it log a per-run credential on deployments that have none.
 	ForgeTokenPerRun bool `json:"forgeTokenPerRun,omitempty"`
+	// ForgeTokenExpiresAt is when the forge ends ForgeToken by itself, absent
+	// for a token that lives until it is revoked. The worker refreshes an
+	// expiring token through POST /api/v1/runs/{token}/forge-credential.
+	ForgeTokenExpiresAt *time.Time `json:"forgeTokenExpiresAt,omitempty"`
 	// Planner marks a Role the team's plan configures as a planner
 	// (ADR-0031).
 	Planner bool `json:"planner,omitempty"`
@@ -600,6 +631,10 @@ func (s *Server) respondClaimedRun(w http.ResponseWriter, r *http.Request, req c
 		if cred.ID != "" {
 			resp.ForgeToken = cred.Token
 			resp.ForgeTokenPerRun = true
+			if !cred.ExpiresAt.IsZero() {
+				expires := cred.ExpiresAt.UTC()
+				resp.ForgeTokenExpiresAt = &expires
+			}
 		}
 	}
 

@@ -25,8 +25,9 @@ status=$(curl --silent --show-error --output dist/release-check.json --write-out
 [[ "$status" == 404 ]] || { echo "Release absence not confirmed (HTTP $status); refusing overwrite" >&2; exit 1; }
 image="ghcr.io/ploeg-hq/ploegd:$version"
 chart="ghcr.io/ploeg-hq/charts/ploeg:$version"
+runner_image="ghcr.io/ploeg-hq/claude-runner:$version"
 printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
-for artifact in "$image" "$chart"; do
+for artifact in "$image" "$chart" "$runner_image"; do
   if docker manifest inspect "$artifact" > /dev/null 2>dist/registry-check.txt; then
     echo "Refusing to overwrite $artifact" >&2; exit 1
   fi
@@ -46,14 +47,18 @@ docker buildx build --file ops/docker/ploegd/Dockerfile --platform linux/amd64 \
   --build-arg "IMAGE_CREATED=$(git show -s --format=%cI HEAD)" \
   --provenance=mode=max --sbom=true --metadata-file dist/image-metadata.json \
   --tag "$image" --push .
+docker buildx build --file ops/claude-runner/Dockerfile --platform linux/amd64 \
+  --label "org.opencontainers.image.version=$version" --label "org.opencontainers.image.revision=$commit" \
+  --provenance=mode=max --sbom=true --metadata-file dist/claude-runner-image-metadata.json \
+  --tag "$runner_image" --push .
 helm package ops/helm/ploeg --destination dist
 printf '%s' "$GH_TOKEN" | helm registry login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
 helm push "dist/ploeg-$version.tgz" oci://ghcr.io/ploeg-hq/charts
 printf '%s\n' "$commit" > dist/source-commit.txt
 cp PROVENANCE.md dist/PROVENANCE.md
 printf 'image:\n  repository: ghcr.io/ploeg-hq/ploegd\n  tag: %s\n' "$version" > dist/registry-values.yaml
-(cd dist && sha256sum "ploeg_${version}_linux_amd64.tar.gz" "ploeg-$version.tgz" image-metadata.json source-commit.txt PROVENANCE.md registry-values.yaml > SHA256SUMS)
-printf 'Ploeg %s\n\nIndependent release from commit %s. Experimental: qualification is limited to tested paths.\n\nController and worker: %s (Linux amd64). Helm chart: oci://ghcr.io/ploeg-hq/charts/ploeg, version %s. BuildKit publishes image SBOM and build provenance attestations. Release assets include binaries, chart, checksums and source provenance. Cryptographic release signing is not yet configured.\n\nThis starts the new github.com/ploeg-hq/ploeg module; old webgrip/ploeg versions remain unchanged. No latest alias or deployment is updated. See PROVENANCE.md and the managed-worker migration guide before adoption.\n' "$version" "$commit" "$image" "$version" > dist/release-notes.md
+(cd dist && sha256sum "ploeg_${version}_linux_amd64.tar.gz" "ploeg-$version.tgz" image-metadata.json claude-runner-image-metadata.json source-commit.txt PROVENANCE.md registry-values.yaml > SHA256SUMS)
+printf 'Ploeg %s\n\nIndependent release from commit %s. Experimental: qualification is limited to tested paths.\n\nController and worker: %s (Linux amd64). Self-hosted Claude runner and dispatch image (ADR-0084): ghcr.io/ploeg-hq/claude-runner:%s. Helm chart: oci://ghcr.io/ploeg-hq/charts/ploeg, version %s. BuildKit publishes image SBOM and build provenance attestations. Release assets include binaries, chart, checksums and source provenance. Cryptographic release signing is not yet configured.\n\nThis starts the new github.com/ploeg-hq/ploeg module; old webgrip/ploeg versions remain unchanged. No latest alias or deployment is updated. See PROVENANCE.md and the managed-worker migration guide before adoption.\n' "$version" "$commit" "$image" "$version" "$version" > dist/release-notes.md
 args=()
 [[ "$tag" != *-rc.* ]] || args+=(--prerelease)
-gh release create "$tag" "dist/ploeg_${version}_linux_amd64.tar.gz" "dist/ploeg-$version.tgz" dist/image-metadata.json dist/source-commit.txt dist/PROVENANCE.md dist/registry-values.yaml dist/SHA256SUMS --repo "$GITHUB_REPOSITORY" --verify-tag --latest=false "${args[@]}" --title "Ploeg $version" --notes-file dist/release-notes.md
+gh release create "$tag" "dist/ploeg_${version}_linux_amd64.tar.gz" "dist/ploeg-$version.tgz" dist/image-metadata.json dist/claude-runner-image-metadata.json dist/source-commit.txt dist/PROVENANCE.md dist/registry-values.yaml dist/SHA256SUMS --repo "$GITHUB_REPOSITORY" --verify-tag --latest=false "${args[@]}" --title "Ploeg $version" --notes-file dist/release-notes.md

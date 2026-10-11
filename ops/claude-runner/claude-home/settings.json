@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 10,
+            "command": "\"$CLAUDE_CONFIG_DIR/hooks/save-final-message\""
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -31,11 +31,12 @@ type forgeTokenProxy struct {
 	placeholder string
 }
 
-func startForgeTokenProxy(repo harness.RepoRef, token string, access forgeAccess, runBranch string, leaks leakScope) (*forgeTokenProxy, error) {
+func startForgeTokenProxy(repo harness.RepoRef, tokens forgeTokenSource, access forgeAccess, runBranch string, leaks leakScope) (*forgeTokenProxy, error) {
 	target, err := url.Parse(repo.ForgeURL)
 	if err != nil || target.Host == "" || (target.Scheme != "http" && target.Scheme != "https") {
 		return nil, fmt.Errorf("forge URL %q is not absolute", repo.ForgeURL)
 	}
+	token := tokens.current(context.Background())
 	if token == "" {
 		return nil, fmt.Errorf("no forge token to isolate")
 	}
@@ -53,12 +54,18 @@ func startForgeTokenProxy(repo harness.RepoRef, token string, access forgeAccess
 		return nil, fmt.Errorf("listen for the forge token proxy: %w", err)
 	}
 	scope := newForgeScope(repo, access)
+	publicGitHubAPI := repo.Dialect() == harness.ForgeGitHub && strings.EqualFold(target.Host, "github.com")
 	proxy := &httputil.ReverseProxy{
 		Rewrite: func(r *httputil.ProxyRequest) {
+			kind := scope.kind(r.In)
+			host := target.Host
+			if kind == forgeAPI && publicGitHubAPI {
+				host = toPublicGitHubAPI(r.Out.URL)
+			}
 			r.Out.URL.Scheme = target.Scheme
-			r.Out.URL.Host = target.Host
-			r.Out.Host = target.Host
-			attachForgeToken(r.Out.Header, scope.kind(r.In), repo.Dialect(), token)
+			r.Out.URL.Host = host
+			r.Out.Host = host
+			attachForgeToken(r.Out.Header, kind, repo.Dialect(), tokens.current(r.In.Context()))
 		},
 		FlushInterval: -1,
 	}
@@ -126,6 +133,24 @@ func (p *forgeTokenProxy) placeholderBaseURL() string {
 }
 
 const forgeGitUser = "agent-builder"
+
+const (
+	gitHubPublicAPIHost = "api.github.com"
+	gitHubAPIPathPrefix = "/api/v3"
+)
+
+func toPublicGitHubAPI(u *url.URL) string {
+	u.Path = trimFoldPrefix(u.Path, gitHubAPIPathPrefix)
+	u.RawPath = trimFoldPrefix(u.RawPath, gitHubAPIPathPrefix)
+	return gitHubPublicAPIHost
+}
+
+func trimFoldPrefix(path, prefix string) string {
+	if len(path) >= len(prefix) && strings.EqualFold(path[:len(prefix)], prefix) {
+		return path[len(prefix):]
+	}
+	return path
+}
 
 const maxInspectedAPIBody = 8 << 20
 
@@ -254,6 +279,26 @@ var gitlabWriterEndpoints = append([]forgeEndpoint{
 	{[]string{http.MethodPut}, []string{"merge_requests", anyNumber}},
 }, gitlabReaderEndpoints...)
 
+var githubReaderEndpoints = []forgeEndpoint{
+	{readMethods, nil},
+	{readMethods, []string{"pulls"}},
+	{readMethods, []string{"pulls", anyNumber}},
+	{readMethods, []string{"pulls", anyNumber, "files"}},
+	{readMethods, []string{"pulls", anyNumber, "commits"}},
+	{readMethods, []string{"pulls", anyNumber, "reviews"}},
+	{readMethods, []string{"issues", anyNumber, "comments"}},
+	{postMethod, []string{"issues", anyNumber, "comments"}},
+	{readMethods, []string{"commits", anySegment, "status"}},
+	{readMethods, []string{"commits", anySegment, "statuses"}},
+	{readMethods, []string{"commits", anySegment, "check-runs"}},
+	{readMethods, []string{"statuses", anySegment}},
+}
+
+var githubWriterEndpoints = append([]forgeEndpoint{
+	{postMethod, []string{"pulls"}},
+	{[]string{http.MethodPatch}, []string{"pulls", anyNumber}},
+}, githubReaderEndpoints...)
+
 type forgeScope struct {
 	gitlab    bool
 	project   []string
@@ -275,14 +320,21 @@ func newForgeScope(repo harness.RepoRef, access forgeAccess) forgeScope {
 			forgeEndpoint{readMethods, []string{"info", "refs?service=git-receive-pack"}},
 			forgeEndpoint{postMethod, []string{"git-receive-pack"}})
 	}
-	if repo.Dialect() == harness.ForgeGitLab {
+	switch repo.Dialect() {
+	case harness.ForgeGitLab:
 		s.gitlab = true
 		s.apiPrefix = []string{"api", "v4", "projects"}
 		s.api = gitlabReaderEndpoints
 		if access == forgeWriter {
 			s.api = gitlabWriterEndpoints
 		}
-	} else {
+	case harness.ForgeGitHub:
+		s.apiPrefix = append([]string{"api", "v3", "repos"}, s.project...)
+		s.api = githubReaderEndpoints
+		if access == forgeWriter {
+			s.api = githubWriterEndpoints
+		}
+	default:
 		s.apiPrefix = append([]string{"api", "v1", "repos"}, s.project...)
 		s.api = forgejoReaderEndpoints
 		if access == forgeWriter {
@@ -409,9 +461,11 @@ func attachForgeToken(h http.Header, kind forgeRequestKind, dialect, token strin
 	h.Del("Private-Token")
 	switch {
 	case kind == forgeGit:
-		h.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(forgeGitUser+":"+token)))
+		h.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(gitBasicUser(token)+":"+token)))
 	case kind == forgeAPI && dialect == harness.ForgeGitLab:
 		h.Set("Private-Token", token)
+	case kind == forgeAPI && dialect == harness.ForgeGitHub:
+		h.Set("Authorization", "Bearer "+token)
 	case kind == forgeAPI:
 		h.Set("Authorization", "token "+token)
 	}

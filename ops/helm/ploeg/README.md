@@ -21,7 +21,7 @@ The [configuration reference](../../../docs/reference/configuration.md) lists ev
 | `database.existingSecret.name` | always | Secret holding ploegd's PostgreSQL connection URI under `database.existingSecret.key` (default `uri`). CloudNativePG creates `<cluster>-app` with a `uri` key. |
 | `executor.litellm.adminUrl` | `executor.workerAuth.mode` is `managed` (the default) | LiteLLM management URL, such as `http://litellm.<namespace>.svc.cluster.local:4000`. ploegd refuses to start in managed mode without it. |
 | `executor.litellm.baseUrl` | `executor.enabled` | Model gateway URL the workers call, such as `http://litellm.<namespace>.svc.cluster.local:4000/v1`. |
-| `executor.forgejo.url` or `executor.gitlab.url` | `executor.enabled`, for the forge `executor.forge` names | Forge URL workers clone from and push to. |
+| `executor.forgejo.url`, `executor.gitlab.url` or `executor.github.url` | `executor.enabled`, for the forge `executor.forge` names | Forge URL workers clone from and push to. |
 | `executor.harness.image` | `executor.enabled` | Agent image, unless every team or Role sets its own. |
 | `executor.scaler.host` | `executor.enabled` with the `keda` or `sandbox` executor | PostgreSQL host KEDA polls. It must resolve from the KEDA operator's namespace, so use the full name. |
 
@@ -35,7 +35,7 @@ The chart references these Secrets by name and creates none of them. The names a
 | `agent-litellm-master` (`LITELLM_MASTER_KEY`) | managed worker mode: ploegd's LiteLLM management key |
 | `ploeg-worker-signing` (`key`) | managed worker mode: at least 32 bytes of signing material |
 | `ploeg-worker-bootstrap` (`registry.json`, plus one `<team>--<role>` key per worker) | managed worker mode: the bootstrap registry, a JSON array; `[]` while no team runs |
-| `agent-builder-token` (`FORGEJO_TOKEN` or `GITLAB_TOKEN`) | a forge URL is set |
+| `agent-builder-token` (`FORGEJO_TOKEN`, `GITLAB_TOKEN` or `GITHUB_TOKEN`) | a forge URL is set |
 | `ploeg-scaler` (`password`) | the `keda` or `sandbox` executor |
 
 [Managed workers](../../../docs/ops/managed-workers.md) describes the bootstrap registry and the signing key.
@@ -44,7 +44,7 @@ The chart references these Secrets by name and creates none of them. The names a
 
 Each of these is off until you set it, and ploegd starts without it:
 
-- **Tracker.** `webhook.existingSecret` verifies Vikunja webhooks; `tracker.url` and `tracker.tokenSecret` turn on Vikunja write-backs; `tracker.clickup.*` configures ClickUp. Without a webhook secret, ploegd rejects every tracker webhook.
+- **Tracker.** `webhook.existingSecret` verifies Vikunja webhooks; `tracker.url` and `tracker.tokenSecret` turn on Vikunja write-backs; `tracker.clickup.*` configures ClickUp; `tracker.github.*` configures GitHub Issues (ADR-0085). Without a webhook secret, ploegd rejects every tracker webhook.
 - **Forge for ploegd alone.** With the executor off, `executor.forgejo.url` (or `publicUrl`) still gives ploegd a forge provider for publishing findings. Without it, findings stay in the database.
 - **Scheduling.** `nodeSelector` (ploegd) and `executor.nodeSelector` (workers) are empty. Set a label of your own to keep privileged DinD workers off control-plane nodes.
 - **Monitoring.** `monitoring.serviceMonitor` and `monitoring.prometheusRule` need the Prometheus Operator CRDs.
