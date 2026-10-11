@@ -157,6 +157,7 @@ fails otherwise.
 | [0080](0080-ploeg-keeps-no-run-card-code-and-removes-it-in-one-release.md) | Ploeg keeps no Run card code; its card routes, tables and settings go in one release | accepted | 2026-10-10 |
 | [0081](0081-ploeg-serves-its-operator-reads-as-mcp-tools-through-ploeg-mcp.md) | Ploeg serves its operator reads as MCP tools through a separate ploeg-mcp command | accepted | 2026-10-10 |
 | [0082](0082-an-ask-is-a-read-only-run-outside-the-shift-paid-from-a-periodic-allowance.md) | An Ask is a read-only Run outside the Shift, paid from a periodic allowance | proposed | 2026-10-10 |
+| [0083](0083-a-run-is-told-which-skills-bear-on-its-work-item.md) | A Run is told which skills bear on its Work Item | proposed | 2026-10-11 |
 
 ## Review calendar
 
