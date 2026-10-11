@@ -2,13 +2,15 @@
 # Runner post-session hook for Runs executed in a self-hosted Claude
 # environment (ADR-0084). Install it in the runner's --hooks-dir, read-only.
 #
-# It exchanges the session token for the Run's push credential and pushes the
-# session's commits to the Run's Shift branch. The checkout's git config is
-# writable by the session, so the push happens from a clean temporary
-# repository: no credential helper, insteadOf or pushurl the session wrote
-# ever sees the token.
+# It exchanges the session token for the Run's push credential, pushes the
+# session's commits to the Run's Shift branch, opens the pull request if none
+# is open, and reports the session's end and Claude's final message to Ploeg.
+# The checkout's git config is writable by the session, so the push happens
+# from a clean temporary repository: no credential helper, insteadOf or
+# pushurl the session wrote ever sees the token.
 #
-# Needs PLOEG_URL in the runner's environment, curl and jq.
+# Needs PLOEG_URL in the runner's environment, curl and jq. Pull requests
+# are opened through the Forgejo API.
 set -u -o pipefail
 
 log() { printf 'ploeg post-session: %s\n' "$*" >&2; }
@@ -16,39 +18,77 @@ log() { printf 'ploeg post-session: %s\n' "$*" >&2; }
 : "${PLOEG_URL:?PLOEG_URL is not set}"
 : "${CLAUDE_CODE_SESSION_ACCESS_TOKEN:?no session token}"
 workspace="${CLAUDE_RUNNER_WORKSPACE_PATHS%%:*}"
-[ -n "$workspace" ] && [ -d "$workspace/.git" ] || { log "no workspace; nothing to push"; exit 0; }
-
-g() { git -C "$workspace" -c core.fsmonitor=false -c core.hooksPath=/dev/null "$@"; }
-head=$(g rev-parse --verify -q HEAD) || { log "no commit; nothing to push"; exit 0; }
-
-response=$(curl -fsS --max-time 20 -X POST \
-  -H "Authorization: Bearer ${CLAUDE_CODE_SESSION_ACCESS_TOKEN}" \
-  "${PLOEG_URL%/}/api/v1/claude-sessions/forge-credential") || { log "ploeg refused the push credential exchange"; exit 0; }
-remote=$(jq -re '.remote' <<<"$response") || { log "exchange response has no remote"; exit 0; }
-branch=$(jq -re '.branch' <<<"$response") || { log "exchange response has no branch"; exit 0; }
-case "$remote" in https://*) ;; *) log "refusing a non-HTTPS remote"; exit 0 ;; esac
-
+exit_reason="${CLAUDE_RUNNER_EXIT_REASON:-unknown}"
 clean=$(mktemp -d)
-askpass="$clean/askpass"
 trap 'rm -rf "$clean"' EXIT
-export PLOEG_PUSH_USER PLOEG_PUSH_TOKEN
-PLOEG_PUSH_USER=$(jq -re '.username' <<<"$response") || exit 0
-PLOEG_PUSH_TOKEN=$(jq -re '.token' <<<"$response") || exit 0
-unset response
-cat >"$askpass" <<'ASKPASS'
+pushed="" pull_request="" final_message=""
+
+report() {
+  jq -n --arg exitReason "$exit_reason" --arg pushedCommit "$pushed" --arg pullRequest "$pull_request" \
+    --arg finalMessage "$final_message" '{exitReason: $exitReason, pushedCommit: $pushedCommit, pullRequest: $pullRequest, finalMessage: $finalMessage}' |
+    curl -fsS --max-time 20 -X POST -H @"$clean/session-auth" -H 'Content-Type: application/json' \
+      --data-binary @- "${PLOEG_URL%/}/api/v1/claude-sessions/report" >/dev/null ||
+    log "could not report the session to ploeg"
+}
+printf 'Authorization: Bearer %s\n' "$CLAUDE_CODE_SESSION_ACCESS_TOKEN" >"$clean/session-auth"
+
+deliver() {
+  [ -n "$workspace" ] && [ -d "$workspace/.git" ] || { log "no workspace; nothing to push"; return; }
+  g() { git -C "$workspace" -c core.fsmonitor=false -c core.hooksPath=/dev/null "$@"; }
+  local gitdir head response remote branch base title reference api
+  gitdir=$(g rev-parse --absolute-git-dir) || return
+  [ -f "$gitdir/ploeg-final-message" ] && final_message=$(head -c 65536 "$gitdir/ploeg-final-message")
+  head=$(g rev-parse --verify -q HEAD) || { log "no commit; nothing to push"; return; }
+
+  response=$(curl -fsS --max-time 20 -X POST -H @"$clean/session-auth" \
+    "${PLOEG_URL%/}/api/v1/claude-sessions/forge-credential") || { log "no push credential for this session"; return; }
+  remote=$(jq -re '.remote' <<<"$response") || return
+  branch=$(jq -re '.branch' <<<"$response") || return
+  base=$(jq -re '.baseBranch' <<<"$response") || return
+  title=$(jq -r '.title' <<<"$response")
+  reference=$(jq -r '.reference' <<<"$response")
+  case "$remote" in https://*.git) ;; *) log "refusing remote $remote"; return ;; esac
+  export PLOEG_PUSH_USER PLOEG_PUSH_TOKEN
+  PLOEG_PUSH_USER=$(jq -re '.username' <<<"$response") || return
+  PLOEG_PUSH_TOKEN=$(jq -re '.token' <<<"$response") || return
+  unset response
+  printf 'Authorization: token %s\n' "$PLOEG_PUSH_TOKEN" >"$clean/forge-auth"
+  cat >"$clean/askpass" <<'ASKPASS'
 #!/bin/sh
 case "$1" in Username*) printf '%s\n' "$PLOEG_PUSH_USER" ;; *) printf '%s\n' "$PLOEG_PUSH_TOKEN" ;; esac
 ASKPASS
-chmod 700 "$askpass"
+  chmod 700 "$clean/askpass"
 
-export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_TERMINAL_PROMPT=0
-unset GIT_CONFIG_COUNT
-git init -q --bare "$clean/repo.git"
-GIT_ALLOW_PROTOCOL=file git -C "$clean/repo.git" fetch -q --no-tags "$workspace" "+$head:refs/heads/push" \
-  || { log "could not copy the session's commits"; exit 0; }
-if GIT_ALLOW_PROTOCOL=https GIT_ASKPASS="$askpass" \
-  git -C "$clean/repo.git" -c credential.helper= push -q "$remote" "refs/heads/push:refs/heads/$branch"; then
+  (
+    export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_TERMINAL_PROMPT=0
+    unset GIT_CONFIG_COUNT
+    git init -q --bare "$clean/repo.git" &&
+      GIT_ALLOW_PROTOCOL=file git -C "$clean/repo.git" fetch -q --no-tags "$workspace" "+$head:refs/heads/push" &&
+      GIT_ALLOW_PROTOCOL=https GIT_ASKPASS="$clean/askpass" \
+        git -C "$clean/repo.git" -c credential.helper= push -q "$remote" "refs/heads/push:refs/heads/$branch"
+  ) || { log "push to $branch failed"; return; }
+  pushed=$head
   log "pushed ${head:0:12} to $branch"
-else
-  log "push to $branch failed"
-fi
+
+  api="${remote%.git}"
+  api="${api%/*/*}/api/v1/repos/${remote#https://*/}"
+  api="${api%.git}"
+  pull_request=$(curl -fsS --max-time 20 -H @"$clean/forge-auth" "$api/pulls?state=open&limit=50" |
+    jq -r --arg b "$branch" '[.[] | select(.head.ref == $b)][0].html_url // empty') || pull_request=""
+  if [ -z "$pull_request" ]; then
+    local body
+    body=$(jq -rn --arg m "$final_message" --arg ref "$reference" '
+      (first($m | capture("(?s)(?<j>\\{.*\\})").j | fromjson?) // null) as $o |
+      if ($o | type) == "object" and ($o.problem // "") != "" then
+        "## Problem\n\n\($o.problem)\n\n## Solution\n\n\($o.solution // "")\n\n\($ref)"
+      else $ref end')
+    pull_request=$(jq -n --arg head "$branch" --arg base "$base" --arg title "$title" --arg body "$body" \
+      '{head: $head, base: $base, title: $title, body: $body}' |
+      curl -fsS --max-time 20 -X POST -H @"$clean/forge-auth" -H 'Content-Type: application/json' \
+        --data-binary @- "$api/pulls" | jq -r '.html_url // empty') || pull_request=""
+    [ -n "$pull_request" ] && log "opened $pull_request" || log "could not open the pull request"
+  fi
+}
+
+deliver
+report

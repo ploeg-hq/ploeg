@@ -140,6 +140,45 @@ func (a *APIClient) ContextBundle(ctx context.Context, runToken string, ref harn
 	return io.ReadAll(io.LimitReader(resp.Body, ref.Bytes+1))
 }
 
+// remoteSession is the claude-environment adapter's view of ploegd's record
+// of the session it dispatched for one Run (ADR-0084).
+type remoteSession struct {
+	api   *APIClient
+	token string
+}
+
+func (r remoteSession) Record(_ context.Context, s harness.RemoteSession) error {
+	return r.api.post("/api/v1/runs/"+r.token+"/claude-session", map[string]string{
+		"environmentId": s.EnvironmentID, "sessionId": s.SessionID,
+		"baseBranch": s.BaseBranch, "title": s.Title, "reference": s.Reference,
+	})
+}
+
+func (r remoteSession) State(ctx context.Context) (harness.RemoteSessionState, error) {
+	resp, err := r.api.request(ctx, http.MethodGet, "/api/v1/runs/"+r.token+"/claude-session", nil, r.api.runCredential(r.token))
+	if err != nil {
+		return harness.RemoteSessionState{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return harness.RemoteSessionState{}, fmt.Errorf("run control: HTTP %d", resp.StatusCode)
+	}
+	var body struct {
+		ReportedAt   *time.Time `json:"reportedAt"`
+		ExitReason   string     `json:"exitReason"`
+		PushedCommit string     `json:"pushedCommit"`
+		PullRequest  string     `json:"pullRequest"`
+		FinalMessage string     `json:"finalMessage"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&body); err != nil {
+		return harness.RemoteSessionState{}, err
+	}
+	return harness.RemoteSessionState{
+		Reported: body.ReportedAt != nil, ExitReason: body.ExitReason,
+		PushedCommit: body.PushedCommit, PullRequest: body.PullRequest, FinalMessage: body.FinalMessage,
+	}, nil
+}
+
 func (a *APIClient) post(path string, v any) error {
 	body, err := json.Marshal(v)
 	if err != nil {

@@ -2,13 +2,19 @@
 
 A Run can execute as a Claude Code session in a Team's self-hosted environment ([ADR-0084](../../docs/adrs/0084-a-claude-code-run-can-execute-in-a-teams-self-hosted-claude-environment.md)). The runner belongs to the Team; Ploeg gives it no standing forge credential.
 
-`post-session` is the runner's lifecycle hook. After the session ends it exchanges the session's token at `POST /api/v1/claude-sessions/forge-credential` for a push credential scoped to the Run, and pushes the session's `HEAD` to the Run's Shift branch from a clean temporary repository, so git config written by the session never sees the token. A reading Run, a finished Run or a lapsed Lease gets no credential, and the hook pushes nothing.
+How a Run travels:
+
+1. A worker with the `claude-environment` harness dispatches the session with `claude -p … --environment <ccpool_…>` and records it on `POST /api/v1/runs/{token}/claude-session`. Claude is told to commit, not push, and to end with the Run's outcome JSON.
+2. `claude-home/hooks/save-final-message` is a Claude Code Stop hook. It keeps the last final message in the checkout's git directory.
+3. `post-session` is the runner's lifecycle hook. After the session ends it exchanges the session's token at `POST /api/v1/claude-sessions/forge-credential` for a push credential scoped to the Run, pushes the session's `HEAD` to the Run's Shift branch from a clean temporary repository so git config written by the session never sees the token, opens the pull request through the Forgejo API if none is open, and reports the end, the commit, the pull request and the final message on `POST /api/v1/claude-sessions/report`. A reading Run, a finished Run or a lapsed Lease gets no credential; the hook then pushes nothing and only reports.
+4. The worker polls `GET /api/v1/runs/{token}/claude-session` until the report arrives, reads the outcome from the final message and continues as for any harness: it reads the pull request, verifies the pushed commit and scans it for leaked credentials.
 
 ## Runner settings
 
 | Setting | Why |
 | --- | --- |
 | `--hooks-dir` pointing at a read-only copy of this directory | The session must not be able to change the hook. |
+| `claude-home/` copied to the runner user's `~/.claude/` before the runner starts | The runner seeds every session from it, which installs the Stop hook. |
 | `PLOEG_URL` in the runner's environment | Where the hook exchanges the session token. |
 | `--capacity 1` | One session per container, so nothing the hook handles outlives its session. |
 | `--release-idle-session-min 1` | Otherwise a finished session holds its slot for 15 minutes before the hook runs. |
@@ -17,4 +23,6 @@ A Run can execute as a Claude Code session in a Team's self-hosted environment (
 
 The image needs `git`, `curl` and `jq`. ploegd needs `PLOEG_CLAUDE_ENVIRONMENTS=true`, per-run push credentials (`PLOEG_FORGEJO_BOT_PASSWORD`) and `PLOEG_FORGEJO_URL`; see [the configuration reference](../../docs/reference/configuration.md).
 
-Not built yet: the worker dispatching the session and recording it on `POST /api/v1/runs/{token}/claude-session`, and the outcome path.
+The worker needs `claude` and `git` in its agent image, and a Team member's login: the chart's `harness.claudeEnvironment.loginSecret` names a Secret with `refreshToken` and `scopes` from that member's `claude auth login`. Anthropic caps the session-control scope at 30 days, so a person renews it; `claude setup-token` does not grant it.
+
+Not built yet: the plan-paid cost status (these Runs still mint and settle an unused gateway key), and pull requests on GitLab.

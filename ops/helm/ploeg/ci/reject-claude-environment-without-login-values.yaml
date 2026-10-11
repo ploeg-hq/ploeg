@@ -1,0 +1,16 @@
+# CI-only values that MUST fail to render (scripts/helm-golden.sh): a
+# claude-environment harness cannot dispatch without a Team login (ADR-0084).
+executor:
+  enabled: true
+  teams:
+    - name: pewter
+      model: litellm_proxy/claude-sonnet-5
+      budget: "1"
+      repoOwner: webgrip
+      repoName: example
+      harness:
+        name: claude-environment
+        image: harbor.webgrip.dev/webgrip/claude-dispatch:0.1.0
+        dind: false
+        claudeEnvironment:
+          environmentId: ccpool_example

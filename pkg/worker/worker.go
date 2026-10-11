@@ -461,9 +461,10 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 				w.Log.Warn("checkpoint failed", "err", err)
 			}
 		},
-		Log:         w.Log,
-		IdleTimeout: w.Cfg.HarnessIdleTimeout,
-		Activity:    harness.NewActivity(),
+		Log:           w.Log,
+		IdleTimeout:   w.Cfg.HarnessIdleTimeout,
+		Activity:      harness.NewActivity(),
+		RemoteSession: remoteSession{api: w.API, token: claimed.RunToken},
 	}
 
 	env.BaseEnv = append(env.BaseEnv, gitEnv...)

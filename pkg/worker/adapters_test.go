@@ -23,6 +23,10 @@ func TestNewAdapter_RejectsMisconfiguration(t *testing.T) {
 		{"custom profile without argv", HarnessConfig{Name: "acp", ACP: ACPConfig{Profile: "custom"}}, "requires an explicit argv"},
 		{"unknown permission mode", HarnessConfig{Name: "acp", ACP: ACPConfig{PermissionMode: "yolo"}}, "unknown acp permission mode"},
 		{"exec without argv", HarnessConfig{Name: "exec"}, ""},
+		{"claude-environment without an environment", HarnessConfig{Name: "claude-environment",
+			ClaudeEnvironment: ClaudeEnvironmentConfig{ConfigDir: "/login"}}, "PLOEG_CLAUDE_ENVIRONMENT_ID"},
+		{"claude-environment without a login", HarnessConfig{Name: "claude-environment",
+			ClaudeEnvironment: ClaudeEnvironmentConfig{EnvironmentID: "ccpool_x", RefreshToken: "rt"}}, "CLAUDE_CODE_OAUTH_SCOPES"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := NewAdapter(tc.hc)
@@ -45,6 +49,10 @@ func TestNewAdapter_AcceptsValidConfigurations(t *testing.T) {
 		{"default is openhands", HarnessConfig{}, "openhands"},
 		{"openhands explicit", HarnessConfig{Name: "openhands"}, "openhands"},
 		{"claude-code", HarnessConfig{Name: "claude-code"}, "claude-code"},
+		{"claude-environment with a refresh token", HarnessConfig{Name: "claude-environment",
+			ClaudeEnvironment: ClaudeEnvironmentConfig{EnvironmentID: "ccpool_x", RefreshToken: "rt", Scopes: "user:sessions:claude_code"}}, "claude-environment"},
+		{"claude-environment with a config directory", HarnessConfig{Name: "claude-environment",
+			ClaudeEnvironment: ClaudeEnvironmentConfig{EnvironmentID: "ccpool_x", ConfigDir: "/login"}}, "claude-environment"},
 		{"acp defaults to opencode", HarnessConfig{Name: "acp"}, "acp"},
 		{"acp qwen-code", HarnessConfig{Name: "acp", ACP: ACPConfig{Profile: "qwen-code"}}, "acp"},
 		{"acp goose read-only", HarnessConfig{Name: "acp", ACP: ACPConfig{Profile: "goose", PermissionMode: "allow_read_only"}}, "acp"},

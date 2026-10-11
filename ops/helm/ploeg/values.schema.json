@@ -986,7 +986,8 @@
             "openhands",
             "exec",
             "claude-code",
-            "acp"
+            "acp",
+            "claude-environment"
           ]
         },
         "image": {
@@ -1024,6 +1025,9 @@
         },
         "acp": {
           "$ref": "#/definitions/acp"
+        },
+        "claudeEnvironment": {
+          "$ref": "#/definitions/claudeEnvironment"
         },
         "toolchains": {
           "type": "array",
@@ -1076,6 +1080,16 @@
         "name",
         "image"
       ],
+      "additionalProperties": false
+    },
+    "claudeEnvironment": {
+      "description": "claude-environment harness only (ADR-0084): the Team's self-hosted Claude environment and the Secret holding the Team member login that dispatches to it.",
+      "type": "object",
+      "properties": {
+        "environmentId": { "type": "string", "pattern": "^$|^ccpool_.+" },
+        "loginSecret": { "type": "string", "description": "Secret with the keys refreshToken and scopes (CLAUDE_CODE_OAUTH_REFRESH_TOKEN, CLAUDE_CODE_OAUTH_SCOPES)." },
+        "pollInterval": { "type": "string", "pattern": "^$|^[0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h)$" }
+      },
       "additionalProperties": false
     },
     "acp": {

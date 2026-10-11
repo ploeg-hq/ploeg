@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -14,6 +15,33 @@ var ErrClaudeSessionConflict = errors.New("the run or the claude session is alre
 // ErrNotAWriter is returned when a push credential is asked for a reading Run.
 var ErrNotAWriter = errors.New("a reading run gets no push credential")
 
+// ClaudeSession is a session a worker dispatched for its Run (ADR-0084).
+type ClaudeSession struct {
+	EnvironmentID string
+	// SessionID is stored without its cse_ or session_ prefix.
+	SessionID string
+	// BaseBranch, Title and Reference are what the runner's hook needs to
+	// open the pull request.
+	BaseBranch, Title, Reference string
+}
+
+// ClaudeSessionReport is what a runner's post-session hook reports once the
+// session ended.
+type ClaudeSessionReport struct {
+	ExitReason   string
+	PushedCommit string
+	PullRequest  string
+	FinalMessage string
+}
+
+// ClaudeSessionState is the worker's view of its dispatched session.
+// ReportedAt is nil until the runner reported.
+type ClaudeSessionState struct {
+	ClaudeSession
+	ReportedAt *time.Time
+	ClaudeSessionReport
+}
+
 // ClaudeSessionRun is the Run a Claude session was dispatched for, as the
 // push-credential exchange needs it (ADR-0084).
 type ClaudeSessionRun struct {
@@ -23,12 +51,14 @@ type ClaudeSessionRun struct {
 	Owner, Repo string
 	// Branch is the Shift's branch, the one the Run's Lease lets it push.
 	Branch string
+	// BaseBranch, Title and Reference come from the worker's record.
+	BaseBranch, Title, Reference string
 }
 
 // RecordClaudeSession binds a running Run to the Claude session its worker
 // dispatched. Recording the same binding again is a no-op, so a worker may
 // retry after a lost response.
-func (s *Store) RecordClaudeSession(ctx context.Context, runToken, environmentID, sessionID string) error {
+func (s *Store) RecordClaudeSession(ctx context.Context, runToken string, c ClaudeSession) error {
 	var runID int64
 	err := s.pool.QueryRow(ctx,
 		`SELECT id FROM agent_runs WHERE run_token = $1 AND state = 'running'`, runToken).Scan(&runID)
@@ -39,8 +69,9 @@ func (s *Store) RecordClaudeSession(ctx context.Context, runToken, environmentID
 		return err
 	}
 	tag, err := s.pool.Exec(ctx, `
-		INSERT INTO claude_sessions (run_id, environment_id, session_id) VALUES ($1, $2, $3)
-		ON CONFLICT DO NOTHING`, runID, environmentID, sessionID)
+		INSERT INTO claude_sessions (run_id, environment_id, session_id, base_branch, title, reference)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		ON CONFLICT DO NOTHING`, runID, c.EnvironmentID, c.SessionID, c.BaseBranch, c.Title, c.Reference)
 	if err != nil {
 		return err
 	}
@@ -51,7 +82,7 @@ func (s *Store) RecordClaudeSession(ctx context.Context, runToken, environmentID
 	err = s.pool.QueryRow(ctx, `
 		SELECT EXISTS (SELECT 1 FROM claude_sessions
 		               WHERE run_id = $1 AND environment_id = $2 AND session_id = $3)`,
-		runID, environmentID, sessionID).Scan(&same)
+		runID, c.EnvironmentID, c.SessionID).Scan(&same)
 	if err != nil {
 		return err
 	}
@@ -69,14 +100,16 @@ func (s *Store) WriterForClaudeSession(ctx context.Context, environmentID, sessi
 	var r ClaudeSessionRun
 	var writes, leased bool
 	err := s.pool.QueryRow(ctx, `
-		SELECT r.run_token, r.team, r.role, w.target_owner, w.target_repo, COALESCE(sh.branch, ''), r.writes,
+		SELECT r.run_token, r.team, r.role, w.target_owner, w.target_repo, COALESCE(sh.branch, ''),
+		       c.base_branch, c.title, c.reference, r.writes,
 		       EXISTS (SELECT 1 FROM leases l WHERE l.run_token = r.run_token AND l.expires_at > now())
 		FROM claude_sessions c
 		JOIN agent_runs r ON r.id = c.run_id
 		JOIN work_items w ON w.id = r.work_item_id
 		LEFT JOIN shifts sh ON sh.id = r.shift_id
 		WHERE c.environment_id = $1 AND c.session_id = $2 AND r.state = 'running'`,
-		environmentID, sessionID).Scan(&r.RunToken, &r.Team, &r.Role, &r.Owner, &r.Repo, &r.Branch, &writes, &leased)
+		environmentID, sessionID).Scan(&r.RunToken, &r.Team, &r.Role, &r.Owner, &r.Repo, &r.Branch,
+		&r.BaseBranch, &r.Title, &r.Reference, &writes, &leased)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ClaudeSessionRun{}, ErrUnknownRun
 	}
@@ -111,4 +144,45 @@ func (s *Store) SwapForgeToken(ctx context.Context, runToken, tokenID string) (s
 		return "", ErrLeaseLost
 	}
 	return previous, err
+}
+
+// ReportClaudeSession records what the runner reported for a session whose
+// Run is still running. The first report wins; a repeat is a no-op, so a
+// retried hook cannot rewrite what the worker may already have read.
+func (s *Store) ReportClaudeSession(ctx context.Context, environmentID, sessionID string, r ClaudeSessionReport) error {
+	var exists bool
+	err := s.pool.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM claude_sessions c JOIN agent_runs a ON a.id = c.run_id
+			WHERE c.environment_id = $1 AND c.session_id = $2 AND a.state = 'running')`,
+		environmentID, sessionID).Scan(&exists)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return ErrUnknownRun
+	}
+	_, err = s.pool.Exec(ctx, `
+		UPDATE claude_sessions
+		SET reported_at = now(), exit_reason = $3, pushed_commit = $4, pull_request = $5, final_message = $6
+		WHERE environment_id = $1 AND session_id = $2 AND reported_at IS NULL`,
+		environmentID, sessionID, r.ExitReason, r.PushedCommit, r.PullRequest, r.FinalMessage)
+	return err
+}
+
+// ClaudeSessionFor returns the session a running Run recorded and whatever
+// its runner reported so far.
+func (s *Store) ClaudeSessionFor(ctx context.Context, runToken string) (ClaudeSessionState, error) {
+	var st ClaudeSessionState
+	err := s.pool.QueryRow(ctx, `
+		SELECT c.environment_id, c.session_id, c.base_branch, c.title, c.reference,
+		       c.reported_at, c.exit_reason, c.pushed_commit, c.pull_request, c.final_message
+		FROM claude_sessions c JOIN agent_runs a ON a.id = c.run_id
+		WHERE a.run_token = $1 AND a.state = 'running'`, runToken).Scan(
+		&st.EnvironmentID, &st.SessionID, &st.BaseBranch, &st.Title, &st.Reference,
+		&st.ReportedAt, &st.ExitReason, &st.PushedCommit, &st.PullRequest, &st.FinalMessage)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ClaudeSessionState{}, ErrUnknownRun
+	}
+	return st, err
 }
