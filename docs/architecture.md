@@ -51,7 +51,7 @@ Legacy worker authorization and static credential compatibility are explicit mig
 
 ## 6. Providers, harnesses and delivery
 
-The source includes [Vikunja](../pkg/provider/vikunja/), [ClickUp](../pkg/provider/clickup/), [Forgejo](../pkg/provider/forgejo/) and [GitLab](../pkg/provider/gitlab/) integrations. Supported operations differ by provider and configuration. Tracker write-backs, forge operations, team plans and Shift orchestration exist; they are no longer future implementation gaps.
+The source includes [Vikunja](../pkg/provider/vikunja/), [ClickUp](../pkg/provider/clickup/), [GitHub Issues](../pkg/provider/githubissues/), [Forgejo](../pkg/provider/forgejo/) and [GitLab](../pkg/provider/gitlab/) integrations. Supported operations differ by provider and configuration. Tracker write-backs, forge operations, team plans and Shift orchestration exist; they are no longer future implementation gaps.
 
 The [harness package](../pkg/harness/) defines Task Spec, Outcome Report and adapters. Published [JSON schemas](contracts/README.md) describe the wire formats. Harness-native conversation state is not a portable checkpoint.
 

@@ -58,6 +58,10 @@ type File struct {
 type Trackers struct {
 	Vikunja TrackerConfig `yaml:"vikunja"`
 	Clickup TrackerConfig `yaml:"clickup"`
+	// Github lists the repositories whose issues are work sources
+	// (ADR-0085). A project's name is the repository "owner/name", which is
+	// also its id; no lookup runs at boot.
+	Github TrackerConfig `yaml:"github"`
 }
 
 type TrackerConfig struct {
@@ -213,15 +217,12 @@ func (f *File) Validate() error {
 	// List sharing an id would silently route each other's work. Validating
 	// them through one `seen` map turns that collision into a boot failure.
 	seen := map[string]string{}
-	for _, tr := range []struct {
-		provider string
-		projects []Project
-	}{
-		{"vikunja", f.Trackers.Vikunja.Projects},
-		{"clickup", f.Trackers.Clickup.Projects},
-	} {
+	for _, tr := range f.trackerProjects() {
 		for i, p := range tr.projects {
 			where := fmt.Sprintf("trackers.%s.projects[%d]", tr.provider, i)
+			if tr.provider == "github" && p.ID == "" {
+				return fmt.Errorf("%s: needs a name that is the repository owner/name", where)
+			}
 			if tr.provider == "clickup" && p.ID == "" {
 				// The clickup provider has no name resolver yet; a name-only
 				// entry would boot into "resolve" with nothing to ask.
@@ -296,13 +297,7 @@ func (f *File) Validate() error {
 }
 
 func (f *File) validateGates() error {
-	for _, tr := range []struct {
-		provider string
-		projects []Project
-	}{
-		{"vikunja", f.Trackers.Vikunja.Projects},
-		{"clickup", f.Trackers.Clickup.Projects},
-	} {
+	for _, tr := range f.trackerProjects() {
 		where := map[string]string{}
 		mapped := map[string]gate.Statuses{}
 		for i, p := range tr.projects {

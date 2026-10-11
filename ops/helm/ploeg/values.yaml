@@ -175,6 +175,22 @@ tracker:
     # Statuses are per-List custom strings, so the finished-status must be
     # NAMED; empty leaves the board untouched.
     doneStatus: ""
+  # The GitHub Issues tracker (pkg/provider/githubissues, ADR-0085). A label
+  # `ploeg:<team>` on an issue in a repository listed under
+  # config.trackers.github.projects dispatches it. webhookSecret verifies
+  # deliveries to POST /webhooks/tracker/github; appId with
+  # appPrivateKeySecret enables issue reads and write-backs through a GitHub
+  # App installation token scoped to one repository, with the permissions
+  # issues:write and metadata:read.
+  github:
+    apiUrl: "" # empty = https://api.github.com; Enterprise Server uses https://<host>/api/v3
+    appId: ""
+    # appPrivateKeySecret: {name: ploeg-github-app, key: private-key.pem}
+    appPrivateKeySecret: {}
+    # webhookSecret: {name: ploeg-github-webhook, key: PLOEG_GITHUB_TRACKER_SECRET}
+    webhookSecret: {}
+    teamLabelPrefix: "" # empty = "ploeg:"
+    teamMap: "" # "login=team,…": assignees that dispatch like a team label
 
 executor:
   # The executor (design §6, docs/contracts/executor.md). Disabled until the
@@ -542,6 +558,11 @@ config: {}
 #             done: ["Done"]
 #         - name: "Forgejo Migration" # no default: every ticket needs a repo/<key> label
 #           allow: [app, homelab-cluster]
+#     github:                         # ADR-0085: a `ploeg:<team>` label dispatches an issue
+#       projects:
+#         - name: webgrip/app         # the repository owner/name; no lookup
+#           repo: webgrip/app
+#           branch: development
 #   teams:
 #     bronze:
 #       assignees: [jake, bronze]     # replaces PLOEG_TEAM_MAP

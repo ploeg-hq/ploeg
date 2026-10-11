@@ -193,6 +193,36 @@ spec:
               value: {{ .doneStatus | quote }}
             {{- end }}
             {{- end }}
+            {{- with .Values.tracker.github }}
+            {{- with .webhookSecret }}
+            - name: PLOEG_GITHUB_TRACKER_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .name }}
+                  key: {{ .key }}
+            {{- end }}
+            {{- if .apiUrl }}
+            - name: PLOEG_GITHUB_API_URL
+              value: {{ .apiUrl | quote }}
+            {{- end }}
+            {{- if .appId }}
+            - name: PLOEG_GITHUB_APP_ID
+              value: {{ .appId | quote }}
+            - name: PLOEG_GITHUB_APP_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "tracker.github.appPrivateKeySecret.name is required with tracker.github.appId" .appPrivateKeySecret.name }}
+                  key: {{ required "tracker.github.appPrivateKeySecret.key is required with tracker.github.appId" .appPrivateKeySecret.key }}
+            {{- end }}
+            {{- if .teamLabelPrefix }}
+            - name: PLOEG_GITHUB_TEAM_LABEL_PREFIX
+              value: {{ .teamLabelPrefix | quote }}
+            {{- end }}
+            {{- if .teamMap }}
+            - name: PLOEG_GITHUB_TEAM_MAP
+              value: {{ .teamMap | quote }}
+            {{- end }}
+            {{- end }}
             {{- range $k, $v := .Values.env }}
             - name: {{ $k }}
               value: {{ $v | quote }}

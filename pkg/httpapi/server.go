@@ -221,6 +221,22 @@ func (s *Server) handleTrackerWebhook(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "webhook rejected", http.StatusBadRequest)
 		return
 	}
+	var delivery string
+	if identifier, ok := tp.(provider.DeliveryIdentifier); ok {
+		delivery = identifier.DeliveryID(r)
+	}
+	deliveryKey := "tracker:" + name
+	recorded, err := s.Store.DeliveryRecorded(r.Context(), deliveryKey, delivery)
+	if err != nil {
+		s.Log.Error("tracker webhook dedup failed", "provider", name, "err", err)
+		http.Error(w, "dedup failed", http.StatusInternalServerError)
+		return
+	}
+	if recorded {
+		s.Log.Info("tracker webhook redelivered; its effects are already recorded", "provider", name, "delivery", delivery)
+		w.WriteHeader(http.StatusAccepted)
+		return
+	}
 	for _, ev := range events {
 		if ev.Kind == provider.TrackerUpdated || ev.Kind == provider.TrackerClosed {
 			s.observeGate(r.Context(), name, tp, ev)
@@ -277,6 +293,9 @@ func (s *Server) handleTrackerWebhook(w http.ResponseWriter, r *http.Request) {
 			s.Log.Info("work item refreshed, not queued", "id", id, "state", string(state), "team", item.Team, "title", item.Title)
 		}
 		s.observeGate(r.Context(), name, tp, ev)
+	}
+	if err := s.Store.RecordDelivery(r.Context(), deliveryKey, delivery); err != nil {
+		s.Log.Error("tracker webhook delivery not recorded; a redelivery repeats its idempotent effects", "provider", name, "delivery", delivery, "err", err)
 	}
 	w.WriteHeader(http.StatusAccepted)
 }

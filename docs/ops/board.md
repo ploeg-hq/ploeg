@@ -2,7 +2,7 @@
 
 The tracker owns current work and priorities. Ploeg receives configured provider events and resolves a Work Target from the registered Scope. An operator consumer registers its own task sources and repository mapping; there is no universal project-ID default.
 
-For current integration behavior, read [tracker execution binding](../contracts/tracker-execution.md), the [Vikunja provider](../../pkg/provider/vikunja/vikunja.go), the [ClickUp provider](../../pkg/provider/clickup/clickup.go).
+For current integration behavior, read [tracker execution binding](../contracts/tracker-execution.md), the [Vikunja provider](../../pkg/provider/vikunja/vikunja.go), the [ClickUp provider](../../pkg/provider/clickup/clickup.go) and the [GitHub Issues provider](../../pkg/provider/githubissues/githubissues.go). To connect GitHub Issues, follow [Connect GitHub Issues](../how-to/connect-github-issues.md); it dispatches on a `ploeg:<team>` label rather than an assignee, and ploegd does not check or register its webhooks.
 
 To have agents implement an OpenSpec change, put a line `openspec: <change-id>` in the tracker item's description. See [OpenSpec Work Items](../contracts/README.md#openspec-work-items) for what the Run then does.
 

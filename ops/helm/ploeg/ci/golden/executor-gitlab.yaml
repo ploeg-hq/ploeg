@@ -136,6 +136,18 @@ spec:
                   key: CLICKUP_TOKEN
             - name: PLOEG_CLICKUP_DONE_STATUS
               value: "for review"
+            - name: PLOEG_GITHUB_TRACKER_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: ploeg-github-webhook
+                  key: PLOEG_GITHUB_TRACKER_SECRET
+            - name: PLOEG_GITHUB_APP_ID
+              value: "123456"
+            - name: PLOEG_GITHUB_APP_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ploeg-github-app
+                  key: private-key.pem
             - name: PLOEG_DEFAULT_TEAM
               value: "default"
             - name: PLOEG_LEASE_TTL

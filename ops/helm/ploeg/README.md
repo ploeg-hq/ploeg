@@ -44,7 +44,7 @@ The chart references these Secrets by name and creates none of them. The names a
 
 Each of these is off until you set it, and ploegd starts without it:
 
-- **Tracker.** `webhook.existingSecret` verifies Vikunja webhooks; `tracker.url` and `tracker.tokenSecret` turn on Vikunja write-backs; `tracker.clickup.*` configures ClickUp. Without a webhook secret, ploegd rejects every tracker webhook.
+- **Tracker.** `webhook.existingSecret` verifies Vikunja webhooks; `tracker.url` and `tracker.tokenSecret` turn on Vikunja write-backs; `tracker.clickup.*` configures ClickUp; `tracker.github.*` configures GitHub Issues (ADR-0085). Without a webhook secret, ploegd rejects every tracker webhook.
 - **Forge for ploegd alone.** With the executor off, `executor.forgejo.url` (or `publicUrl`) still gives ploegd a forge provider for publishing findings. Without it, findings stay in the database.
 - **Scheduling.** `nodeSelector` (ploegd) and `executor.nodeSelector` (workers) are empty. Set a label of your own to keep privileged DinD workers off control-plane nodes.
 - **Monitoring.** `monitoring.serviceMonitor` and `monitoring.prometheusRule` need the Prometheus Operator CRDs.
