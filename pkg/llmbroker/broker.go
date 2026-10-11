@@ -64,6 +64,9 @@ type SettledSpend struct {
 	OutputTokens int64
 	Models       []string
 	ByModel      []ModelSpend
+	// ModelGroups are the gateway model groups (aliases) that served the
+	// entries, sorted and unique; a fallback group is among them.
+	ModelGroups []string
 }
 
 // ModelSpend is the part of a run's settled spend that one model accounts for.

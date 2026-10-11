@@ -24,6 +24,10 @@ type APIClient struct {
 	HC             *http.Client
 	BootstrapToken string
 	WorkerID       string
+	// Harness and HarnessProfile are sent with each claim, so ploegd records
+	// which harness and agent profile ran the Run (ADR-0091).
+	Harness        string
+	HarnessProfile string
 	controlTokens  sync.Map
 }
 
@@ -69,11 +73,17 @@ type ClaimResponse struct {
 // worker convention (backlog #49). An exhausted Shift budget answers 204 too:
 // there is nothing for this pod to do, and parking the item is ploegd's job.
 //
-// An empty role is the pre-Shift claim, byte-identical to before.
+// An empty role is the pre-Shift claim.
 func (a *APIClient) Claim(team, role string) (*ClaimResponse, error) {
 	req := map[string]string{"team": team}
 	if role != "" {
 		req["role"] = role
+	}
+	if a.Harness != "" {
+		req["harness"] = a.Harness
+	}
+	if a.HarnessProfile != "" {
+		req["harnessProfile"] = a.HarnessProfile
 	}
 	body, _ := json.Marshal(req)
 	resp, err := a.request(context.Background(), http.MethodPost, "/api/v1/claim", body, a.BootstrapToken)

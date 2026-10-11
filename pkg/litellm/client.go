@@ -207,7 +207,9 @@ func (c *Client) SpendLogTotal(ctx context.Context, token string) (float64, int,
 
 // SpendLogSummary is what one key's spend log entries add up to. Token
 // counts absent from an entry count as zero; Models is sorted and unique, and
-// ByModel splits the same totals per model in the same order.
+// ByModel splits the same totals per model in the same order. Models are the
+// provider's model names; ModelGroups, sorted and unique, are the gateway
+// model groups (aliases) that served the entries, a fallback group included.
 type SpendLogSummary struct {
 	USD              float64
 	Entries          int
@@ -215,6 +217,7 @@ type SpendLogSummary struct {
 	CompletionTokens int64
 	Models           []string
 	ByModel          []ModelUsage
+	ModelGroups      []string
 }
 
 // ModelUsage is the share of a key's spend log entries that name one model.
@@ -250,11 +253,13 @@ func (c *Client) SpendLogs(ctx context.Context, token string) (SpendLogSummary, 
 	}
 	var summary SpendLogSummary
 	models := map[string]*ModelUsage{}
+	groups := map[string]struct{}{}
 	for decoder.More() {
 		var entry struct {
 			APIKey           string   `json:"api_key"`
 			Spend            *float64 `json:"spend"`
 			Model            string   `json:"model"`
+			ModelGroup       string   `json:"model_group"`
 			PromptTokens     *float64 `json:"prompt_tokens"`
 			CompletionTokens *float64 `json:"completion_tokens"`
 		}
@@ -269,6 +274,9 @@ func (c *Client) SpendLogs(ctx context.Context, token string) (SpendLogSummary, 
 		summary.Entries++
 		summary.PromptTokens += prompt
 		summary.CompletionTokens += completion
+		if group := strings.TrimSpace(entry.ModelGroup); group != "" {
+			groups[group] = struct{}{}
+		}
 		if model := strings.TrimSpace(entry.Model); model != "" {
 			m := models[model]
 			if m == nil {
@@ -293,6 +301,7 @@ func (c *Client) SpendLogs(ctx context.Context, token string) (SpendLogSummary, 
 	for _, model := range summary.Models {
 		summary.ByModel = append(summary.ByModel, *models[model])
 	}
+	summary.ModelGroups = sortedSet(groups)
 	return summary, nil
 }
 
@@ -308,6 +317,7 @@ func (c *Client) SpendLogsByAlias(ctx context.Context, alias string, until time.
 	}
 	var summary SpendLogSummary
 	models := map[string]*ModelUsage{}
+	groups := map[string]struct{}{}
 	keys := map[string]struct{}{}
 	for page := 1; ; page++ {
 		query := url.Values{}
@@ -330,6 +340,7 @@ func (c *Client) SpendLogsByAlias(ctx context.Context, alias string, until time.
 				APIKey           string   `json:"api_key"`
 				Spend            *float64 `json:"spend"`
 				Model            string   `json:"model"`
+				ModelGroup       string   `json:"model_group"`
 				PromptTokens     *float64 `json:"prompt_tokens"`
 				CompletionTokens *float64 `json:"completion_tokens"`
 				Metadata         struct {
@@ -365,6 +376,9 @@ func (c *Client) SpendLogsByAlias(ctx context.Context, alias string, until time.
 			summary.Entries++
 			summary.PromptTokens += prompt
 			summary.CompletionTokens += completion
+			if group := strings.TrimSpace(entry.ModelGroup); group != "" {
+				groups[group] = struct{}{}
+			}
 			if model := strings.TrimSpace(entry.Model); model != "" {
 				m := models[model]
 				if m == nil {
@@ -390,7 +404,17 @@ func (c *Client) SpendLogsByAlias(ctx context.Context, alias string, until time.
 	for _, model := range summary.Models {
 		summary.ByModel = append(summary.ByModel, *models[model])
 	}
+	summary.ModelGroups = sortedSet(groups)
 	return summary, len(keys), nil
+}
+
+func sortedSet(set map[string]struct{}) []string {
+	out := make([]string, 0, len(set))
+	for v := range set {
+		out = append(out, v)
+	}
+	sort.Strings(out)
+	return out
 }
 
 func tokenCount(v *float64) int64 {

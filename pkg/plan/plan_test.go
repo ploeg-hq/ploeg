@@ -205,3 +205,31 @@ func TestPlans_IsPlanner(t *testing.T) {
 		t.Error("HasRole disagrees with the plan")
 	}
 }
+
+// ADR-0091: the plan hash names one plan shape. The same plan parsed twice
+// hashes the same, any change to what ploegd reads changes it, and a
+// plan-less team has none.
+func TestHash_NamesOnePlanShape(t *testing.T) {
+	const doc = `{"bronze": {"pool": "6", "rounds": [{"roles": [{"name": "builder", "writes": true, "cap": "3"}]}]}}`
+	a, err := Parse(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := Parse(strings.ReplaceAll(doc, `"cap": "3"`, `"cap": 3`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.Hash("bronze") == "" || a.Hash("bronze") != b.Hash("bronze") || !strings.HasPrefix(a.Hash("bronze"), "sha256:") || len(a.Hash("bronze")) != 71 {
+		t.Fatalf("hash = %q and %q, want one sha256 for the same plan", a.Hash("bronze"), b.Hash("bronze"))
+	}
+	c, err := Parse(strings.ReplaceAll(doc, `"cap": "3"`, `"cap": "4"`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Hash("bronze") == a.Hash("bronze") {
+		t.Fatal("a changed cap kept the plan hash")
+	}
+	if a.Hash("silver") != "" {
+		t.Fatalf("plan-less team hash = %q, want none", a.Hash("silver"))
+	}
+}

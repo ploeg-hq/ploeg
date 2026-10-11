@@ -295,7 +295,7 @@ func (c *LLMControl) settleFromSpendLogs(ctx context.Context, a store.UnsettledL
 		evidence += " settled-at-observation=" + strconv.FormatFloat(a.ObservedSpend, 'f', -1, 64)
 		spend.USD = a.ObservedSpend
 	}
-	usage := store.SettledUsage{InputTokens: spend.InputTokens, OutputTokens: spend.OutputTokens, Models: spend.Models}
+	usage := store.SettledUsage{InputTokens: spend.InputTokens, OutputTokens: spend.OutputTokens, Models: spend.Models, ModelGroups: spend.ModelGroups}
 	for _, m := range spend.ByModel {
 		usage.ByModel = append(usage.ByModel, store.ModelUsage{Model: m.Model, InputTokens: m.InputTokens, OutputTokens: m.OutputTokens, CostUSD: m.USD})
 	}

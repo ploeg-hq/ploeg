@@ -546,7 +546,7 @@ func TestSpendLogsByAlias_PagesMatchesTheExactAliasAndRefusesWhatItCannotTrust(t
 		}
 		pages = append(pages, q.Get("page"))
 		row := func(a string, spend any) map[string]any {
-			return map[string]any{"api_key": "k-" + a, "spend": spend, "model": "coding", "prompt_tokens": 4, "completion_tokens": 1, "metadata": map[string]any{"user_api_key_alias": a}}
+			return map[string]any{"api_key": "k-" + a, "spend": spend, "model": "coding", "model_group": "group-" + q.Get("page") + "-" + a[len(a)-1:], "prompt_tokens": 4, "completion_tokens": 1, "metadata": map[string]any{"user_api_key_alias": a}}
 		}
 		var data []map[string]any
 		if q.Get("page") == "1" {
@@ -567,6 +567,9 @@ func TestSpendLogsByAlias_PagesMatchesTheExactAliasAndRefusesWhatItCannotTrust(t
 	got, keys, err := cli.SpendLogsByAlias(ctx, alias, time.Now())
 	if err != nil || got.USD != 0.75 || got.Entries != 2 || keys != 1 || got.PromptTokens != 8 || len(pages) != 2 {
 		t.Fatalf("summary=%+v keys=%d pages=%v err=%v; want two pages and only the exact alias", got, keys, pages, err)
+	}
+	if want := "group-1-" + alias[len(alias)-1:] + ",group-2-" + alias[len(alias)-1:]; strings.Join(got.ModelGroups, ",") != want {
+		t.Fatalf("model groups = %v, want %s from the exact alias's entries only", got.ModelGroups, want)
 	}
 	badSpend = true
 	if _, _, err := cli.SpendLogsByAlias(ctx, alias, time.Now()); err == nil {

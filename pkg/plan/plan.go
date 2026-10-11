@@ -13,6 +13,8 @@
 package plan
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"regexp"
@@ -265,4 +267,21 @@ func (p Plans) RoleCap(team, role string) float64 {
 		}
 	}
 	return 0
+}
+
+// Hash identifies a team's plan as ploegd parsed it: "sha256:" and the hex
+// digest of the plan's JSON encoding, whose field order is fixed. Two Runs
+// with the same hash ran under the same pool, Rounds, Roles, caps and fix
+// bound (ADR-0091). A plan-less team has no hash.
+func (p Plans) Hash(team string) string {
+	tp, ok := p[team]
+	if !ok {
+		return ""
+	}
+	b, err := json.Marshal(tp)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(b)
+	return "sha256:" + hex.EncodeToString(sum[:])
 }

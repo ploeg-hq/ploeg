@@ -11,6 +11,16 @@
         "role": {
           "type": "string",
           "description": "claim only this Role's pending Run within the team (run-multi-agent-shifts). Absent = the pre-Shift claim, unchanged."
+        },
+        "harness": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+          "description": "The worker's harness (PLOEG_HARNESS), such as openhands, acp, exec, claude-code or claude-environment. ploegd records it on the claimed Run (ADR-0091). Absent leaves it unknown."
+        },
+        "harnessProfile": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+          "description": "The harness's agent profile, such as opencode, qwen-code or custom for the acp harness. ploegd records it on the claimed Run (ADR-0091). Absent when the harness has none."
         }
       },
       "required": ["team"],

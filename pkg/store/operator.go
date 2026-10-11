@@ -205,6 +205,7 @@ type OperatorRun struct {
 	// CostFinal is true once the Run's cost will no longer change. Before
 	// that a settled cost is provisional.
 	CostFinal bool `json:"costFinal"`
+	OperatorRunConfig
 }
 
 type OperatorCheckpoint struct {
@@ -371,6 +372,7 @@ var operatorRunJSON = `jsonb_build_object(
 		` + operatorRunUsageFacts + `)) END,
 	'costStatus', CASE WHEN (` + operatorRunCost + `) IS NOT NULL THEN 'observed' ELSE 'unknown' END,
 	` + operatorRunSettlementJSON + `,
+	` + operatorRunConfigJSON + `,
 	'keyAlias', CASE WHEN r.started_at IS NOT NULL THEN 'ploeg-' || left(r.run_token, 12) ELSE NULL END)`
 
 const operatorCheckpointJSON = `jsonb_build_object(

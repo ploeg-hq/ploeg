@@ -270,6 +270,9 @@ type SettledUsage struct {
 	OutputTokens int64
 	Models       []string
 	ByModel      []ModelUsage
+	// ModelGroups are the gateway model groups (aliases) that served the
+	// Run, a fallback group included (ADR-0091).
+	ModelGroups []string
 }
 
 // ModelUsage is the part of a Run's settled usage that one model accounts for.
@@ -281,8 +284,8 @@ type ModelUsage struct {
 }
 
 // ReconcileLLMAccountWithUsage settles like ReconcileLLMAccount and, when
-// usage is not nil, merges inputTokens, outputTokens, models, byModel and
-// costUsd into agent_runs.usage in the same transaction. Each byModel cost is
+// usage is not nil, merges inputTokens, outputTokens, models, byModel,
+// modelGroups and costUsd into agent_runs.usage in the same transaction. Each byModel cost is
 // rounded to four decimals on its own, so the parts may differ from costUsd
 // in the last digit. Other keys a harness reported,
 // such as sessionId, are kept. spend is rounded half-up to run_llm_accounts'
@@ -346,13 +349,17 @@ func (s *Store) SettleLLMAccount(ctx context.Context, token string, st LLMSettle
 		if models == nil {
 			models = []string{}
 		}
+		groups := usage.ModelGroups
+		if groups == nil {
+			groups = []string{}
+		}
 		byModel := make([]ModelUsage, 0, len(usage.ByModel))
 		for _, m := range usage.ByModel {
 			m.CostUSD = math.Round(m.CostUSD*1e4) / 1e4
 			byModel = append(byModel, m)
 		}
 		if usageJSON, err = json.Marshal(map[string]any{
-			"inputTokens": usage.InputTokens, "outputTokens": usage.OutputTokens, "models": models, "byModel": byModel, "costUsd": roundedSpend,
+			"inputTokens": usage.InputTokens, "outputTokens": usage.OutputTokens, "models": models, "byModel": byModel, "modelGroups": groups, "costUsd": roundedSpend,
 		}); err != nil {
 			return false, err
 		}

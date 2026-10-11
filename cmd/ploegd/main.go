@@ -369,6 +369,7 @@ func run(log *slog.Logger) error {
 		ScopeTeams:     cfg.ScopeTeams(),
 		LeaseTTL:       leaseTTL,
 		Log:            log,
+		Version:        version,
 		RoleCaps:       plans,
 		TeamCaps:       runCaps,
 		Forges:         forges,

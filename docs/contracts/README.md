@@ -229,6 +229,19 @@ reads the gateway's spend logs again and may raise it. A Run without a
 gateway account has `costFinal: true` once it has finished. Summary and Run
 list timestamps are UTC.
 
+Every Run shape (Run list, Run detail, Work Item detail and facts) carries
+what the Run was configured with when ploegd claimed or admitted it
+([ADR-0091](../adrs/0091-each-run-records-the-model-harness-plan-and-ploegd-version-it-was-configured-with.md)):
+`configuredModel` from its Role's inference policy, `harness` and
+`harnessProfile` from the worker's claim, `planHash` of its Team plan and
+`ploegdVersion`. `modelMismatch` is true when a gateway model group other
+than `configuredModel` served the Run, such as a fallback group. Settlement
+records the served groups (LiteLLM's spend-log `model_group`) as
+`usage.modelGroups`, beside the provider model names in `usage.models`; the
+Run list returns both. Each field is null when unknown, as it is for every
+Run recorded before migration 0050, and `modelMismatch` is also null for a
+Run settled before served groups were recorded.
+
 Audit pages explicitly say `consistency: snapshot`: sequence allocation is
 not transaction commit order, so clients must not treat this as a lossless
 changefeed. Unbound forge events are excluded. Read projections omit worker
