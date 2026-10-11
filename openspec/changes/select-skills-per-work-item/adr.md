@@ -32,4 +32,4 @@ ok  	github.com/ploeg-hq/ploeg/internal/ledger	0.016s
 
 ## Notes
 
-0083 is `proposed`: the owner accepts or rejects it.
+The owner accepted 0083 on 2026-10-11.

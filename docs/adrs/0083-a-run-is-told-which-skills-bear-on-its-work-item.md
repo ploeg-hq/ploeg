@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-11
 decision-makers: Ryan Grippeling
 supersedes: none
@@ -75,5 +75,6 @@ Chosen option: "The worker selects skills with the knowledge pack's matcher and 
 ## More Information
 
 * 2026-10-11 — The owner asked for Ploeg's agents to load skills on demand from the Work Item and its context; the OpenSpec change `select-skills-per-work-item` carries the requirements.
+* 2026-10-11 — Accepted by the owner. Implementation follows the change's tasks.
 * The 4-of-10 and 10-of-10 figures come from Unfold pull request #308's probes (Haiku 5.5, a Forgejo workflow rule).
 * Refines [ADR-0035](0035-runs-get-ploeg-owned-skills-mounted-toolchains-and-worker-verification.md); related: [ADR-0065](0065-a-run-is-briefed-with-an-okf-knowledge-pack-written-outside-the-clone.md), [ADR-0030](0030-target-repository-instructions-rank-below-the-delivery-contract.md).
