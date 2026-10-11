@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.2.0-rc.17
+
+### Breaking changes
+
+- A `published` delivery report is recorded only after ploegd read the pull request from the forge and found the canonical head, the reserved branch, the execution base and the registered repository (#102, ADR-0027). It needs a readable forge and a `<repo>/pulls/<n>` remote URL; GitLab publication reports are refused until GitLab has a reader. Unfold sends conforming reports from unfold-v0.4.0-rc.63.
+
+### Changes
+
+- Operator notes: `POST /api/v1/operator/work-items/{id}/notes` stores an instruction for a live Work Item, and the next claimed Run receives every unconsumed note once as an "operator note" finding. Cancel takes an optional `commandId` and `expectedShiftId`; a stale Shift answers 409 `shift_changed` and withdraws nothing (#102).
+- A Run can execute end to end as a Claude Code session in a Team's self-hosted Claude environment, paid by the Team's Claude plan (#109, ADR-0084). The new `claude-environment` harness logs in with a Team member's claude.ai login, dispatches with `claude -p --environment`, records the session and waits for the runner's report on `GET /api/v1/runs/{token}/claude-session`. The runner's hooks push to the Shift branch, open the pull request through the Forgejo API and report the session's end and Claude's final message on `POST /api/v1/claude-sessions/report`; the worker reads the outcome from that message and verifies the pull request as for any harness. The chart gains `harness.claudeEnvironment` (`environmentId`, `loginVolume` or `loginSecret`, `pollInterval`), and each release publishes `ghcr.io/ploeg-hq/claude-runner`. These Runs still mint and settle an unused gateway key; the plan-paid cost status is not built.
+- Work can come from GitHub Issues: a `ploeg:<team>` label, or an assignee listed in `PLOEG_GITHUB_TEAM_MAP`, on an issue in a configured repository queues a Work Item (#110, ADR-0085).
+- GitHub is a forge: pull requests on github.com and GitHub Enterprise Server, pushed with a per-Run GitHub App installation token that a writing Run refreshes on `POST /api/v1/runs/{token}/forge-credential` (#111, ADR-0086).
+- Proposed, not built: knowledge scoped to Tenant, Client, repository and Work Item in Omnigraph, Work Item notes a Run writes without review, and operator reads and writes within checked scopes (#107, ADR-0087, ADR-0088, ADR-0089).
+
+### Migration notes
+
+- Migration 0047 adds the session report columns to `claude_sessions`.
+- Migration 0048 adds operator notes.
+- New worker settings for `claude-environment`: `PLOEG_CLAUDE_ENVIRONMENT_ID`, `PLOEG_CLAUDE_CONFIG_DIR`, `CLAUDE_CODE_OAUTH_REFRESH_TOKEN`, `CLAUDE_CODE_OAUTH_SCOPES`, `PLOEG_CLAUDE_POLL_INTERVAL`. GitHub settings are listed in the configuration reference; all are off by default.
+
 ## 0.2.0-rc.16
 
 ### Breaking changes
