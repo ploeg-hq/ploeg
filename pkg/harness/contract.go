@@ -175,9 +175,10 @@ type OutcomeReport struct {
 	// plan's own writing Round. Ignored from a writing Role.
 	Verdict string `json:"verdict,omitempty"`
 	// Problem and Solution are a writing Run's account of its change
-	// (ADR-0042): what was wrong or missing, and what the Run changed. Markdown
-	// for the person who reviews the pull request. They decide nothing, and
-	// ploegd ignores them from a reading Role.
+	// (ADR-0042): what was wrong or missing, and what the Run changed. Each is
+	// markdown that opens in everyday words for a product owner and a client
+	// and may end with a "### For developers" section. They decide nothing,
+	// and ploegd ignores them from a reading Role.
 	Problem  string `json:"problem,omitempty"`
 	Solution string `json:"solution,omitempty"`
 	// CreatedWorkItems are Work Items this Run proposes (Product R12): a

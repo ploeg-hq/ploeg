@@ -133,14 +133,48 @@ func ComposePrompt(spec harness.TaskSpec, writes bool, priorPR string, onReviewB
 - As the LAST thing you do, write this JSON to the file named by the
   PLOEG_OUTCOME_FILE environment variable:
 
-      {"problem": "<what was wrong or missing, and who it affected>",
-       "solution": "<what you changed, and how a reviewer can see it works>"}
+      {"problem": "<what was wrong or missing, and who noticed>",
+       "solution": "<what is different now, and what a person must check>"}
 
-  A person reads these two fields before opening the %[1]s, so write them
-  for someone who has not read the Work Item: plain words, markdown allowed.
-  Keep the problem to three sentences at most. Keep the solution to five
-  short bullets at most, naming the files you changed. Put nothing else in
-  the file: Ploeg reads the forge to learn what you delivered.
+  Three people read these two fields before anyone opens the %[1]s: a
+  product owner deciding whether the work is done, the client who asked
+  for it, and a developer who will review the diff. Write each field as
+  markdown in two parts:
+
+  1. One to three sentences in everyday words, for the product owner and
+     the client. Say what it means for the people who use the product or
+     run the project, not how the code works. Name no files, functions,
+     versions, packages or tools; describe what they do instead. The
+     solution ends by saying what a person must decide or check, or that
+     nothing changes for users.
+  2. A line "### For developers", then at most five short bullets: in the
+     problem the technical cause, in the solution the files you changed and
+     how a reviewer can see it works.
+
+  For example, the text of a problem field:
+
+      We cannot move to the new major version of the tool that checks our
+      code for mistakes, because two tools we rely on do not support it
+      yet. Without a plan we fall behind, and the check that keeps every
+      translation complete stops working when the old version is retired.
+
+      ### For developers
+      - TypeScript 7.0 ships without the compiler API that
+        typescript-eslint and astro check need.
+
+  and of its solution field:
+
+      We recorded a decision: stay on the current version for now and
+      switch in two dated steps, a trial in October and the switch in
+      November. Nothing changes for users. Please check that the dates fit
+      the release plan.
+
+      ### For developers
+      - Added docs/adrs/0023-typescript-7-route.md, naming both blockers
+        and the condition that clears each.
+
+  Put nothing else in the file: Ploeg reads the forge to learn what you
+  delivered.
 - If the Work Item cannot be completed, explain why on stderr and exit non-zero.
 `, noun)
 	writeWriterRepositoryInstructions(&b, noun)

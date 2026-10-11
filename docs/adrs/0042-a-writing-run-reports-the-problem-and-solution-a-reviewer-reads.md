@@ -36,7 +36,7 @@ How does a person see, in plain words, the problem a Work Item addressed and the
 
 Chosen option: "**the writing Run reports `problem` and `solution` in the drop box, Ploeg stores them per Run, and Vloer shows the latest**", because the agent that did the work is the one that can say what it did, and the drop box already reaches Ploeg from every harness.
 
-1. `outcomereport.v1` gains two optional markdown strings, `problem` and `solution`. `worker.ComposePrompt` tells every writing Run to write only these two to `PLOEG_OUTCOME_FILE` as its last step, and to start a pull request it opens with the same two sections.
+1. `outcomereport.v1` gains two optional markdown strings, `problem` and `solution`. `worker.ComposePrompt` tells every writing Run to write only these two to `PLOEG_OUTCOME_FILE` as its last step, and to start a pull request it opens with the same two sections. Each field opens with one to three sentences in everyday words for a product owner and a client, and puts the technical cause, the files changed and how to verify them under a closing `### For developers` heading, which Unfold folds away.
 2. `harness.MergeDropBox` keeps both whatever outcome the adapter concluded, as it keeps findings. `execbin` accepts a drop box without an outcome. `worker.resolveOutcome` carries both through every outcome branch.
 3. ploegd stores them on `agent_runs` for a writing Run and drops them from a reading Run, as it drops a writer's verdict. They decide nothing: no state transition, Round or budget reads them.
 4. The operator API returns `problem` and `solution` on every Run, each capped at 4096 characters.

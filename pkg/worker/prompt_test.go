@@ -169,7 +169,7 @@ func TestComposePrompt_WriterIsNotAskedForAVerdict(t *testing.T) {
 // (ADR-0042), and the pull request a writer opens starts with the same text.
 func TestComposePrompt_WriterReportsItsProblemAndSolution(t *testing.T) {
 	opening := ComposePrompt(roleSpec("builder", nil), true, "", true)
-	for _, want := range []string{"PLOEG_OUTCOME_FILE", `"problem"`, `"solution"`, `"Problem" and a "Solution" section`} {
+	for _, want := range []string{"PLOEG_OUTCOME_FILE", `"problem"`, `"solution"`, `"Problem" and a "Solution" section`, "product owner", "client", "### For developers"} {
 		if !strings.Contains(opening, want) {
 			t.Errorf("writer prompt missing %q:\n%s", want, opening)
 		}

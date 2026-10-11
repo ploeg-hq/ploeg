@@ -138,11 +138,11 @@
     },
     "problem": {
       "type": "string",
-      "description": "a writing Run's account of what was wrong or missing (ADR-0042), markdown for the person who reviews the pull request. It decides nothing. Ignored from a reading Role."
+      "description": "a writing Run's account of what was wrong or missing (ADR-0042), markdown: one to three sentences in everyday words for a product owner and a client, then an optional '### For developers' section with the technical cause. It decides nothing. Ignored from a reading Role."
     },
     "solution": {
       "type": "string",
-      "description": "a writing Run's account of what it changed and how a reviewer can see it works (ADR-0042), markdown. It decides nothing. Ignored from a reading Role."
+      "description": "a writing Run's account of what it changed (ADR-0042), markdown: one to three sentences in everyday words saying what is different and what a person must check, then an optional '### For developers' section naming the files changed and how a reviewer can see it works. It decides nothing. Ignored from a reading Role."
     },
     "createdWorkItems": {
       "type": "array",
