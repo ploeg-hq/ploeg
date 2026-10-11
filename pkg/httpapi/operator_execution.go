@@ -130,6 +130,7 @@ func (s *Server) handleAdmitExecution(w http.ResponseWriter, r *http.Request) {
 			operatorError(w, 409, "inference_policy", "The execution is recorded, but no matching managed inference policy admitted its budget.")
 			return
 		}
+		s.recordRunConfig(r.Context(), e.RunToken, e.Team, "operator", false, runHarness{})
 	}
 	status := http.StatusOK
 	if created {

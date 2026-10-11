@@ -11,6 +11,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/ploeg-hq/ploeg/pkg/store"
+	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
 // MaxAskQuestionRunes bounds the question an operator consumer sends with an
@@ -95,6 +96,7 @@ func (s *Server) handleAdmitAsk(w http.ResponseWriter, r *http.Request) {
 		askError(w, err)
 		return
 	}
+	s.recordRunConfig(r.Context(), ask.RunToken, team, work.AskRole, false, runHarness{})
 	if ask.Spend.KeyState == "none" {
 		if err := s.LLMControl.Reserve(r.Context(), ask.RunToken); err != nil {
 			operatorError(w, 409, "inference_policy", "The Ask is recorded, but no matching managed inference policy admitted its budget.")

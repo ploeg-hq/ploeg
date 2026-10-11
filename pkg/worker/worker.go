@@ -118,8 +118,20 @@ type Worker struct {
 	Broker  llmbroker.Broker
 }
 
+// profiledAdapter is a harness adapter that launches one of several agent
+// profiles, such as the acp adapter.
+type profiledAdapter interface {
+	Profile() string
+}
+
 func New(cfg Config, adapter harness.Adapter, broker llmbroker.Broker, log *slog.Logger) *Worker {
 	api := &APIClient{Base: strings.TrimRight(cfg.APIURL, "/"), HC: &http.Client{Timeout: 30 * time.Second}, BootstrapToken: cfg.BootstrapToken, WorkerID: cfg.WorkerID}
+	if adapter != nil {
+		api.Harness = adapter.Name()
+		if p, ok := adapter.(profiledAdapter); ok {
+			api.HarnessProfile = p.Profile()
+		}
+	}
 	if broker == nil {
 		broker = api
 	}

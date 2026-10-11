@@ -93,6 +93,7 @@ type OperatorRunListItem struct {
 	// CostFinal is true once the Run's cost will no longer change. Before
 	// that a settled cost is provisional.
 	CostFinal bool `json:"costFinal"`
+	OperatorRunConfig
 }
 
 // OperatorRunFilter selects Runs newest first. Before is an exclusive Run id
@@ -137,7 +138,8 @@ const operatorRunListJSON = `jsonb_build_object(
 	'reservedModels', CASE WHEN jsonb_typeof(a.models) = 'array' THEN (
 		SELECT COALESCE(jsonb_agg(left(m.value #>> '{}', 256) ORDER BY m.ord), '[]'::jsonb)
 		FROM jsonb_array_elements(a.models) WITH ORDINALITY AS m(value, ord)
-		WHERE jsonb_typeof(m.value) = 'string' AND m.ord <= 32) ELSE '[]'::jsonb END)`
+		WHERE jsonb_typeof(m.value) = 'string' AND m.ord <= 32) ELSE '[]'::jsonb END,
+	` + operatorRunConfigJSON + `)`
 
 var operatorRunListProjection = fmt.Sprintf(operatorRunListJSON, fmt.Sprintf(operatorRunTokens, "inputTokens"), fmt.Sprintf(operatorRunTokens, "outputTokens"))
 

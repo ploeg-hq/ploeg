@@ -818,6 +818,77 @@
         "costFinal": {
           "type": "boolean",
           "description": "True once the Run's cost will no longer change. A settled cost before costFinalAt is provisional and may rise."
+        },
+        "configuredModel": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 256
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The model the Run's Role was configured with when ploegd claimed or admitted it: the single model of its (team, Role) managed inference policy (ADR-0091). Null when unknown: a Run recorded before ploegd kept it, a policy naming more than one model, or no policy."
+        },
+        "harness": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 64
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The harness the worker reported in its claim, such as openhands, acp, exec, claude-code or claude-environment (ADR-0091). Null when unknown: an Ask or operator execution, which ploeg-worker does not run, an older worker, or a Run recorded before ploegd kept it."
+        },
+        "harnessProfile": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 64
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The harness's adapter profile the worker reported, such as opencode or custom for the acp harness (ADR-0091). Null when the harness has no profile or it is unknown."
+        },
+        "planHash": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "sha256 of the canonical JSON of the Team plan ploegd held when it claimed the Run (ADR-0091). Two Runs with the same hash ran under the same plan shape. Null for a plan-less team, an Ask, an operator execution, or a Run recorded before ploegd kept it."
+        },
+        "ploegdVersion": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 128
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The version of the ploegd that claimed or admitted the Run (ADR-0091). Null when unknown."
+        },
+        "modelMismatch": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "True when the Run's usage names a model other than configuredModel, false when every model it names is configuredModel (ADR-0091). Null while either side is unknown: no configured model, or no models in usage yet."
         }
       }
     },
@@ -1853,6 +1924,77 @@
         "costFinal": {
           "type": "boolean",
           "description": "True once the Run's cost will no longer change. A settled cost before costFinalAt is provisional and may rise."
+        },
+        "configuredModel": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 256
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The model the Run's Role was configured with when ploegd claimed or admitted it: the single model of its (team, Role) managed inference policy (ADR-0091). Null when unknown: a Run recorded before ploegd kept it, a policy naming more than one model, or no policy."
+        },
+        "harness": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 64
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The harness the worker reported in its claim, such as openhands, acp, exec, claude-code or claude-environment (ADR-0091). Null when unknown: an Ask or operator execution, which ploeg-worker does not run, an older worker, or a Run recorded before ploegd kept it."
+        },
+        "harnessProfile": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 64
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The harness's adapter profile the worker reported, such as opencode or custom for the acp harness (ADR-0091). Null when the harness has no profile or it is unknown."
+        },
+        "planHash": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "sha256 of the canonical JSON of the Team plan ploegd held when it claimed the Run (ADR-0091). Two Runs with the same hash ran under the same plan shape. Null for a plan-less team, an Ask, an operator execution, or a Run recorded before ploegd kept it."
+        },
+        "ploegdVersion": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 128
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The version of the ploegd that claimed or admitted the Run (ADR-0091). Null when unknown."
+        },
+        "modelMismatch": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "True when the Run's usage names a model other than configuredModel, false when every model it names is configuredModel (ADR-0091). Null while either side is unknown: no configured model, or no models in usage yet."
         }
       }
     },

@@ -94,6 +94,9 @@ func withDefaults(o Options) Options {
 func (a *Adapter) Name() string     { return "acp" }
 func (a *Adapter) ExpectsLLM() bool { return true }
 
+// Profile names the agent profile the adapter launches, such as opencode.
+func (a *Adapter) Profile() string { return a.profile.Name }
+
 // Run executes one prompt turn and maps the result onto an OutcomeReport.
 //
 // Phases: launch → initialize → session/new → session/prompt → shutdown. Each
