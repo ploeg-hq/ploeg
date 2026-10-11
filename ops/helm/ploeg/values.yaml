@@ -220,7 +220,7 @@ executor:
   # Global harness defaults; a team's optional `harness:` block overrides
   # these field-by-field (see teams below).
   harness:
-    name: openhands # openhands | exec | claude-code | acp (PLOEG_HARNESS)
+    name: openhands # openhands | exec | claude-code | acp | claude-environment (PLOEG_HARNESS)
     # Agent image. REQUIRED with the executor enabled, here, in runnerImage or
     # per team: Ploeg publishes no agent image, so the render fails without one.
     image: ""
@@ -260,6 +260,20 @@ executor:
       # wholesale, so a wrong provider block is a values edit rather than an
       # agent image rebuild. goose is configured by environment and refuses it.
       configJson: ""
+    # claude-environment harness only (ADR-0084): the Run executes as a Claude
+    # Code session in the Team's self-hosted environment, paid by the Team's
+    # Claude plan. The agent image needs the claude CLI and git.
+    claudeEnvironment:
+      environmentId: "" # ccpool_… (PLOEG_CLAUDE_ENVIRONMENT_ID)
+      # The Team member login that dispatches, one of two ways. loginVolume
+      # names a PersistentVolumeClaim holding a Claude config directory a
+      # person signed in to with `claude auth login`; the CLI refreshes it in
+      # place. loginSecret names a Secret with keys refreshToken and scopes
+      # that each Run exchanges with `claude auth login`. Anthropic caps
+      # either login at 30 days, so a person renews it.
+      loginVolume: ""
+      loginSecret: ""
+      pollInterval: "" # Go duration; "" = 15s (PLOEG_CLAUDE_POLL_INTERVAL)
   # DEPRECATED in favor of harness.image (kept as the fallback so existing
   # value overrides keep working).
   # agent-runner >=1.0.1 only: 1.0.0 mints LiteLLM keys without key_alias (400).

@@ -18,6 +18,8 @@ The generator follows each binary's imports inside the module and records every 
 | Name | Binary | Default | Description | Source |
 | --- | --- | --- | --- | --- |
 | `AGENT_BUILDER_TOKEN` | ploeg-worker | required | Forge token for clone and push. A reading Role gets `executor.forgejo.readTokenSecret` when set. Writers also pass it to the harness. | [main.go](../../cmd/ploeg-worker/main.go) |
+| `CLAUDE_CODE_OAUTH_REFRESH_TOKEN` | ploeg-worker |  | A Team member's claude.ai refresh token. A `claude-environment` worker exchanges it with `claude auth login` in each Run's scratch directory before it dispatches (chart `harness.claudeEnvironment.loginSecret`, key `refreshToken`). Anthropic caps the session-control scope at 30 days, so a person renews it. | [main.go](../../cmd/ploeg-worker/main.go) |
+| `CLAUDE_CODE_OAUTH_SCOPES` | ploeg-worker |  | The scopes the refresh token was issued with, space separated; they must include `user:sessions:claude_code` (chart `harness.claudeEnvironment.loginSecret`, key `scopes`). | [main.go](../../cmd/ploeg-worker/main.go) |
 | `FORGE_URL` | ploeg-worker | required |  | [main.go](../../cmd/ploeg-worker/main.go) |
 | `KUBECONFIG` | ploeg-worker |  | Administrative configuration. The worker refuses to start when it is set. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `KUBERNETES_SERVICE_HOST` | ploeg-worker |  |  | [launcher.go](../../pkg/sandboxlaunch/launcher.go) |
@@ -45,8 +47,11 @@ The generator follows each binary's imports inside the module and records every 
 | `PLOEG_ASK_ALLOWANCE_USD` | ploegd | `2.00` | Monthly Ask Allowance, in US dollars, that a Team's period opens with (ADR-0082). A period keeps the limit its first Ask opened it with. At most 10000 with four decimals; anything else refuses to start. | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_ASK_BUDGET_USD` | ploegd | `0.02` | Per-Ask Budget in US dollars, the cap on the key an Ask is given (ADR-0082). A `(team, ask)` policy in `PLOEG_WORKER_LLM_POLICIES` with a smaller `budgetUsd` lowers it. A Team with no such policy has no Asks. | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_BASE_BRANCH` | ploeg-worker |  | Fallback branch the worker clones, branches from and targets. Unset means the repository default branch. | [main.go](../../cmd/ploeg-worker/main.go) |
+| `PLOEG_CLAUDE_CONFIG_DIR` | ploeg-worker |  | A `CLAUDE_CONFIG_DIR` that already holds a Team member's claude.ai login, which the CLI refreshes in place (chart `harness.claudeEnvironment.loginVolume`, mounted at `/var/lib/ploeg/claude-login`). Unset = the worker logs in per Run from `CLAUDE_CODE_OAUTH_REFRESH_TOKEN`. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_CLAUDE_ENVIRONMENTS` | ploegd |  | `true` enables Runs executed as Claude Code sessions in a Team's self-hosted environment (ADR-0084): a worker records its dispatched session on `POST /api/v1/runs/{token}/claude-session`, and a runner's session hook exchanges Anthropic's session token for the Run's push credential on `POST /api/v1/claude-sessions/forge-credential`. The exchange needs per-run push credentials (`PLOEG_FORGEJO_BOT_PASSWORD`) and `PLOEG_FORGEJO_URL`, under which it names the push remote; the shared token never leaves ploegd. `ops/claude-runner/post-session` is the runner hook that calls it. Anything else leaves both routes answering 404. | [claudesessions.go](../../cmd/ploegd/claudesessions.go) |
+| `PLOEG_CLAUDE_ENVIRONMENT_ID` | ploeg-worker |  | The `ccpool_…` id of the Team's self-hosted Claude environment a `claude-environment` worker dispatches its Runs to (ADR-0084, chart `harness.claudeEnvironment.environmentId`). Required with that harness. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_CLAUDE_PERMISSION_MODE` | ploeg-worker |  |  | [main.go](../../cmd/ploeg-worker/main.go) |
+| `PLOEG_CLAUDE_POLL_INTERVAL` | ploeg-worker |  | How often a `claude-environment` worker asks ploegd whether the runner reported the session's end. Unset = 15s. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_CLAUDE_SESSION_JWKS_URL` | ploegd |  | Where ploegd fetches the keys that sign Claude session tokens. Unset uses Anthropic's published JWKS; tests point it at a fake. | [claudesessions.go](../../cmd/ploegd/claudesessions.go) |
 | `PLOEG_CLICKUP_DONE_STATUS` | ploegd |  | List status applied when a Shift finishes (chart `tracker.clickup.doneStatus`). Empty leaves the board untouched. | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_CLICKUP_SECRET` | ploegd |  | Verifies `X-Signature` on `POST /webhooks/tracker/clickup`. ClickUp generates it when the webhook is registered. ClickUp is registered only when this or `PLOEG_CLICKUP_TOKEN` is set. Unset rejects every ClickUp webhook. | [main.go](../../cmd/ploegd/main.go) |
@@ -217,11 +222,16 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `executor.harness.acp.profile` |  | `opencode` | opencode \| qwen-code \| goose \| openhands \| custom (PLOEG_ACP_PROFILE) | values.yaml |
 | `executor.harness.acp.promptTimeout` |  | `""` | Go duration; "" = adapter default (45m) | values.yaml |
 | `executor.harness.args` |  | `[]` | exec harness only: argv template with {taskspec}/{taskfile} | values.yaml |
+| `executor.harness.claudeEnvironment` |  |  | claude-environment harness only (ADR-0084): the Run executes as a Claude Code session in the Team's self-hosted environment, paid by the Team's Claude plan. The agent image needs the claude CLI and git. | values.yaml |
+| `executor.harness.claudeEnvironment.environmentId` |  | `""` | ccpool_… (PLOEG_CLAUDE_ENVIRONMENT_ID) | values.yaml |
+| `executor.harness.claudeEnvironment.loginSecret` |  | `""` |  | values.yaml |
+| `executor.harness.claudeEnvironment.loginVolume` |  | `""` | The Team member login that dispatches, one of two ways. loginVolume names a PersistentVolumeClaim holding a Claude config directory a person signed in to with `claude auth login`; the CLI refreshes it in place. loginSecret names a Secret with keys refreshToken and scopes that each Run exchanges with `claude auth login`. Anthropic caps either login at 30 days, so a person renews it. | values.yaml |
+| `executor.harness.claudeEnvironment.pollInterval` |  | `""` | Go duration; "" = 15s (PLOEG_CLAUDE_POLL_INTERVAL) | values.yaml |
 | `executor.harness.dind` |  | `true` | privileged DinD sidecar + DOCKER_* wiring (OpenHands + gates need it) | values.yaml |
 | `executor.harness.entrypoint` |  | `""` | binary override (PLOEG_HARNESS_ENTRYPOINT); "" = adapter default | values.yaml |
 | `executor.harness.idleTimeout` |  | `15m` | Stops a harness that prints nothing and makes no model call for this long (`PLOEG_HARNESS_IDLE_TIMEOUT`). | values.yaml |
 | `executor.harness.image` |  | `""` | Agent image. REQUIRED with the executor enabled, here, in runnerImage or per team: Ploeg publishes no agent image, so the render fails without one. | values.yaml |
-| `executor.harness.name` |  | `openhands` | openhands \| exec \| claude-code \| acp (PLOEG_HARNESS) | values.yaml |
+| `executor.harness.name` |  | `openhands` | openhands \| exec \| claude-code \| acp \| claude-environment (PLOEG_HARNESS) | values.yaml |
 | `executor.harness.outcomeFile` |  | `""` | exec harness only: OutcomeReport JSON path override | values.yaml |
 | `executor.harness.timeout` |  | `100m` | Stops a harness that runs longer than this (`PLOEG_HARNESS_TIMEOUT`). | values.yaml |
 | `executor.harness.toolchains` |  | `[]` | Language toolchains mounted read-only at /opt/ploeg/toolchains/<name> as image volumes (Kubernetes >= 1.35), pulled by the kubelet, so a Run can run the target repository's checks without registry egress. `path` lists directories inside the image to put on PATH (default /bin); `env` is set in the harness environment (PLOEG_TOOLCHAINS). | values.yaml |
@@ -436,7 +446,7 @@ name becomes the workload suffix (ploeg-worker-<team>-<role>); writes marks the 
 
 | Key | Type | Description |
 | --- | --- | --- |
-| `name` | one of `"openhands"`, `"exec"`, `"claude-code"`, `"acp"` | `openhands`, `exec`, `claude-code` or `acp`. |
+| `name` | one of `"openhands"`, `"exec"`, `"claude-code"`, `"acp"`, `"claude-environment"` | `openhands`, `exec`, `claude-code` or `acp`. |
 | `image` | string | Agent image. Empty means `executor.runnerImage`. |
 | `entrypoint` | string | Harness binary override. Empty means the adapter default. |
 | `args` | array | `exec` harness only: argv template with `{taskspec}` and `{taskfile}`. |
@@ -446,6 +456,7 @@ name becomes the workload suffix (ploeg-worker-<team>-<role>); writes marks the 
 | `timeout` | string | Stops a harness that runs longer than this. |
 | `idleTimeout` | string | Stops a harness that is silent for this long. |
 | `acp` | [acp](#acp) | `acp` harness settings. |
+| `claudeEnvironment` | [claudeEnvironment](#claudeenvironment) |  |
 | `toolchains` | array |  |
 | `verify` | array |  |
 | `verifyTimeout` | string |  |
@@ -458,6 +469,17 @@ name becomes the workload suffix (ploeg-worker-<team>-<role>); writes marks the 
 | `image` | string |  |
 | `path` | array |  |
 | `env` | object |  |
+
+### claudeEnvironment
+
+claude-environment harness only (ADR-0084): the Team's self-hosted Claude environment and the Secret holding the Team member login that dispatches to it.
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `environmentId` | string |  |
+| `loginSecret` | string | Secret with the keys refreshToken and scopes (CLAUDE_CODE_OAUTH_REFRESH_TOKEN, CLAUDE_CODE_OAUTH_SCOPES). |
+| `loginVolume` | string | PersistentVolumeClaim holding a signed-in Claude config directory, mounted as PLOEG_CLAUDE_CONFIG_DIR. Wins over loginSecret. |
+| `pollInterval` | string |  |
 
 ### acp
 

@@ -272,8 +272,11 @@ func TestClaudeSessionBodiesMatchTheRunAPIContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	for def, body := range map[string]any{
-		"claudeSessionRequest":          claudeSessionRequest{EnvironmentID: testEnvironment, SessionID: "session_abc"},
-		"claudeForgeCredentialResponse": claudeForgeCredentialResponse{Username: "agent-builder", Token: "t", Branch: "agent/vik-1", Remote: "https://forge.example/o/r.git"},
+		"claudeSessionRequest": claudeSessionRequest{EnvironmentID: testEnvironment, SessionID: "session_abc"},
+		"claudeForgeCredentialResponse": claudeForgeCredentialResponse{Username: "agent-builder", Token: "t", Branch: "agent/vik-1", Remote: "https://forge.example/o/r.git",
+			BaseBranch: "development", Title: "t", Reference: "VIK-1"},
+		"claudeSessionReportRequest": claudeSessionReportRequest{ExitReason: "completed", PushedCommit: "abc", PullRequest: "https://forge.example/pulls/1", FinalMessage: "{}"},
+		"claudeSessionStateResponse": claudeSessionStateResponse{EnvironmentID: testEnvironment, SessionID: "abc"},
 	} {
 		schema, err := jsonschema.NewCompiler().Compile(path + "#/$defs/" + def)
 		if err != nil {
@@ -287,5 +290,78 @@ func TestClaudeSessionBodiesMatchTheRunAPIContract(t *testing.T) {
 		if err := schema.Validate(instance); err != nil {
 			t.Errorf("%s violates the contract: %v", def, err)
 		}
+	}
+}
+
+func postReport(t *testing.T, h http.Handler, body string) int {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/claude-sessions/report", bytes.NewBufferString(body))
+	req.Header.Set("Authorization", "Bearer sk-ant-cc-anything")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec.Code
+}
+
+func sessionState(t *testing.T, h http.Handler, runToken string) (int, claudeSessionStateResponse) {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/runs/"+runToken+"/claude-session", nil))
+	var resp claudeSessionStateResponse
+	if rec.Code == http.StatusOK {
+		if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+	}
+	return rec.Code, resp
+}
+
+func TestClaudeSessionReport_ReachesTheWorkerOnceAndFirstReportWins(t *testing.T) {
+	reset(t)
+	h := claudeServer(&countingBroker{}, fakeSessionVerifier{claims: sessionClaims("rep")})
+	run := claimWriter(t, h, "1240")
+	body, _ := json.Marshal(claudeSessionRequest{EnvironmentID: testEnvironment, SessionID: "session_rep",
+		BaseBranch: "development", Title: "Fix the thing", Reference: "VIK-1240"})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/v1/runs/"+run+"/claude-session", bytes.NewReader(body)))
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("record returned %d", rec.Code)
+	}
+
+	if code, resp := exchange(t, h); code != http.StatusOK || resp.BaseBranch != "development" || resp.Title != "Fix the thing" || resp.Reference != "VIK-1240" {
+		t.Errorf("exchange = %d %+v, want the recorded base, title and reference", code, resp)
+	}
+	if code, st := sessionState(t, h, run); code != http.StatusOK || st.ReportedAt != nil || st.SessionID != "rep" {
+		t.Fatalf("state before the report = %d %+v", code, st)
+	}
+
+	if code := postReport(t, h, `{"exitReason":"completed","pushedCommit":"abc","pullRequest":"https://forge.example/pulls/1","finalMessage":"{\"problem\":\"p\",\"solution\":\"s\"}"}`); code != http.StatusNoContent {
+		t.Fatalf("report returned %d", code)
+	}
+	if code := postReport(t, h, `{"exitReason":"failed","finalMessage":"rewritten"}`); code != http.StatusNoContent {
+		t.Fatalf("repeat report returned %d", code)
+	}
+	code, st := sessionState(t, h, run)
+	if code != http.StatusOK || st.ReportedAt == nil || st.ExitReason != "completed" || st.PushedCommit != "abc" ||
+		st.PullRequest != "https://forge.example/pulls/1" || st.FinalMessage != `{"problem":"p","solution":"s"}` {
+		t.Errorf("state after the report = %d %+v", code, st)
+	}
+}
+
+func TestClaudeSessionReport_Refuses(t *testing.T) {
+	reset(t)
+	h := claudeServer(&countingBroker{}, fakeSessionVerifier{claims: sessionClaims("nobody")})
+	if code := postReport(t, h, `{"exitReason":"completed"}`); code != http.StatusNotFound {
+		t.Errorf("unknown session: %d, want 404", code)
+	}
+	if code := postReport(t, h, `{}`); code != http.StatusBadRequest {
+		t.Errorf("no exit reason: %d, want 400", code)
+	}
+	bad := claudeServer(&countingBroker{}, fakeSessionVerifier{err: claudesession.ErrInvalid})
+	if code := postReport(t, bad, `{"exitReason":"completed"}`); code != http.StatusUnauthorized {
+		t.Errorf("invalid token: %d, want 401", code)
+	}
+	run := claimWriter(t, h, "1241")
+	if code, _ := sessionState(t, h, run); code != http.StatusNotFound {
+		t.Errorf("state without a recorded session: %d, want 404", code)
 	}
 }

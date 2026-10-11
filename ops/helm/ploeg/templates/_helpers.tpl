@@ -224,6 +224,17 @@ global executor.harness defaults field-by-field (explicit hasKey checks, so
 {{- $isolationOverride := dict }}
 {{- if hasKey $rh "credentialIsolation" }}{{- $isolationOverride = dict "value" $rh.credentialIsolation }}{{- else if hasKey $th "credentialIsolation" }}{{- $isolationOverride = dict "value" $th.credentialIsolation }}{{- else if hasKey $gh "credentialIsolation" }}{{- $isolationOverride = dict "value" $gh.credentialIsolation }}{{- end }}
 {{- $isolation := include "ploeg.credentialIsolation" (dict "root" $root "harness" (include "ploeg.qualificationHarnessName" (dict "name" $hName "acpProfile" $acpProfile)) "dind" $hDind "override" $isolationOverride) | fromJson }}
+{{- /* claude-environment harness (ADR-0084): same override chain. */}}
+{{- $gce := $gh.claudeEnvironment | default dict }}
+{{- $tce := $th.claudeEnvironment | default dict }}
+{{- $rce := $rh.claudeEnvironment | default dict }}
+{{- $ceEnvironment := $rce.environmentId | default ($tce.environmentId | default $gce.environmentId) }}
+{{- $ceLoginSecret := $rce.loginSecret | default ($tce.loginSecret | default $gce.loginSecret) }}
+{{- $cePoll := $rce.pollInterval | default ($tce.pollInterval | default $gce.pollInterval) }}
+{{- $ceLoginVolume := $rce.loginVolume | default ($tce.loginVolume | default $gce.loginVolume) }}
+{{- if and (eq $hName "claude-environment") (or (not $ceEnvironment) (and (not $ceLoginSecret) (not $ceLoginVolume))) }}
+{{- fail (printf "team %s: harness claude-environment requires harness.claudeEnvironment.environmentId and loginSecret or loginVolume" $who) }}
+{{- end }}
 {{- if and (eq $hName "acp") (eq ($acpProfile | default "opencode") "custom") (not $acpArgv) }}
 {{- fail (printf "team %s: harness.acp.profile=custom requires harness.acp.argv" $who) }}
 {{- end -}}
@@ -382,6 +393,25 @@ spec:
           value: {{ $acpConfig | quote }}
         {{- end }}
         {{- end }}
+        {{- if eq $hName "claude-environment" }}
+        - name: PLOEG_CLAUDE_ENVIRONMENT_ID
+          value: {{ $ceEnvironment | quote }}
+        {{- if $cePoll }}
+        - name: PLOEG_CLAUDE_POLL_INTERVAL
+          value: {{ $cePoll | quote }}
+        {{- end }}
+        {{- if $ceLoginVolume }}
+        - name: PLOEG_CLAUDE_CONFIG_DIR
+          value: /var/lib/ploeg/claude-login
+        {{- else }}
+        - name: CLAUDE_CODE_OAUTH_REFRESH_TOKEN
+          valueFrom:
+            secretKeyRef: {name: {{ $ceLoginSecret | quote }}, key: refreshToken}
+        - name: CLAUDE_CODE_OAUTH_SCOPES
+          valueFrom:
+            secretKeyRef: {name: {{ $ceLoginSecret | quote }}, key: scopes}
+        {{- end }}
+        {{- end }}
         - name: LLM_MODEL
           value: {{ $role.model | default $team.model | quote }}
         {{- /* For a Role, the team's `budget` is the SHIFT POOL, not a per-run
@@ -521,6 +551,10 @@ spec:
         {{- end }}
         - name: ci-shared
           mountPath: /mnt/ci-shared
+        {{- if and (eq $hName "claude-environment") $ceLoginVolume }}
+        - name: claude-login
+          mountPath: /var/lib/ploeg/claude-login
+        {{- end }}
         {{- range $tc := $hToolchains }}
         - name: toolchain-{{ $tc.name }}
           mountPath: /opt/ploeg/toolchains/{{ $tc.name }}
@@ -548,6 +582,11 @@ spec:
     - name: ci-shared
       emptyDir:
         sizeLimit: 8Gi
+    {{- if and (eq $hName "claude-environment") $ceLoginVolume }}
+    - name: claude-login
+      persistentVolumeClaim:
+        claimName: {{ $ceLoginVolume | quote }}
+    {{- end }}
     {{- range $tc := $hToolchains }}
     - name: toolchain-{{ $tc.name }}
       image:

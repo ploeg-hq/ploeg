@@ -153,6 +153,12 @@ func run(log *slog.Logger) error {
 			ConfigJSON:     os.Getenv("PLOEG_ACP_CONFIG_JSON"),
 			PermissionMode: os.Getenv("PLOEG_ACP_PERMISSION_MODE"),
 		},
+		ClaudeEnvironment: worker.ClaudeEnvironmentConfig{
+			EnvironmentID: os.Getenv("PLOEG_CLAUDE_ENVIRONMENT_ID"),
+			ConfigDir:     os.Getenv("PLOEG_CLAUDE_CONFIG_DIR"),
+			RefreshToken:  os.Getenv("CLAUDE_CODE_OAUTH_REFRESH_TOKEN"),
+			Scopes:        os.Getenv("CLAUDE_CODE_OAUTH_SCOPES"),
+		},
 	}
 	if raw := os.Getenv("PLOEG_HARNESS_ARGS"); raw != "" {
 		if err := json.Unmarshal([]byte(raw), &hc.Args); err != nil {
@@ -168,6 +174,9 @@ func run(log *slog.Logger) error {
 		return err
 	}
 	if hc.ACP.IdleTimeout, err = durationEnv("PLOEG_ACP_IDLE_TIMEOUT"); err != nil {
+		return err
+	}
+	if hc.ClaudeEnvironment.PollEvery, err = durationEnv("PLOEG_CLAUDE_POLL_INTERVAL"); err != nil {
 		return err
 	}
 	if cfg.HarnessTimeout, err = boundEnv("PLOEG_HARNESS_TIMEOUT", defaultHarnessTimeout); err != nil {

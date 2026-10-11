@@ -38,6 +38,22 @@ executor:
         image: harbor.webgrip.dev/webgrip/custom-agent:0.1.0
         args: ["/usr/local/bin/agent", "--spec", "{taskspec}", "--task", "{taskfile}"]
         dind: false
+    # ADR-0084: Runs execute as Claude Code sessions in the Team's self-hosted
+    # environment; the worker only dispatches and waits.
+    - name: pewter
+      model: litellm_proxy/claude-sonnet-5
+      budget: "1"
+      repoOwner: webgrip
+      repoName: example
+      baseBranch: development
+      maxReplicaCount: 1
+      harness:
+        name: claude-environment
+        image: harbor.webgrip.dev/webgrip/claude-dispatch:0.1.0
+        dind: false
+        claudeEnvironment:
+          environmentId: ccpool_example
+          loginVolume: pewter-claude-login
     # A team with NO repo: the target comes from the work item (R11), so this
     # renders no REPO_OWNER/REPO_NAME at all. Proves the decoupled path on
     # every PR — the whole point is that a capability tier needs no repository.
