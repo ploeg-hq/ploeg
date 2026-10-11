@@ -185,6 +185,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/v1/runs/{token}/outcome", s.handleOutcome)
 	mux.HandleFunc("GET /api/v1/runs/{token}/context/{id}", s.handleRunContext)
 	mux.HandleFunc("POST /api/v1/runs/{token}/claude-session", s.handleRecordClaudeSession)
+	mux.HandleFunc("POST /api/v1/runs/{token}/forge-credential", s.handleRefreshForgeCredential)
 	mux.HandleFunc("POST /api/v1/claude-sessions/forge-credential", s.handleClaudeForgeCredential)
 	mux.HandleFunc("GET /api/v1/queue/{team}", s.handleQueue)
 	mux.HandleFunc("/api/v1/deploys", s.handleDeploy)
@@ -318,9 +319,9 @@ func (s *Server) handleForgeWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	delivery := r.Header.Get("X-Forgejo-Delivery")
-	if delivery == "" {
-		delivery = r.Header.Get("X-Gitea-Delivery")
+	delivery := forgeDeliveryID(r.Header)
+	if identifier, ok := fp.(provider.DeliveryIdentifier); ok {
+		delivery = identifier.DeliveryID(r)
 	}
 	seen, err := s.Store.SeenDelivery(r.Context(), name, delivery)
 	if err != nil {
@@ -478,6 +479,10 @@ type claimResponse struct {
 	// Both arrive in the same field, and the worker cannot tell them apart —
 	// which made it log a per-run credential on deployments that have none.
 	ForgeTokenPerRun bool `json:"forgeTokenPerRun,omitempty"`
+	// ForgeTokenExpiresAt is when the forge ends ForgeToken by itself, absent
+	// for a token that lives until it is revoked. The worker refreshes an
+	// expiring token through POST /api/v1/runs/{token}/forge-credential.
+	ForgeTokenExpiresAt *time.Time `json:"forgeTokenExpiresAt,omitempty"`
 	// Planner marks a Role the team's plan configures as a planner
 	// (ADR-0031).
 	Planner bool `json:"planner,omitempty"`
@@ -624,6 +629,10 @@ func (s *Server) respondClaimedRun(w http.ResponseWriter, r *http.Request, req c
 		if cred.ID != "" {
 			resp.ForgeToken = cred.Token
 			resp.ForgeTokenPerRun = true
+			if !cred.ExpiresAt.IsZero() {
+				expires := cred.ExpiresAt.UTC()
+				resp.ForgeTokenExpiresAt = &expires
+			}
 		}
 	}
 

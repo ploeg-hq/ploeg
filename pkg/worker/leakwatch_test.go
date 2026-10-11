@@ -38,7 +38,7 @@ func startLeakWatchedForgeProxy(t *testing.T, forgeURL string) leakProxy {
 	scope := testLeakScope(watch)
 	scope.log = slog.New(slog.NewTextHandler(&logs, nil))
 	p, err := startForgeTokenProxy(harness.RepoRef{ForgeURL: forgeURL, Owner: "webgrip", Name: "example"},
-		"real-forge-token", forgeWriter, writerBranch, scope)
+		staticForgeToken("real-forge-token"), forgeWriter, writerBranch, scope)
 	if err != nil {
 		t.Fatal(err)
 	}

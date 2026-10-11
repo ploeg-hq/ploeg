@@ -13,7 +13,7 @@
       "properties": {
         "forge": {
           "type": "string",
-          "enum": ["forgejo", "gitlab"],
+          "enum": ["forgejo", "gitlab", "github"],
           "description": "API dialect the forge at forgeUrl speaks. Absent = forgejo, so every Task Spec written before this field keeps its meaning; additive and optional per docs/contracts/README.md."
         },
         "forgeUrl": { "type": "string", "description": "forge base URL" },

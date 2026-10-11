@@ -22,7 +22,10 @@
 // token whose Run no longer holds a Lease.
 package forgebroker
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // Broker mints and revokes per-run forge credentials.
 type Broker interface {
@@ -57,6 +60,9 @@ type MintRequest struct {
 	// that can reach a second repo is the blast radius this package exists to
 	// remove.
 	Owner, Repo string
+	// Forge is the forge id of the Run's Work Target; empty is the default
+	// forge. A Router sends the mint to that forge's broker.
+	Forge string
 }
 
 // Credential is a minted per-run forge token.
@@ -69,6 +75,8 @@ type Credential struct {
 	Token string
 	// Name is the human-readable token name in the forge's UI.
 	Name string
+	// ExpiresAt is when the forge ends the token by itself; zero means never.
+	ExpiresAt time.Time
 }
 
 // Static is the pre-tier-2 behaviour: one shared credential, no minting, no

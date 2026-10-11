@@ -622,9 +622,38 @@
           "type": "string",
           "enum": [
             "forgejo",
-            "gitlab"
+            "gitlab",
+            "github"
           ],
           "description": "Which forge the workers act against; selects the sibling block of the same name. Also the default dialect for a Work Item whose target names no forge (ADR-0023). One active forge per release: a worker pod holds one forge URL and one credential."
+        },
+        "github": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "url": {
+              "type": "string",
+              "description": "Web root, https://github.com or a GitHub Enterprise Server root; the REST API is derived. Empty = ploegd configures no GitHub forge provider."
+            },
+            "tokenSecret": {
+              "$ref": "#/definitions/secretRef",
+              "description": "The workers' boot credential (AGENT_BUILDER_TOKEN) and, without a GitHub App, the shared credential writing Runs push with. With tracker.github.appId set, writing Runs get a per-Run installation token instead (ADR-0086)."
+            },
+            "readTokenSecret": {
+              "$ref": "#/definitions/readTokenSecretRef",
+              "description": "ADR-0013 tier 1: a read-only fine-grained token for reading Roles. Required (name and key) when any team has a reading Role."
+            },
+            "webhookSecret": {
+              "$ref": "#/definitions/secretRef",
+              "description": "Verifies X-Hub-Signature-256 on POST /webhooks/forge/github. Unset = every GitHub forge webhook is rejected."
+            },
+            "botLogin": {
+              "type": "string",
+              "description": "The GitHub App's bot login, e.g. ploeg[bot], so Ploeg's own reviews never trigger rework."
+            }
+          }
         },
         "gitlab": {
           "type": [
