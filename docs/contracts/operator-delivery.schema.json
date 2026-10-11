@@ -522,6 +522,11 @@
         "publicationEnabled": {
           "type": "boolean",
           "default": false
+        },
+        "publisherLogin": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+          "description": "The forge login that must have opened a published pull request. Empty accepts any author."
         }
       }
     },
@@ -679,7 +684,8 @@
       "required": [
         "schemaVersion",
         "delivery",
-        "lifecycle"
+        "lifecycle",
+        "publicationEnabled"
       ],
       "properties": {
         "schemaVersion": {
@@ -690,6 +696,10 @@
         },
         "lifecycle": {
           "const": "single-completed-execution"
+        },
+        "publicationEnabled": {
+          "type": "boolean",
+          "description": "True when the registered policy for the execution's repository enables publication; false without a policy."
         }
       }
     }

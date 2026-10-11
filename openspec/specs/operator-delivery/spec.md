@@ -45,10 +45,15 @@ A Publication Operation SHALL be durably reserved before an external effect. Onl
 
 ### Requirement: Resolve uncertainty only with positive evidence
 
-An uncertain or reserved Publication Operation MAY become published only through a trusted-control report positively identifying its exact branch and canonical commit with a remote identifier and URL. A timeout, negative lookup or expired lease SHALL NOT authorize another effect or remove the barrier. R2 and R17 apply independently of worker cooperation.
+An uncertain or reserved Publication Operation MAY become published only through a trusted-control report positively identifying its exact branch and canonical commit with a remote identifier and pull request URL. Ploeg SHALL re-read that pull request from the forge with its own read credential and SHALL record it as published only when its head commit, head branch, base branch, repository, state and, when the policy names one, author match the reservation. A timeout, negative lookup or expired lease SHALL NOT authorize another effect or remove the barrier. R2 and R17 apply independently of worker cooperation.
 
 #### Scenario: A create response is lost
 
 - **WHEN** a forge request times out and subsequent lookup finds nothing
 - **THEN** the operation remains unresolved and no duplicate create is authorized.
+
+#### Scenario: A publisher reports a pull request at another commit
+
+- **WHEN** the trusted service reports published but the forge shows the pull request's head at a different commit
+- **THEN** the report is refused with `publication_mismatch` and the operation keeps its state.
 

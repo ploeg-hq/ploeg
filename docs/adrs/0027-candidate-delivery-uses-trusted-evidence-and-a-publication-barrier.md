@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-09-11
+status: accepted
+date: 2026-10-10
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2026-10-31
@@ -27,7 +27,7 @@ A completed Run can provide code and test output without proving that the review
 
 Chosen option: "Store exact candidate evidence, trusted verification and a durable publication barrier in Ploeg", because it makes both approval and crash recovery depend on durable control-plane facts.
 
-The completed operator execution admits one immutable Delivery Candidate with canonical commit, tree, base, artifact and current policy digests. A separately configured verification-capable consumer submits a Verification Receipt that satisfies the server's registered repository policy. Human approval binds that receipt and candidate. Ploeg commits one Publication Operation before granting a single response permission to invoke the external effect. Replays never regenerate that permission. Only a trusted positive match of remote identity, branch and canonical commit can resolve an ambiguous operation as published.
+The completed operator execution admits one immutable Delivery Candidate with canonical commit, tree, base, artifact and current policy digests. A separately configured verification-capable consumer submits a Verification Receipt that satisfies the server's registered repository policy. Human approval binds that receipt and candidate. Ploeg commits one Publication Operation before granting a single response permission to invoke the external effect. Replays never regenerate that permission. Only a trusted positive match of remote identity, branch and canonical commit can resolve an ambiguous operation as published, and Ploeg confirms that match itself by reading the pull request from the forge with its own read credential before recording it.
 
 The initial lifecycle deliberately freezes one attempt. It does not implement successor Work Orders or automatic repair after failed verification. Production publication remains disabled until an operator configures and qualifies the trusted verifier and isolated publisher.
 
@@ -40,7 +40,7 @@ The initial lifecycle deliberately freezes one attempt. It does not implement su
 
 ### Confirmation
 
-`mise exec -- go test ./pkg/store ./pkg/httpapi` checks immutable binding, scoped verification, policy drift, approval references, concurrent reservation, lost-response replay and positive-only reconciliation. `mise exec -- go test ./internal/ledger/` checks ledger consistency. The De Vloer fresh-container qualification must independently execute the checked canonical tree before enabling production publication.
+`mise exec -- go test ./pkg/store ./pkg/httpapi` checks immutable binding, scoped verification, policy drift, approval references, concurrent reservation, lost-response replay and positive-only reconciliation. `TestPublicationStatusRejectsMismatchedHead` and its siblings in `pkg/httpapi/publication_check_test.go` check that a published report is refused unless the forge shows the reserved head commit, branches, repository, state and publisher. `mise exec -- go test ./internal/ledger/` checks ledger consistency. The De Vloer fresh-container qualification must independently execute the checked canonical tree before enabling production publication.
 
 ## Pros and Cons of the Options
 
@@ -59,4 +59,5 @@ The initial lifecycle deliberately freezes one attempt. It does not implement su
 
 * Technical story: [govern-candidate-delivery](../../openspec/changes/archive/2026-09-23-govern-candidate-delivery/proposal.md).
 * 2026-09-11 — Recorded before implementation; remains proposed for human ratification.
+* 2026-10-10 — Accepted by the owner (Ryan Grippeling), with the forge check added: Ploeg re-reads the published pull request with its own read token before recording it (VIK-1982).
 * Related decisions: [ADR 0024](0024-operator-work-uses-one-execution-authority.md), [ADR 0025](0025-management-authority-stays-in-the-control-plane.md).

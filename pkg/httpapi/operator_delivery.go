@@ -37,7 +37,7 @@ func ParseDeliveryPolicies(raw string) (map[string]DeliveryPolicy, error) {
 		return nil, fmt.Errorf("invalid operator delivery policy configuration")
 	}
 	for _, p := range policies {
-		if !operatorName.MatchString(p.RepositoryID) || !deliveryDigest.MatchString(p.PolicySHA256) || !operatorName.MatchString(p.VerifierID) || p.MinTests < 1 || p.MinTests > 100000 {
+		if !operatorName.MatchString(p.RepositoryID) || !deliveryDigest.MatchString(p.PolicySHA256) || !operatorName.MatchString(p.VerifierID) || p.MinTests < 1 || p.MinTests > 100000 || (p.PublisherLogin != "" && !operatorName.MatchString(p.PublisherLogin)) {
 			return nil, fmt.Errorf("invalid operator delivery policy")
 		}
 		if _, exists := result[p.RepositoryID]; exists {
@@ -118,7 +118,13 @@ func (s *Server) handleReadDelivery(w http.ResponseWriter, r *http.Request) {
 		executionError(w, err)
 		return
 	}
-	operatorJSON(w, 200, map[string]any{"schemaVersion": "1.0", "delivery": d, "lifecycle": "single-completed-execution"})
+	repository, err := s.Store.DeliveryRepositoryID(r.Context(), e.ID)
+	if err != nil {
+		executionError(w, err)
+		return
+	}
+	enabled := s.OperatorConfig.DeliveryPolicies[repository].PublicationEnabled && repository != ""
+	operatorJSON(w, 200, map[string]any{"schemaVersion": "1.0", "delivery": d, "lifecycle": "single-completed-execution", "publicationEnabled": enabled})
 }
 
 func (s *Server) handleAdmitDeliveryCandidate(w http.ResponseWriter, r *http.Request) {
@@ -279,11 +285,28 @@ func (s *Server) handlePublicationStatus(w http.ResponseWriter, r *http.Request)
 			operatorError(w, 400, "invalid_publication_evidence", "Positive publication evidence must identify the registered repository.")
 			return
 		}
+		if d.Operation.ID == r.PathValue("operation") && d.Operation.State != "published" {
+			if d.Candidate == nil {
+				operatorError(w, 409, "candidate_required", "An immutable delivery candidate is required.")
+				return
+			}
+			policy, ok := s.deliveryPolicy(w, d.Candidate.RepositoryID)
+			if !ok {
+				return
+			}
+			if refusal := s.verifyPublication(r.Context(), *d.Operation, policy, remote); refusal != nil {
+				refusal.write(w)
+				return
+			}
+		}
 	}
-	operation, err := s.Store.RecordPublicationStatus(r.Context(), e.ID, r.PathValue("operation"), a, in)
+	operation, changed, err := s.Store.RecordPublicationStatus(r.Context(), e.ID, r.PathValue("operation"), a, in)
 	if err != nil {
 		executionError(w, err)
 		return
+	}
+	if changed && operation.State == "published" {
+		s.notifyPublished(r.Context(), e.WorkItemID, operation)
 	}
 	operatorJSON(w, 200, map[string]any{"schemaVersion": "1.0", "operation": operation})
 }

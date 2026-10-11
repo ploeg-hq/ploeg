@@ -23,6 +23,7 @@ type DeliveryPolicy struct {
 	VerifierID         string `json:"verifierId"`
 	MinTests           int    `json:"minTests"`
 	PublicationEnabled bool   `json:"publicationEnabled"`
+	PublisherLogin     string `json:"publisherLogin,omitempty"`
 }
 
 type AdmitDeliveryCandidate struct {
@@ -118,6 +119,14 @@ type OperatorDelivery struct {
 
 func (s *Store) OperatorDeliveryExecution(ctx context.Context, id string, a DeliveryAccess) (OperatorExecution, error) {
 	return scanOperatorExecution(s.pool.QueryRow(ctx, executionSelect+`WHERE e.id=$1 AND (e.consumer=$2 OR $4) AND e.actor=$3`, id, a.Consumer, a.Actor, a.Verifier))
+}
+
+// DeliveryRepositoryID returns the repository an operator execution was
+// registered for at admission, empty for a historical execution without one.
+func (s *Store) DeliveryRepositoryID(ctx context.Context, id string) (string, error) {
+	var repository string
+	err := s.pool.QueryRow(ctx, `SELECT repository_id FROM operator_executions WHERE id=$1`, id).Scan(&repository)
+	return repository, err
 }
 
 func lockDelivery(ctx context.Context, tx pgx.Tx, id string, a DeliveryAccess) (OperatorExecution, error) {
@@ -358,39 +367,39 @@ func (s *Store) ReservePublication(ctx context.Context, id string, a DeliveryAcc
 	return out, true, tx.Commit(ctx)
 }
 
-func (s *Store) RecordPublicationStatus(ctx context.Context, id, operation string, a DeliveryAccess, in PublicationStatus) (PublicationOperation, error) {
+func (s *Store) RecordPublicationStatus(ctx context.Context, id, operation string, a DeliveryAccess, in PublicationStatus) (PublicationOperation, bool, error) {
 	var out PublicationOperation
 	if !a.Verifier {
-		return out, ErrExecutionConflict
+		return out, false, ErrExecutionConflict
 	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
-		return out, err
+		return out, false, err
 	}
 	defer tx.Rollback(ctx)
 	e, err := lockDelivery(ctx, tx, id, a)
 	if err != nil {
-		return out, err
+		return out, false, err
 	}
 	d, err := readDelivery(ctx, tx, id)
 	if err != nil {
-		return out, err
+		return out, false, err
 	}
 	if d.Operation == nil || d.Operation.ID != operation {
-		return out, ErrExecutionNotFound
+		return out, false, ErrExecutionNotFound
 	}
 	out = *d.Operation
 	if in.CanonicalSHA != out.CanonicalSHA || in.Branch != out.Branch || (in.State != "unknown" && in.State != "published") || (in.State == "published" && (in.RemoteID == "" || in.RemoteURL == "")) || (in.State == "unknown" && (in.RemoteID != "" || in.RemoteURL != "")) {
-		return out, ErrExecutionConflict
+		return out, false, ErrExecutionConflict
 	}
 	if out.State == "published" {
 		if in.State != "published" || in.RemoteID != out.RemoteID || in.RemoteURL != out.RemoteURL {
-			return out, ErrExecutionConflict
+			return out, false, ErrExecutionConflict
 		}
-		return out, tx.Commit(ctx)
+		return out, false, tx.Commit(ctx)
 	}
 	if out.State == in.State {
-		return out, tx.Commit(ctx)
+		return out, false, tx.Commit(ctx)
 	}
 	out.State = in.State
 	out.RemoteID = in.RemoteID
@@ -398,10 +407,10 @@ func (s *Store) RecordPublicationStatus(ctx context.Context, id, operation strin
 	out.UpdatedAt = time.Now().UTC()
 	data, _ := json.Marshal(out)
 	if _, err = tx.Exec(ctx, `UPDATE operator_publication_operations SET state=$2,data=$3,updated_at=$4 WHERE id=$1`, out.ID, out.State, data, out.UpdatedAt); err != nil {
-		return out, err
+		return out, false, err
 	}
 	if err = deliveryAudit(ctx, tx, e, a, "delivery.publication_"+out.State, out); err != nil {
-		return out, err
+		return out, false, err
 	}
-	return out, tx.Commit(ctx)
+	return out, true, tx.Commit(ctx)
 }
