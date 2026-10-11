@@ -64,6 +64,9 @@ type Server struct {
 	// (ADR-0013 tier 2). Nil = the worker keeps its env credential, which is
 	// the pre-tier-2 behaviour.
 	ForgeCreds forgebroker.Broker
+	// ClaudeSessions enables Runs executed in a Team's self-hosted Claude
+	// environment (ADR-0084). Nil = both of its routes answer 404.
+	ClaudeSessions *ClaudeSessions
 	// RoleCaps supplies the per-Run spending ceiling for a (team, role),
 	// implemented by plan.Plans. Nil = no caps, and the authorization is
 	// bounded by the Shift pool alone.
@@ -181,6 +184,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/v1/runs/{token}/checkpoint", s.handleCheckpoint)
 	mux.HandleFunc("POST /api/v1/runs/{token}/outcome", s.handleOutcome)
 	mux.HandleFunc("GET /api/v1/runs/{token}/context/{id}", s.handleRunContext)
+	mux.HandleFunc("POST /api/v1/runs/{token}/claude-session", s.handleRecordClaudeSession)
+	mux.HandleFunc("POST /api/v1/claude-sessions/forge-credential", s.handleClaudeForgeCredential)
 	mux.HandleFunc("GET /api/v1/queue/{team}", s.handleQueue)
 	mux.HandleFunc("/api/v1/deploys", s.handleDeploy)
 	mux.Handle("/api/v1/operator/", s.operatorHandler())
