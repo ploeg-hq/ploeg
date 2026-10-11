@@ -22,17 +22,17 @@ hosted Tenants too.
 optional OutcomeReport field) and the operator API (knowledge routes). Each
 has its own capability; they ship as three increments in that order.
 
-- **Tenant knowledge (ADR-0085).** ploegd holds each Tenant's run actor and
+- **Tenant knowledge (ADR-0087).** ploegd holds each Tenant's run actor and
   review actor for its knowledge graph and notes graph. A Run fetches the
   concepts and notes of its own Knowledge Scopes with its Run token; the
   worker selects them like any other pack source. The worker and the harness
   never hold a graph token.
-- **Work Item Notes (ADR-0086).** Every kept learning becomes a Work Item Note
+- **Work Item Notes (ADR-0088).** Every kept learning becomes a Work Item Note
   written without review and read by later Runs under the same root. An
   optional `learnings[].scope` lets the agent suggest a wider scope, which
   becomes a Promotion a Tenant admin accepts or rejects. Notes are written
   through an outbox so a restart writes each once.
-- **Operator knowledge (ADR-0087).** Operator routes to read knowledge, write a
+- **Operator knowledge (ADR-0089).** Operator routes to read knowledge, write a
   Work Item Note and request, accept or reject a Promotion, for a person the
   consumer names, checked by ploegd against the consumer's Tenant and the
   person's Client and role.
@@ -54,7 +54,7 @@ has its own capability; they ship as three increments in that order.
 
 None in `openspec/specs/`. The `run-learnings` requirement "A learning is a
 proposal" in the unarchived change `add-knowledge-and-context-bundles` is
-replaced by `work-item-notes` once ADR-0086 is accepted.
+replaced by `work-item-notes` once ADR-0088 is accepted.
 
 ## Non-Goals
 
@@ -64,7 +64,7 @@ replaced by `work-item-notes` once ADR-0086 is accepted.
   VIK-1876). Until it lands every Work Item is in the default Tenant without a
   Client, and the Client scope stays empty.
 - Selection quality: keyword selection stays until the selection spike.
-- A live knowledge tool inside a Run (ADR-0085 rejects it for now).
+- A live knowledge tool inside a Run (ADR-0087 rejects it for now).
 - The review screen: it belongs to the consumer.
 
 ## Impact

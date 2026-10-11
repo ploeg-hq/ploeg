@@ -21,7 +21,7 @@ Omnigraph's policy grants an actor actions per graph and per branch class (prote
 * A scope comes from Ploeg's records of the Work Item, never from model output or a request field.
 * Reviewed knowledge cannot be written by the actor that serves Runs; Omnigraph refuses it, not only Ploeg's code.
 * Knowledge is evidence: a missing graph never stops a Run.
-* One code path serves Runs and operator consumers ([0087](0087-operator-consumers-read-knowledge-and-write-notes-for-a-named-person-within-scopes-ploegd-checks.md)).
+* One code path serves Runs and operator consumers ([0089](0089-operator-consumers-read-knowledge-and-write-notes-for-a-named-person-within-scopes-ploegd-checks.md)).
 
 ## Considered Options
 
@@ -34,7 +34,7 @@ Omnigraph's policy grants an actor actions per graph and per branch class (prote
 Chosen option: "ploegd holds the Tenant's actors; the worker fetches the Run's scoped knowledge through the Run API", because the Run's Lease already names one Work Item, so the Run API can answer only for that Work Item's scopes, and no process in the Run's pod ever holds a graph token.
 
 * **Graphs.** Each Tenant has a knowledge graph (accepted concepts, each with a Knowledge Scope of `tenant`, `client` or `repository`) and a notes graph (Work Item Notes). ploegd's configuration maps a Tenant to both graph ids and their tokens.
-* **Actors.** A Tenant's run actor may read and invoke stored queries on both graphs and change only the notes graph's `main`. It has no write, branch or merge right on the knowledge graph. A Tenant's review actor may create, change, merge and delete branches on the knowledge graph; ploegd uses it only to apply a Promotion a person accepted ([0086](0086-a-run-writes-work-item-notes-without-review-and-a-wider-scope-is-a-promotion-a-person-accepts.md)). Neither actor has any right on a graph outside its Tenant.
+* **Actors.** A Tenant's run actor may read and invoke stored queries on both graphs and change only the notes graph's `main`. It has no write, branch or merge right on the knowledge graph. A Tenant's review actor may create, change, merge and delete branches on the knowledge graph; ploegd uses it only to apply a Promotion a person accepted ([0088](0088-a-run-writes-work-item-notes-without-review-and-a-wider-scope-is-a-promotion-a-person-accepts.md)). Neither actor has any right on a graph outside its Tenant.
 * **Scopes from records.** ploegd derives a Work Item's Tenant from its binding, its Client from the tracker source or repository that the Tenant registers to a Client, its repository from its Work Target, and its root from the created-work chain ([0031](0031-runs-create-work-items-held-for-approval-within-limits.md)).
 * **What a Run reads.** Concepts scoped `tenant`, concepts scoped `client` for the Work Item's Client (none when it has no Client), concepts scoped `repository` for its repository, and the Work Item Notes of its root. Nothing else.
 * **Delivery.** `GET /api/v1/runs/{token}/knowledge` returns those concepts as OKF documents with each graph's commit id. The worker treats them as one more source of the pack and selects within the budget exactly as 0065 says. `TaskSpec.knowledge` records the graph commit ids.

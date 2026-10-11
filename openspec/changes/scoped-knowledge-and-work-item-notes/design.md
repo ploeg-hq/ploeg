@@ -2,7 +2,7 @@
 
 ADR-0065 and ADR-0066 (proposed) built the pack and the learnings channel
 against directories. Unfold system ADR-0034 and ADR-0035 (proposed) and the
-owner's answers of 2026-10-11 set the product shape; ADR-0085 to ADR-0087 hold
+owner's answers of 2026-10-11 set the product shape; ADR-0087 to ADR-0089 hold
 Ploeg's durable decisions. This document records how they are built.
 
 Facts the design rests on, checked on 2026-10-11 against the homelab's
@@ -104,7 +104,7 @@ concept.
   every route, and the live 403 check for Tenant boundaries.
 - Omnigraph at claim time adds latency → one call per graph; an unavailable
   graph never blocks the Run.
-- Promotion queue ignored → measure the first 20 (ADR-0086 trigger).
+- Promotion queue ignored → measure the first 20 (ADR-0088 trigger).
 
 ## Migration Plan
 
@@ -119,4 +119,4 @@ remove the map; written notes stay in the graph unused.
   ends.
 - Whether Promotions should also open a pull request to the repository's
   `knowledge/` directory, as the owner allowed on 2026-10-04 (left optional).
-- ADR-0066 is superseded by ADR-0086 only when the owner accepts ADR-0086.
+- ADR-0066 is superseded by ADR-0088 only when the owner accepts ADR-0088.

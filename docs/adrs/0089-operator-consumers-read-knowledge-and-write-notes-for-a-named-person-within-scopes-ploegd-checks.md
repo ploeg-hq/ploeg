@@ -10,14 +10,14 @@ review-by: 2027-01-11
 
 ## Context and Problem Statement
 
-People also work with agents outside Ploeg's Runs: an interactive Claude Code or Codex session next to the developer. The owner decided on 2026-10-11 that such sessions read and write the same Tenant knowledge, with the same scopes, through their consumer (for Unfold, its MCP server). Only ploegd holds a Tenant's graph tokens ([0085](0085-ploegd-holds-a-tenants-knowledge-graphs-and-serves-a-run-only-its-work-items-scopes.md)), and a graph token on a laptop would read every Client of the Tenant, because Omnigraph cannot filter rows. What does Ploeg serve to an operator consumer, for whom, and what does it check itself?
+People also work with agents outside Ploeg's Runs: an interactive Claude Code or Codex session next to the developer. The owner decided on 2026-10-11 that such sessions read and write the same Tenant knowledge, with the same scopes, through their consumer (for Unfold, its MCP server). Only ploegd holds a Tenant's graph tokens ([0087](0087-ploegd-holds-a-tenants-knowledge-graphs-and-serves-a-run-only-its-work-items-scopes.md)), and a graph token on a laptop would read every Client of the Tenant, because Omnigraph cannot filter rows. What does Ploeg serve to an operator consumer, for whom, and what does it check itself?
 
 ## Decision Drivers
 
 * Ploeg checks scope itself and does not trust a consumer to have filtered (Unfold system ADR-0017).
 * Ploeg names none of its consumers ([0069](0069-ploeg-names-none-of-its-consumers.md)).
 * A client user reaches only their own Client's knowledge.
-* What a session writes follows the same review line as a Run ([0086](0086-a-run-writes-work-item-notes-without-review-and-a-wider-scope-is-a-promotion-a-person-accepts.md)).
+* What a session writes follows the same review line as a Run ([0088](0088-a-run-writes-work-item-notes-without-review-and-a-wider-scope-is-a-promotion-a-person-accepts.md)).
 * Out-of-scope objects look absent.
 
 ## Considered Options

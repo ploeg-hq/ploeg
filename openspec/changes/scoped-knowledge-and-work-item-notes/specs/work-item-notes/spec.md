@@ -18,7 +18,7 @@ them.
 
 ploegd SHALL write each kept learning as a Work Item Note in the Tenant's notes
 graph, carrying the Work Item, its root, repository, Client when it has one,
-the Run's trace and the time (ADR-0086).
+the Run's trace and the time (ADR-0088).
 
 #### Scenario: The next Run of the same work reads the note
 

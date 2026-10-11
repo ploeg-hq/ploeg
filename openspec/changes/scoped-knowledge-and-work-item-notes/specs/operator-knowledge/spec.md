@@ -7,7 +7,7 @@
 Every operator knowledge request SHALL name the acting person, their role in
 the consumer's Tenant (`viewer`, `member` or `admin`) and, for a client user,
 their Client. ploegd SHALL refuse a request without them and SHALL audit every
-write with the consumer and the person (ADR-0087).
+write with the consumer and the person (ADR-0089).
 
 #### Scenario: A request without a person
 

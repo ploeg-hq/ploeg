@@ -30,16 +30,16 @@ Proposed records this change builds on: 0065 (the pack) and 0066 (learnings).
 
 ## Repository-Level ADRs Created
 
-- `docs/adrs/0085-ploegd-holds-a-tenants-knowledge-graphs-and-serves-a-run-only-its-work-items-scopes.md`
+- `docs/adrs/0087-ploegd-holds-a-tenants-knowledge-graphs-and-serves-a-run-only-its-work-items-scopes.md`
   — ploegd holds the Tenant's graph actors; a Run reads only its scopes.
-- `docs/adrs/0086-a-run-writes-work-item-notes-without-review-and-a-wider-scope-is-a-promotion-a-person-accepts.md`
+- `docs/adrs/0088-a-run-writes-work-item-notes-without-review-and-a-wider-scope-is-a-promotion-a-person-accepts.md`
   — notes direct within the root; wider scopes through accepted Promotions.
-- `docs/adrs/0087-operator-consumers-read-knowledge-and-write-notes-for-a-named-person-within-scopes-ploegd-checks.md`
+- `docs/adrs/0089-operator-consumers-read-knowledge-and-write-notes-for-a-named-person-within-scopes-ploegd-checks.md`
   — operator knowledge routes for a named person.
 
 ## Supersessions
 
-- none recorded yet. 0086 replaces 0066 once the owner accepts 0086; both are
+- none recorded yet. 0088 replaces 0066 once the owner accepts 0088; both are
   proposed, so the Records index does not show the supersession before then.
 
 ## Validation
@@ -52,5 +52,5 @@ ok  	github.com/ploeg-hq/ploeg/internal/ledger
 ## Notes
 
 All three records stay `proposed`. The owner accepts or rejects them; the
-measurement spike (VIK-1859) that gates 0065 and 0066 applies to 0085 and 0086
+measurement spike (VIK-1859) that gates 0065 and 0066 applies to 0087 and 0088
 as well.

@@ -6,7 +6,7 @@
 
 ploegd SHALL hold each Tenant's run actor and review actor tokens. The worker,
 the harness, the claim response, the knowledge response and the TaskSpec MUST
-NOT carry a graph credential (ADR-0034, ADR-0085).
+NOT carry a graph credential (ADR-0034, ADR-0087).
 
 #### Scenario: Nothing in the Run's pod can reach the graph
 

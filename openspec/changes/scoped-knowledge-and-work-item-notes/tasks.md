@@ -2,9 +2,9 @@
 
 ## 1. Decisions
 
-- [x] 1.1 ADR-0085 to ADR-0087 with Records and review-calendar rows; `go test ./internal/ledger/` passes
+- [x] 1.1 ADR-0087 to ADR-0089 with Records and review-calendar rows; `go test ./internal/ledger/` passes
 - [x] 1.2 Domain terms Tenant, Client, Knowledge Scope, Work Item Note and Promotion in `docs/domain/model.yaml`; `mise run domain` regenerated the pages
-- [ ] 1.3 The owner accepts or rejects ADR-0085 to ADR-0087; on accepting 0086, set `supersedes: 0066`
+- [ ] 1.3 The owner accepts or rejects ADR-0087 to ADR-0089; on accepting 0088, set `supersedes: 0066`
 
 ## 2. Tenant knowledge (Run API seam)
 
