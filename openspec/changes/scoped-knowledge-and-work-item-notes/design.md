@@ -112,11 +112,25 @@ Additive. Without the per-Tenant graph map, Runs use directories exactly as
 today and learnings still go to `PLOEG_KNOWLEDGE_OUTBOX` when set. Rollback:
 remove the map; written notes stay in the graph unused.
 
+### D8 — A repository Promotion also reaches git
+
+Accepting a `repository`-scoped Promotion creates an approved Work Item on that
+repository (ADR-0031) with the concept attached as context (ADR-0067). Its Run
+writes one OKF file under `knowledge/` and opens a pull request through the
+normal delivery path, so forge credentials, budget and review are the ones
+every Run already has; ploegd gains no forge write path. Selection keeps the
+repository's file over a graph concept with the same slug once the file is on
+the default branch.
+
+## Owner answers, 2026-10-11
+
+- A note a person writes in a session reaches Runs at once, like a Run's.
+- Only a Tenant admin promotes; a member's request waits.
+- An accepted repository Promotion opens a pull request to `knowledge/` now
+  (D8).
+- ADR-0087 to ADR-0089 stay proposed until the measurement spike (VIK-1859)
+  reports.
+
 ## Open Questions
 
-- Whether a note written by a person in a session should be readable by Runs
-  immediately, like a Run's note (designed: yes), or only after the session
-  ends.
-- Whether Promotions should also open a pull request to the repository's
-  `knowledge/` directory, as the owner allowed on 2026-10-04 (left optional).
 - ADR-0066 is superseded by ADR-0088 only when the owner accepts ADR-0088.

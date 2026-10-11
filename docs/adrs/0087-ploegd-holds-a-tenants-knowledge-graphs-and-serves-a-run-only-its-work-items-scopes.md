@@ -83,4 +83,4 @@ Proposed checks, in the existing `go test ./...` CI step once built:
 * Unfold system ADR-0034 (proposed): the product decision on four scopes and two graphs per Tenant.
 * Graphs, actors, policies and stored queries are deployment configuration, not Ploeg code; the homelab's are filed on its roadmap.
 * Tenant and Client in Ploeg's store arrive with the tenancy work of Unfold system ADR-0017. Until then every Work Item belongs to the default Tenant and has no Client, so Runs read Tenant, repository and root scopes only.
-* 2026-10-11 — Proposed after the owner chose two graphs per Tenant, direct Work Item Notes, sessions through Unfold and Omnigraph for hosted Tenants.
+* 2026-10-11 — Proposed after the owner chose two graphs per Tenant, direct Work Item Notes, sessions through Unfold and Omnigraph for hosted Tenants. Kept proposed until the measurement spike (VIK-1859) reports.
