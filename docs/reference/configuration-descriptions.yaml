@@ -108,6 +108,10 @@ env:
   PLOEG_ACP_CONFIG_JSON: "`acp` harness only: replaces the generated agent configuration of the `opencode` or `qwen-code` profile wholesale. The `goose` and `openhands` profiles refuse it at startup."
   KUBECONFIG: Administrative configuration. The worker refuses to start when it is set.
   PATH: Passed to `git` and `openspec` subprocesses; also on the harness allowlist.
+  PLOEG_RUN_TRANSCRIPTS:
+    ploegd: "`off` refuses Run transcripts: `POST /api/v1/runs/{token}/transcript` answers 404 and workers stop sending (ADR-0090). Transcripts already stored stay readable. Default on."
+    ploeg-worker: "`off` records no transcript of the agent's session (ADR-0090). Default on: the worker sends the ACP session as typed entries every two seconds, and a transcript that cannot be delivered never changes the Run."
+  PLOEG_RUN_TRANSCRIPT_THOUGHTS: "`off` leaves the agent's reasoning (ACP thought chunks) out of the Run's transcript (ADR-0090). Default on."
 helm:
   executor.enabled: Turns on the executor. Requires `executor.litellm.baseUrl`, the forge's `url`, an agent image and, for the keda and sandbox executors, `executor.scaler.host`; the render fails without them. Also requires the LiteLLM and agent-builder secrets and, for DinD harnesses, the privileged-DinD PolicyException.
   executor.workerAuth.mode: "`managed` by default; `legacy` is explicit compatibility and sets the controller's `PLOEG_WORKER_AUTH_MODE=legacy` and the worker's `PLOEG_LLM_CREDENTIAL_MODE=static-compatibility`."

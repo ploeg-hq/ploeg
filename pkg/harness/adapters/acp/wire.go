@@ -224,11 +224,13 @@ type updateEnvelope struct {
 	Content json.RawMessage `json:"content"`
 
 	// tool_call / tool_call_update
-	ToolCallID string         `json:"toolCallId"`
-	Title      string         `json:"title"`
-	Kind       string         `json:"kind"`
-	Status     string         `json:"status"`
-	Locations  []toolLocation `json:"locations"`
+	ToolCallID string          `json:"toolCallId"`
+	Title      string          `json:"title"`
+	Kind       string          `json:"kind"`
+	Status     string          `json:"status"`
+	Locations  []toolLocation  `json:"locations"`
+	RawInput   json.RawMessage `json:"rawInput"`
+	RawOutput  json.RawMessage `json:"rawOutput"`
 
 	// plan
 	Entries []planEntry `json:"entries"`

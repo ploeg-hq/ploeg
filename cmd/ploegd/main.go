@@ -354,6 +354,10 @@ func run(log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	runTranscripts, err := switchEnv("PLOEG_RUN_TRANSCRIPTS", true)
+	if err != nil {
+		return err
+	}
 	srv := &httpapi.Server{
 		OperatorConfig: operator,
 		WorkerSecurity: workerSecurity,
@@ -382,6 +386,8 @@ func run(log *slog.Logger) error {
 
 		ContextMaxBytes:      contextMax,
 		ContextMaxTotalBytes: contextMaxTotal,
+
+		DisableRunTranscripts: !runTranscripts,
 	}
 	log.Info("forge follow-ups loaded", "teams", len(srv.FollowUps))
 	if engine != nil {
@@ -514,6 +520,19 @@ func byteCountFromEnv(key string, def int64) (int64, error) {
 
 // usdFromEnv reads a positive US dollar amount of at most 10000 with at most
 // four decimals; unset is def.
+// switchEnv reads an on/off setting; empty is def.
+func switchEnv(key string, def bool) (bool, error) {
+	switch os.Getenv(key) {
+	case "":
+		return def, nil
+	case "on", "true":
+		return true, nil
+	case "off", "false":
+		return false, nil
+	}
+	return false, fmt.Errorf("%s must be on or off, got %q", key, os.Getenv(key))
+}
+
 func usdFromEnv(key string, def float64) (float64, error) {
 	v := os.Getenv(key)
 	if v == "" {

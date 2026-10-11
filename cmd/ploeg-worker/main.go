@@ -196,6 +196,12 @@ func run(log *slog.Logger) error {
 	cfg.KnowledgeDirs = filepath.SplitList(os.Getenv("PLOEG_KNOWLEDGE_DIRS"))
 	cfg.RepoKnowledgeDir = os.Getenv("PLOEG_REPO_KNOWLEDGE_DIR")
 	cfg.KnowledgeOutbox = os.Getenv("PLOEG_KNOWLEDGE_OUTBOX")
+	if cfg.Transcript, err = switchEnv("PLOEG_RUN_TRANSCRIPTS", true); err != nil {
+		return err
+	}
+	if cfg.TranscriptThoughts, err = switchEnv("PLOEG_RUN_TRANSCRIPT_THOUGHTS", true); err != nil {
+		return err
+	}
 	if v := os.Getenv("PLOEG_KNOWLEDGE_BUDGET_BYTES"); v != "" {
 		if cfg.KnowledgeBudget, err = strconv.Atoi(v); err != nil || cfg.KnowledgeBudget < 0 {
 			return fmt.Errorf("PLOEG_KNOWLEDGE_BUDGET_BYTES: want a non-negative byte count, got %q", v)
@@ -291,6 +297,19 @@ func requireEnv(key string) string {
 		os.Exit(1)
 	}
 	return v
+}
+
+// switchEnv reads an on/off setting; empty is def.
+func switchEnv(key string, def bool) (bool, error) {
+	switch os.Getenv(key) {
+	case "":
+		return def, nil
+	case "on", "true":
+		return true, nil
+	case "off", "false":
+		return false, nil
+	}
+	return false, fmt.Errorf("%s must be on or off, got %q", key, os.Getenv(key))
 }
 
 func envOr(key, def string) string {

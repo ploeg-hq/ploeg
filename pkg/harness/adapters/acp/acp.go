@@ -165,6 +165,7 @@ func (a *Adapter) Run(ctx context.Context, spec harness.TaskSpec, env harness.Ru
 	onRaw := func(line []byte) {
 		if kind, ok := decodeSessionUpdate(line, state); ok {
 			cp.observe(kind, state)
+			transcribe(env.Transcript, line)
 		}
 	}
 	proc, err := a.launch.launch(ctx, argv, env.RepoDir, append(append([]string{}, env.BaseEnv...), extraEnv...), noise, onRaw)
@@ -235,6 +236,7 @@ func (a *Adapter) Run(ctx context.Context, spec harness.TaskSpec, env harness.Ru
 		return finish()
 	}
 	cp.mark("agent_started")
+	env.Transcript.Stage("Agent session started (" + a.profile.Name + ")")
 
 	// --- session/prompt ---
 	res.phase = phasePrompt
@@ -268,6 +270,8 @@ func (a *Adapter) Run(ctx context.Context, spec harness.TaskSpec, env harness.Ru
 	case stopCancelled:
 		// ctx.Err() is picked up in finish(); the lease was lost.
 	}
+
+	env.Transcript.Stage(turnEnded(why, stop, a.opts))
 
 	if why != stopNormal {
 		// Give the agent the cancel it is owed, then stop waiting.
@@ -364,6 +368,24 @@ func (a *Adapter) awaitPrompt(
 			}
 		}
 	}
+}
+
+// turnEnded says in one sentence how the prompt turn ended.
+func turnEnded(why stopWhy, stop promptOutcome, opts Options) string {
+	switch why {
+	case stopIdle:
+		return "Stopped: the agent showed no protocol activity for " + opts.IdleTimeout.String()
+	case stopPromptWall:
+		return "Stopped: the prompt turn exceeded " + opts.PromptTimeout.String()
+	case stopStorm:
+		return "Stopped: the agent asked for too many permissions"
+	case stopCancelled:
+		return "Stopped: the Run was cancelled"
+	}
+	if stop.err != nil {
+		return "Agent turn failed: " + stop.err.Error()
+	}
+	return "Agent turn ended: " + string(ParseStopReason(string(stop.resp.StopReason)))
 }
 
 // --- checkpoints -----------------------------------------------------------

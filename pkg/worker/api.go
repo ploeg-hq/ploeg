@@ -14,6 +14,7 @@ import (
 
 	"github.com/ploeg-hq/ploeg/pkg/harness"
 	"github.com/ploeg-hq/ploeg/pkg/llmbroker"
+	"github.com/ploeg-hq/ploeg/pkg/transcript"
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
@@ -119,6 +120,28 @@ func (a *APIClient) Renew(token string) (bool, error) {
 
 func (a *APIClient) Checkpoint(token string, cp work.Checkpoint) error {
 	return a.post("/api/v1/runs/"+token+"/checkpoint", cp)
+}
+
+// Transcript ships one batch of the Run's transcript (ADR-0090). An answer
+// that says ploegd will not take it wraps transcript.ErrRefused.
+func (a *APIClient) Transcript(ctx context.Context, runToken string, entries []transcript.Entry) error {
+	body, err := json.Marshal(map[string]any{"entries": entries})
+	if err != nil {
+		return err
+	}
+	resp, err := a.request(ctx, http.MethodPost, "/api/v1/runs/"+runToken+"/transcript", body, a.runCredential(runToken))
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	switch {
+	case resp.StatusCode < 300:
+		return nil
+	case resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500:
+		return fmt.Errorf("transcript: HTTP %d", resp.StatusCode)
+	default:
+		return fmt.Errorf("transcript: HTTP %d: %w", resp.StatusCode, transcript.ErrRefused)
+	}
 }
 
 // Outcome posts the full OutcomeReport (schema

@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/ploeg-hq/ploeg/pkg/transcript"
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
@@ -48,6 +49,10 @@ type RunEnv struct {
 	Stdout     io.Writer // pod log passthrough
 	Stderr     io.Writer
 	Checkpoint func(work.Checkpoint) // best-effort progress reporting; may be nil
+	// Transcript records what the agent does for people to follow
+	// (ADR-0090). Nil records nothing; an adapter that cannot see the
+	// agent's activity leaves it alone.
+	Transcript *transcript.Recorder
 	Log        *slog.Logger
 	// IdleTimeout ends a spawned harness that shows no activity for this
 	// long, returning ErrIdle. Zero disables the watchdog.

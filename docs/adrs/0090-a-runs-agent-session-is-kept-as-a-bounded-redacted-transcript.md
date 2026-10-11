@@ -89,4 +89,4 @@ What is decided:
 ## More Information
 
 * [Run API](../contracts/run-api.v1.schema.json) `transcriptRequest`, `transcriptEntry`, `transcriptAppendResponse`; [operator API](../contracts/operator-api.v1.schema.json) `transcriptResponse`, `transcriptEntry`.
-* Migration `pkg/store/migrations/0048_run_transcripts.sql`.
+* Migration `pkg/store/migrations/0049_run_transcripts.sql`.

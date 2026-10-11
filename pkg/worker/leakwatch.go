@@ -77,6 +77,21 @@ func (w *leakWatch) find(data []byte) (credentialKind, bool) {
 	return "", false
 }
 
+// values lists every watched credential, for masking them in the Run's
+// transcript.
+func (w *leakWatch) values() []string {
+	if w == nil {
+		return nil
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	var out []string
+	for _, values := range w.watched {
+		out = append(out, values...)
+	}
+	return out
+}
+
 func (w *leakWatch) longestWatched() int {
 	w.mu.Lock()
 	defer w.mu.Unlock()

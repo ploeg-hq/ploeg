@@ -9,8 +9,8 @@ change either side and the test tells you.
 | [taskspec.v1.schema.json](taskspec.v1.schema.json) | Harness input: what a run knows (work item, repo, branch, trace id, and the brief of the OpenSpec change the Work Item names). Credentials never travel here (R8). |
 | [outcomereport.v1.schema.json](outcomereport.v1.schema.json) | Harness output and the body of `POST /api/v1/runs/{token}/outcome`. Stuck requires a reason (R4). The optional `createdWorkItems` carries the Work Items a Run proposes ([ADR-0031](../adrs/0031-runs-create-work-items-held-for-approval-within-limits.md)). The optional `verification` is the worker's own record of the checks it ran on a writing Run; the worker discards any value an agent sent. |
 | [checkpoint.v1.schema.json](checkpoint.v1.schema.json) | The durable progress record (shared by TaskSpec, OutcomeReport, and the checkpoint endpoint). |
-| [run-api.v1.schema.json](run-api.v1.schema.json) | All run-API message bodies (claim/renew/checkpoint/outcome). |
-| [operator-api.v1.schema.json](operator-api.v1.schema.json) | Authenticated, team-scoped read projections of teams, activity summaries, work items, shifts, runs, the Run list, checkpoints and snapshot audit pages; the delivery facts of a Work Item and the facts list, and the keyed pull request comment ([ADR-0079](../adrs/0079-run-cards-belong-to-the-consumer-and-ploeg-supplies-delivery-facts.md)); Asks and the Ask Allowance ([ADR-0082](../adrs/0082-an-ask-is-a-read-only-run-outside-the-shift-paid-from-a-periodic-allowance.md)). |
+| [run-api.v1.schema.json](run-api.v1.schema.json) | All run-API message bodies (claim/renew/checkpoint/outcome/transcript). |
+| [operator-api.v1.schema.json](operator-api.v1.schema.json) | Authenticated, team-scoped read projections of teams, activity summaries, work items, shifts, runs, the Run list, a Run's transcript ([ADR-0090](../adrs/0090-a-runs-agent-session-is-kept-as-a-bounded-redacted-transcript.md)), checkpoints and snapshot audit pages; the delivery facts of a Work Item and the facts list, and the keyed pull request comment ([ADR-0079](../adrs/0079-run-cards-belong-to-the-consumer-and-ploeg-supplies-delivery-facts.md)); Asks and the Ask Allowance ([ADR-0082](../adrs/0082-an-ask-is-a-read-only-run-outside-the-shift-paid-from-a-periodic-allowance.md)). |
 | [deploy-api.v1.schema.json](deploy-api.v1.schema.json) | `POST /api/v1/deploys`: a pipeline reports that a commit is live in an environment, with its own bearer token ([ADR-0047](../adrs/0047-ploeg-learns-where-a-merged-change-is-deployed-from-a-generic-deploy-endpoint.md), [how-to](../how-to/send-deploys-from-a-pipeline.md)). |
 | [tracker-execution.md](tracker-execution.md), [v1 schema](tracker-execution.v1.schema.json) | Scoped source lookup and exclusive operator binding of an existing pristine tracker Work Item. |
 | [acp-profiles.md](acp-profiles.md) | The `acp` harness profiles: launch command, gateway wiring, instruction files and approval mapping per agent, and what an image needs to run them. |
@@ -107,6 +107,16 @@ change either side and the test tells you.
   A Work Item's facts leave Ask Runs out of `runs`, `liveUsage`,
   `runBudgetHolds` and `activityAt` and list them in the optional `asks`
   (`factsAsk`), so Ask spend is reported apart from delivery spend.
+- Since [ADR-0090](../adrs/0090-a-runs-agent-session-is-kept-as-a-bounded-redacted-transcript.md)
+  a worker ships the Run's agent session as typed entries with `POST
+  /api/v1/runs/{token}/transcript` (`transcriptRequest`, answered by
+  `transcriptAppendResponse`), accepted only while the Run is running and
+  refused with 404 when ploegd has `PLOEG_RUN_TRANSCRIPTS=off`. An operator
+  consumer pages through it with `GET
+  /api/v1/operator/runs/{id}/transcript?after=<seq>&limit=<1..500>`
+  (`transcriptResponse`): entries in `seq` order, `nextAfter` to pass as the
+  next `after`, `hasMore`, `truncated` once the Run reached 5,000 entries or
+  2 MiB, and `complete` once the Run ended. An older Ploeg answers 404.
 - `deploy-api.v1` is the body of a pipeline's deploy report. It refuses
   unknown fields, unlike the response contracts, so a misspelled field fails
   the pipeline step instead of being dropped.
