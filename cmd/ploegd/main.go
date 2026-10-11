@@ -349,6 +349,7 @@ func run(log *slog.Logger) error {
 		TeamCaps:       runCaps,
 		Forges:         forges,
 		ForgeCreds:     forgeCreds,
+		ClaudeSessions: claudeSessions(log),
 		CreatedWork:    createdWork,
 
 		MetricsCacheTTL: durationOr("PLOEG_METRICS_CACHE_TTL", httpapi.DefaultMetricsCacheTTL),

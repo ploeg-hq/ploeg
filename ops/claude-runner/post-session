@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# Runner post-session hook for Runs executed in a self-hosted Claude
+# environment (ADR-0084). Install it in the runner's --hooks-dir, read-only.
+#
+# It exchanges the session token for the Run's push credential and pushes the
+# session's commits to the Run's Shift branch. The checkout's git config is
+# writable by the session, so the push happens from a clean temporary
+# repository: no credential helper, insteadOf or pushurl the session wrote
+# ever sees the token.
+#
+# Needs PLOEG_URL in the runner's environment, curl and jq.
+set -u -o pipefail
+
+log() { printf 'ploeg post-session: %s\n' "$*" >&2; }
+
+: "${PLOEG_URL:?PLOEG_URL is not set}"
+: "${CLAUDE_CODE_SESSION_ACCESS_TOKEN:?no session token}"
+workspace="${CLAUDE_RUNNER_WORKSPACE_PATHS%%:*}"
+[ -n "$workspace" ] && [ -d "$workspace/.git" ] || { log "no workspace; nothing to push"; exit 0; }
+
+g() { git -C "$workspace" -c core.fsmonitor=false -c core.hooksPath=/dev/null "$@"; }
+head=$(g rev-parse --verify -q HEAD) || { log "no commit; nothing to push"; exit 0; }
+
+response=$(curl -fsS --max-time 20 -X POST \
+  -H "Authorization: Bearer ${CLAUDE_CODE_SESSION_ACCESS_TOKEN}" \
+  "${PLOEG_URL%/}/api/v1/claude-sessions/forge-credential") || { log "ploeg refused the push credential exchange"; exit 0; }
+remote=$(jq -re '.remote' <<<"$response") || { log "exchange response has no remote"; exit 0; }
+branch=$(jq -re '.branch' <<<"$response") || { log "exchange response has no branch"; exit 0; }
+case "$remote" in https://*) ;; *) log "refusing a non-HTTPS remote"; exit 0 ;; esac
+
+clean=$(mktemp -d)
+askpass="$clean/askpass"
+trap 'rm -rf "$clean"' EXIT
+export PLOEG_PUSH_USER PLOEG_PUSH_TOKEN
+PLOEG_PUSH_USER=$(jq -re '.username' <<<"$response") || exit 0
+PLOEG_PUSH_TOKEN=$(jq -re '.token' <<<"$response") || exit 0
+unset response
+cat >"$askpass" <<'ASKPASS'
+#!/bin/sh
+case "$1" in Username*) printf '%s\n' "$PLOEG_PUSH_USER" ;; *) printf '%s\n' "$PLOEG_PUSH_TOKEN" ;; esac
+ASKPASS
+chmod 700 "$askpass"
+
+export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_TERMINAL_PROMPT=0
+unset GIT_CONFIG_COUNT
+git init -q --bare "$clean/repo.git"
+GIT_ALLOW_PROTOCOL=file git -C "$clean/repo.git" fetch -q --no-tags "$workspace" "+$head:refs/heads/push" \
+  || { log "could not copy the session's commits"; exit 0; }
+if GIT_ALLOW_PROTOCOL=https GIT_ASKPASS="$askpass" \
+  git -C "$clean/repo.git" -c credential.helper= push -q "$remote" "refs/heads/push:refs/heads/$branch"; then
+  log "pushed ${head:0:12} to $branch"
+else
+  log "push to $branch failed"
+fi
