@@ -219,8 +219,9 @@ type planEntry struct {
 type updateEnvelope struct {
 	SessionUpdate string `json:"sessionUpdate"`
 
-	// message / thought chunks
-	Content *contentBlock `json:"content"`
+	// A single content block on message and thought chunks; an array of
+	// tool call content items on tool_call and tool_call_update.
+	Content json.RawMessage `json:"content"`
 
 	// tool_call / tool_call_update
 	ToolCallID string         `json:"toolCallId"`
@@ -246,6 +247,42 @@ type updateEnvelope struct {
 	// usage_update, coder/acp-go-sdk 0.13.x shape: {input:{tokens}, output:{tokens}}
 	Input  *tokenSide `json:"input"`
 	Output *tokenSide `json:"output"`
+}
+
+// contentText is the text the content field carries in either shape: the
+// text of one content block, or the text blocks of a tool call's content
+// items joined by newlines. Diffs and terminals carry no text and are skipped.
+func (e updateEnvelope) contentText() string {
+	raw := e.Content
+	if len(raw) == 0 {
+		return ""
+	}
+	var block contentBlock
+	if json.Unmarshal(raw, &block) == nil {
+		return block.Text
+	}
+	var items []toolCallContent
+	if json.Unmarshal(raw, &items) != nil {
+		return ""
+	}
+	var texts []string
+	for _, item := range items {
+		if item.Type == "content" && item.Content != nil && item.Content.Text != "" {
+			texts = append(texts, item.Content.Text)
+		}
+	}
+	return strings.Join(texts, "\n")
+}
+
+// toolCallContent is one item of a tool call's content array: a content
+// block, a diff, or a terminal reference.
+type toolCallContent struct {
+	Type       string        `json:"type"`
+	Content    *contentBlock `json:"content"`
+	Path       string        `json:"path"`
+	OldText    *string       `json:"oldText"`
+	NewText    string        `json:"newText"`
+	TerminalID string        `json:"terminalId"`
 }
 
 type tokenSide struct {

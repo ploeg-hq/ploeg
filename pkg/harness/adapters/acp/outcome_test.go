@@ -480,3 +480,23 @@ func TestBuild_NamesTheWatchdogThatStoppedTheRun(t *testing.T) {
 		})
 	}
 }
+
+func TestToolCallWithAContentArrayIsFoldedAndCountsAsProgress(t *testing.T) {
+	s := feed(t,
+		`{"sessionUpdate":"tool_call","toolCallId":"t1","title":"Edit main.go","kind":"edit","status":"in_progress","content":[{"type":"diff","path":"main.go","oldText":"a","newText":"b"}]}`,
+		`{"sessionUpdate":"tool_call_update","toolCallId":"t1","status":"completed","content":[{"type":"content","content":{"type":"text","text":"edited"}}]}`,
+		`{"sessionUpdate":"tool_call","toolCallId":"t2","title":"go test","kind":"execute","status":"failed","content":[{"type":"content","content":{"type":"text","text":"FAIL pkg\nmore"}}]}`,
+	)
+	if got := s.eventCount(); got != 3 {
+		t.Fatalf("events = %d, want 3: a tool call with content must count as progress", got)
+	}
+	if !s.mutated() {
+		t.Fatal("a completed edit announced with a diff must count as a change")
+	}
+	if got := s.failedTools(); len(got) != 1 || got[0] != "go test: FAIL pkg" {
+		t.Fatalf("failed tools = %q", got)
+	}
+	if unknown := s.unknownEnumValues(); len(unknown) != 0 {
+		t.Fatalf("unknown values = %q", unknown)
+	}
+}
