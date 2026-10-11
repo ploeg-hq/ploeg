@@ -888,7 +888,7 @@
               "type": "null"
             }
           ],
-          "description": "True when the Run's usage names a model other than configuredModel, false when every model it names is configuredModel (ADR-0091). Null while either side is unknown: no configured model, or no models in usage yet."
+          "description": "True when a gateway model group (alias) other than configuredModel served one of the Run's calls, such as a fallback group; false when every call was served by configuredModel (ADR-0091). Provider model names in usage are not compared, since the gateway records them instead of the alias. Null while either side is unknown: no configured model, or no served model groups recorded at settlement, as for a Run settled before Ploeg recorded them."
         }
       }
     },
@@ -1752,7 +1752,17 @@
           "items": {
             "type": "string",
             "maxLength": 256
-          }
+          },
+          "description": "The provider model names the gateway's spend logs recorded, such as fireworks_ai/accounts/fireworks/models/deepseek-v4p1-flash."
+        },
+        "modelGroups": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "description": "The gateway model groups (aliases) that served the Run's calls, a fallback group included, from the spend logs' model_group (ADR-0091). Empty when unknown, as for a Run settled before Ploeg recorded them."
         }
       }
     },
@@ -1994,7 +2004,7 @@
               "type": "null"
             }
           ],
-          "description": "True when the Run's usage names a model other than configuredModel, false when every model it names is configuredModel (ADR-0091). Null while either side is unknown: no configured model, or no models in usage yet."
+          "description": "True when a gateway model group (alias) other than configuredModel served one of the Run's calls, such as a fallback group; false when every call was served by configuredModel (ADR-0091). Provider model names in usage are not compared, since the gateway records them instead of the alias. Null while either side is unknown: no configured model, or no served model groups recorded at settlement, as for a Run settled before Ploeg recorded them."
         }
       }
     },

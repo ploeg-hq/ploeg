@@ -37,7 +37,8 @@ What is decided:
 * **Plan hash.** `sha256:` and the hex SHA-256 of the JSON encoding of the Team's plan as ploegd parsed it: the pool, the Rounds, each Role's name, writes flag, cap and planner flag, and the fix-round bound. The encoding has a fixed field order, so the same plan from `PLOEG_TEAM_PLANS` or from the configuration file hashes the same. A plan-less team, an Ask and an operator execution record null. The model and the harness have their own fields, so the hash does not cover them.
 * **Version.** The `main.version` the ploegd binary was built with.
 * **When.** On a claim, after the Run is leased, for both the Shift-scoped and the pre-Shift claim; on an operator execution's admission once its inference is reserved; on an Ask's admission. Each field is written once: a value already recorded is kept, and an empty or malformed value stays null. Recording runs outside the claim's transaction; a failure is logged and leaves the fields null, and never refuses the claim.
-* **Model mismatch.** The operator API derives `modelMismatch` on every Run: true when `usage.models` names a model other than `configured_model`, false when every model it names is `configured_model`, and null while either side is unknown. `usage.models` holds the gateway's spend-log `model` values after settlement, or the harness's report without managed inference. The `ploeg_runs_model_mismatch_last_day{team}` gauge that [ADR-0076](0076-run-health-is-observable-by-team-and-role-through-one-correlation-key.md) proposes is not built; when it is, it counts Runs finished in the last day whose `modelMismatch` is true.
+* **Served model groups.** A LiteLLM spend-log row names the provider's model in `model`, such as `fireworks_ai/accounts/fireworks/models/deepseek-v4p1-flash`, and the model group that served the call in `model_group`: the alias the key asked for, such as `fireworks-deepseek-v4p1-flash`, or the fallback group that answered instead. Settlement keeps the provider names in `usage.models` and `usage.byModel` as before, and adds `usage.modelGroups`: the sorted, distinct `model_group` values of the Run's entries. The Run list returns them as `usage.modelGroups`, empty when unknown.
+* **Model mismatch.** The operator API derives `modelMismatch` on every Run: true when `usage.modelGroups` holds a group other than `configured_model`, such as a fallback; false when every group is `configured_model`; null while either side is unknown, which includes every Run settled before settlement recorded groups and every Run without managed inference. Provider model names are never compared, because they never equal the alias. The `ploeg_runs_model_mismatch_last_day{team}` gauge that [ADR-0076](0076-run-health-is-observable-by-team-and-role-through-one-correlation-key.md) proposes is not built; when it is, it counts Runs finished in the last day whose `modelMismatch` is true.
 * **Reads.** `configuredModel`, `harness`, `harnessProfile`, `planHash`, `ploegdVersion` and `modelMismatch` are on the operator API's `run` (Run detail, Work Item detail runs, Work Item facts runs) and `runListItem` (Run list), each present and null when unknown ([operator API](../contracts/operator-api.v1.schema.json)).
 
 ### Consequences
@@ -46,14 +47,17 @@ What is decided:
 * Good, because a Run that called a model other than its Role's is countable from one boolean.
 * Good, because ploegd records the model and plan from its own configuration, so a misreporting worker cannot change them.
 * Bad, because the harness is self-reported by the worker. It is authenticated by the worker's bootstrap capability for its team and Role, and a wrong value changes only this record.
-* Bad, because a gateway that records the deployment's underlying model name rather than the alias the Role was given reports every Run as a mismatch. That is visible at once, and the comparison then needs the gateway's alias mapping.
+* Good, because a fallback is visible on the Run: the fallback group appears in `modelGroups` and sets `modelMismatch`, while the provider names stay in `models` for pricing.
+* Bad, because `modelMismatch` depends on the gateway's `model_group` field. A gateway that leaves it empty leaves every Run's mismatch unknown, never false.
 * Bad, because the plan hash says that a plan changed, not how. Ploeg keeps no plan history; the deployment's configuration history explains a change.
 
 ### Confirmation
 
-* `go test ./pkg/store/` writes each field once, keeps a malformed profile unknown, and checks `modelMismatch` as null without usage or models, false for the configured model and true for another, on Run detail and the Run list.
+* `go test ./pkg/store/` writes each field once, keeps a malformed profile unknown, and checks `modelMismatch` as null without served groups (provider names alone included), false when only the configured alias served and true when a fallback group did, on Run detail and the Run list.
 * `go test ./pkg/httpapi/` claims through the managed worker path with a harness and profile, and reads all six fields from Run detail, the Run list, Work Item detail and Work Item facts against `docs/contracts/operator-api.v1.schema.json`; it reads a Run without a record as null on all four; it admits an Ask and a paid operator execution and checks that each records its own policy's model with no harness or plan.
 * `go test ./pkg/worker/` checks that a claim names the harness, and the profile for `acp`.
+* `go test ./pkg/httpapi/` also settles a Run from fake spend logs: a row whose provider `model` differs from the alias but whose `model_group` is the alias gives false, and adding a fallback row with another `model_group` gives true, with `usage.modelGroups` on the Run list.
+* `go test ./pkg/litellm/` reads `model_group` from both spend-log endpoints.
 * `go test ./pkg/plan/` checks that the same plan hashes the same and a changed cap changes the hash.
 
 ## Pros and Cons of the Options
@@ -73,7 +77,7 @@ What is decided:
 ## Re-evaluation triggers
 
 * The ADR-0076 metrics are built, so the mismatch gauge is added.
-* The gateway reports the served model under a name other than the alias, so `modelMismatch` is true for every Run of a Team.
+* LiteLLM stops reporting `model_group` in its spend logs, or changes what it names on a fallback.
 * ploegd learns each Role's harness from its own configuration, such as through a launcher reservation ([ADR-0072](0072-keda-stays-and-ploegd-reserves-a-run-for-each-launcher.md)), so the worker's report is no longer needed.
 * A Role is configured with more than one model.
 

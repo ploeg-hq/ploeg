@@ -89,7 +89,7 @@ func TestClaimRecordsTheRunsConfigurationAndOperatorReadsReturnIt(t *testing.T) 
 		t.Fatalf("claim=%d %s", w.Code, w.Body.String())
 	}
 	runID := runIDOf(t, claim.RunToken)
-	execSQL(t, `UPDATE agent_runs SET usage = '{"models":["trusted-model","served-instead"]}' WHERE id = $1`, runID)
+	execSQL(t, `UPDATE agent_runs SET usage = '{"models":["provider/trusted"],"modelGroups":["trusted-model","fallback-group"]}' WHERE id = $1`, runID)
 
 	_, endpoints := runConfigEndpoints(t, runID)
 	for _, endpoint := range endpoints {
@@ -114,7 +114,7 @@ func TestARunWithoutRecordedConfigurationReadsAsUnknown(t *testing.T) {
 	reset(t)
 	shiftFixture(t, "legacy-config", 5, []store.Role{{Name: "reviewer", Cap: 1}})
 	execSQL(t, `UPDATE agent_runs SET state = 'finished', finished_at = now(), outcome = 'no_change_needed',
-		usage = '{"models":["some-model"]}' WHERE team = 'bronze'`)
+		usage = '{"models":["some-model"],"modelGroups":["some-group"]}' WHERE team = 'bronze'`)
 	var runID int64
 	if err := testPool.QueryRow(context.Background(), `SELECT id FROM agent_runs WHERE team = 'bronze'`).Scan(&runID); err != nil {
 		t.Fatal(err)
@@ -182,5 +182,59 @@ func TestAnOperatorExecutionRecordsItsPolicyModelAtAdmission(t *testing.T) {
 	}
 	if strOf(model) != "operator-model" || strOf(version) != "1.2.3-test" || harness != nil || planHash != nil {
 		t.Fatalf("execution configuration: model %s version %s harness %s plan %s", strOf(model), strOf(version), strOf(harness), strOf(planHash))
+	}
+}
+
+// The gateway's spend logs name the provider's model, not the alias the Role
+// was given, so modelMismatch compares the model groups that served the
+// calls. A normal call is served by the configured alias under a provider
+// name (false); a fallback call is served by another group (true).
+func TestSettlementComparesServedModelGroupsWithTheConfiguredModel(t *testing.T) {
+	const alias = "fireworks-deepseek-v4p1-flash"
+	normal := map[string]any{"spend": 0.02, "model": "fireworks_ai/accounts/fireworks/models/deepseek-v4p1-flash", "model_group": alias,
+		"prompt_tokens": 1000, "completion_tokens": 100}
+	fallback := map[string]any{"spend": 0.05, "model": "fireworks_ai/accounts/fireworks/models/gpt-oss-120b", "model_group": "fireworks-gpt-oss-120b",
+		"prompt_tokens": 800, "completion_tokens": 90, "metadata": map[string]any{"attempted_fallbacks": 1}}
+	for _, tc := range []struct {
+		name   string
+		rows   []map[string]any
+		groups string
+		want   string
+	}{
+		{"normal", []map[string]any{normal}, alias, "false"},
+		{"fallback", []map[string]any{normal, fallback}, "fireworks-deepseek-v4p1-flash,fireworks-gpt-oss-120b", "true"},
+	} {
+		ctx := context.Background()
+		g, broker := newFakeGateway(t)
+		c, token, _ := settlementFixture(t, broker, true)
+		if err := testStore.RecordRunConfig(ctx, token, store.RunConfig{ConfiguredModel: alias}); err != nil {
+			t.Fatal(err)
+		}
+		if err := c.Block(ctx, token); err != nil {
+			t.Fatal(err)
+		}
+		candidate := settleCandidate(t, token)
+		g.mu.Lock()
+		g.logs[candidate.GatewayKeyID] = tc.rows
+		g.mu.Unlock()
+		if err := c.Settle(ctx, candidate); err != nil {
+			t.Fatal(err)
+		}
+		runID := runIDOf(t, token)
+		run, err := testStore.OperatorRun(ctx, runID, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := "<nil>"
+		if run.ModelMismatch != nil {
+			got = fmt.Sprint(*run.ModelMismatch)
+		}
+		if got != tc.want {
+			t.Fatalf("%s: modelMismatch = %s, want %s", tc.name, got, tc.want)
+		}
+		runs, _, err := testStore.OperatorRuns(ctx, store.OperatorRunFilter{Limit: 10})
+		if err != nil || len(runs) != 1 || runs[0].Usage == nil || strings.Join(runs[0].Usage.ModelGroups, ",") != tc.groups {
+			t.Fatalf("%s: run list usage = %+v %v, want modelGroups %s", tc.name, runs, err, tc.groups)
+		}
 	}
 }

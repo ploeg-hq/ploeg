@@ -184,7 +184,7 @@ func (b *LiteLLM) SettledSpendForRun(ctx context.Context, runToken string, keyID
 		if err != nil {
 			return SettledSpend{}, err
 		}
-		settled := SettledSpend{USD: logs.USD, Keys: keyCount, ByAlias: true, Entries: logs.Entries, InputTokens: logs.PromptTokens, OutputTokens: logs.CompletionTokens, Models: logs.Models}
+		settled := SettledSpend{USD: logs.USD, Keys: keyCount, ByAlias: true, Entries: logs.Entries, InputTokens: logs.PromptTokens, OutputTokens: logs.CompletionTokens, Models: logs.Models, ModelGroups: logs.ModelGroups}
 		for _, usage := range logs.ByModel {
 			settled.ByModel = append(settled.ByModel, ModelSpend{Model: usage.Model, USD: usage.USD, InputTokens: usage.PromptTokens, OutputTokens: usage.CompletionTokens})
 		}
@@ -192,6 +192,7 @@ func (b *LiteLLM) SettledSpendForRun(ctx context.Context, runToken string, keyID
 	}
 	settled := SettledSpend{Keys: len(tokens)}
 	models := map[string]*ModelSpend{}
+	groups := map[string]bool{}
 	for token := range tokens {
 		logs, err := b.cli.SpendLogs(ctx, token)
 		if err != nil {
@@ -201,6 +202,9 @@ func (b *LiteLLM) SettledSpendForRun(ctx context.Context, runToken string, keyID
 		settled.Entries += logs.Entries
 		settled.InputTokens += logs.PromptTokens
 		settled.OutputTokens += logs.CompletionTokens
+		for _, group := range logs.ModelGroups {
+			groups[group] = true
+		}
 		for _, usage := range logs.ByModel {
 			m := models[usage.Model]
 			if m == nil {
@@ -221,6 +225,11 @@ func (b *LiteLLM) SettledSpendForRun(ctx context.Context, runToken string, keyID
 	for _, model := range settled.Models {
 		settled.ByModel = append(settled.ByModel, *models[model])
 	}
+	settled.ModelGroups = make([]string, 0, len(groups))
+	for group := range groups {
+		settled.ModelGroups = append(settled.ModelGroups, group)
+	}
+	sort.Strings(settled.ModelGroups)
 	return settled, nil
 }
 

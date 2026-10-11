@@ -61,6 +61,9 @@ type OperatorRunUsage struct {
 	InputTokens  int64    `json:"inputTokens"`
 	OutputTokens int64    `json:"outputTokens"`
 	Models       []string `json:"models"`
+	// ModelGroups are the gateway model groups (aliases) that served the
+	// Run; empty when unknown, as for a Run settled before ADR-0091.
+	ModelGroups []string `json:"modelGroups"`
 }
 
 // OperatorRunListItem is one Run in the operator Run list.
@@ -133,7 +136,11 @@ const operatorRunListJSON = `jsonb_build_object(
 		'models', CASE WHEN jsonb_typeof(r.usage->'models') = 'array' THEN (
 			SELECT COALESCE(jsonb_agg(left(m.value #>> '{}', 256) ORDER BY m.ord), '[]'::jsonb)
 			FROM jsonb_array_elements(r.usage->'models') WITH ORDINALITY AS m(value, ord)
-			WHERE jsonb_typeof(m.value) = 'string' AND m.ord <= 32) ELSE '[]'::jsonb END) END,
+			WHERE jsonb_typeof(m.value) = 'string' AND m.ord <= 32) ELSE '[]'::jsonb END,
+		'modelGroups', CASE WHEN jsonb_typeof(r.usage->'modelGroups') = 'array' THEN (
+			SELECT COALESCE(jsonb_agg(left(g.value #>> '{}', 256) ORDER BY g.ord), '[]'::jsonb)
+			FROM jsonb_array_elements(r.usage->'modelGroups') WITH ORDINALITY AS g(value, ord)
+			WHERE jsonb_typeof(g.value) = 'string' AND g.ord <= 32) ELSE '[]'::jsonb END) END,
 	'observedUsd', a.observed_spend,
 	'reservedModels', CASE WHEN jsonb_typeof(a.models) = 'array' THEN (
 		SELECT COALESCE(jsonb_agg(left(m.value #>> '{}', 256) ORDER BY m.ord), '[]'::jsonb)
@@ -176,6 +183,9 @@ func (s *Store) OperatorRuns(ctx context.Context, f OperatorRunFilter) ([]Operat
 		run.StartedAt, run.FinishedAt = operatorUTC(run.StartedAt), operatorUTC(run.FinishedAt)
 		if run.Usage != nil && run.Usage.Models == nil {
 			run.Usage.Models = []string{}
+		}
+		if run.Usage != nil && run.Usage.ModelGroups == nil {
+			run.Usage.ModelGroups = []string{}
 		}
 		if run.ReservedModels == nil {
 			run.ReservedModels = []string{}

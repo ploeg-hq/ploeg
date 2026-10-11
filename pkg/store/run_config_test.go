@@ -10,8 +10,9 @@ import (
 )
 
 // ADR-0091: each field is recorded once, an empty or malformed value stays
-// unknown, and modelMismatch compares the usage's models with the configured
-// model only when both are known.
+// unknown, and modelMismatch compares the served model groups with the
+// configured model only when both are known; provider model names alone
+// never decide it.
 func TestRecordRunConfigWritesOnceAndModelMismatchNeedsBothSides(t *testing.T) {
 	resetTables(t)
 	ctx := context.Background()
@@ -68,9 +69,10 @@ func TestRecordRunConfigWritesOnceAndModelMismatchNeedsBothSides(t *testing.T) {
 		usage string
 		want  string
 	}{
-		{`{"models":[]}`, "<nil>"},
-		{`{"models":["model-a"]}`, "false"},
-		{`{"models":["model-a","model-c"]}`, "true"},
+		{`{"modelGroups":[]}`, "<nil>"},
+		{`{"models":["provider/model-a"],"modelGroups":["model-a"]}`, "false"},
+		{`{"models":["provider/model-a"],"modelGroups":["model-a","fallback-c"]}`, "true"},
+		{`{"models":["model-c"]}`, "<nil>"},
 		{`{"inputTokens":3}`, "<nil>"},
 	} {
 		mustExec(t, `UPDATE agent_runs SET usage = $2::jsonb WHERE id = $1`, runID, tc.usage)

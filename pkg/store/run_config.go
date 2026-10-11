@@ -58,13 +58,14 @@ type OperatorRunConfig struct {
 	HarnessProfile  *string `json:"harnessProfile"`
 	PlanHash        *string `json:"planHash"`
 	PloegdVersion   *string `json:"ploegdVersion"`
-	// ModelMismatch is true when the Run's usage names a model other than
-	// ConfiguredModel, and nil while either side is unknown.
+	// ModelMismatch is true when a gateway model group (alias) other than
+	// ConfiguredModel served the Run, such as a fallback, and nil while
+	// either side is unknown.
 	ModelMismatch *bool `json:"modelMismatch"`
 }
 
 const operatorRunConfigJSON = `'configuredModel', r.configured_model, 'harness', r.harness,
 	'harnessProfile', r.harness_profile, 'planHash', r.plan_hash, 'ploegdVersion', r.ploegd_version,
-	'modelMismatch', CASE WHEN r.configured_model IS NOT NULL AND jsonb_typeof(r.usage->'models') = 'array'
-		AND jsonb_array_length(r.usage->'models') > 0
-		THEN EXISTS (SELECT 1 FROM jsonb_array_elements(r.usage->'models') m WHERE m.value <> to_jsonb(r.configured_model)) END`
+	'modelMismatch', CASE WHEN r.configured_model IS NOT NULL AND jsonb_typeof(r.usage->'modelGroups') = 'array'
+		AND jsonb_array_length(r.usage->'modelGroups') > 0
+		THEN EXISTS (SELECT 1 FROM jsonb_array_elements(r.usage->'modelGroups') g WHERE g.value <> to_jsonb(r.configured_model)) END`
