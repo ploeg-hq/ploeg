@@ -174,11 +174,24 @@ func TestRun_LogsInFromARefreshTokenIntoTheScratchDirectory(t *testing.T) {
 	}
 }
 
-func TestRun_FailsWhenTheSessionDidNotComplete(t *testing.T) {
-	f := &fakeExec{dispatch: okDispatch}
-	sessions := &fakeSessions{state: harness.RemoteSessionState{Reported: true, ExitReason: "interrupted"}}
-	if _, err := adapter(f).Run(context.Background(), spec(), runEnv(t, sessions)); err == nil || !strings.Contains(err.Error(), "interrupted") {
-		t.Errorf("Run = %v, want an interrupted error", err)
+func TestRun_HowTheSessionEnded(t *testing.T) {
+	for _, tc := range []struct {
+		name, exit, message string
+		wantErr             bool
+	}{
+		{"released as idle after its turn", "interrupted", `{"problem":"p","solution":"s"}`, false},
+		{"exited by itself", "completed", "", false},
+		{"stopped mid-turn", "interrupted", "", true},
+		{"crashed", "failed", `{"problem":"p","solution":"s"}`, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := &fakeExec{dispatch: okDispatch}
+			sessions := &fakeSessions{state: harness.RemoteSessionState{Reported: true, ExitReason: tc.exit, FinalMessage: tc.message}}
+			_, err := adapter(f).Run(context.Background(), spec(), runEnv(t, sessions))
+			if (err != nil) != tc.wantErr {
+				t.Errorf("Run = %v, want error %v", err, tc.wantErr)
+			}
+		})
 	}
 }
 

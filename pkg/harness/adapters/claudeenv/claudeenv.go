@@ -101,10 +101,25 @@ func (a *Adapter) Run(ctx context.Context, spec harness.TaskSpec, env harness.Ru
 	if err != nil && env.Log != nil {
 		env.Log.Warn("the session's final message carried no outcome", "err", err)
 	}
-	if state.ExitReason != "completed" {
-		return report, fmt.Errorf("the session ended %s", state.ExitReason)
+	if !finished(state) {
+		return report, fmt.Errorf("the session ended %s without a final message", state.ExitReason)
 	}
 	return report, nil
+}
+
+// finished reports whether the session ended after Claude's last turn. A
+// dispatched session stays attached after its turn until the runner
+// releases it as idle, which the runner reports as interrupted; only a
+// final message tells that release apart from a session stopped mid-turn.
+func finished(state harness.RemoteSessionState) bool {
+	switch state.ExitReason {
+	case "completed":
+		return true
+	case "interrupted":
+		return strings.TrimSpace(state.FinalMessage) != ""
+	default:
+		return false
+	}
 }
 
 // SessionContract replaces the delivery contract's push, pull request and
