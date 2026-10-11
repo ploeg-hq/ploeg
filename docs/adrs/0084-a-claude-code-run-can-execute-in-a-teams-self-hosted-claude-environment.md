@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-11
 decision-makers: Ryan Grippeling
 supersedes: none
@@ -57,7 +57,7 @@ Chosen option: "A Run executes as a cloud session in the Team's self-hosted envi
 
 ### Confirmation
 
-This record is proposed and nothing implements it yet. When it is accepted:
+Nothing implements this record yet. The implementation lands with:
 
 * `go test ./pkg/worker/` proves that a Role with the `claude-environment` target dispatches with the Team's login and the Run's base ref, records the session id, mints no LiteLLM key and holds no Shift-pool money, against an `httptest` fake of the dispatch result.
 * `go test ./pkg/httpapi/` proves the push-token exchange refuses a token with the wrong issuer, audience, role, session id, an expired token, a reading Run, and a Run whose Lease has ended.
@@ -91,4 +91,5 @@ This record is proposed and nothing implements it yet. When it is accepted:
 ## More Information
 
 * 2026-10-11 — The owner asked whether Ploeg can run Claude Code subagents on self-hosted runners that use a subscription; the spike's evidence and the terms it relies on are in [docs/research/2026-10-11-claude-code-self-hosted-environments.md](../research/2026-10-11-claude-code-self-hosted-environments.md).
+* 2026-10-11 — The owner accepted this record and chose: the push-token exchange is built before any Run pushes from a runner; sessions are dispatched with the owner's own Team seat while the work is the owner's own; the runner stays on a workstation until the exchange exists, then moves to the homelab cluster.
 * Related: [ADR-0006](0006-ahp-is-the-wrong-layer.md) (AHP stays above Ploeg; this target does not use it), [ADR-0012](0012-two-level-budgets-authorized-and-settled.md), [ADR-0034](0034-the-harness-gets-placeholders-the-worker-keeps-credentials.md), [ADR-0039](0039-a-run-calls-only-its-roles-model-and-the-advisor-waits-for-metering.md).
