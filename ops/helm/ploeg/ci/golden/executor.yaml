@@ -723,12 +723,8 @@ spec:
                 value: "15m"
               - name: PLOEG_CLAUDE_ENVIRONMENT_ID
                 value: "ccpool_example"
-              - name: CLAUDE_CODE_OAUTH_REFRESH_TOKEN
-                valueFrom:
-                  secretKeyRef: {name: "pewter-claude-login", key: refreshToken}
-              - name: CLAUDE_CODE_OAUTH_SCOPES
-                valueFrom:
-                  secretKeyRef: {name: "pewter-claude-login", key: scopes}
+              - name: PLOEG_CLAUDE_CONFIG_DIR
+                value: /var/lib/ploeg/claude-login
               - name: LLM_MODEL
                 value: "litellm_proxy/claude-sonnet-5"
               - name: LITELLM_KEY_BUDGET
@@ -786,6 +782,8 @@ spec:
                 readOnly: true
               - name: ci-shared
                 mountPath: /mnt/ci-shared
+              - name: claude-login
+                mountPath: /var/lib/ploeg/claude-login
             resources:
               limits:
                 cpu: "1"
@@ -802,6 +800,9 @@ spec:
           - name: ci-shared
             emptyDir:
               sizeLimit: 8Gi
+          - name: claude-login
+            persistentVolumeClaim:
+              claimName: "pewter-claude-login"
   triggers:
     - type: postgresql
       metadata:

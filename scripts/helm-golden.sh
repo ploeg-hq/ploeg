@@ -95,7 +95,7 @@ for case in "ops/helm/ploeg/ci/reject-reader-without-read-token-values.yaml:read
 	"ops/helm/ploeg/ci/reject-missing-scaler-host-values.yaml:executor.scaler.host is required" \
 	"ops/helm/ploeg/ci/reject-missing-agent-image-values.yaml:no agent image" \
 	"ops/helm/ploeg/ci/reject-mcp-groups-without-team-values.yaml:mcpAccessGroups needs" \
-	"ops/helm/ploeg/ci/reject-claude-environment-without-login-values.yaml:requires harness.claudeEnvironment.environmentId and loginSecret"; do
+	"ops/helm/ploeg/ci/reject-claude-environment-without-login-values.yaml:requires harness.claudeEnvironment.environmentId and loginSecret or loginVolume"; do
 	values=${case%%:*}
 	expected=${case#*:}
 	if out=$(helm template ploeg ops/helm/ploeg -f "$REQUIRED" -f "$values" 2>&1); then

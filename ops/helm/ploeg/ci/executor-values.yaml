@@ -53,7 +53,7 @@ executor:
         dind: false
         claudeEnvironment:
           environmentId: ccpool_example
-          loginSecret: pewter-claude-login
+          loginVolume: pewter-claude-login
     # A team with NO repo: the target comes from the work item (R11), so this
     # renders no REPO_OWNER/REPO_NAME at all. Proves the decoupled path on
     # every PR — the whole point is that a capability tier needs no repository.

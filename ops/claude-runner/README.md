@@ -23,6 +23,19 @@ How a Run travels:
 
 Each release publishes `ghcr.io/ploeg-hq/claude-runner:<version>` from [Dockerfile](Dockerfile): Claude Code pinned by version and checksum, `git`, `curl`, `jq`, `post-session` in `/opt/ploeg/claude-runner/hooks` (root-owned, so a session cannot change it) and `claude-home/` as the `runner` user's `~/.claude`. Run the runner with `--hooks-dir /opt/ploeg/claude-runner/hooks`. The same image serves as the dispatching worker's `harness.image`. ploegd needs `PLOEG_CLAUDE_ENVIRONMENTS=true`, per-run push credentials (`PLOEG_FORGEJO_BOT_PASSWORD`) and `PLOEG_FORGEJO_URL`; see [the configuration reference](../../docs/reference/configuration.md).
 
-The worker needs `claude` and `git` in its agent image, and a Team member's login: the chart's `harness.claudeEnvironment.loginSecret` names a Secret with `refreshToken` and `scopes` from that member's `claude auth login`. Anthropic caps the session-control scope at 30 days, so a person renews it; `claude setup-token` does not grant it.
+The worker needs `claude` and `git` in its agent image, and a Team member's login. `claude setup-token` does not grant session control, and Anthropic caps the login that does at 30 days, so a person renews it. Two ways to give it to the worker:
+
+- **`harness.claudeEnvironment.loginVolume`** (tested route): a PersistentVolumeClaim holding a Claude config directory. A person signs in once from a pod that mounts it, running as the worker's user, and the CLI refreshes the login in place on every dispatch:
+
+  ```sh
+  kubectl -n ploeg run claude-login --rm -it --restart=Never \
+    --image=ghcr.io/ploeg-hq/claude-runner:<version> \
+    --overrides='{"spec":{"securityContext":{"runAsUser":65532,"fsGroup":1000},"containers":[{"name":"claude-login","image":"ghcr.io/ploeg-hq/claude-runner:<version>","stdin":true,"tty":true,"args":["auth","login"],"env":[{"name":"CLAUDE_CONFIG_DIR","value":"/login"}],"volumeMounts":[{"name":"login","mountPath":"/login"}]}],"volumes":[{"name":"login","persistentVolumeClaim":{"claimName":"<claim>"}}]}}'
+  ```
+
+  Pick the organisation that owns the environment when the browser asks.
+- **`harness.claudeEnvironment.loginSecret`**: a Secret with `refreshToken` and `scopes` that each Run exchanges with `claude auth login`. On 2026-10-11 that exchange did not finish without a browser on a workstation, so treat this route as unproven.
+
+Run one `claude-environment` worker at a time per login volume (`maxReplicaCount: 1`): the CLI rewrites the login file when it refreshes.
 
 Not built yet: the plan-paid cost status (these Runs still mint and settle an unused gateway key), and pull requests on GitLab.

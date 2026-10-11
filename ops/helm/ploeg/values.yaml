@@ -265,8 +265,13 @@ executor:
     # Claude plan. The agent image needs the claude CLI and git.
     claudeEnvironment:
       environmentId: "" # ccpool_… (PLOEG_CLAUDE_ENVIRONMENT_ID)
-      # Secret with keys refreshToken and scopes: a Team member's claude.ai
-      # login. Anthropic caps it at 30 days, so it is renewed by hand.
+      # The Team member login that dispatches, one of two ways. loginVolume
+      # names a PersistentVolumeClaim holding a Claude config directory a
+      # person signed in to with `claude auth login`; the CLI refreshes it in
+      # place. loginSecret names a Secret with keys refreshToken and scopes
+      # that each Run exchanges with `claude auth login`. Anthropic caps
+      # either login at 30 days, so a person renews it.
+      loginVolume: ""
       loginSecret: ""
       pollInterval: "" # Go duration; "" = 15s (PLOEG_CLAUDE_POLL_INTERVAL)
   # DEPRECATED in favor of harness.image (kept as the fallback so existing
