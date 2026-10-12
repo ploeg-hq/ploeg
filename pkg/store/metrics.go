@@ -60,6 +60,12 @@ type OperationalMetrics struct {
 	// report carried no delivery record (legacy) or one that did not match
 	// the Run (mismatch).
 	RunsWithoutObservedDeliveryLastDay map[string]int
+	// UnwrittenNotes counts Work Item Notes the outbox has not yet written
+	// to the notes graph (ADR-0088, proposed).
+	UnwrittenNotes int
+	// OldestUnwrittenNoteSeconds is how long the oldest of them has waited;
+	// 0 when none waits.
+	OldestUnwrittenNoteSeconds float64
 }
 
 // RunOutcomeKey labels one ploeg_runs_finished_total series. Reason is empty
@@ -326,6 +332,10 @@ func (s *Store) OperationalMetrics(ctx context.Context) (OperationalMetrics, err
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
+		return m, err
+	}
+	if err := tx.QueryRow(ctx, `SELECT count(*), COALESCE(EXTRACT(EPOCH FROM now() - min(created_at)), 0)::float8
+		FROM work_item_note_outbox WHERE written_at IS NULL`).Scan(&m.UnwrittenNotes, &m.OldestUnwrittenNoteSeconds); err != nil {
 		return m, err
 	}
 	return m, tx.Commit(ctx)

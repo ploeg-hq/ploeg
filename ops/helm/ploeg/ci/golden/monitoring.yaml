@@ -55,6 +55,7 @@ spec:
       labels:
         app.kubernetes.io/name: ploeg
         app.kubernetes.io/instance: ploeg
+        ploeg.webgrip.dev/component: daemon
     spec:
       serviceAccountName: ploeg
       automountServiceAccountToken: false
@@ -267,6 +268,15 @@ spec:
             summary: "A Work Item of team {{ $labels.team }} has waited over 3600 seconds for a worker"
             description: "The longest-waiting claimable Work Item of team {{ $labels.team }} has been queued for {{ $value | humanizeDuration }}."
             runbook_url: https://docs.example/ploeg/ops/alerts/#ploegqueuestalled
+        - alert: PloegWorkItemNotesUnwritten
+          expr: max(ploeg_work_item_note_oldest_unwritten_seconds{job="ploeg",namespace="default"}) > 86400
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "A Work Item Note has waited over 86400 seconds for the notes graph"
+            description: "The oldest unwritten Work Item Note has waited {{ $value | humanizeDuration }}. Later Runs of its work cannot read it until ploegd writes it."
+            runbook_url: https://docs.example/ploeg/ops/alerts/#ploegworkitemnotesunwritten
         - alert: PloegSettlementBacklog
           expr: max by (state) (ploeg_llm_accounts_unsettled{job="ploeg",namespace="default"}) > 0
           for: 1h

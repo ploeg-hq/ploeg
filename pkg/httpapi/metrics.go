@@ -150,6 +150,10 @@ func renderMetrics(m store.OperationalMetrics, webhooks *WebhookCoverage) []byte
 	for _, source := range sortedKeys(m.RunsWithoutObservedDeliveryLastDay) {
 		b.sample("ploeg_runs_without_observed_delivery_last_day", float64(m.RunsWithoutObservedDeliveryLastDay[source]), "source", source)
 	}
+	b.family("ploeg_work_item_notes_unwritten", "gauge", "Work Item Notes the outbox has not yet written to the Tenant's notes graph.")
+	b.sample("ploeg_work_item_notes_unwritten", float64(m.UnwrittenNotes))
+	b.family("ploeg_work_item_note_oldest_unwritten_seconds", "gauge", "How long the oldest unwritten Work Item Note has waited for the notes graph; 0 when none waits.")
+	b.sample("ploeg_work_item_note_oldest_unwritten_seconds", m.OldestUnwrittenNoteSeconds)
 
 	if webhooks != nil {
 		if c, ok := webhooks.snapshot(); ok {

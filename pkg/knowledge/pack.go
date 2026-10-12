@@ -32,6 +32,11 @@ type Source struct {
 	// "repo" for the repository's own bundle.
 	Name   string
 	Bundle okf.Bundle
+	// Unreviewed marks Work Item Notes: what earlier Runs of the same work
+	// wrote without review (ADR-0088, proposed). They are about this very
+	// work, so every one is offered, newest first, after the reviewed
+	// knowledge and under its own heading.
+	Unreviewed bool
 }
 
 // Query is what the pack is selected for.
@@ -50,6 +55,8 @@ type Selected struct {
 	// Reason names the matched terms, or the concept a link was followed
 	// from.
 	Reason string
+	// Unreviewed is set for a Work Item Note.
+	Unreviewed bool
 }
 
 // Pack is the selection for one Query.
@@ -81,8 +88,16 @@ func Select(sources []Source, q Query, budget int) Pack {
 	type key struct{ source, path string }
 	byKey := map[key]okf.Concept{}
 	scored := map[key]Selected{}
+	var notes []Selected
 	for _, s := range sources {
 		pack.Digests[s.Name] = Digest(s.Bundle)
+		if s.Unreviewed {
+			for _, c := range s.Bundle.Concepts {
+				pack.Considered++
+				notes = append(notes, Selected{Source: s.Name, Concept: c, Reason: "written during earlier work on this Work Item", Unreviewed: true})
+			}
+			continue
+		}
 		for _, c := range s.Bundle.Concepts {
 			pack.Considered++
 			k := key{s.Name, c.Path}
@@ -117,6 +132,7 @@ func Select(sources []Source, q Query, budget int) Pack {
 		all = append(all, s)
 	}
 	sortSelected(all)
+	all = append(all, notes...)
 	for _, s := range all {
 		size := len(okf.Format(s.Concept))
 		if pack.Bytes+size > budget {
@@ -280,12 +296,22 @@ func (p Pack) Index() string {
 		fmt.Fprintf(&b, "; %d more matched but did not fit", p.Omitted)
 	}
 	b.WriteString(".\n\n")
+	notes := 0
 	for _, s := range p.Selected {
-		fmt.Fprintf(&b, "- [%s](%s) (%s, %s): %s", okf.DisplayName(s.Concept), path.Join(s.Source, s.Concept.Path), s.Concept.Type, s.Source, s.Reason)
-		if s.Concept.Description != "" {
-			fmt.Fprintf(&b, ". %s", s.Concept.Description)
+		if s.Unreviewed {
+			notes++
+			continue
 		}
-		b.WriteString("\n")
+		writeEntry(&b, s)
+	}
+	if notes > 0 {
+		b.WriteString("\n## Notes from earlier work on this Work Item\n\n")
+		b.WriteString("Earlier Runs of this work wrote these without review. Check each against\nthe code before you rely on it.\n\n")
+		for _, s := range p.Selected {
+			if s.Unreviewed {
+				writeEntry(&b, s)
+			}
+		}
 	}
 	sources := make([]string, 0, len(p.Digests))
 	for name := range p.Digests {
@@ -301,6 +327,14 @@ func (p Pack) Index() string {
 	}
 	b.WriteString("\n")
 	return b.String()
+}
+
+func writeEntry(b *strings.Builder, s Selected) {
+	fmt.Fprintf(b, "- [%s](%s) (%s, %s): %s", okf.DisplayName(s.Concept), path.Join(s.Source, s.Concept.Path), s.Concept.Type, s.Source, s.Reason)
+	if s.Concept.Description != "" {
+		fmt.Fprintf(b, ". %s", s.Concept.Description)
+	}
+	b.WriteString("\n")
 }
 
 // Paths returns each selected concept as "<source>/<path>", best first.

@@ -416,6 +416,11 @@
           "minLength": 1,
           "maxLength": 4000,
           "description": "markdown"
+        },
+        "scope": {
+          "type": "string",
+          "enum": ["work-item", "repository", "client", "tenant"],
+          "description": "How widely the agent suggests the learning applies; absent means work-item. Wider than work-item is a suggestion a Tenant admin decides as a Promotion (ADR-0088, proposed)."
         }
       },
       "required": [

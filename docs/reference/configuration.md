@@ -104,6 +104,10 @@ The generator follows each binary's imports inside the module and records every 
 | `PLOEG_LLM_KEY_ISOLATION` | ploeg-worker |  | `proxy` keeps the per-Run model key in ploeg-worker and hands the harness a placeholder and a loopback URL (ADR-0034). The chart sets it only for a qualified harness without DinD. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_LLM_SETTLE_AFTER` | ploegd | `15m` | Quiet period after which the settlement sweep settles a blocked Run's account from LiteLLM spend logs. | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_METRICS_CACHE_TTL` | ploegd | `15s` |  | [main.go](../../cmd/ploegd/main.go) |
+| `PLOEG_NOTES_GRAPH` | ploegd |  | Id of the Tenant's notes graph on `PLOEG_OMNIGRAPH_URL`, which declares the `tenant-notes` stored queries `add_note`, `note_by_key` and `root_notes`. | [knowledge.go](../../cmd/ploegd/knowledge.go) |
+| `PLOEG_NOTES_WRITE_INTERVAL` | ploegd | `15s` | How often ploegd writes waiting Work Item Notes to the notes graph. Default 15s. | [main.go](../../cmd/ploegd/main.go) |
+| `PLOEG_OMNIGRAPH_RUN_TOKEN` | ploegd |  | Bearer token of the Tenant's run actor: read both graphs, write only notes `main`. Only ploegd holds it; worker pods never see it (ADR-0087, proposed). | [knowledge.go](../../cmd/ploegd/knowledge.go) |
+| `PLOEG_OMNIGRAPH_URL` | ploegd |  | Base URL of the Omnigraph server that holds the Tenant's notes graph, for example `http://omnigraph.ai.svc.cluster.local:8080` (ADR-0088, proposed). With `PLOEG_NOTES_GRAPH` and `PLOEG_OMNIGRAPH_RUN_TOKEN` it turns Work Item Notes on; setting only some of the three is a startup error. Unset = no notes. | [knowledge.go](../../cmd/ploegd/knowledge.go) |
 | `PLOEG_OPERATOR_CONSUMERS` | ploegd |  | JSON array of operator read consumers. Each entry names a `tokenEnv`, a further variable that holds that consumer's bearer token (chart `operator.consumers`). No consumers refuses every operator request. | [operator.go](../../cmd/ploegd/operator.go) |
 | `PLOEG_OPERATOR_DELIVERY_POLICIES` | ploegd |  | JSON array of trusted delivery policies with `repositoryId`, `policySha256`, `verifierId`, `minTests`, optional `publicationEnabled` and optional `publisherLogin`, the forge login a published pull request must be opened by (chart `operator.deliveryPolicies`). | [operator.go](../../cmd/ploegd/operator.go) |
 | `PLOEG_OUTCOME_FILE` | ploeg-worker |  | `exec` harness only: OutcomeReport JSON path override (chart `executor.harness.outcomeFile`). | [main.go](../../cmd/ploeg-worker/main.go) |
@@ -320,6 +324,11 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `image.repository` |  | `ghcr.io/ploeg-hq/ploegd` | The public release image. Point repository at a copy of the same digest, with imagePullSecrets, when the cluster pulls from a private registry. | values.yaml |
 | `image.tag` |  | `""` | empty = .Chart.AppVersion (kept in lockstep with the chart by the release train) | values.yaml |
 | `imagePullSecrets` |  | `[]` | e.g. [{name: harbor-pull}] for a private registry | values.yaml |
+| `knowledgeGraph` | object | `{}` | ADR-0087/0088 (proposed): the Tenant's notes graph on an Omnigraph server. With url set, ploegd writes each learning a Run keeps as a Work Item Note and serves later Runs of the same root Work Item their notes. Only ploegd gets the run actor's token; worker pods never do. The ploegd pod carries the label ploeg.webgrip.dev/component=daemon, which network policies can select to let ploegd, and no Run's pod, reach the graph. Unset = no notes. | values.yaml, values.schema.json |
+| `knowledgeGraph.notesGraph` | string |  |  | values.schema.json |
+| `knowledgeGraph.runTokenSecret.key` | string |  |  | values.schema.json |
+| `knowledgeGraph.runTokenSecret.name` | string |  |  | values.schema.json |
+| `knowledgeGraph.url` | string |  |  | values.schema.json |
 | `monitoring` | object |  | Prometheus Operator objects for ploegd's GET /metrics. Both are off by default: they need the monitoring.coreos.com CRDs. The alerts and what to do about each are in docs/ops/alerts.md. | values.yaml, values.schema.json |
 | `monitoring.prometheusRule.alerts.credentialLeak.enabled` | boolean | `true` |  | values.yaml, values.schema.json |
 | `monitoring.prometheusRule.alerts.credentialLeak.for` | string | `0m` |  | values.yaml, values.schema.json |
@@ -332,6 +341,10 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `monitoring.prometheusRule.alerts.leakedModelKey.for` | string | `5m` |  | values.yaml, values.schema.json |
 | `monitoring.prometheusRule.alerts.leakedModelKey.graceSeconds` | number | `900` |  | values.yaml, values.schema.json |
 | `monitoring.prometheusRule.alerts.leakedModelKey.severity` | string | `critical` |  | values.yaml, values.schema.json |
+| `monitoring.prometheusRule.alerts.notesUnwritten.enabled` | boolean | `true` |  | values.yaml, values.schema.json |
+| `monitoring.prometheusRule.alerts.notesUnwritten.for` | string | `15m` |  | values.yaml, values.schema.json |
+| `monitoring.prometheusRule.alerts.notesUnwritten.severity` | string | `warning` |  | values.yaml, values.schema.json |
+| `monitoring.prometheusRule.alerts.notesUnwritten.waitSeconds` | number | `86400` |  | values.yaml, values.schema.json |
 | `monitoring.prometheusRule.alerts.queueStalled.enabled` | boolean | `true` |  | values.yaml, values.schema.json |
 | `monitoring.prometheusRule.alerts.queueStalled.for` | string | `10m` |  | values.yaml, values.schema.json |
 | `monitoring.prometheusRule.alerts.queueStalled.severity` | string | `warning` |  | values.yaml, values.schema.json |

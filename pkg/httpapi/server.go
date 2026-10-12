@@ -113,6 +113,10 @@ type Server struct {
 	// ingestion route answers 404 and workers stop sending. Transcripts
 	// already stored stay readable.
 	DisableRunTranscripts bool
+	// Notes is the Tenant's notes graph (ADR-0088, proposed). Nil writes
+	// and serves no Work Item Notes, so a Run's learnings stay where the
+	// worker keeps them.
+	Notes NoteGraph
 	// Version is this ploegd's version, recorded on each Run it claims or
 	// admits (ADR-0091). Empty records it as unknown.
 	Version string
@@ -191,6 +195,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/v1/runs/{token}/checkpoint", s.handleCheckpoint)
 	mux.HandleFunc("POST /api/v1/runs/{token}/outcome", s.handleOutcome)
 	mux.HandleFunc("GET /api/v1/runs/{token}/context/{id}", s.handleRunContext)
+	mux.HandleFunc("GET /api/v1/runs/{token}/knowledge", s.handleRunKnowledge)
 	mux.HandleFunc("POST /api/v1/runs/{token}/claude-session", s.handleRecordClaudeSession)
 	mux.HandleFunc("GET /api/v1/runs/{token}/claude-session", s.handleClaudeSessionState)
 	mux.HandleFunc("POST /api/v1/runs/{token}/transcript", s.handleRunTranscript)
@@ -786,6 +791,9 @@ func (s *Server) handleOutcome(w http.ResponseWriter, r *http.Request) {
 		WithFindings(req.Findings).WithVerdict(req.Verdict).WithProblemAndSolution(req.Problem, req.Solution).
 		WithVerification(req.Verification).WithDelivery(req.Delivery).
 		WithCreatedWork(req.CreatedWorkItems, s.createdWorkPolicy, s.knownTeam)
+	if s.Notes != nil {
+		report = report.WithNotes(keptLearnings(req.Learnings))
+	}
 	if req.Checkpoint != nil && req.Checkpoint.Phase != "" {
 		replay, err := s.Store.IsOutcomeReplay(r.Context(), r.PathValue("token"), report)
 		if err != nil {

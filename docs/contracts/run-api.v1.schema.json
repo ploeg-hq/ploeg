@@ -225,6 +225,45 @@
       },
       "required": ["accepted", "truncated"],
       "additionalProperties": false
+    },
+    "knowledgeResponse": {
+      "description": "HTTP 200 body of GET /api/v1/runs/{token}/knowledge: what the Tenant's graphs hold for this Run's own scopes, which ploegd takes from its records and never from the request (ADR-0087, proposed). Carries no graph credential.",
+      "type": "object",
+      "properties": {
+        "notes": { "$ref": "#/$defs/knowledgeNotes" }
+      },
+      "required": ["notes"],
+      "additionalProperties": false
+    },
+    "knowledgeNotes": {
+      "description": "The Work Item Notes of the Run's root Work Item, newest first. Written without review (ADR-0088, proposed).",
+      "type": "object",
+      "properties": {
+        "status": { "type": "string", "enum": ["ok", "unavailable", "off"], "description": "off: this deployment writes no notes. unavailable: the graph did not answer; the Run goes ahead without notes." },
+        "commit": { "type": "string", "description": "The notes graph commit the items were read at." },
+        "items": { "type": "array", "items": { "$ref": "#/$defs/workItemNote" } }
+      },
+      "required": ["status", "items"],
+      "additionalProperties": false
+    },
+    "workItemNote": {
+      "type": "object",
+      "properties": {
+        "key": { "type": "string", "minLength": 1 },
+        "workItem": { "type": "string" },
+        "repository": { "type": "string" },
+        "type": { "type": "string", "minLength": 1 },
+        "title": { "type": "string", "minLength": 1 },
+        "description": { "type": "string" },
+        "resource": { "type": "string" },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "body": { "type": "string", "minLength": 1 },
+        "suggestedScope": { "type": "string", "enum": ["work-item", "repository", "client", "tenant"] },
+        "writtenBy": { "type": "string" },
+        "writtenAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["key", "type", "title", "body"],
+      "additionalProperties": false
     }
   }
 }

@@ -286,6 +286,27 @@
                     }
                   }
                 },
+                "notesUnwritten": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "waitSeconds": {
+                      "type": "number",
+                      "exclusiveMinimum": 0
+                    },
+                    "for": {
+                      "type": "string",
+                      "pattern": "^([0-9]+(ms|s|m|h|d|w|y))+$"
+                    },
+                    "severity": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  }
+                },
                 "settlementBacklog": {
                   "type": "object",
                   "additionalProperties": false,
@@ -305,6 +326,23 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "knowledgeGraph": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "url": { "type": "string", "pattern": "^https?://" },
+        "notesGraph": { "type": "string", "minLength": 1, "pattern": "^[a-z0-9][a-z0-9-]*$" },
+        "runTokenSecret": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name"],
+          "properties": {
+            "name": { "type": "string", "minLength": 1, "maxLength": 253, "pattern": "^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$" },
+            "key": { "type": "string", "minLength": 1 }
           }
         }
       }
