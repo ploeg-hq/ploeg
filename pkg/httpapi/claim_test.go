@@ -48,7 +48,7 @@ func TestMain(m *testing.M) {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	epg := embeddedpostgres.NewDatabase(embeddedpostgres.DefaultConfig().
+	epg := embeddedpostgres.NewDatabase(embeddedpostgres.DefaultConfig().Encoding("UTF8").
 		Port(testPort).
 		RuntimePath(dir))
 	if err := epg.Start(); err != nil {

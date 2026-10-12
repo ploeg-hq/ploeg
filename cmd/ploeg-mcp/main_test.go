@@ -37,7 +37,7 @@ func TestMain(m *testing.M) {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	epg := embeddedpostgres.NewDatabase(embeddedpostgres.DefaultConfig().Port(port).RuntimePath(dir))
+	epg := embeddedpostgres.NewDatabase(embeddedpostgres.DefaultConfig().Encoding("UTF8").Port(port).RuntimePath(dir))
 	if err := epg.Start(); err != nil {
 		fmt.Fprintf(os.Stderr, "embedded postgres failed to start: %v\n", err)
 		os.Exit(1)
