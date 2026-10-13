@@ -105,15 +105,18 @@ deploys: {}
 #     name: ploeg-deploy-token
 #     key: token
 
-# ADR-0087/0088 (proposed): the Tenant's notes graph on an Omnigraph server.
-# With url set, ploegd writes each learning a Run keeps as a Work Item Note
-# and serves later Runs of the same root Work Item their notes. Only ploegd
+# ADR-0087/0088 (proposed): the Tenant's graphs on an Omnigraph server. With
+# notesGraph, ploegd writes each learning a Run keeps as a Work Item Note and
+# serves later Runs of the same root Work Item their notes. With
+# conceptsGraph, ploegd serves each Run the reviewed concepts of its Tenant,
+# Client and repository. Either or both; url needs at least one. Only ploegd
 # gets the run actor's token; worker pods never do. The ploegd pod carries
 # the label ploeg.webgrip.dev/component=daemon, which network policies can
 # select to let ploegd, and no Run's pod, reach the graph. Unset = no notes.
 knowledgeGraph: {}
 #   url: http://omnigraph.ai.svc.cluster.local:8080
 #   notesGraph: acme-notes
+#   conceptsGraph: acme-knowledge
 #   runTokenSecret:
 #     name: ploeg-omnigraph-run
 #     key: token

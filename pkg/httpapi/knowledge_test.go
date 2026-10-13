@@ -258,6 +258,9 @@ func TestKnowledgeBodiesMatchTheRunAPIContract(t *testing.T) {
 	for name, body := range map[string]harness.KnowledgeResponse{
 		"off":         {Notes: harness.KnowledgeNotes{Status: harness.KnowledgeOff, Items: []harness.WorkItemNote{}}},
 		"unavailable": {Notes: harness.KnowledgeNotes{Status: harness.KnowledgeUnavailable, Items: []harness.WorkItemNote{}}},
+		"concepts": {Notes: harness.KnowledgeNotes{Status: harness.KnowledgeOff, Items: []harness.WorkItemNote{}},
+			Concepts: &harness.KnowledgeConcepts{Status: harness.KnowledgeOK, Commit: "01M5", Items: []harness.KnowledgeConcept{
+				{Scope: "repository", Path: "pitfalls/csp.md", Document: "---\ntype: Pitfall\n---\nbody\n"}}}},
 		"notes": {Notes: harness.KnowledgeNotes{Status: harness.KnowledgeOK, Commit: "01M4", Items: []harness.WorkItemNote{{
 			Key: "ploeg-abc/0", WorkItem: "43", Repository: "forgejo/acme/shop", Type: "Pitfall", Title: "t",
 			Tags: []string{"csp"}, Body: "b", SuggestedScope: "repository", WrittenBy: "run:ploeg-abc", WrittenAt: written,
@@ -271,5 +274,67 @@ func TestKnowledgeBodiesMatchTheRunAPIContract(t *testing.T) {
 		if err := schema.Validate(instance); err != nil {
 			t.Errorf("%s violates the contract: %v", name, err)
 		}
+	}
+}
+
+func doc(title string) string {
+	return "---\ntype: Fact\ntitle: " + title + "\n---\n" + title + " body.\n"
+}
+
+func setTarget(t *testing.T, id int64, forge, owner, repo string) {
+	t.Helper()
+	if _, err := testPool.Exec(context.Background(), `UPDATE work_items SET target_forge = $2, target_owner = $3, target_repo = $4 WHERE id = $1`, id, forge, owner, repo); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A Run reads the Tenant's concepts and its own repository's, never another
+// repository's, nor a Client's while Ploeg records no Client for its Work
+// Item (ADR-0087, proposed).
+func TestKnowledgeRead_ServesOnlyTheRunsScopes(t *testing.T) {
+	reset(t)
+	graph := omnigraphtest.NewKnowledge(t)
+	graph.Put("tenant/conventions/commits.md", "tenant", "", "", doc("Commits"))
+	graph.Put("repository/forgejo/acme/shop/pitfalls/csp.md", "repository", "", "forgejo/acme/shop", doc("CSP"))
+	graph.Put("repository/forgejo/acme/other/pitfalls/secret.md", "repository", "", "forgejo/acme/other", doc("Other"))
+	graph.Put("client/globex/facts/sla.md", "client", "globex", "", doc("SLA"))
+	s := workItemNotesServer(t, omnigraphtest.NewNotes(t))
+	s.Knowledge = &knowledgegraph.Knowledge{Client: &omnigraph.Client{BaseURL: graph.URL, Token: graph.Token}, Graph: graph.Graph}
+	h := s.Handler()
+
+	id := ingestFor(t, "9400", "bronze")
+	setTarget(t, id, "forgejo", "acme", "shop")
+	run := claimLegacy(t, h, "bronze")
+	rec, resp := runKnowledgeGET(t, h, run.RunToken, "?repository=forgejo/acme/other&client=globex")
+	if rec.Code != 200 || resp.Concepts == nil || resp.Concepts.Status != harness.KnowledgeOK {
+		t.Fatalf("knowledge: %d %+v", rec.Code, resp.Concepts)
+	}
+	got := map[string]string{}
+	for _, c := range resp.Concepts.Items {
+		got[c.Scope+":"+c.Path] = c.Document
+	}
+	if len(got) != 2 || got["tenant:conventions/commits.md"] == "" || got["repository:pitfalls/csp.md"] != doc("CSP") {
+		t.Errorf("served %v", got)
+	}
+	if resp.Concepts.Commit == "" {
+		t.Error("no commit recorded")
+	}
+
+	graph.Down = true
+	if rec, resp := runKnowledgeGET(t, h, run.RunToken, ""); rec.Code != 200 || resp.Concepts.Status != harness.KnowledgeUnavailable || resp.Notes.Status != harness.KnowledgeOK {
+		t.Errorf("with the knowledge graph down: %d %+v %+v", rec.Code, resp.Concepts, resp.Notes)
+	}
+}
+
+// Concepts are read at one commit: a write between the reads makes ploegd
+// read them all again.
+func TestKnowledgeRead_ConceptsComeFromOneCommit(t *testing.T) {
+	graph := omnigraphtest.NewKnowledge(t)
+	graph.Put("tenant/a.md", "tenant", "", "", doc("A"))
+	graph.BumpBetweenReads = 1
+	k := &knowledgegraph.Knowledge{Client: &omnigraph.Client{BaseURL: graph.URL, Token: graph.Token}, Graph: graph.Graph}
+	items, commit, err := k.Concepts(context.Background(), "", "forgejo/acme/shop")
+	if err != nil || len(items) != 1 || commit != "commit-2" {
+		t.Errorf("items %+v commit %q err %v", items, commit, err)
 	}
 }

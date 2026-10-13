@@ -93,6 +93,26 @@ type ContextItem struct {
 // credential (ADR-0087, proposed).
 type KnowledgeResponse struct {
 	Notes KnowledgeNotes `json:"notes"`
+	// Concepts is the reviewed knowledge of the Run's Tenant, Client and
+	// repository; absent from a ploegd that serves none.
+	Concepts *KnowledgeConcepts `json:"concepts,omitempty"`
+}
+
+// KnowledgeConcepts are the reviewed concepts a Run may read: every
+// Tenant-scoped concept, those of its Work Item's Client, and those of its
+// Work Target repository (ADR-0087, proposed).
+type KnowledgeConcepts struct {
+	Status string             `json:"status"`
+	Commit string             `json:"commit,omitempty"`
+	Items  []KnowledgeConcept `json:"items"`
+}
+
+// KnowledgeConcept is one reviewed concept: its path inside its scope and
+// the whole OKF document.
+type KnowledgeConcept struct {
+	Scope    string `json:"scope"`
+	Path     string `json:"path"`
+	Document string `json:"document"`
 }
 
 // Knowledge read statuses.

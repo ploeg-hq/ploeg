@@ -62,21 +62,42 @@ func (w *Worker) knowledgeSources(cloneDir string, extra ...knowledge.Source) []
 	return append(sources, extra...)
 }
 
-// knowledgePack selects the pack for item from the configured sources and
-// extra, and writes it to dir, outside the clone so a writing Run cannot
-// commit it. Nil when no concept matched.
-func (w *Worker) knowledgePack(cloneDir string, item work.WorkItem, dir string, notes runNotes, extra ...knowledge.Source) *harness.KnowledgeBrief {
-	if notes.source != nil {
-		extra = append(extra, *notes.source)
-	}
+// knowledgePack selects the pack for item from the configured sources, the
+// Tenant's graphs and extra, and writes it to dir, outside the clone so a
+// writing Run cannot commit it. Nil when no concept matched and no graph was
+// read.
+func (w *Worker) knowledgePack(cloneDir string, item work.WorkItem, dir string, graphs tenantKnowledge, extra ...knowledge.Source) *harness.KnowledgeBrief {
 	sources := w.knowledgeSources(cloneDir, extra...)
+	repoPaths := map[string]bool{}
+	for _, s := range sources {
+		if s.Name == repoKnowledgeSource {
+			for _, c := range s.Bundle.Concepts {
+				repoPaths[c.Path] = true
+			}
+		}
+	}
+	var provenance []harness.KnowledgeSource
+	if graphs.conceptsProvenance != nil {
+		p := *graphs.conceptsProvenance
+		if g := graphs.graphSource(repoPaths); g != nil {
+			sources = append(sources, *g)
+			p.Digest = knowledge.Digest(g.Bundle)
+		}
+		provenance = append(provenance, p)
+	}
+	if graphs.source != nil {
+		sources = append(sources, *graphs.source)
+	}
+	if graphs.provenance != nil {
+		provenance = append(provenance, *graphs.provenance)
+	}
 	if len(sources) == 0 {
-		return notesOnlyBrief(notes)
+		return graphOnlyBrief(provenance)
 	}
 	pack := knowledge.Select(sources, knowledge.Query{Title: item.Title, Description: item.Description, Labels: item.Labels}, w.Cfg.KnowledgeBudget)
 	if len(pack.Selected) == 0 {
 		w.Log.Info("no knowledge matched the Work Item", "considered", pack.Considered)
-		return notesOnlyBrief(notes)
+		return graphOnlyBrief(provenance)
 	}
 	index, err := pack.Write(dir)
 	if err != nil {
@@ -85,25 +106,23 @@ func (w *Worker) knowledgePack(cloneDir string, item work.WorkItem, dir string, 
 	}
 	brief := &harness.KnowledgeBrief{Index: index, Concepts: pack.Paths(), Bytes: pack.Bytes, Omitted: pack.Omitted}
 	for _, s := range sources {
-		if s.Unreviewed {
+		if s.Unreviewed || s.Name == graphSource {
 			continue
 		}
 		brief.Sources = append(brief.Sources, harness.KnowledgeSource{Name: s.Name, Digest: pack.Digests[s.Name]})
 	}
-	if notes.provenance != nil {
-		brief.Sources = append(brief.Sources, *notes.provenance)
-	}
+	brief.Sources = append(brief.Sources, provenance...)
 	return brief
 }
 
-// notesOnlyBrief records the notes' provenance when no concept made the pack,
-// so the Task Spec still says which notes commit the Run was briefed at, or
-// that the graph was unavailable.
-func notesOnlyBrief(notes runNotes) *harness.KnowledgeBrief {
-	if notes.provenance == nil {
+// graphOnlyBrief records the graphs' provenance when no concept made the
+// pack, so the Task Spec still says which commits the Run was briefed at, or
+// that a graph was unavailable.
+func graphOnlyBrief(provenance []harness.KnowledgeSource) *harness.KnowledgeBrief {
+	if len(provenance) == 0 {
 		return nil
 	}
-	return &harness.KnowledgeBrief{Concepts: []string{}, Sources: []harness.KnowledgeSource{*notes.provenance}}
+	return &harness.KnowledgeBrief{Concepts: []string{}, Sources: provenance}
 }
 
 // writeKnowledge renders the pack's index into the prompt and says where the
