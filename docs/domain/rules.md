@@ -98,7 +98,7 @@ Every Run must retain a queryable outcome or recovery state. The runner submits 
 ### R6
 *Context: Dispatch*
 
-Authoritative Ploeg execution state lives in Postgres and durable repository evidence lives in git/forge state. Human-session records may live in the delegated workbench store; they cannot independently grant execution authority.
+Authoritative Ploeg execution state lives in Postgres and durable repository evidence lives in git/forge state. Human-session records may live in an Operator Consumer's own store; they cannot independently grant execution authority.
 
 **Why:** Ephemerality is the design axiom; any state trapped in a long-lived process breaks crash-safety and resume.
 
@@ -189,7 +189,7 @@ Unattended tracker recovery has bounded retries. Infrastructure expiry and repor
 
 Intended target model — a Work Item carries its own Work Target (forge, owner, repository, base branch), resolved at ingest and independent of the Team that claims it. A Team is a capability manifest and never names a repository. A Work Item without a resolved Work Target is not claimable, and the set of reachable Work Targets is closed and operator-declared.
 
-**Why:** A Team is a crew, not a codebase. Binding them makes every capability change a repository migration and vice versa, leaves "two Teams on one repository" and "one Team across many repositories" both unrepresentable, and makes per-Run repo-scoped credentials impossible to express. The closed set keeps tracker content — untrusted input — from pointing a write-scoped credential at an arbitrary repository.
+**Why:** A Team is a capability pool, not a codebase. Binding them makes every capability change a repository migration and vice versa, leaves "two Teams on one repository" and "one Team across many repositories" both unrepresentable, and makes per-Run repo-scoped credentials impossible to express. The closed set keeps tracker content — untrusted input — from pointing a write-scoped credential at an arbitrary repository.
 
 **Also applies to:** Work Target, Team, Routing Rule
 

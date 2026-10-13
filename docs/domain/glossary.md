@@ -233,7 +233,7 @@ The operator-declared mapping from (provider, Scope, actor, hint) to a Team and 
 ## Run
 *Context: Execution*
 
-One execution of one Role against a Work Item, realized by an Executor as a Kubernetes Job or a delegated workbench execution. A Lease may accumulate several Runs (roles, retries, resumes). The runner reports its outcome; controller expiry and reconciliation recover missing reports while preserving operator stop intent. "Job" is reserved for the Kubernetes object and is never a domain term.
+One execution of one Role against a Work Item, realized by an Executor as a Kubernetes Job or as an execution delegated to an Operator Consumer. A Lease may accumulate several Runs (roles, retries, resumes). The runner reports its outcome; controller expiry and reconciliation recover missing reports while preserving operator stop intent. "Job" is reserved for the Kubernetes object and is never a domain term.
 
 **Do not use:** job (as a domain term), role run  
 **Not to be confused with** [Shift](#shift): The whole attempt on a Work Item, which contains one or more Runs.  
@@ -253,7 +253,7 @@ An opaque, provider-scoped container id for a body of work (a Vikunja project, a
 One Team's engagement with one Work Item: the container that owns the branch, the budget pool, the roster of Runs and the Round counter. Opens when the first Run starts, closes when the work reaches a terminal state. A Shift is what makes several Runs on one item coherent without any of them needing to remember the others. Named for the crew sense — Ploeg is Dutch for a crew, and ploegendienst is shift work.
 
 **Do not use:** claim (as a noun), engagement, session, execution  
-**Not to be confused with** Execution: A retired product term for the same attempt. The word still names a bounded context and is part of Operator Execution.  
+**Not to be confused with** [Execution](#execution): A retired term for the same attempt. The word still names a bounded context and is part of Operator Execution.  
 **See also:** [Lease](#lease), [Run](#run), [Round](#round), [Team](#team), [Work Item](#work-item)  
 
 ## Task Spec
@@ -283,7 +283,7 @@ The ordered set of queued Work Items for one Team — a derived view, not a stor
 ## Tenant
 *Context: Dispatch*
 
-The access boundary above Teams: the users, sources, repositories, budgets and knowledge that belong together (one agency in a hosted deployment, one default Tenant self-hosted). Proposed; Ploeg's store does not record it yet.
+The access boundary above Teams: the users, sources, repositories, budgets and knowledge that belong together (one organisation in a hosted deployment, one default Tenant self-hosted). Proposed; Ploeg's store does not record it yet.
 
 **See also:** [Team](#team), [Client](#client), [Knowledge Scope](#knowledge-scope)  
 
@@ -347,6 +347,17 @@ The forge coordinates a Work Item's Runs act on: forge, owner, repository, base 
 **Also known as:** target  
 **Do not use:** team repo, repo_url  
 **See also:** [Work Item](#work-item), [Forge](#forge), [Routing Rule](#routing-rule), [Team](#team)  
+
+---
+
+## Retired terms
+
+Do not use these names as terms.
+
+### Execution
+*Use instead: [Shift](#shift), [Run](#run)*
+
+The attempt it named is a Shift, and one Role's part of it is a Run. A second name for a Shift would make every execution statement ambiguous. The word remains a bounded-context name and part of Operator Execution.
 
 ---
 

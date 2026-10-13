@@ -9,7 +9,7 @@ description: >
   This vocabulary includes intended domain rules; it is not a database or API
   field inventory. The architecture and published contracts identify current
   implementation limits.
-version: 0.6.0
+version: 0.6.1
 contexts:
   - name: Dispatch
     description: >
@@ -21,8 +21,9 @@ contexts:
       normalized events, write-backs. Everything vendor-specific lives here.
   - name: Execution
     description: >
-      How admitted work executes, including Kubernetes workers and delegated
-      workbench runs. KEDA is one implementation, not part of the language.
+      How admitted work executes, including Kubernetes workers and Runs
+      delegated to an Operator Consumer. KEDA is one implementation, not part
+      of the language.
   - name: Harness
     description: >
       The contract between Ploeg and an agent container: Task Spec in,
@@ -109,7 +110,7 @@ terms:
   - name: Tenant
     definition: >
       The access boundary above Teams: the users, sources, repositories,
-      budgets and knowledge that belong together (one agency in a hosted
+      budgets and knowledge that belong together (one organisation in a hosted
       deployment, one default Tenant self-hosted). Proposed; Ploeg's store
       does not record it yet.
     context: Dispatch
@@ -198,8 +199,8 @@ terms:
     not_to_be_confused_with:
       - term: Execution
         note: >
-          A retired product term for the same attempt. The word still names a
-          bounded context and is part of Operator Execution.
+          A retired term for the same attempt. The word still names a bounded
+          context and is part of Operator Execution.
     see_also: [Lease, Run, Round, Team, Work Item]
 
   - name: Lease
@@ -268,7 +269,7 @@ terms:
   - name: Run
     definition: >
       One execution of one Role against a Work Item, realized by an Executor
-      as a Kubernetes Job or a delegated workbench execution. A Lease may accumulate several Runs (roles,
+      as a Kubernetes Job or as an execution delegated to an Operator Consumer. A Lease may accumulate several Runs (roles,
       retries, resumes). The runner reports its outcome; controller expiry and
       reconciliation recover missing reports while preserving operator stop intent. "Job" is reserved for the Kubernetes
       object and is never a domain term.
@@ -494,6 +495,15 @@ terms:
     context: Dispatch
     see_also: [Admission, Inference Account, Push Credential, Run]
 
+retired_terms:
+  - name: Execution
+    context: Dispatch
+    use: [Shift, Run]
+    because: >
+      The attempt it named is a Shift, and one Role's part of it is a Run. A
+      second name for a Shift would make every execution statement ambiguous.
+      The word remains a bounded-context name and part of Operator Execution.
+
 entities:
   - name: Operator Execution
     description: A consumer-owned session binding and serialized execution lifecycle.
@@ -562,7 +572,7 @@ entities:
       - name: team
         type: string
         description: >
-          Team the item is queued for — the claiming crew, not the codebase;
+          Team the item is queued for — the claiming Team, not the codebase;
           empty until assigned.
       - name: target
         type: Work Target
@@ -754,7 +764,7 @@ entities:
         description: The writing Run holding write access.
 
   - name: Run
-    description: One execution of one Role, realized as a Kubernetes Job or a delegated workbench execution.
+    description: One execution of one Role, realized as a Kubernetes Job or as an execution delegated to an Operator Consumer.
     context: Execution
     attributes:
       - name: work_item_id
@@ -1031,7 +1041,7 @@ rules:
     context: Dispatch
 
   - id: R6
-    statement: Authoritative Ploeg execution state lives in Postgres and durable repository evidence lives in git/forge state. Human-session records may live in the delegated workbench store; they cannot independently grant execution authority.
+    statement: Authoritative Ploeg execution state lives in Postgres and durable repository evidence lives in git/forge state. Human-session records may live in an Operator Consumer's own store; they cannot independently grant execution authority.
     rationale: Ephemerality is the design axiom; any state trapped in a long-lived process breaks crash-safety and resume.
     applies_to: [Run, Checkpoint]
     context: Dispatch
@@ -1062,7 +1072,7 @@ rules:
 
   - id: R11
     statement: Intended target model — a Work Item carries its own Work Target (forge, owner, repository, base branch), resolved at ingest and independent of the Team that claims it. A Team is a capability manifest and never names a repository. A Work Item without a resolved Work Target is not claimable, and the set of reachable Work Targets is closed and operator-declared.
-    rationale: A Team is a crew, not a codebase. Binding them makes every capability change a repository migration and vice versa, leaves "two Teams on one repository" and "one Team across many repositories" both unrepresentable, and makes per-Run repo-scoped credentials impossible to express. The closed set keeps tracker content — untrusted input — from pointing a write-scoped credential at an arbitrary repository.
+    rationale: A Team is a capability pool, not a codebase. Binding them makes every capability change a repository migration and vice versa, leaves "two Teams on one repository" and "one Team across many repositories" both unrepresentable, and makes per-Run repo-scoped credentials impossible to express. The closed set keeps tracker content — untrusted input — from pointing a write-scoped credential at an arbitrary repository.
     applies_to: [Work Item, Work Target, Team, Routing Rule]
     context: Dispatch
 
@@ -1080,7 +1090,7 @@ events:
   - name: OperatorExecutionCommandAccepted
     description: A command passed identity, revision and generation checks and advanced the serialized revision.
     entity: Operator Execution
-    triggers: The executor or workbench observes the new lifecycle or supervision state.
+    triggers: The Executor or the Operator Consumer observes the new lifecycle or supervision state.
   - name: OperatorExecutionExpired
     description: Executor authority expired while work or a stop request remained unresolved.
     entity: Operator Execution

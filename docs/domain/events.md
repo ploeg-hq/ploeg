@@ -21,7 +21,7 @@ One authenticated session was bound to a Work Item, Shift and Run.
 A command passed identity, revision and generation checks and advanced the serialized revision.
 
 **Concerns:** Operator Execution  
-**Triggers:** The executor or workbench observes the new lifecycle or supervision state.  
+**Triggers:** The Executor or the Operator Consumer observes the new lifecycle or supervision state.  
 
 ## OperatorExecutionExpired
 
