@@ -11,22 +11,31 @@ import (
 	"github.com/ploeg-hq/ploeg/pkg/omnigraph"
 )
 
-// notesGraph wires the Tenant's notes graph (ADR-0088, proposed). It is off
-// unless the server, the graph and the run actor's token are all set; a
-// partial setting is an error so a typo cannot silently turn notes off.
-func notesGraph(log *slog.Logger) (*knowledgegraph.Notes, error) {
+// tenantGraphs wires the Tenant's notes graph (ADR-0088) and reviewed
+// knowledge graph (ADR-0087), both proposed. Each is off unless named; a
+// named graph needs the server and the run actor's token, and a server or
+// token without any graph is an error, so a typo cannot silently turn
+// knowledge off.
+func tenantGraphs(log *slog.Logger) (*knowledgegraph.Notes, *knowledgegraph.Knowledge, error) {
 	url := os.Getenv("PLOEG_OMNIGRAPH_URL")
-	graph := os.Getenv("PLOEG_NOTES_GRAPH")
 	token := os.Getenv("PLOEG_OMNIGRAPH_RUN_TOKEN")
-	if url == "" && graph == "" && token == "" {
-		return nil, nil
+	notesGraph := os.Getenv("PLOEG_NOTES_GRAPH")
+	knowledgeGraph := os.Getenv("PLOEG_KNOWLEDGE_GRAPH")
+	if url == "" && token == "" && notesGraph == "" && knowledgeGraph == "" {
+		return nil, nil, nil
 	}
-	if url == "" || graph == "" || token == "" {
-		return nil, errors.New("work item notes need PLOEG_OMNIGRAPH_URL, PLOEG_NOTES_GRAPH and PLOEG_OMNIGRAPH_RUN_TOKEN together")
+	if url == "" || token == "" || (notesGraph == "" && knowledgeGraph == "") {
+		return nil, nil, errors.New("tenant knowledge needs PLOEG_OMNIGRAPH_URL, PLOEG_OMNIGRAPH_RUN_TOKEN and PLOEG_NOTES_GRAPH or PLOEG_KNOWLEDGE_GRAPH")
 	}
-	log.Info("work item notes", "enabled", true, "graph", graph)
-	return &knowledgegraph.Notes{
-		Client: &omnigraph.Client{BaseURL: url, Token: token, HTTP: &http.Client{Timeout: 30 * time.Second}},
-		Graph:  graph,
-	}, nil
+	client := &omnigraph.Client{BaseURL: url, Token: token, HTTP: &http.Client{Timeout: 30 * time.Second}}
+	var notes *knowledgegraph.Notes
+	var knowledge *knowledgegraph.Knowledge
+	if notesGraph != "" {
+		notes = &knowledgegraph.Notes{Client: client, Graph: notesGraph}
+	}
+	if knowledgeGraph != "" {
+		knowledge = &knowledgegraph.Knowledge{Client: client, Graph: knowledgeGraph}
+	}
+	log.Info("tenant knowledge", "notes_graph", notesGraph, "knowledge_graph", knowledgeGraph)
+	return notes, knowledge, nil
 }

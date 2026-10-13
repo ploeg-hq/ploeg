@@ -46,7 +46,7 @@ func TestWorkItemNotes_BriefTheRunUnderTheirOwnHeading(t *testing.T) {
 	api, _ := knowledgeAPI(t, http.StatusOK, noteResponse(note))
 	w := &Worker{Cfg: Config{}, Log: discardLog(), API: api}
 
-	notes := w.workItemNotes(context.Background(), "run-1")
+	notes := w.readTenantKnowledge(context.Background(), "run-1")
 	if !notes.on || notes.source == nil || notes.provenance.Commit != "commit-7" {
 		t.Fatalf("notes %+v", notes)
 	}
@@ -72,7 +72,7 @@ func TestWorkItemNotes_BriefTheRunUnderTheirOwnHeading(t *testing.T) {
 func TestKnowledgeRead_UnavailableGraphDoesNotStopTheWorker(t *testing.T) {
 	api, _ := knowledgeAPI(t, http.StatusOK, harness.KnowledgeResponse{Notes: harness.KnowledgeNotes{Status: harness.KnowledgeUnavailable, Items: []harness.WorkItemNote{}}})
 	w := &Worker{Cfg: Config{}, Log: discardLog(), API: api}
-	notes := w.workItemNotes(context.Background(), "run-1")
+	notes := w.readTenantKnowledge(context.Background(), "run-1")
 	brief := w.knowledgePack(t.TempDir(), work.WorkItem{Title: "x"}, t.TempDir(), notes)
 	if !notes.on || brief == nil || len(brief.Concepts) != 0 || brief.Sources[0].Status != harness.KnowledgeUnavailable {
 		t.Fatalf("notes %+v brief %+v", notes, brief)
@@ -90,7 +90,7 @@ func TestWorkItemNotes_OffOrOlderPloegdChangesNothing(t *testing.T) {
 	for name, status := range map[string]int{"older ploegd": http.StatusNotFound, "off": http.StatusOK} {
 		api, calls := knowledgeAPI(t, status, harness.KnowledgeResponse{Notes: harness.KnowledgeNotes{Status: harness.KnowledgeOff, Items: []harness.WorkItemNote{}}})
 		w := &Worker{Cfg: Config{}, Log: discardLog(), API: api}
-		notes := w.workItemNotes(context.Background(), "run-1")
+		notes := w.readTenantKnowledge(context.Background(), "run-1")
 		if notes.on || notes.provenance != nil || *calls != 1 {
 			t.Errorf("%s: notes %+v after %d calls", name, notes, *calls)
 		}
@@ -106,5 +106,44 @@ func TestLearningsInvitation_SaysNotesReachLaterRunsAtOnce(t *testing.T) {
 	}
 	if !strings.Contains(off.String(), "A person reviews every entry") {
 		t.Errorf("outbox invitation changed:\n%s", off.String())
+	}
+}
+
+// Reviewed graph concepts brief the Run like any other source, and the
+// repository's own knowledge/ file wins over the graph's copy of the same
+// concept once the client merged it (design D8).
+func TestKnowledgePack_RepositoryFileWinsOverTheSameGraphConcept(t *testing.T) {
+	clone := t.TempDir()
+	writeBundle(t, filepath.Join(clone, DefaultRepoKnowledgeDir), migrationConcept)
+	graphDoc := func(title string) string {
+		return "---\ntype: Convention\ntitle: " + title + "\ntags: [store, postgres]\n---\nGraph copy of " + title + ".\n"
+	}
+	api, _ := knowledgeAPI(t, http.StatusOK, harness.KnowledgeResponse{
+		Notes: harness.KnowledgeNotes{Status: harness.KnowledgeOff, Items: []harness.WorkItemNote{}},
+		Concepts: &harness.KnowledgeConcepts{Status: harness.KnowledgeOK, Commit: "commit-9", Items: []harness.KnowledgeConcept{
+			{Scope: "repository", Path: "conventions/migrations.md", Document: graphDoc("Store migrations are append-only")},
+			{Scope: "tenant", Path: "conventions/postgres.md", Document: graphDoc("Postgres store conventions")},
+			{Scope: "repository", Path: "broken.md", Document: "no frontmatter"},
+		}},
+	})
+	w := &Worker{Cfg: Config{}, Log: discardLog(), API: api}
+	graphs := w.readTenantKnowledge(context.Background(), "run-1")
+	brief := w.knowledgePack(clone, work.WorkItem{Title: "Add a migration to the store", Description: "a postgres column"}, t.TempDir(), graphs)
+	if brief == nil {
+		t.Fatal("no brief")
+	}
+	got := strings.Join(brief.Concepts, " ")
+	if !strings.Contains(got, "repo/conventions/migrations.md") || !strings.Contains(got, "graph/tenant/conventions/postgres.md") ||
+		strings.Contains(got, "graph/repository/conventions/migrations.md") || strings.Contains(got, "broken") {
+		t.Errorf("concepts = %s", got)
+	}
+	var graph *harness.KnowledgeSource
+	for i := range brief.Sources {
+		if brief.Sources[i].Name == graphSource {
+			graph = &brief.Sources[i]
+		}
+	}
+	if graph == nil || graph.Commit != "commit-9" || graph.Digest == "" {
+		t.Errorf("graph provenance %+v", graph)
 	}
 }

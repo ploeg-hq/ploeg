@@ -444,8 +444,8 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 		runEnv = append(runEnv, canaryEnv+"="+canary)
 	}
 	knowledgeDir := filepath.Join(scratchDir, "knowledge")
-	notes := w.workItemNotes(ctx, claimed.RunToken)
-	if brief := w.knowledgePack(cloneDir, item, knowledgeDir, notes, contextConcepts...); brief != nil {
+	graphs := w.readTenantKnowledge(ctx, claimed.RunToken)
+	if brief := w.knowledgePack(cloneDir, item, knowledgeDir, graphs, contextConcepts...); brief != nil {
 		spec.Knowledge = brief
 		if len(brief.Concepts) > 0 {
 			runEnv = append(runEnv, knowledgeDirEnv+"="+knowledgeDir)
@@ -455,9 +455,9 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	var support string
 	if !planner {
 		support = runSupportSection(skillPaths, w.Cfg.Toolchains, verifyCommands, writes)
-		if w.Cfg.KnowledgeOutbox != "" || notes.on {
+		if w.Cfg.KnowledgeOutbox != "" || graphs.on {
 			var invitation strings.Builder
-			writeLearningsInvitation(&invitation, notes.on)
+			writeLearningsInvitation(&invitation, graphs.on)
 			support += invitation.String()
 		}
 	}

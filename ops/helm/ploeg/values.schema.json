@@ -336,6 +336,7 @@
       "properties": {
         "url": { "type": "string", "pattern": "^https?://" },
         "notesGraph": { "type": "string", "minLength": 1, "pattern": "^[a-z0-9][a-z0-9-]*$" },
+        "conceptsGraph": { "type": "string", "minLength": 1, "pattern": "^[a-z0-9][a-z0-9-]*$" },
         "runTokenSecret": {
           "type": "object",
           "additionalProperties": false,

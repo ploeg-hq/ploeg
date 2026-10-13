@@ -280,8 +280,17 @@ spec:
             {{- if .url }}
             - name: PLOEG_OMNIGRAPH_URL
               value: {{ .url | quote }}
+            {{- if not (or .notesGraph .conceptsGraph) }}
+            {{- fail "knowledgeGraph.url needs knowledgeGraph.notesGraph, knowledgeGraph.conceptsGraph or both" }}
+            {{- end }}
+            {{- with .notesGraph }}
             - name: PLOEG_NOTES_GRAPH
-              value: {{ required "knowledgeGraph.notesGraph is required with knowledgeGraph.url" .notesGraph | quote }}
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .conceptsGraph }}
+            - name: PLOEG_KNOWLEDGE_GRAPH
+              value: {{ . | quote }}
+            {{- end }}
             - name: PLOEG_OMNIGRAPH_RUN_TOKEN
               valueFrom:
                 secretKeyRef:
