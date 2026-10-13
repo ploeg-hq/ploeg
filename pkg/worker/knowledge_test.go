@@ -32,7 +32,7 @@ func TestKnowledgePack_BriefsFromTheRepositoryAndConfiguredBundles(t *testing.T)
 	w := &Worker{Cfg: Config{KnowledgeDirs: []string{team, filepath.Join(t.TempDir(), "missing")}}, Log: discardLog()}
 	dir := filepath.Join(scratch, "knowledge")
 
-	brief := w.knowledgePack(clone, work.WorkItem{Title: "Add a migration to the store", Description: "a postgres column"}, dir, runNotes{})
+	brief := w.knowledgePack(clone, work.WorkItem{Title: "Add a migration to the store", Description: "a postgres column"}, dir, tenantKnowledge{})
 	if brief == nil {
 		t.Fatal("no brief")
 	}
@@ -55,16 +55,16 @@ func TestKnowledgePack_BriefsFromTheRepositoryAndConfiguredBundles(t *testing.T)
 func TestKnowledgePack_NoneWithoutAMatchOrASource(t *testing.T) {
 	clone := t.TempDir()
 	w := &Worker{Cfg: Config{}, Log: discardLog()}
-	if b := w.knowledgePack(clone, work.WorkItem{Title: "Add a migration to the store"}, t.TempDir(), runNotes{}); b != nil {
+	if b := w.knowledgePack(clone, work.WorkItem{Title: "Add a migration to the store"}, t.TempDir(), tenantKnowledge{}); b != nil {
 		t.Errorf("brief without any bundle: %+v", b)
 	}
 	writeBundle(t, filepath.Join(clone, DefaultRepoKnowledgeDir), migrationConcept)
-	if b := w.knowledgePack(clone, work.WorkItem{Title: "Translate the login page"}, t.TempDir(), runNotes{}); b != nil {
+	if b := w.knowledgePack(clone, work.WorkItem{Title: "Translate the login page"}, t.TempDir(), tenantKnowledge{}); b != nil {
 		t.Errorf("brief for unrelated work: %+v", b.Concepts)
 	}
 	for _, repoDir := range []string{"-", "../outside", "/abs"} {
 		w.Cfg.RepoKnowledgeDir = repoDir
-		if b := w.knowledgePack(clone, work.WorkItem{Title: "Add a migration to the store"}, t.TempDir(), runNotes{}); b != nil {
+		if b := w.knowledgePack(clone, work.WorkItem{Title: "Add a migration to the store"}, t.TempDir(), tenantKnowledge{}); b != nil {
 			t.Errorf("RepoKnowledgeDir %q read the repository bundle", repoDir)
 		}
 	}

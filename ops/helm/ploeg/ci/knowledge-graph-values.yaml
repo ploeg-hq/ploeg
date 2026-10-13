@@ -1,9 +1,10 @@
-# ADR-0087/0088 (proposed): ploegd writes and serves Work Item Notes from a
-# Tenant's notes graph. The golden pins that only ploegd gets the run actor's
+# ADR-0087/0088 (proposed): ploegd writes and serves Work Item Notes and
+# serves reviewed concepts from a Tenant's two graphs. The golden pins that only ploegd gets the run actor's
 # token and that the daemon label stays on ploegd alone.
 knowledgeGraph:
   url: http://omnigraph.ai.svc.cluster.local:8080
   notesGraph: acme-notes
+  conceptsGraph: acme-knowledge
   runTokenSecret:
     name: ploeg-omnigraph-run
     key: token

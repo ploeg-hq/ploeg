@@ -17,6 +17,12 @@ type NoteGraph interface {
 	Write(ctx context.Context, note store.PendingNote) (string, error)
 }
 
+// ConceptGraph is the Tenant's reviewed knowledge graph as ploegd reads it
+// with the run actor.
+type ConceptGraph interface {
+	Concepts(ctx context.Context, client, repository string) ([]harness.KnowledgeConcept, string, error)
+}
+
 const (
 	maxNotesPerRun   = 10
 	notesReadTimeout = 10 * time.Second
@@ -45,11 +51,12 @@ func keptLearnings(learnings []harness.Learning) []harness.Learning {
 }
 
 // handleRunKnowledge serves a running Run the Work Item Notes of its own root
-// Work Item. The scope comes from the Run's record, never from the request,
-// and an unreachable graph answers unavailable instead of failing: knowledge
-// never stops a Run (ADR-0087, proposed).
+// Work Item and the reviewed concepts of its Tenant, Client and repository.
+// The scope comes from the Run's record, never from the request, and an
+// unreachable graph answers unavailable instead of failing: knowledge never
+// stops a Run (ADR-0087, proposed).
 func (s *Server) handleRunKnowledge(w http.ResponseWriter, r *http.Request) {
-	scope, err := s.Store.NoteScopeFor(r.Context(), r.PathValue("token"))
+	scope, err := s.Store.KnowledgeScopeFor(r.Context(), r.PathValue("token"))
 	if err != nil {
 		runError(w, err)
 		return
@@ -64,6 +71,20 @@ func (s *Server) handleRunKnowledge(w http.ResponseWriter, r *http.Request) {
 			resp.Notes.Status = harness.KnowledgeUnavailable
 		} else {
 			resp.Notes = harness.KnowledgeNotes{Status: harness.KnowledgeOK, Commit: commit, Items: notes}
+		}
+	}
+	if s.Knowledge != nil {
+		ctx, cancel := context.WithTimeout(r.Context(), notesReadTimeout)
+		concepts, commit, err := s.Knowledge.Concepts(ctx, scope.Client, scope.Repository)
+		cancel()
+		if err != nil {
+			s.Log.Warn("tenant knowledge unavailable; the Run goes ahead without it", "repository", scope.Repository, "err", err)
+			resp.Concepts = &harness.KnowledgeConcepts{Status: harness.KnowledgeUnavailable, Items: []harness.KnowledgeConcept{}}
+		} else {
+			if concepts == nil {
+				concepts = []harness.KnowledgeConcept{}
+			}
+			resp.Concepts = &harness.KnowledgeConcepts{Status: harness.KnowledgeOK, Commit: commit, Items: concepts}
 		}
 	}
 	writeJSON(w, http.StatusOK, resp)

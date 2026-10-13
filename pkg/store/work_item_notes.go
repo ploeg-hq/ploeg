@@ -123,26 +123,29 @@ func (s *Store) DeferNoteWrite(ctx context.Context, id int64, cause error, backo
 	return err
 }
 
-// RunNoteScope is what a running Run may read of the notes graph: the notes
-// of its own root Work Item. It comes only from Ploeg's records, never from
-// the request (ADR-0087).
-type RunNoteScope struct {
+// RunKnowledgeScope is what a running Run may read of its Tenant's graphs:
+// the notes of its own root Work Item and the reviewed knowledge of its
+// Tenant, Client and repository. It comes only from Ploeg's records, never
+// from the request (ADR-0087). Until Ploeg records Clients (VIK-1876) every
+// Work Item is in the default Tenant without a Client.
+type RunKnowledgeScope struct {
 	WorkItemID     int64
 	RootWorkItemID int64
 	Repository     string
+	Client         string
 }
 
-// NoteScopeFor resolves a running Run's scope; ErrUnknownRun when the token
-// names no running Run.
-func (s *Store) NoteScopeFor(ctx context.Context, runToken string) (RunNoteScope, error) {
-	var sc RunNoteScope
+// KnowledgeScopeFor resolves a running Run's scope; ErrUnknownRun when the
+// token names no running Run.
+func (s *Store) KnowledgeScopeFor(ctx context.Context, runToken string) (RunKnowledgeScope, error) {
+	var sc RunKnowledgeScope
 	err := s.pool.QueryRow(ctx, `
 		SELECT w.id, COALESCE(w.root_work_item_id, w.id),
 		       CASE WHEN w.target_repo = '' THEN '' ELSE w.target_forge || '/' || w.target_owner || '/' || w.target_repo END
 		FROM agent_runs r JOIN work_items w ON w.id = r.work_item_id
 		WHERE r.run_token = $1 AND r.state = 'running'`, runToken).Scan(&sc.WorkItemID, &sc.RootWorkItemID, &sc.Repository)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return RunNoteScope{}, ErrUnknownRun
+		return RunKnowledgeScope{}, ErrUnknownRun
 	}
 	return sc, err
 }

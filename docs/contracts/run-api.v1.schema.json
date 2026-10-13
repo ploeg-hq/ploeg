@@ -230,7 +230,8 @@
       "description": "HTTP 200 body of GET /api/v1/runs/{token}/knowledge: what the Tenant's graphs hold for this Run's own scopes, which ploegd takes from its records and never from the request (ADR-0087, proposed). Carries no graph credential.",
       "type": "object",
       "properties": {
-        "notes": { "$ref": "#/$defs/knowledgeNotes" }
+        "notes": { "$ref": "#/$defs/knowledgeNotes" },
+        "concepts": { "$ref": "#/$defs/knowledgeConcepts" }
       },
       "required": ["notes"],
       "additionalProperties": false
@@ -244,6 +245,27 @@
         "items": { "type": "array", "items": { "$ref": "#/$defs/workItemNote" } }
       },
       "required": ["status", "items"],
+      "additionalProperties": false
+    },
+    "knowledgeConcepts": {
+      "description": "Reviewed concepts the Run may read: every Tenant-scoped concept, those of its Work Item's Client and those of its Work Target repository (ADR-0087, proposed). Absent when this deployment serves no knowledge graph.",
+      "type": "object",
+      "properties": {
+        "status": { "type": "string", "enum": ["ok", "unavailable"], "description": "unavailable: the graph did not answer; the Run goes ahead without it." },
+        "commit": { "type": "string", "description": "The knowledge graph commit every item was read at." },
+        "items": { "type": "array", "items": { "$ref": "#/$defs/knowledgeConcept" } }
+      },
+      "required": ["status", "items"],
+      "additionalProperties": false
+    },
+    "knowledgeConcept": {
+      "type": "object",
+      "properties": {
+        "scope": { "type": "string", "enum": ["tenant", "client", "repository"] },
+        "path": { "type": "string", "minLength": 4, "pattern": "\\.md$", "description": "The OKF concept path inside its scope." },
+        "document": { "type": "string", "minLength": 1, "description": "The whole OKF document: frontmatter and markdown body." }
+      },
+      "required": ["scope", "path", "document"],
       "additionalProperties": false
     },
     "workItemNote": {

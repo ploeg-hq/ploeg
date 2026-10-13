@@ -358,7 +358,7 @@ func run(log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	notes, err := notesGraph(log)
+	notes, concepts, err := tenantGraphs(log)
 	if err != nil {
 		return err
 	}
@@ -396,6 +396,9 @@ func run(log *slog.Logger) error {
 	}
 	if notes != nil {
 		srv.Notes = notes
+	}
+	if concepts != nil {
+		srv.Knowledge = concepts
 	}
 	log.Info("forge follow-ups loaded", "teams", len(srv.FollowUps))
 	if engine != nil {

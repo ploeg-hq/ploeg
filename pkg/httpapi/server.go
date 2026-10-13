@@ -117,6 +117,9 @@ type Server struct {
 	// and serves no Work Item Notes, so a Run's learnings stay where the
 	// worker keeps them.
 	Notes NoteGraph
+	// Knowledge is the Tenant's reviewed knowledge graph (ADR-0087,
+	// proposed). Nil serves Runs no graph concepts.
+	Knowledge ConceptGraph
 	// Version is this ploegd's version, recorded on each Run it claims or
 	// admits (ADR-0091). Empty records it as unknown.
 	Version string
