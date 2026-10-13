@@ -41,6 +41,7 @@ spec:
     parallelism: 1
     completions: 1
     backoffLimit: 0 # ploeg owns retries; every pod is one auditable run (backlog #51)
+    ttlSecondsAfterFinished: {{ $root.Values.executor.finishedRunTtlSeconds }}
     {{- if $sandbox }}
     activeDeadlineSeconds: {{ add $root.Values.executor.activeDeadlineSeconds $root.Values.executor.sandbox.shutdownMarginSeconds }}
     template:

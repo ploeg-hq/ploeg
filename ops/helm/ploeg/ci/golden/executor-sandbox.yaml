@@ -905,6 +905,7 @@ spec:
     parallelism: 1
     completions: 1
     backoffLimit: 0 # ploeg owns retries; every pod is one auditable run (backlog #51)
+    ttlSecondsAfterFinished: 86400
     activeDeadlineSeconds: 7800
     template:
       
@@ -1028,6 +1029,7 @@ spec:
     parallelism: 1
     completions: 1
     backoffLimit: 0 # ploeg owns retries; every pod is one auditable run (backlog #51)
+    ttlSecondsAfterFinished: 86400
     activeDeadlineSeconds: 7800
     template:
       
@@ -1162,6 +1164,7 @@ spec:
     parallelism: 1
     completions: 1
     backoffLimit: 0 # ploeg owns retries; every pod is one auditable run (backlog #51)
+    ttlSecondsAfterFinished: 86400
     activeDeadlineSeconds: 7800
     template:
       
