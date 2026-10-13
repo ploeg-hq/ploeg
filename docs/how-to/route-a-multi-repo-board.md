@@ -36,7 +36,7 @@ config:
 | `repo` | `owner/name`, required |
 | `branch` | Base branch. Unset means the repository's default branch, which may be a stale stub, so set it |
 | `forge` | Forge instance id. Unset means `PLOEG_TARGET_FORGE`, default `forgejo` |
-Two keys may point at one repository, for example an old and a new label name for the same product. The Run card keys `cardStyle`, `release`, `rarity` and `cardShape` are retired ([ADR-0080](../adrs/0080-ploeg-keeps-no-run-card-code-and-removes-it-in-one-release.md)): ploegd still starts with them, logs a warning and ignores them.
+Two keys may point at one repository, for example an old and a new label name for the same product. The Run card keys `cardStyle`, `release`, `rarity` and `cardShape` are gone ([ADR-0080](../adrs/0080-ploeg-keeps-no-run-card-code-and-removes-it-in-one-release.md)): ploegd refuses to start while the configuration still sets one.
 
 ## 2. Point the board at the targets
 

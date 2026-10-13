@@ -91,7 +91,6 @@ func run(log *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("PLOEG_CONFIG: %w", err)
 	}
-	warnRetiredKeys(log, cfg)
 
 	// Tracker write-backs are opt-in by credential: without a URL and token
 	// the provider keeps its logging no-op, so a deployment that has not been
@@ -484,14 +483,6 @@ func parseTeamMap(s string) map[string]string {
 		}
 	}
 	return m
-}
-
-// warnRetiredKeys names each Run card key the configuration still sets
-// (ADR-0080). They do nothing now, and the next release refuses them.
-func warnRetiredKeys(log *slog.Logger, cfg *config.File) {
-	for _, key := range cfg.RetiredKeys() {
-		log.Warn("retired configuration key ignored; remove it before the next release refuses it", "key", key)
-	}
 }
 
 func forgeBots() []string {

@@ -603,10 +603,9 @@ executor:
 # A bare project id in cluster config cannot be reviewed and silently routes
 # work to the wrong repository the day the project is rebuilt.
 #
-# The Run card keys `cards`, a target's or project's `cardStyle`, `release`,
-# `rarity` and `cardShape`, a project's `statusKinds` and a team's `cards` and
-# `workingHours` are retired (ADR-0080): ploegd logs a warning and ignores
-# them in this release, and refuses them in the next. Remove them.
+# Ploeg has no Run card keys (ADR-0080): `cards`, a target's or project's
+# `cardStyle`, `release`, `rarity` and `cardShape`, a project's `statusKinds`
+# and a team's `cards` and `workingHours` are unknown keys and fail the boot.
 config: {}
 #   targets:                          # ADR-0038: repositories a `repo/<key>` label may select
 #     app:

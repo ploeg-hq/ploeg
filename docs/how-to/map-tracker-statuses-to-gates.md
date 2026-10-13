@@ -120,4 +120,4 @@ Write the comment before you move the ticket, for example `bounce:defect the log
 | Every bounce reads `unknown` | No `bounce:` comment or label, or the comment came after the move | Comment before moving the ticket |
 | Log says `board status read failed` | The tracker token is missing or cannot read the ticket | Configure the tracker token |
 | Log says `tracker reports several statuses; status move not recorded` | The ticket sits in unmapped buckets of two Kanban views | Map one view's buckets as gates |
-| Log says `retired configuration key ignored` for `statusKinds` | The board still sets the Run card's status kinds | Remove the key; status moves are recorded for every board with `gates:` |
+| ploegd does not start: `field statusKinds not found` | The board still sets the Run card's status kinds, which Ploeg no longer knows (ADR-0080) | Remove the key; status moves are recorded for every board with `gates:` |
