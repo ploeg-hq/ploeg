@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.2.0-rc.20
+
+### Breaking changes
+
+- The Work Item state `leased` is now `active`, and Run and Ask `costStatus` take one value set: `observed`, `provisional`, `settled`, `unknown` (#131, ADR-0093). Responses say `active` at once; an operator consumer must accept `active` and all four Cost Status values before it runs against this release. `leased` is still accepted as input, and `reservedUsd` and the `leased` count stay beside the new `heldUsd` and `active` until a later removal release. Unfold reads them from Unfold #366.
+
+### Changes
+
+- Budget kept back for unsettled work is a Hold: the operator API adds `heldUsd` beside the deprecated `reservedUsd`, and ploeg-mcp says `active` and `heldUsd` (#131).
+- With `PLOEG_KNOWLEDGE_GRAPH` set, a Run's briefing also carries its Tenant's, Client's and repository's reviewed concepts from Omnigraph (#130, ADR-0087, proposed). Off by default.
+- `ploeg-mcp http` serves the read-only tools over stateless Streamable HTTP as an OAuth resource server, mapping a person's groups to Operator Consumer tokens with `PLOEG_MCP_GROUPS` (#124). Stdio mode is unchanged.
+- The self-hosted Claude runner clones private repositories with the Run's credential (#123).
+- Finished worker Jobs and their pods expire after `executor.finishedRunTtlSeconds`, default one day (#126).
+- ADR-0082 (Asks) is accepted as built; ADR-0092 (pinned skill catalogues) and an RFC for live tool output in transcripts are proposed; the domain model uses Ploeg's own words and retires Execution (#125, #127, #128, #129). No behaviour change.
+
+### Upgrade notes
+
+- One migration runs when `ploegd` starts: `0052_work_item_state_active.sql` rewrites stored `leased` rows to `active` and adds a trigger that stores a `leased` write from an outgoing ploegd as `active` during a rolling update.
+- Deploy Ploeg with or after an operator consumer that accepts `active`; an older Unfold rejects the new state.
+
 ## 0.2.0-rc.19
 
 ### Breaking changes
