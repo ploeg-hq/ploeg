@@ -7,6 +7,7 @@ toolchain go1.27.1
 require (
 	github.com/coder/acp-go-sdk v0.13.5
 	github.com/fergusstrange/embedded-postgres v1.34.0
+	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
