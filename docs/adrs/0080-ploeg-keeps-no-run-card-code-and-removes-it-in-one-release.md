@@ -84,7 +84,7 @@ Upgrade a deployment only after its consumer reports the legacy export imported.
 
 * `go test ./pkg/store/` proves migration `0044` dropped the three tables and three columns, that the pipeline keeps events and CI runs, and that `RecordPullRequestIndentation` keeps each file's indentation and no code.
 * `go test ./pkg/httpapi/` runs the facts and keyed comment tests with their assertions unchanged (one facts fixture no longer writes the dropped `kpis` column), and the webhook tests read status moves, gate moves, epics, deploys, changed paths, files, labels and reverts through the facts endpoint against `operator-api.v1.schema.json`.
-* `go test ./pkg/config/ ./cmd/ploegd/` proves every retired key is accepted, listed and warned about, and that an unknown key still fails the boot.
+* `go test ./pkg/config/` proves every card key fails the boot as an unknown key, and that a typo'd key still does.
 * `go test ./internal/ledger/` gates this record and the status changes it makes.
 * CI runs them through `mise run verify` and `mise run docs-check` in `.github/workflows/ci.yml`.
 
@@ -112,3 +112,4 @@ Upgrade a deployment only after its consumer reports the legacy export imported.
 * Migration: `pkg/store/migrations/0044_remove_run_cards.sql`.
 * The versioning exception: `docs/contracts/README.md`, *Versioning policy*.
 * The research behind the card records stays in `docs/research/` as dated records.
+* 2026-10-13: the retired keys left the configuration types within the 0.2.0 release candidates instead of at the next minor release, because they had warned since v0.2.0-rc.12 and the only live deployment sets none of them.

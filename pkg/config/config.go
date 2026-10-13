@@ -50,9 +50,6 @@ type File struct {
 	Targets map[string]Target `yaml:"targets"`
 	// Teams is the roster: what each team is made of and what it may spend.
 	Teams map[string]Team `yaml:"teams"`
-	// Cards is a retired key (ADR-0080), accepted and ignored for one
-	// release.
-	Cards yaml.Node `yaml:"cards"`
 }
 
 type Trackers struct {
@@ -78,12 +75,6 @@ type Target struct {
 	// Forge names which forge instance holds the repo. Empty = the
 	// deployment's single forge.
 	Forge string `yaml:"forge"`
-	// CardStyle, Release, Rarity and CardShape are retired keys (ADR-0080),
-	// accepted and ignored for one release.
-	CardStyle yaml.Node `yaml:"cardStyle"`
-	Release   yaml.Node `yaml:"release"`
-	Rarity    yaml.Node `yaml:"rarity"`
-	CardShape yaml.Node `yaml:"cardShape"`
 }
 
 // Project routes one tracker container to one repository, or to the
@@ -113,19 +104,10 @@ type Project struct {
 	// Allow lists the other registered targets a `repo/<key>` label may
 	// select on this project.
 	Allow []string `yaml:"allow"`
-	// CardStyle, Release, Rarity and CardShape are retired keys (ADR-0080),
-	// accepted and ignored for one release.
-	CardStyle yaml.Node `yaml:"cardStyle"`
-	Release   yaml.Node `yaml:"release"`
-	Rarity    yaml.Node `yaml:"rarity"`
-	CardShape yaml.Node `yaml:"cardShape"`
 	// Gates maps this board's statuses or bucket titles to delivery gates
 	// (ADR-0051), and Ploeg records every status move of a board with gates.
 	// Omitted = Ploeg records neither for this board's work.
 	Gates *gate.Statuses `yaml:"gates"`
-	// StatusKinds is a retired key (ADR-0080), accepted and ignored for one
-	// release. Status moves are recorded for every board with gates.
-	StatusKinds yaml.Node `yaml:"statusKinds"`
 }
 
 // Team is a roster entry: who works, at what cost, in what order.
@@ -144,10 +126,6 @@ type Team struct {
 	// CreatedWork limits the Work Items this Team's Runs may create
 	// (ADR-0031). Absent fields take followup.Default.
 	CreatedWork *CreatedWork `yaml:"createdWork"`
-	// Cards and WorkingHours are retired keys (ADR-0080), accepted and
-	// ignored for one release.
-	Cards        yaml.Node `yaml:"cards"`
-	WorkingHours yaml.Node `yaml:"workingHours"`
 }
 
 // CreatedWork overrides followup.Default for one Team. Every field is
