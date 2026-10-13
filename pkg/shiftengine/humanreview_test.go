@@ -87,7 +87,7 @@ func TestHumanReview_WhenTheShiftClosesAwaitingReviewItOpensANewShift(t *testing
 	if second.ID == first.ID {
 		t.Fatal("the review reused the closed shift")
 	}
-	if got := itemState(t, id); got != string(work.StateLeased) && got != string(work.StateQueued) {
+	if got := itemState(t, id); got != string(work.StateActive) && got != string(work.StateQueued) {
 		t.Errorf("item state = %q, want it queued for the new shift", got)
 	}
 	notes, err := testStore.ShiftReviews(ctx, second.ID, second.Round)

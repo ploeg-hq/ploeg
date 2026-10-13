@@ -55,7 +55,7 @@ func TestOperatorReadsAreScopedAndCredentialFree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(detail.Runs) != 1 || detail.Runs[0].Verdict != "approve" || detail.Runs[0].CostStatus != "observed" || detail.Runs[0].Usage.CostUSD == nil || *detail.Runs[0].Usage.CostUSD != .125 {
+	if len(detail.Runs) != 1 || detail.Runs[0].Verdict != "approve" || detail.Runs[0].CostStatus != "settled" || detail.Runs[0].Usage.CostUSD == nil || *detail.Runs[0].Usage.CostUSD != .125 {
 		t.Fatalf("lost run evidence: %+v", detail.Runs)
 	}
 	if detail.Runs[0].Problem != "" || detail.Runs[0].Solution != "" {
@@ -220,7 +220,7 @@ func TestOperatorProjectionKeepsUnresolvedManagedSpendReserved(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(detail.Shifts) != 1 || detail.Shifts[0].ReservedUSD != 2 || detail.Shifts[0].SpentUSD != 0 {
+	if len(detail.Shifts) != 1 || detail.Shifts[0].HeldUSD != 2 || detail.Shifts[0].SpentUSD != 0 {
 		t.Fatalf("lost unresolved account reservation: %+v", detail.Shifts)
 	}
 	if len(detail.Runs) != 1 || detail.Runs[0].Usage == nil || detail.Runs[0].Usage.CostUSD == nil || *detail.Runs[0].Usage.CostUSD != .25 {

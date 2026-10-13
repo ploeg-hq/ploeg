@@ -298,7 +298,7 @@ func (s *Server) handleTrackerWebhook(w http.ResponseWriter, r *http.Request) {
 		}
 		s.observeEpics(r.Context(), name, tp, ev.ExternalID)
 		// Log the actual post-upsert state: a re-assignment of a live
-		// (queued/leased) item refreshes the mirror without re-queuing (VIK-588).
+		// (queued/active) item refreshes the mirror without re-queuing (VIK-588).
 		if state == work.StateQueued {
 			s.Log.Info("work item queued", "id", id, "team", item.Team, "title", item.Title)
 			// The Shift fast path. Crash between the commit above and this call

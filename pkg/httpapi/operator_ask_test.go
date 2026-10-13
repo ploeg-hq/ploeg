@@ -163,7 +163,7 @@ func TestOperatorAskAdmitsMintsOnceAndBlocksOnFinish(t *testing.T) {
 	if w, _ := askCall(t, s, "GET", "/api/v1/operator/work-items/"+itoa(other)+"/asks/ask-1", token, "alice", nil); w.Code != 404 {
 		t.Fatalf("the Ask under another Work Item: %d", w.Code)
 	}
-	if w, read := askCall(t, s, "GET", askPath, token, "alice", nil); w.Code != 200 || read.Ask.State != "open" || read.Ask.Spend.CostStatus != "provisional" {
+	if w, read := askCall(t, s, "GET", askPath, token, "alice", nil); w.Code != 200 || read.Ask.State != "open" || read.Ask.Spend.CostStatus != "observed" {
 		t.Fatalf("read: %d %s", w.Code, w.Body)
 	}
 

@@ -38,7 +38,7 @@ func seedActivity(t *testing.T) activityFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	forceItemState(t, f.silver, "leased", 0)
+	forceItemState(t, f.silver, "active", 0)
 	forceItemState(t, f.manual, "done", 0)
 	forceItemState(t, f.proposed, "proposed", 0)
 	insert := func(name string, item, shift int64, team, state, started, finished, outcome, usage string, authorized float64) {
@@ -85,13 +85,13 @@ func TestOperatorSummaryCountsCurrentStateAndWindowedActivity(t *testing.T) {
 		t.Fatalf("scope leaked or lost teams: %+v", week)
 	}
 	s := week[0]
-	if s.WorkItems != (OperatorWorkItemCounts{Leased: 1, Done: 1, Proposed: 1}) {
+	if s.WorkItems != (OperatorWorkItemCounts{Active: 1, Done: 1, Proposed: 1}) {
 		t.Fatalf("work items: %+v", s.WorkItems)
 	}
 	if s.Runs != (OperatorRunCounts{Pending: 1, Running: 1, Finished: 2, Stuck: 1}) {
 		t.Fatalf("7d runs: %+v", s.Runs)
 	}
-	if s.Spend.SettledUSD != 0.75 || s.Spend.ReservedUSD != 1.5 {
+	if s.Spend.SettledUSD != 0.75 || s.Spend.HeldUSD != 1.5 {
 		t.Fatalf("7d spend: %+v", s.Spend)
 	}
 	if s.LastActivityAt == nil || s.LastActivityAt.Location() != time.UTC {
@@ -111,11 +111,11 @@ func TestOperatorSummaryCountsCurrentStateAndWindowedActivity(t *testing.T) {
 	if len(all) != 3 || all[0].Team != "bronze" || all[0].LastActivityAt != nil || all[1].Team != "gold" || all[2].Team != "silver" {
 		t.Fatalf("unscoped teams: %+v", all)
 	}
-	if all[1].Spend.SettledUSD != 13 || all[1].Spend.ReservedUSD != 7 || all[1].Runs.Failed != 1 {
+	if all[1].Spend.SettledUSD != 13 || all[1].Spend.HeldUSD != 7 || all[1].Runs.Failed != 1 {
 		t.Fatalf("gold summary: %+v", all[1])
 	}
 	total := OperatorSummaryTotal(all)
-	if total.Runs.Finished != 3 || total.Spend.ReservedUSD != 8.5 || total.WorkItems.Leased != 1 || total.WorkItems.Queued != 1 {
+	if total.Runs.Finished != 3 || total.Spend.HeldUSD != 8.5 || total.WorkItems.Active != 1 || total.WorkItems.Queued != 1 {
 		t.Fatalf("totals: %+v", total)
 	}
 	empty, err := testStore.OperatorSummary(ctx, []string{}, registered, time.Now().Add(-time.Hour))

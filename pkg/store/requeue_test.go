@@ -45,7 +45,7 @@ func TestRequeueWorkItemRestartsStoppedStatesAndResetsBothCounters(t *testing.T)
 
 func TestRequeueWorkItemRefusesEveryOtherStateWithoutAChange(t *testing.T) {
 	ctx := context.Background()
-	for _, prior := range []string{"ingested", "proposed", "queued", "leased", "done", "withdrawn"} {
+	for _, prior := range []string{"ingested", "proposed", "queued", "active", "done", "withdrawn"} {
 		t.Run(prior, func(t *testing.T) {
 			resetTables(t)
 			id, _ := ingestItem(t)

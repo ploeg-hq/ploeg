@@ -36,7 +36,7 @@ Intended behavior — Follow-Ups are routed to the Team owning the source branch
 ### R15
 *Context: Execution*
 
-Management credentials stay in the control plane. Inference Account authorization remains held across uncertain issuance, expiry and blocking until trusted final accounting reconciles it.
+Management credentials stay in the control plane. An Inference Account's Hold remains across uncertain issuance, expiry and blocking until trusted final accounting reconciles it.
 
 **Why:** A crashed executor cannot authorize unrelated work or make unresolved paid work appear free.
 
@@ -47,9 +47,9 @@ Management credentials stay in the control plane. Inference Account authorizatio
 ### R2
 *Context: Dispatch*
 
-A Lease must be renewed on a fixed interval by the running Run. Tracker execution expiry enters the configured recovery policy; Operator Execution expiry interrupts work and preserves pending stop intent and unresolved Inference Account authorization.
+A Lease must be renewed on a fixed interval by the running Run. Tracker execution expiry enters the configured recovery policy; Operator Execution expiry interrupts work and preserves pending stop intent and the Inference Account's unresolved Hold.
 
-**Why:** Controller recovery must work when an executor dies without cleanup, while preserving the applicable lane's stop intent and accounting holds.
+**Why:** Controller recovery must work when an executor dies without cleanup, while preserving the applicable lane's stop intent and Holds.
 
 **Also applies to:** Run
 

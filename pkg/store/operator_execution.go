@@ -126,7 +126,7 @@ func (s *Store) AdmitOperatorExecution(ctx context.Context, consumer, actor stri
 			return existing, false, err
 		}
 	} else if err = tx.QueryRow(ctx, `INSERT INTO work_items(provider,external_id,revision,team,state,origin,title,description,url,route_rule,operator_owned)
-VALUES('manual',$1,$2,$3,'leased','operator',$4,$5,$6,'operator-registration',true) RETURNING id`, key, fingerprint, input.Team, input.Title, input.Objective, input.RepositoryURL).Scan(&itemID); err != nil {
+VALUES('manual',$1,$2,$3,'active','operator',$4,$5,$6,'operator-registration',true) RETURNING id`, key, fingerprint, input.Team, input.Title, input.Objective, input.RepositoryURL).Scan(&itemID); err != nil {
 		return existing, false, err
 	}
 	if err = tx.QueryRow(ctx, `INSERT INTO shifts(work_item_id,team,branch,budget) VALUES($1,$2,$3,$4) RETURNING id`, itemID, input.Team, "operator/"+input.SessionID, input.BudgetUSD).Scan(&shiftID); err != nil {
@@ -312,7 +312,7 @@ func (s *Store) CommandOperatorExecution(ctx context.Context, id, consumer, acto
 	if _, err = tx.Exec(ctx, `UPDATE leases SET expires_at=$2,renewed_at=now() WHERE work_item_id=$1`, e.WorkItemID, e.ExpiresAt); err != nil {
 		return e, err
 	}
-	itemState := "leased"
+	itemState := "active"
 	if c.Action == "close" {
 		itemState = "withdrawn"
 	} else if e.State == "completed" || e.State == "cancelled" {

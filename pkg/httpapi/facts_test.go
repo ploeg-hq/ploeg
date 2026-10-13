@@ -189,6 +189,7 @@ type factsBody struct {
 		RunBudgetHolds []struct {
 			RunID       string  `json:"runId"`
 			ShiftID     *string `json:"shiftId"`
+			HeldUSD     float64 `json:"heldUsd"`
 			ReservedUSD float64 `json:"reservedUsd"`
 		} `json:"runBudgetHolds"`
 		Truncated struct {
@@ -240,8 +241,9 @@ func TestWorkItemFacts_ReturnsEveryStoredFactAndMatchesTheSchema(t *testing.T) {
 		!f.Checkpoints[0].CreatedAt.Equal(time.Date(2026, 10, 1, 9, 50, 0, 0, time.UTC)) || f.Truncated.Checkpoints == nil || *f.Truncated.Checkpoints {
 		t.Errorf("checkpoints = %+v truncated %v", f.Checkpoints, f.Truncated.Checkpoints)
 	}
-	if len(f.RunBudgetHolds) != 2 || f.RunBudgetHolds[0].ReservedUSD != 1.5 || f.RunBudgetHolds[0].ShiftID == nil ||
-		f.RunBudgetHolds[1].ReservedUSD != 2 || f.RunBudgetHolds[1].ShiftID != nil {
+	if len(f.RunBudgetHolds) != 2 || f.RunBudgetHolds[0].HeldUSD != 1.5 || f.RunBudgetHolds[0].ShiftID == nil ||
+		f.RunBudgetHolds[1].HeldUSD != 2 || f.RunBudgetHolds[1].ShiftID != nil ||
+		f.RunBudgetHolds[0].ReservedUSD != f.RunBudgetHolds[0].HeldUSD || f.RunBudgetHolds[1].ReservedUSD != f.RunBudgetHolds[1].HeldUSD {
 		t.Errorf("run budget holds = %+v", f.RunBudgetHolds)
 	}
 	if len(f.PullRequests) != 1 {

@@ -9,7 +9,7 @@ generated_by: "mise run domain"
 
 Ploeg schedules and runs work handed to agents, tracks progress and cost, and supports cooperation between agents. It is the Authority for every Run it executes. Work reaches it from trackers, from authenticated Operator Consumers and from other work. Trackers keep their work content and priorities. Ploeg knows its consumers only through its published contracts. This vocabulary includes intended domain rules; it is not a database or API field inventory. The architecture and published contracts identify current implementation limits.
 
-*Model version 0.6.1. Generated from `model.yaml` — do not edit by hand.*
+*Model version 0.7.0. Generated from `model.yaml` — do not edit by hand.*
 
 ## Bounded contexts
 
@@ -41,9 +41,6 @@ These terms are contested or vague. Resolve them before writing specs that depen
 - **who decides that delegated work is finished** — Successful checks, another agent's review and a person's approval are different possible conditions for finishing work; the product has no agreed rule for choosing between them.
   - Options: Choose the condition for each task, Always require a person's approval, Let the agent finish when its checks pass
   - Recommendation: Choose the condition for each task so research, coding and other work can use appropriate checks and approval.
-- **the "leased" Work Item state** — The Work Item state enum calls the working state `leased`, named for the Lease it used to imply. After ADR-0010 a Work Item in that state has a Shift, and may have no Lease at all — a Round of readers takes none. The state name now describes the wrong thing.
-  - Options: Keep `leased` and accept the vocabulary drift, Rename to `active`, Rename to `in_shift`
-  - Recommendation: Decide with the implementing change, not before. The rename touches the state enum, an applied migration, both contract schemas and the KEDA scaler query, so it is a real cost to weigh against a name that is merely imprecise. `active` reads best if it goes ahead.
 - **when a Shift closes** — ADR-0010 introduces the Shift but leaves its terminal rule to the implementation. A Shift plainly closes on a terminal Outcome; less plainly when an item goes needs_human and a human re-queues it — does the old Shift resume with its remaining budget and Round counter, or does a fresh one open?
   - Options: Re-queue always opens a new Shift (budget resets, rounds restart), Re-queue resumes the existing Shift (budget and rounds carry over), Human chooses per re-queue
   - Recommendation: Resume the existing Shift. A re-queue after needs_human is usually a human unblocking work already done, and restarting the budget silently doubles what the item may cost. Confirm against the first real needs_human Shift.

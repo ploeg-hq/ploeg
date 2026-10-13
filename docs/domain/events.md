@@ -74,17 +74,17 @@ The configured broker confirmed revocation of a Run's scoped forge token.
 
 ## BudgetAuthorized
 
-A Run reserved min(roleCap, poolRemaining) against its Shift before spawning.
+A Run was authorized min(roleCap, poolRemaining), and that amount is held against its Shift before it spawns.
 
 **Concerns:** Shift  
-**Triggers:** Managed credential issuance may proceed after the durable reservation. Reservation, external key creation and confirmation have separate states; uncertainty retains the hold.  
+**Triggers:** Managed credential issuance may proceed once the Hold is durable. The Hold, external key creation and confirmation have separate states; uncertainty retains the Hold.  
 
 ## BudgetSettled
 
-Accounting finalized a Run's spend and released the corresponding reservation. A managed Run's outcome report alone does not settle its inference account.
+Accounting finalized a Run's spend and released its Hold. A managed Run's outcome report alone does not settle its inference account.
 
 **Concerns:** Shift  
-**Triggers:** Unused allowance becomes available only after settlement; missing or uncertain accounting retains a conservative hold.  
+**Triggers:** Unused allowance becomes available only after settlement; missing or uncertain accounting retains a conservative Hold.  
 
 ## LeaseExpired
 

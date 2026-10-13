@@ -151,7 +151,8 @@ const factsAskJSON = `jsonb_build_object('runId', r.id::text,
 	'budgetUsd', COALESCE(a.authorized, r.authorized),
 	'costStatus', CASE WHEN a.state = 'reconciled' AND NOT a.cost_known THEN 'unknown'
 	                   WHEN a.state = 'reconciled' AND COALESCE(a.corrections_until > now(), false) THEN 'provisional'
-	                   WHEN a.state = 'reconciled' THEN 'settled' ELSE 'provisional' END,
+	                   WHEN a.state = 'reconciled' THEN 'settled'
+	                   WHEN a.observed_spend IS NULL THEN 'unknown' ELSE 'observed' END,
 	'usd', CASE WHEN a.state = 'reconciled' THEN a.reconciled_spend ELSE a.observed_spend END,
 	'createdAt', k.created_at, 'finishedAt', k.finished_at)`
 
@@ -301,7 +302,7 @@ func (s *Store) WorkItemFacts(ctx context.Context, id int64, teams []string, opt
 		{&f.Checkpoints, factsCheckpointLimit, &f.Truncated.Checkpoints, `SELECT jsonb_build_object(
 			'id', c.id::text, 'phase', c.phase, 'branch', left(c.branch, 1024), 'prUrl', left(c.pr_url, 4096), 'createdAt', c.created_at)
 			FROM checkpoints c WHERE c.work_item_id = $1 AND c.pr_url <> '' ORDER BY c.created_at, c.id LIMIT $2`},
-		{&f.RunBudgetHolds, factsRunLimit, nil, `SELECT jsonb_build_object('runId', r.id::text, 'shiftId', r.shift_id::text, 'reservedUsd', h.reserved)
+		{&f.RunBudgetHolds, factsRunLimit, nil, `SELECT jsonb_build_object('runId', r.id::text, 'shiftId', r.shift_id::text, 'heldUsd', h.reserved, 'reservedUsd', h.reserved)
 			FROM agent_runs r JOIN run_budget_holds h ON h.run_token = r.run_token
 			WHERE r.work_item_id = $1 AND r.role <> 'ask' AND h.reserved > 0 ORDER BY r.id LIMIT $2`},
 		{&f.Asks, factsRunLimit, &f.Truncated.Asks, `SELECT ` + factsAskJSON + `

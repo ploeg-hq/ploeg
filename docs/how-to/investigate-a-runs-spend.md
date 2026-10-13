@@ -73,7 +73,7 @@ WHERE s.id = :shift
 GROUP BY s.id;
 ```
 
-Ploeg's operator API returns the same three figures as `budgetUsd`, `spentUsd` and `reservedUsd` ([operator.go](../../pkg/store/operator.go)).
+Ploeg's operator API returns the same three figures as `budgetUsd`, `spentUsd` and `heldUsd`, the Hold ([operator.go](../../pkg/store/operator.go)). Until the deprecated forms are removed it also sends `reservedUsd`, equal to `heldUsd` ([ADR-0093](../adrs/0093-the-working-state-is-active-and-budget-kept-back-is-a-hold.md)).
 
 ## 3. Read each Run's account and hold
 

@@ -85,3 +85,17 @@ func TestFailureReasonsListsEveryValidReason(t *testing.T) {
 		t.Errorf("FailureCredentialLeak = %q, want credential_leak", FailureCredentialLeak)
 	}
 }
+
+func TestParseStateReadsTheRetiredLeasedAsActive(t *testing.T) {
+	if got, ok := ParseState("leased"); !ok || got != StateActive {
+		t.Fatalf("ParseState(leased) = %q, %v; want active", got, ok)
+	}
+	for _, s := range States {
+		if got, ok := ParseState(string(s)); !ok || got != s {
+			t.Errorf("ParseState(%q) = %q, %v", s, got, ok)
+		}
+	}
+	if _, ok := ParseState("running"); ok {
+		t.Error("an unknown state parsed")
+	}
+}

@@ -23,7 +23,7 @@ type Policy struct {
 	// or an operator consumer has depth 0, and a created one has its source's depth plus one.
 	MaxDepth int
 	// MaxOpen bounds how many created Work Items from this Team's Runs may be
-	// open (proposed, queued or leased) at once.
+	// open (proposed, queued or active) at once.
 	MaxOpen int
 	// ItemBudgetUSD is the Shift pool each created Work Item is allotted.
 	ItemBudgetUSD float64

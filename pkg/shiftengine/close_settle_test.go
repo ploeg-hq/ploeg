@@ -98,8 +98,8 @@ func TestCloseAndSettleSurviveAFaultAtEveryStep(t *testing.T) {
 			if _, closed, _ := shiftRow(t, si.ID); closed {
 				t.Fatal("the shift closed although its item was not settled")
 			}
-			if got := itemState(t, id); got != string(work.StateLeased) {
-				t.Fatalf("item state after the fault = %q, want leased, untouched", got)
+			if got := itemState(t, id); got != string(work.StateActive) {
+				t.Fatalf("item state after the fault = %q, want active, untouched", got)
 			}
 
 			clearFault(t, fault.name, fault.table)

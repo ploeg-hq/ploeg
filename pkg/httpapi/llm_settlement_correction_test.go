@@ -164,7 +164,7 @@ func TestSettlementWithoutAnySpendLogShowsCostAsUnknownUntilALogArrives(t *testi
 	if l, _ := testStore.Ledger(ctx, shiftID); math.Abs(l.Spent-0.2) > 1e-9 {
 		t.Fatalf("ledger=%+v", l)
 	}
-	if listed, detail := operatorRunViews(t, token); listed.SettledUSD == nil || *listed.SettledUSD != 0.2 || detail.CostStatus != "observed" {
+	if listed, detail := operatorRunViews(t, token); listed.SettledUSD == nil || *listed.SettledUSD != 0.2 || detail.CostStatus != "provisional" {
 		t.Fatalf("a confirmed late cost still reads as unknown: list=%+v detail=%+v", listed, detail)
 	}
 }
@@ -172,7 +172,7 @@ func TestSettlementWithoutAnySpendLogShowsCostAsUnknownUntilALogArrives(t *testi
 func TestSettlementWhoseSpendLogsConfirmZeroShowsZero(t *testing.T) {
 	_, _, token, _ := settledViaGateway(t, []map[string]any{{"spend": 0, "model": "trusted-model"}})
 	listed, detail := operatorRunViews(t, token)
-	if listed.SettledUSD == nil || *listed.SettledUSD != 0 || detail.CostStatus != "observed" {
+	if listed.SettledUSD == nil || *listed.SettledUSD != 0 || detail.CostStatus != "provisional" {
 		t.Fatalf("a gateway-confirmed zero read as unknown: list=%+v detail=%+v", listed, detail)
 	}
 }

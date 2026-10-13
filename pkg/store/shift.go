@@ -432,7 +432,7 @@ func (s *Store) ClaimRoleWithin(ctx context.Context, team, role string, ttl time
 	var it work.WorkItem
 	var tg work.Target
 	if err := tx.QueryRow(ctx, `
-		UPDATE work_items SET state = 'leased', attempts = attempts + 1, updated_at = now()
+		UPDATE work_items SET state = 'active', attempts = attempts + 1, updated_at = now()
 		WHERE id = $1 AND NOT operator_owned
 		RETURNING provider, external_id, revision, team, origin, priority, title, description, url,
 			external_scope, target_forge, target_owner, target_repo, target_base_branch, route_rule, route_hint,
@@ -444,7 +444,7 @@ func (s *Store) ClaimRoleWithin(ctx context.Context, team, role string, ttl time
 		return nil, err
 	}
 	it.ID = fmt.Sprint(workItemID)
-	it.State = work.StateLeased
+	it.State = work.StateActive
 	if tg.Resolved() {
 		it.Target = &tg
 	}

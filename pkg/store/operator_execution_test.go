@@ -430,7 +430,7 @@ func TestOperatorExecutionCloseWithdrawsTheWorkItemOfAnEndedSession(t *testing.T
 		if _, err := testStore.CommandOperatorExecution(ctx, running.ID, "workbench", "alice", closeCommand(running, "close-running"), time.Minute); !errors.Is(err, ErrExecutionConflict) {
 			t.Fatalf("close of a running session: %v", err)
 		}
-		if itemState(t, running) != "leased" {
+		if itemState(t, running) != "active" {
 			t.Fatal("a refused close changed the Work Item")
 		}
 	})

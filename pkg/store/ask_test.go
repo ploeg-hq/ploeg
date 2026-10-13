@@ -254,7 +254,7 @@ func TestWorkItemFactsReportAsksApartFromDelivery(t *testing.T) {
 	if err := json.Unmarshal(f.Asks[0], &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.RunID != ask.RunID || got.State != "open" || got.CostStatus != "provisional" || got.USD == nil || *got.USD != 0.004 || got.BudgetUSD != 0.02 {
+	if got.RunID != ask.RunID || got.State != "open" || got.CostStatus != "observed" || got.USD == nil || *got.USD != 0.004 || got.BudgetUSD != 0.02 {
 		t.Fatalf("ask fact: %s", f.Asks[0])
 	}
 }

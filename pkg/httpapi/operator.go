@@ -18,6 +18,7 @@ import (
 
 	"github.com/ploeg-hq/ploeg/pkg/provider"
 	"github.com/ploeg-hq/ploeg/pkg/store"
+	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
 type OperatorPrincipal struct {
@@ -421,19 +422,22 @@ func operatorFilter(w http.ResponseWriter, r *http.Request, events bool) (store.
 	}
 	if state := q.Get("state"); state != "" {
 		seen := map[string]bool{}
+		spelled := map[string]bool{}
 		for _, one := range strings.Split(state, ",") {
-			switch one {
-			case "ingested", "proposed", "queued", "leased", "needs_human", "awaiting_review", "stale", "done", "withdrawn":
-			default:
+			parsed, ok := work.ParseState(one)
+			if !ok {
 				operatorError(w, 400, "invalid_request", "Unknown work-item state.")
 				return f, false
 			}
-			if seen[one] {
+			if spelled[one] {
 				operatorError(w, 400, "invalid_request", "Repeated work-item state.")
 				return f, false
 			}
-			seen[one] = true
-			f.States = append(f.States, one)
+			spelled[one] = true
+			if !seen[string(parsed)] {
+				seen[string(parsed)] = true
+				f.States = append(f.States, string(parsed))
+			}
 		}
 	}
 	if needs := q.Get("needsHuman"); needs != "" {

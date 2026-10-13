@@ -62,7 +62,7 @@ Ploeg's execution record for tracker, follow-up or operator work.
 | `team` | `string` |  | Team the item is queued for — the claiming Team, not the codebase; empty until assigned. |
 | `target` | `Work Target` |  | Forge coordinates the item's Runs act on; absent means unresolved (R11). |
 | `route_rule` | `string` |  | Id of the Routing Rule that decided team and target; recorded for audit. |
-| `state` | `enum(ingested, proposed, queued, leased, needs_human, awaiting_review, stale, done, withdrawn)` | yes | Dispatch lifecycle position. proposed means a Run created the item and it waits for a person to approve or reject it; no Team can claim it. awaiting_review means Ploeg's work succeeded and its pull request is ready for human review. withdrawn means a person took the mandate back by unassigning the Tracker Item or cancelling it through the operator API. |
+| `state` | `enum(ingested, proposed, queued, active, needs_human, awaiting_review, stale, done, withdrawn)` | yes | Dispatch lifecycle position. active means a Team is working the item through a live Shift. proposed means a Run created the item and it waits for a person to approve or reject it; no Team can claim it. awaiting_review means Ploeg's work succeeded and its pull request is ready for human review. withdrawn means a person took the mandate back by unassigning the Tracker Item or cancelling it through the operator API. |
 | `origin` | `enum(assignment, follow_up, operator)` | yes | Whether the item came from a tracker, Forge Event or Operator Consumer. |
 | `priority` | `integer` |  | Rank mirrored from the tracker; drives Team Queue order. |
 
@@ -83,18 +83,18 @@ stateDiagram-v2
     proposed --> queued : A person approves it through the operator API
     proposed --> done : A person rejects it with a reason; its allotted budget is released
     ingested --> queued : Assignment matches a Routing Rule, resolving a Team and a Work Target
-    queued --> leased : Team claims the item, acquiring a Lease
-    leased --> queued : Lease expired or Run failed, retries remaining
-    leased --> stale : Lease expired repeatedly without an Outcome (threshold reached)
-    leased --> needs_human : stuck Outcome reported (mandatory reason)
-    leased --> done : Terminal Outcome reported (issue_updated, follow_up_created, no_change_needed)
-    leased --> awaiting_review : A pull request was opened or updated and the Shift closed successfully
+    queued --> active : A Team claims the item and its Shift opens
+    active --> queued : Lease expired or Run failed, retries remaining
+    active --> stale : Lease expired repeatedly without an Outcome (threshold reached)
+    active --> needs_human : stuck Outcome reported (mandatory reason)
+    active --> done : Terminal Outcome reported (issue_updated, follow_up_created, no_change_needed)
+    active --> awaiting_review : A pull request was opened or updated and the Shift closed successfully
     awaiting_review --> queued : Re-assignment in the tracker is a fresh mandate
     needs_human --> queued : Human re-queues after resolving the blocker
     needs_human --> done : Human closes the item
     stale --> queued : Human or explicit policy re-queues
     queued --> withdrawn : Tracker Item unassigned or cancelled by an operator; the live Shift closes
-    leased --> withdrawn : Tracker Item unassigned or cancelled by an operator; running Runs are stopped
+    active --> withdrawn : Tracker Item unassigned or cancelled by an operator; running Runs are stopped
     withdrawn --> queued : Re-assignment in the tracker is a fresh mandate
 ```
 
@@ -125,7 +125,7 @@ One Team's engagement with one Work Item — owns the branch, the budget pool, t
 | `branch` | `string` | yes | The single branch every writing Run in this Shift pushes to. |
 | `round` | `int` | yes | Runs started together share a Round and never observe each other. |
 | `budget` | `decimal` | yes | The pool for the whole item, in USD (ADR-0012). |
-| `spent` | `decimal` | yes | Settled spend across every Run in this Shift. Reserved is NOT stored — it is summed over running Runs, so it cannot drift (ADR-0012). |
+| `spent` | `decimal` | yes | Settled spend across every Run in this Shift. The Hold is NOT stored — it is summed over unsettled Runs, so it cannot drift (ADR-0012). |
 
 **Relationships**
 - belongs_to **Work Item** — Unique per Work Item among live Shifts.
@@ -142,7 +142,7 @@ The exclusive right to write a Shift's branch, crash-safe and TTL-renewed. Held 
 | `shift_id` | `string` | yes | Unique per Shift — one writer at a time. |
 | `run_id` | `string` | yes | The writing Run holding it. Readers never appear here. |
 | `forge_token_id` | `string` | yes | The scoped push credential minted for this Run, revoked when the Lease lapses (ADR-0013). |
-| `expires_at` | `timestamp` | yes | Expiry revokes the push credential and releases the Run's budget authorization in the same sweep. |
+| `expires_at` | `timestamp` | yes | Expiry revokes the push credential and ends the Run; its Hold is released when its spend settles (ADR-0012, ADR-0048). |
 | `renewed_at` | `timestamp` |  | Last renewal by the running Run. |
 
 **Relationships**
@@ -163,7 +163,7 @@ One execution of one Role, realized as a Kubernetes Job or as an execution deleg
 | `round` | `int` |  | The Round this Run belongs to; Runs sharing a Round never observe each other. |
 | `writes` | `boolean` |  | A writer takes the Shift's Lease and runs alone; a reader takes none and runs beside others. |
 | `state` | `enum(pending, running, finished)` |  | A Round materialises its Runs as pending rows; pending rows are also the scale signal. |
-| `authorized` | `decimal` |  | The budget hold, summed over running Runs to give the Shift's reserved figure (ADR-0012). |
+| `authorized` | `decimal` |  | The ceiling this Run may spend, min(role cap, pool remaining). While the Run is unsettled it is held against the Shift pool, and the sum over its Runs is the Shift's Hold (ADR-0012). |
 | `expires_at` | `timestamp` |  | This Run's own liveness deadline. Not the Lease's — a reader has no Lease to expire. |
 | `outcome` | `enum(pr_opened, pr_updated, issue_updated, follow_up_created, stuck, failed, no_change_needed)` |  | Reported terminal result, or failure recorded by controller recovery when the applicable expiry rule fires. |
 | `started_at` | `timestamp` |  |  |

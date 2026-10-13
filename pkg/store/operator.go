@@ -137,7 +137,7 @@ type OperatorShift struct {
 	Round       int        `json:"round"`
 	BudgetUSD   float64    `json:"budgetUsd"`
 	SpentUSD    float64    `json:"spentUsd"`
-	ReservedUSD float64    `json:"reservedUsd"`
+	HeldUSD     float64    `json:"heldUsd"`
 	OpenedAt    time.Time  `json:"openedAt"`
 	ClosedAt    *time.Time `json:"closedAt"`
 	CloseReason string     `json:"closeReason"`
@@ -248,7 +248,7 @@ type OperatorTruncated struct {
 const operatorShiftJSON = `jsonb_build_object(
 	'id', sh.id::text, 'workItemId', sh.work_item_id::text, 'team', sh.team,
 	'branch', left(sh.branch, 1024), 'round', sh.round, 'budgetUsd', sh.budget,
-	'spentUsd', sh.spent, 'reservedUsd', (SELECT COALESCE(SUM(reserved), 0) FROM run_budget_holds WHERE shift_id = sh.id),
+	'spentUsd', sh.spent, 'heldUsd', (SELECT COALESCE(SUM(reserved), 0) FROM run_budget_holds WHERE shift_id = sh.id),
 	'openedAt', sh.opened_at, 'closedAt', sh.closed_at, 'closeReason', left(sh.close_reason, 4096))`
 
 const operatorPullRequestURL = `COALESCE(
@@ -315,6 +315,16 @@ const operatorRunCost = `CASE WHEN EXISTS (SELECT 1 FROM run_llm_accounts WHERE 
 	THEN (SELECT to_jsonb(CASE WHEN cost_known THEN COALESCE(reconciled_spend, observed_spend) END) FROM run_llm_accounts WHERE run_token = r.run_token)
 	ELSE CASE WHEN jsonb_typeof(r.usage->'costUsd') = 'number' THEN r.usage->'costUsd' END END`
 
+// operatorRunCostStatus is the Run's Cost Status (ADR-0093). A Run with a
+// gateway account follows the account: observed until it settles,
+// provisional inside its correction window, settled after. A Run without one
+// is settled once it finished with a reported cost. No figure is unknown.
+const operatorRunCostStatus = `CASE WHEN (` + operatorRunCost + `) IS NULL THEN 'unknown'
+	WHEN EXISTS (SELECT 1 FROM run_llm_accounts WHERE run_token = r.run_token)
+	THEN (SELECT CASE WHEN state = 'reconciled' AND COALESCE(corrections_until > now(), false) THEN 'provisional'
+		WHEN state = 'reconciled' THEN 'settled' ELSE 'observed' END FROM run_llm_accounts WHERE run_token = r.run_token)
+	WHEN r.state = 'finished' THEN 'settled' ELSE 'observed' END`
+
 const operatorRunSettlementJSON = `'settledAt', (SELECT settled_at FROM run_llm_accounts WHERE run_token = r.run_token),
 	'costFinalAt', (SELECT CASE WHEN state = 'reconciled' THEN COALESCE(corrections_until, settled_at) END
 		FROM run_llm_accounts WHERE run_token = r.run_token),
@@ -370,7 +380,7 @@ var operatorRunJSON = `jsonb_build_object(
 		'outputTokens', CASE WHEN jsonb_typeof(r.usage->'outputTokens') = 'number' THEN r.usage->'outputTokens' END,
 		'costUsd', ` + operatorRunCost + `,
 		` + operatorRunUsageFacts + `)) END,
-	'costStatus', CASE WHEN (` + operatorRunCost + `) IS NOT NULL THEN 'observed' ELSE 'unknown' END,
+	'costStatus', ` + operatorRunCostStatus + `,
 	` + operatorRunSettlementJSON + `,
 	` + operatorRunConfigJSON + `,
 	'keyAlias', CASE WHEN r.started_at IS NOT NULL THEN 'ploeg-' || left(r.run_token, 12) ELSE NULL END)`

@@ -240,7 +240,7 @@ func run(log *slog.Logger) error {
 	// A worker pod is killed for reasons that have nothing to do with the
 	// agent: an eviction, a drain, a Job deadline, a node going away. Without
 	// this the process died on the default disposition — no outcome, no
-	// revoked credential, no released Lease — and the item sat leased until
+	// revoked credential, no released Lease — and the item sat active until
 	// the sweeper reclaimed it a full TTL later, having charged the Round an
 	// attempt for infrastructure's mistake. The signal is not the failure;
 	// staying silent about it was.

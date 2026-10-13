@@ -112,7 +112,7 @@ func (s *Store) CreateRepairFollowUp(ctx context.Context, req RepairRequest) (in
 		SELECT
 			EXISTS (SELECT 1 FROM shifts WHERE work_item_id = $1 AND closed_at IS NULL),
 			EXISTS (SELECT 1 FROM work_items WHERE source_work_item_id = $1 AND source_branch = $2
-				AND state IN ('ingested', 'queued', 'leased')),
+				AND state IN ('ingested', 'queued', 'active')),
 			(SELECT count(*) FROM work_items WHERE source_work_item_id = $1 AND source_branch = $2),
 			(SELECT count(*) FROM work_items WHERE source_work_item_id = $1 AND source_run_id IS NULL)`,
 		req.SourceWorkItemID, req.Branch).Scan(&liveShift, &open, &forPR, &forSource); err != nil {
@@ -121,7 +121,7 @@ func (s *Store) CreateRepairFollowUp(ctx context.Context, req RepairRequest) (in
 
 	var result FollowUpResult
 	switch {
-	case operatorOwned || liveShift || src.State == work.StateQueued || src.State == work.StateLeased || src.State == work.StateIngested:
+	case operatorOwned || liveShift || src.State == work.StateQueued || src.State == work.StateActive || src.State == work.StateIngested:
 		result = FollowUpSourceBusy
 	case src.State != work.StateAwaitingReview:
 		result = FollowUpSourceNotInReview
