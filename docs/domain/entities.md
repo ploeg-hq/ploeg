@@ -59,7 +59,7 @@ Ploeg's execution record for tracker, follow-up or operator work.
 | `external_id` | `string` |  | Provider-scoped id of the mirrored Tracker Item. |
 | `external_scope` | `string` |  | The tracker's own container id (its Scope) for the item; the input to Work Target resolution, recorded even when no Routing Rule matched. |
 | `revision` | `string` |  | Provider revision/etag for staleness detection. |
-| `team` | `string` |  | Team the item is queued for — the claiming crew, not the codebase; empty until assigned. |
+| `team` | `string` |  | Team the item is queued for — the claiming Team, not the codebase; empty until assigned. |
 | `target` | `Work Target` |  | Forge coordinates the item's Runs act on; absent means unresolved (R11). |
 | `route_rule` | `string` |  | Id of the Routing Rule that decided team and target; recorded for audit. |
 | `state` | `enum(ingested, proposed, queued, leased, needs_human, awaiting_review, stale, done, withdrawn)` | yes | Dispatch lifecycle position. proposed means a Run created the item and it waits for a person to approve or reject it; no Team can claim it. awaiting_review means Ploeg's work succeeded and its pull request is ready for human review. withdrawn means a person took the mandate back by unassigning the Tracker Item or cancelling it through the operator API. |
@@ -152,7 +152,7 @@ The exclusive right to write a Shift's branch, crash-safe and TTL-renewed. Held 
 ## Run
 *Context: Execution*
 
-One execution of one Role, realized as a Kubernetes Job or a delegated workbench execution.
+One execution of one Role, realized as a Kubernetes Job or as an execution delegated to an Operator Consumer.
 
 | Attribute | Type | Required | Description |
 |---|---|---|---|
