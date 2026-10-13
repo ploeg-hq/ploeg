@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.2.0-rc.21
+
+### Breaking changes
+
+- The retired Run card keys (`cards`, `cardStyle`, `release`, `rarity`, `cardShape`, `statusKinds`, and a team's `cards` and `workingHours`) are no longer accepted: a configuration that still sets one fails the boot with `field <key> not found` (#134, ADR-0080). They have warned since rc.12; remove them before upgrading.
+
+### Changes
+
+- A reading Role marked `shadow: true` in a Team's plan runs beside the Round's reviewer on the same pull request and only records its verdict and findings; nothing that decides what happens next reads it (#133, ADR-0096, proposed). The operator API and ploeg-mcp serve the flag as `shadow`, and `ploeg_shadow_reviews_total` counts shadow verdicts against the acted-on verdict. A shadow Run's cost counts in the Shift pool. The plan refuses a writing, planning, uncapped or lone shadow.
+- ADR-0094 (connecting a Team's Claude login from Unfold) and ADR-0095 (a Ploeg user plus a team label routes work) are proposed (#132). No behaviour change.
+
+### Upgrade notes
+
+- One migration runs when `ploegd` starts: `0053_run_shadow.sql` adds the per-Run shadow flag.
+- The rc.20 notes still apply when upgrading from rc.19 or earlier: deploy with or after an operator consumer that accepts `active`.
+
 ## 0.2.0-rc.20
 
 ### Breaking changes
