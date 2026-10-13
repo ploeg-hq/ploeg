@@ -1052,7 +1052,7 @@
         },
         "shadow": {
           "type": "boolean",
-          "description": "ADR-0094: a reading Role whose verdict and findings are recorded and never act. It runs beside a reading Role that is not a shadow, needs its own cap, never writes or plans, and its cost counts against the pool like any Run. Use it to compare a reviewer model on real work."
+          "description": "ADR-0096: a reading Role whose verdict and findings are recorded and never act. It runs beside a reading Role that is not a shadow, needs its own cap, never writes or plans, and its cost counts against the pool like any Run. Use it to compare a reviewer model on real work."
         },
         "cap": {
           "type": "string",

@@ -14,7 +14,7 @@ import (
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
-// ADR-0094: a shadow reads beside the reviewer and is recorded, never obeyed.
+// ADR-0096: a shadow reads beside the reviewer and is recorded, never obeyed.
 
 func shadowPlan(t *testing.T) plan.Plans {
 	t.Helper()

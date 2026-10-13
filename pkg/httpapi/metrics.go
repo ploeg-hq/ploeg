@@ -162,7 +162,7 @@ func renderMetrics(m store.OperationalMetrics, webhooks *WebhookCoverage) []byte
 	for _, source := range sortedKeys(m.RunsWithoutObservedDeliveryLastDay) {
 		b.sample("ploeg_runs_without_observed_delivery_last_day", float64(m.RunsWithoutObservedDeliveryLastDay[source]), "source", source)
 	}
-	b.family("ploeg_shadow_reviews_total", "counter", "Finished shadow Runs (ADR-0094), by team, shadow Role, the verdict the Round's acting readers gave (primary) and the shadow's own verdict (shadow); each verdict is approve, request_changes or none.")
+	b.family("ploeg_shadow_reviews_total", "counter", "Finished shadow Runs (ADR-0096), by team, shadow Role, the verdict the Round's acting readers gave (primary) and the shadow's own verdict (shadow); each verdict is approve, request_changes or none.")
 	for _, k := range sortedShadowReviews(m.ShadowReviews) {
 		b.sample("ploeg_shadow_reviews_total", float64(m.ShadowReviews[k]), "team", k.Team, "role", k.Role, "primary", k.Primary, "shadow", k.Shadow)
 	}

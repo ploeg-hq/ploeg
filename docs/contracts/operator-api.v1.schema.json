@@ -180,7 +180,7 @@
         },
         "agentVerdict": {
           "type": "string",
-          "description": "The verdict of the latest finished reading Run of the Work Item's latest Shift, empty when it gave none. A shadow Run's verdict is never this one (ADR-0094)."
+          "description": "The verdict of the latest finished reading Run of the Work Item's latest Shift, empty when it gave none. A shadow Run's verdict is never this one (ADR-0096)."
         },
         "agentVerdictRound": {
           "anyOf": [
@@ -899,7 +899,7 @@
         },
         "shadow": {
           "type": "boolean",
-          "description": "True for a Run of a shadow Role (ADR-0094): a reading Run beside the Round's reviewer whose verdict and findings are recorded here and never act. Its verdict opens no fix Round, sets no close reason and is not the pull request's agentVerdict; its findings are not posted and brief no later Run; its cost counts in the Shift like any Run. Absent from a ploegd older than ADR-0094; false for every other Run."
+          "description": "True for a Run of a shadow Role (ADR-0096): a reading Run beside the Round's reviewer whose verdict and findings are recorded here and never act. Its verdict opens no fix Round, sets no close reason and is not the pull request's agentVerdict; its findings are not posted and brief no later Run; its cost counts in the Shift like any Run. Absent from a ploegd older than ADR-0096; false for every other Run."
         }
       }
     },
@@ -2033,7 +2033,7 @@
         },
         "shadow": {
           "type": "boolean",
-          "description": "True for a Run of a shadow Role (ADR-0094): a reading Run beside the Round's reviewer whose verdict and findings are recorded here and never act. Its verdict opens no fix Round, sets no close reason and is not the pull request's agentVerdict; its findings are not posted and brief no later Run; its cost counts in the Shift like any Run. Absent from a ploegd older than ADR-0094; false for every other Run."
+          "description": "True for a Run of a shadow Role (ADR-0096): a reading Run beside the Round's reviewer whose verdict and findings are recorded here and never act. Its verdict opens no fix Round, sets no close reason and is not the pull request's agentVerdict; its findings are not posted and brief no later Run; its cost counts in the Shift like any Run. Absent from a ploegd older than ADR-0096; false for every other Run."
         }
       }
     },

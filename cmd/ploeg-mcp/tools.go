@@ -192,7 +192,7 @@ type runLine struct {
 	Role          string       `json:"role"`
 	Round         int          `json:"round"`
 	Writes        bool         `json:"writes"`
-	Shadow        bool         `json:"shadow,omitempty" jsonschema:"a shadow Run's verdict and findings are recorded and never act (ADR-0094)"`
+	Shadow        bool         `json:"shadow,omitempty" jsonschema:"a shadow Run's verdict and findings are recorded and never act (ADR-0096)"`
 	State         string       `json:"state"`
 	Outcome       string       `json:"outcome,omitempty"`
 	Verdict       string       `json:"verdict,omitempty"`
@@ -411,7 +411,7 @@ type runRow struct {
 	Team            string         `json:"team"`
 	Role            string         `json:"role"`
 	Round           int            `json:"round"`
-	Shadow          bool           `json:"shadow,omitempty" jsonschema:"a shadow Run's verdict is recorded and never acts (ADR-0094)"`
+	Shadow          bool           `json:"shadow,omitempty" jsonschema:"a shadow Run's verdict is recorded and never acts (ADR-0096)"`
 	State           string         `json:"state"`
 	Outcome         string         `json:"outcome,omitempty"`
 	Verdict         string         `json:"verdict,omitempty"`

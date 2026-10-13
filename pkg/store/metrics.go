@@ -66,7 +66,7 @@ type OperationalMetrics struct {
 	// OldestUnwrittenNoteSeconds is how long the oldest of them has waited;
 	// 0 when none waits.
 	OldestUnwrittenNoteSeconds float64
-	// ShadowReviews counts every finished shadow Run (ADR-0094) by team,
+	// ShadowReviews counts every finished shadow Run (ADR-0096) by team,
 	// shadow Role, the verdict the Round's acting readers gave and the
 	// shadow's own verdict. Like FinishedRuns it only grows.
 	ShadowReviews map[ShadowReviewKey]int

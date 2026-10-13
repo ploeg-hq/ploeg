@@ -270,7 +270,7 @@ Run recorded before migration 0050, and `modelMismatch` is also null for a
 Run settled before served groups were recorded.
 
 Every Run shape also carries `shadow`
-([ADR-0094](../adrs/0094-a-shadow-reader-records-its-verdict-and-never-acts.md)):
+([ADR-0096](../adrs/0096-a-shadow-reader-records-its-verdict-and-never-acts.md)):
 true for a Run of a shadow Role, whose `verdict` and `findings` are recorded
 and never act. A shadow verdict is never the pull request's `agentVerdict`,
 its findings are never posted or briefed to a later Run, and its cost counts

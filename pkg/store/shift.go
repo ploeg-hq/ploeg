@@ -38,7 +38,7 @@ type Role struct {
 	// min(Cap, poolRemaining), so a Run can never overrun the Shift ceiling.
 	Cap float64
 	// Shadow marks a reading Role whose verdict and findings are recorded and
-	// never act (ADR-0094).
+	// never act (ADR-0096).
 	Shadow bool
 }
 
@@ -142,7 +142,7 @@ func (s *Store) OpenRound(ctx context.Context, shiftID int64, fromRound int, rol
 
 // checkRoundRoles enforces the Round shape both OpenRound and ReopenRound
 // rely on: readers or one writer (ADR-0010), and a shadow only as a reader
-// (ADR-0094). It returns the number of writers.
+// (ADR-0096). It returns the number of writers.
 func checkRoundRoles(roles []Role) (int, error) {
 	writers := 0
 	for _, r := range roles {
@@ -150,7 +150,7 @@ func checkRoundRoles(roles []Role) (int, error) {
 			writers++
 		}
 		if r.Writes && r.Shadow {
-			return 0, errors.New("a shadow Role only reads (ADR-0094)")
+			return 0, errors.New("a shadow Role only reads (ADR-0096)")
 		}
 	}
 	if writers > 0 && writers != len(roles) {
@@ -820,7 +820,7 @@ type RunReport struct {
 	Round  int
 	Writes bool
 	// Shadow is a reading Run whose verdict and findings are recorded and
-	// never act (ADR-0094). Every rule that reads a report for what to do
+	// never act (ADR-0096). Every rule that reads a report for what to do
 	// next skips it.
 	Shadow   bool
 	Outcome  string // empty for a cancelled Run that never ran

@@ -63,7 +63,7 @@ type OperatorRunConfig struct {
 	// either side is unknown.
 	ModelMismatch *bool `json:"modelMismatch"`
 	// Shadow is true for a reading Run whose verdict and findings were
-	// recorded and never acted (ADR-0094).
+	// recorded and never acted (ADR-0096).
 	Shadow bool `json:"shadow"`
 }
 

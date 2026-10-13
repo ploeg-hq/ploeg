@@ -275,7 +275,7 @@ An opaque, provider-scoped container id for a body of work (a Vikunja project, a
 ## Shadow Role
 *Context: Dispatch*
 
-A reading Role a Team's plan marks `shadow`. Its Runs read beside a reading Role that acts, in the same Round and with the same briefing, and their Verdict and findings are recorded and served but never act: no fix Round, no close reason, no pull request comment, no briefing for a later Run, no created Work Items or Work Item Notes. Its cost counts in the Shift like any Run's. It compares a reviewer model on real work (Ploeg ADR-0094).
+A reading Role a Team's plan marks `shadow`. Its Runs read beside a reading Role that acts, in the same Round and with the same briefing, and their Verdict and findings are recorded and served but never act: no fix Round, no close reason, no pull request comment, no briefing for a later Run, no created Work Items or Work Item Notes. Its cost counts in the Shift like any Run's. It compares a reviewer model on real work (Ploeg ADR-0096).
 
 **Also known as:** shadow reader, shadow reviewer  
 **See also:** [Role](#role), [Verdict](#verdict), [Round](#round)  

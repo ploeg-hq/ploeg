@@ -235,7 +235,7 @@ func TestHash_NamesOnePlanShape(t *testing.T) {
 	}
 }
 
-// ADR-0094: a shadow is a capped reader beside a reader that acts.
+// ADR-0096: a shadow is a capped reader beside a reader that acts.
 func TestParse_ShadowRole(t *testing.T) {
 	const ok = `{"bronze": {"pool": "8", "maxFixRounds": 2, "rounds": [
 		{"roles": [{"name": "builder", "writes": true, "cap": "2"}]},

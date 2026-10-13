@@ -15,7 +15,7 @@ import (
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
-// ADR-0094: a shadow's findings are recorded and never brief a later Run, so
+// ADR-0096: a shadow's findings are recorded and never brief a later Run, so
 // the writer of a fix round reads only the reviewer that acted.
 func TestBriefingLeavesOutShadowFindings(t *testing.T) {
 	reset(t)

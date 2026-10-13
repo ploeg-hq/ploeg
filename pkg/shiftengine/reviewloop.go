@@ -159,7 +159,7 @@ func checksCloseReason(reason, message string, reports []store.RunReport) (strin
 const minViableFixRound = 0.05
 
 // requestsChanges reports whether any READING Run of the given round asked for
-// changes. A shadow Run's verdict is recorded and never counts (ADR-0094). Writers' verdicts are already blanked by the store; this is the
+// changes. A shadow Run's verdict is recorded and never counts (ADR-0096). Writers' verdicts are already blanked by the store; this is the
 // second half of the same rule, kept explicit so the intent survives a
 // refactor of either side.
 func requestsChanges(reports []store.RunReport, round int) bool {
@@ -185,7 +185,7 @@ func (e *Engine) reviewPending(ctx context.Context, workItemID int64) bool {
 
 // approves reports whether any READING Run of the given round returned an
 // explicit approval. A missing verdict is not one, and neither is a shadow's
-// (ADR-0094).
+// (ADR-0096).
 func approves(reports []store.RunReport, round int) bool {
 	for _, r := range reports {
 		if r.Round == round && !r.Writes && !r.Shadow && r.Verdict == harness.VerdictApprove {

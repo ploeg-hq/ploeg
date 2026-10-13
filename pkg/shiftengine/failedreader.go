@@ -16,7 +16,7 @@ func (e *Engine) retryFailedReaders(ctx context.Context, si store.ShiftInfo, fai
 	var retry []store.Role
 	for _, f := range failed {
 		if f.Shadow {
-			e.Log.Info("a shadow Run failed; it is not retried and its review is recorded as missing (ADR-0094)",
+			e.Log.Info("a shadow Run failed; it is not retried and its review is recorded as missing (ADR-0096)",
 				"shift", si.ID, "round", si.Round, "role", f.Role)
 			continue
 		}

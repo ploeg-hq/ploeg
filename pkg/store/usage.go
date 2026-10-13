@@ -16,7 +16,7 @@ type RunUsage struct {
 	Round  int
 	Writes bool
 	// Shadow is a reading Run whose verdict is recorded and never acts
-	// (ADR-0094); the report counts its cost and does not show its verdict.
+	// (ADR-0096); the report counts its cost and does not show its verdict.
 	Shadow  bool
 	Outcome string
 	Verdict string

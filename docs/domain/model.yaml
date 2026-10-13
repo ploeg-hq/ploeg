@@ -523,7 +523,7 @@ terms:
       no fix Round, no close reason, no pull request comment, no briefing
       for a later Run, no created Work Items or Work Item Notes. Its cost
       counts in the Shift like any Run's. It compares a reviewer model on
-      real work (Ploeg ADR-0094).
+      real work (Ploeg ADR-0096).
     context: Dispatch
     synonyms: [shadow reader, shadow reviewer]
     see_also: [Role, Verdict, Round]

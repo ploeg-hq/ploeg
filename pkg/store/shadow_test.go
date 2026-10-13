@@ -11,7 +11,7 @@ import (
 )
 
 // shadowRound opens a Shift on a fresh Work Item whose first Round is a
-// reviewer beside a shadow (ADR-0094), and returns the Work Item and Shift.
+// reviewer beside a shadow (ADR-0096), and returns the Work Item and Shift.
 func shadowRound(t *testing.T, externalID string) (int64, int64) {
 	t.Helper()
 	ctx := context.Background()

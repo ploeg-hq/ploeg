@@ -168,7 +168,9 @@ fails otherwise.
 | [0091](0091-each-run-records-the-model-harness-plan-and-ploegd-version-it-was-configured-with.md) | Each Run records the model, harness, plan and ploegd version it was configured with | proposed | 2026-10-11 |
 | [0092](0092-a-team-pins-its-skills-in-a-catalogue-that-ploegd-fetches-once-and-serves-by-digest.md) | A Team pins its skills in a catalogue that ploegd fetches once and serves by digest | proposed | 2026-10-13 |
 | [0093](0093-the-working-state-is-active-and-budget-kept-back-is-a-hold.md) | The working state is active, budget kept back is a Hold, and every cost has one Cost Status | accepted | 2026-10-13 |
-| [0094](0094-a-shadow-reader-records-its-verdict-and-never-acts.md) | A shadow reader records its verdict and never acts | proposed | 2026-10-13 |
+| [0094](0094-a-person-connects-a-teams-claude-login-from-unfold-and-the-teams-worker-signs-in.md) | A person connects a team's Claude login from Unfold, and the team's own worker signs in | proposed | 2026-10-13 |
+| [0095](0095-work-is-handed-to-ploeg-by-assigning-one-ploeg-user-and-a-team-label-picks-the-team.md) | Work is handed to Ploeg by assigning one Ploeg user, and a team label picks the team | proposed | 2026-10-13 |
+| [0096](0096-a-shadow-reader-records-its-verdict-and-never-acts.md) | A shadow reader records its verdict and never acts | proposed | 2026-10-13 |
 
 ## Review calendar
 
@@ -201,7 +203,7 @@ triggers.
 | 2027-01-31 | [0090](0090-a-runs-agent-session-is-kept-as-a-bounded-redacted-transcript.md) — or sooner, when transcripts pass 10 GiB, a stored transcript carries a missed credential, a consumer needs faster than polling, a non-ACP harness needs a transcript, or ACP v2 changes `session/update` |
 | 2027-01-31 | [0091](0091-each-run-records-the-model-harness-plan-and-ploegd-version-it-was-configured-with.md) — or sooner, when the ADR-0076 metrics are built, the gateway reports served models under another name than the alias, ploegd learns each Role's harness itself, or a Role is configured with more than one model |
 | 2027-01-31 | [0092](0092-a-team-pins-its-skills-in-a-catalogue-that-ploegd-fetches-once-and-serves-by-digest.md) — or sooner, when the Agent Skills specification merges a version or index format, APM reaches 1.0, a harness reads OCI skills natively, or the skill store passes 100 MiB |
-| 2027-01-31 | [0094](0094-a-shadow-reader-records-its-verdict-and-never-acts.md) — or sooner, when 20 bronze Work Items have a shadow review, a Shift is refused a Round on budget a shadow held, a harness can post from a reading Run, or a consumer needs findings agreement scored |
+| 2027-01-31 | [0096](0096-a-shadow-reader-records-its-verdict-and-never-acts.md) — or sooner, when 20 bronze Work Items have a shadow review, a Shift is refused a Round on budget a shadow held, a harness can post from a reading Run, or a consumer needs findings agreement scored |
 | 2027-01-31 | [0047](0047-ploeg-learns-where-a-merged-change-is-deployed-from-a-generic-deploy-endpoint.md) — or sooner, when a GitOps controller should report deploys directly, deploys keep filling the 50-pull-request batch, or a third forge provider is added |
 | 2027-01-31 | [0048](0048-a-pool-held-by-unsettled-runs-waits-for-settlement-before-it-parks.md) — or sooner, when a fix round closes on unsettled holds or a Shift parks as held more than once a month |
 | 2027-01-31 | [0049](0049-a-run-card-reads-the-gateway-for-usage-so-far-while-a-run-is-running.md) — or sooner, when a card read during a Run passes 1 s at p95, LiteLLM offers a per-key token total, or the worker reports usage during a Run |
