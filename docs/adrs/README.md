@@ -156,7 +156,7 @@ fails otherwise.
 | [0079](0079-run-cards-belong-to-the-consumer-and-ploeg-supplies-delivery-facts.md) | Run cards belong to the operator consumer, and Ploeg supplies delivery facts | accepted | 2026-10-10 |
 | [0080](0080-ploeg-keeps-no-run-card-code-and-removes-it-in-one-release.md) | Ploeg keeps no Run card code; its card routes, tables and settings go in one release | accepted | 2026-10-10 |
 | [0081](0081-ploeg-serves-its-operator-reads-as-mcp-tools-through-ploeg-mcp.md) | Ploeg serves its operator reads as MCP tools through a separate ploeg-mcp command | accepted | 2026-10-10 |
-| [0082](0082-an-ask-is-a-read-only-run-outside-the-shift-paid-from-a-periodic-allowance.md) | An Ask is a read-only Run outside the Shift, paid from a periodic allowance | proposed | 2026-10-10 |
+| [0082](0082-an-ask-is-a-read-only-run-outside-the-shift-paid-from-a-periodic-allowance.md) | An Ask is a read-only Run outside the Shift, paid from a periodic allowance | accepted | 2026-10-13 |
 | [0083](0083-a-run-is-told-which-skills-bear-on-its-work-item.md) | A Run is told which skills bear on its Work Item | accepted | 2026-10-11 |
 | [0084](0084-a-claude-code-run-can-execute-in-a-teams-self-hosted-claude-environment.md) | A claude-code Run can execute in its Team's self-hosted Claude environment, paid by the Team's plan | accepted | 2026-10-11 |
 | [0085](0085-a-team-label-on-an-issue-in-a-configured-github-repository-dispatches-it.md) | A team label on an issue in a configured GitHub repository dispatches it, read and written back with a repository-scoped GitHub App token | proposed | 2026-10-11 |
