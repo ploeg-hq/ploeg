@@ -625,7 +625,7 @@ func (s *Server) respondClaimedRun(w http.ResponseWriter, r *http.Request, req c
 		s.Log.Error("briefing read failed; run proceeds without it", "shift", run.ShiftID, "err", err)
 	}
 	for _, rep := range reports {
-		if rep.Round < run.Round && rep.Findings != "" {
+		if rep.Round < run.Round && rep.Findings != "" && !rep.Shadow {
 			resp.Briefing = append(resp.Briefing, harness.Finding{
 				Role: rep.Role, Round: rep.Round, Findings: rep.Findings,
 			})

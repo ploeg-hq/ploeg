@@ -547,6 +547,7 @@ func (s *Store) ReportOutcome(ctx context.Context, runToken string, rep harnessR
 	var id, runID int64
 	var team string
 	var shiftID *int64
+	var shadow bool
 	if err := tx.QueryRow(ctx, `
 		UPDATE agent_runs
 		SET state = 'finished', finished_at = now(), outcome = $1, summary = $2,
@@ -556,10 +557,10 @@ func (s *Store) ReportOutcome(ctx context.Context, runToken string, rep harnessR
 		    verification = CASE WHEN writes THEN $13::jsonb ELSE NULL END,
 		    evidence_version = $14, delivery = $15::jsonb, delivery_source = $16
 		WHERE run_token = $9 AND state = 'running'
-		RETURNING id, work_item_id, team, shift_id`,
+		RETURNING id, work_item_id, team, shift_id, shadow`,
 		string(rep.Outcome), rep.Summary, rep.StuckReason, rep.Links, rep.Usage,
 		rep.FailureReason, rep.Findings, rep.Verdict, runToken, digest, rep.Problem, rep.Solution, verification,
-		CurrentEvidenceVersion, delivery, deliverySource).Scan(&runID, &id, &team, &shiftID); err != nil {
+		CurrentEvidenceVersion, delivery, deliverySource).Scan(&runID, &id, &team, &shiftID, &shadow); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			if err := tx.QueryRow(ctx, `SELECT work_item_id,shift_id FROM agent_runs
 				WHERE run_token=$1 AND state='finished' AND outcome_digest=$2
@@ -615,6 +616,14 @@ func (s *Store) ReportOutcome(ctx context.Context, runToken string, rep harnessR
 	}
 	if admitted.changed != "" {
 		outcomeDetail["delivery_changed_outcome"] = admitted.changed
+	}
+	if shadow {
+		outcomeDetail["shadow"] = true
+		if len(rep.Created) > 0 || len(rep.notes) > 0 {
+			outcomeDetail["shadow_dropped_created_work_items"] = len(rep.Created)
+			outcomeDetail["shadow_dropped_notes"] = len(rep.notes)
+		}
+		rep.Created, rep.notes = nil, nil
 	}
 	if err := audit(ctx, tx, "team:"+team, "outcome."+string(rep.Outcome), &id, outcomeDetail); err != nil {
 		return OutcomeResult{}, err

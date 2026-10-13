@@ -62,10 +62,14 @@ type OperatorRunConfig struct {
 	// ConfiguredModel served the Run, such as a fallback, and nil while
 	// either side is unknown.
 	ModelMismatch *bool `json:"modelMismatch"`
+	// Shadow is true for a reading Run whose verdict and findings were
+	// recorded and never acted (ADR-0096).
+	Shadow bool `json:"shadow"`
 }
 
 const operatorRunConfigJSON = `'configuredModel', r.configured_model, 'harness', r.harness,
 	'harnessProfile', r.harness_profile, 'planHash', r.plan_hash, 'ploegdVersion', r.ploegd_version,
 	'modelMismatch', CASE WHEN r.configured_model IS NOT NULL AND jsonb_typeof(r.usage->'modelGroups') = 'array'
 		AND jsonb_array_length(r.usage->'modelGroups') > 0
-		THEN EXISTS (SELECT 1 FROM jsonb_array_elements(r.usage->'modelGroups') g WHERE g.value <> to_jsonb(r.configured_model)) END`
+		THEN EXISTS (SELECT 1 FROM jsonb_array_elements(r.usage->'modelGroups') g WHERE g.value <> to_jsonb(r.configured_model)) END,
+	'shadow', r.shadow`

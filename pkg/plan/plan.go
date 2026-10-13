@@ -39,6 +39,10 @@ type Role struct {
 	// result as created Work Items instead of code (ADR-0031). A planner
 	// reads; it never writes.
 	Planner bool `json:"planner,omitempty" yaml:"planner"`
+	// Shadow makes a reading Role's Runs record their verdict and findings
+	// without acting on them: no fix round, no close reason, no pull request
+	// comment, no briefing for later Rounds (ADR-0096).
+	Shadow bool `json:"shadow,omitempty" yaml:"shadow"`
 }
 
 // Round is a set of Runs that start together: a fan-out of readers or a
@@ -159,6 +163,7 @@ func Validate(tp TeamPlan) error {
 	// A role name is one workload; its writes flag must not flip between
 	// rounds, or the same pod shape would need to be both reader and writer.
 	writesByRole := map[string]bool{}
+	shadowByRole := map[string]bool{}
 	for i, round := range tp.Rounds {
 		if len(round.Roles) == 0 {
 			return fmt.Errorf("round %d has no roles", i+1)
@@ -185,6 +190,15 @@ func Validate(tp TeamPlan) error {
 			if r.Planner && r.Writes {
 				return fmt.Errorf("round %d: role %q is a planner and a writer; a planner returns created Work Items and never writes (ADR-0031)", i+1, r.Name)
 			}
+			if r.Shadow {
+				if err := validateShadow(i+1, r, round); err != nil {
+					return err
+				}
+			}
+			if prev, ok := shadowByRole[r.Name]; ok && prev != r.Shadow {
+				return fmt.Errorf("role %q is a shadow in one round and not in another — one role, one shadow flag (ADR-0096)", r.Name)
+			}
+			shadowByRole[r.Name] = r.Shadow
 			if prev, ok := writesByRole[r.Name]; ok && prev != r.Writes {
 				return fmt.Errorf("role %q is a writer in one round and a reader in another — one role, one workload, one writes flag", r.Name)
 			}
@@ -218,6 +232,42 @@ func Validate(tp TeamPlan) error {
 		}
 	}
 	return nil
+}
+
+// validateShadow checks one shadow Role against its Round (ADR-0096).
+func validateShadow(round int, r Role, in Round) error {
+	if r.Writes {
+		return fmt.Errorf("round %d: role %q is a shadow and a writer; only a reading Role can be a shadow (ADR-0096)", round, r.Name)
+	}
+	if r.Planner {
+		return fmt.Errorf("round %d: role %q is a shadow and a planner; a planner's created Work Items act, so it cannot be a shadow (ADR-0096)", round, r.Name)
+	}
+	if r.Cap <= 0 {
+		return fmt.Errorf("round %d: shadow role %q needs its own cap (ADR-0096)", round, r.Name)
+	}
+	for _, other := range in.Roles {
+		if !other.Shadow {
+			return nil
+		}
+	}
+	return fmt.Errorf("round %d: shadow role %q needs a reading Role beside it that is not a shadow (ADR-0096)", round, r.Name)
+}
+
+// IsShadow reports whether a team's role is configured as a shadow
+// (ADR-0096).
+func (p Plans) IsShadow(team, role string) bool {
+	tp, ok := p[team]
+	if !ok || role == "" {
+		return false
+	}
+	for _, round := range tp.Rounds {
+		for _, r := range round.Roles {
+			if r.Name == role {
+				return r.Shadow
+			}
+		}
+	}
+	return false
 }
 
 // Cap returns a role's cap as a plain float for callers converting to other

@@ -66,6 +66,22 @@ type OperationalMetrics struct {
 	// OldestUnwrittenNoteSeconds is how long the oldest of them has waited;
 	// 0 when none waits.
 	OldestUnwrittenNoteSeconds float64
+	// ShadowReviews counts every finished shadow Run (ADR-0096) by team,
+	// shadow Role, the verdict the Round's acting readers gave and the
+	// shadow's own verdict. Like FinishedRuns it only grows.
+	ShadowReviews map[ShadowReviewKey]int
+}
+
+// ShadowReviewKey labels one ploeg_shadow_reviews_total series. Primary is
+// the verdict the review loop acted on for the shadow's Round: request_changes
+// when any acting reader asked for changes, else approve when one approved,
+// else none. Shadow is the shadow Run's own verdict, none when it gave none
+// or did not finish with an opinion.
+type ShadowReviewKey struct {
+	Team    string
+	Role    string
+	Primary string
+	Shadow  string
 }
 
 // RunOutcomeKey labels one ploeg_runs_finished_total series. Reason is empty
@@ -102,6 +118,7 @@ func (s *Store) OperationalMetrics(ctx context.Context) (OperationalMetrics, err
 		ShiftRunsWithoutPRMax:              map[string]int{},
 		OldestQueuedSeconds:                map[string]float64{},
 		FinishedRuns:                       map[RunOutcomeKey]int{},
+		ShadowReviews:                      map[ShadowReviewKey]int{},
 		UnsettledLLMAccounts:               map[string]int{},
 	}
 	for _, state := range UnsettledLLMAccountStates {
@@ -338,7 +355,41 @@ func (s *Store) OperationalMetrics(ctx context.Context) (OperationalMetrics, err
 		FROM work_item_note_outbox WHERE written_at IS NULL`).Scan(&m.UnwrittenNotes, &m.OldestUnwrittenNoteSeconds); err != nil {
 		return m, err
 	}
+	if err := shadowReviews(ctx, tx, m.ShadowReviews); err != nil {
+		return m, err
+	}
 	return m, tx.Commit(ctx)
+}
+
+// ShadowReviewsQuery pairs every finished shadow Run with the verdict the
+// acting readers of the same Shift and Round gave, the way the review loop
+// combines them. docs/ops/alerts.md shows it for reading per Work Item.
+const ShadowReviewsQuery = `SELECT s.team, s.role,
+		CASE WHEN bool_or(p.verdict = 'request_changes') THEN 'request_changes'
+			WHEN bool_or(p.verdict = 'approve') THEN 'approve' ELSE 'none' END AS primary_verdict,
+		CASE WHEN s.verdict IN ('approve', 'request_changes') THEN s.verdict ELSE 'none' END AS shadow_verdict
+	FROM agent_runs s
+	LEFT JOIN agent_runs p ON p.shift_id = s.shift_id AND p.round = s.round
+		AND NOT p.writes AND NOT p.shadow AND p.state = 'finished'
+	WHERE s.shadow AND s.state = 'finished'
+	GROUP BY s.id, s.team, s.role, s.verdict`
+
+func shadowReviews(ctx context.Context, tx pgx.Tx, into map[ShadowReviewKey]int) error {
+	rows, err := tx.Query(ctx, `SELECT team, role, primary_verdict, shadow_verdict, count(*)
+		FROM (`+ShadowReviewsQuery+`) pairs GROUP BY 1, 2, 3, 4`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var k ShadowReviewKey
+		var n int
+		if err := rows.Scan(&k.Team, &k.Role, &k.Primary, &k.Shadow, &n); err != nil {
+			return err
+		}
+		into[k] = n
+	}
+	return rows.Err()
 }
 
 func knownOutcomes() []string {

@@ -454,6 +454,7 @@ name becomes the workload suffix (ploeg-worker-<team>-<role>); writes marks the 
 | `name` | string |  |
 | `writes` | boolean |  |
 | `planner` | boolean | ADR-0031: the Role splits or clarifies its Work Item and returns createdWorkItems instead of code. A planner never writes. |
+| `shadow` | boolean | ADR-0096: a reading Role whose verdict and findings are recorded and never act. It runs beside a reading Role that is not a shadow, needs its own cap, never writes or plans, and its cost counts against the pool like any Run. Use it to compare a reviewer model on real work. |
 | `cap` | string |  |
 | `model` | string |  |
 | `maxReplicaCount` | integer |  |

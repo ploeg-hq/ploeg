@@ -23,6 +23,7 @@ The exposition is written by hand in the Prometheus text format (`version=0.0.4`
 | `ploeg_runs_finished_total` | `team`, `role`, `outcome`, `reason` | Runs ever finished, by Team, Role and outcome. `reason` is the failure reason of a `failed` Run and empty otherwise. A counter. Every Team and Role with a Run carries `outcome="failed"` for every known reason, at `0` until a Run fails that way. An outcome or reason Ploeg does not know is reported as `other` |
 | `ploeg_runs_failed_total` | `reason` | Runs ever recorded failed with each failure reason. A counter: Runs are never deleted. Every known reason is present at `0`. Kept for one release beside `ploeg_runs_finished_total`, which replaces it ([ADR-0076](../adrs/0076-run-health-is-observable-by-team-and-role-through-one-correlation-key.md)); move dashboards and rules to `sum by (reason) (ploeg_runs_finished_total{outcome="failed"})` |
 | `ploeg_runs_without_observed_delivery_last_day` | `source` | Runs finished in the last day whose report had no delivery record from the worker (`legacy`) or one that named another forge, repository, branch or pull request (`mismatch`) |
+| `ploeg_shadow_reviews_total` | `team`, `role`, `primary`, `shadow` | Finished shadow Runs ([ADR-0096](../adrs/0096-a-shadow-reader-records-its-verdict-and-never-acts.md)) by Team and shadow Role, with the verdict the Round's acting readers gave (`primary`) and the shadow's own (`shadow`), each `approve`, `request_changes` or `none`. A counter. Absent until a shadow Run finishes. See [reading shadow reviews](#reading-shadow-reviews) |
 | `ploeg_tracker_webhooks_missing` | | Configured Vikunja projects with no assignment webhook to Ploeg |
 | `ploeg_tracker_webhooks_unchecked` | | Configured Vikunja projects the webhook check could not read |
 | `ploeg_tracker_webhook_check_timestamp_seconds` | | Unix time of the last webhook check |
@@ -242,4 +243,31 @@ FROM work_item_note_outbox WHERE written_at IS NULL ORDER BY created_at;
 ```
 
 `last_error` holds the graph's answer. An HTTP 404 from a stored query means the actor may not invoke it or the bundle does not declare it.
+
+## Reading shadow reviews
+
+Not an alert. A Team whose plan marks a reading Role `shadow: true` runs it beside the reviewer on the same pull request, and its verdict and findings are recorded without acting ([ADR-0096](../adrs/0096-a-shadow-reader-records-its-verdict-and-never-acts.md)). `primary` is the verdict the review loop acted on for that Round: `request_changes` when any acting reader asked for changes, else `approve` when one approved, else `none`. The share of shadow Runs that agreed with the reviewer, per Team and shadow Role:
+
+```promql
+sum by (team, role) (ploeg_shadow_reviews_total{primary="approve", shadow="approve"}
+  or ploeg_shadow_reviews_total{primary="request_changes", shadow="request_changes"})
+/ sum by (team, role) (ploeg_shadow_reviews_total)
+```
+
+The metric counts verdicts only. Per Work Item, read the pairs from the database: each row is one shadow Run beside the acting readers of its Round, with both costs.
+
+```sql
+SELECT s.work_item_id, s.shift_id, s.round, s.role AS shadow_role,
+       s.configured_model AS shadow_model, s.verdict AS shadow_verdict,
+       string_agg(p.role || ':' || COALESCE(NULLIF(p.verdict, ''), 'none'), ', ') AS primary_verdicts,
+       (s.usage->>'costUsd')::numeric AS shadow_cost_usd,
+       sum((p.usage->>'costUsd')::numeric) AS primary_cost_usd
+FROM agent_runs s
+LEFT JOIN agent_runs p ON p.shift_id = s.shift_id AND p.round = s.round
+     AND NOT p.writes AND NOT p.shadow AND p.state = 'finished'
+WHERE s.shadow AND s.state = 'finished'
+GROUP BY s.id ORDER BY s.finished_at DESC;
+```
+
+The operator API serves the same facts without database access: every Run carries `shadow`, and a shadow pairs with the Runs of the same `shiftId` and `round` whose `writes` and `shadow` are false. Compare findings by reading both `findings` fields; Ploeg does not score them. Whether a shadow's `request_changes` was right shows later, when the Work Item merges or a person requests changes.
 

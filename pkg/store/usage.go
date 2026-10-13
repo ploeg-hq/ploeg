@@ -12,9 +12,12 @@ import (
 // keys ReconcileLLMAccountWithUsage merges) and run_llm_accounts — so the
 // report needs no migration and no gateway call.
 type RunUsage struct {
-	Role    string
-	Round   int
-	Writes  bool
+	Role   string
+	Round  int
+	Writes bool
+	// Shadow is a reading Run whose verdict is recorded and never acts
+	// (ADR-0096); the report counts its cost and does not show its verdict.
+	Shadow  bool
 	Outcome string
 	Verdict string
 	// Alias is the Run's gateway key alias ploeg-<12hex>, "" when no account.
@@ -92,7 +95,7 @@ func (s *Store) ShiftUsage(ctx context.Context, shiftID int64) (ShiftUsage, erro
 	}
 
 	rows, err := s.pool.Query(ctx, `
-		SELECT r.role, r.round, r.writes, COALESCE(r.outcome, ''), r.verdict,
+		SELECT r.role, r.round, r.writes, r.shadow, COALESCE(r.outcome, ''), r.verdict,
 		       COALESCE(a.alias, ''), COALESCE(a.state, ''),
 		       r.authorized, r.usage,
 		       COALESCE(EXTRACT(EPOCH FROM (r.finished_at - r.started_at)), 0)::float8
@@ -109,7 +112,7 @@ func (s *Store) ShiftUsage(ctx context.Context, shiftID int64) (ShiftUsage, erro
 		var r RunUsage
 		var raw []byte
 		var seconds float64
-		if err := rows.Scan(&r.Role, &r.Round, &r.Writes, &r.Outcome, &r.Verdict,
+		if err := rows.Scan(&r.Role, &r.Round, &r.Writes, &r.Shadow, &r.Outcome, &r.Verdict,
 			&r.Alias, &r.AccountState, &r.Authorized, &raw, &seconds); err != nil {
 			return ShiftUsage{}, err
 		}

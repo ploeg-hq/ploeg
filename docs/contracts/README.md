@@ -269,6 +269,15 @@ Run list returns both. Each field is null when unknown, as it is for every
 Run recorded before migration 0050, and `modelMismatch` is also null for a
 Run settled before served groups were recorded.
 
+Every Run shape also carries `shadow`
+([ADR-0096](../adrs/0096-a-shadow-reader-records-its-verdict-and-never-acts.md)):
+true for a Run of a shadow Role, whose `verdict` and `findings` are recorded
+and never act. A shadow verdict is never the pull request's `agentVerdict`,
+its findings are never posted or briefed to a later Run, and its cost counts
+like any other Run's. To compare a shadow with the reviewer it ran beside, pair
+it with the Runs of the same `shiftId` and `round` whose `writes` and
+`shadow` are both false.
+
 Audit pages explicitly say `consistency: snapshot`: sequence allocation is
 not transaction commit order, so clients must not treat this as a lossless
 changefeed. Unbound forge events are excluded. Read projections omit worker

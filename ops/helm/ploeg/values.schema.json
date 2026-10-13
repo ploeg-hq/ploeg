@@ -1050,6 +1050,10 @@
           "type": "boolean",
           "description": "ADR-0031: the Role splits or clarifies its Work Item and returns createdWorkItems instead of code. A planner never writes."
         },
+        "shadow": {
+          "type": "boolean",
+          "description": "ADR-0096: a reading Role whose verdict and findings are recorded and never act. It runs beside a reading Role that is not a shadow, needs its own cap, never writes or plans, and its cost counts against the pool like any Run. Use it to compare a reviewer model on real work."
+        },
         "cap": {
           "type": "string",
           "pattern": "^[0-9]+(\\.[0-9]+)?$"
