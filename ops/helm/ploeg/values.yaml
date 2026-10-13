@@ -490,6 +490,11 @@ executor:
   # Backstop only: the DB lease always expires first, so Ploeg decides
   # requeue/stale; this just guarantees the pod dies (backlog #52).
   activeDeadlineSeconds: 7200
+  # How long a finished worker Job and its pod stay in the cluster. The Run's
+  # record lives in Ploeg and its pod output in the log store, so the pod
+  # is only kept for a quick look; without this, KEDA keeps the last
+  # successful and failed Jobs of an idle pool for months.
+  finishedRunTtlSeconds: 86400
   # Long enough for ploeg-worker to abort the harness, revoke the per-run key,
   # settle its spend and POST the outcome — not long enough to be a hiding
   # place. A worker that needs more than this is not shutting down, and the
