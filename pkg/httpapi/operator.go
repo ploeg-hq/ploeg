@@ -364,9 +364,9 @@ func operatorFilter(w http.ResponseWriter, r *http.Request, events bool) (store.
 		operatorError(w, 400, "invalid_request", "Malformed query parameters.")
 		return f, false
 	}
-	allowed := map[string]bool{"team": true, "after": true, "limit": true}
+	allowed := map[string]bool{"team": true, "after": true, "limit": true, "order": true, "before": true}
 	if events {
-		allowed["workItemId"], allowed["order"], allowed["before"] = true, true, true
+		allowed["workItemId"] = true
 	} else {
 		allowed["state"], allowed["needsHuman"] = true, true
 		allowed["provider"], allowed["externalId"] = true, true
@@ -409,7 +409,7 @@ func operatorFilter(w http.ResponseWriter, r *http.Request, events bool) (store.
 		}
 	}
 	if (f.Desc && q.Has("after")) || (!f.Desc && q.Has("before")) {
-		operatorError(w, 400, "invalid_request", "after pages ascending events and before pages descending events.")
+		operatorError(w, 400, "invalid_request", "after pages ascending and before pages descending.")
 		return f, false
 	}
 	if limit := q.Get("limit"); limit != "" {
@@ -419,13 +419,21 @@ func operatorFilter(w http.ResponseWriter, r *http.Request, events bool) (store.
 			return f, false
 		}
 	}
-	f.State = q.Get("state")
-	if f.State != "" {
-		switch f.State {
-		case "ingested", "proposed", "queued", "leased", "needs_human", "awaiting_review", "stale", "done", "withdrawn":
-		default:
-			operatorError(w, 400, "invalid_request", "Unknown work-item state.")
-			return f, false
+	if state := q.Get("state"); state != "" {
+		seen := map[string]bool{}
+		for _, one := range strings.Split(state, ",") {
+			switch one {
+			case "ingested", "proposed", "queued", "leased", "needs_human", "awaiting_review", "stale", "done", "withdrawn":
+			default:
+				operatorError(w, 400, "invalid_request", "Unknown work-item state.")
+				return f, false
+			}
+			if seen[one] {
+				operatorError(w, 400, "invalid_request", "Repeated work-item state.")
+				return f, false
+			}
+			seen[one] = true
+			f.States = append(f.States, one)
 		}
 	}
 	if needs := q.Get("needsHuman"); needs != "" {
@@ -435,7 +443,7 @@ func operatorFilter(w http.ResponseWriter, r *http.Request, events bool) (store.
 		}
 		f.NeedsHuman = needs == "true"
 	}
-	if f.NeedsHuman && f.State != "" && f.State != "needs_human" {
+	if f.NeedsHuman && len(f.States) > 0 && (len(f.States) != 1 || f.States[0] != "needs_human") {
 		operatorError(w, 400, "invalid_request", "Conflicting state and needsHuman filters.")
 		return f, false
 	}
