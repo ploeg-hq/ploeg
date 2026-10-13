@@ -64,7 +64,8 @@ for case in ":default" \
 	"ops/helm/ploeg/ci/executor-sandbox-team-values.yaml:executor-sandbox-team" \
 	"ops/helm/ploeg/ci/executor-isolation-values.yaml:executor-isolation" \
 	"ops/helm/ploeg/ci/executor-isolation-disabled-values.yaml:executor-isolation-disabled" \
-	"ops/helm/ploeg/ci/monitoring-values.yaml:monitoring"; do
+	"ops/helm/ploeg/ci/monitoring-values.yaml:monitoring" \
+	"ops/helm/ploeg/ci/knowledge-graph-values.yaml:knowledge-graph"; do
 	values=${case%%:*}
 	name=${case##*:}
 	if [ "$mode" = "update" ]; then

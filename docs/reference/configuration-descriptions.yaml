@@ -108,6 +108,10 @@ env:
   PLOEG_ACP_CONFIG_JSON: "`acp` harness only: replaces the generated agent configuration of the `opencode` or `qwen-code` profile wholesale. The `goose` and `openhands` profiles refuse it at startup."
   KUBECONFIG: Administrative configuration. The worker refuses to start when it is set.
   PATH: Passed to `git` and `openspec` subprocesses; also on the harness allowlist.
+  PLOEG_OMNIGRAPH_URL: "Base URL of the Omnigraph server that holds the Tenant's notes graph, for example `http://omnigraph.ai.svc.cluster.local:8080` (ADR-0088, proposed). With `PLOEG_NOTES_GRAPH` and `PLOEG_OMNIGRAPH_RUN_TOKEN` it turns Work Item Notes on; setting only some of the three is a startup error. Unset = no notes."
+  PLOEG_NOTES_GRAPH: "Id of the Tenant's notes graph on `PLOEG_OMNIGRAPH_URL`, which declares the `tenant-notes` stored queries `add_note`, `note_by_key` and `root_notes`."
+  PLOEG_OMNIGRAPH_RUN_TOKEN: "Bearer token of the Tenant's run actor: read both graphs, write only notes `main`. Only ploegd holds it; worker pods never see it (ADR-0087, proposed)."
+  PLOEG_NOTES_WRITE_INTERVAL: "How often ploegd writes waiting Work Item Notes to the notes graph. Default 15s."
   PLOEG_RUN_TRANSCRIPTS:
     ploegd: "`off` refuses Run transcripts: `POST /api/v1/runs/{token}/transcript` answers 404 and workers stop sending (ADR-0090). Transcripts already stored stay readable. Default on."
     ploeg-worker: "`off` records no transcript of the agent's session (ADR-0090). Default on: the worker sends the ACP session as typed entries every two seconds, and a transcript that cannot be delivered never changes the Run."

@@ -227,3 +227,19 @@ ORDER BY a.updated_at;
 ```
 
 See [reconcile uncertainty](managed-workers.md#reconcile-uncertainty) before settling anything by hand.
+
+## PloegWorkItemNotesUnwritten
+
+`max(ploeg_work_item_note_oldest_unwritten_seconds) > 86400`. Default: `for: 15m`, warning.
+
+A learning a Run kept has waited more than a day to be written to the Tenant's notes graph (ADR-0088, proposed), so later Runs of its work cannot read it. The Run's outcome is unaffected: the note waits in `work_item_note_outbox`, and ploegd retries it with a growing delay up to an hour. A backlog means ploegd cannot reach Omnigraph, the run actor's token was refused, or the graph lacks the `add_note` stored query. `ploeg_work_item_notes_unwritten` counts the waiting notes.
+
+**Check first:** ploegd's logs for `work item note not written`, then the rows:
+
+```sql
+SELECT note_key, attempts, next_attempt_at, last_error
+FROM work_item_note_outbox WHERE written_at IS NULL ORDER BY created_at;
+```
+
+`last_error` holds the graph's answer. An HTTP 404 from a stored query means the actor may not invoke it or the bundle does not declare it.
+

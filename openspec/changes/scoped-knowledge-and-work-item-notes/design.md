@@ -51,7 +51,15 @@ nothing else.
 
 Stored queries `scoped_concepts($client, $repository)` and
 `root_notes($root)` read them; ploegd passes the parameters from its own
-records. The existing `ploeg-okf to-omnigraph`/`from-omnigraph` conversion
+records.
+
+As built (2026-10-12): the schemas are `tenant-knowledge.pg` and
+`tenant-notes.pg` in homelab-cluster's Omnigraph bundle, shared by every
+Tenant's pair of graphs. The note's root field is `root_work_item`, and both
+also keep the OKF `description` and `resource` and a reserved
+`embedding: Vector(384)` for later search. Concepts are read per scope by
+`tenant_concepts()`, `client_concepts($client)` and
+`repository_concepts($repository)`, one query per scope; notes are written by `add_note` and read back by `note_by_key`. The existing `ploeg-okf to-omnigraph`/`from-omnigraph` conversion
 moves from the `memory` schema to these types.
 
 ### D3 — Scopes come from ploegd's records

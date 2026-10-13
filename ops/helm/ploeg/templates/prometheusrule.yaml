@@ -181,6 +181,21 @@ spec:
             {{- end }}
         {{- end }}
         {{- end }}
+        {{- with $a.notesUnwritten }}
+        {{- if .enabled }}
+        - alert: PloegWorkItemNotesUnwritten
+          expr: max(ploeg_work_item_note_oldest_unwritten_seconds{ {{- $sel -}} }) > {{ .waitSeconds }}
+          for: {{ .for }}
+          labels:
+            severity: {{ .severity }}
+          annotations:
+            summary: {{ printf "A Work Item Note has waited over %v seconds for the notes graph" .waitSeconds | quote }}
+            description: "The oldest unwritten Work Item Note has waited {{ "{{" }} $value | humanizeDuration {{ "}}" }}. Later Runs of its work cannot read it until ploegd writes it."
+            {{- if $runbook }}
+            runbook_url: {{ printf "%s#ploegworkitemnotesunwritten" $runbook }}
+            {{- end }}
+        {{- end }}
+        {{- end }}
         {{- with $a.settlementBacklog }}
         {{- if .enabled }}
         - alert: PloegSettlementBacklog

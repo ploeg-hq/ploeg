@@ -623,6 +623,9 @@ func (s *Store) ReportOutcome(ctx context.Context, runToken string, rep harnessR
 	if err != nil {
 		return OutcomeResult{}, err
 	}
+	if err := queueWorkItemNotes(ctx, tx, runID, rep.notes); err != nil {
+		return OutcomeResult{}, err
+	}
 	return OutcomeResult{WorkItemID: id, ShiftID: shiftID, ForgeTokenID: forgeTokenID, Created: created}, tx.Commit(ctx)
 }
 
@@ -678,6 +681,7 @@ type harnessReport struct {
 	Delivery      *harness.Delivery         `json:",omitempty"` // the worker's forge observation (ADR-0059); bound to the Run before it is stored
 	policyFor     func(team string) followup.Policy
 	knownTeam     func(string) bool
+	notes         []harness.Learning // kept learnings to write as Work Item Notes; outside the digest
 }
 
 // WithCreatedWork attaches the Work Items a Run proposes (ADR-0031).

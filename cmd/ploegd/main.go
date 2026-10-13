@@ -358,6 +358,10 @@ func run(log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	notes, err := notesGraph(log)
+	if err != nil {
+		return err
+	}
 	srv := &httpapi.Server{
 		OperatorConfig: operator,
 		WorkerSecurity: workerSecurity,
@@ -389,6 +393,9 @@ func run(log *slog.Logger) error {
 		ContextMaxTotalBytes: contextMaxTotal,
 
 		DisableRunTranscripts: !runTranscripts,
+	}
+	if notes != nil {
+		srv.Notes = notes
 	}
 	log.Info("forge follow-ups loaded", "teams", len(srv.FollowUps))
 	if engine != nil {
@@ -437,6 +444,9 @@ func run(log *slog.Logger) error {
 		go reviewLoop(ctx, reviews, reviewEvery)
 	}
 	go deployCheckLoop(ctx, srv, deployCheckEvery)
+	if srv.Notes != nil {
+		go noteWriteLoop(ctx, srv, durationOr("PLOEG_NOTES_WRITE_INTERVAL", 15*time.Second))
+	}
 
 	log.Info("ploegd listening", "version", version, "addr", listen, "lease_ttl", leaseTTL)
 	if err := httpSrv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {

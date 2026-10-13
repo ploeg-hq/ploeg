@@ -332,3 +332,26 @@ func (a *APIClient) Spend(ctx context.Context, cred llmbroker.Credential) (float
 	}
 	return *usage.CostUSD, nil
 }
+
+// Knowledge reads what the Tenant's graphs hold for the Run's own scopes
+// (ADR-0087, proposed). ploegd picks the scopes; the request names only the
+// Run.
+func (a *APIClient) Knowledge(ctx context.Context, runToken string) (harness.KnowledgeResponse, error) {
+	var out harness.KnowledgeResponse
+	resp, err := a.request(ctx, http.MethodGet, "/api/v1/runs/"+runToken+"/knowledge", nil, a.runCredential(runToken))
+	if err != nil {
+		return out, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return out, &knowledgeHTTPError{status: resp.StatusCode}
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 8<<20)).Decode(&out); err != nil {
+		return out, fmt.Errorf("knowledge: %w", err)
+	}
+	return out, nil
+}
+
+type knowledgeHTTPError struct{ status int }
+
+func (e *knowledgeHTTPError) Error() string { return fmt.Sprintf("knowledge: HTTP %d", e.status) }

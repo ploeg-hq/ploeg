@@ -152,7 +152,7 @@ func TestOutcomeReport_MatchesSchema(t *testing.T) {
 		Checkpoint: &work.Checkpoint{Phase: "pr_opened", Branch: "agent/vik-596", PRURL: "https://forgejo.example/webgrip/example/pulls/7"},
 		Usage:      &Usage{InputTokens: 100, OutputTokens: 50, CostUSD: 0.42, SessionID: "sess-1"},
 		Learnings: []Learning{{Type: "Pitfall", Title: "Registry pulls time out", Description: "the sandbox reaches only its gateway",
-			Resource: "https://example.test/AGENTS.md", Tags: []string{"sandbox"}, Body: "Skip the gate and list it."}},
+			Resource: "https://example.test/AGENTS.md", Tags: []string{"sandbox"}, Body: "Skip the gate and list it.", Scope: "repository"}},
 	}
 	if err := validate(t, sch, full); err != nil {
 		t.Errorf("full OutcomeReport does not validate: %v", err)
@@ -293,6 +293,13 @@ func TestOutcomeReport_SchemaRejectsInvalid(t *testing.T) {
 		if err := validate(t, sch, map[string]any{"outcome": "no_change_needed", "summary": "x", "delivery": delivery}); err == nil {
 			t.Errorf("delivery with %s validated", name)
 		}
+	}
+
+	// A learning's scope is a closed enum (ADR-0088, proposed): an invented
+	// one would be a Promotion request nothing can decide.
+	if err := validate(t, sch, map[string]any{"outcome": "no_change_needed", "summary": "x",
+		"learnings": []any{map[string]any{"type": "Fact", "title": "t", "body": "b", "scope": "everyone"}}}); err == nil {
+		t.Error("a learning with scope everyone validated")
 	}
 
 	// Zero-value report ("no structured signal") is an internal sentinel,

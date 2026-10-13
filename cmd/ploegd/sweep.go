@@ -166,6 +166,20 @@ func deployCheckLoop(ctx context.Context, server *httpapi.Server, every time.Dur
 	}
 }
 
+func noteWriteLoop(ctx context.Context, server *httpapi.Server, every time.Duration) {
+	server.SweepNoteWrites(ctx)
+	t := time.NewTicker(every)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			server.SweepNoteWrites(ctx)
+		}
+	}
+}
+
 func blockExpiredRun(ctx context.Context, log *slog.Logger, sweeper llmbroker.Sweeper, server *httpapi.Server, runToken string) {
 	if server.LLMControl != nil {
 		if _, err := server.Store.LLMAccount(ctx, runToken); err == nil {

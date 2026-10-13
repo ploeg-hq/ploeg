@@ -10,7 +10,9 @@ spec:
     matchLabels: {{- include "ploeg.selectorLabels" . | nindent 6 }}
   template:
     metadata:
-      labels: {{- include "ploeg.selectorLabels" . | nindent 8 }}
+      labels:
+        {{- include "ploeg.selectorLabels" . | nindent 8 }}
+        ploeg.webgrip.dev/component: daemon
       {{- if .Values.config }}
       annotations:
         # Config is read once at boot, so a change has to restart the pod.
@@ -272,6 +274,19 @@ spec:
                 secretKeyRef:
                   name: {{ .name }}
                   key: {{ .key }}
+            {{- end }}
+            {{- end }}
+            {{- with .Values.knowledgeGraph }}
+            {{- if .url }}
+            - name: PLOEG_OMNIGRAPH_URL
+              value: {{ .url | quote }}
+            - name: PLOEG_NOTES_GRAPH
+              value: {{ required "knowledgeGraph.notesGraph is required with knowledgeGraph.url" .notesGraph | quote }}
+            - name: PLOEG_OMNIGRAPH_RUN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "knowledgeGraph.runTokenSecret.name is required with knowledgeGraph.url" .runTokenSecret.name }}
+                  key: {{ .runTokenSecret.key | default "token" }}
             {{- end }}
             {{- end }}
             {{- include "ploeg.workerControlEnv" . | nindent 12 }}

@@ -87,15 +87,62 @@ type ContextItem struct {
 	Note    string    `json:"note,omitempty"`
 }
 
+// KnowledgeResponse is the body of GET /api/v1/runs/{token}/knowledge
+// (docs/contracts/run-api.v1.schema.json#/$defs/knowledgeResponse): what the
+// Tenant's graphs hold for the Run's own scopes. It never carries a graph
+// credential (ADR-0087, proposed).
+type KnowledgeResponse struct {
+	Notes KnowledgeNotes `json:"notes"`
+}
+
+// Knowledge read statuses.
+const (
+	KnowledgeOK          = "ok"
+	KnowledgeUnavailable = "unavailable"
+	KnowledgeOff         = "off"
+)
+
+// KnowledgeNotes are the Work Item Notes of the Run's root Work Item, newest
+// first, written without review (ADR-0088, proposed).
+type KnowledgeNotes struct {
+	Status string         `json:"status"`
+	Commit string         `json:"commit,omitempty"`
+	Items  []WorkItemNote `json:"items"`
+}
+
+// WorkItemNote is one note as a Run reads it.
+type WorkItemNote struct {
+	Key            string    `json:"key"`
+	WorkItem       string    `json:"workItem,omitempty"`
+	Repository     string    `json:"repository,omitempty"`
+	Type           string    `json:"type"`
+	Title          string    `json:"title"`
+	Description    string    `json:"description,omitempty"`
+	Resource       string    `json:"resource,omitempty"`
+	Tags           []string  `json:"tags,omitempty"`
+	Body           string    `json:"body"`
+	SuggestedScope string    `json:"suggestedScope,omitempty"`
+	WrittenBy      string    `json:"writtenBy,omitempty"`
+	WrittenAt      time.Time `json:"writtenAt,omitzero"`
+}
+
 // KnowledgeSource is one bundle a pack drew from and its content digest.
+// A graph source also names the graph commit it was read at, or why it was
+// not read.
 type KnowledgeSource struct {
 	Name   string `json:"name"`
 	Digest string `json:"digest"`
+	Commit string `json:"commit,omitempty"`
+	// Status is unavailable when the graph could not be read in time; the
+	// Run went ahead without it.
+	Status string `json:"status,omitempty"`
 }
 
 // Learning is one thing a Run proposes Ploeg should know next time, in the
-// shape of an OKF concept. It is a proposal: a person reviews it before any
-// Run is briefed with it.
+// shape of an OKF concept. Where a deployment writes Work Item Notes it
+// becomes one at once, read by later Runs under the same root Work Item
+// (ADR-0088, proposed); elsewhere a person reviews it before any Run is
+// briefed with it.
 type Learning struct {
 	Type        string   `json:"type"`
 	Title       string   `json:"title"`
@@ -103,6 +150,10 @@ type Learning struct {
 	Resource    string   `json:"resource,omitempty"`
 	Tags        []string `json:"tags,omitempty"`
 	Body        string   `json:"body"`
+	// Scope is how widely the agent suggests the learning applies:
+	// work-item (the default), repository, client or tenant. A wider scope
+	// is only a suggestion; a Tenant admin decides it as a Promotion.
+	Scope string `json:"scope,omitempty"`
 }
 
 // Finding is one earlier Run's contribution to the blackboard, attributed to
