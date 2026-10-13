@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.2.0-rc.19
+
+### Breaking changes
+
+- None. Work Item Notes are off unless `knowledgeGraph` is set, and the operator API's new query parameters are optional.
+
+### Changes
+
+- Ploeg's LiteLLM keys for a Run carry `disable_fallbacks`, so a call on a failing model fails and Ploeg retries it, instead of LiteLLM answering from another model that the Run is not costed for (#118, VIK-2030).
+- With `knowledgeGraph` set, a Run's learnings are written as Work Item Notes to the Tenant's notes graph on Omnigraph, and later Runs of the same root Work Item are briefed with them (#120, ADR-0087 and ADR-0088, both proposed). `ploeg_work_item_notes_unwritten` and the `PloegWorkItemNotesUnwritten` alert report notes still unwritten after a day.
+- `GET /api/v1/operator/work-items` pages newest first with `order=desc` and a `before` cursor, and `state` takes a comma-separated list (#121).
+- The test harness starts embedded Postgres in UTF8 whatever the caller's locale (#119); no behaviour change.
+
+### Upgrade notes
+
+- One migration runs when `ploegd` starts: `0051_work_item_notes.sql` adds the notes outbox.
+- The ploegd pod gains the label `ploeg.webgrip.dev/component=daemon`, for a network policy that lets only ploegd reach the notes graph.
+
 ## 0.2.0-rc.18
 
 ### Breaking changes
