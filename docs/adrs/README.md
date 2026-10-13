@@ -168,6 +168,8 @@ fails otherwise.
 | [0091](0091-each-run-records-the-model-harness-plan-and-ploegd-version-it-was-configured-with.md) | Each Run records the model, harness, plan and ploegd version it was configured with | proposed | 2026-10-11 |
 | [0092](0092-a-team-pins-its-skills-in-a-catalogue-that-ploegd-fetches-once-and-serves-by-digest.md) | A Team pins its skills in a catalogue that ploegd fetches once and serves by digest | proposed | 2026-10-13 |
 | [0093](0093-the-working-state-is-active-and-budget-kept-back-is-a-hold.md) | The working state is active, budget kept back is a Hold, and every cost has one Cost Status | accepted | 2026-10-13 |
+| [0094](0094-a-person-connects-a-teams-claude-login-from-unfold-and-the-teams-worker-signs-in.md) | A person connects a team's Claude login from Unfold, and the team's own worker signs in | proposed | 2026-10-13 |
+| [0095](0095-work-is-handed-to-ploeg-by-assigning-one-ploeg-user-and-a-team-label-picks-the-team.md) | Work is handed to Ploeg by assigning one Ploeg user, and a team label picks the team | proposed | 2026-10-13 |
 
 ## Review calendar
 
