@@ -10,7 +10,7 @@ verified_by: "Read cmd/ploeg-mcp, pkg/operatorclient, pkg/httpapi/operator.go an
 
 **Goal:** a person asks their own AI client (Claude Code, Codex, Cursor, any MCP client) "what is waiting for me, why, and what did it cost", and the answer comes from Ploeg's operator API ([ADR-0081](../adrs/0081-ploeg-serves-its-operator-reads-as-mcp-tools-through-ploeg-mcp.md)).
 
-`ploeg-mcp` is a local process that the client starts over stdio. It reads the operator API as one Operator Consumer and changes nothing.
+`ploeg-mcp` is a local process that the client starts over stdio. It reads the operator API as one Operator Consumer and changes nothing. To give people one HTTPS URL with a browser sign-in instead, see [Serve Ploeg's MCP tools over HTTPS](serve-ploeg-mcp-over-https.md).
 
 ## 1. Give it a read-only Operator Consumer
 

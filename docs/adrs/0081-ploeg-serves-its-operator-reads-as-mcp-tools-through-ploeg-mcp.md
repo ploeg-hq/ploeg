@@ -48,6 +48,33 @@ Chosen option: "A separate `ploeg-mcp` command", because it adds no route, no li
 
 `go test ./cmd/ploeg-mcp/` drives every tool through in-memory MCP transports against the real operator handler and PostgreSQL, including the 401, 404 and timeout paths and the token never appearing in a result. `go test ./pkg/operatorclient/` tests the client against the same handler. `go test ./internal/boundary/` keeps consumer names out of both.
 
+## Amendment 2026-10-13: a remote transport
+
+The second re-evaluation trigger fired: the owner wants Ploeg's tools in Claude Code, VS Code and Cursor on machines with no route to ploegd, without a local binary, a port-forward or a pasted token. The owner decided on 2026-10-13 that the server is reachable on the LAN and VPN only, that it validates the sign-in itself rather than behind a gateway policy, that it gets a dedicated client at the identity provider, that a person reads as the Operator Consumer their identity-provider group maps to, and that it stays read-only.
+
+* `ploeg-mcp http` serves stateless Streamable HTTP with JSON responses (`StreamableHTTPOptions{Stateless: true, JSONResponse: true}`). The go-sdk answers both `server/discover` clients of MCP 2026-07-28 and `initialize` clients of 2025-11-25 on the one endpoint. Running `ploeg-mcp` without arguments is the stdio server, unchanged.
+* It is an OAuth 2.1 resource server for one OpenID Connect issuer, in `pkg/mcpauth`. It verifies the JWT access token's signature against the issuer's published keys, matches `iss` byte for byte, requires `aud` and `azp` to be one of the configured client ids, requires `exp`, `iat` and `sub`, tolerates at most 60 seconds of clock skew, refuses a token living longer than 10 minutes, and refuses a token without `azp` or `scope`, which is how an ID token presented as an access token fails. Only asymmetric algorithms are accepted. An unknown key id refetches the key set at most once per 30 seconds.
+* It publishes RFC 9728 protected resource metadata at `/.well-known/oauth-protected-resource` and at the path-inserted form for its endpoint, naming the issuer as the only authorization server and the exact public URL as the resource, with CORS. It writes the RFC 6750 challenges itself: 401 with `resource_metadata` and `scope`, `error="invalid_token"` for a refused token, and 403 `error="insufficient_scope"` when the required scope (default `ploeg:read`) is missing. `auth.RequireBearerToken` is not used because its 403 carries no `error` parameter.
+* The caller's token never leaves `ploeg-mcp`. `PLOEG_MCP_GROUPS` maps identity-provider groups to Operator Consumer tokens; the first configured group the person is in decides the consumer whose token calls ploegd. A person in no configured group gets 403 naming the groups that give access. Each mapped consumer should have `execute: false`.
+* The person's identity is logged but not sent to ploegd; operator calls are still attributed to the consumer. Naming the acting person to ploegd waits for [ADR 0089](0089-operator-consumers-read-knowledge-and-write-notes-for-a-named-person-within-scopes-ploegd-checks.md).
+
+### Consequences of the amendment
+
+* Good, because a person signs in once in the browser and every client on the LAN or VPN uses Ploeg's tools without a binary, a token on disk or a route to ploegd.
+* Good, because ploegd is still unchanged: `ploeg-mcp` remains an ordinary consumer of the operator API, now one per group.
+* Bad, because `ploeg-mcp` becomes a network service that checks tokens, which the stdio command never did; a mistake in `pkg/mcpauth` is an access-control mistake.
+* Bad, because the access token's lifetime and its group claim are configured at the identity provider; a provider issuing hour-long tokens is refused until it issues 10-minute ones or `PLOEG_MCP_MAX_TOKEN_LIFETIME` is raised.
+
+### Confirmation of the amendment
+
+`go test ./pkg/mcpauth/` signs tokens with RSA and EC keys against a fake key set and refuses ID tokens, other issuers and audiences, a foreign `azp`, missing claims, long lifetimes, expiry beyond the skew and forged algorithms; it pins the 401, 403 and 503 answers and the key refetch limit. `go test ./cmd/ploeg-mcp/` drives the HTTP server with the go-sdk client and with raw 2025-11-25 requests, and asserts that ploegd receives the group's consumer token and never the caller's.
+
+### Re-evaluation triggers of the amendment
+
+* The server must be reachable from outside the LAN and VPN, such as by Claude.ai or ChatGPT connectors.
+* The identity provider supports RFC 8707 resource indicators, so `aud` can name the resource instead of a client id.
+* A person must read as themselves rather than as their group's consumer.
+
 ## Pros and Cons of the Options
 
 ### MCP routes inside ploegd
@@ -69,4 +96,5 @@ Chosen option: "A separate `ploeg-mcp` command", because it adds no route, no li
 ## More Information
 
 * How-to: [Ask Ploeg from an AI client over MCP](../how-to/ask-ploeg-from-an-ai-client.md).
+* 2026-10-13 — Amended: `ploeg-mcp http` serves stateless Streamable HTTP as an OAuth resource server and maps a person's groups to Operator Consumers, because the trigger "someone needs Ploeg's tools from a machine without a route to ploegd" fired.
 * The consumer's record of 2026-09-30 named the tools after the consumer; this record names them after Ploeg because of ADR 0069.
