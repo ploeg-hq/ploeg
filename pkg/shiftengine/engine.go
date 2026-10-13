@@ -193,7 +193,7 @@ func (e *Engine) evaluate(ctx context.Context, si store.ShiftInfo) error {
 	e.publishUsageReport(ctx, si)
 
 	for _, r := range reports {
-		if r.Outcome == string(work.OutcomeStuck) {
+		if r.Outcome == string(work.OutcomeStuck) && !r.Shadow {
 			// A stuck Outcome parks the item under BOTH dispatch shapes: R4
 			// says so, and it is what ReportOutcome would have done anyway.
 			return e.close(ctx, si,
@@ -258,7 +258,7 @@ func (e *Engine) evaluate(ctx context.Context, si store.ShiftInfo) error {
 func storeRoles(r plan.Round) []store.Role {
 	out := make([]store.Role, 0, len(r.Roles))
 	for _, role := range r.Roles {
-		out = append(out, store.Role{Name: role.Name, Writes: role.Writes, Cap: role.CapUSD()})
+		out = append(out, store.Role{Name: role.Name, Writes: role.Writes, Cap: role.CapUSD(), Shadow: role.Shadow})
 	}
 	return out
 }
@@ -390,7 +390,7 @@ func lastReviewRequestsChanges(reports []store.RunReport) bool {
 		if reports[i].Writes {
 			return false
 		}
-		if reports[i].Outcome != "" {
+		if reports[i].Outcome != "" && !reports[i].Shadow {
 			return reports[i].Verdict == harness.VerdictRequestChanges
 		}
 	}

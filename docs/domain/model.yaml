@@ -510,9 +510,23 @@ terms:
     definition: >
       A reading Run's answer to "is this done?", reported in its Outcome Report:
       approve or request_changes, or empty for no opinion. A request_changes
-      Verdict can open a capped fix Round (Ploeg ADR-0017).
+      Verdict can open a capped fix Round (Ploeg ADR-0017), unless a Shadow
+      Role gave it.
     context: Harness
-    see_also: [Outcome Report, Round, Role]
+    see_also: [Outcome Report, Round, Role, Shadow Role]
+
+  - name: Shadow Role
+    definition: >
+      A reading Role a Team's plan marks `shadow`. Its Runs read beside a
+      reading Role that acts, in the same Round and with the same briefing,
+      and their Verdict and findings are recorded and served but never act:
+      no fix Round, no close reason, no pull request comment, no briefing
+      for a later Run, no created Work Items or Work Item Notes. Its cost
+      counts in the Shift like any Run's. It compares a reviewer model on
+      real work (Ploeg ADR-0094).
+    context: Dispatch
+    synonyms: [shadow reader, shadow reviewer]
+    see_also: [Role, Verdict, Round]
 
   - name: Admission
     definition: >

@@ -272,6 +272,14 @@ An opaque, provider-scoped container id for a body of work (a Vikunja project, a
 **Also known as:** container id  
 **See also:** [Tracker Event](#tracker-event), [Routing Rule](#routing-rule), [Tracker Provider](#tracker-provider)  
 
+## Shadow Role
+*Context: Dispatch*
+
+A reading Role a Team's plan marks `shadow`. Its Runs read beside a reading Role that acts, in the same Round and with the same briefing, and their Verdict and findings are recorded and served but never act: no fix Round, no close reason, no pull request comment, no briefing for a later Run, no created Work Items or Work Item Notes. Its cost counts in the Shift like any Run's. It compares a reviewer model on real work (Ploeg ADR-0094).
+
+**Also known as:** shadow reader, shadow reviewer  
+**See also:** [Role](#role), [Verdict](#verdict), [Round](#round)  
+
 ## Shift
 *Context: Dispatch*
 
@@ -337,9 +345,9 @@ The SPI adapter for one task-management system: verify and parse webhooks into n
 ## Verdict
 *Context: Harness*
 
-A reading Run's answer to "is this done?", reported in its Outcome Report: approve or request_changes, or empty for no opinion. A request_changes Verdict can open a capped fix Round (Ploeg ADR-0017).
+A reading Run's answer to "is this done?", reported in its Outcome Report: approve or request_changes, or empty for no opinion. A request_changes Verdict can open a capped fix Round (Ploeg ADR-0017), unless a Shadow Role gave it.
 
-**See also:** [Outcome Report](#outcome-report), [Round](#round), [Role](#role)  
+**See also:** [Outcome Report](#outcome-report), [Round](#round), [Role](#role), [Shadow Role](#shadow-role)  
 
 ## Verification Receipt
 *Context: Execution*

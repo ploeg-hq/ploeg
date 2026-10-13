@@ -265,7 +265,7 @@ const operatorPullRequestURL = `COALESCE(
 const operatorAgentVerdictJSON = `(
 	SELECT jsonb_build_object('verdict', v.verdict, 'round', v.round) FROM agent_runs v
 	WHERE v.shift_id = (SELECT sh2.id FROM shifts sh2 WHERE sh2.work_item_id = i.id ORDER BY sh2.id DESC LIMIT 1)
-	  AND v.writes = false AND v.state = 'finished'
+	  AND v.writes = false AND NOT v.shadow AND v.state = 'finished'
 	ORDER BY v.finished_at DESC NULLS LAST, v.id DESC LIMIT 1)`
 
 const operatorItemJSON = `jsonb_build_object(

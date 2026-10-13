@@ -1,6 +1,7 @@
 package plan
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -231,5 +232,62 @@ func TestHash_NamesOnePlanShape(t *testing.T) {
 	}
 	if a.Hash("silver") != "" {
 		t.Fatalf("plan-less team hash = %q, want none", a.Hash("silver"))
+	}
+}
+
+// ADR-0094: a shadow is a capped reader beside a reader that acts.
+func TestParse_ShadowRole(t *testing.T) {
+	const ok = `{"bronze": {"pool": "8", "maxFixRounds": 2, "rounds": [
+		{"roles": [{"name": "builder", "writes": true, "cap": "2"}]},
+		{"roles": [{"name": "reviewer", "cap": "0.40"}, {"name": "shadow-reviewer", "shadow": true, "cap": "0.40"}]}
+	]}}`
+	p, err := Parse(ok)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if !p.IsShadow("bronze", "shadow-reviewer") || p.IsShadow("bronze", "reviewer") || p.IsShadow("silver", "shadow-reviewer") {
+		t.Fatal("IsShadow disagrees with the plan")
+	}
+
+	cases := map[string]struct{ in, wantErr string }{
+		"writer": {`{"t": {"rounds": [{"roles": [{"name": "b", "writes": true, "shadow": true, "cap": "1"}]}]}}`,
+			"only a reading Role can be a shadow"},
+		"planner": {`{"t": {"rounds": [{"roles": [{"name": "r", "cap": "1"}, {"name": "p", "planner": true, "shadow": true, "cap": "1"}]}]}}`,
+			"a shadow and a planner"},
+		"no cap": {`{"t": {"rounds": [{"roles": [{"name": "r"}, {"name": "s", "shadow": true}]}]}}`,
+			"needs its own cap"},
+		"alone": {`{"t": {"rounds": [{"roles": [{"name": "s", "shadow": true, "cap": "1"}]}]}}`,
+			"needs a reading Role beside it"},
+		"flips": {`{"t": {"rounds": [
+			{"roles": [{"name": "r", "cap": "1"}, {"name": "s", "shadow": true, "cap": "1"}]},
+			{"roles": [{"name": "s", "cap": "1"}]}]}}`, "one shadow flag"},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			_, err := Parse(c.in)
+			if err == nil || !strings.Contains(err.Error(), c.wantErr) {
+				t.Fatalf("err = %v, want %q", err, c.wantErr)
+			}
+		})
+	}
+}
+
+// ADR-0091 hashes stay stable for every plan without a shadow, and a shadow
+// changes the hash, so Runs before and after adding one are told apart.
+func TestHash_ShadowOnlyChangesPlansThatHaveOne(t *testing.T) {
+	const doc = `{"t": {"rounds": [{"roles": [{"name": "r", "cap": "1"}, {"name": "s", "cap": "1"}]}]}}`
+	plain, err := Parse(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := json.Marshal(plain["t"]); strings.Contains(string(b), "shadow") {
+		t.Fatalf("a plan without a shadow encodes %s, which would change its ADR-0091 hash", b)
+	}
+	shadowed, err := Parse(strings.Replace(doc, `{"name": "s",`, `{"name": "s", "shadow": true,`, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if shadowed.Hash("t") == plain.Hash("t") {
+		t.Fatal("adding a shadow kept the plan hash")
 	}
 }

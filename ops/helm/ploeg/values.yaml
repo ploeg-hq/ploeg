@@ -590,6 +590,8 @@ executor:
   #         - {name: builder, writes: true, cap: "3.00", model: litellm_proxy/claude-sonnet-5}
   #     - roles:
   #         - {name: reviewer, writes: false, cap: "0.75", model: litellm_proxy/claude-sonnet-5, harness: {dind: false}}
+  #         # ADR-0094: a second reviewer whose verdict is recorded and never acts.
+  #         - {name: shadow-reviewer, writes: false, shadow: true, cap: "0.40", model: litellm_proxy/claude-haiku-5-5, harness: {dind: false}}
 
 # ploegd's routing and roster as a FILE (rendered to a ConfigMap, mounted at
 # /etc/ploeg/ploeg.yaml). Empty = the legacy PLOEG_TARGET_MAP / PLOEG_TEAM_MAP /

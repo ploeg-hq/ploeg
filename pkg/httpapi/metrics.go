@@ -96,6 +96,18 @@ func sortedRunOutcomes(m map[store.RunOutcomeKey]int) []store.RunOutcomeKey {
 	return keys
 }
 
+func sortedShadowReviews(m map[store.ShadowReviewKey]int) []store.ShadowReviewKey {
+	keys := make([]store.ShadowReviewKey, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	slices.SortFunc(keys, func(a, b store.ShadowReviewKey) int {
+		return cmp.Or(cmp.Compare(a.Team, b.Team), cmp.Compare(a.Role, b.Role),
+			cmp.Compare(a.Primary, b.Primary), cmp.Compare(a.Shadow, b.Shadow))
+	})
+	return keys
+}
+
 func renderMetrics(m store.OperationalMetrics, webhooks *WebhookCoverage) []byte {
 	var b metricWriter
 
@@ -149,6 +161,10 @@ func renderMetrics(m store.OperationalMetrics, webhooks *WebhookCoverage) []byte
 	b.family("ploeg_runs_without_observed_delivery_last_day", "gauge", "Runs finished in the last day whose report carried no delivery record from the worker (legacy) or one that did not match the Run (mismatch).")
 	for _, source := range sortedKeys(m.RunsWithoutObservedDeliveryLastDay) {
 		b.sample("ploeg_runs_without_observed_delivery_last_day", float64(m.RunsWithoutObservedDeliveryLastDay[source]), "source", source)
+	}
+	b.family("ploeg_shadow_reviews_total", "counter", "Finished shadow Runs (ADR-0094), by team, shadow Role, the verdict the Round's acting readers gave (primary) and the shadow's own verdict (shadow); each verdict is approve, request_changes or none.")
+	for _, k := range sortedShadowReviews(m.ShadowReviews) {
+		b.sample("ploeg_shadow_reviews_total", float64(m.ShadowReviews[k]), "team", k.Team, "role", k.Role, "primary", k.Primary, "shadow", k.Shadow)
 	}
 	b.family("ploeg_work_item_notes_unwritten", "gauge", "Work Item Notes the outbox has not yet written to the Tenant's notes graph.")
 	b.sample("ploeg_work_item_notes_unwritten", float64(m.UnwrittenNotes))

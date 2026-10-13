@@ -15,6 +15,11 @@ func readerAttemptsSpent(f store.FailedRun) bool {
 func (e *Engine) retryFailedReaders(ctx context.Context, si store.ShiftInfo, failed []store.FailedRun) (bool, error) {
 	var retry []store.Role
 	for _, f := range failed {
+		if f.Shadow {
+			e.Log.Info("a shadow Run failed; it is not retried and its review is recorded as missing (ADR-0094)",
+				"shift", si.ID, "round", si.Round, "role", f.Role)
+			continue
+		}
 		if readerAttemptsSpent(f) {
 			e.Log.Warn("a reading Run failed and its attempts are spent; its review is missing from this Round",
 				"shift", si.ID, "round", si.Round, "role", f.Role,
@@ -65,7 +70,7 @@ func missingReview(reports []store.RunReport) (absentReview, bool) {
 	}
 	reviewRound := 0
 	for _, r := range reports {
-		if !r.Writes && r.Round > lastWriterRound && r.Round > reviewRound {
+		if !r.Writes && !r.Shadow && r.Round > lastWriterRound && r.Round > reviewRound {
 			reviewRound = r.Round
 		}
 	}
@@ -76,7 +81,7 @@ func missingReview(reports []store.RunReport) (absentReview, bool) {
 	byRole := map[string]*absentReview{}
 	reviewed := map[string]bool{}
 	for _, r := range reports {
-		if r.Writes || r.Round != reviewRound {
+		if r.Writes || r.Shadow || r.Round != reviewRound {
 			continue
 		}
 		if _, seen := byRole[r.Role]; !seen {

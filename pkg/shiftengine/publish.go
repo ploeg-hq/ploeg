@@ -47,7 +47,7 @@ func (e *Engine) publishRound(ctx context.Context, si store.ShiftInfo, reports [
 	}
 	var pending []store.RunReport
 	for _, r := range reports {
-		if r.Round == round && strings.TrimSpace(r.Findings) != "" {
+		if r.Round == round && !r.Shadow && strings.TrimSpace(r.Findings) != "" {
 			pending = append(pending, r)
 		}
 	}

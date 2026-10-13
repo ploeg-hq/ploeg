@@ -192,6 +192,7 @@ type runLine struct {
 	Role          string       `json:"role"`
 	Round         int          `json:"round"`
 	Writes        bool         `json:"writes"`
+	Shadow        bool         `json:"shadow,omitempty" jsonschema:"a shadow Run's verdict and findings are recorded and never act (ADR-0094)"`
 	State         string       `json:"state"`
 	Outcome       string       `json:"outcome,omitempty"`
 	Verdict       string       `json:"verdict,omitempty"`
@@ -340,7 +341,7 @@ func (s *server) getWork(ctx context.Context, _ *mcp.CallToolRequest, in getIn) 
 }
 
 func run(r store.OperatorRun, full bool) runLine {
-	l := runLine{ID: r.ID, Role: r.Role, Round: r.Round, Writes: r.Writes, State: r.State, Verdict: r.Verdict,
+	l := runLine{ID: r.ID, Role: r.Role, Round: r.Round, Writes: r.Writes, Shadow: r.Shadow, State: r.State, Verdict: r.Verdict,
 		StuckReason: clip(r.StuckReason, 500), StartedAt: stamp(r.StartedAt), FinishedAt: stamp(r.FinishedAt),
 		AuthorizedUSD: cents(r.AuthorizedUSD), CostStatus: r.CostStatus, CostFinal: r.CostFinal, Links: nonNil(r.Links),
 		Untrusted: untrustedRun{Summary: clip(r.Summary, 600)}}
@@ -410,6 +411,7 @@ type runRow struct {
 	Team            string         `json:"team"`
 	Role            string         `json:"role"`
 	Round           int            `json:"round"`
+	Shadow          bool           `json:"shadow,omitempty" jsonschema:"a shadow Run's verdict is recorded and never acts (ADR-0094)"`
 	State           string         `json:"state"`
 	Outcome         string         `json:"outcome,omitempty"`
 	Verdict         string         `json:"verdict,omitempty"`
@@ -438,7 +440,7 @@ func (s *server) recentRuns(ctx context.Context, _ *mcp.CallToolRequest, in runs
 	}
 	out.Runs = make([]runRow, 0, len(page.Runs))
 	for _, r := range page.Runs {
-		row := runRow{ID: r.ID, WorkItemID: r.WorkItemID, Tracker: r.ExternalRef, Team: r.Team, Role: r.Role, Round: r.Round,
+		row := runRow{ID: r.ID, WorkItemID: r.WorkItemID, Tracker: r.ExternalRef, Team: r.Team, Role: r.Role, Round: r.Round, Shadow: r.Shadow,
 			State: r.State, Outcome: r.Outcome, Verdict: r.Verdict, FailureReason: clip(r.FailureReason, 300),
 			StartedAt: stamp(r.StartedAt), FinishedAt: stamp(r.FinishedAt), CostFinal: r.CostFinal, Models: []string{},
 			Untrusted: untrustedTitle{clip(r.WorkItemTitle, 300)}}

@@ -158,8 +158,12 @@ func runRow(r store.RunUsage) string {
 	if r.Writes {
 		writer = "yes"
 	}
+	role, v := r.Role, verdict(r.Verdict)
+	if r.Shadow {
+		role, v = r.Role+" (shadow)", "recorded, not shown"
+	}
 	return fmt.Sprintf("| %s | %d | %s | %s | %s | %s | %s | %s | %s | %s |\n",
-		r.Role, r.Round, writer, outcomeOrDash(r.Outcome), verdict(r.Verdict),
+		role, r.Round, writer, outcomeOrDash(r.Outcome), v,
 		runModels(r.Models), tokens, cost, duration(r.Duration), accountState(r))
 }
 

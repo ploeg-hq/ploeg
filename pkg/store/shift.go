@@ -37,6 +37,9 @@ type Role struct {
 	// Cap bounds what one Run of this Role may spend. The minted credential is
 	// min(Cap, poolRemaining), so a Run can never overrun the Shift ceiling.
 	Cap float64
+	// Shadow marks a reading Role whose verdict and findings are recorded and
+	// never act (ADR-0094).
+	Shadow bool
 }
 
 // OpenShift begins a Shift on a queued Work Item. The unique partial index
@@ -88,17 +91,9 @@ func (s *Store) OpenRound(ctx context.Context, shiftID int64, fromRound int, rol
 	if len(roles) == 0 {
 		return 0, errors.New("a round needs at least one role")
 	}
-	writers := 0
-	for _, r := range roles {
-		if r.Writes {
-			writers++
-		}
-	}
-	if writers > 0 && writers != len(roles) {
-		return 0, errors.New("a round is either readers or one writer, never both (ADR-0010)")
-	}
-	if writers > 1 {
-		return 0, errors.New("a round admits at most one writer (ADR-0010)")
+	writers, err := checkRoundRoles(roles)
+	if err != nil {
+		return 0, err
 	}
 
 	tx, err := s.pool.Begin(ctx)
@@ -127,9 +122,9 @@ func (s *Store) OpenRound(ctx context.Context, shiftID int64, fromRound int, rol
 			return 0, err
 		}
 		if _, err := tx.Exec(ctx, `
-			INSERT INTO agent_runs (work_item_id, shift_id, team, role, round, writes, state, run_token, started_at)
-			VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7, NULL)`,
-			workItemID, shiftID, team, r.Name, round, r.Writes, token); err != nil {
+			INSERT INTO agent_runs (work_item_id, shift_id, team, role, round, writes, shadow, state, run_token, started_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8, NULL)`,
+			workItemID, shiftID, team, r.Name, round, r.Writes, r.Shadow, token); err != nil {
 			return 0, err
 		}
 	}
@@ -143,6 +138,28 @@ func (s *Store) OpenRound(ctx context.Context, shiftID int64, fromRound int, rol
 		return 0, err
 	}
 	return round, tx.Commit(ctx)
+}
+
+// checkRoundRoles enforces the Round shape both OpenRound and ReopenRound
+// rely on: readers or one writer (ADR-0010), and a shadow only as a reader
+// (ADR-0094). It returns the number of writers.
+func checkRoundRoles(roles []Role) (int, error) {
+	writers := 0
+	for _, r := range roles {
+		if r.Writes {
+			writers++
+		}
+		if r.Writes && r.Shadow {
+			return 0, errors.New("a shadow Role only reads (ADR-0094)")
+		}
+	}
+	if writers > 0 && writers != len(roles) {
+		return 0, errors.New("a round is either readers or one writer, never both (ADR-0010)")
+	}
+	if writers > 1 {
+		return 0, errors.New("a round admits at most one writer (ADR-0010)")
+	}
+	return writers, nil
 }
 
 func roleNames(roles []Role) []string {
@@ -167,6 +184,7 @@ const MaxRunAttempts = 3
 type FailedRun struct {
 	Role          string
 	Writes        bool
+	Shadow        bool
 	Attempts      int
 	InfraAttempts int
 }
@@ -187,7 +205,7 @@ func (f FailedRun) AgentAttempts() int { return f.Attempts - f.InfraAttempts }
 // succeeded on a later attempt and there is nothing to retry.
 func (s *Store) FailedRunsInRound(ctx context.Context, shiftID int64, round int) ([]FailedRun, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT role, bool_or(writes), count(*),
+		SELECT role, bool_or(writes), bool_or(shadow), count(*),
 		       count(*) FILTER (WHERE failure_reason = ANY($3))
 		FROM agent_runs
 		WHERE shift_id = $1 AND round = $2
@@ -202,7 +220,7 @@ func (s *Store) FailedRunsInRound(ctx context.Context, shiftID int64, round int)
 	var out []FailedRun
 	for rows.Next() {
 		var f FailedRun
-		if err := rows.Scan(&f.Role, &f.Writes, &f.Attempts, &f.InfraAttempts); err != nil {
+		if err := rows.Scan(&f.Role, &f.Writes, &f.Shadow, &f.Attempts, &f.InfraAttempts); err != nil {
 			return nil, err
 		}
 		out = append(out, f)
@@ -230,17 +248,8 @@ func (s *Store) ReopenRound(ctx context.Context, shiftID int64, round int, roles
 	if len(roles) == 0 {
 		return 0, errors.New("reopening a round needs at least one role")
 	}
-	writers := 0
-	for _, r := range roles {
-		if r.Writes {
-			writers++
-		}
-	}
-	if writers > 0 && writers != len(roles) {
-		return 0, errors.New("a round is either readers or one writer, never both (ADR-0010)")
-	}
-	if writers > 1 {
-		return 0, errors.New("a round admits at most one writer (ADR-0010)")
+	if _, err := checkRoundRoles(roles); err != nil {
+		return 0, err
 	}
 
 	tx, err := s.pool.Begin(ctx)
@@ -292,9 +301,9 @@ func (s *Store) ReopenRound(ctx context.Context, shiftID int64, round int, roles
 			return 0, err
 		}
 		if _, err := tx.Exec(ctx, `
-			INSERT INTO agent_runs (work_item_id, shift_id, team, role, round, writes, state, run_token, started_at)
-			VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7, NULL)`,
-			workItemID, shiftID, team, r.Name, round, r.Writes, token); err != nil {
+			INSERT INTO agent_runs (work_item_id, shift_id, team, role, round, writes, shadow, state, run_token, started_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8, NULL)`,
+			workItemID, shiftID, team, r.Name, round, r.Writes, r.Shadow, token); err != nil {
 			return 0, err
 		}
 	}
@@ -807,9 +816,13 @@ func closeShiftTx(ctx context.Context, tx pgx.Tx, shiftID int64, reason string) 
 // what, in which Round. Serves both consumers ADR-0011 names — the PR comment
 // and the next Round's prompt.
 type RunReport struct {
-	Role     string
-	Round    int
-	Writes   bool
+	Role   string
+	Round  int
+	Writes bool
+	// Shadow is a reading Run whose verdict and findings are recorded and
+	// never act (ADR-0094). Every rule that reads a report for what to do
+	// next skips it.
+	Shadow   bool
 	Outcome  string // empty for a cancelled Run that never ran
 	Summary  string
 	Findings string
@@ -854,7 +867,7 @@ func (s *Store) RoundReports(ctx context.Context, shiftID int64) ([]RunReport, e
 	return collectRunReports(rows)
 }
 
-const runReportColumns = `role, round, writes, COALESCE(outcome, ''), summary, findings, links, verdict, verification,
+const runReportColumns = `role, round, writes, shadow, COALESCE(outcome, ''), summary, findings, links, verdict, verification,
 		       COALESCE(failure_reason, ''), COALESCE(evidence_version, 0), delivery`
 
 func collectRunReports(rows pgx.Rows) ([]RunReport, error) {
@@ -863,7 +876,7 @@ func collectRunReports(rows pgx.Rows) ([]RunReport, error) {
 	for rows.Next() {
 		var r RunReport
 		var verification, delivery []byte
-		if err := rows.Scan(&r.Role, &r.Round, &r.Writes, &r.Outcome, &r.Summary, &r.Findings, &r.Links, &r.Verdict, &verification,
+		if err := rows.Scan(&r.Role, &r.Round, &r.Writes, &r.Shadow, &r.Outcome, &r.Summary, &r.Findings, &r.Links, &r.Verdict, &verification,
 			&r.FailureReason, &r.EvidenceVersion, &delivery); err != nil {
 			return nil, err
 		}
