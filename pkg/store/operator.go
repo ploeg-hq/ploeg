@@ -21,7 +21,7 @@ var ErrOperatorNotFound = errors.New("operator resource not found")
 type OperatorFilter struct {
 	Teams      []string
 	Team       string
-	State      string
+	States     []string
 	NeedsHuman bool
 	After      int64
 	Before     int64
@@ -470,11 +470,17 @@ func (s *Store) OperatorItems(ctx context.Context, f OperatorFilter) ([]Operator
 	if err := validateOperatorFilter(f); err != nil {
 		return nil, false, err
 	}
+	cursor, order := `i.id > $5`, `i.id`
+	position := f.After
+	if f.Desc {
+		cursor, order = `($5::bigint = 0 OR i.id < $5)`, `i.id DESC`
+		position = f.Before
+	}
 	rows, err := s.pool.Query(ctx, `SELECT `+operatorItemJSON+` FROM work_items i
 		WHERE ($1::text[] IS NULL OR i.team = ANY($1)) AND ($2 = '' OR i.team = $2)
-		AND ($3 = '' OR i.state = $3) AND (NOT $4 OR i.state = 'needs_human') AND i.id > $5
+		AND (cardinality($3::text[]) = 0 OR i.state = ANY($3)) AND (NOT $4 OR i.state = 'needs_human') AND `+cursor+`
 		AND ($7 = '' OR (i.provider = $7 AND i.external_id = $8))
-		ORDER BY i.id LIMIT $6`, f.Teams, f.Team, f.State, f.NeedsHuman, f.After, f.Limit+1, f.Provider, f.ExternalID)
+		ORDER BY `+order+` LIMIT $6`, f.Teams, f.Team, operatorStates(f.States), f.NeedsHuman, position, f.Limit+1, f.Provider, f.ExternalID)
 	if err != nil {
 		return nil, false, err
 	}
@@ -579,6 +585,13 @@ func (s *Store) OperatorEvents(ctx context.Context, f OperatorFilter) ([]Operato
 		return nil, false, err
 	}
 	return operatorPage(events, f.Limit)
+}
+
+func operatorStates(states []string) []string {
+	if states == nil {
+		return []string{}
+	}
+	return states
 }
 
 func validateOperatorFilter(f OperatorFilter) error {

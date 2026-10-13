@@ -119,6 +119,24 @@ func TestOperatorPaginationAndUnknownCost(t *testing.T) {
 	if err != nil || more || len(second) != 1 {
 		t.Fatalf("second page %+v %v %v", second, more, err)
 	}
+	newest, more, err := testStore.OperatorItems(ctx, OperatorFilter{Desc: true, Limit: 2})
+	if err != nil || !more || len(newest) != 2 || newest[0].ID != second[0].ID || newest[1].ID != first[1].ID {
+		t.Fatalf("newest page %+v %v %v", newest, more, err)
+	}
+	before, _ := OperatorCursor(newest[1].ID)
+	oldest, more, err := testStore.OperatorItems(ctx, OperatorFilter{Desc: true, Before: before, Limit: 2})
+	if err != nil || more || len(oldest) != 1 || oldest[0].ID != first[0].ID {
+		t.Fatalf("page before %+v %v %v", oldest, more, err)
+	}
+	if _, _, err := testStore.OperatorItems(ctx, OperatorFilter{Desc: true, After: after, Limit: 2}); err == nil {
+		t.Fatal("descending page with an ascending cursor accepted")
+	}
+	if items, _, err := testStore.OperatorItems(ctx, OperatorFilter{States: []string{"done", "withdrawn"}, Limit: 5}); err != nil || len(items) != 0 {
+		t.Fatalf("closed states: %+v %v", items, err)
+	}
+	if items, _, err := testStore.OperatorItems(ctx, OperatorFilter{States: []string{"done", "queued"}, Limit: 5}); err != nil || len(items) != 3 {
+		t.Fatalf("state list: %+v %v", items, err)
+	}
 	if items, _, err := testStore.OperatorItems(ctx, OperatorFilter{Teams: []string{}, Limit: 2}); err != nil || len(items) != 0 {
 		t.Fatalf("empty scope: %+v %v", items, err)
 	}
