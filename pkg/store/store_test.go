@@ -188,7 +188,7 @@ func TestIngestAssigned_RevivesFinishedStates(t *testing.T) {
 // A live item must NOT be disturbed by a concurrent webhook: no double
 // dispatch, no attempt-budget reset — only the mirror refreshes.
 func TestIngestAssigned_LeavesLiveStatesAlone(t *testing.T) {
-	for _, prior := range []string{"queued", "leased"} {
+	for _, prior := range []string{"queued", "active"} {
 		t.Run(prior, func(t *testing.T) {
 			resetTables(t)
 			id, _ := ingestItem(t)
@@ -202,7 +202,7 @@ func TestIngestAssigned_LeavesLiveStatesAlone(t *testing.T) {
 				t.Fatalf("row = (%s, %d), want (%s, 2)", got, attempts, prior)
 			}
 			wantAction := "work_item.queued" // still queued = still truthful
-			if prior == "leased" {
+			if prior == "active" {
 				wantAction = "work_item.refreshed"
 			}
 			if action := lastAuditAction(t, id); action != wantAction {
@@ -469,16 +469,16 @@ func TestIngestAssigned_RecordsScopeWithoutTarget(t *testing.T) {
 // R12: a re-assignment must not move the repo under a running clone — the
 // worker has already cloned, and a silently re-targeted review round would
 // orphan its own branch and PR. The re-target lands on the NEXT dispatch.
-func TestIngestAssigned_NeverRetargetsLeasedItem(t *testing.T) {
+func TestIngestAssigned_NeverRetargetsActiveItem(t *testing.T) {
 	resetTables(t)
 	id, _ := ingestTargeted(t, "11", "webgrip", "ploeg", "11/silver")
-	forceItemState(t, id, "leased", 1)
+	forceItemState(t, id, "active", 1)
 
 	ingestTargeted(t, "11", "webgrip", "erfbeeld", "11/bronze")
 
 	_, owner, repo, rule := itemTarget(t, id)
 	if owner != "webgrip" || repo != "ploeg" || rule != "11/silver" {
-		t.Fatalf("leased item was re-targeted to %s/%s (%s) — R12 violated", owner, repo, rule)
+		t.Fatalf("active item was re-targeted to %s/%s (%s) — R12 violated", owner, repo, rule)
 	}
 }
 

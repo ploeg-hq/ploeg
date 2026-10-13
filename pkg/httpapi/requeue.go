@@ -109,14 +109,12 @@ func requeueCommand(w http.ResponseWriter, body requeueBody) (store.RequeueComma
 		}
 	}
 	if body.ExpectedState != nil {
-		switch work.State(*body.ExpectedState) {
-		case work.StateIngested, work.StateProposed, work.StateQueued, work.StateLeased, work.StateNeedsHuman,
-			work.StateAwaitingReview, work.StateStale, work.StateDone, work.StateWithdrawn:
-		default:
+		expected, ok := work.ParseState(*body.ExpectedState)
+		if !ok {
 			operatorError(w, 400, "invalid_requeue", "expectedState is not a Work Item state.")
 			return cmd, false
 		}
-		cmd.ExpectedState = *body.ExpectedState
+		cmd.ExpectedState = string(expected)
 	}
 	return cmd, true
 }

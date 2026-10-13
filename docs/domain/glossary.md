@@ -67,6 +67,14 @@ A customer inside a Tenant that owns some of its tracker sources and repositorie
 
 **See also:** [Tenant](#tenant), [Work Item](#work-item), [Knowledge Scope](#knowledge-scope)  
 
+## Cost Status
+*Context: Execution*
+
+How far a cost has settled, one value set for every cost Ploeg reports. observed is spend seen so far that can still move; provisional is a cost settled once and still inside its correction window; settled is final; unknown means Ploeg has no trustworthy figure, which is never zero. A place that cannot reach a value says which subset it uses.
+
+**Examples:** observed; provisional; settled; unknown  
+**See also:** [Run](#run), [Ask](#ask), [Inference Account](#inference-account), [Hold](#hold)  
+
 ## Delivery Candidate
 *Context: Dispatch*
 
@@ -124,12 +132,21 @@ The thin wrapper that makes one Harness satisfy the harness contract: accept a T
 
 **See also:** [Harness](#harness), [Task Spec](#task-spec), [Outcome Report](#outcome-report)  
 
+## Hold
+*Context: Dispatch*
+
+Budget kept back against a Shift pool or an Ask Allowance for work that started and has not settled. A Run's Hold starts at what it was authorized and ends when its spend settles. A Hold is derived from the Runs, never stored as a counter. The verb and adjective are "held". Authorized names only the ceiling a budget allows a Run to spend; the Hold is how much of it is still kept back.
+
+**Also known as:** held budget  
+**Do not use:** reservation, reserved (for money), authorization (for money kept back)  
+**See also:** [Shift](#shift), [Run](#run), [Ask Allowance](#ask-allowance), [Inference Account](#inference-account), [Cost Status](#cost-status)  
+
 ## Inference Account
 *Context: Execution*
 
-The durable authorization and accounting record for a Run's scoped inference capability. Uncertain issuance, blocking, expiry and observed spend retain unresolved authorization until trusted final evidence reconciles it. An observed debit is not settlement.
+The durable authorization and accounting record for a Run's scoped inference capability. Uncertain issuance, blocking, expiry and observed spend keep its Hold until trusted final evidence reconciles it. An observed debit is not settlement.
 
-**See also:** [Run](#run), [Operator Execution](#operator-execution)  
+**See also:** [Run](#run), [Operator Execution](#operator-execution), [Hold](#hold), [Cost Status](#cost-status)  
 
 ## Knowledge Scope
 *Context: Dispatch*
@@ -183,6 +200,14 @@ The output contract of an Agent Container: Outcome, summary, links, and optional
 
 **See also:** [Task Spec](#task-spec), [Outcome](#outcome), [Verdict](#verdict)  
 
+## Plan
+*Context: Dispatch*
+
+A Team's configured order of work for a Shift: the budget pool, the ordered Rounds and the Roles in each with their writes flag and per-Run cap, and the bound on fix Rounds. Configuration read at boot, never state. Each Run records a hash of the Plan it was claimed under. A Team without a Plan follows the single-writer path.
+
+**Do not use:** pipeline, workflow  
+**See also:** [Team](#team), [Round](#round), [Role](#role), [Shift](#shift)  
+
 ## Promotion
 *Context: Dispatch*
 
@@ -220,7 +245,7 @@ A named specialist function within a Team (implementer, reviewer, tester), bound
 A set of Runs within a Shift that start together. Runs in one Round never observe each other — they receive the same injected state and their findings land afterwards; every later Round sees everything from every earlier one. A Round is either a fan-out of reading Runs or exactly one writing Run, never both, and that rule is the whole of the concurrency control.
 
 **Do not use:** turn, iteration  
-**See also:** [Shift](#shift), [Run](#run)  
+**See also:** [Shift](#shift), [Run](#run), [Plan](#plan)  
 
 ## Routing Rule
 *Context: Dispatch*
@@ -359,6 +384,16 @@ Do not use these names as terms.
 
 The attempt it named is a Shift, and one Role's part of it is a Run. A second name for a Shift would make every execution statement ambiguous. The word remains a bounded-context name and part of Operator Execution.
 
+### Leased
+*Use instead: [Work Item](#work-item)*
+
+The Work Item state in which a Team works the item is active. It was called leased after the Lease it used to imply, but a Work Item in it has a Shift and may hold no Lease, since a Round of readers takes none (ADR-0093). Lease still names the right to write a Shift's branch.
+
+### Reservation
+*Use instead: [Hold](#hold)*
+
+Money kept back for unsettled work is a Hold, and the API says held. The inference account state reserved names a lifecycle step, not money.
+
 ---
 
 ## Example dialogues
@@ -402,13 +437,6 @@ Successful checks, another agent's review and a person's approval are different 
 
 **Options:** Choose the condition for each task, Always require a person's approval, Let the agent finish when its checks pass  
 **Recommendation:** Choose the condition for each task so research, coding and other work can use appropriate checks and approval.  
-
-### the "leased" Work Item state
-
-The Work Item state enum calls the working state `leased`, named for the Lease it used to imply. After ADR-0010 a Work Item in that state has a Shift, and may have no Lease at all — a Round of readers takes none. The state name now describes the wrong thing.
-
-**Options:** Keep `leased` and accept the vocabulary drift, Rename to `active`, Rename to `in_shift`  
-**Recommendation:** Decide with the implementing change, not before. The rename touches the state enum, an applied migration, both contract schemas and the KEDA scaler query, so it is a real cost to weigh against a name that is merely imprecise. `active` reads best if it goes ahead.  
 
 ### when a Shift closes
 

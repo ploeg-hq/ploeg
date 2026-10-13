@@ -42,7 +42,7 @@ func createWorkItems(ctx context.Context, tx pgx.Tx, runID, sourceID int64, team
 	var open int
 	if err := tx.QueryRow(ctx, `
 		SELECT count(*) FROM work_items wi JOIN agent_runs r ON r.id = wi.source_run_id
-		WHERE r.team = $1 AND wi.state IN ('proposed', 'queued', 'leased')`, team).Scan(&open); err != nil {
+		WHERE r.team = $1 AND wi.state IN ('proposed', 'queued', 'active')`, team).Scan(&open); err != nil {
 		return nil, err
 	}
 	var allotted float64

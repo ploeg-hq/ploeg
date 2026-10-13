@@ -123,7 +123,8 @@
         "team": { "type": "string" },
         "state": {
           "type": "string",
-          "enum": ["ingested", "proposed", "queued", "leased", "needs_human", "awaiting_review", "stale", "done", "withdrawn"]
+          "enum": ["ingested", "proposed", "queued", "active", "leased", "needs_human", "awaiting_review", "stale", "done", "withdrawn"],
+          "description": "active means a Team is working the item (ADR-0093). leased is its retired name, which ploegd no longer sends; it stays in the enum until the deprecated forms are removed."
         },
         "origin": { "type": "string", "enum": ["assignment", "follow_up"] },
         "priority": { "type": "integer" },

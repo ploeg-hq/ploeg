@@ -62,7 +62,7 @@ func fullTaskSpec() TaskSpec {
 	return TaskSpec{
 		WorkItem: work.WorkItem{
 			ID: "42", Provider: "vikunja", ExternalID: "596", Revision: "7",
-			Team: "silver", State: work.StateLeased, Origin: work.OriginAssignment,
+			Team: "silver", State: work.StateActive, Origin: work.OriginAssignment,
 			Priority: 3, Title: "fix the thing", Description: "<p>details</p>",
 			URL: "https://vikunja.example/tasks/596", CreatedAt: now, UpdatedAt: now,
 			ExternalScope: "11",

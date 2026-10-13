@@ -350,12 +350,12 @@ func TestOperationalMetricsReportOldestClaimableQueuedWorkItem(t *testing.T) {
 		t.Fatalf("oldest queued after backoff = %v, want about 10m", age)
 	}
 
-	mustExec(t, `UPDATE work_items SET state = 'leased' WHERE id = $1`, itemID)
+	mustExec(t, `UPDATE work_items SET state = 'active' WHERE id = $1`, itemID)
 	if m, err = testStore.OperationalMetrics(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if len(m.OldestQueuedSeconds) != 0 {
-		t.Fatalf("a leased item counted as queued: %+v", m.OldestQueuedSeconds)
+		t.Fatalf("an active item counted as queued: %+v", m.OldestQueuedSeconds)
 	}
 }
 

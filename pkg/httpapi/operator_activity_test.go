@@ -134,7 +134,7 @@ func TestOperatorActivityMatchesPublishedSchemaAndScope(t *testing.T) {
 			t.Fatalf("summary%s runs: %v", window, runs)
 		}
 		spend := body["totals"].(map[string]any)["spend"].(map[string]any)
-		if spend["settledUsd"] != 0.5 || spend["reservedUsd"] != 0.0 {
+		if spend["settledUsd"] != 0.5 || spend["heldUsd"] != 0.0 || spend["reservedUsd"] != spend["heldUsd"] {
 			t.Fatalf("summary%s spend: %v", window, spend)
 		}
 		if at, err := time.Parse(time.RFC3339, body["generatedAt"].(string)); err != nil || at.Location() != time.UTC {

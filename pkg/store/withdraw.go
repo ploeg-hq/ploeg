@@ -240,7 +240,7 @@ func (s *Store) WithdrawWorkItemGuarded(ctx context.Context, workItemID int64, t
 	}
 	live := out.ShiftID != 0
 	switch out.State {
-	case work.StateIngested, work.StateQueued, work.StateLeased:
+	case work.StateIngested, work.StateQueued, work.StateActive:
 		live = true
 	}
 	if !live {

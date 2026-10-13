@@ -238,8 +238,8 @@ func TestShiftRunReportLeavesTheItemAlone(t *testing.T) {
 	if res.ShiftID == nil || *res.ShiftID != shiftID {
 		t.Errorf("result shift = %v, want %d", res.ShiftID, shiftID)
 	}
-	if state, _ := itemStateAttempts(t, itemID); state != "leased" {
-		t.Errorf("item state = %q after a shift run's report, want untouched 'leased' — the engine owns the transition", state)
+	if state, _ := itemStateAttempts(t, itemID); state != "active" {
+		t.Errorf("item state = %q after a shift run's report, want untouched 'active' — the engine owns the transition", state)
 	}
 }
 
@@ -302,8 +302,8 @@ func TestExpireLeasesSkipsShiftLeases(t *testing.T) {
 	if len(exp) != 0 {
 		t.Fatalf("ExpireLeases processed a shift lease — the item would bounce to queued mid-shift")
 	}
-	if state, _ := itemStateAttempts(t, itemID); state != "leased" {
-		t.Errorf("item state = %q after legacy sweep, want leased (untouched)", state)
+	if state, _ := itemStateAttempts(t, itemID); state != "active" {
+		t.Errorf("item state = %q after legacy sweep, want active (untouched)", state)
 	}
 
 	// The run sweep owns it: reclaims the run AND drops the lease.

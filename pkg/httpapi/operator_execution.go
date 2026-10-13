@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/ploeg-hq/ploeg/pkg/store"
+	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
 const operatorExecutionTTL = 90 * time.Second
@@ -277,11 +278,11 @@ func (s *Server) handleExecutionSpend(w http.ResponseWriter, r *http.Request) {
 	if s.LLMControl != nil {
 		spend, err := s.LLMControl.Spend(r.Context(), e.RunToken)
 		if err == nil {
-			operatorJSON(w, 200, map[string]any{"schemaVersion": "1.0", "costStatus": "observed", "observedUsd": spend, "capabilityState": capabilityState})
+			operatorJSON(w, 200, map[string]any{"schemaVersion": "1.0", "costStatus": work.CostObserved, "observedUsd": spend, "capabilityState": capabilityState})
 			return
 		}
 	}
-	operatorJSON(w, 200, map[string]any{"schemaVersion": "1.0", "costStatus": "unknown", "observedUsd": nil, "capabilityState": capabilityState})
+	operatorJSON(w, 200, map[string]any{"schemaVersion": "1.0", "costStatus": work.CostUnknown, "observedUsd": nil, "capabilityState": capabilityState})
 }
 
 func executionError(w http.ResponseWriter, err error) {

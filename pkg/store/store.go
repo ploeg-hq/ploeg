@@ -174,7 +174,7 @@ func audit(ctx context.Context, tx pgx.Tx, actor, action string, workItemID *int
 }
 
 // IngestAssigned mirrors a tracker item and queues it for a team: upsert on
-// (provider, external id). Re-assignment of a live item (queued/leased) only
+// (provider, external id). Re-assignment of a live item (queued/active) only
 // refreshes the mirror; re-assignment of a finished item (done, stale,
 // needs_human, awaiting_review, withdrawn) is a fresh human mandate — it re-queues the item and resets
 // the attempt budget (VIK-588). The returned state is the item's actual
@@ -210,12 +210,12 @@ func (s *Store) IngestAssigned(ctx context.Context, item work.WorkItem) (int64, 
 			-- Never re-target a live run: the worker has already cloned, and a
 			-- review round that silently moved repo would orphan its own branch
 			-- and PR (R12). A re-target takes effect on the NEXT dispatch.
-			target_forge       = CASE WHEN work_items.operator_owned OR work_items.state = 'leased' THEN work_items.target_forge       ELSE EXCLUDED.target_forge       END,
-			target_owner       = CASE WHEN work_items.operator_owned OR work_items.state = 'leased' THEN work_items.target_owner       ELSE EXCLUDED.target_owner       END,
-			target_repo        = CASE WHEN work_items.operator_owned OR work_items.state = 'leased' THEN work_items.target_repo        ELSE EXCLUDED.target_repo        END,
-			target_base_branch = CASE WHEN work_items.operator_owned OR work_items.state = 'leased' THEN work_items.target_base_branch ELSE EXCLUDED.target_base_branch END,
-			route_rule         = CASE WHEN work_items.operator_owned OR work_items.state = 'leased' THEN work_items.route_rule         ELSE EXCLUDED.route_rule         END,
-			route_hint         = CASE WHEN work_items.operator_owned OR work_items.state = 'leased' THEN work_items.route_hint         ELSE EXCLUDED.route_hint         END,
+			target_forge       = CASE WHEN work_items.operator_owned OR work_items.state = 'active' THEN work_items.target_forge       ELSE EXCLUDED.target_forge       END,
+			target_owner       = CASE WHEN work_items.operator_owned OR work_items.state = 'active' THEN work_items.target_owner       ELSE EXCLUDED.target_owner       END,
+			target_repo        = CASE WHEN work_items.operator_owned OR work_items.state = 'active' THEN work_items.target_repo        ELSE EXCLUDED.target_repo        END,
+			target_base_branch = CASE WHEN work_items.operator_owned OR work_items.state = 'active' THEN work_items.target_base_branch ELSE EXCLUDED.target_base_branch END,
+			route_rule         = CASE WHEN work_items.operator_owned OR work_items.state = 'active' THEN work_items.route_rule         ELSE EXCLUDED.route_rule         END,
+			route_hint         = CASE WHEN work_items.operator_owned OR work_items.state = 'active' THEN work_items.route_hint         ELSE EXCLUDED.route_hint         END,
 			next_eligible_at  = CASE WHEN work_items.operator_owned THEN work_items.next_eligible_at ELSE NULL END,
 			updated_at = now()
 		RETURNING id, state`,
@@ -313,7 +313,7 @@ const nextClaimableQuery = `
 // maxRunning > 0 it returns ErrNoWork while the team already has maxRunning
 // running Runs, exactly as if the queue were empty; 0 means unlimited.
 //
-// A Work Item with a live Shift is never leased here: its Runs are claimed
+// A Work Item with a live Shift is never claimed here: its Runs are claimed
 // through ClaimRoleWithin, against the Shift's pool.
 func (s *Store) ClaimWithin(ctx context.Context, team string, ttl time.Duration, maxRunning int) (*Claimed, error) {
 	token, err := newToken()
@@ -336,7 +336,7 @@ func (s *Store) ClaimWithin(ctx context.Context, team string, ttl time.Duration,
 	var id int64
 	var t work.Target
 	err = tx.QueryRow(ctx, `
-		UPDATE work_items SET state = 'leased', attempts = attempts + 1, updated_at = now()
+		UPDATE work_items SET state = 'active', attempts = attempts + 1, updated_at = now()
 		WHERE id = (`+nextClaimableQuery+`)
 		RETURNING id, provider, external_id, revision, team, origin, priority, title, description, url,
 			external_scope, target_forge, target_owner, target_repo, target_base_branch, route_rule, route_hint,
@@ -351,7 +351,7 @@ func (s *Store) ClaimWithin(ctx context.Context, team string, ttl time.Duration,
 		return nil, err
 	}
 	it.ID = fmt.Sprint(id)
-	it.State = work.StateLeased
+	it.State = work.StateActive
 	if t.Resolved() {
 		it.Target = &t
 	}
@@ -941,7 +941,7 @@ func (s *Store) ExpireLeases(ctx context.Context) ([]ExpiredLease, error) {
 				END)
 			    END,
 			    updated_at = now()
-			WHERE id = $1 AND state = 'leased'
+			WHERE id = $1 AND state = 'active'
 			RETURNING state, infra_failures`,
 			e.WorkItemID, MaxInfraFailures).Scan(&newState, &e.InfraFailures); err != nil {
 			return nil, err

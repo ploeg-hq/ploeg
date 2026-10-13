@@ -12,7 +12,7 @@ These runbooks cover the recurring operator tasks for a cluster deployment of Pl
 
 | Runbook | Use it when |
 | --- | --- |
-| [Recover a stuck Lease or Run](recover-a-stuck-lease-or-run.md) | A Work Item stays `leased`, a Run stays `running` or `pending`, or a new writer cannot start |
+| [Recover a stuck Lease or Run](recover-a-stuck-lease-or-run.md) | A Work Item stays `active` (before ADR-0093, `leased`), a Run stays `running` or `pending`, or a new writer cannot start |
 | [Rotate credentials](rotate-credentials.md) | You replace the LiteLLM master key, a forge token, a worker bootstrap token or the worker signing key |
 | [Drain workers before maintenance](drain-workers.md) | You need a quiet Ploeg before an upgrade, a gateway change or database work |
 | [Investigate a Run's spend](investigate-a-runs-spend.md) | A Shift's budget looks wrong, a hold is not released, or you need to prove what a Run cost |

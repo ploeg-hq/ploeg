@@ -96,7 +96,7 @@ func adoptOperatorSource(ctx context.Context, tx pgx.Tx, input AdmitOperatorExec
 	if _, err := tx.Exec(ctx, `UPDATE shifts SET closed_at=now(),close_reason='operator_adopted' WHERE work_item_id=$1 AND closed_at IS NULL`, id); err != nil {
 		return 0, err
 	}
-	_, err = tx.Exec(ctx, `UPDATE work_items SET state='leased',operator_owned=true,updated_at=now() WHERE id=$1`, id)
+	_, err = tx.Exec(ctx, `UPDATE work_items SET state='active',operator_owned=true,updated_at=now() WHERE id=$1`, id)
 	return id, err
 }
 

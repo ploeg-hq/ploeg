@@ -151,7 +151,7 @@ func TestUniform_FailedRequeuesAndRespectsTheAttemptCap(t *testing.T) {
 	}
 
 	// Past the threshold it stales rather than looping forever.
-	forceItemState(t, id, "leased", store.MaxAttempts)
+	forceItemState(t, id, "active", store.MaxAttempts)
 	if _, err := testStore.SettleItem(ctx, id, work.StateQueued, "retry"); err != nil {
 		t.Fatal(err)
 	}

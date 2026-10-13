@@ -12,9 +12,11 @@ const (
 	StateIngested State = "ingested"
 	// StateProposed holds a Work Item a Run created until a person approves
 	// or rejects it. It is never claimable.
-	StateProposed       State = "proposed"
-	StateQueued         State = "queued"
-	StateLeased         State = "leased"
+	StateProposed State = "proposed"
+	StateQueued   State = "queued"
+	// StateActive means a Team is working the Work Item: it has a live Shift
+	// or, on the single-writer path, a Lease (ADR-0093).
+	StateActive         State = "active"
 	StateNeedsHuman     State = "needs_human"
 	StateAwaitingReview State = "awaiting_review"
 	StateStale          State = "stale"
@@ -24,6 +26,50 @@ const (
 	// re-queues it.
 	StateWithdrawn State = "withdrawn"
 )
+
+// RetiredStateLeased is the name StateActive had before ADR-0093. Ploeg no
+// longer writes or emits it; ParseState still accepts it from requests until
+// the deprecation window closes.
+const RetiredStateLeased = "leased"
+
+// States lists every Work Item state in lifecycle order.
+var States = []State{StateIngested, StateProposed, StateQueued, StateActive, StateNeedsHuman,
+	StateAwaitingReview, StateStale, StateDone, StateWithdrawn}
+
+// ParseState returns the Work Item state a request names. It accepts the
+// retired "leased" as StateActive (ADR-0093).
+func ParseState(s string) (State, bool) {
+	if s == RetiredStateLeased {
+		return StateActive, true
+	}
+	for _, state := range States {
+		if string(state) == s {
+			return state, true
+		}
+	}
+	return "", false
+}
+
+// CostStatus says how far a cost has settled. It is the one value set every
+// cost Ploeg reports draws from (ADR-0093); a place that cannot reach a value
+// documents the subset it uses.
+type CostStatus string
+
+const (
+	// CostObserved is spend seen so far that can still move: the Run or Ask
+	// is live, or its account has not settled.
+	CostObserved CostStatus = "observed"
+	// CostProvisional is a cost settled once and still inside its correction
+	// window, so a late gateway charge may raise it.
+	CostProvisional CostStatus = "provisional"
+	// CostSettled is final.
+	CostSettled CostStatus = "settled"
+	// CostUnknown means Ploeg has no trustworthy figure, which is not zero.
+	CostUnknown CostStatus = "unknown"
+)
+
+// CostStatuses lists every Cost Status from least to most settled, unknown last.
+var CostStatuses = []CostStatus{CostObserved, CostProvisional, CostSettled, CostUnknown}
 
 // Origin records whether a WorkItem came from the tracker (assignment) or
 // from other work as a follow-up: a forge event (R9) or a Run that created it

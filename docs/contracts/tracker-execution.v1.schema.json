@@ -153,13 +153,15 @@
             "ingested",
             "proposed",
             "queued",
+            "active",
             "leased",
             "needs_human",
             "awaiting_review",
             "stale",
             "done",
             "withdrawn"
-          ]
+          ],
+          "description": "The Work Item's lifecycle position. active means a Team is working it (ADR-0093). leased is the retired name of active: Ploeg no longer emits it since ADR-0093 and keeps it in this enum only so a consumer's validation of older payloads holds; the state filter still accepts it as active until the deprecated forms are removed."
         },
         "title": {
           "type": "string"
@@ -283,8 +285,14 @@
         "spentUsd": {
           "type": "number"
         },
+        "heldUsd": {
+          "type": "number",
+          "description": "The Hold: budget the Shift's unsettled Runs still hold against its pool (ADR-0012, ADR-0093). Always present since ADR-0093; an older Ploeg sends only reservedUsd."
+        },
         "reservedUsd": {
-          "type": "number"
+          "type": "number",
+          "deprecated": true,
+          "description": "Deprecated alias of heldUsd, always equal to it (ADR-0093). It is removed from v1 once the deprecation window closes; read heldUsd."
         },
         "openedAt": {
           "type": "string",

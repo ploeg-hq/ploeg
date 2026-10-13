@@ -16,6 +16,7 @@ import (
 	"github.com/ploeg-hq/ploeg/pkg/litellm"
 	"github.com/ploeg-hq/ploeg/pkg/llmbroker"
 	"github.com/ploeg-hq/ploeg/pkg/store"
+	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
 type LLMPolicy struct {
@@ -338,7 +339,7 @@ func (s *Server) RegisterLLMControl(mux *http.ServeMux) {
 			llmControlError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"costUsd": spend, "status": "provisional"})
+		writeJSON(w, http.StatusOK, map[string]any{"costUsd": spend, "status": work.CostObserved})
 	})
 }
 

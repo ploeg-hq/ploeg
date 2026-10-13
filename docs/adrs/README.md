@@ -167,6 +167,7 @@ fails otherwise.
 | [0090](0090-a-runs-agent-session-is-kept-as-a-bounded-redacted-transcript.md) | A Run's agent session is kept as a bounded, redacted transcript | proposed | 2026-10-11 |
 | [0091](0091-each-run-records-the-model-harness-plan-and-ploegd-version-it-was-configured-with.md) | Each Run records the model, harness, plan and ploegd version it was configured with | proposed | 2026-10-11 |
 | [0092](0092-a-team-pins-its-skills-in-a-catalogue-that-ploegd-fetches-once-and-serves-by-digest.md) | A Team pins its skills in a catalogue that ploegd fetches once and serves by digest | proposed | 2026-10-13 |
+| [0093](0093-the-working-state-is-active-and-budget-kept-back-is-a-hold.md) | The working state is active, budget kept back is a Hold, and every cost has one Cost Status | accepted | 2026-10-13 |
 
 ## Review calendar
 

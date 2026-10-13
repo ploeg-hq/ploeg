@@ -14,7 +14,7 @@ import (
 // OperatorWorkItemCounts counts a Team's Work Items by their current state.
 type OperatorWorkItemCounts struct {
 	Queued         int64 `json:"queued"`
-	Leased         int64 `json:"leased"`
+	Active         int64 `json:"active"`
 	AwaitingReview int64 `json:"awaitingReview"`
 	NeedsHuman     int64 `json:"needsHuman"`
 	Proposed       int64 `json:"proposed"`
@@ -33,11 +33,11 @@ type OperatorRunCounts struct {
 	Stuck    int64 `json:"stuck"`
 }
 
-// OperatorSpend is spend settled inside the summary window and the budget
-// currently held by live or unresolved Runs, both in USD.
+// OperatorSpend is spend settled inside the summary window and the Holds of
+// live or unresolved Runs, both in USD.
 type OperatorSpend struct {
-	SettledUSD  float64 `json:"settledUsd"`
-	ReservedUSD float64 `json:"reservedUsd"`
+	SettledUSD float64 `json:"settledUsd"`
+	HeldUSD    float64 `json:"heldUsd"`
 }
 
 // OperatorSummaryTotals is the sum of every Team summary in scope.
@@ -196,7 +196,7 @@ func (s *Store) OperatorRuns(ctx context.Context, f OperatorRunFilter) ([]Operat
 }
 
 // OperatorSummary summarises every Team in scope that has a Work Item or is
-// registered. Work Item counts, pending and running Runs, and reserved spend
+// registered. Work Item counts, pending and running Runs, and held budget
 // are current; finished Runs and settled spend count from since onwards.
 func (s *Store) OperatorSummary(ctx context.Context, teams []string, registered map[string][]string, since time.Time) ([]OperatorTeamSummary, error) {
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
@@ -239,8 +239,8 @@ func (s *Store) OperatorSummary(ctx context.Context, teams []string, registered 
 		switch state {
 		case "queued":
 			c.Queued = n
-		case "leased":
-			c.Leased = n
+		case string(work.StateActive):
+			c.Active = n
 		case "awaiting_review":
 			c.AwaitingReview = n
 		case "needs_human":
@@ -332,7 +332,7 @@ func (s *Store) OperatorSummary(ctx context.Context, teams []string, registered 
 		if err := rows.Scan(&team, &v); err != nil {
 			return err
 		}
-		ensure(team).Spend.ReservedUSD = v
+		ensure(team).Spend.HeldUSD = v
 		return nil
 	}); err != nil {
 		return nil, err
@@ -354,7 +354,7 @@ func OperatorSummaryTotal(teams []OperatorTeamSummary) OperatorSummaryTotals {
 	for _, s := range teams {
 		w := s.WorkItems
 		t.WorkItems.Queued += w.Queued
-		t.WorkItems.Leased += w.Leased
+		t.WorkItems.Active += w.Active
 		t.WorkItems.AwaitingReview += w.AwaitingReview
 		t.WorkItems.NeedsHuman += w.NeedsHuman
 		t.WorkItems.Proposed += w.Proposed
@@ -367,7 +367,7 @@ func OperatorSummaryTotal(teams []OperatorTeamSummary) OperatorSummaryTotals {
 		t.Runs.Failed += s.Runs.Failed
 		t.Runs.Stuck += s.Runs.Stuck
 		t.Spend.SettledUSD += s.Spend.SettledUSD
-		t.Spend.ReservedUSD += s.Spend.ReservedUSD
+		t.Spend.HeldUSD += s.Spend.HeldUSD
 	}
 	return t
 }

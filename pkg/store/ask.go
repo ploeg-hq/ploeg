@@ -53,14 +53,15 @@ type Allowance struct {
 	AskCount     int64     `json:"askCount"`
 }
 
-// AskSpend is what an Ask has cost so far. CostStatus is provisional until
-// its account settles, settled after, and unknown when the settlement found
-// no spend-log entries. KeyState is the inference account's state, or none
-// when no account was reserved.
+// AskSpend is what an Ask has cost so far. CostStatus is observed while its
+// account is unsettled, provisional inside the settlement's correction
+// window, settled after, and unknown before any spend was observed or when
+// the settlement found no spend-log entries (ADR-0093). KeyState is the
+// inference account's state, or none when no account was reserved.
 type AskSpend struct {
-	CostStatus string   `json:"costStatus"`
-	USD        *float64 `json:"usd"`
-	KeyState   string   `json:"keyState"`
+	CostStatus work.CostStatus `json:"costStatus"`
+	USD        *float64        `json:"usd"`
+	KeyState   string          `json:"keyState"`
 }
 
 // Ask is a read-only Run about a Work Item, outside any Shift (ADR-0082).
@@ -135,13 +136,15 @@ func scanAsk(row pgx.Row) (Ask, error) {
 	}
 	switch {
 	case a.Spend.KeyState == "reconciled" && !known:
-		a.Spend.CostStatus, a.Spend.USD = "unknown", reconciled
+		a.Spend.CostStatus, a.Spend.USD = work.CostUnknown, reconciled
 	case a.Spend.KeyState == "reconciled" && !correcting:
-		a.Spend.CostStatus, a.Spend.USD = "settled", reconciled
+		a.Spend.CostStatus, a.Spend.USD = work.CostSettled, reconciled
 	case a.Spend.KeyState == "reconciled":
-		a.Spend.CostStatus, a.Spend.USD = "provisional", reconciled
+		a.Spend.CostStatus, a.Spend.USD = work.CostProvisional, reconciled
+	case observed == nil:
+		a.Spend.CostStatus = work.CostUnknown
 	default:
-		a.Spend.CostStatus, a.Spend.USD = "provisional", observed
+		a.Spend.CostStatus, a.Spend.USD = work.CostObserved, observed
 	}
 	return a, nil
 }

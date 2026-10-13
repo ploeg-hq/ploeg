@@ -117,6 +117,30 @@ change either side and the test tells you.
   (`transcriptResponse`): entries in `seq` order, `nextAfter` to pass as the
   next `after`, `hasMore`, `truncated` once the Run reached 5,000 entries or
   2 MiB, and `complete` once the Run ended. An older Ploeg answers 404.
+- Since [ADR-0093](../adrs/0093-the-working-state-is-active-and-budget-kept-back-is-a-hold.md)
+  the working Work Item state is `active`, budget kept back for started work
+  is a Hold, and every cost status draws from one Cost Status value set. This
+  is a second named exception to the frozen v1, made in two steps. **This
+  release:** responses report `active` where they reported `leased`, and add
+  `heldUsd` beside `reservedUsd` (Shift, summary spend, facts
+  `runBudgetHolds`, and the tracker-execution Shift) and `active` beside
+  `leased` (summary counts); the old fields stay, equal to the new ones and
+  marked `deprecated` in the schema. The `state` filter and requeue's
+  `expectedState` accept `leased` as `active`. `$defs/costStatus` is the one
+  value set (`observed`, `provisional`, `settled`, `unknown`): Run detail now
+  reports `provisional` and `settled` where it said `observed`, and an Ask
+  reports `observed` while its account is unsettled where it said
+  `provisional`, and `unknown` before any spend was observed. A consumer
+  must read `active` and all four Cost Status values before it runs against
+  this release, because those values change at once. **The removal
+  release** is a later release, never this one, cut once the operator
+  consumers in use read only the new forms. It removes `reservedUsd` and the
+  `leased` count from v1, makes `heldUsd` and `active` required, drops
+  `leased` from the state enums and answers 400 to it as input; it is a
+  `feat!` with a `BREAKING CHANGE:` footer and its own record. Until then a
+  consumer may read either name, and must have moved off `reservedUsd`, the
+  `leased` count and sending `leased` before it upgrades to the removal
+  release.
 - `deploy-api.v1` is the body of a pipeline's deploy report. It refuses
   unknown fields, unlike the response contracts, so a misspelled field fails
   the pipeline step instead of being dropped.
@@ -208,7 +232,8 @@ it, returns 400.
 
 `/summary?window=24h|7d|30d` (default `7d`) reports, per team in scope and in
 total, current Work Item counts by state, current pending and running Runs and
-reserved budget, and the Runs finished and spend settled inside the window.
+the budget held for them (`heldUsd`, the Hold), and the Runs finished and spend
+settled inside the window.
 Settled spend is the sum of gateway reconciliation deltas plus the reported
 cost of Runs without a gateway account. `lastActivityAt` is the team's latest
 bound audit event. Teams appear when they have a Work Item or are registered.
@@ -226,8 +251,10 @@ carry `settledAt` (the account's first settlement), `costFinalAt` (the end of
 its correction window, or `settledAt` when it has none) and `costFinal`. A
 settled cost with `costFinal: false` is provisional: the controller still
 reads the gateway's spend logs again and may raise it. A Run without a
-gateway account has `costFinal: true` once it has finished. Summary and Run
-list timestamps are UTC.
+gateway account has `costFinal: true` once it has finished. Run detail's
+`costStatus` says the same in one value: `observed` while the cost can still
+move, `provisional` inside the correction window, `settled` once final and
+`unknown` without a figure. Summary and Run list timestamps are UTC.
 
 Every Run shape (Run list, Run detail, Work Item detail and facts) carries
 what the Run was configured with when ploegd claimed or admitted it

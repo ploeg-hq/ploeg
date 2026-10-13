@@ -8,7 +8,7 @@ verified_by: "Read pkg/store/{store,shift,operator_execution}.go (Claim, ClaimRo
 
 # Recover a stuck Lease or Run
 
-**Symptom:** a Work Item stays `leased` long after its worker pod is gone, a Run stays `running` or `pending` for hours, or a writing Run in a new Round never starts.
+**Symptom:** a Work Item stays `active` (called `leased` before [ADR-0093](../adrs/0093-the-working-state-is-active-and-budget-kept-back-is-a-hold.md)) long after its worker pod is gone, a Run stays `running` or `pending` for hours, or a writing Run in a new Round never starts.
 
 **Goal:** get every Run to a finished state through Ploeg's own sweeper, so the Lease is dropped, the gateway key is blocked, the push credential is revoked and the Work Item moves on. Edit rows by hand only where this page says to.
 
@@ -85,10 +85,10 @@ SELECT l.work_item_id, l.shift_id, r.id AS run_id, r.state AS run_state
 FROM leases l LEFT JOIN agent_runs r USING (run_token)
 WHERE l.shift_id IS NOT NULL AND (r.id IS NULL OR r.state <> 'running');
 
--- A Work Item marked leased with no Lease, no live Run and no live Shift.
+-- A Work Item marked active with no Lease, no live Run and no live Shift.
 SELECT w.id, w.team, w.updated_at
 FROM work_items w
-WHERE w.state = 'leased' AND NOT w.operator_owned
+WHERE w.state = 'active' AND NOT w.operator_owned
   AND w.updated_at < now() - interval '10 minutes'
   AND NOT EXISTS (SELECT 1 FROM leases l WHERE l.work_item_id = w.id)
   AND NOT EXISTS (SELECT 1 FROM agent_runs r
@@ -181,18 +181,18 @@ COMMIT;
 
 The push credential minted with that Lease is no longer live in the database. The forge orphan sweep, every 15 minutes, revokes it.
 
-### A Work Item left `leased` with nothing running
+### A Work Item left `active` with nothing running
 
-The second inconsistency query found an item that no sweep re-queues. Re-assigning it in the tracker does not help: ingest refreshes a `leased` item without re-queuing it. **Not implemented yet:** there is no re-queue command. Re-queue it in SQL:
+The second inconsistency query found an item that no sweep re-queues. Re-assigning it in the tracker does not help: ingest refreshes an `active` item without re-queuing it. **Not implemented yet:** there is no re-queue command. Re-queue it in SQL:
 
 ```sql
 SET default_transaction_read_only = off;
 BEGIN;
 UPDATE work_items SET state = 'queued', next_eligible_at = NULL, updated_at = now()
-WHERE id = :item AND state = 'leased' AND NOT operator_owned;
+WHERE id = :item AND state = 'active' AND NOT operator_owned;
 INSERT INTO audit_log (actor, action, work_item_id, detail)
 VALUES ('operator:<your name>', 'work_item.requeued_manually', :item,
-        '{"reason": "leased with no lease and no live run"}');
+        '{"reason": "active with no lease and no live run"}');
 COMMIT;
 ```
 
@@ -229,5 +229,5 @@ These are end states, not stuck states. `stale` means the attempt or infrastruct
 | Runs `pending`, no worker pods | No workload for the Role, KEDA scaler error, or workers paused | Align the plan in values, fix scaler credentials, or resume workers |
 | Runs `pending`, log `claim refused: shift budget exhausted` | Pool spent or held by unsettled accounts | [Investigate a Run's spend](investigate-a-runs-spend.md) |
 | Next writer never starts; a Shift Lease exists for a finished Run | Orphan Shift Lease | Delete it in SQL (not implemented as a command yet) |
-| Item `leased`, nothing running, no live Shift | Orphan item state | Re-queue it in SQL (not implemented as a command yet) |
+| Item `active`, nothing running, no live Shift | Orphan item state | Re-queue it in SQL (not implemented as a command yet) |
 | Item `stale` or `needs_human` | Retry cap, `stuck` report, plan end or budget | Fix the cause, re-assign in the tracker |

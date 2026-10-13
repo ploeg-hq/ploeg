@@ -9,7 +9,7 @@ description: >
   This vocabulary includes intended domain rules; it is not a database or API
   field inventory. The architecture and published contracts identify current
   implementation limits.
-version: 0.6.1
+version: 0.7.0
 contexts:
   - name: Dispatch
     description: >
@@ -78,10 +78,34 @@ terms:
     definition: >
       The durable authorization and accounting record for a Run's scoped
       inference capability. Uncertain issuance, blocking, expiry and observed
-      spend retain unresolved authorization until trusted final evidence
-      reconciles it. An observed debit is not settlement.
+      spend keep its Hold until trusted final evidence reconciles it. An
+      observed debit is not settlement.
     context: Execution
-    see_also: [Run, Operator Execution]
+    see_also: [Run, Operator Execution, Hold, Cost Status]
+
+  - name: Hold
+    definition: >
+      Budget kept back against a Shift pool or an Ask Allowance for work that
+      started and has not settled. A Run's Hold starts at what it was
+      authorized and ends when its spend settles. A Hold is derived from the
+      Runs, never stored as a counter. The verb and adjective are "held".
+      Authorized names only the ceiling a budget allows a Run to spend; the
+      Hold is how much of it is still kept back.
+    context: Dispatch
+    synonyms: [held budget]
+    avoid: [reservation, reserved (for money), authorization (for money kept back)]
+    see_also: [Shift, Run, Ask Allowance, Inference Account, Cost Status]
+
+  - name: Cost Status
+    definition: >
+      How far a cost has settled, one value set for every cost Ploeg reports.
+      observed is spend seen so far that can still move; provisional is a cost
+      settled once and still inside its correction window; settled is final;
+      unknown means Ploeg has no trustworthy figure, which is never zero. A
+      place that cannot reach a value says which subset it uses.
+    context: Execution
+    examples: ["observed", "provisional", "settled", "unknown"]
+    see_also: [Run, Ask, Inference Account, Hold]
 
   - name: Ask
     definition: >
@@ -239,7 +263,18 @@ terms:
       control.
     context: Dispatch
     avoid: [turn, iteration]
-    see_also: [Shift, Run]
+    see_also: [Shift, Run, Plan]
+
+  - name: Plan
+    definition: >
+      A Team's configured order of work for a Shift: the budget pool, the
+      ordered Rounds and the Roles in each with their writes flag and per-Run
+      cap, and the bound on fix Rounds. Configuration read at boot, never
+      state. Each Run records a hash of the Plan it was claimed under. A Team
+      without a Plan follows the single-writer path.
+    context: Dispatch
+    avoid: [pipeline, workflow]
+    see_also: [Team, Round, Role, Shift]
 
   - name: Team
     definition: >
@@ -503,6 +538,20 @@ retired_terms:
       The attempt it named is a Shift, and one Role's part of it is a Run. A
       second name for a Shift would make every execution statement ambiguous.
       The word remains a bounded-context name and part of Operator Execution.
+  - name: Leased
+    context: Dispatch
+    use: [Work Item]
+    because: >
+      The Work Item state in which a Team works the item is active. It was
+      called leased after the Lease it used to imply, but a Work Item in it has
+      a Shift and may hold no Lease, since a Round of readers takes none
+      (ADR-0093). Lease still names the right to write a Shift's branch.
+  - name: Reservation
+    context: Dispatch
+    use: [Hold]
+    because: >
+      Money kept back for unsettled work is a Hold, and the API says held. The
+      inference account state reserved names a lifecycle step, not money.
 
 entities:
   - name: Operator Execution
@@ -581,8 +630,8 @@ entities:
         type: string
         description: Id of the Routing Rule that decided team and target; recorded for audit.
       - name: state
-        type: "enum(ingested, proposed, queued, leased, needs_human, awaiting_review, stale, done, withdrawn)"
-        description: Dispatch lifecycle position. proposed means a Run created the item and it waits for a person to approve or reject it; no Team can claim it. awaiting_review means Ploeg's work succeeded and its pull request is ready for human review. withdrawn means a person took the mandate back by unassigning the Tracker Item or cancelling it through the operator API.
+        type: "enum(ingested, proposed, queued, active, needs_human, awaiting_review, stale, done, withdrawn)"
+        description: Dispatch lifecycle position. active means a Team is working the item through a live Shift. proposed means a Run created the item and it waits for a person to approve or reject it; no Team can claim it. awaiting_review means Ploeg's work succeeded and its pull request is ready for human review. withdrawn means a person took the mandate back by unassigning the Tracker Item or cancelling it through the operator API.
         required: true
       - name: origin
         type: "enum(assignment, follow_up, operator)"
@@ -614,21 +663,21 @@ entities:
         to: queued
         trigger: Assignment matches a Routing Rule, resolving a Team and a Work Target
       - from: queued
-        to: leased
-        trigger: Team claims the item, acquiring a Lease
-      - from: leased
+        to: active
+        trigger: A Team claims the item and its Shift opens
+      - from: active
         to: queued
         trigger: Lease expired or Run failed, retries remaining
-      - from: leased
+      - from: active
         to: stale
         trigger: Lease expired repeatedly without an Outcome (threshold reached)
-      - from: leased
+      - from: active
         to: needs_human
         trigger: stuck Outcome reported (mandatory reason)
-      - from: leased
+      - from: active
         to: done
         trigger: Terminal Outcome reported (issue_updated, follow_up_created, no_change_needed)
-      - from: leased
+      - from: active
         to: awaiting_review
         trigger: A pull request was opened or updated and the Shift closed successfully
       - from: awaiting_review
@@ -646,7 +695,7 @@ entities:
       - from: queued
         to: withdrawn
         trigger: Tracker Item unassigned or cancelled by an operator; the live Shift closes
-      - from: leased
+      - from: active
         to: withdrawn
         trigger: Tracker Item unassigned or cancelled by an operator; running Runs are stopped
       - from: withdrawn
@@ -719,7 +768,7 @@ entities:
         required: true
       - name: spent
         type: decimal
-        description: Settled spend across every Run in this Shift. Reserved is NOT stored — it is summed over running Runs, so it cannot drift (ADR-0012).
+        description: Settled spend across every Run in this Shift. The Hold is NOT stored — it is summed over unsettled Runs, so it cannot drift (ADR-0012).
         required: true
     relationships:
       - to: Work Item
@@ -750,7 +799,7 @@ entities:
         required: true
       - name: expires_at
         type: timestamp
-        description: Expiry revokes the push credential and releases the Run's budget authorization in the same sweep.
+        description: Expiry revokes the push credential and ends the Run; its Hold is released when its spend settles (ADR-0012, ADR-0048).
         required: true
       - name: renewed_at
         type: timestamp
@@ -791,7 +840,7 @@ entities:
         description: A Round materialises its Runs as pending rows; pending rows are also the scale signal.
       - name: authorized
         type: decimal
-        description: The budget hold, summed over running Runs to give the Shift's reserved figure (ADR-0012).
+        description: The ceiling this Run may spend, min(role cap, pool remaining). While the Run is unsettled it is held against the Shift pool, and the sum over its Runs is the Shift's Hold (ADR-0012).
       - name: expires_at
         type: timestamp
         description: This Run's own liveness deadline. Not the Lease's — a reader has no Lease to expire.
@@ -1006,7 +1055,7 @@ rules:
     applies_to: [Operator Execution, Run]
     context: Dispatch
   - id: R15
-    statement: Management credentials stay in the control plane. Inference Account authorization remains held across uncertain issuance, expiry and blocking until trusted final accounting reconciles it.
+    statement: Management credentials stay in the control plane. An Inference Account's Hold remains across uncertain issuance, expiry and blocking until trusted final accounting reconciles it.
     rationale: A crashed executor cannot authorize unrelated work or make unresolved paid work appear free.
     applies_to: [Inference Account, Run, Executor]
     context: Execution
@@ -1017,8 +1066,8 @@ rules:
     context: Dispatch
 
   - id: R2
-    statement: A Lease must be renewed on a fixed interval by the running Run. Tracker execution expiry enters the configured recovery policy; Operator Execution expiry interrupts work and preserves pending stop intent and unresolved Inference Account authorization.
-    rationale: Controller recovery must work when an executor dies without cleanup, while preserving the applicable lane's stop intent and accounting holds.
+    statement: A Lease must be renewed on a fixed interval by the running Run. Tracker execution expiry enters the configured recovery policy; Operator Execution expiry interrupts work and preserves pending stop intent and the Inference Account's unresolved Hold.
+    rationale: Controller recovery must work when an executor dies without cleanup, while preserving the applicable lane's stop intent and Holds.
     applies_to: [Lease, Run]
     context: Dispatch
 
@@ -1126,14 +1175,14 @@ events:
     triggers: Access through that token is removed. Lease expiry alone cannot establish this event, and a shared static token cannot provide per-Run revocation.
 
   - name: BudgetAuthorized
-    description: A Run reserved min(roleCap, poolRemaining) against its Shift before spawning.
+    description: A Run was authorized min(roleCap, poolRemaining), and that amount is held against its Shift before it spawns.
     entity: Shift
-    triggers: Managed credential issuance may proceed after the durable reservation. Reservation, external key creation and confirmation have separate states; uncertainty retains the hold.
+    triggers: Managed credential issuance may proceed once the Hold is durable. The Hold, external key creation and confirmation have separate states; uncertainty retains the Hold.
 
   - name: BudgetSettled
-    description: Accounting finalized a Run's spend and released the corresponding reservation. A managed Run's outcome report alone does not settle its inference account.
+    description: Accounting finalized a Run's spend and released its Hold. A managed Run's outcome report alone does not settle its inference account.
     entity: Shift
-    triggers: Unused allowance becomes available only after settlement; missing or uncertain accounting retains a conservative hold.
+    triggers: Unused allowance becomes available only after settlement; missing or uncertain accounting retains a conservative Hold.
 
   - name: LeaseExpired
     description: A Lease TTL lapsed without renewal.
@@ -1164,23 +1213,6 @@ ambiguities:
       - Let the agent finish when its checks pass
     recommendation: Choose the condition for each task so research, coding and other work can use appropriate checks and approval.
     status: open
-  - phrase: the "leased" Work Item state
-    issue: >
-      The Work Item state enum calls the working state `leased`, named for the
-      Lease it used to imply. After ADR-0010 a Work Item in that state has a
-      Shift, and may have no Lease at all — a Round of readers takes none. The
-      state name now describes the wrong thing.
-    options:
-      - Keep `leased` and accept the vocabulary drift
-      - Rename to `active`
-      - Rename to `in_shift`
-    recommendation: >
-      Decide with the implementing change, not before. The rename touches the
-      state enum, an applied migration, both contract schemas and the KEDA
-      scaler query, so it is a real cost to weigh against a name that is merely
-      imprecise. `active` reads best if it goes ahead.
-    status: open
-
   - phrase: when a Shift closes
     issue: >
       ADR-0010 introduces the Shift but leaves its terminal rule to the
