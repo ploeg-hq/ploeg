@@ -5,9 +5,10 @@ A Run can execute as a Claude Code session in a Team's self-hosted environment (
 How a Run travels:
 
 1. A worker with the `claude-environment` harness dispatches the session with `claude -p … --environment <ccpool_…>` and records it on `POST /api/v1/runs/{token}/claude-session`. Claude is told to commit, not push, and to end with the Run's outcome JSON.
-2. `claude-home/hooks/save-final-message` is a Claude Code Stop hook. It keeps the last final message in the checkout's git directory.
-3. `post-session` is the runner's lifecycle hook. After the session ends it exchanges the session's token at `POST /api/v1/claude-sessions/forge-credential` for a push credential scoped to the Run, pushes the session's `HEAD` to the Run's Shift branch from a clean temporary repository so git config written by the session never sees the token, opens the pull request through the Forgejo API if none is open, and reports the end, the commit, the pull request and the final message on `POST /api/v1/claude-sessions/report`. A reading Run, a finished Run or a lapsed Lease gets no credential; the hook then pushes nothing and only reports.
-4. The worker polls `GET /api/v1/runs/{token}/claude-session` until the report arrives, reads the outcome from the final message and continues as for any harness: it reads the pull request, verifies the pushed commit and scans it for leaked credentials.
+2. `checkout` is the runner's checkout hook. The runner's own clone is anonymous and cannot reach a private repository, so the hook exchanges the session's token at `POST /api/v1/claude-sessions/forge-credential`, retrying until the worker has recorded the session, and clones the Run's repository at the session's ref into the checkout path. The token reaches git only through `GIT_ASKPASS`; the checkout's origin is the plain HTTPS remote. A reading Run gets no credential, so it cannot run against a private repository yet.
+3. `claude-home/hooks/save-final-message` is a Claude Code Stop hook. It keeps the last final message in the checkout's git directory.
+4. `post-session` is the runner's lifecycle hook. After the session ends it exchanges the session's token at `POST /api/v1/claude-sessions/forge-credential` for a push credential scoped to the Run, pushes the session's `HEAD` to the Run's Shift branch from a clean temporary repository so git config written by the session never sees the token, opens the pull request through the Forgejo API if none is open, and reports the end, the commit, the pull request and the final message on `POST /api/v1/claude-sessions/report`. A reading Run, a finished Run or a lapsed Lease gets no credential; the hook then pushes nothing and only reports.
+5. The worker polls `GET /api/v1/runs/{token}/claude-session` until the report arrives, reads the outcome from the final message and continues as for any harness: it reads the pull request, verifies the pushed commit and scans it for leaked credentials.
 
 ## Runner settings
 
@@ -15,13 +16,13 @@ How a Run travels:
 | --- | --- |
 | `--hooks-dir` pointing at a read-only copy of this directory | The session must not be able to change the hook. |
 | `claude-home/` copied to the runner user's `~/.claude/` before the runner starts | The runner seeds every session from it, which installs the Stop hook. |
-| `PLOEG_URL` in the runner's environment | Where the hook exchanges the session token. |
+| `PLOEG_URL` in the runner's environment | Where the hooks exchange the session token. |
 | `--capacity 1` | One session per container, so nothing the hook handles outlives its session. |
 | `--release-idle-session-min 1` | Otherwise a finished session holds its slot for 15 minutes before the hook runs. |
 | `--git-host-rewrite <ssh host>=<https host>` | When the forge's SSH and HTTPS hosts differ; the runner clones over HTTPS. |
 | Never `--use-anthropic-git-proxy` | It serves github.com only. |
 
-Each release publishes `ghcr.io/ploeg-hq/claude-runner:<version>` from [Dockerfile](Dockerfile): Claude Code pinned by version and checksum, `git`, `curl`, `jq`, `post-session` in `/opt/ploeg/claude-runner/hooks` (root-owned, so a session cannot change it) and `claude-home/` as the `runner` user's `~/.claude`. Run the runner with `--hooks-dir /opt/ploeg/claude-runner/hooks`. The same image serves as the dispatching worker's `harness.image`. ploegd needs `PLOEG_CLAUDE_ENVIRONMENTS=true`, per-run push credentials (`PLOEG_FORGEJO_BOT_PASSWORD`) and `PLOEG_FORGEJO_URL`; see [the configuration reference](../../docs/reference/configuration.md).
+Each release publishes `ghcr.io/ploeg-hq/claude-runner:<version>` from [Dockerfile](Dockerfile): Claude Code pinned by version and checksum, `git`, `curl`, `jq`, `checkout` and `post-session` in `/opt/ploeg/claude-runner/hooks` (root-owned, so a session cannot change them) and `claude-home/` as the `runner` user's `~/.claude`. Run the runner with `--hooks-dir /opt/ploeg/claude-runner/hooks`. The same image serves as the dispatching worker's `harness.image`. ploegd needs `PLOEG_CLAUDE_ENVIRONMENTS=true`, per-run push credentials (`PLOEG_FORGEJO_BOT_PASSWORD`) and `PLOEG_FORGEJO_URL`; see [the configuration reference](../../docs/reference/configuration.md).
 
 The worker needs `claude` and `git` in its agent image, and a Team member's login. `claude setup-token` does not grant session control, and Anthropic caps the login that does at 30 days, so a person renews it. Two ways to give it to the worker:
 
