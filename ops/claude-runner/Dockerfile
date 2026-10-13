@@ -16,7 +16,7 @@ RUN git config --system user.name "Claude" \
  && git config --system user.email "noreply@anthropic.com" \
  && git config --system --add safe.directory '*'
 
-COPY --chmod=0755 ops/claude-runner/post-session /opt/ploeg/claude-runner/hooks/post-session
+COPY --chmod=0755 ops/claude-runner/checkout ops/claude-runner/post-session /opt/ploeg/claude-runner/hooks/
 RUN useradd --create-home --uid 1000 runner
 COPY --chown=runner:runner ops/claude-runner/claude-home/ /home/runner/.claude/
 RUN chmod 0755 /home/runner/.claude/hooks/save-final-message

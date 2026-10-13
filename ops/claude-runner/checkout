@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# Runner checkout hook for Runs executed in a self-hosted Claude environment
+# (ADR-0084). Install it in the runner's --hooks-dir, read-only, next to
+# post-session.
+#
+# The runner's own clone is anonymous, so it cannot reach a private
+# repository. This hook exchanges the session token for the Run's credential,
+# clones the Run's repository at the session's ref into the checkout path, and
+# leaves no credential in the checkout: the token reaches git only through
+# GIT_ASKPASS, and the origin it records is the plain HTTPS remote.
+#
+# The worker records the session only after the dispatch returns, so the hook
+# retries while ploegd does not know the session yet.
+#
+# Needs PLOEG_URL in the runner's environment, curl and jq.
+set -u -o pipefail
+
+log() { printf 'ploeg checkout: %s\n' "$*" >&2; }
+
+: "${PLOEG_URL:?PLOEG_URL is not set}"
+: "${CLAUDE_CODE_SESSION_ACCESS_TOKEN:?no session token}"
+: "${CLAUDE_RUNNER_CHECKOUT_PATH:?no checkout path}"
+attempts="${PLOEG_CHECKOUT_ATTEMPTS:-24}"
+wait_seconds="${PLOEG_CHECKOUT_WAIT_SECONDS:-5}"
+clean=$(mktemp -d)
+trap 'rm -rf "$clean"' EXIT
+printf 'Authorization: Bearer %s\n' "$CLAUDE_CODE_SESSION_ACCESS_TOKEN" >"$clean/session-auth"
+
+code=""
+for ((attempt = 1; attempt <= attempts; attempt++)); do
+  code=$(curl -sS --max-time 20 -o "$clean/response" -w '%{http_code}' -X POST -H @"$clean/session-auth" \
+    "${PLOEG_URL%/}/api/v1/claude-sessions/forge-credential") || code=""
+  case "$code" in
+    200) break ;;
+    404 | 503 | "") sleep "$wait_seconds" ;;
+    *) log "ploegd refused a credential for this session (HTTP $code)"; exit 1 ;;
+  esac
+done
+[ "$code" = 200 ] || { log "no running Run recorded this session"; exit 1; }
+
+remote=$(jq -re '.remote' "$clean/response") || exit 1
+base=$(jq -re '.baseBranch' "$clean/response") || exit 1
+case "$remote" in https://*.git) ;; *) log "refusing remote $remote"; exit 1 ;; esac
+export PLOEG_PUSH_USER PLOEG_PUSH_TOKEN
+PLOEG_PUSH_USER=$(jq -re '.username' "$clean/response") || exit 1
+PLOEG_PUSH_TOKEN=$(jq -re '.token' "$clean/response") || exit 1
+rm -f "$clean/response"
+cat >"$clean/askpass" <<'ASKPASS'
+#!/bin/sh
+case "$1" in Username*) printf '%s\n' "$PLOEG_PUSH_USER" ;; *) printf '%s\n' "$PLOEG_PUSH_TOKEN" ;; esac
+ASKPASS
+chmod 700 "$clean/askpass"
+
+ref="${CLAUDE_RUNNER_REPO_REF:-$base}"
+[ "${CLAUDE_RUNNER_REPO_URL%.git}" = "${remote%.git}" ] ||
+  log "the session names ${CLAUDE_RUNNER_REPO_URL:-no repository}; cloning the Run's $remote"
+
+GIT_CONFIG_GLOBAL=/dev/null GIT_TERMINAL_PROMPT=0 GIT_ALLOW_PROTOCOL=https GIT_ASKPASS="$clean/askpass" \
+  git -c credential.helper= clone -q --branch "$ref" "$remote" "$CLAUDE_RUNNER_CHECKOUT_PATH" ||
+  { log "clone of $remote at $ref failed"; exit 1; }
+log "cloned $remote at $ref"
