@@ -158,6 +158,8 @@ spec:
                 secretKeyRef:
                   name: ploeg-db-app
                   key: uri
+            - name: PLOEG_TEAM_HARNESSES
+              value: "{\"copper\":{\"\":{\"name\":\"exec\"}},\"silver\":{\"\":{\"name\":\"openhands\"}}}"
             - name: PLOEG_FORGEJO_URL
               value: "http://forgejo-http.forgejo.svc.cluster.local:3000"
             - name: PLOEG_FORGEJO_TOKEN

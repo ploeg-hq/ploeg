@@ -111,6 +111,8 @@ spec:
                   key: uri
             - name: PLOEG_TEAM_PLANS
               value: "{\"override\":{\"maxFixRounds\":0,\"pool\":\"2\",\"rounds\":[{\"roles\":[{\"cap\":\"0.50\",\"harness\":{\"credentialIsolation\":\"proxy\",\"name\":\"claude-code\"},\"name\":\"optin\",\"writes\":false}]},{\"roles\":[{\"cap\":\"1.00\",\"name\":\"builder\",\"writes\":true}]}]}}"
+            - name: PLOEG_TEAM_HARNESSES
+              value: "{\"acp-opencode\":{\"\":{\"name\":\"acp\",\"profile\":\"opencode\"}},\"acp-openhands\":{\"\":{\"name\":\"acp\",\"profile\":\"openhands\"}},\"dind\":{\"\":{\"name\":\"openhands\"}},\"override\":{\"builder\":{\"name\":\"openhands\"},\"optin\":{\"name\":\"claude-code\"}},\"qualified\":{\"\":{\"name\":\"openhands\"}},\"unqualified\":{\"\":{\"name\":\"claude-code\"}}}"
             - name: PLOEG_FORGEJO_URL
               value: "http://forgejo-http.forgejo.svc.cluster.local:3000"
             - name: PLOEG_FORGEJO_TOKEN

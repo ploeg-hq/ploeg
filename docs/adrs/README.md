@@ -171,7 +171,7 @@ fails otherwise.
 | [0094](0094-a-person-connects-a-teams-claude-login-from-unfold-and-the-teams-worker-signs-in.md) | A person connects a team's Claude login from Unfold, and the team's own worker signs in | proposed | 2026-10-13 |
 | [0095](0095-work-is-handed-to-ploeg-by-assigning-one-ploeg-user-and-a-team-label-picks-the-team.md) | Work is handed to Ploeg by assigning one Ploeg user, and a team label picks the team | proposed | 2026-10-13 |
 | [0096](0096-a-shadow-reader-records-its-verdict-and-never-acts.md) | A shadow reader records its verdict and never acts | proposed | 2026-10-13 |
-| [0097](0097-a-run-records-its-harness-version-and-the-teams-read-shows-each-roles-harness-and-model.md) | A Run records its Harness version, and the Teams read shows each Role's Harness and model | proposed | 2026-10-13 |
+| [0097](0097-a-run-records-its-harness-version-and-the-teams-read-shows-each-roles-harness-and-model.md) | A Run records its Harness version, and the Teams read shows each Role's Harness and model | accepted | 2026-10-13 |
 | [0098](0098-an-operator-admission-may-choose-each-runs-harness-from-its-teams-allowlist.md) | An operator admission may choose each Run's Harness from its Team's allowlist | proposed | 2026-10-13 |
 | [0099](0099-each-allowed-harness-runs-in-its-own-workload-and-the-claim-selects-on-it.md) | Each allowed Harness runs in its own workload, and the claim selects on it | proposed | 2026-10-13 |
 | [0100](0100-an-attended-run-relays-its-harnesss-requests-through-ploegd-and-falls-back-to-its-teams-policy.md) | An attended Run relays its Harness's requests through ploegd and falls back to its Team's policy | proposed | 2026-10-13 |

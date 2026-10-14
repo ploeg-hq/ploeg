@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 
+	"github.com/ploeg-hq/ploeg/pkg/harness"
 	"github.com/ploeg-hq/ploeg/pkg/store"
 )
 
@@ -16,6 +17,7 @@ type PlanHashes interface {
 type runHarness struct {
 	Name    string
 	Profile string
+	Version string
 }
 
 // recordRunConfig records what a Run was configured with when ploegd claimed
@@ -24,7 +26,7 @@ type runHarness struct {
 // the worker's claim. A failure leaves the fields unknown; it never stops
 // the Run.
 func (s *Server) recordRunConfig(ctx context.Context, runToken, team, role string, withPlan bool, h runHarness) {
-	c := store.RunConfig{Harness: h.Name, HarnessProfile: h.Profile, PloegdVersion: s.Version}
+	c := store.RunConfig{Harness: h.Name, HarnessProfile: h.Profile, HarnessVersion: h.Version, PloegdVersion: s.Version}
 	if s.LLMControl != nil {
 		if p, ok := s.LLMControl.Policy(team, role); ok && len(p.Models) == 1 {
 			c.ConfiguredModel = p.Models[0]
@@ -35,5 +37,26 @@ func (s *Server) recordRunConfig(ctx context.Context, runToken, team, role strin
 	}
 	if err := s.Store.RecordRunConfig(ctx, runToken, c); err != nil && s.Log != nil {
 		s.Log.Warn("run configuration not recorded; it stays unknown", "team", team, "role", role, "err", err)
+	}
+}
+
+func (s *Server) recordReportedHarness(ctx context.Context, runToken string, h *harness.RunHarness) {
+	if h == nil {
+		return
+	}
+	c := store.RunConfig{Harness: h.Name, HarnessProfile: h.Profile, HarnessVersion: h.Version}
+	if h.Agent != nil {
+		c.AgentName, c.AgentVersion = h.Agent.Name, h.Agent.Version
+	}
+	recorded, err := s.Store.RecordRunConfigVersion(ctx, runToken, c)
+	if err != nil {
+		if s.Log != nil {
+			s.Log.Warn("reported harness not recorded; it stays as it was", "err", err)
+		}
+		return
+	}
+	if h.Version != "" && recorded != "" && recorded != h.Version && s.Log != nil {
+		s.Log.Info("outcome report names another harness version than the one recorded; the recorded one is kept",
+			"recorded", recorded, "reported", h.Version)
 	}
 }

@@ -160,6 +160,8 @@ spec:
                   key: uri
             - name: PLOEG_TEAM_PLANS
               value: "{\"gvisor\":{\"maxFixRounds\":0,\"pool\":\"4\",\"rounds\":[{\"roles\":[{\"cap\":\"3.00\",\"name\":\"builder\",\"writes\":true}]},{\"roles\":[{\"cap\":\"0.75\",\"harness\":{\"dind\":false},\"name\":\"reviewer\",\"sandbox\":{\"runtimeClassName\":\"gvisor-systrap\"},\"writes\":false}]}]}}"
+            - name: PLOEG_TEAM_HARNESSES
+              value: "{\"gvisor\":{\"builder\":{\"name\":\"openhands\"},\"reviewer\":{\"name\":\"openhands\"}},\"kata\":{\"\":{\"name\":\"openhands\"}}}"
             - name: PLOEG_FORGEJO_URL
               value: "http://forgejo-http.forgejo.svc.cluster.local:3000"
             - name: PLOEG_FORGEJO_TOKEN

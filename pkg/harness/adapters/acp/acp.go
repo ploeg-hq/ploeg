@@ -225,6 +225,9 @@ func (a *Adapter) Run(ctx context.Context, spec harness.TaskSpec, env harness.Ru
 			got, sdk.ProtocolVersionNumber)
 		return finish()
 	}
+	if info := initResp.AgentInfo; info != nil && info.Name != "" && env.AgentInfo != nil {
+		env.AgentInfo(harness.HarnessAgent{Name: info.Name, Version: info.Version})
+	}
 
 	// --- session/new ---
 	res.phase = phaseNewSess

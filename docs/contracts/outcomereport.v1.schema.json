@@ -167,9 +167,48 @@
     "delivery": {
       "$ref": "#/$defs/delivery",
       "description": "What the worker read on the forge about the Run's pull request before and after the harness ran (ADR-0059, proposed). Only the worker sets it: an adapter or agent never reports pr_opened, pr_updated, links, a checkpoint, a failure reason, a verification or a delivery. A writer's pr_opened follows observed=opened. ploegd stores it only when it names the Work Item's forge, repository and the Run's branch, and stores observed=unknown otherwise; a writer's pr_opened or pr_updated stands only when the stored record observed that delivery. Optional: a report from an older worker has none."
+    },
+    "harness": {
+      "$ref": "#/$defs/runHarness",
+      "description": "The Harness the Run ran with, as the worker knows it (ADR-0097, proposed): its name and agent profile from the worker's configuration, the version the worker's startup probe read from the Harness binary, and the agent's own name and version when it identified itself, such as an ACP agent's agentInfo from initialize. Only the worker sets it: it replaces any value an adapter or agent wrote into its outcome file. ploegd records each fact once and keeps a value recorded at claim. Recording it never changes the Outcome. Optional: a report from an older worker has none, and a fact the worker does not know is left out."
     }
   },
   "$defs": {
+    "runHarness": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+          "description": "the worker's harness (PLOEG_HARNESS), the same value as the claim's harness"
+        },
+        "profile": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+          "description": "the harness's agent profile, the same value as the claim's harnessProfile; absent when the harness has none"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "the first line the Harness binary printed for --version at worker startup, as text; absent when the probe was skipped, failed or timed out"
+        },
+        "agent": {
+          "$ref": "#/$defs/harnessAgent"
+        }
+      },
+      "additionalProperties": false
+    },
+    "harnessAgent": {
+      "type": "object",
+      "description": "the agent's own name and version as it reported them during the Run",
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "version": { "type": "string", "minLength": 1, "maxLength": 128 }
+      },
+      "required": ["name"],
+      "additionalProperties": false
+    },
     "delivery": {
       "type": "object",
       "properties": {

@@ -35,6 +35,10 @@ type Config struct {
 	BootstrapToken string
 	WorkerID       string
 	Team           string
+	// HarnessVersion is what HarnessVersion read from the Harness binary at
+	// startup; "" is unknown. It rides on the claim and the Outcome Report
+	// (ADR-0097).
+	HarnessVersion string
 	// Role is this pod's slot in a Round (PLOEG_ROLE). Empty = the pre-Shift
 	// claim over queued work items; the pod shape is fixed at render time, so
 	// one workload serves exactly one role.
@@ -116,6 +120,7 @@ type Worker struct {
 	API     *APIClient
 	Adapter harness.Adapter
 	Broker  llmbroker.Broker
+	agent   observedAgent
 }
 
 // profiledAdapter is a harness adapter that launches one of several agent
@@ -131,6 +136,7 @@ func New(cfg Config, adapter harness.Adapter, broker llmbroker.Broker, log *slog
 		if p, ok := adapter.(profiledAdapter); ok {
 			api.HarnessProfile = p.Profile()
 		}
+		api.HarnessVersion = cfg.HarnessVersion
 	}
 	if broker == nil {
 		broker = api
@@ -190,7 +196,7 @@ func (w *Worker) RunContext(parent context.Context) error {
 	w.Log = runLogger(unscoped, w.Cfg.Team, claimed, trace)
 	defer func() { w.Log = unscoped }()
 	w.Log.Info("claimed work item", "title", item.Title,
-		"harness", w.Adapter.Name(), "node", nodeName, "pod_uid", podUID, "writes", claimed.Writes)
+		"harness", w.Adapter.Name(), "harness_version", w.API.HarnessVersion, "node", nodeName, "pod_uid", podUID, "writes", claimed.Writes)
 
 	// Deliberately NOT derived from parent: the harness must die with the
 	// parent, but everything after it — revoke, settle, report — has to keep
@@ -210,7 +216,9 @@ func (w *Worker) RunContext(parent context.Context) error {
 
 	// From here on, every terminal path must report an outcome; failing to
 	// report leaves the lease to the sweeper (recorded failed/lease expired).
+	w.agent.reset()
 	report := w.execute(ctx, claimed, branch, trace, nodeName, podUID)
+	report.Harness = w.runHarness()
 	if dropped := discardMalformedCreated(&report); dropped != nil {
 		w.Log.Warn("created work items discarded before reporting", "err", dropped)
 	}
@@ -495,6 +503,7 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 		IdleTimeout:   w.Cfg.HarnessIdleTimeout,
 		Activity:      harness.NewActivity(),
 		RemoteSession: remoteSession{api: w.API, token: claimed.RunToken},
+		AgentInfo:     w.agent.observe,
 	}
 
 	env.BaseEnv = append(env.BaseEnv, gitEnv...)

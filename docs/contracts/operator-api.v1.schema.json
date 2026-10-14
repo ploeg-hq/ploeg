@@ -277,6 +277,40 @@
         "queueDepth": {
           "type": "integer",
           "minimum": 0
+        },
+        "harness": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/roleHarness"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The Harness and agent profile the chart configures for this Role (PLOEG_TEAM_HARNESSES, rendered from the same values as the Role's worker; ADR-0097, proposed). Null when ploegd was not given the Role's Harness. A running pod may still run an older Harness after a change; observedHarness says what a Run recorded. Absent from Ploeg releases that predate the field."
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 256
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The Role's default model: the single model of its (team, Role) managed inference policy, as a Run's configuredModel reads it (ADR-0091, ADR-0097). Null without a policy or when the policy names more than one model. Absent from Ploeg releases that predate the field."
+        },
+        "observedHarness": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/observedHarness"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Observed, not configured: the Harness version most recently recorded on a Run of this team and Role, with the time it was recorded and the harness, profile and agent of that Run, so a consumer can tell when it belongs to another Harness than the configured one (ADR-0097, proposed). Null when no Run of the Role recorded a version. Absent from Ploeg releases that predate the field."
         }
       }
     },
@@ -885,6 +919,30 @@
             }
           ],
           "description": "The version of the ploegd that claimed or admitted the Run (ADR-0091). Null when unknown."
+        },
+        "harnessVersion": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The Harness version the worker read from its Harness binary's --version at startup and sent with its claim or Outcome Report (ADR-0097, proposed), as text, written once. For claude-environment it is the dispatching CLI's version, not the remote session's (ADR-0084). Null when unknown: the worker skipped or failed the probe (exec, a custom acp profile, a binary it could not resolve before the clone), an older worker, an Ask or operator execution, or a Run recorded before ploegd kept it."
+        },
+        "harnessAgent": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/harnessAgent"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The agent's own name and version as the worker reported them in the Outcome Report, such as an ACP agent's agentInfo from initialize (ADR-0097, proposed), written once. Null when the agent did not identify itself, the Run did not report, or it is unknown."
         },
         "modelMismatch": {
           "anyOf": [
@@ -2019,6 +2077,30 @@
             }
           ],
           "description": "The version of the ploegd that claimed or admitted the Run (ADR-0091). Null when unknown."
+        },
+        "harnessVersion": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The Harness version the worker read from its Harness binary's --version at startup and sent with its claim or Outcome Report (ADR-0097, proposed), as text, written once. For claude-environment it is the dispatching CLI's version, not the remote session's (ADR-0084). Null when unknown: the worker skipped or failed the probe (exec, a custom acp profile, a binary it could not resolve before the clone), an older worker, an Ask or operator execution, or a Run recorded before ploegd kept it."
+        },
+        "harnessAgent": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/harnessAgent"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The agent's own name and version as the worker reported them in the Outcome Report, such as an ACP agent's agentInfo from initialize (ADR-0097, proposed), written once. Null when the agent did not identify itself, the Run did not report, or it is unknown."
         },
         "modelMismatch": {
           "anyOf": [
@@ -4532,6 +4614,115 @@
         "unknown"
       ],
       "description": "Cost Status, the one value set for every cost Ploeg reports (ADR-0093). observed: spend seen so far that can still move, because the Run or Ask is live or its account has not settled. provisional: settled once and still inside the correction window, so a late gateway charge may raise it. settled: final. unknown: Ploeg has no trustworthy figure, which is never zero. A place that cannot reach a value says which subset it uses."
+    },
+    "harnessAgent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "version"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "roleHarness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "profile"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+        },
+        "profile": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "observedHarness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "profile",
+        "version",
+        "agent",
+        "recordedAt"
+      ],
+      "properties": {
+        "name": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 64
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "the harness of the Run that recorded the version"
+        },
+        "profile": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 64
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "the agent profile of the Run that recorded the version"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "agent": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/harnessAgent"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "recordedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "when ploegd recorded the version"
+        }
+      }
     }
   }
 }

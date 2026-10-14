@@ -270,6 +270,26 @@ type OutcomeReport struct {
 	// request, before and after the harness ran (ADR-0059). Only the worker
 	// sets it; absent on a payload from an older worker.
 	Delivery *Delivery `json:"delivery,omitempty"`
+	// Harness is the Harness the Run ran with as the worker knows it
+	// (ADR-0097). Only the worker sets it and replaces any value an adapter
+	// or agent reported; absent on a payload from an older worker.
+	Harness *RunHarness `json:"harness,omitempty"`
+}
+
+// RunHarness names the Harness a Run ran with. A field the worker does not
+// know is empty and left out.
+type RunHarness struct {
+	Name    string        `json:"name,omitempty"`
+	Profile string        `json:"profile,omitempty"`
+	Version string        `json:"version,omitempty"`
+	Agent   *HarnessAgent `json:"agent,omitempty"`
+}
+
+// HarnessAgent is the agent's own name and version as it reported them
+// during the Run, such as an ACP agent's agentInfo.
+type HarnessAgent struct {
+	Name    string `json:"name"`
+	Version string `json:"version,omitempty"`
 }
 
 // DeliveryObservation says what the worker's two forge reads showed about the

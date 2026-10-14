@@ -45,6 +45,29 @@ type OperatorTeam struct {
 type OperatorRole struct {
 	ID         string `json:"id"`
 	QueueDepth int64  `json:"queueDepth"`
+	// Harness and Model are what the Role is configured with (ADR-0097);
+	// ploegd fills them from its own configuration, nil when it has none.
+	Harness *OperatorRoleHarness `json:"harness"`
+	Model   *string              `json:"model"`
+	// ObservedHarness is the newest Harness version a Run of this team and
+	// Role recorded, nil when none did.
+	ObservedHarness *OperatorObservedHarness `json:"observedHarness"`
+}
+
+// OperatorRoleHarness is a Role's configured Harness and agent profile.
+type OperatorRoleHarness struct {
+	Name    string  `json:"name"`
+	Profile *string `json:"profile"`
+}
+
+// OperatorObservedHarness is the Harness a Run of a Role recorded with its
+// version, and when the version was recorded.
+type OperatorObservedHarness struct {
+	Name       *string               `json:"name"`
+	Profile    *string               `json:"profile"`
+	Version    string                `json:"version"`
+	Agent      *OperatorHarnessAgent `json:"agent"`
+	RecordedAt time.Time             `json:"recordedAt"`
 }
 
 type OperatorTarget struct {
@@ -467,6 +490,9 @@ func (s *Store) OperatorTeams(ctx context.Context, teams []string, registered ma
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+	if err := s.observeRoleHarnesses(ctx, byID); err != nil {
+		return nil, err
+	}
 	out := make([]OperatorTeam, 0, len(byID))
 	for _, team := range byID {
 		sort.Slice(team.Roles, func(i, j int) bool { return team.Roles[i].ID < team.Roles[j].ID })
@@ -474,6 +500,41 @@ func (s *Store) OperatorTeams(ctx context.Context, teams []string, registered ma
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out, nil
+}
+
+func (s *Store) observeRoleHarnesses(ctx context.Context, byID map[string]*OperatorTeam) error {
+	var teams, roles []string
+	for id, team := range byID {
+		for _, role := range team.Roles {
+			teams, roles = append(teams, id), append(roles, role.ID)
+		}
+	}
+	if len(teams) == 0 {
+		return nil
+	}
+	rows, err := s.pool.Query(ctx, `SELECT k.team, k.role, o.harness, o.harness_profile, o.harness_version, o.harness_agent, o.harness_recorded_at
+		FROM unnest($1::text[], $2::text[]) AS k(team, role)
+		CROSS JOIN LATERAL (SELECT r.harness, r.harness_profile, r.harness_version, r.harness_agent,
+				COALESCE(r.harness_recorded_at, r.started_at) AS harness_recorded_at
+			FROM agent_runs r WHERE r.team = k.team AND r.role = k.role AND r.harness_version IS NOT NULL
+			ORDER BY r.id DESC LIMIT 1) o`, teams, roles)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var team, role string
+		var observed OperatorObservedHarness
+		if err := rows.Scan(&team, &role, &observed.Name, &observed.Profile, &observed.Version, &observed.Agent, &observed.RecordedAt); err != nil {
+			return err
+		}
+		for idx := range byID[team].Roles {
+			if byID[team].Roles[idx].ID == role {
+				byID[team].Roles[idx].ObservedHarness = &observed
+			}
+		}
+	}
+	return rows.Err()
 }
 
 func (s *Store) OperatorItems(ctx context.Context, f OperatorFilter) ([]OperatorItem, bool, error) {

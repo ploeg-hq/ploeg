@@ -65,6 +65,10 @@ type RunEnv struct {
 	// worker, such as a Claude Code session in a Team's self-hosted
 	// environment (ADR-0084). Nil = the worker offers none.
 	RemoteSession RemoteSessionAPI
+	// AgentInfo receives the agent's own name and version when it
+	// identifies itself, such as in an ACP initialize response (ADR-0097).
+	// Nil = the worker records none.
+	AgentInfo func(HarnessAgent)
 }
 
 // RemoteSessionAPI is the worker's view of ploegd's record of a remote

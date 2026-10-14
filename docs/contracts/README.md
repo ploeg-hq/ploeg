@@ -269,6 +269,29 @@ Run list returns both. Each field is null when unknown, as it is for every
 Run recorded before migration 0050, and `modelMismatch` is also null for a
 Run settled before served groups were recorded.
 
+Every Run shape also carries `harnessVersion` and `harnessAgent`
+([ADR-0097](../adrs/0097-a-run-records-its-harness-version-and-the-teams-read-shows-each-roles-harness-and-model.md)).
+The worker reads the version from its Harness binary's `--version` once at
+startup, within 5 s, keeping the first line up to 128 bytes, and sends it as
+the claim request's optional `harnessVersion`. It skips the probe for `exec`,
+the custom `acp` profile and a binary it cannot resolve before the clone. The
+Outcome Report's optional `harness` object (`name`, `profile`, `version`,
+`agent`) is set only by the worker, which replaces any value the agent wrote;
+`agent` is the agent's own name and version, such as an ACP agent's
+`agentInfo`. ploegd records each fact once (migration 0054): a version from
+the claim is kept when the report names another, and the difference is
+logged. Recording never refuses or changes a claim or an Outcome. Both read
+null when unknown, as for every Run recorded before migration 0054.
+
+The Teams read's Roles carry `harness` (`{name, profile}` from
+`PLOEG_TEAM_HARNESSES`, which the chart renders from the same values as each
+worker's `PLOEG_HARNESS` and `PLOEG_ACP_PROFILE`), `model` (the single model
+of the Role's inference policy) and `observedHarness`: the newest version a
+Run of that team and Role recorded, with the harness, profile and agent of
+that Run and `recordedAt`. Each is null when ploegd does not know it. The
+observed version is what a Run reported, not the configuration, and may
+belong to another Harness during a rollout.
+
 Every Run shape also carries `shadow`
 ([ADR-0096](../adrs/0096-a-shadow-reader-records-its-verdict-and-never-acts.md)):
 true for a Run of a shadow Role, whose `verdict` and `findings` are recorded

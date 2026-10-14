@@ -111,6 +111,8 @@ spec:
                   key: uri
             - name: PLOEG_TEAM_PLANS
               value: "{\"silver\":{\"maxFixRounds\":0,\"pool\":\"6\",\"rounds\":[{\"roles\":[{\"cap\":\"3.00\",\"name\":\"builder\",\"writes\":true}]},{\"roles\":[{\"cap\":\"0.75\",\"harness\":{\"dind\":false},\"name\":\"reviewer\",\"writes\":false}]}]}}"
+            - name: PLOEG_TEAM_HARNESSES
+              value: "{\"silver\":{\"builder\":{\"name\":\"claude-code\"},\"reviewer\":{\"name\":\"claude-code\"}}}"
             - name: PLOEG_GITHUB_URL
               value: "https://github.com"
             - name: PLOEG_GITHUB_FORGE_SECRET

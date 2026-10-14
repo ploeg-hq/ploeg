@@ -192,6 +192,7 @@ func run(log *slog.Logger) error {
 	if err := worker.CheckHarnessBinary(hc, exec.LookPath); err != nil {
 		return err
 	}
+	cfg.HarnessVersion = worker.HarnessVersion(hc, exec.LookPath, worker.CommandVersionProbe)
 	cfg.SkillDirs = worker.SkillDirectories(hc)
 	cfg.KnowledgeDirs = filepath.SplitList(os.Getenv("PLOEG_KNOWLEDGE_DIRS"))
 	cfg.RepoKnowledgeDir = os.Getenv("PLOEG_REPO_KNOWLEDGE_DIR")

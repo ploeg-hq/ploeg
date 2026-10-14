@@ -21,6 +21,12 @@
           "type": "string",
           "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
           "description": "The harness's agent profile, such as opencode, qwen-code or custom for the acp harness. ploegd records it on the claimed Run (ADR-0091). Absent when the harness has none."
+        },
+        "harnessVersion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "The first line the worker's Harness binary printed for --version at startup (ADR-0097, proposed). ploegd records it once on the claimed Run, so a Run that dies before reporting keeps it. Absent leaves it unknown: the worker skipped the probe (exec, or a binary it cannot resolve before the clone) or the probe failed."
         }
       },
       "required": ["team"],

@@ -165,6 +165,24 @@ Context: (dict "root" $ "team" <team> "role" <role>).
 {{- end -}}
 
 {{/*
+ploeg.roleHarness resolves a (team, Role) workload's Harness name and acp
+profile through the role -> team -> global chain, as JSON {name, acpProfile}.
+The worker pod template and ploegd's PLOEG_TEAM_HARNESSES both read it, so
+what ploegd says a Role is configured with cannot drift from the worker's
+PLOEG_HARNESS and PLOEG_ACP_PROFILE (ADR-0097). Context: (dict "root" $
+"team" <team entry> "role" <Role entry or empty dict>).
+*/}}
+{{- define "ploeg.roleHarness" -}}
+{{- $gh := .root.Values.executor.harness | default dict }}
+{{- $th := .team.harness | default dict }}
+{{- $rh := (.role | default dict).harness | default dict }}
+{{- $ga := $gh.acp | default dict }}
+{{- $ta := $th.acp | default dict }}
+{{- $ra := $rh.acp | default dict }}
+{{- dict "name" ($rh.name | default ($th.name | default ($gh.name | default "openhands"))) "acpProfile" ($ra.profile | default ($ta.profile | default $ga.profile)) | toJson }}
+{{- end -}}
+
+{{/*
 ploeg.workerPodTemplate renders the worker pod template for one team —
 shared by every executor (ScaledJob, CronJob). Context: (dict "root" $
 "team" <team entry>). The team's optional `harness` block overrides the
@@ -181,7 +199,8 @@ global executor.harness defaults field-by-field (explicit hasKey checks, so
 {{- $gh := $root.Values.executor.harness | default dict }}
 {{- $th := $team.harness | default dict }}
 {{- $rh := $role.harness | default dict }}
-{{- $hName := $rh.name | default ($th.name | default ($gh.name | default "openhands")) }}
+{{- $identity := include "ploeg.roleHarness" (dict "root" $root "team" $team "role" $role) | fromJson }}
+{{- $hName := $identity.name }}
 {{- $hImage := $rh.image | default ($th.image | default ($gh.image | default $root.Values.executor.runnerImage)) }}
 {{- if not $hImage }}
 {{- fail (printf "team %s: no agent image; set executor.harness.image, or harness.image on the team or Role. Ploeg publishes no agent image" $team.name) }}
@@ -214,7 +233,7 @@ global executor.harness defaults field-by-field (explicit hasKey checks, so
 {{- $ga := $gh.acp | default dict }}
 {{- $ta := $th.acp | default dict }}
 {{- $ra := $rh.acp | default dict }}
-{{- $acpProfile := $ra.profile | default ($ta.profile | default $ga.profile) }}
+{{- $acpProfile := $identity.acpProfile }}
 {{- $acpArgv := $ra.argv | default ($ta.argv | default $ga.argv) }}
 {{- $acpPerm := $ra.permissionMode | default ($ta.permissionMode | default $ga.permissionMode) }}
 {{- $acpPrompt := $ra.promptTimeout | default ($ta.promptTimeout | default $ga.promptTimeout) }}

@@ -408,3 +408,29 @@ func TestRun_ProfileEnvironmentReachesTheAgent(t *testing.T) {
 		})
 	}
 }
+
+func TestRun_ReportsTheAgentInfoFromInitialize(t *testing.T) {
+	run := func(script string) []harness.HarnessAgent {
+		t.Helper()
+		a, err := New("custom", ProfileOverrides{Argv: []string{writeScript(t, script)}}, Options{
+			PromptTimeout: 10 * time.Second, IdleTimeout: 10 * time.Second, CancelGrace: time.Second, TermGrace: time.Second,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var seen []harness.HarnessAgent
+		env := testEnv(t)
+		env.AgentInfo = func(info harness.HarnessAgent) { seen = append(seen, info) }
+		if _, err := a.Run(context.Background(), testSpec(), env); err != nil {
+			t.Fatalf("run error: %v", err)
+		}
+		return seen
+	}
+	identified := strings.Replace(fakeAgentScript(`"end_turn"`, ""), `"authMethods":[]}`, `"authMethods":[],"agentInfo":{"name":"opencode","version":"1.18.30"}}`, 1)
+	if seen := run(identified); len(seen) != 1 || seen[0] != (harness.HarnessAgent{Name: "opencode", Version: "1.18.30"}) {
+		t.Fatalf("agent info = %+v, want opencode 1.18.30 once", seen)
+	}
+	if seen := run(fakeAgentScript(`"end_turn"`, "")); len(seen) != 0 {
+		t.Fatalf("an agent without agentInfo reported %+v", seen)
+	}
+}
