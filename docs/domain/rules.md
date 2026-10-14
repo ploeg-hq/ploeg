@@ -9,6 +9,17 @@ generated_by: "mise run domain"
 
 *Generated from `model.yaml` — do not edit by hand. Cite rules by id in specs.*
 
+## Admission
+
+### R20
+*Context: Dispatch*
+
+An Admission is identified by its consumer and request identity. Replaying it returns the Work Item it admitted, in whatever state that Work Item is, and never queues it again, opens a Shift or creates a Run. The same request identity with another payload or actor is a conflict.
+
+**Why:** A lost response or a restart must not start paid work a second time (R3).
+
+**Also applies to:** Work Item, Operator Consumer
+
 ## Delivery Candidate
 
 ### R17

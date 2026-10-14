@@ -180,6 +180,8 @@ func (s *Server) maxRunning(team string) int {
 type ShiftEngine interface {
 	EnsureShift(ctx context.Context, workItemID int64, item work.WorkItem) error
 	EvaluateItem(ctx context.Context, workItemID int64) error
+	// Dispatches reports whether a queued Work Item of the team gets a Shift.
+	Dispatches(team string) bool
 	// RefreshUsageReport re-renders the Shift's usage report after a late
 	// settlement. The settlement sweep calls it after a successful Settle and
 	// only then; a Shift with no pull request is a silent no-op.

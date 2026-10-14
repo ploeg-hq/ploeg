@@ -105,6 +105,13 @@ func (e *Engine) EnsureShift(ctx context.Context, workItemID int64, item work.Wo
 	return e.EvaluateItem(ctx, workItemID)
 }
 
+// Dispatches reports whether a queued Work Item of team gets a Shift: the team
+// has a plan, or uniform dispatch synthesizes one.
+func (e *Engine) Dispatches(team string) bool {
+	_, ok, _ := e.planFor(team)
+	return ok
+}
+
 // planFor resolves a team's plan, synthesizing one when Uniform is set and
 // the team has none.
 //

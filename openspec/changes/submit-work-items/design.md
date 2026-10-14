@@ -59,3 +59,15 @@ Rollback: unregister the route. Admitted Work Items stay ordinary queued or sett
 5. **Does ADR-0102 supersede ADR-0024 now, while both are proposed?** `go test ./internal/ledger/` derives "superseded by 0102" for 0024's Records row from `supersedes: 0024`, so the index shows 0024 as superseded before 0102 is ratified. Recommendation: keep `supersedes: 0024` (the owner chose on 2026-10-13 that Ploeg executes every session) and ratify both together. Trade-off: if 0102 is rejected, its `supersedes` must be set to `none` and the 0024 row restored.
 6. **Domain language to update before implementation (not edited here).** The glossary defines Operator Consumer as requesting "an Operator Execution", and Work Item as coming "from an Operator Execution admitted for an Operator Consumer"; R2, R5, R13, R14, R16 and R18 are worded for Operator Executions. There is no term for an operator-admitted manual-origin Work Item. Recommendation: in `docs/domain/model.yaml`, let Admission cover "a manual-origin Work Item admitted for an Operator Consumer", reword Operator Consumer and Work Item accordingly, mark Operator Execution as being retired, and add a rule that a replayed Admission never re-queues work. Trade-off: none beyond the edit; without it the specs use terms the glossary still ties to the retiring path.
 7. **Should the Admission accept a Round to start from or a plan override?** Recommendation: no; the Team's plan decides, as for tracker work. Trade-off: a consumer cannot run "review only" sessions without a Team configured for them.
+
+## Answers to the Open Questions
+
+2026-10-14, owner delegated: apply recommendations. Each Open Question above is answered by its recommendation.
+
+1. Operator Executions retire in a later change, `retire-operator-executions`, once Unfold has moved. This change leaves their routes, tables and scheduler exclusions as they are.
+2. Without `budgetUsd`, the allotment is the consumer's `maxBudgetUsd`, so a larger plan pool is capped, not refused. The response reports the allotment (`budgetUsd`) and the Shift's pool (`poolUsd`).
+3. Infrastructure failures of admitted work are retried under R5 and ADR-0021 exactly as tracker work.
+4. A withdrawn admitted Work Item stays withdrawn: requeue keeps refusing `withdrawn`, and a replay of its Admission returns it unchanged. The consumer admits a new Work Item with a new `requestId`.
+5. ADR-0102 keeps `supersedes: 0024` and is accepted with this change, which ratifies the supersession of ADR-0024.
+6. `docs/domain/model.yaml` lets Admission cover a manual-origin Work Item admitted for an Operator Consumer, rewords Operator Consumer and Work Item, marks Operator Execution as being retired, and adds R20: a replayed Admission never queues work again.
+7. The Admission accepts no Round or plan override; the Team's plan decides.
