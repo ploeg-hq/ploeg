@@ -15,6 +15,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"slices"
 	"time"
 
 	"github.com/ploeg-hq/ploeg/pkg/harness"
@@ -65,6 +66,21 @@ type Engine struct {
 	// stopped Work Item (needs_human, awaiting_review) to settle it when the
 	// task was closed. Zero means DefaultTrackerRecheck.
 	TrackerRecheck time.Duration
+	// Selections resolves the Harness and model each Role's Runs store
+	// (ADR-0098, ADR-0103). Nil stores neither.
+	Selections RoleSelections
+}
+
+// RoleSelections is what a Role of a team may run and call.
+type RoleSelections interface {
+	RoleSelection(team, role string) store.RoleSelection
+}
+
+func (e *Engine) selection(team, role string) store.RoleSelection {
+	if e.Selections == nil {
+		return store.RoleSelection{}
+	}
+	return e.Selections.RoleSelection(team, role)
 }
 
 // DefaultTrackerRecheck is the per-item interval between tracker re-reads of
@@ -103,6 +119,24 @@ func (e *Engine) EnsureShift(ctx context.Context, workItemID int64, item work.Wo
 			"pool", float64(tp.Pool), "rounds", len(tp.Rounds))
 	}
 	return e.EvaluateItem(ctx, workItemID)
+}
+
+// PlanRoles lists the distinct Roles of the team's plan in plan order, the
+// one unnamed Role of a synthesized plan; false when the team gets no Shift.
+func (e *Engine) PlanRoles(team string) ([]string, bool) {
+	tp, ok, _ := e.planFor(team)
+	if !ok {
+		return nil, false
+	}
+	var roles []string
+	for _, round := range tp.Rounds {
+		for _, role := range round.Roles {
+			if !slices.Contains(roles, role.Name) {
+				roles = append(roles, role.Name)
+			}
+		}
+	}
+	return roles, true
 }
 
 // Dispatches reports whether a queued Work Item of team gets a Shift: the team
@@ -249,7 +283,7 @@ func (e *Engine) evaluate(ctx context.Context, si store.ShiftInfo) error {
 		}
 		next = loopRound
 	}
-	round, err := e.Store.OpenRound(ctx, si.ID, si.Round, storeRoles(next))
+	round, err := e.Store.OpenRound(ctx, si.ID, si.Round, e.storeRoles(si.Team, next))
 	if err != nil {
 		// The CAS lost to the other evaluator, or the Shift closed under us.
 		// Both mean somebody else did the job; log at debug fidelity and move on.
@@ -262,10 +296,11 @@ func (e *Engine) evaluate(ctx context.Context, si store.ShiftInfo) error {
 }
 
 // storeRoles converts a plan Round's roles into the store's claim shape.
-func storeRoles(r plan.Round) []store.Role {
+func (e *Engine) storeRoles(team string, r plan.Round) []store.Role {
 	out := make([]store.Role, 0, len(r.Roles))
 	for _, role := range r.Roles {
-		out = append(out, store.Role{Name: role.Name, Writes: role.Writes, Cap: role.CapUSD(), Shadow: role.Shadow})
+		out = append(out, store.Role{Name: role.Name, Writes: role.Writes, Cap: role.CapUSD(), Shadow: role.Shadow,
+			Selection: e.selection(team, role.Name)})
 	}
 	return out
 }

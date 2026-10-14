@@ -145,8 +145,8 @@ change either side and the test tells you.
   an operator consumer with execute permission admits a manual-origin Work
   Item with `POST /api/v1/operator/work-items` (`workItemAdmissionRequest`,
   answered by `workItemAdmissionResponse`). The request refuses unknown
-  fields; the changes that add Harness, model, `attended` and `autoApprove`
-  extend it. The operator event feed's `detail` gains the optional
+  fields; `harness` and `model` (ADR-0098, ADR-0103) extend it, and the
+  changes that add `attended` and `autoApprove` will. The operator event feed's `detail` gains the optional
   `requestId` on `operator.work_item.admitted`. An older Ploeg answers 405.
 - `deploy-api.v1` is the body of a pipeline's deploy report. It refuses
   unknown fields, unlike the response contracts, so a misspelled field fails
@@ -292,12 +292,25 @@ null when unknown, as for every Run recorded before migration 0054.
 
 The Teams read's Roles carry `harness` (`{name, profile}` from
 `PLOEG_TEAM_HARNESSES`, which the chart renders from the same values as each
-worker's `PLOEG_HARNESS` and `PLOEG_ACP_PROFILE`), `model` (the single model
-of the Role's inference policy) and `observedHarness`: the newest version a
-Run of that team and Role recorded, with the harness, profile and agent of
-that Run and `recordedAt`. Each is null when ploegd does not know it. The
-observed version is what a Run reported, not the configuration, and may
-belong to another Harness during a rollout.
+worker's `PLOEG_HARNESS` and `PLOEG_ACP_PROFILE`), `model` (the Role's
+default model) and `observedHarness`: the newest version a Run of that team
+and Role recorded, with the harness, profile and agent of that Run and
+`recordedAt`. Each is null when ploegd does not know it. The observed
+version is what a Run reported, not the configuration, and may belong to
+another Harness during a rollout. `harnesses` lists what a person can choose
+(ADR-0098): each allowlist entry's `key`, `name`, `profile`,
+`qualification`, whether it is the `default`, and `observedVersion`, the
+newest version a Run of the Role recorded with it. `pendingByHarness` counts
+the Role's pending Runs per stored Harness, with `allowed: false` for a
+Harness the allowlist no longer contains. `models` and `defaultModel` are
+what the Role's inference policy lists (ADR-0103).
+
+A claim that names `harness` (and `harnessProfile`) takes only a pending Run
+that stores that Harness key or none, and the claim response carries the
+Run's stored `model`, which the worker calls instead of its `LLM_MODEL`
+([ADR-0099](../adrs/0099-each-allowed-harness-runs-in-its-own-workload-and-the-claim-selects-on-it.md)).
+The Run's inference account and key are scoped to that model alone, and its
+`configuredModel` records it.
 
 Every Run shape also carries `shadow`
 ([ADR-0096](../adrs/0096-a-shadow-reader-records-its-verdict-and-never-acts.md)):
@@ -407,6 +420,26 @@ stops before opening it, the sweeper does. Follow the Work Item with `GET
 /api/v1/operator/events?workItemId=` and steer it with cancel, requeue and
 notes as above. Its cancel calls no tracker, and a withdrawn admitted Work
 Item stays withdrawn: admit new work with a new `requestId`.
+
+The body may also name a `harness` and a `model`
+([ADR-0098](../adrs/0098-an-operator-admission-may-choose-each-runs-harness-from-its-teams-allowlist.md),
+[ADR-0103](../adrs/0103-an-operator-admission-may-choose-each-runs-model-from-the-models-its-roles-policy-lists.md)).
+`harness` is a key from the Teams read's `harnesses`: `acp/<profile>` (`acp`
+alone is `acp/opencode`) or the Harness name. ploegd refuses it with 422
+`harness_not_allowed`, naming each Role's allowlist, when no Role of the
+plan allows it, and with 422 `harness_unqualified` when it is allowed but
+unqualified, no Role's default, and the Team has not set
+`allowUnqualifiedHarnesses`. A plan-less Team's allowlist is its configured
+Harness. `model` must be listed by at least one Role's managed inference
+policy (422 `model_not_allowed`, naming each Role's models), and a Team
+whose Roles have no policy answers 422 `model_requires_managed_inference`.
+A refusal creates nothing. Both fields are part of the fingerprint, so a
+replay with another Harness or model answers 409 `request_conflict`. The
+Work Item keeps the request; whenever its Shift creates a pending Run, the
+first Round, a retry, a re-opened Round or a Round after a requeue, the Run
+stores the requested Harness if its Role admits it and the requested model
+if its Role's policy lists it, else the Role's default for each. The
+response's `roles` lists what each Role's Runs store.
 
 Execution requests additionally require `X-Ploeg-Actor`, the stable session
 owner identity asserted by the authenticated consumer. Commands may carry

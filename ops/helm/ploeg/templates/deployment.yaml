@@ -97,11 +97,21 @@ spec:
             {{- range $team := .Values.executor.teams }}
             {{- $roles := dict }}
             {{- range $role := (include "ploeg.teamRoles" $team | fromJsonArray) }}
-            {{- $h := include "ploeg.roleHarness" (dict "root" $ "team" $team "role" $role) | fromJson }}
-            {{- $entry := dict "name" $h.name }}
+            {{- $entry := dict }}
+            {{- $allowed := list }}
+            {{- range $w := (include "ploeg.roleWorkloads" (dict "root" $ "team" $team "role" $role) | fromJsonArray) }}
+            {{- $h := include "ploeg.roleHarness" (dict "root" $ "team" $team "role" $w.role) | fromJson }}
+            {{- $a := dict "name" $h.name "qualification" (ternary "qualified" "unqualified" $w.qualified) }}
             {{- if eq $h.name "acp" }}
-            {{- $_ := set $entry "profile" ($h.acpProfile | default "opencode") }}
+            {{- $_ := set $a "profile" ($h.acpProfile | default "opencode") }}
             {{- end }}
+            {{- $allowed = append $allowed $a }}
+            {{- if $w.default }}
+            {{- $entry = omit $a "qualification" }}
+            {{- end }}
+            {{- end }}
+            {{- $_ := set $entry "allowed" $allowed }}
+            {{- $_ := set $entry "allowUnqualified" ($team.allowUnqualifiedHarnesses | default false) }}
             {{- $_ := set $roles ($role.name | default "") $entry }}
             {{- end }}
             {{- $_ := set $harnesses $team.name $roles }}

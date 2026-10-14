@@ -112,6 +112,13 @@ spec:
         - name: PLOEG_ROLE
           value: {{ .role.name | quote }}
         {{- end }}
+        {{- $identity := include "ploeg.roleHarness" . | fromJson }}
+        - name: PLOEG_HARNESS
+          value: {{ $identity.name | quote }}
+        {{- if and (eq $identity.name "acp") $identity.acpProfile }}
+        - name: PLOEG_ACP_PROFILE
+          value: {{ $identity.acpProfile | quote }}
+        {{- end }}
         - name: PLOEG_WORKER_ID
           valueFrom:
             fieldRef:

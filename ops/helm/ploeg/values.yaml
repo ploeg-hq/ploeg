@@ -91,6 +91,10 @@ monitoring:
         waitSeconds: 86400
         for: 15m
         severity: warning
+      harnessOutsideAllowlist:
+        enabled: true
+        for: 15m
+        severity: warning
 
 operator:
   consumers: []
@@ -558,6 +562,20 @@ executor:
   #     name: claude-code
   #     image: registry.example/claude-runner:0.1.0
   #     dind: false # claude-code needs no Docker daemon (PolicyException scope review!)
+  #   # Optional, ADR-0098/ADR-0099, planned teams only: the Harnesses an
+  #   # operator admission may choose per Run. Each entry takes the fields of
+  #   # `harness` and replaces a Role's `harness` block; every allowed entry
+  #   # renders its own workload per Role (<team>-<role>-<key>), whose KEDA
+  #   # query and claim select on the Run's stored Harness. `default: true`
+  #   # marks the Role default (else the first entry). A Role narrows the list
+  #   # with `harnesses: [<key>, ...]` and may set `defaultHarness: <key>`;
+  #   # keys are `acp/<profile>` or the Harness name. claude-environment
+  #   # cannot be listed. An entry outside ploeg.qualifiedHarnesses is
+  #   # admitted only as a Role default unless allowUnqualifiedHarnesses.
+  #   harnesses:
+  #     - {name: openhands, default: true}
+  #     - {name: acp, image: registry.example/opencode-runner:0.1.0, dind: false, acp: {profile: opencode}}
+  #   allowUnqualifiedHarnesses: false
   #   # Optional: this team's RuntimeClass under the sandbox executor; a Role's
   #   # `sandbox.runtimeClassName` overrides it. Unset = executor.sandbox above.
   #   sandbox:
@@ -587,7 +605,9 @@ executor:
   #         - {name: analyst, writes: false, cap: "0.50", harness: {dind: false}}
   #         - {name: tests,   writes: false, cap: "0.50", harness: {dind: false}}
   #     - roles:
-  #         - {name: builder, writes: true, cap: "3.00", model: litellm_proxy/claude-sonnet-5}
+  #         # ADR-0103: `models` lists the aliases an admission may choose for
+  #         # this Role; `model` stays its default and must be listed.
+  #         - {name: builder, writes: true, cap: "3.00", model: litellm_proxy/claude-sonnet-5, models: [claude-sonnet-5, deepseek-v4]}
   #     - roles:
   #         - {name: reviewer, writes: false, cap: "0.75", model: litellm_proxy/claude-sonnet-5, harness: {dind: false}}
   #         # ADR-0096: a second reviewer whose verdict is recorded and never acts.

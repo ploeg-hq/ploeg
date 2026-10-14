@@ -24,6 +24,7 @@ The exposition is written by hand in the Prometheus text format (`version=0.0.4`
 | `ploeg_runs_failed_total` | `reason` | Runs ever recorded failed with each failure reason. A counter: Runs are never deleted. Every known reason is present at `0`. Kept for one release beside `ploeg_runs_finished_total`, which replaces it ([ADR-0076](../adrs/0076-run-health-is-observable-by-team-and-role-through-one-correlation-key.md)); move dashboards and rules to `sum by (reason) (ploeg_runs_finished_total{outcome="failed"})` |
 | `ploeg_runs_without_observed_delivery_last_day` | `source` | Runs finished in the last day whose report had no delivery record from the worker (`legacy`) or one that named another forge, repository, branch or pull request (`mismatch`) |
 | `ploeg_shadow_reviews_total` | `team`, `role`, `primary`, `shadow` | Finished shadow Runs ([ADR-0096](../adrs/0096-a-shadow-reader-records-its-verdict-and-never-acts.md)) by Team and shadow Role, with the verdict the Round's acting readers gave (`primary`) and the shadow's own (`shadow`), each `approve`, `request_changes` or `none`. A counter. Absent until a shadow Run finishes. See [reading shadow reviews](#reading-shadow-reviews) |
+| `ploeg_runs_pending_outside_allowlist` | `team`, `role`, `harness` | Pending Runs that store a Harness the current allowlist of their Role no longer contains, so no workload claims them ([ADR-0099](../adrs/0099-each-allowed-harness-runs-in-its-own-workload-and-the-claim-selects-on-it.md)). Absent when there are none. The Teams read shows the same counts as `pendingByHarness` |
 | `ploeg_tracker_webhooks_missing` | | Configured Vikunja projects with no assignment webhook to Ploeg |
 | `ploeg_tracker_webhooks_unchecked` | | Configured Vikunja projects the webhook check could not read |
 | `ploeg_tracker_webhook_check_timestamp_seconds` | | Unix time of the last webhook check |
@@ -243,6 +244,22 @@ FROM work_item_note_outbox WHERE written_at IS NULL ORDER BY created_at;
 ```
 
 `last_error` holds the graph's answer. An HTTP 404 from a stored query means the actor may not invoke it or the bundle does not declare it.
+
+## PloegHarnessOutsideAllowlist
+
+`max by (team, role, harness) (ploeg_runs_pending_outside_allowlist) > 0`. Default: `for: 15m`, warning.
+
+A pending Run stores a Harness that its Role's allowlist no longer contains ([ADR-0098](../adrs/0098-an-operator-admission-may-choose-each-runs-harness-from-its-teams-allowlist.md), [ADR-0099](../adrs/0099-each-allowed-harness-runs-in-its-own-workload-and-the-claim-selects-on-it.md)). Each allowed Harness has its own workload, and the claim and the KEDA query select on the stored Harness, so once a values change removes an entry, nothing claims those Runs and their Work Item waits. Ploeg does not change the stored Harness or cancel the Run by itself.
+
+**Check first:** which Runs are stranded:
+
+```sql
+SELECT r.id, r.work_item_id, r.team, r.role, r.harness_requested, w.harness_requested AS requested
+FROM agent_runs r JOIN work_items w ON w.id = r.work_item_id
+WHERE r.state = 'pending' AND r.harness_requested = '<harness>' AND r.team = '<team>' AND r.role = '<role>';
+```
+
+Then either restore the allowlist entry, so its workload renders again and claims them, or cancel the Work Item with `POST /api/v1/operator/work-items/{id}/cancel`. A Work Item requeued later resolves each new Run against the allowlist in force then, so its Runs fall back to the Role's default.
 
 ## Reading shadow reviews
 

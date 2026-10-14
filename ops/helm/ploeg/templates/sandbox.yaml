@@ -3,8 +3,10 @@
 {{- $sb := .Values.executor.sandbox }}
 {{- range $team := .Values.executor.teams }}
 {{- if eq (include "ploeg.teamExecutorType" (dict "root" $root "team" $team)) "sandbox" }}
-{{- range $role := (include "ploeg.teamRoles" $team | fromJsonArray) }}
-{{- $name := include "ploeg.workloadName" (dict "root" $root "team" $team "role" $role) }}
+{{- range $planRole := (include "ploeg.teamRoles" $team | fromJsonArray) }}
+{{- range $w := (include "ploeg.roleWorkloads" (dict "root" $root "team" $team "role" $planRole) | fromJsonArray) }}
+{{- $role := $w.role }}
+{{- $name := include "ploeg.workloadName" (dict "root" $root "team" $team "role" $role "suffix" $w.suffix) }}
 {{- $pod := include "ploeg.workerPodTemplate" (dict "root" $root "team" $team "role" $role) | fromYaml }}
 {{- $_ := set $pod.spec "activeDeadlineSeconds" $root.Values.executor.activeDeadlineSeconds }}
 {{- $_ := set $pod.spec "dnsPolicy" "ClusterFirst" }}
@@ -38,6 +40,7 @@ spec:
   replicas: 0
   sandboxTemplateRef:
     name: {{ $name }}
+{{- end }}
 {{- end }}
 {{- end }}
 {{- end }}

@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-13
+status: accepted
+date: 2026-10-14
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -76,3 +76,4 @@ This narrows ADR-0039 point 1 from "the Role's model" to "the one model resolved
 * OpenSpec change `select-harness-per-run`, design Decision 7 and the resolved Open Question 6.
 * Narrows [ADR-0039](0039-a-run-calls-only-its-roles-model-and-the-advisor-waits-for-metering.md) point 1 and [ADR-0091](0091-each-run-records-the-model-harness-plan-and-ploegd-version-it-was-configured-with.md)'s model rule; a dated note is added to each when this record is accepted.
 * 2026-10-13 — The owner decided that a session may choose its model from the Team's list: ploegd accepts a model only when the Role's managed inference policy lists it and otherwise refuses with a clear error, a Role that does not list it uses its default, the Run records the resolved model, its key is scoped to it, and retries keep it. Proposed.
+* 2026-10-14 — Accepted. Merging `select-harness-per-run` ratifies this record. Implemented: `models` and `defaultModel` in each policy (`role.models` in the chart), `model` on `POST /api/v1/operator/work-items` (422 `model_not_allowed` and `model_requires_managed_inference`), `agent_runs.model_selected` (migration 0056), the reservation scoped to it, `model` in the claim response and `configured_model` from it. The dated notes on ADR-0039 and ADR-0091 are left to the owner.

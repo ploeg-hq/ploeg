@@ -1,0 +1,11 @@
+# Must fail: a team without a plan has one workload that scales on queued Work
+# Items, so it cannot run a workload per allowed Harness (ADR-0099).
+executor:
+  enabled: true
+  teams:
+    - name: bronze
+      model: litellm_proxy/deepseek-chat
+      budget: "1"
+      harnesses:
+        - {name: openhands, default: true}
+        - {name: acp, acp: {profile: opencode}}

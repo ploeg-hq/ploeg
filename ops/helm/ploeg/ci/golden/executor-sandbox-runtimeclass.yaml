@@ -161,7 +161,7 @@ spec:
             - name: PLOEG_TEAM_PLANS
               value: "{\"gvisor\":{\"maxFixRounds\":0,\"pool\":\"4\",\"rounds\":[{\"roles\":[{\"cap\":\"3.00\",\"name\":\"builder\",\"writes\":true}]},{\"roles\":[{\"cap\":\"0.75\",\"harness\":{\"dind\":false},\"name\":\"reviewer\",\"sandbox\":{\"runtimeClassName\":\"gvisor-systrap\"},\"writes\":false}]}]}}"
             - name: PLOEG_TEAM_HARNESSES
-              value: "{\"gvisor\":{\"builder\":{\"name\":\"openhands\"},\"reviewer\":{\"name\":\"openhands\"}},\"kata\":{\"\":{\"name\":\"openhands\"}}}"
+              value: "{\"gvisor\":{\"builder\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"openhands\",\"qualification\":\"qualified\"}],\"name\":\"openhands\"},\"reviewer\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"openhands\",\"qualification\":\"qualified\"}],\"name\":\"openhands\"}},\"kata\":{\"\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"openhands\",\"qualification\":\"qualified\"}],\"name\":\"openhands\"}}}"
             - name: PLOEG_FORGEJO_URL
               value: "http://forgejo-http.forgejo.svc.cluster.local:3000"
             - name: PLOEG_FORGEJO_TOKEN
@@ -211,7 +211,7 @@ spec:
                   name: ploeg-worker-bootstrap
                   key: registry.json
             - name: PLOEG_WORKER_LLM_POLICIES
-              value: "[{\"budgetUsd\":2,\"models\":[\"deepseek-chat\"],\"role\":\"\",\"team\":\"kata\",\"ttl\":\"4h\"},{\"budgetUsd\":3,\"models\":[\"deepseek-chat\"],\"role\":\"builder\",\"team\":\"gvisor\",\"ttl\":\"4h\"},{\"budgetUsd\":0.75,\"models\":[\"deepseek-chat\"],\"role\":\"reviewer\",\"team\":\"gvisor\",\"ttl\":\"4h\"}]"
+              value: "[{\"budgetUsd\":2,\"defaultModel\":\"deepseek-chat\",\"models\":[\"deepseek-chat\"],\"role\":\"\",\"team\":\"kata\",\"ttl\":\"4h\"},{\"budgetUsd\":3,\"defaultModel\":\"deepseek-chat\",\"models\":[\"deepseek-chat\"],\"role\":\"builder\",\"team\":\"gvisor\",\"ttl\":\"4h\"},{\"budgetUsd\":0.75,\"defaultModel\":\"deepseek-chat\",\"models\":[\"deepseek-chat\"],\"role\":\"reviewer\",\"team\":\"gvisor\",\"ttl\":\"4h\"}]"
           readinessProbe:
             httpGet:
               path: /readyz
@@ -954,6 +954,8 @@ spec:
                 value: "http://ploeg:8080"
               - name: PLOEG_TEAM
                 value: "kata"
+              - name: PLOEG_HARNESS
+                value: "openhands"
               - name: PLOEG_WORKER_ID
                 valueFrom:
                   fieldRef:
@@ -1081,6 +1083,8 @@ spec:
                 value: "gvisor"
               - name: PLOEG_ROLE
                 value: "builder"
+              - name: PLOEG_HARNESS
+                value: "openhands"
               - name: PLOEG_WORKER_ID
                 valueFrom:
                   fieldRef:
@@ -1117,16 +1121,17 @@ spec:
         dbName: "app"
         sslmode: "require"
         # THE claim predicate for a Role, and it must stay byte-identical to
-        # store.ClaimRole and store.PendingRuns: pending runs for this team and
-        # role. Served index-only by agent_runs_claimable, which migration 0008
-        # created verbatim for this query:
-        #   CREATE INDEX agent_runs_claimable
-        #       ON agent_runs (team, role, id) WHERE state = 'pending';
+        # store.ClaimRoleFor and store.PendingRunsFor: pending runs for this
+        # team and role that store this workload's Harness key or none
+        # (ADR-0099). Served by agent_runs_claimable_harness, which migration
+        # 0056 created for this query:
+        #   CREATE INDEX agent_runs_claimable_harness
+        #       ON agent_runs (team, role, harness_requested, id) WHERE state = 'pending';
         # Overshoot merely wastes a pod that exits 0 empty-handed; undershoot
         # stalls Work Items with no error anywhere, which is the worst failure
         # this system can have. TestClaimRoleAgreesWithPendingRuns keeps the
         # two Go callers honest; this comment is the third copy's leash.
-        query: "SELECT COUNT(*) FROM agent_runs WHERE team = 'gvisor' AND role = 'builder' AND state = 'pending'"
+        query: "SELECT COUNT(*) FROM agent_runs WHERE team = 'gvisor' AND role = 'builder' AND state = 'pending' AND (harness_requested IS NULL OR harness_requested = 'openhands')"
         targetQueryValue: "1"
         activationTargetQueryValue: "0"
       authenticationRef:
@@ -1216,6 +1221,8 @@ spec:
                 value: "gvisor"
               - name: PLOEG_ROLE
                 value: "reviewer"
+              - name: PLOEG_HARNESS
+                value: "openhands"
               - name: PLOEG_WORKER_ID
                 valueFrom:
                   fieldRef:
@@ -1252,16 +1259,17 @@ spec:
         dbName: "app"
         sslmode: "require"
         # THE claim predicate for a Role, and it must stay byte-identical to
-        # store.ClaimRole and store.PendingRuns: pending runs for this team and
-        # role. Served index-only by agent_runs_claimable, which migration 0008
-        # created verbatim for this query:
-        #   CREATE INDEX agent_runs_claimable
-        #       ON agent_runs (team, role, id) WHERE state = 'pending';
+        # store.ClaimRoleFor and store.PendingRunsFor: pending runs for this
+        # team and role that store this workload's Harness key or none
+        # (ADR-0099). Served by agent_runs_claimable_harness, which migration
+        # 0056 created for this query:
+        #   CREATE INDEX agent_runs_claimable_harness
+        #       ON agent_runs (team, role, harness_requested, id) WHERE state = 'pending';
         # Overshoot merely wastes a pod that exits 0 empty-handed; undershoot
         # stalls Work Items with no error anywhere, which is the worst failure
         # this system can have. TestClaimRoleAgreesWithPendingRuns keeps the
         # two Go callers honest; this comment is the third copy's leash.
-        query: "SELECT COUNT(*) FROM agent_runs WHERE team = 'gvisor' AND role = 'reviewer' AND state = 'pending'"
+        query: "SELECT COUNT(*) FROM agent_runs WHERE team = 'gvisor' AND role = 'reviewer' AND state = 'pending' AND (harness_requested IS NULL OR harness_requested = 'openhands')"
         targetQueryValue: "1"
         activationTargetQueryValue: "0"
       authenticationRef:

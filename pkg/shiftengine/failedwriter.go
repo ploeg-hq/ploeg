@@ -78,7 +78,7 @@ func (e *Engine) retryFailedWriter(ctx context.Context, si store.ShiftInfo, writ
 	}
 
 	attempt, err := e.Store.ReopenRound(ctx, si.ID, si.Round,
-		[]store.Role{{Name: writer.Role, Writes: true, Cap: e.capFor(si.Team, writer.Role)}})
+		[]store.Role{{Name: writer.Role, Writes: true, Cap: e.capFor(si.Team, writer.Role), Selection: e.selection(si.Team, writer.Role)}})
 	if err != nil {
 		// Losing the race to the other evaluator is not an error: the Round
 		// has been reopened, which is the outcome we wanted.
