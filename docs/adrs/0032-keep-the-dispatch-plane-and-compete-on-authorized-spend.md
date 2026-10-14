@@ -184,6 +184,10 @@ Any one of these reopens this record:
 * OpenAI documents a settable per-session budget on the Agents API (its
   `session_budget_exceeded` error already exists without one); see
   [0041](0041-the-openai-agents-api-stays-outside-the-run-until-it-takes-an-authorized-budget.md).
+* Hermes Agent's Kanban gains a per-card money budget enforced at a proxy the
+  worker cannot bypass, Hermes Enterprise ships per-worker credentials with
+  tenant isolation, or Hermes adds a Forgejo or Vikunja adapter; see the Unfold
+  record [2026-10-14-hermes-agent-fit](https://forgejo.webgrip.dev/webgrip/unfold/src/branch/development/docs/research/2026-10-14-hermes-agent-fit.md).
 * The 2027-04 project review gate (`design.md` §10) arrives.
 
 ## More Information
@@ -194,3 +198,6 @@ Any one of these reopens this record:
   for board control planes: [0033](0033-board-control-planes-are-mined-for-design-never-depended-on.md).
 * Backlog #58 (agent-sandbox executor) and #75 (GitHub App tokens "when the
   GitHub provider lands").
+* 2026-10-14: the Hermes Agent sweep ([Unfold record](https://forgejo.webgrip.dev/webgrip/unfold/src/branch/development/docs/research/2026-10-14-hermes-agent-fit.md))
+  re-confirmed this bet. Hermes Kanban is a single-host ticket-to-PR loop with
+  iteration caps and no money budget; nothing in it trips a trigger above.
