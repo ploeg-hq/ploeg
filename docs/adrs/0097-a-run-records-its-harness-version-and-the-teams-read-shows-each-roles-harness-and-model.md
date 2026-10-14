@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-13
 decision-makers: Ryan Grippeling
 supersedes: none
@@ -29,7 +29,7 @@ review-by: 2027-01-31
 
 Chosen option: "the worker reports at claim and in the Outcome Report; ploegd learns the configured Harness from the chart", because it keeps the version of a Run that died early and lets ploegd show configuration it holds itself.
 
-* **Version.** At startup the worker runs the Harness binary with `--version`, bounded to 5 s, and keeps the first output line up to 128 bytes. It skips the probe for `exec` and for a binary it cannot resolve before the clone, which then record no version. The ACP adapter also keeps the agent's `agentInfo` name and version from `initialize`. The claim request carries `harnessVersion`; the Outcome Report carries an optional worker-only `harness` object with name, profile, version and agent. ploegd writes `agent_runs.harness_version` and `harness_agent` once, never overwrites, and stores null when absent or malformed.
+* **Version.** At startup the worker runs the Harness binary with `--version`, bounded to 5 s, and keeps the first output line up to 128 bytes. It skips the probe for `exec` and the custom `acp` profile, whose program is the Team's own, and for a binary it cannot resolve before the clone; these record no version. The ACP adapter also keeps the agent's `agentInfo` name and version from `initialize`. The claim request carries `harnessVersion`; the Outcome Report carries an optional worker-only `harness` object with name, profile, version and agent. ploegd writes `agent_runs.harness_version` and `harness_agent` once (migration `0054_run_harness_version.sql`, with `harness_recorded_at` for the Teams read), never overwrites, and stores null when absent or malformed.
 * **Configuration.** The chart renders `PLOEG_TEAM_HARNESSES` (team → Role → name and profile) from the same values as each worker's environment.
 * **Reads.** `run` and `runListItem` carry `harnessVersion` and `harnessAgent`. The Teams read carries per Role `harness`, `model` (the Role's default model: the single model of its inference policy, as ADR-0091 defines it, or the policy's named default once [ADR-0103](0103-an-operator-admission-may-choose-each-runs-model-from-the-models-its-roles-policy-lists.md) lets a policy list more than one) and `observedHarness`, the newest recorded version for that Role with its time and the Harness name and profile that recorded it.
 
@@ -70,3 +70,4 @@ Chosen option: "the worker reports at claim and in the Outcome Report; ploegd le
 * OpenSpec change `record-harness-per-run`.
 * Builds on ADR-0091 (migration `0050_run_config.sql`); does not supersede it. It answers 0091's trigger "ploegd learns each Role's harness from its own configuration" by keeping the worker's claim as the source of what ran.
 * 2026-10-13: the owner decided that Ploeg records the Harness and its version per Run, in the Outcome Report (additive) and the store (append-only), and that the Teams read shows per Role the Harness, its default, the model and the version. Proposed.
+* 2026-10-14: implemented in OpenSpec change `record-harness-per-run` and accepted; the owner ratifies it by merging.

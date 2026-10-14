@@ -124,6 +124,20 @@ func TestClaimResponseForgeTokenExpiry_MatchesSchema(t *testing.T) {
 	}
 }
 
+func TestClaimRequestHarnessVersion_MatchesSchema(t *testing.T) {
+	sch := compileSchema(t, "run-api.v1.schema.json#/$defs/claimRequest")
+	claim := map[string]any{"team": "bronze", "role": "reviewer", "harness": "acp", "harnessProfile": "opencode", "harnessVersion": "opencode 1.18.30"}
+	if err := validate(t, sch, claim); err != nil {
+		t.Errorf("claim with a harness version does not validate: %v", err)
+	}
+	for _, bad := range []string{"", strings.Repeat("v", 129)} {
+		claim["harnessVersion"] = bad
+		if err := validate(t, sch, claim); err == nil {
+			t.Errorf("claim with harness version of %d bytes validates", len(bad))
+		}
+	}
+}
+
 func TestTaskSpec_MatchesSchema(t *testing.T) {
 	sch := compileSchema(t, "taskspec.v1.schema.json")
 	if err := validate(t, sch, fullTaskSpec()); err != nil {
@@ -226,6 +240,28 @@ func TestOutcomeReport_MatchesSchema(t *testing.T) {
 		delivered := OutcomeReport{Outcome: work.OutcomeNoChangeNeeded, Summary: "x", Delivery: &d}
 		if err := validate(t, sch, delivered); err != nil {
 			t.Errorf("delivery %q does not validate: %v", d.Observed, err)
+		}
+	}
+
+	for _, h := range []RunHarness{
+		{Name: "acp", Profile: "opencode", Version: "1.18.30", Agent: &HarnessAgent{Name: "opencode", Version: "1.18.30"}},
+		{Name: "claude-code", Version: "2.1.4 (Claude Code)"},
+		{Name: "exec"},
+		{Name: "acp", Profile: "custom", Agent: &HarnessAgent{Name: "my-agent"}},
+	} {
+		recorded := OutcomeReport{Outcome: work.OutcomeNoChangeNeeded, Summary: "x", Harness: &h}
+		if err := validate(t, sch, recorded); err != nil {
+			t.Errorf("harness %+v does not validate: %v", h, err)
+		}
+	}
+	for name, h := range map[string]RunHarness{
+		"upper-case name":  {Name: "ACP"},
+		"long version":     {Name: "acp", Version: strings.Repeat("v", 129)},
+		"agent no name":    {Name: "acp", Agent: &HarnessAgent{Version: "1"}},
+		"long agent title": {Name: "acp", Agent: &HarnessAgent{Name: strings.Repeat("a", 129)}},
+	} {
+		if err := validate(t, sch, OutcomeReport{Outcome: work.OutcomeNoChangeNeeded, Summary: "x", Harness: &h}); err == nil {
+			t.Errorf("harness with %s validates", name)
 		}
 	}
 

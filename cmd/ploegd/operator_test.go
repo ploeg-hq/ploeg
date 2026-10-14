@@ -46,3 +46,21 @@ func TestOperatorConfigListsEachTeamsTrackerAssignees(t *testing.T) {
 		}
 	}
 }
+
+func TestOperatorConfigReadsEachRolesHarness(t *testing.T) {
+	t.Setenv("PLOEG_OPERATOR_CONSUMERS", "")
+	t.Setenv("PLOEG_OPERATOR_DELIVERY_POLICIES", "")
+	t.Setenv("PLOEG_TEAM_MAP", "")
+	t.Setenv("PLOEG_TEAM_HARNESSES", `{"gold":{"tests":{"name":"acp","profile":"openhands"}}}`)
+	operator, err := operatorConfig(&config.File{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h := operator.TeamHarnesses["gold"]["tests"]; h.Name != "acp" || h.Profile == nil || *h.Profile != "openhands" {
+		t.Fatalf("gold/tests = %+v", h)
+	}
+	t.Setenv("PLOEG_TEAM_HARNESSES", `{"gold":`)
+	if _, err := operatorConfig(&config.File{}, nil); err == nil {
+		t.Fatal("a malformed PLOEG_TEAM_HARNESSES must stop the boot")
+	}
+}

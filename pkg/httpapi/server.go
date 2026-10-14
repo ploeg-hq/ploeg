@@ -478,6 +478,9 @@ type claimRequest struct {
 	// leaves them unknown.
 	Harness        string `json:"harness,omitempty"`
 	HarnessProfile string `json:"harnessProfile,omitempty"`
+	// HarnessVersion is the version the worker read from its Harness binary
+	// at startup; ploegd records it once on the claimed Run (ADR-0097).
+	HarnessVersion string `json:"harnessVersion,omitempty"`
 }
 
 type claimResponse struct {
@@ -566,7 +569,7 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	s.recordRunConfig(r.Context(), claimed.RunToken, req.Team, "", true, runHarness{Name: req.Harness, Profile: req.HarnessProfile})
+	s.recordRunConfig(r.Context(), claimed.RunToken, req.Team, "", true, runHarness{Name: req.Harness, Profile: req.HarnessProfile, Version: req.HarnessVersion})
 	s.Log.Info("lease acquired", "team", req.Team, "work_item", claimed.Item.ID, "deadline", claimed.Deadline)
 	writeJSON(w, http.StatusOK, claimResponse{RunToken: claimed.RunToken, Deadline: claimed.Deadline, WorkItem: claimed.Item,
 		Context: s.claimContext(r.Context(), claimed.RunToken), Briefing: s.consumeOperatorNotes(r.Context(), claimed.Item.ID, claimed.RunToken, 0)})
@@ -608,7 +611,7 @@ func (s *Server) respondClaimedRun(w http.ResponseWriter, r *http.Request, req c
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	s.recordRunConfig(r.Context(), run.RunToken, req.Team, run.Role, true, runHarness{Name: req.Harness, Profile: req.HarnessProfile})
+	s.recordRunConfig(r.Context(), run.RunToken, req.Team, run.Role, true, runHarness{Name: req.Harness, Profile: req.HarnessProfile, Version: req.HarnessVersion})
 	resp := claimResponse{
 		RunToken: run.RunToken, Deadline: run.Deadline, WorkItem: run.Item,
 		Shift: run.ShiftID, Role: run.Role, Round: run.Round,
@@ -830,6 +833,7 @@ func (s *Server) handleOutcome(w http.ResponseWriter, r *http.Request) {
 		}
 		cancel()
 	}
+	s.recordReportedHarness(r.Context(), r.PathValue("token"), req.Harness)
 	s.Log.Info("outcome reported", "outcome", req.Outcome, "summary", req.Summary,
 		"created_proposed", len(req.CreatedWorkItems), "created_accepted", len(res.Created))
 	s.openCreatedShifts(r.Context(), res.Created)

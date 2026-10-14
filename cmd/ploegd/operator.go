@@ -19,6 +19,10 @@ func operatorConfig(cfg *config.File, plans plan.Plans) (httpapi.OperatorConfig,
 	if err != nil {
 		return httpapi.OperatorConfig{}, err
 	}
+	harnesses, err := httpapi.ParseTeamHarnesses(os.Getenv("PLOEG_TEAM_HARNESSES"))
+	if err != nil {
+		return httpapi.OperatorConfig{}, fmt.Errorf("PLOEG_TEAM_HARNESSES: %w", err)
+	}
 	teams := map[string][]string{}
 	for name := range cfg.Teams {
 		teams[name] = []string{}
@@ -62,7 +66,7 @@ func operatorConfig(cfg *config.File, plans plan.Plans) (httpapi.OperatorConfig,
 		}
 	}
 	return httpapi.OperatorConfig{Consumers: consumers, Teams: teams, TeamAssignees: assignees, TeamScopes: scopes,
-		DeliveryPolicies: deliveryPolicies}, nil
+		DeliveryPolicies: deliveryPolicies, TeamHarnesses: harnesses}, nil
 }
 
 func deployAuth() (*httpapi.DeployAuth, error) {

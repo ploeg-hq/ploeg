@@ -115,6 +115,10 @@ executor:
     #     writer draws the read-write one (ADR-0013 tier 1);
     #   * `builder` recurs in rounds 2 and 4 (the review→fix loop) with an
     #     identical definition, so it must collapse to ONE workload.
+    #   * `tests` overrides the Harness and its acp profile at the Role, so
+    #     its worker's PLOEG_HARNESS and PLOEG_ACP_PROFILE and ploegd's
+    #     PLOEG_TEAM_HARNESSES entry for gold/tests render side by side
+    #     (ADR-0097).
     - name: gold
       model: litellm_proxy/deepseek-chat
       budget: "6"
@@ -122,7 +126,7 @@ executor:
       plan:
         - roles:
             - {name: analyst, writes: false, cap: "0.50", harness: {dind: false}}
-            - {name: tests, writes: false, cap: "0.50", harness: {dind: false}}
+            - {name: tests, writes: false, cap: "0.50", harness: {dind: false, name: acp, acp: {profile: openhands}}}
         - roles:
             - {name: builder, writes: true, cap: "3.00", model: litellm_proxy/claude-sonnet-5}
         - roles:

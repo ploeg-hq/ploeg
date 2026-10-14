@@ -110,7 +110,9 @@ spec:
                   name: ploeg-db-app
                   key: uri
             - name: PLOEG_TEAM_PLANS
-              value: "{\"gold\":{\"maxFixRounds\":0,\"pool\":\"6\",\"rounds\":[{\"roles\":[{\"cap\":\"0.50\",\"harness\":{\"dind\":false},\"name\":\"analyst\",\"writes\":false},{\"cap\":\"0.50\",\"harness\":{\"dind\":false},\"name\":\"tests\",\"writes\":false}]},{\"roles\":[{\"cap\":\"3.00\",\"model\":\"litellm_proxy/claude-sonnet-5\",\"name\":\"builder\",\"writes\":true}]},{\"roles\":[{\"cap\":\"0.75\",\"harness\":{\"dind\":false},\"model\":\"litellm_proxy/claude-sonnet-5\",\"name\":\"reviewer\",\"writes\":false}]},{\"roles\":[{\"cap\":\"3.00\",\"model\":\"litellm_proxy/claude-sonnet-5\",\"name\":\"builder\",\"writes\":true}]}]}}"
+              value: "{\"gold\":{\"maxFixRounds\":0,\"pool\":\"6\",\"rounds\":[{\"roles\":[{\"cap\":\"0.50\",\"harness\":{\"dind\":false},\"name\":\"analyst\",\"writes\":false},{\"cap\":\"0.50\",\"harness\":{\"acp\":{\"profile\":\"openhands\"},\"dind\":false,\"name\":\"acp\"},\"name\":\"tests\",\"writes\":false}]},{\"roles\":[{\"cap\":\"3.00\",\"model\":\"litellm_proxy/claude-sonnet-5\",\"name\":\"builder\",\"writes\":true}]},{\"roles\":[{\"cap\":\"0.75\",\"harness\":{\"dind\":false},\"model\":\"litellm_proxy/claude-sonnet-5\",\"name\":\"reviewer\",\"writes\":false}]},{\"roles\":[{\"cap\":\"3.00\",\"model\":\"litellm_proxy/claude-sonnet-5\",\"name\":\"builder\",\"writes\":true}]}]}}"
+            - name: PLOEG_TEAM_HARNESSES
+              value: "{\"bronze\":{\"\":{\"name\":\"openhands\"}},\"copper\":{\"\":{\"name\":\"exec\"}},\"gold\":{\"analyst\":{\"name\":\"openhands\"},\"builder\":{\"name\":\"openhands\"},\"reviewer\":{\"name\":\"openhands\"},\"tests\":{\"name\":\"acp\",\"profile\":\"openhands\"}},\"lead\":{\"\":{\"name\":\"acp\",\"profile\":\"custom\"}},\"pewter\":{\"\":{\"name\":\"claude-environment\"}},\"tin\":{\"\":{\"name\":\"openhands\"}},\"zinc\":{\"\":{\"name\":\"openhands\"}}}"
             - name: PLOEG_TEAM_MAX_RUNNING
               value: "{\"zinc\":2}"
             - name: PLOEG_FORGEJO_URL
@@ -1852,11 +1854,13 @@ spec:
               - name: PLOEG_ROLE
                 value: "tests"
               - name: PLOEG_HARNESS
-                value: "openhands"
+                value: "acp"
               - name: PLOEG_HARNESS_TIMEOUT
                 value: "100m"
               - name: PLOEG_HARNESS_IDLE_TIMEOUT
                 value: "15m"
+              - name: PLOEG_ACP_PROFILE
+                value: "openhands"
               - name: LLM_MODEL
                 value: "litellm_proxy/deepseek-chat"
               - name: LITELLM_KEY_BUDGET

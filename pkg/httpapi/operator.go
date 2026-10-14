@@ -52,6 +52,7 @@ type OperatorConfig struct {
 	TeamAssignees    map[string][]string
 	TeamScopes       map[string][]string
 	DeliveryPolicies map[string]DeliveryPolicy
+	TeamHarnesses    TeamHarnesses
 }
 
 type operatorPrincipalKey struct{}
@@ -224,6 +225,7 @@ func (s *Server) handleOperatorTeams(w http.ResponseWriter, r *http.Request) {
 			sort.Strings(teams[i].PinnedScopes)
 		}
 	}
+	s.describeRoles(teams)
 	operatorJSON(w, 200, map[string]any{"schemaVersion": "1.0", "teams": teams})
 }
 

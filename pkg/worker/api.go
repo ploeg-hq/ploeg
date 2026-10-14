@@ -28,6 +28,9 @@ type APIClient struct {
 	// which harness and agent profile ran the Run (ADR-0091).
 	Harness        string
 	HarnessProfile string
+	// HarnessVersion is sent with each claim when the worker knows it, so a
+	// Run that dies before reporting still records it (ADR-0097).
+	HarnessVersion string
 	controlTokens  sync.Map
 }
 
@@ -84,6 +87,9 @@ func (a *APIClient) Claim(team, role string) (*ClaimResponse, error) {
 	}
 	if a.HarnessProfile != "" {
 		req["harnessProfile"] = a.HarnessProfile
+	}
+	if a.HarnessVersion != "" {
+		req["harnessVersion"] = a.HarnessVersion
 	}
 	body, _ := json.Marshal(req)
 	resp, err := a.request(context.Background(), http.MethodPost, "/api/v1/claim", body, a.BootstrapToken)

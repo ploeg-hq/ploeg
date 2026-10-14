@@ -8,6 +8,7 @@ env:
   PLOEG_CREDENTIAL_ISOLATION_OFF_REASON: "Why the chart left a credential proxy off for this workload: `unqualified`, `dind` or `disabled`. ploeg-worker logs it in one boot WARN with the harness name."
   PLOEG_DEFAULT_TEAM: Team that receives work from an assignee no Team lists.
   PLOEG_TEAM_MAP: Legacy assignee roster, replaced by `teams.<name>.assignees` in the `PLOEG_CONFIG` file.
+  PLOEG_TEAM_HARNESSES: "Each Role's configured Harness as JSON, team to Role to `{name, profile}`; a plan-less team's workload is the Role `\"\"`. The chart renders it from the same values as each worker's `PLOEG_HARNESS` and `PLOEG_ACP_PROFILE`, and the Teams read shows it (ADR-0097). Unset reads every Role's Harness as null; a malformed value stops ploegd at boot."
   PLOEG_TEAM_PLANS: Legacy Shift plans, replaced by `teams.<name>.plan` in the `PLOEG_CONFIG` file. A malformed plan stops ploegd at boot.
   PLOEG_TARGET_MAP: Legacy routing from tracker scope to repository, rendered from the org.yaml roster manifest. Replaced by `trackers.<tracker>.projects` in the `PLOEG_CONFIG` file.
   PLOEG_VIKUNJA_SECRET: Secret that verifies `X-Vikunja-Signature` on `POST /webhooks/tracker/vikunja`. The chart reads it from `webhook.existingSecret`. Unset rejects every Vikunja webhook.
