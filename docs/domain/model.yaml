@@ -59,7 +59,10 @@ terms:
       A Ploeg record admitted for an authenticated Operator Consumer and linked
       to its session. A consumer requests admission even when a person will
       steer the work live. It links one Work Item, Shift and Run and retains its
-      identity through changes in supervision.
+      identity through changes in supervision. It is being retired (ADR-0102):
+      an Operator Consumer now admits a manual-origin Work Item that
+      ploeg-worker executes, and Operator Executions remain only until no
+      consumer admits one and none is open.
     context: Dispatch
     not_to_be_confused_with:
       - term: Shift
@@ -69,8 +72,10 @@ terms:
   - name: Operator Consumer
     definition: >
       A named service identity with explicit Team scope and separate read and
-      execution permissions. It authenticates the human actor and authorizes
-      registered repositories before requesting an Operator Execution.
+      execution permissions. It authenticates the human actor and asks Ploeg
+      to admit work: a manual-origin Work Item that ploeg-worker executes from
+      its Team Queue, or, until they are retired, an Operator Execution it
+      executes itself.
     context: Integration
     see_also: [Team, Operator Execution]
 
@@ -179,8 +184,9 @@ terms:
     definition: >
       A unit of work: something we have decided to do, or a problem described
       well enough that a solution can be formulated or at least conceived. It
-      comes from a Tracker Item, from an Operator Execution admitted for an
-      Operator Consumer, or from other work (a Follow-Up). Ploeg keeps one record per Work
+      comes from a Tracker Item, from an Admission for an Operator Consumer
+      (a manual-origin Work Item, or the one an Operator Execution links), or
+      from other work (a Follow-Up). Ploeg keeps one record per Work
       Item and runs Shifts against it; a failed Shift leaves it in place.
       Tracker-originated content remains owned by the Tracker Item.
       Manual-origin content is registered by an authenticated Operator Consumer
@@ -531,8 +537,11 @@ terms:
   - name: Admission
     definition: >
       Ploeg's decision to accept work for execution and record it. Operator work
-      is admitted when an authenticated Operator Consumer asks; tracker work enters through an Assignment and the Routing
-      Rules. No Run starts before its work is admitted.
+      is admitted when an authenticated Operator Consumer asks: as a
+      manual-origin Work Item that enters its Team Queue and ploeg-worker
+      executes, or, until they are retired, as an Operator Execution. Tracker
+      work enters through an Assignment and the Routing Rules. No Run starts
+      before its work is admitted.
     context: Dispatch
     see_also: [Authority, Operator Execution, Operator Consumer, Assignment, Work Item]
 
@@ -1048,6 +1057,11 @@ rules:
     rationale: Research must support a decision; building an unwanted product does not improve the answer.
     applies_to: [Tracker Item]
     context: Integration
+  - id: R20
+    statement: An Admission is identified by its consumer and request identity. Replaying it returns the Work Item it admitted, in whatever state that Work Item is, and never queues it again, opens a Shift or creates a Run. The same request identity with another payload or actor is a conflict.
+    rationale: A lost response or a restart must not start paid work a second time (R3).
+    applies_to: [Admission, Work Item, Operator Consumer]
+    context: Dispatch
   - id: R16
     statement: Binding tracker work to an Operator Execution retains its canonical Work Item identity and tracker origin. Admission atomically excludes unattended claims and requires fresh registered Scope and Work Target expectations. Tracker refresh never implicitly relinquishes operator ownership.
     rationale: Human interaction must not create a duplicate dispatch or restart intentionally stopped work.

@@ -12,7 +12,7 @@ generated_by: "mise run domain"
 ## Admission
 *Context: Dispatch*
 
-Ploeg's decision to accept work for execution and record it. Operator work is admitted when an authenticated Operator Consumer asks; tracker work enters through an Assignment and the Routing Rules. No Run starts before its work is admitted.
+Ploeg's decision to accept work for execution and record it. Operator work is admitted when an authenticated Operator Consumer asks: as a manual-origin Work Item that enters its Team Queue and ploeg-worker executes, or, until they are retired, as an Operator Execution. Tracker work enters through an Assignment and the Routing Rules. No Run starts before its work is admitted.
 
 **See also:** [Authority](#authority), [Operator Execution](#operator-execution), [Operator Consumer](#operator-consumer), [Assignment](#assignment), [Work Item](#work-item)  
 
@@ -173,14 +173,14 @@ The trained system a Harness sends requests to through the model gateway. Ploeg 
 ## Operator Consumer
 *Context: Integration*
 
-A named service identity with explicit Team scope and separate read and execution permissions. It authenticates the human actor and authorizes registered repositories before requesting an Operator Execution.
+A named service identity with explicit Team scope and separate read and execution permissions. It authenticates the human actor and asks Ploeg to admit work: a manual-origin Work Item that ploeg-worker executes from its Team Queue, or, until they are retired, an Operator Execution it executes itself.
 
 **See also:** [Team](#team), [Operator Execution](#operator-execution)  
 
 ## Operator Execution
 *Context: Dispatch*
 
-A Ploeg record admitted for an authenticated Operator Consumer and linked to its session. A consumer requests admission even when a person will steer the work live. It links one Work Item, Shift and Run and retains its identity through changes in supervision.
+A Ploeg record admitted for an authenticated Operator Consumer and linked to its session. A consumer requests admission even when a person will steer the work live. It links one Work Item, Shift and Run and retains its identity through changes in supervision. It is being retired (ADR-0102): an Operator Consumer now admits a manual-origin Work Item that ploeg-worker executes, and Operator Executions remain only until no consumer admits one and none is open.
 
 **Not to be confused with** [Shift](#shift): The whole attempt on a Work Item. An Operator Execution is the admitted record that links one.  
 **See also:** [Work Item](#work-item), [Shift](#shift), [Run](#run), [Operator Consumer](#operator-consumer), [Inference Account](#inference-account)  
@@ -359,7 +359,7 @@ Evidence reported by an explicitly authorized verifier for one Delivery Candidat
 ## Work Item
 *Context: Dispatch*
 
-A unit of work: something we have decided to do, or a problem described well enough that a solution can be formulated or at least conceived. It comes from a Tracker Item, from an Operator Execution admitted for an Operator Consumer, or from other work (a Follow-Up). Ploeg keeps one record per Work Item and runs Shifts against it; a failed Shift leaves it in place. Tracker-originated content remains owned by the Tracker Item. Manual-origin content is registered by an authenticated Operator Consumer and never silently creates a Tracker Item.
+A unit of work: something we have decided to do, or a problem described well enough that a solution can be formulated or at least conceived. It comes from a Tracker Item, from an Admission for an Operator Consumer (a manual-origin Work Item, or the one an Operator Execution links), or from other work (a Follow-Up). Ploeg keeps one record per Work Item and runs Shifts against it; a failed Shift leaves it in place. Tracker-originated content remains owned by the Tracker Item. Manual-origin content is registered by an authenticated Operator Consumer and never silently creates a Tracker Item.
 
 **Do not use:** task, ticket  
 **See also:** [Tracker Item](#tracker-item), [Lease](#lease), [Follow-Up](#follow-up), [Work Target](#work-target)  

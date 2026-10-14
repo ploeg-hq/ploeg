@@ -10,7 +10,7 @@ change either side and the test tells you.
 | [outcomereport.v1.schema.json](outcomereport.v1.schema.json) | Harness output and the body of `POST /api/v1/runs/{token}/outcome`. Stuck requires a reason (R4). The optional `createdWorkItems` carries the Work Items a Run proposes ([ADR-0031](../adrs/0031-runs-create-work-items-held-for-approval-within-limits.md)). The optional `verification` is the worker's own record of the checks it ran on a writing Run; the worker discards any value an agent sent. |
 | [checkpoint.v1.schema.json](checkpoint.v1.schema.json) | The durable progress record (shared by TaskSpec, OutcomeReport, and the checkpoint endpoint). |
 | [run-api.v1.schema.json](run-api.v1.schema.json) | All run-API message bodies (claim/renew/checkpoint/outcome/transcript). |
-| [operator-api.v1.schema.json](operator-api.v1.schema.json) | Authenticated, team-scoped read projections of teams, activity summaries, work items, shifts, runs, the Run list, a Run's transcript ([ADR-0090](../adrs/0090-a-runs-agent-session-is-kept-as-a-bounded-redacted-transcript.md)), checkpoints and snapshot audit pages; the delivery facts of a Work Item and the facts list, and the keyed pull request comment ([ADR-0079](../adrs/0079-run-cards-belong-to-the-consumer-and-ploeg-supplies-delivery-facts.md)); Asks and the Ask Allowance ([ADR-0082](../adrs/0082-an-ask-is-a-read-only-run-outside-the-shift-paid-from-a-periodic-allowance.md)). |
+| [operator-api.v1.schema.json](operator-api.v1.schema.json) | Authenticated, team-scoped read projections of teams, activity summaries, work items, shifts, runs, the Run list, a Run's transcript ([ADR-0090](../adrs/0090-a-runs-agent-session-is-kept-as-a-bounded-redacted-transcript.md)), checkpoints and snapshot audit pages; the delivery facts of a Work Item and the facts list, and the keyed pull request comment ([ADR-0079](../adrs/0079-run-cards-belong-to-the-consumer-and-ploeg-supplies-delivery-facts.md)); Asks and the Ask Allowance ([ADR-0082](../adrs/0082-an-ask-is-a-read-only-run-outside-the-shift-paid-from-a-periodic-allowance.md)); the Admission of a manual-origin Work Item ([ADR-0102](../adrs/0102-an-operator-consumer-admits-work-items-that-ploeg-worker-executes.md)). |
 | [deploy-api.v1.schema.json](deploy-api.v1.schema.json) | `POST /api/v1/deploys`: a pipeline reports that a commit is live in an environment, with its own bearer token ([ADR-0047](../adrs/0047-ploeg-learns-where-a-merged-change-is-deployed-from-a-generic-deploy-endpoint.md), [how-to](../how-to/send-deploys-from-a-pipeline.md)). |
 | [tracker-execution.md](tracker-execution.md), [v1 schema](tracker-execution.v1.schema.json) | Scoped source lookup and exclusive operator binding of an existing pristine tracker Work Item. |
 | [acp-profiles.md](acp-profiles.md) | The `acp` harness profiles: launch command, gateway wiring, instruction files and approval mapping per agent, and what an image needs to run them. |
@@ -141,6 +141,13 @@ change either side and the test tells you.
   consumer may read either name, and must have moved off `reservedUsd`, the
   `leased` count and sending `leased` before it upgrades to the removal
   release.
+- Since [ADR-0102](../adrs/0102-an-operator-consumer-admits-work-items-that-ploeg-worker-executes.md)
+  an operator consumer with execute permission admits a manual-origin Work
+  Item with `POST /api/v1/operator/work-items` (`workItemAdmissionRequest`,
+  answered by `workItemAdmissionResponse`). The request refuses unknown
+  fields; the changes that add Harness, model, `attended` and `autoApprove`
+  extend it. The operator event feed's `detail` gains the optional
+  `requestId` on `operator.work_item.admitted`. An older Ploeg answers 405.
 - `deploy-api.v1` is the body of a pipeline's deploy report. It refuses
   unknown fields, unlike the response contracts, so a misspelled field fails
   the pipeline step instead of being dropped.
@@ -371,6 +378,35 @@ branch at `fromRound`, its Runs are briefed with the previous Shift's close
 reason, failed Runs and the `note`, the request is audited as
 `work_item.requeued`, and the tracker task and pull request are told who
 restarted it.
+
+`POST /api/v1/operator/work-items` admits a manual-origin Work Item that
+`ploeg-worker` executes ([ADR-0102](../adrs/0102-an-operator-consumer-admits-work-items-that-ploeg-worker-executes.md)).
+It needs `execute` permission, exactly one `X-Ploeg-Actor` and the Team in
+the consumer's scope. The body `{requestId, team, target, title, description,
+budgetUsd}` names the Work Target by a registered target key, never a
+repository URL; an unknown key answers 422 `unknown_target` and a target
+whose readiness check fails 422 `target_not_ready`. A Team without a plan
+while uniform dispatch is off answers 422 `team_not_dispatched`. `budgetUsd`
+is optional, positive and at most the consumer's `maxBudgetUsd` (400
+`budget_above_limit`); the Work Item is allotted it, or `maxBudgetUsd`
+without it, and the Shift pool is the lower of the plan's pool and that
+allotment, so an unmetered plan is metered for admitted work. The Work Item
+has provider `manual`, origin `operator` and is not operator-owned: it is
+queued for its Team, its Shift opens from the plan as for tracker work, only
+a worker claims its Runs, and its Runs count against `maxRunning`. A new
+Admission answers 201 and is audited once as `operator.work_item.admitted`
+with `requestId` and no request content. `requestId` is the idempotency key
+per consumer: the same body from the same actor answers 200 with
+`replayed: true` and the Work Item in its current state, and never queues it
+again, opens a Shift or creates a Run, also after it became `done`,
+`needs_human` or `withdrawn`. Another body or actor answers 409
+`request_conflict`, and so does a `requestId` that names an Operator
+Execution of the same consumer. The response carries the Work Item's most
+recent `shiftId` and its `poolUsd`, null until a Shift opened; if ploegd
+stops before opening it, the sweeper does. Follow the Work Item with `GET
+/api/v1/operator/events?workItemId=` and steer it with cancel, requeue and
+notes as above. Its cancel calls no tracker, and a withdrawn admitted Work
+Item stays withdrawn: admit new work with a new `requestId`.
 
 Execution requests additionally require `X-Ploeg-Actor`, the stable session
 owner identity asserted by the authenticated consumer. Commands may carry

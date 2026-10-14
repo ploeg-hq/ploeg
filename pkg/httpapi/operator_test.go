@@ -79,7 +79,8 @@ func TestOperatorRoutesRejectInvalidOrUnauthorizedQueriesBeforeStore(t *testing.
 		method, path string
 		status       int
 	}{
-		{"POST", "/api/v1/operator/work-items", 405},
+		{"POST", "/api/v1/operator/work-items", 403},
+		{"PUT", "/api/v1/operator/work-items", 405},
 		{"HEAD", "/api/v1/operator/teams", 405},
 		{"GET", "/api/v1/operator/work-items?team=gold", 403},
 		{"GET", "/api/v1/operator/work-items?limit=201", 400},

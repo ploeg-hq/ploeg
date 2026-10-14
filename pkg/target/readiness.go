@@ -75,6 +75,15 @@ func (g *Gate) Check(ctx context.Context, key string) Readiness {
 	return v
 }
 
+// Target returns the registered target named key. A nil Gate registers none.
+func (g *Gate) Target(key string) (work.Target, bool) {
+	if g == nil {
+		return work.Target{}, false
+	}
+	t, ok := g.targets[key]
+	return t, ok
+}
+
 // KeyOf finds a registered key whose target is t. Keys that share a target
 // share its verdict, so any of them will do.
 func (g *Gate) KeyOf(t work.Target) (string, bool) {

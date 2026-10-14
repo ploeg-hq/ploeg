@@ -423,7 +423,8 @@ const operatorEventJSON = `jsonb_build_object(
 		'authorizedUsd', CASE WHEN jsonb_typeof(a.detail->'authorized') = 'number' THEN a.detail->'authorized' END,
 		'phase', CASE WHEN jsonb_typeof(a.detail->'phase') = 'string' THEN left(a.detail->>'phase', 256) END,
 		'reason', CASE WHEN jsonb_typeof(a.detail->'reason') = 'string' THEN left(a.detail->>'reason', 4096) END,
-		'infraFailures', CASE WHEN jsonb_typeof(a.detail->'infra_failures') = 'number' THEN a.detail->'infra_failures' END)))`
+		'infraFailures', CASE WHEN jsonb_typeof(a.detail->'infra_failures') = 'number' THEN a.detail->'infra_failures' END,
+		'requestId', CASE WHEN a.action = 'operator.work_item.admitted' AND jsonb_typeof(a.detail->'request_id') = 'string' THEN left(a.detail->>'request_id', 128) END)))`
 
 func (s *Store) OperatorTeams(ctx context.Context, teams []string, registered map[string][]string) ([]OperatorTeam, error) {
 	rows, err := s.pool.Query(ctx, `
