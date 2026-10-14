@@ -18,7 +18,14 @@
 {{- range $role := (include "ploeg.teamRoles" $team | fromJsonArray) }}
 {{- $model := $role.model | default $team.model }}
 {{- $model = regexReplaceAll "^.*/" $model "" }}
-{{- $policy := dict "team" $team.name "role" ($role.name | default "") "models" (list $model) "budgetUsd" ($role.cap | default $team.perRunBudget | default $team.budget | float64) "ttl" $root.Values.executor.litellm.keyDuration }}
+{{- $models := list }}
+{{- range ($role.models | default (list $model)) }}
+{{- $models = append $models (regexReplaceAll "^.*/" . "") }}
+{{- end }}
+{{- if not (has $model $models) }}
+{{- fail (printf "team %s: role %q lists models without its default model %q (ADR-0103)" $team.name $role.name $model) }}
+{{- end }}
+{{- $policy := dict "team" $team.name "role" ($role.name | default "") "models" $models "defaultModel" $model "budgetUsd" ($role.cap | default $team.perRunBudget | default $team.budget | float64) "ttl" $root.Values.executor.litellm.keyDuration }}
 {{- /* ADR-0078: opt-in, read-only MCP tools through the LiteLLM gateway. The
      LiteLLM team bounds the access groups, so groups without a team fail. */}}
 {{- if and $team.mcpAccessGroups (not $team.litellmTeamId) }}

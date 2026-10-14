@@ -33,14 +33,17 @@ type RunControlState struct {
 	Role     string
 	State    string
 	Deadline time.Time
+	// Model is the model resolved for the Run (ADR-0103); empty when it
+	// stores none.
+	Model string
 }
 
 func (s *Store) RunControl(ctx context.Context, token string) (RunControlState, error) {
 	var r RunControlState
 	err := s.pool.QueryRow(ctx, `SELECT r.team, r.role, r.state,
-		COALESCE(r.expires_at, l.expires_at, r.finished_at, r.started_at)
+		COALESCE(r.expires_at, l.expires_at, r.finished_at, r.started_at), COALESCE(r.model_selected, '')
 		FROM agent_runs r LEFT JOIN leases l USING (run_token) WHERE r.run_token = $1`, token).
-		Scan(&r.Team, &r.Role, &r.State, &r.Deadline)
+		Scan(&r.Team, &r.Role, &r.State, &r.Deadline, &r.Model)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return r, ErrUnknownRun
 	}

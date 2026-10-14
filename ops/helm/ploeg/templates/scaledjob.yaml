@@ -3,7 +3,9 @@
 {{- $root := . }}
 {{- range $team := .Values.executor.teams }}
 {{- $sandbox := eq (include "ploeg.teamExecutorType" (dict "root" $root "team" $team)) "sandbox" }}
-{{- range $role := (include "ploeg.teamRoles" $team | fromJsonArray) }}
+{{- range $planRole := (include "ploeg.teamRoles" $team | fromJsonArray) }}
+{{- range $w := (include "ploeg.roleWorkloads" (dict "root" $root "team" $team "role" $planRole) | fromJsonArray) }}
+{{- $role := $w.role }}
 ---
 # One ScaledJob per (team, Role) — the flagship executor. A team without a
 # plan has exactly one Role-less workload, byte-identical to the pre-Shift
@@ -17,7 +19,7 @@
 apiVersion: keda.sh/v1alpha1
 kind: ScaledJob
 metadata:
-  name: {{ include "ploeg.workloadName" (dict "root" $root "team" $team "role" $role) }}
+  name: {{ include "ploeg.workloadName" (dict "root" $root "team" $team "role" $role "suffix" $w.suffix) }}
   labels: {{- include "ploeg.labels" $root | nindent 4 }}
     {{- if and (not $sandbox) (include "ploeg.roleUsesDind" (dict "root" $root "team" $team "role" $role)) }}
     # KEDA copies these labels onto every Job it creates, which is the only way
@@ -45,7 +47,7 @@ spec:
     {{- if $sandbox }}
     activeDeadlineSeconds: {{ add $root.Values.executor.activeDeadlineSeconds $root.Values.executor.sandbox.shutdownMarginSeconds }}
     template:
-      {{- include "ploeg.sandboxLauncherPodTemplate" (dict "root" $root "team" $team "role" $role) | nindent 6 }}
+      {{- include "ploeg.sandboxLauncherPodTemplate" (dict "root" $root "team" $team "role" $role "suffix" $w.suffix) | nindent 6 }}
     {{- else }}
     activeDeadlineSeconds: {{ $root.Values.executor.activeDeadlineSeconds }}
     template:
@@ -63,16 +65,17 @@ spec:
         sslmode: {{ $root.Values.executor.scaler.sslmode | quote }}
         {{- if $role.name }}
         # THE claim predicate for a Role, and it must stay byte-identical to
-        # store.ClaimRole and store.PendingRuns: pending runs for this team and
-        # role. Served index-only by agent_runs_claimable, which migration 0008
-        # created verbatim for this query:
-        #   CREATE INDEX agent_runs_claimable
-        #       ON agent_runs (team, role, id) WHERE state = 'pending';
+        # store.ClaimRoleFor and store.PendingRunsFor: pending runs for this
+        # team and role that store this workload's Harness key or none
+        # (ADR-0099). Served by agent_runs_claimable_harness, which migration
+        # 0056 created for this query:
+        #   CREATE INDEX agent_runs_claimable_harness
+        #       ON agent_runs (team, role, harness_requested, id) WHERE state = 'pending';
         # Overshoot merely wastes a pod that exits 0 empty-handed; undershoot
         # stalls Work Items with no error anywhere, which is the worst failure
         # this system can have. TestClaimRoleAgreesWithPendingRuns keeps the
         # two Go callers honest; this comment is the third copy's leash.
-        query: "SELECT COUNT(*) FROM agent_runs WHERE team = '{{ $team.name }}' AND role = '{{ $role.name }}' AND state = 'pending'"
+        query: "SELECT COUNT(*) FROM agent_runs WHERE team = '{{ $team.name }}' AND role = '{{ $role.name }}' AND state = 'pending' AND (harness_requested IS NULL OR harness_requested = '{{ $w.key }}')"
         {{- else }}
         # The one poll-query shape: served index-only by work_items_claimable
         # (backlog #24/#47). Must stay in sync with store.Claim.
@@ -82,6 +85,7 @@ spec:
         activationTargetQueryValue: "0"
       authenticationRef:
         name: {{ include "ploeg.fullname" $root }}-scaler
+{{- end }}
 {{- end }}
 {{- end }}
 {{- end }}

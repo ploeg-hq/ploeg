@@ -41,7 +41,7 @@ The generator follows each binary's imports inside the module and records every 
 | `PLOEG_ACP_CONFIG_JSON` | ploeg-worker |  | `acp` harness only: replaces the generated agent configuration of the `opencode` or `qwen-code` profile wholesale. The `goose` and `openhands` profiles refuse it at startup. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_ACP_IDLE_TIMEOUT` | ploeg-worker |  | `acp` harness only: timeout without protocol traffic. Empty means the adapter default (10m). | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_ACP_PERMISSION_MODE` | ploeg-worker |  | `acp` harness only: `allow_always` (default), `allow_read_only` or `deny_all`. | [main.go](../../cmd/ploeg-worker/main.go) |
-| `PLOEG_ACP_PROFILE` | ploeg-worker |  | `acp` harness only: `opencode`, `qwen-code`, `goose`, `openhands` or `custom` (chart `executor.harness.acp.profile`). See [ACP profiles](../contracts/acp-profiles.md). | [main.go](../../cmd/ploeg-worker/main.go) |
+| `PLOEG_ACP_PROFILE` | ploeg-worker |  | `acp` harness only: `opencode`, `qwen-code`, `goose`, `openhands` or `custom` (chart `executor.harness.acp.profile`). See [ACP profiles](../contracts/acp-profiles.md). | [main.go](../../cmd/ploeg-worker/main.go), [sandbox.go](../../cmd/ploeg-worker/sandbox.go) |
 | `PLOEG_ACP_PROMPT_TIMEOUT` | ploeg-worker |  | `acp` harness only: prompt timeout as a Go duration. Empty means the adapter default (45m). | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_API_URL` | ploeg-worker | required | ploegd's run API (chart `executor.apiUrl`, default `http://<fullname>:<service.port>`). | [main.go](../../cmd/ploeg-worker/main.go), [sandbox.go](../../cmd/ploeg-worker/sandbox.go) |
 | `PLOEG_ASK_ALLOWANCE_USD` | ploegd | `2.00` | Monthly Ask Allowance, in US dollars, that a Team's period opens with (ADR-0082). A period keeps the limit its first Ask opened it with. At most 10000 with four decimals; anything else refuses to start. | [main.go](../../cmd/ploegd/main.go) |
@@ -89,7 +89,7 @@ The generator follows each binary's imports inside the module and records every 
 | `PLOEG_GITLAB_SECRET` | ploegd |  | Shared secret GitLab sends as `X-Gitlab-Token` to `POST /webhooks/forge/gitlab` (chart `executor.gitlab.webhookSecret`). Unset rejects every GitLab webhook. | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_GITLAB_TOKEN` | ploegd |  | Token with `api` scope on the target projects, sent as `PRIVATE-TOKEN` (chart `executor.gitlab.tokenSecret`). | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_GITLAB_URL` | ploegd |  | GitLab base URL without `/api/v4` (chart `executor.gitlab.url`). Empty configures no GitLab provider, so findings never reach a merge request. | [main.go](../../cmd/ploegd/main.go) |
-| `PLOEG_HARNESS` | ploeg-worker | `openhands` | Harness adapter: `openhands`, `exec`, `claude-code` or `acp` (chart `executor.harness.name`). | [main.go](../../cmd/ploeg-worker/main.go) |
+| `PLOEG_HARNESS` | ploeg-worker | `openhands` | Harness adapter: `openhands`, `exec`, `claude-code` or `acp` (chart `executor.harness.name`). | [main.go](../../cmd/ploeg-worker/main.go), [sandbox.go](../../cmd/ploeg-worker/sandbox.go) |
 | `PLOEG_HARNESS_ARGS` | ploeg-worker |  | `exec` harness only: JSON argv template with `{taskspec}` and `{taskfile}` (chart `executor.harness.args`). | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_HARNESS_ENTRYPOINT` | ploeg-worker |  | Harness binary override (chart `executor.harness.entrypoint`). Empty means the adapter default. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_HARNESS_IDLE_TIMEOUT` | ploeg-worker | `15m` | Stops a harness that prints nothing and makes no model call for this long, with failure reason `idle`. | [main.go](../../cmd/ploeg-worker/main.go) |
@@ -136,7 +136,7 @@ The generator follows each binary's imports inside the module and records every 
 | `PLOEG_TARGET_MAP` | ploegd |  | Legacy routing from tracker scope to repository, rendered from the org.yaml roster manifest. Replaced by `trackers.<tracker>.projects` in the `PLOEG_CONFIG` file. | [routing.go](../../cmd/ploegd/routing.go) |
 | `PLOEG_TARGET_SOURCE` | ploeg-worker |  | `env` ignores the claim's target and uses the fallback repository. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_TEAM` | ploeg-worker | required | Team this worker claims work for. | [main.go](../../cmd/ploeg-worker/main.go), [sandbox.go](../../cmd/ploeg-worker/sandbox.go) |
-| `PLOEG_TEAM_HARNESSES` | ploegd |  | Each Role's configured Harness as JSON, team to Role to `{name, profile}`; a plan-less team's workload is the Role `""`. The chart renders it from the same values as each worker's `PLOEG_HARNESS` and `PLOEG_ACP_PROFILE`, and the Teams read shows it (ADR-0097). Unset reads every Role's Harness as null; a malformed value stops ploegd at boot. | [operator.go](../../cmd/ploegd/operator.go) |
+| `PLOEG_TEAM_HARNESSES` | ploegd |  | Each Role's Harness configuration as JSON, team to Role to `{name, profile, allowed, allowUnqualified}`: the default Harness, the allowlist an operator admission may choose from, each entry with its `qualification`, and the team's opt-in to unqualified Harnesses (ADR-0097, ADR-0098). A plan-less team's workload is the Role `""`. The chart renders it from the same values as each worker's `PLOEG_HARNESS` and `PLOEG_ACP_PROFILE`, and the Teams read shows it. Unset reads every Role's Harness as null and stores no Harness on a Run; a malformed value, or a default outside its allowlist, stops ploegd at boot. | [operator.go](../../cmd/ploegd/operator.go) |
 | `PLOEG_TEAM_MAP` | ploegd |  | Legacy assignee roster, replaced by `teams.<name>.assignees` in the `PLOEG_CONFIG` file. | [main.go](../../cmd/ploegd/main.go), [operator.go](../../cmd/ploegd/operator.go) |
 | `PLOEG_TEAM_MAX_RUNNING` | ploegd |  |  | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_TEAM_PLANS` | ploegd |  | Legacy Shift plans, replaced by `teams.<name>.plan` in the `PLOEG_CONFIG` file. A malformed plan stops ploegd at boot. | [main.go](../../cmd/ploegd/main.go) |
@@ -155,7 +155,7 @@ The generator follows each binary's imports inside the module and records every 
 | `PLOEG_WORKER_BOOTSTRAPS` | ploegd |  | Bootstrap registry, a JSON array of `token`, `team` and `role` entries (chart `executor.workerAuth.bootstrapSecret`). | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_WORKER_BOOTSTRAP_TOKEN` | ploeg-worker |  | This worker's bootstrap credential, the `<team>--<role>` entry of the bootstrap Secret. | [main.go](../../cmd/ploeg-worker/main.go), [sandbox.go](../../cmd/ploeg-worker/sandbox.go) |
 | `PLOEG_WORKER_ID` | ploeg-worker | `$POD_UID` | Worker identity for managed mode. | [main.go](../../cmd/ploeg-worker/main.go), [sandbox.go](../../cmd/ploeg-worker/sandbox.go) |
-| `PLOEG_WORKER_LLM_POLICIES` | ploegd |  | Trusted team and role inference policies. The chart builds them from each team and role model and budget plus `executor.workerAuth.additionalLLMPolicies`. | [main.go](../../cmd/ploegd/main.go) |
+| `PLOEG_WORKER_LLM_POLICIES` | ploegd |  | Trusted team and role inference policies. Each lists the `models` a Run of the Role may call and its `defaultModel`, which must be one of them (ADR-0103). The chart builds them from each team and role model, models and budget plus `executor.workerAuth.additionalLLMPolicies`. | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_WORKER_SIGNING_KEY` | ploeg-worker |  | Controller-only. The worker refuses to start when it is set. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_WORKER_SIGNING_KEY` | ploegd |  | Controller-only signing material for worker control capabilities, at least 32 bytes (chart `executor.workerAuth.signingKeySecret`). | [main.go](../../cmd/ploegd/main.go) |
 | `POD_NAME` | ploeg-worker |  |  | [sandbox.go](../../cmd/ploeg-worker/sandbox.go) |
@@ -280,10 +280,12 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `executor.serviceAccount.create` | boolean | `true` |  | values.yaml, values.schema.json |
 | `executor.serviceAccount.name` | string | `""` | empty = <fullname>-worker | values.yaml, values.schema.json |
 | `executor.teams` | array | `[]` |  | values.yaml, values.schema.json |
+| `executor.teams[].allowUnqualifiedHarnesses` | boolean |  | ADR-0098: admit an allowed Harness that is not qualified even when it is not the Role's default. Default false. | values.schema.json |
 | `executor.teams[].baseBranch` | string |  | Branch the worker clones, branches from and targets. Unset means the repository default branch. | values.schema.json |
 | `executor.teams[].budget` | string |  | Per-run key budget in USD. For a Team with a plan it is the Shift pool the Roles share. | values.schema.json |
 | `executor.teams[].executorType` | one of `"keda"`, `"sandbox"` |  | Optional: this team's executor while executor.type is keda or sandbox; unset = executor.type. Lets one team run under the experimental sandbox executor while the others stay on keda. | values.schema.json |
 | `executor.teams[].harness` | [harness](#harness) |  | Overrides the `executor.harness` defaults for this Team. | values.schema.json |
+| `executor.teams[].harnesses` | array |  | ADR-0098/ADR-0099, planned teams only: the Harnesses an operator admission may choose per Run. Each entry renders its own workload per Role and replaces the Role's harness block; unset = the one configured harness. | values.schema.json |
 | `executor.teams[].litellmTeamId` | string |  | ADR-0078: the LiteLLM team_id every Run key of this team is minted in. Optional; empty = no team. | values.schema.json |
 | `executor.teams[].maxFixRounds` | integer |  | ADR-0017: how many times a reviewer request_changes may re-open the writing Round of this plan. 0 = loop off, the plan runs to exhaustion. | values.schema.json |
 | `executor.teams[].maxReplicaCount` | integer |  |  | values.schema.json |
@@ -341,6 +343,9 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `monitoring.prometheusRule.alerts.expiredLease.for` | string | `5m` |  | values.yaml, values.schema.json |
 | `monitoring.prometheusRule.alerts.expiredLease.overdueSeconds` | number | `300` |  | values.yaml, values.schema.json |
 | `monitoring.prometheusRule.alerts.expiredLease.severity` | string | `warning` |  | values.yaml, values.schema.json |
+| `monitoring.prometheusRule.alerts.harnessOutsideAllowlist.enabled` | boolean | `true` |  | values.yaml, values.schema.json |
+| `monitoring.prometheusRule.alerts.harnessOutsideAllowlist.for` | string | `15m` |  | values.yaml, values.schema.json |
+| `monitoring.prometheusRule.alerts.harnessOutsideAllowlist.severity` | string | `warning` |  | values.yaml, values.schema.json |
 | `monitoring.prometheusRule.alerts.leakedModelKey.enabled` | boolean | `true` |  | values.yaml, values.schema.json |
 | `monitoring.prometheusRule.alerts.leakedModelKey.for` | string | `5m` |  | values.yaml, values.schema.json |
 | `monitoring.prometheusRule.alerts.leakedModelKey.graceSeconds` | number | `900` |  | values.yaml, values.schema.json |
@@ -463,6 +468,9 @@ name becomes the workload suffix (ploeg-worker-<team>-<role>); writes marks the 
 | `sandbox` | [sandboxOverride](#sandboxoverride) |  |
 | `workerResources` | object | Overrides executor.workerResources for this role's workload. Readers do not build, so a fan-out round need not book writer-sized pods. |
 | `dindResources` | object | Overrides executor.dindResources for this role's DinD sidecar (only rendered when the role runs harness.dind). |
+| `harnesses` | array | ADR-0098: narrows the team's harnesses for this Role, by key (acp/<profile> or the Harness name). |
+| `defaultHarness` | string | ADR-0098: this Role's default Harness key; it must be one the Role allows. |
+| `models` | array | ADR-0103: the model aliases an admission may choose for this Role's Runs. It must contain the Role's default, model or the team's model. Unset = that model alone. |
 
 ### harness
 
@@ -478,6 +486,26 @@ name becomes the workload suffix (ploeg-worker-<team>-<role>); writes marks the 
 | `timeout` | string | Stops a harness that runs longer than this. |
 | `idleTimeout` | string | Stops a harness that is silent for this long. |
 | `acp` | [acp](#acp) | `acp` harness settings. |
+| `claudeEnvironment` | [claudeEnvironment](#claudeenvironment) |  |
+| `toolchains` | array |  |
+| `verify` | array |  |
+| `verifyTimeout` | string |  |
+
+### allowedHarness
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `name` | one of `"openhands"`, `"exec"`, `"claude-code"`, `"acp"` |  |
+| `default` | boolean | ADR-0098: this entry is each Role's default Harness unless the Role names defaultHarness. At most one entry; none = the first. |
+| `image` | string |  |
+| `entrypoint` | string |  |
+| `args` | array |  |
+| `outcomeFile` | string |  |
+| `dind` | boolean |  |
+| `credentialIsolation` | one of `""`, `"proxy"` | Explicit per-workload setting for both credential proxies (ADR-0034). Unset = executor.forgeTokenIsolation and executor.litellm.keyIsolation apply to a qualified harness without DinD, and every other workload runs with both off. |
+| `timeout` | string |  |
+| `idleTimeout` | string |  |
+| `acp` | [acp](#acp) |  |
 | `claudeEnvironment` | [claudeEnvironment](#claudeenvironment) |  |
 | `toolchains` | array |  |
 | `verify` | array |  |

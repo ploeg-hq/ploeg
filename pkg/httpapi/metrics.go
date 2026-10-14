@@ -38,7 +38,7 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "metrics unavailable", http.StatusServiceUnavailable)
 			return
 		}
-		s.metrics.body = renderMetrics(m, s.TrackerWebhooks)
+		s.metrics.body = renderMetrics(m, s.TrackerWebhooks, s.harnessAllowed)
 		s.metrics.at = time.Now()
 	}
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
@@ -108,7 +108,12 @@ func sortedShadowReviews(m map[store.ShadowReviewKey]int) []store.ShadowReviewKe
 	return keys
 }
 
-func renderMetrics(m store.OperationalMetrics, webhooks *WebhookCoverage) []byte {
+func (s *Server) harnessAllowed(team, role, harness string) bool {
+	h, ok := s.OperatorConfig.TeamHarnesses[team][role]
+	return ok && h.Allows(harness)
+}
+
+func renderMetrics(m store.OperationalMetrics, webhooks *WebhookCoverage, harnessAllowed func(team, role, harness string) bool) []byte {
 	var b metricWriter
 
 	b.family("ploeg_shifts_open", "gauge", "Open Shifts per team.")
@@ -165,6 +170,12 @@ func renderMetrics(m store.OperationalMetrics, webhooks *WebhookCoverage) []byte
 	b.family("ploeg_shadow_reviews_total", "counter", "Finished shadow Runs (ADR-0096), by team, shadow Role, the verdict the Round's acting readers gave (primary) and the shadow's own verdict (shadow); each verdict is approve, request_changes or none.")
 	for _, k := range sortedShadowReviews(m.ShadowReviews) {
 		b.sample("ploeg_shadow_reviews_total", float64(m.ShadowReviews[k]), "team", k.Team, "role", k.Role, "primary", k.Primary, "shadow", k.Shadow)
+	}
+	b.family("ploeg_runs_pending_outside_allowlist", "gauge", "Pending Runs that store a Harness the current allowlist of their team and Role no longer contains, so no workload claims them (ADR-0099).")
+	for _, p := range m.PendingRunsByHarness {
+		if harnessAllowed == nil || !harnessAllowed(p.Team, p.Role, p.Harness) {
+			b.sample("ploeg_runs_pending_outside_allowlist", float64(p.Pending), "team", p.Team, "role", p.Role, "harness", p.Harness)
+		}
 	}
 	b.family("ploeg_work_item_notes_unwritten", "gauge", "Work Item Notes the outbox has not yet written to the Tenant's notes graph.")
 	b.sample("ploeg_work_item_notes_unwritten", float64(m.UnwrittenNotes))

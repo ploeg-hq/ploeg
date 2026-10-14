@@ -21,6 +21,7 @@ type fakeEngine struct {
 func (f *fakeEngine) EnsureShift(context.Context, int64, work.WorkItem) error { return nil }
 func (f *fakeEngine) EvaluateItem(context.Context, int64) error               { return nil }
 func (f *fakeEngine) Dispatches(string) bool                                  { return true }
+func (f *fakeEngine) PlanRoles(string) ([]string, bool)                       { return []string{""}, true }
 func (f *fakeEngine) RefreshUsageReport(_ context.Context, shiftID int64) error {
 	f.refreshed = append(f.refreshed, shiftID)
 	return f.err

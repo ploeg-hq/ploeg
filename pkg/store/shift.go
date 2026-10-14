@@ -40,6 +40,9 @@ type Role struct {
 	// Shadow marks a reading Role whose verdict and findings are recorded and
 	// never act (ADR-0096).
 	Shadow bool
+	// Selection resolves the Harness and model a Run of this Role stores
+	// (ADR-0098, ADR-0103). Zero stores neither.
+	Selection RoleSelection
 }
 
 // OpenShift begins a Shift on a queued Work Item. The unique partial index
@@ -116,15 +119,12 @@ func (s *Store) OpenRound(ctx context.Context, shiftID int64, fromRound int, rol
 		return 0, err
 	}
 
+	requestedHarness, requestedModel, err := runRequest(ctx, tx, workItemID)
+	if err != nil {
+		return 0, err
+	}
 	for _, r := range roles {
-		token, err := newToken()
-		if err != nil {
-			return 0, err
-		}
-		if _, err := tx.Exec(ctx, `
-			INSERT INTO agent_runs (work_item_id, shift_id, team, role, round, writes, shadow, state, run_token, started_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8, NULL)`,
-			workItemID, shiftID, team, r.Name, round, r.Writes, r.Shadow, token); err != nil {
+		if err := insertPendingRun(ctx, tx, workItemID, shiftID, team, round, r, requestedHarness, requestedModel); err != nil {
 			return 0, err
 		}
 	}
@@ -285,6 +285,10 @@ func (s *Store) ReopenRound(ctx context.Context, shiftID int64, round int, roles
 		return 0, fmt.Errorf("shift %d round %d still has %d live Run(s)", shiftID, round, live)
 	}
 
+	requestedHarness, requestedModel, err := runRequest(ctx, tx, workItemID)
+	if err != nil {
+		return 0, err
+	}
 	attempt := 0
 	for _, r := range roles {
 		var prior int
@@ -296,14 +300,7 @@ func (s *Store) ReopenRound(ctx context.Context, shiftID int64, round int, roles
 		if prior+1 > attempt {
 			attempt = prior + 1
 		}
-		token, err := newToken()
-		if err != nil {
-			return 0, err
-		}
-		if _, err := tx.Exec(ctx, `
-			INSERT INTO agent_runs (work_item_id, shift_id, team, role, round, writes, shadow, state, run_token, started_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8, NULL)`,
-			workItemID, shiftID, team, r.Name, round, r.Writes, r.Shadow, token); err != nil {
+		if err := insertPendingRun(ctx, tx, workItemID, shiftID, team, round, r, requestedHarness, requestedModel); err != nil {
 			return 0, err
 		}
 	}
@@ -328,6 +325,9 @@ type ClaimedRun struct {
 	// PreAuthor is true for a reading Run when no writing Run precedes its
 	// Round in the Shift, so the branch under review may not exist yet.
 	PreAuthor bool
+	// Model is the model resolved for the Run when its Round opened
+	// (ADR-0103); empty when it stores none.
+	Model string
 }
 
 // ClaimRole takes the oldest pending Run for a team and role.
@@ -349,6 +349,13 @@ func (s *Store) ClaimRole(ctx context.Context, team, role string, ttl time.Durat
 // maxRunning > 0 it returns ErrNoWork while the team already has maxRunning
 // running Runs, exactly as if the queue were empty; 0 means unlimited.
 func (s *Store) ClaimRoleWithin(ctx context.Context, team, role string, ttl time.Duration, cap float64, maxRunning int) (*ClaimedRun, error) {
+	return s.ClaimRoleFor(ctx, team, role, "", ttl, cap, maxRunning)
+}
+
+// ClaimRoleFor is ClaimRoleWithin for a worker that names its Harness key:
+// it takes only a pending Run that stores that key or none (ADR-0099). An
+// empty key claims as ClaimRoleWithin does.
+func (s *Store) ClaimRoleFor(ctx context.Context, team, role, harness string, ttl time.Duration, cap float64, maxRunning int) (*ClaimedRun, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -365,12 +372,13 @@ func (s *Store) ClaimRoleWithin(ctx context.Context, team, role string, ttl time
 	var token string
 	var round int
 	var writes bool
+	var model string
 	err = tx.QueryRow(ctx, `
-		SELECT id, shift_id, work_item_id, run_token, round, writes FROM agent_runs
-		WHERE team = $1 AND role = $2 AND state = 'pending'
+		SELECT id, shift_id, work_item_id, run_token, round, writes, COALESCE(model_selected, '') FROM agent_runs
+		WHERE team = $1 AND role = $2 AND state = 'pending' AND `+harnessPredicate+`
 		ORDER BY id
 		FOR UPDATE SKIP LOCKED
-		LIMIT 1`, team, role).Scan(&runID, &shiftID, &workItemID, &token, &round, &writes)
+		LIMIT 1`, team, role, harness).Scan(&runID, &shiftID, &workItemID, &token, &round, &writes, &model)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNoWork
 	}
@@ -470,7 +478,7 @@ func (s *Store) ClaimRoleWithin(ctx context.Context, team, role string, ttl time
 	return &ClaimedRun{
 		Item: it, RunToken: token, Deadline: deadline, ShiftID: shiftID,
 		Role: role, Round: round, Writes: writes, Branch: branch, Authorized: authorized,
-		PreAuthor: preAuthor,
+		PreAuthor: preAuthor, Model: model,
 	}, nil
 }
 
@@ -523,12 +531,20 @@ func (s *Store) LeasedRunTokens(ctx context.Context) ([]string, error) {
 // with no error anywhere, which is the worst failure this system can have.
 // TestClaimRoleAgreesWithPendingRuns exists to keep these two honest.
 func (s *Store) PendingRuns(ctx context.Context, team, role string) (int, error) {
+	return s.PendingRunsFor(ctx, team, role, "")
+}
+
+// PendingRunsFor is PendingRuns for the workload of one Harness key, with the
+// Harness clause ClaimRoleFor uses.
+func (s *Store) PendingRunsFor(ctx context.Context, team, role, harness string) (int, error) {
 	var n int
 	err := s.pool.QueryRow(ctx,
-		`SELECT count(*) FROM agent_runs WHERE team = $1 AND role = $2 AND state = 'pending'`,
-		team, role).Scan(&n)
+		`SELECT count(*) FROM agent_runs WHERE team = $1 AND role = $2 AND state = 'pending' AND `+harnessPredicate,
+		team, role, harness).Scan(&n)
 	return n, err
 }
+
+const harnessPredicate = `($3 = '' OR harness_requested IS NULL OR harness_requested = $3)`
 
 // ExpiredRun is a Run the sweeper reclaimed.
 type ExpiredRun struct {

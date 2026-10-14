@@ -64,6 +64,7 @@ for case in ":default" \
 	"ops/helm/ploeg/ci/executor-sandbox-team-values.yaml:executor-sandbox-team" \
 	"ops/helm/ploeg/ci/executor-isolation-values.yaml:executor-isolation" \
 	"ops/helm/ploeg/ci/executor-isolation-disabled-values.yaml:executor-isolation-disabled" \
+	"ops/helm/ploeg/ci/executor-harness-selection-values.yaml:executor-harness-selection" \
 	"ops/helm/ploeg/ci/monitoring-values.yaml:monitoring" \
 	"ops/helm/ploeg/ci/knowledge-graph-values.yaml:knowledge-graph"; do
 	values=${case%%:*}
@@ -96,6 +97,8 @@ for case in "ops/helm/ploeg/ci/reject-reader-without-read-token-values.yaml:read
 	"ops/helm/ploeg/ci/reject-missing-scaler-host-values.yaml:executor.scaler.host is required" \
 	"ops/helm/ploeg/ci/reject-missing-agent-image-values.yaml:no agent image" \
 	"ops/helm/ploeg/ci/reject-mcp-groups-without-team-values.yaml:mcpAccessGroups needs" \
+	"ops/helm/ploeg/ci/reject-harnesses-without-plan-values.yaml:harnesses needs a plan" \
+	"ops/helm/ploeg/ci/reject-models-without-default-values.yaml:lists models without its default model" \
 	"ops/helm/ploeg/ci/reject-claude-environment-without-login-values.yaml:requires harness.claudeEnvironment.environmentId and loginSecret or loginVolume"; do
 	values=${case%%:*}
 	expected=${case#*:}

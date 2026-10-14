@@ -1,0 +1,34 @@
+# CI-only values for ADR-0098, ADR-0099 and ADR-0103: a planned team whose
+# Roles may run one of several Harnesses and call one of several models.
+#
+#   * builder allows openhands (the team default), acp/opencode and the
+#     unqualified acp/qwen-code, so it renders three workloads, each with the
+#     scaler clause for its own Harness key;
+#   * reviewer narrows the list to openhands, so it renders one workload;
+#   * builder lists two models with deepseek-v4 as its default, which reaches
+#     ploegd as the policy's models and defaultModel;
+#   * the plan-less team renders exactly as a team without harnesses always
+#     did, apart from the allowlist in PLOEG_TEAM_HARNESSES.
+executor:
+  enabled: true
+  forgejo:
+    readTokenSecret:
+      name: agent-reader-token
+      key: FORGEJO_TOKEN
+  teams:
+    - name: silver
+      model: litellm_proxy/deepseek-chat
+      budget: "1"
+    - name: gold
+      model: litellm_proxy/glm-4.7
+      budget: "6"
+      allowUnqualifiedHarnesses: false
+      harnesses:
+        - {name: openhands, default: true, dind: false}
+        - {name: acp, image: harbor.webgrip.dev/webgrip/opencode-runner:0.1.0, dind: false, acp: {profile: opencode}}
+        - {name: acp, image: harbor.webgrip.dev/webgrip/qwen-runner:0.1.0, dind: false, acp: {profile: qwen-code}}
+      plan:
+        - roles:
+            - {name: builder, writes: true, cap: "3.00", model: litellm_proxy/deepseek-v4, models: [deepseek-v4, kimi-k3]}
+        - roles:
+            - {name: reviewer, writes: false, cap: "0.75", harnesses: [openhands]}
