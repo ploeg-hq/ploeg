@@ -3,8 +3,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 mode=${1:?expected validate or publish}
 tag=${2:?expected v0.x.y or v0.x.y-rc.N}
-[[ "$mode" == validate || "$mode" == publish ]]
-[[ "$tag" =~ ^v0\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-rc\.[1-9][0-9]*)?$ ]]
+[[ "$mode" == validate || "$mode" == publish ]] || exit 1
+[[ "$tag" =~ ^v0\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-rc\.[1-9][0-9]*)?$ ]] || exit 1
 version=${tag#v}
 commit=$(git rev-parse --verify "refs/tags/$tag^{commit}")
 if [[ "$tag" == *-rc.* ]]; then
@@ -12,14 +12,14 @@ if [[ "$tag" == *-rc.* ]]; then
 else
   git merge-base --is-ancestor "$commit" origin/main
 fi
-[[ "$(git rev-parse HEAD)" == "$commit" ]]
-[[ "$(sed -n 's/^version: *//p' ops/helm/ploeg/Chart.yaml)" == "$version" ]]
-[[ "$(sed -n 's/^appVersion: *//p' ops/helm/ploeg/Chart.yaml)" == "$version" ]]
+[[ "$(git rev-parse HEAD)" == "$commit" ]] || exit 1
+[[ "$(sed -n 's/^version: *//p' ops/helm/ploeg/Chart.yaml)" == "$version" ]] || exit 1
+[[ "$(sed -n 's/^appVersion: *//p' ops/helm/ploeg/Chart.yaml)" == "$version" ]] || exit 1
 [[ "$mode" == publish ]] || exit 0
 : "${GITHUB_REPOSITORY:?}"
 : "${GITHUB_ACTOR:?}"
 : "${GH_TOKEN:?}"
-[[ "$GITHUB_REPOSITORY" == ploeg-hq/ploeg ]]
+[[ "$GITHUB_REPOSITORY" == ploeg-hq/ploeg ]] || exit 1
 mkdir -p dist
 status=$(curl --silent --show-error --output dist/release-check.json --write-out '%{http_code}' --header "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/tags/$tag")
 [[ "$status" == 404 ]] || { echo "Release absence not confirmed (HTTP $status); refusing overwrite" >&2; exit 1; }
