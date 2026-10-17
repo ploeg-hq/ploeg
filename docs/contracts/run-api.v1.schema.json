@@ -15,7 +15,7 @@
         "harness": {
           "type": "string",
           "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
-          "description": "The worker's harness (PLOEG_HARNESS), such as openhands, acp, exec, claude-code or claude-environment. ploegd records it on the claimed Run (ADR-0091). Absent leaves it unknown."
+          "description": "The worker's harness (PLOEG_HARNESS), such as openhands, acp, exec, claude-code or claude-environment. ploegd records it on the claimed Run (ADR-0091), and the claim returns only a pending Run that stores this Harness key (acp/<harnessProfile, default opencode> or the harness name) or none (ADR-0099). Absent leaves it unknown and claims any pending Run of the team and Role."
         },
         "harnessProfile": {
           "type": "string",
@@ -85,6 +85,12 @@
           "type": "array",
           "items": { "$ref": "#/$defs/contextRef" },
           "description": "The files people attached to the Work Item before this Run was claimed, oldest first (proposed, context bundles proof of concept). References only: the worker downloads each from GET /api/v1/runs/{token}/context/{id} with the Run's capability and verifies sha256 and bytes before the harness starts. Absent = none."
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "description": "The model resolved for this Run when its Round opened, from its Role's managed inference policy (ADR-0103). The worker passes it to the Harness as LLM_MODEL, keeping the gateway prefix of its own LLM_MODEL, and mints for it alone; the Run's key allows no other model. Absent = the worker's LLM_MODEL."
         }
       },
       "required": ["runToken", "deadline", "workItem"],

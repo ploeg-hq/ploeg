@@ -110,7 +110,7 @@ spec:
                   name: ploeg-db-app
                   key: uri
             - name: PLOEG_TEAM_HARNESSES
-              value: "{\"bronze\":{\"\":{\"name\":\"openhands\"}}}"
+              value: "{\"bronze\":{\"\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"openhands\",\"qualification\":\"qualified\"}],\"name\":\"openhands\"}}}"
             - name: PLOEG_FORGEJO_URL
               value: "http://forgejo-http.forgejo.svc.cluster.local:3000"
             - name: PLOEG_FORGEJO_TOKEN
@@ -160,7 +160,7 @@ spec:
                   name: ploeg-worker-bootstrap
                   key: registry.json
             - name: PLOEG_WORKER_LLM_POLICIES
-              value: "[{\"budgetUsd\":2,\"models\":[\"deepseek-chat\"],\"role\":\"\",\"team\":\"bronze\",\"ttl\":\"4h\"}]"
+              value: "[{\"budgetUsd\":2,\"defaultModel\":\"deepseek-chat\",\"models\":[\"deepseek-chat\"],\"role\":\"\",\"team\":\"bronze\",\"ttl\":\"4h\"}]"
           readinessProbe:
             httpGet:
               path: /readyz

@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-13
+status: accepted
+date: 2026-10-14
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -70,3 +70,4 @@ Chosen option: "the admission names a Harness, ploegd checks and stores it per R
 * OpenSpec change `select-harness-per-run`. Depends on [ADR-0097](0097-a-run-records-its-harness-version-and-the-teams-read-shows-each-roles-harness-and-model.md) and on [ADR-0102](0102-an-operator-consumer-admits-work-items-that-ploeg-worker-executes.md) (proposed, OpenSpec change `submit-work-items`), which adds the submission route.
 * 2026-10-13: the owner decided that the Harness is chosen freely per session (per Run), not fixed per Team or Role, and that Ploeg's worker executes every session (Unfold ADR-0002, Unfold ADR-0023). Proposed.
 * 2026-10-13 — The owner decided that a session may also choose its model from the Team's list; [ADR-0103](0103-an-operator-admission-may-choose-each-runs-model-from-the-models-its-roles-policy-lists.md) records it and narrows ADR-0039. The Harness and the model are resolved per Role the same way.
+* 2026-10-14 — Accepted. The owner delegated the open questions of `select-harness-per-run` to their recommendations; merging the change ratifies this record. Implemented: `executor.teams[].harnesses` and `allowUnqualifiedHarnesses`, the allowlist in `PLOEG_TEAM_HARNESSES`, `harness` on `POST /api/v1/operator/work-items` (422 `harness_not_allowed` and `harness_unqualified`), `agent_runs.harness_requested` (migration 0056) and the Teams read's `harnesses` and `pendingByHarness`. The qualified list is `openhands`, `acp/openhands` and `exec`, the Harnesses with Runs in the 2026-10-04 qualification record.

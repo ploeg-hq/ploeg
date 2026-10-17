@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-13
+status: accepted
+date: 2026-10-14
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -64,3 +64,4 @@ Chosen option: "one workload per (Team, Role, Harness)", because it keeps every 
 * OpenSpec change `select-harness-per-run`.
 * 2026-10-13: the owner asked for a recommendation between one multi-Harness runner image and a worker pool per Harness; this record recommends the pool. Proposed.
 * 2026-10-13 — The owner confirmed one workload per Harness (`select-harness-per-run` design Open Question 3, resolved). A model chosen per session ([ADR-0103](0103-an-operator-admission-may-choose-each-runs-model-from-the-models-its-roles-policy-lists.md)) travels in the claim response and adds no workloads.
+* 2026-10-14 — Accepted. Merging `select-harness-per-run` ratifies this record. Implemented: one ScaledJob, CronJob or SandboxTemplate per (team, Role, Harness) named `<team>-<role>-<key>`, the clause `harness_requested IS NULL OR harness_requested = <key>` in the scaler query, `ClaimRoleFor` and `PendingRunsFor`, the index `agent_runs_claimable_harness` (migration 0056), and `ploeg_runs_pending_outside_allowlist` with the alert `PloegHarnessOutsideAllowlist`. The demand endpoint of ADR-0072 has not landed, so it has no Harness parameter yet.

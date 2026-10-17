@@ -70,6 +70,9 @@ type OperationalMetrics struct {
 	// shadow Role, the verdict the Round's acting readers gave and the
 	// shadow's own verdict. Like FinishedRuns it only grows.
 	ShadowReviews map[ShadowReviewKey]int
+	// PendingRunsByHarness counts pending Runs per team, Role and stored
+	// Harness key (ADR-0099). ploegd compares it with the current allowlist.
+	PendingRunsByHarness []PendingHarnessRuns
 }
 
 // ShadowReviewKey labels one ploeg_shadow_reviews_total series. Primary is
@@ -356,6 +359,9 @@ func (s *Store) OperationalMetrics(ctx context.Context) (OperationalMetrics, err
 		return m, err
 	}
 	if err := shadowReviews(ctx, tx, m.ShadowReviews); err != nil {
+		return m, err
+	}
+	if m.PendingRunsByHarness, err = pendingRunsByHarness(ctx, tx); err != nil {
 		return m, err
 	}
 	return m, tx.Commit(ctx)

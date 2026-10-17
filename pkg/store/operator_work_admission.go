@@ -26,6 +26,10 @@ type AdmitOperatorWorkItem struct {
 	Title       string   `json:"title"`
 	Description string   `json:"description"`
 	BudgetUSD   *float64 `json:"budgetUsd,omitempty"`
+	// Harness is the requested Harness key and Model the requested model
+	// alias (ADR-0098, ADR-0103); empty requests each Role's default.
+	Harness string `json:"harness,omitempty"`
+	Model   string `json:"model,omitempty"`
 }
 
 // OperatorWorkAdmission is an admitted Work Item as its consumer reads it.
@@ -77,11 +81,11 @@ func (s *Store) AdmitOperatorWorkItem(ctx context.Context, consumer, actor strin
 		return OperatorWorkAdmission{}, err
 	}
 	err = tx.QueryRow(ctx, `INSERT INTO work_items(provider,external_id,revision,team,state,origin,title,description,
-		target_forge,target_owner,target_repo,target_base_branch,route_rule,budget_usd)
-	VALUES('manual',$1,$2,$3,'queued','operator',$4,$5,$6,$7,$8,$9,$10,$11)
+		target_forge,target_owner,target_repo,target_base_branch,route_rule,budget_usd,harness_requested,model_requested)
+	VALUES('manual',$1,$2,$3,'queued','operator',$4,$5,$6,$7,$8,$9,$10,$11,NULLIF($12,''),NULLIF($13,''))
 	ON CONFLICT (provider,external_id) DO NOTHING RETURNING id`,
 		key, fingerprint, input.Team, input.Title, input.Description,
-		target.Forge, target.Owner, target.Repo, target.BaseBranch, OperatorWorkAdmissionRouteRule, budgetUSD).Scan(&itemID)
+		target.Forge, target.Owner, target.Repo, target.BaseBranch, OperatorWorkAdmissionRouteRule, budgetUSD, input.Harness, input.Model).Scan(&itemID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return OperatorWorkAdmission{}, ErrRequestConflict
 	}
@@ -92,7 +96,14 @@ func (s *Store) AdmitOperatorWorkItem(ctx context.Context, consumer, actor strin
 		consumer, input.RequestID, actor, fingerprint, itemID); err != nil {
 		return OperatorWorkAdmission{}, err
 	}
-	if err = audit(ctx, tx, "operator:"+consumer+":"+actor, "operator.work_item.admitted", &itemID, map[string]any{"request_id": input.RequestID, "team": input.Team}); err != nil {
+	details := map[string]any{"request_id": input.RequestID, "team": input.Team}
+	if input.Harness != "" {
+		details["harness"] = input.Harness
+	}
+	if input.Model != "" {
+		details["model"] = input.Model
+	}
+	if err = audit(ctx, tx, "operator:"+consumer+":"+actor, "operator.work_item.admitted", &itemID, details); err != nil {
 		return OperatorWorkAdmission{}, err
 	}
 	if err = tx.Commit(ctx); err != nil {

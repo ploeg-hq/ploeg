@@ -10,11 +10,13 @@ import (
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
-// FailUnstartedRun claims one Run for team and role and reports it failed
-// with FailureInfraNode, for an executor whose worker pod never started. It
+// FailUnstartedRun claims one Run for team and role, of the workload's
+// Harness and profile when named (ADR-0099), and reports it failed with
+// FailureInfraNode, for an executor whose worker pod never started. It
 // returns false when the queue had nothing to claim.
-func FailUnstartedRun(apiURL, bootstrapToken, workerID, team, role, detail string) (bool, error) {
-	api := &APIClient{Base: strings.TrimRight(apiURL, "/"), HC: &http.Client{Timeout: 30 * time.Second}, BootstrapToken: bootstrapToken, WorkerID: workerID}
+func FailUnstartedRun(apiURL, bootstrapToken, workerID, team, role, harnessName, harnessProfile, detail string) (bool, error) {
+	api := &APIClient{Base: strings.TrimRight(apiURL, "/"), HC: &http.Client{Timeout: 30 * time.Second}, BootstrapToken: bootstrapToken, WorkerID: workerID,
+		Harness: harnessName, HarnessProfile: harnessProfile}
 	claim, err := api.Claim(team, role)
 	if err != nil {
 		return false, fmt.Errorf("claim the unstarted run: %w", err)

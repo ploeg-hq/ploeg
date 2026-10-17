@@ -324,6 +324,9 @@ func run(log *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("operator configuration: %w", err)
 	}
+	if engine != nil {
+		engine.Selections = httpapi.RunSelections{Harnesses: operator.TeamHarnesses, LLM: llmControl}
+	}
 	deploys, err := deployAuth()
 	if err != nil {
 		return err

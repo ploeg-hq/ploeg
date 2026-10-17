@@ -124,6 +124,7 @@ Context: (dict "root" $ "team" <team> "role" <role>).
 {{- define "ploeg.workloadName" -}}
 {{- $name := printf "%s-worker-%s" (include "ploeg.fullname" .root) .team.name }}
 {{- if .role.name }}{{- $name = printf "%s-%s" $name .role.name }}{{- end }}
+{{- with .suffix }}{{- $name = printf "%s-%s" $name . }}{{- end }}
 {{- if gt (len $name) 63 }}
 {{- fail (printf "workload name %q exceeds 63 characters; shorten the team or role name" $name) }}
 {{- end }}
@@ -132,6 +133,84 @@ Context: (dict "root" $ "team" <team> "role" <role>).
 
 {{- define "ploeg.isolationQualifiedHarnesses" -}}
 {{- list "openhands" "acp/openhands" "exec" | toJson -}}
+{{- end -}}
+
+{{- define "ploeg.qualifiedHarnesses" -}}
+{{- list "openhands" "acp/openhands" "exec" | toJson -}}
+{{- end -}}
+
+{{/*
+ploeg.roleWorkloads expands one (team, Role) into a workload per allowed
+Harness (ADR-0099), as a JSON array of {role, key, suffix, default,
+qualified}. role is the Role entry the pod template renders, with the
+allowlist entry as its harness block. A team without harnesses yields its one
+configured Harness with an empty suffix, so its workload renders unchanged.
+Context: (dict "root" $ "team" <team> "role" <Role entry or empty dict>).
+*/}}
+{{- define "ploeg.roleWorkloads" -}}
+{{- $root := .root }}
+{{- $team := .team }}
+{{- $role := .role | default dict }}
+{{- $qualified := include "ploeg.qualifiedHarnesses" . | fromJsonArray }}
+{{- $out := list }}
+{{- if not $team.harnesses }}
+{{- if or $role.harnesses $role.defaultHarness }}
+{{- fail (printf "team %s: role %q narrows harnesses, but the team lists none in executor.teams[].harnesses" $team.name $role.name) }}
+{{- end }}
+{{- $id := include "ploeg.roleHarness" (dict "root" $root "team" $team "role" $role) | fromJson }}
+{{- $key := include "ploeg.qualificationHarnessName" (dict "name" $id.name "acpProfile" $id.acpProfile) }}
+{{- $out = append $out (dict "role" $role "key" $key "suffix" "" "default" true "qualified" (has $key $qualified)) }}
+{{- else }}
+{{- if not $role.name }}
+{{- fail (printf "team %s: harnesses needs a plan; a team without one runs its single harness" $team.name) }}
+{{- end }}
+{{- if $role.harness }}
+{{- fail (printf "team %s: role %q sets harness while the team lists harnesses; narrow the list with the role's harnesses instead" $team.name $role.name) }}
+{{- end }}
+{{- $keys := list }}
+{{- $teamDefault := "" }}
+{{- $entries := list }}
+{{- range $entry := $team.harnesses }}
+{{- $r := omit $role "harness" "harnesses" "defaultHarness" }}
+{{- $_ := set $r "harness" (omit $entry "default") }}
+{{- $id := include "ploeg.roleHarness" (dict "root" $root "team" $team "role" $r) | fromJson }}
+{{- $key := include "ploeg.qualificationHarnessName" (dict "name" $id.name "acpProfile" $id.acpProfile) }}
+{{- if eq $id.name "claude-environment" }}
+{{- fail (printf "team %s: claude-environment is paid by the team's Claude plan and cannot be in harnesses (ADR-0084, ADR-0098)" $team.name) }}
+{{- end }}
+{{- if has $key $keys }}
+{{- fail (printf "team %s: harness %q is listed twice in harnesses" $team.name $key) }}
+{{- end }}
+{{- $keys = append $keys $key }}
+{{- if $entry.default }}
+{{- if $teamDefault }}
+{{- fail (printf "team %s: more than one harnesses entry is the default" $team.name) }}
+{{- end }}
+{{- $teamDefault = $key }}
+{{- end }}
+{{- if or (not $role.harnesses) (has $key $role.harnesses) }}
+{{- $entries = append $entries (dict "role" $r "key" $key "suffix" (replace "/" "-" $key) "qualified" (has $key $qualified)) }}
+{{- end }}
+{{- end }}
+{{- range $k := ($role.harnesses | default list) }}
+{{- if not (has $k $keys) }}
+{{- fail (printf "team %s: role %q allows harness %q, which the team's harnesses do not list" $team.name $role.name $k) }}
+{{- end }}
+{{- end }}
+{{- $narrowed := list }}
+{{- range $e := $entries }}{{- $narrowed = append $narrowed $e.key }}{{- end }}
+{{- $default := $role.defaultHarness | default "" }}
+{{- if and $default (not (has $default $narrowed)) }}
+{{- fail (printf "team %s: role %q has defaultHarness %q outside its allowed harnesses" $team.name $role.name $default) }}
+{{- end }}
+{{- if not $default }}
+{{- $default = ternary $teamDefault (first $narrowed) (has $teamDefault $narrowed) }}
+{{- end }}
+{{- range $e := $entries }}
+{{- $out = append $out (merge (dict "default" (eq $e.key $default)) $e) }}
+{{- end }}
+{{- end }}
+{{- toJson $out }}
 {{- end -}}
 
 {{- define "ploeg.qualificationHarnessName" -}}

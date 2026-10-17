@@ -182,6 +182,8 @@ type ShiftEngine interface {
 	EvaluateItem(ctx context.Context, workItemID int64) error
 	// Dispatches reports whether a queued Work Item of the team gets a Shift.
 	Dispatches(team string) bool
+	// PlanRoles lists the distinct Roles of the team's plan (ADR-0098).
+	PlanRoles(team string) ([]string, bool)
 	// RefreshUsageReport re-renders the Shift's usage report after a late
 	// settlement. The settlement sweep calls it after a successful Settle and
 	// only then; a Shift with no pull request is a silent no-op.
@@ -486,6 +488,13 @@ type claimRequest struct {
 	HarnessVersion string `json:"harnessVersion,omitempty"`
 }
 
+func (r claimRequest) harnessKey() string {
+	if r.Harness == "" {
+		return ""
+	}
+	return store.HarnessKey(r.Harness, r.HarnessProfile)
+}
+
 type claimResponse struct {
 	RunToken string        `json:"runToken"`
 	Deadline time.Time     `json:"deadline"`
@@ -522,6 +531,9 @@ type claimResponse struct {
 	// Context names the files people attached to the Work Item before this
 	// claim (proposed, context bundles proof of concept); never the bytes.
 	Context []harness.ContextRef `json:"context,omitempty"`
+	// Model is the model resolved for the Run (ADR-0103); the worker calls it
+	// instead of its configured one. Absent when the Run stores none.
+	Model string `json:"model,omitempty"`
 }
 
 // handleClaim leases the next unit of work for a team. 204 = empty-handed
@@ -544,7 +556,7 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 	// synthesized one — its Run carries the empty role. Try that first and
 	// fall through to the pre-Shift claim when there is none, so the same
 	// pod serves both worlds and the kill switch needs no chart change.
-	run, err := s.Store.ClaimRoleWithin(r.Context(), req.Team, "", s.LeaseTTL, 0, s.maxRunning(req.Team))
+	run, err := s.Store.ClaimRoleFor(r.Context(), req.Team, "", req.harnessKey(), s.LeaseTTL, 0, s.maxRunning(req.Team))
 	switch {
 	case err == nil:
 		s.respondClaimedRun(w, r, req, run)
@@ -587,7 +599,7 @@ func (s *Server) claimRole(w http.ResponseWriter, r *http.Request, req claimRequ
 	if s.RoleCaps != nil {
 		cap = s.RoleCaps.RoleCap(req.Team, req.Role)
 	}
-	run, err := s.Store.ClaimRoleWithin(r.Context(), req.Team, req.Role, s.LeaseTTL, cap, s.maxRunning(req.Team))
+	run, err := s.Store.ClaimRoleFor(r.Context(), req.Team, req.Role, req.harnessKey(), s.LeaseTTL, cap, s.maxRunning(req.Team))
 	switch {
 	case errors.Is(err, store.ErrNoWork):
 		w.WriteHeader(http.StatusNoContent)
@@ -614,12 +626,12 @@ func (s *Server) respondClaimedRun(w http.ResponseWriter, r *http.Request, req c
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	s.recordRunConfig(r.Context(), run.RunToken, req.Team, run.Role, true, runHarness{Name: req.Harness, Profile: req.HarnessProfile, Version: req.HarnessVersion})
+	s.recordRunConfig(r.Context(), run.RunToken, req.Team, run.Role, true, runHarness{Name: req.Harness, Profile: req.HarnessProfile, Version: req.HarnessVersion, Model: run.Model})
 	resp := claimResponse{
 		RunToken: run.RunToken, Deadline: run.Deadline, WorkItem: run.Item,
 		Shift: run.ShiftID, Role: run.Role, Round: run.Round,
 		Writes: run.Writes, Branch: run.Branch, Authorized: run.Authorized,
-		PreAuthor: run.PreAuthor,
+		PreAuthor: run.PreAuthor, Model: run.Model,
 	}
 	if planners, ok := s.RoleCaps.(PlannerRoles); ok && !run.Writes {
 		resp.Planner = planners.IsPlanner(req.Team, run.Role)

@@ -31,12 +31,12 @@ func TestFailUnstartedRunReportsAnInfraFailure(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	claimed, err := FailUnstartedRun(srv.URL, "bootstrap", "launcher-uid", "bronze", "builder", "sandbox claim never became ready within 10m0s: ReconcilerError: pod is owned by Job/x")
+	claimed, err := FailUnstartedRun(srv.URL, "bootstrap", "launcher-uid", "bronze", "builder", "acp", "goose", "sandbox claim never became ready within 10m0s: ReconcilerError: pod is owned by Job/x")
 	if err != nil || !claimed {
 		t.Fatalf("FailUnstartedRun() = %v, %v; want true, nil", claimed, err)
 	}
-	if claim["team"] != "bronze" || claim["role"] != "builder" || workerHeader != "launcher-uid" {
-		t.Fatalf("claim = %v from worker %q, want bronze/builder from launcher-uid", claim, workerHeader)
+	if claim["team"] != "bronze" || claim["role"] != "builder" || claim["harness"] != "acp" || claim["harnessProfile"] != "goose" || workerHeader != "launcher-uid" {
+		t.Fatalf("claim = %v from worker %q, want bronze/builder of acp/goose from launcher-uid", claim, workerHeader)
 	}
 	if outcome.Outcome != work.OutcomeFailed || outcome.FailureReason != string(work.FailureInfraNode) || !strings.Contains(outcome.Summary, "ReconcilerError") {
 		t.Fatalf("outcome = %+v, want failed/infra_node naming the controller's reason", outcome)
@@ -54,7 +54,7 @@ func TestFailUnstartedRunClaimsNothingFromAnEmptyQueue(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer srv.Close()
-	claimed, err := FailUnstartedRun(srv.URL, "bootstrap", "launcher-uid", "bronze", "builder", "never ready")
+	claimed, err := FailUnstartedRun(srv.URL, "bootstrap", "launcher-uid", "bronze", "builder", "", "", "never ready")
 	if err != nil || claimed {
 		t.Fatalf("FailUnstartedRun() = %v, %v; want false, nil", claimed, err)
 	}

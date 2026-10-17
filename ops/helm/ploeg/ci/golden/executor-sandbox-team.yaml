@@ -159,7 +159,7 @@ spec:
                   name: ploeg-db-app
                   key: uri
             - name: PLOEG_TEAM_HARNESSES
-              value: "{\"copper\":{\"\":{\"name\":\"exec\"}},\"silver\":{\"\":{\"name\":\"openhands\"}}}"
+              value: "{\"copper\":{\"\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"exec\",\"qualification\":\"qualified\"}],\"name\":\"exec\"}},\"silver\":{\"\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"openhands\",\"qualification\":\"qualified\"}],\"name\":\"openhands\"}}}"
             - name: PLOEG_FORGEJO_URL
               value: "http://forgejo-http.forgejo.svc.cluster.local:3000"
             - name: PLOEG_FORGEJO_TOKEN
@@ -209,7 +209,7 @@ spec:
                   name: ploeg-worker-bootstrap
                   key: registry.json
             - name: PLOEG_WORKER_LLM_POLICIES
-              value: "[{\"budgetUsd\":4,\"models\":[\"deepseek-chat\"],\"role\":\"\",\"team\":\"silver\",\"ttl\":\"4h\"},{\"budgetUsd\":1,\"models\":[\"deepseek-chat\"],\"role\":\"\",\"team\":\"copper\",\"ttl\":\"4h\"}]"
+              value: "[{\"budgetUsd\":4,\"defaultModel\":\"deepseek-chat\",\"models\":[\"deepseek-chat\"],\"role\":\"\",\"team\":\"silver\",\"ttl\":\"4h\"},{\"budgetUsd\":1,\"defaultModel\":\"deepseek-chat\",\"models\":[\"deepseek-chat\"],\"role\":\"\",\"team\":\"copper\",\"ttl\":\"4h\"}]"
           readinessProbe:
             httpGet:
               path: /readyz
@@ -639,6 +639,8 @@ spec:
                 value: "http://ploeg:8080"
               - name: PLOEG_TEAM
                 value: "copper"
+              - name: PLOEG_HARNESS
+                value: "exec"
               - name: PLOEG_WORKER_ID
                 valueFrom:
                   fieldRef:

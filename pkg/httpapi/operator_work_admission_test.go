@@ -207,7 +207,10 @@ func TestOperatorWorkAdmissionRefusals(t *testing.T) {
 		{name: "budget zero", body: with("budgetUsd", 0), status: 400, code: "invalid_admission"},
 		{name: "empty description", body: with("description", "  "), status: 400, code: "invalid_admission"},
 		{name: "repository url", body: with("repositoryUrl", "https://forge.example/o/r.git"), status: 400, code: "invalid_command"},
-		{name: "field of a later change", body: with("harness", "claude-code"), status: 400, code: "invalid_command"},
+		{name: "field of a later change", body: with("attended", true), status: 400, code: "invalid_command"},
+		{name: "harness without an allowlist", body: with("harness", "claude-code"), status: 422, code: "harness_not_allowed"},
+		{name: "malformed harness", body: with("harness", "Claude Code"), status: 400, code: "invalid_admission"},
+		{name: "model without managed inference", body: with("model", "kimi-k3"), status: 422, code: "model_requires_managed_inference"},
 		{name: "team without a plan", body: with("team", "silver"), status: 422, code: "team_not_dispatched"},
 		{name: "no Shift dispatch", body: admissionBody("req-refused"), prepare: func(f admissionFixture) { f.server.Engine = nil }, status: 503, code: "dispatch_unavailable"},
 	}

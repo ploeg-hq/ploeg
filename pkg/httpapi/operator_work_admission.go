@@ -5,6 +5,7 @@ import (
 	"errors"
 	"math"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -13,6 +14,11 @@ import (
 )
 
 const maxAdmissionDescription = 110000
+
+var (
+	admissionHarness = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}(/[a-z0-9][a-z0-9._-]{0,63})?$`)
+	admissionModel   = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:@+-]{0,127}$`)
+)
 
 func (s *Server) registerOperatorWorkAdmission(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/operator/work-items", s.handleAdmitWorkItem)
@@ -28,9 +34,10 @@ func (s *Server) handleAdmitWorkItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !validAdmission(input) {
-		operatorError(w, 400, "invalid_admission", "Supply a requestId, team, registered target key, a title of 1 to 200 characters, a description of 1 to 110000 characters and an optional positive budgetUsd.")
+		operatorError(w, 400, "invalid_admission", "Supply a requestId, team, registered target key, a title of 1 to 200 characters, a description of 1 to 110000 characters, an optional positive budgetUsd, an optional harness key and an optional model alias.")
 		return
 	}
+	input.Harness = normalHarnessKey(input.Harness)
 	budget := p.BudgetLimitUSD
 	if input.BudgetUSD != nil {
 		if *input.BudgetUSD > p.BudgetLimitUSD {
@@ -51,6 +58,9 @@ func (s *Server) handleAdmitWorkItem(w http.ResponseWriter, r *http.Request) {
 	var target work.Target
 	if !admitted {
 		if target, ok = s.admissionTarget(r.Context(), w, input); !ok {
+			return
+		}
+		if !s.admissionSelection(w, input) {
 			return
 		}
 	}
@@ -81,6 +91,7 @@ func (s *Server) handleAdmitWorkItem(w http.ResponseWriter, r *http.Request) {
 		},
 		"created":  a.Created,
 		"replayed": !a.Created,
+		"roles":    s.resolvedRoles(input),
 	})
 }
 
@@ -94,7 +105,10 @@ func validAdmission(in store.AdmitOperatorWorkItem) bool {
 	if in.BudgetUSD != nil && (math.IsNaN(*in.BudgetUSD) || math.IsInf(*in.BudgetUSD, 0) || *in.BudgetUSD <= 0) {
 		return false
 	}
-	return true
+	if in.Harness != "" && !admissionHarness.MatchString(in.Harness) {
+		return false
+	}
+	return in.Model == "" || admissionModel.MatchString(in.Model)
 }
 
 func (s *Server) admissionTarget(ctx context.Context, w http.ResponseWriter, in store.AdmitOperatorWorkItem) (work.Target, bool) {

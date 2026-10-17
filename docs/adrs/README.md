@@ -172,12 +172,12 @@ fails otherwise.
 | [0095](0095-work-is-handed-to-ploeg-by-assigning-one-ploeg-user-and-a-team-label-picks-the-team.md) | Work is handed to Ploeg by assigning one Ploeg user, and a team label picks the team | proposed | 2026-10-13 |
 | [0096](0096-a-shadow-reader-records-its-verdict-and-never-acts.md) | A shadow reader records its verdict and never acts | proposed | 2026-10-13 |
 | [0097](0097-a-run-records-its-harness-version-and-the-teams-read-shows-each-roles-harness-and-model.md) | A Run records its Harness version, and the Teams read shows each Role's Harness and model | accepted | 2026-10-13 |
-| [0098](0098-an-operator-admission-may-choose-each-runs-harness-from-its-teams-allowlist.md) | An operator admission may choose each Run's Harness from its Team's allowlist | proposed | 2026-10-13 |
-| [0099](0099-each-allowed-harness-runs-in-its-own-workload-and-the-claim-selects-on-it.md) | Each allowed Harness runs in its own workload, and the claim selects on it | proposed | 2026-10-13 |
+| [0098](0098-an-operator-admission-may-choose-each-runs-harness-from-its-teams-allowlist.md) | An operator admission may choose each Run's Harness from its Team's allowlist | accepted | 2026-10-14 |
+| [0099](0099-each-allowed-harness-runs-in-its-own-workload-and-the-claim-selects-on-it.md) | Each allowed Harness runs in its own workload, and the claim selects on it | accepted | 2026-10-14 |
 | [0100](0100-an-attended-run-relays-its-harnesss-requests-through-ploegd-and-falls-back-to-its-teams-policy.md) | An attended Run relays its Harness's requests through ploegd and falls back to its Team's policy | proposed | 2026-10-13 |
 | [0101](0101-a-paused-run-keeps-its-pod-and-session-for-a-bounded-time-and-is-never-retried-automatically.md) | A paused Run keeps its pod and session for a bounded time and is never retried automatically | proposed | 2026-10-13 |
 | [0102](0102-an-operator-consumer-admits-work-items-that-ploeg-worker-executes.md) | An Operator Consumer admits Work Items that ploeg-worker executes | accepted | 2026-10-14 |
-| [0103](0103-an-operator-admission-may-choose-each-runs-model-from-the-models-its-roles-policy-lists.md) | An operator admission may choose each Run's model from the models its Role's policy lists | proposed | 2026-10-13 |
+| [0103](0103-an-operator-admission-may-choose-each-runs-model-from-the-models-its-roles-policy-lists.md) | An operator admission may choose each Run's model from the models its Role's policy lists | accepted | 2026-10-14 |
 | [0104](0104-a-message-to-an-attended-run-reaches-it-at-the-next-prompt-turn-and-context-items-still-wait.md) | A message to an attended Run reaches it at the next prompt turn, and context items still wait for the next Run | proposed | 2026-10-13 |
 | [0105](0105-a-credential-leak-parks-the-work-item-and-closes-its-pull-request.md) | A credential leak parks the Work Item and closes its pull request | accepted | 2026-10-17 |
 | [0106](0106-a-run-declares-an-isolation-floor-and-a-cell-runs-it-at-the-strictest-class-it-can-honour.md) | A Run declares an isolation floor, and a cell runs it at the strictest class it can honour | proposed | 2026-10-17 |

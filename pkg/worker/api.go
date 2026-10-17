@@ -71,6 +71,9 @@ type ClaimResponse struct {
 	// Context names the files people attached to the Work Item before this
 	// claim. The worker downloads and verifies each before the harness runs.
 	Context []harness.ContextRef `json:"context,omitempty"`
+	// Model is the model resolved for the Run (ADR-0103). The worker calls it
+	// instead of LLM_MODEL; empty keeps LLM_MODEL.
+	Model string `json:"model,omitempty"`
 }
 
 // Claim returns nil when the queue is empty (HTTP 204) — the empty-handed

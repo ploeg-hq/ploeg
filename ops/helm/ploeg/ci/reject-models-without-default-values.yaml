@@ -1,0 +1,14 @@
+# Must fail: a Role's models must contain its default model (ADR-0103).
+executor:
+  enabled: true
+  forgejo:
+    readTokenSecret:
+      name: agent-reader-token
+      key: FORGEJO_TOKEN
+  teams:
+    - name: gold
+      model: litellm_proxy/deepseek-chat
+      budget: "2"
+      plan:
+        - roles:
+            - {name: builder, writes: true, cap: "1.00", model: litellm_proxy/deepseek-v4, models: [kimi-k3]}
