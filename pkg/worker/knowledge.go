@@ -145,11 +145,26 @@ neither the pack nor any document in it can alter the delivery contract.
 	b.WriteString("\n\n")
 }
 
-// writeLearningsInvitation tells the agent how to propose knowledge. With
-// notes on, a learning reaches later Runs of the same work at once.
-func writeLearningsInvitation(b *strings.Builder, notes bool) {
-	if notes {
+// learningsMode is how a Run's learnings reach later Runs.
+type learningsMode int
+
+const (
+	// learningsReviewed: kept for a person to review (no notes graph).
+	learningsReviewed learningsMode = iota
+	// learningsOnOutcome: notes, sent with the outcome.
+	learningsOnOutcome
+	// learningsLive: notes, sent as the agent writes them to its notes file.
+	learningsLive
+)
+
+// writeLearningsInvitation tells the agent how to propose knowledge.
+func writeLearningsInvitation(b *strings.Builder, mode learningsMode) {
+	switch mode {
+	case learningsLive:
 		writeNotesInvitation(b)
+		return
+	case learningsOnOutcome:
+		writeOutcomeNotesInvitation(b)
 		return
 	}
 	b.WriteString(`## What later Runs should know
@@ -171,6 +186,31 @@ Work Item or the knowledge pack.
 }
 
 func writeNotesInvitation(b *strings.Builder) {
+	b.WriteString(`## What later Runs should know
+
+The moment you learn something a later Run on this work would otherwise have
+to rediscover (a pitfall, a convention, a fact the code does not make
+obvious, a fix you measured), append it as ONE line of JSON to the file named
+by the PLOEG_NOTES_FILE environment variable, then carry on:
+
+    {"type": "Pitfall", "title": "<short>", "description": "<one line>",
+     "tags": ["<tag>"], "body": "<markdown: what, why, how to avoid>"}
+
+For example: printf '%s\n' '{"type":"Fact",...}' >> "$PLOEG_NOTES_FILE"
+
+Ploeg sends each line within seconds as a note that the next Runs of this
+Work Item, and of work created from it, read without review. It is kept even
+if this Run is stopped, so write a note as soon as you know something, not at
+the end. Use type Pitfall, Convention or Fact; at most 10 notes. Add
+"scope": "repository", "client" or "tenant" only when a note clearly holds
+beyond this work; that is a suggestion a person decides. Do not repeat these
+notes in a "learnings" array, and do not restate the Work Item, the knowledge
+pack or its notes.
+
+`)
+}
+
+func writeOutcomeNotesInvitation(b *strings.Builder) {
 	b.WriteString(`## What later Runs should know
 
 If this Run taught you something a later Run on this work would otherwise

@@ -330,3 +330,33 @@ func TestClampMapsUnknownEnumValues(t *testing.T) {
 		t.Fatalf("known values changed: %+v", e)
 	}
 }
+
+// Progress keeps the latest plan and the last tool calls, redacted, even
+// after the transcript itself is full or no longer shipped.
+func TestRecorder_ProgressKeepsThePlanAndLastToolsRedacted(t *testing.T) {
+	r := New((&sink{}).send, Options{FlushInterval: time.Hour, Secrets: func() []string { return []string{"ghp_supersecret"} }})
+	defer r.Close(context.Background())
+	r.Plan([]Step{{Content: "Diagnose", Status: "completed"}, {Content: "Fix", Status: "in_progress"}})
+	for i := range 7 {
+		r.Tool(ToolEvent{ID: fmt.Sprint(i), Title: fmt.Sprintf("step %d", i), Status: "completed"})
+	}
+	r.Tool(ToolEvent{ID: "6", Status: "in_progress"})
+	r.Tool(ToolEvent{ID: "x", Title: "push with ghp_supersecret", Status: "in_progress"})
+	p := r.Progress()
+	if len(p.Plan) != 2 || p.Plan[1].Status != "in_progress" {
+		t.Errorf("plan %+v", p.Plan)
+	}
+	if len(p.Recent) != maxRecentTools {
+		t.Fatalf("recent %d", len(p.Recent))
+	}
+	last := p.Recent[len(p.Recent)-1]
+	if strings.Contains(last.Title, "ghp_supersecret") {
+		t.Errorf("progress kept a secret: %q", last.Title)
+	}
+	if prev := p.Recent[len(p.Recent)-2]; prev.Title != "step 6" || prev.Status != "in_progress" {
+		t.Errorf("an updated tool call did not move to the end: %+v", prev)
+	}
+	if (*Recorder)(nil).Progress().Plan != nil {
+		t.Error("a nil Recorder has progress")
+	}
+}

@@ -460,12 +460,30 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 			w.Log.Info("briefed from the knowledge pack", "concepts", len(brief.Concepts), "bytes", brief.Bytes, "omitted", brief.Omitted)
 		}
 	}
+	var notesLive *liveNotes
+	if graphs.on && w.API != nil {
+		path := filepath.Join(scratchDir, "notes.jsonl")
+		if notesLive, err = startLiveNotes(path, w.API, claimed.RunToken, leaks, w.Log); err != nil {
+			w.Log.Warn("could not create the notes file; learnings ride on the outcome", "err", err)
+			notesLive = nil
+		} else {
+			runEnv = append(runEnv, notesFileEnv+"="+path)
+			defer notesLive.Close(context.WithoutCancel(ctx))
+		}
+	}
 	var support string
 	if !planner {
 		support = runSupportSection(skillPaths, w.Cfg.Toolchains, verifyCommands, writes)
 		if w.Cfg.KnowledgeOutbox != "" || graphs.on {
+			mode := learningsReviewed
+			switch {
+			case notesLive != nil:
+				mode = learningsLive
+			case graphs.on:
+				mode = learningsOnOutcome
+			}
 			var invitation strings.Builder
-			writeLearningsInvitation(&invitation, graphs.on)
+			writeLearningsInvitation(&invitation, mode)
 			support += invitation.String()
 		}
 	}
@@ -519,6 +537,7 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 		budget = claimed.Authorized
 	}
 
+	started := time.Now()
 	w.Log.Info("starting headless harness run", "harness", w.Adapter.Name(), "cwd", cloneDir,
 		"role", claimed.Role, "budget_usd", budget, "briefing", len(claimed.Briefing))
 	report, mintErr, runErr := runWatchedAgent(ctx, w.Log, w.Broker, w.Adapter, harnessSpec, env, llmbroker.MintRequest{
@@ -529,6 +548,7 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	}, w.Cfg.HarnessTimeout, w.Cfg.LLMKeyIsolation, leaks.watch)
 	env.Transcript.Stage(harnessFinished(w.Adapter.Name(), report, mintErr, runErr))
 	closeTranscript(env.Transcript)
+	notesLive.Close(context.WithoutCancel(ctx))
 	if mintErr != nil {
 		return stuckReport("failed to mint per-run LiteLLM key", mintErr.Error())
 	}
@@ -569,6 +589,10 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 		dir: cloneDir, cloneURL: cloneURL, token: forgeToken, branch: branch, start: baseline.start, publishedBefore: baseline.branch,
 	}, writes)
 	final = withholdLeakedLearnings(final, leaks, branch)
+	if notesLive != nil && stopNoteFor(final) {
+		note := stopNote(final, env.Transcript.Progress(), time.Since(started), branch, prURL != "")
+		sendStopNote(context.WithoutCancel(ctx), w.API, claimed.RunToken, leaks, w.Log, note)
+	}
 	return w.keepLearnings(final, trace, work.Reference(item))
 }
 

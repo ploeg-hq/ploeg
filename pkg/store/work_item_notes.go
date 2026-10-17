@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/ploeg-hq/ploeg/pkg/harness"
 )
@@ -27,28 +28,77 @@ func (r harnessReport) WithNotes(learnings []harness.Learning) harnessReport {
 
 func queueWorkItemNotes(ctx context.Context, tx pgx.Tx, runID int64, notes []harness.Learning) error {
 	for i, l := range notes {
-		scope := l.Scope
-		if !NoteScopes[scope] {
-			scope = "work-item"
-		}
-		l.Scope = ""
-		body, err := json.Marshal(l)
-		if err != nil {
-			return err
-		}
-		if _, err := tx.Exec(ctx, `
-			INSERT INTO work_item_note_outbox
-				(note_key, run_id, work_item_id, root_work_item_id, repository, learning, suggested_scope, written_by)
-			SELECT r.trace_alias || '/' || $2::text, r.id, w.id, COALESCE(w.root_work_item_id, w.id),
-			       CASE WHEN w.target_repo = '' THEN '' ELSE w.target_forge || '/' || w.target_owner || '/' || w.target_repo END,
-			       $3, $4, 'run:' || r.trace_alias
-			FROM agent_runs r JOIN work_items w ON w.id = r.work_item_id
-			WHERE r.id = $1
-			ON CONFLICT (note_key) DO NOTHING`, runID, strconv.Itoa(i), body, scope); err != nil {
+		if err := queueNote(ctx, tx, runID, strconv.Itoa(i), "run", l); err != nil {
 			return fmt.Errorf("queue work item note %d: %w", i, err)
 		}
 	}
 	return nil
+}
+
+// queueNote stores one note under the Run's trace alias and suffix. The key
+// makes a resent note a no-op, so a retried request never writes twice.
+func queueNote(ctx context.Context, q interface {
+	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
+}, runID int64, suffix, writer string, l harness.Learning) error {
+	scope := l.Scope
+	if !NoteScopes[scope] {
+		scope = "work-item"
+	}
+	l.Scope = ""
+	body, err := json.Marshal(l)
+	if err != nil {
+		return err
+	}
+	_, err = q.Exec(ctx, `
+		INSERT INTO work_item_note_outbox
+			(note_key, run_id, work_item_id, root_work_item_id, repository, learning, suggested_scope, written_by)
+		SELECT r.trace_alias || '/' || $2::text, r.id, w.id, COALESCE(w.root_work_item_id, w.id),
+		       CASE WHEN w.target_repo = '' THEN '' ELSE w.target_forge || '/' || w.target_owner || '/' || w.target_repo END,
+		       $3, $4, $5 || ':' || r.trace_alias
+		FROM agent_runs r JOIN work_items w ON w.id = r.work_item_id
+		WHERE r.id = $1
+		ON CONFLICT (note_key) DO NOTHING`, runID, suffix, body, scope, writer)
+	return err
+}
+
+// LiveNote is a note a running Run sends while it works, before its outcome:
+// the agent's own findings as it makes them, or the worker's account of why
+// the Run stopped (ADR-0088, amended 2026-10-17).
+type LiveNote struct {
+	// Key is unique within the Run: the agent's line number in its notes
+	// file, or "stop" for the worker's stop note.
+	Key      string
+	ByWorker bool
+	Learning harness.Learning
+}
+
+// QueueLiveNotes stores a running Run's notes in the outbox at once, so a
+// Run that is stopped later keeps what it found. ErrUnknownRun when the
+// token names no running Run.
+func (s *Store) QueueLiveNotes(ctx context.Context, runToken string, notes []LiveNote) (int, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	var runID int64
+	err = tx.QueryRow(ctx, `SELECT id FROM agent_runs WHERE run_token = $1 AND state = 'running'`, runToken).Scan(&runID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, ErrUnknownRun
+	}
+	if err != nil {
+		return 0, err
+	}
+	for _, n := range notes {
+		writer, prefix := "run", "live/"
+		if n.ByWorker {
+			writer, prefix = "ploeg", "worker/"
+		}
+		if err := queueNote(ctx, tx, runID, prefix+n.Key, writer, n.Learning); err != nil {
+			return 0, fmt.Errorf("queue live note %s: %w", n.Key, err)
+		}
+	}
+	return len(notes), tx.Commit(ctx)
 }
 
 // PendingNote is one Work Item Note the outbox still has to write.
