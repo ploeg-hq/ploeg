@@ -12,6 +12,25 @@
 - `0058_pull_request_title.sql` runs when `ploegd` starts.
 - `taskspec.v1` gains the Work Item origin `pull_request`; a consumer that enumerates origins should accept it. Without a `readPullRequests` route on a target nothing changes.
 
+## 0.2.0-rc.24
+
+### Breaking changes
+
+- None. New operator API fields and the `shared_budget_spent` failure reason are additive; a Ploeg consumer that reads `failureReason` and `closeReason` as text needs no change.
+
+### Changes
+
+- A Run refused because a LiteLLM budget wider than its own key is spent (team, user, end user, organization, project, tag or model access group) parks its Work Item at `needs_human` with failure and close reason `shared_budget_spent`, naming whose budget it was; no retry budget is spent and no pull request is closed. A Run's own key over its cap, rate limits and provider outages are retried as before (#155, ADR-0111).
+- An operator admission may choose a Run's Harness and model from the Role's allowlist; a Harness outside it, an unqualified Harness without the Team's opt-in, or an unlisted model is refused with 422. Each Run stores its resolved Harness and model, kept across retries and requeues, and the per-Run key is scoped to that model. The Teams read shows each Role's allowlist, default, qualification and allowed models (#142, ADRs 0098, 0099, 0103).
+- A target's `readPullRequests` routes have a Team's reading Roles read pull requests others open (for example Renovate's) and comment on them; nothing happens until a target has a route (#156).
+- A Run sends its Work Item Notes while it works and leaves one when it stops (#153, ADR-0088).
+- ADR-0095 is accepted (a Claude Run uses the login of the person it acts for, #157); the Team manifest is proposed after a sweep of team and permission standards (#154).
+
+### Upgrade notes
+
+- Two migrations run when `ploegd` starts: `0057_run_selection.sql` and `0058_pull_request_title.sql`, each adding nullable columns. Runs created before 0057 store no Harness; for a Role that allows several, any of its workloads may claim such a Run.
+- New optional chart values: `executor.teams[].harnesses`, `executor.teams[].allowUnqualifiedHarnesses`, per-Role `harnesses`, `defaultHarness` and `models`, and the `harnessOutsideAllowlist` alert (on by default).
+
 ## 0.2.0-rc.23
 
 The `v0.2.0-rc.22` tag points at the commit before its release preparation, so its release refused it and rc.22 was never published. Its changes ship here.
