@@ -1,0 +1,290 @@
+[
+  {
+    "litellm": "1.102.4",
+    "case": "bad key",
+    "status": 401,
+    "body": "{\"error\":{\"message\":\"Authentication Error, Invalid proxy server token passed. Received API Key = sk-..., Key Hash (Token) =100ea034bb3d6c014c0cf28b9f270e99b98b0d842ff3a62ae12478aece213734. Unable to find token in cache or `LiteLLM_VerificationTokenTable`\",\"type\":\"token_not_found_in_db\",\"param\":\"key\",\"code\":\"401\"}}",
+    "kind": "key_rejected",
+    "budgetOwner": null
+  },
+  {
+    "litellm": "1.105.1",
+    "case": "bad key",
+    "status": 401,
+    "body": "{\"error\":{\"message\":\"Authentication Error, Invalid proxy server token passed. Received API Key = sk-..., Key Hash (Token) =100ea034bb3d6c014c0cf28b9f270e99b98b0d842ff3a62ae12478aece213734. Unable to find token in cache or `LiteLLM_VerificationTokenTable`\",\"type\":\"token_not_found_in_db\",\"param\":\"key\",\"code\":\"401\"}}",
+    "kind": "key_rejected",
+    "budgetOwner": null
+  },
+  {
+    "litellm": "1.102.4",
+    "case": "blocked key",
+    "status": 401,
+    "body": "{\"error\":{\"message\":\"Authentication Error, Key is blocked. Update via `/key/unblock` if you're an admin.\",\"type\":\"auth_error\",\"param\":\"None\",\"code\":\"401\"}}",
+    "kind": "key_rejected",
+    "budgetOwner": null
+  },
+  {
+    "litellm": "1.105.1",
+    "case": "blocked key",
+    "status": 401,
+    "body": "{\"error\":{\"message\":\"Authentication Error, Key is blocked. Update via `/key/unblock` if you're an admin.\",\"type\":\"auth_error\",\"param\":\"None\",\"code\":\"401\"}}",
+    "kind": "key_rejected",
+    "budgetOwner": null
+  },
+  {
+    "litellm": "1.102.4",
+    "case": "content policy violation",
+    "status": 400,
+    "body": "{\"error\":{\"message\":\"litellm.BadRequestError: litellm.ContentPolicyViolationError: ContentPolicyViolationError: OpenAIException - Your request was rejected as a result of our safety system.\\nmodel=up-policy. content_policy_fallback=None. fallbacks=None.\\n\\nSet 'content_policy_fallback' - https://docs.litellm.ai/docs/routing#fallbacks. Received Model Group=up-policy\\nAvailable Model Group Fallbacks=None\",\"type\":\"invalid_request_error\",\"param\":null,\"code\":\"400\"}}",
+    "kind": "content_filtered",
+    "budgetOwner": null
+  },
+  {
+    "litellm": "1.105.1",
+    "case": "content policy violation",
+    "status": 400,
+    "body": "{\"error\":{\"message\":\"litellm.BadRequestError: litellm.ContentPolicyViolationError: ContentPolicyViolationError: OpenAIException - Your request was rejected as a result of our safety system.\\nmodel=up-policy. content_policy_fallback=None. fallbacks=None.\\n\\nSet 'content_policy_fallback' - https://docs.litellm.ai/docs/routing#fallbacks\\n\\nLiteLLM: model group 'up-policy' failed with the error above. No fallback was attempted.\",\"type\":\"invalid_request_error\",\"param\":null,\"code\":\"400\"}}",
+    "kind": "content_filtered",
+    "budgetOwner": null
+  },
+  {
+    "litellm": "1.102.4",
+    "case": "context window exceeded",
+    "status": 400,
+    "body": "{\"error\":{\"message\":\"litellm.ContextWindowExceededError: litellm.BadRequestError: ContextWindowExceededError: OpenAIException - This model's maximum context length is 8192 tokens. However, your messages resulted in 9000 tokens.\\nmodel=up-ctx. context_window_fallbacks=None. fallbacks=None.\\n\\nSet 'context_window_fallback' - https://docs.litellm.ai/docs/routing#fallbacks. Received Model Group=up-ctx\\nAvailable Model Group Fallbacks=None\",\"type\":\"invalid_request_error\",\"param\":null,\"code\":\"400\"}}",
+    "kind": "context_too_long",
+    "budgetOwner": null
+  },
+  {
+    "litellm": "1.105.1",
+    "case": "context window exceeded",
+    "status": 400,
+    "body": "{\"error\":{\"message\":\"litellm.ContextWindowExceededError: litellm.BadRequestError: ContextWindowExceededError: OpenAIException - This model's maximum context length is 8192 tokens. However, your messages resulted in 9000 tokens.\\nmodel=up-ctx. context_window_fallbacks=None. fallbacks=None.\\n\\nSet 'context_window_fallback' - https://docs.litellm.ai/docs/routing#fallbacks\\n\\nLiteLLM: model group 'up-ctx' failed with the error above. No fallback was attempted.\",\"type\":\"invalid_request_error\",\"param\":null,\"code\":\"400\"}}",
+    "kind": "context_too_long",
+    "budgetOwner": null
+  },
+  {
+    "litellm": "1.102.4",
+    "case": "dead upstream",
+    "status": 500,
+    "body": "{\"error\":{\"message\":\"litellm.InternalServerError: InternalServerError: OpenAIException - Connection error.. Received Model Group=dead\\nAvailable Model Group Fallbacks=None\",\"type\":\"internal_server_error\",\"param\":null,\"code\":\"500\"}}",
+    "kind": "provider_unavailable",
+    "budgetOwner": null
+  },
+  {
+    "litellm": "1.105.1",
+    "case": "dead upstream",
+    "status": 500,
+    "body": "{\"error\":{\"message\":\"litellm.InternalServerError: InternalServerError: OpenAIException - Connection error.\\n\\nLiteLLM: model group 'dead' failed with the error above. No fallback was attempted.\",\"type\":\"internal_server_error\",\"param\":null,\"code\":\"500\"}}",
+    "kind": "provider_unavailable",
+    "budgetOwner": null
+  },
+  {
+    "litellm": "1.102.4",
+    "case": "expired key",
+    "status": 401,
+    "body": "{\"error\":{\"message\":\"Authentication Error - Expired Key. Key Expiry time 2026-10-17 09:04:40.458000+00:00 and current time 2026-10-17 09:04:45.946981+00:00\",\"type\":\"expired_key\",\"param\":\"sk-...9674\",\"code\":\"401\"}}",
+    "kind": "key_rejected",
+    "budgetOwner": null
+  },
+  {
+    "litellm": "1.105.1",
+    "case": "expired key",
+    "status": 401,
+    "body": "{\"error\":{\"message\":\"Authentication Error - Expired Key. Key Expiry time 2026-10-17 09:04:54.276000+00:00 and current time 2026-10-17 09:04:55.594396+00:00\",\"type\":\"expired_key\",\"param\":\"sk-...1db5\",\"code\":\"401\"}}",
+    "kind": "key_rejected",
+    "budgetOwner": null
+  },
+  {
+    "litellm": "1.102.4",
+    "case": "key budget spent",
+    "status": 429,
+    "body": "{\"error\":{\"message\":\"Budget has been exceeded! Key=key (sk-...rp3Q) Current cost: 1.0, Max budget: 0.01\",\"type\":\"budget_exceeded\",\"param\":null,\"code\":\"429\"}}",
+    "kind": "budget_exceeded",
+    "budgetOwner": "key"
+  },
+  {
+    "litellm": "1.105.1",
+    "case": "key budget spent",
+    "status": 422,
+    "body": "{\"error\":{\"message\":\"Budget has been exceeded! Key=key (sk-...je7A) Current cost: 1.0, Max budget: 0.01\",\"type\":\"budget_exceeded\",\"param\":null,\"code\":\"422\"}}",
+    "kind": "budget_exceeded",
+    "budgetOwner": "key"
+  },
+  {
+    "litellm": "1.102.4",
+    "case": "key rpm limit",
+    "status": 429,
+    "body": "{\"error\":{\"message\":\"Rate limit exceeded for api_key: 5de884cd56a70c5e788116b631b372e851befe3bb147dc4d21e33fa5de3d92a2. Limit type: requests. Current limit: 1, Remaining: 0. Limit resets at: 2026-10-17 09:05:38 UTC\",\"type\":\"throttling_error\",\"param\":null,\"code\":\"429\"}}",
+    "kind": "rate_limited",
+    "budgetOwner": null
+  },
+  {
+    "litellm": "1.105.1",
+    "case": "key rpm limit",
+    "status": 429,
+    "body": "{\"error\":{\"message\":\"Rate limit exceeded for api_key: 26d9c498a37617b0793aaad8d611b9e508a5d2dc301f8e88355edb9aa08bbff1. Limit type: requests. Current limit: 1, Remaining: 0. Limit resets at: 2026-10-17 09:05:52 UTC\",\"type\":\"throttling_error\",\"param\":null,\"code\":\"429\"}}",
+    "kind": "rate_limited",
+    "budgetOwner": null
+  },
+  {
+    "litellm": "1.102.4",
+    "case": "model not allowed for key",
+    "status": 403,
+    "body": "{\"error\":{\"message\":\"key not allowed to access model. This key can only access models=['other']. Tried to access mocked\",\"type\":\"key_model_access_denied\",\"param\":\"model\",\"code\":\"403\"}}",
+    "kind": "model_unavailable",
+    "budgetOwner": null
+  },
+  {
+    "litellm": "1.105.1",
+    "case": "model not allowed for key",
+    "status": 403,
+    "body": "{\"error\":{\"message\":\"The requested model 'mocked' is not available for this API key, or the model name is invalid. Check the models available to you and try again.\",\"type\":\"key_model_access_denied\",\"param\":\"model\",\"code\":\"403\"}}",
+    "kind": "model_unavailable",
+    "budgetOwner": null
+  },
+  {
+    "litellm": "1.102.4",
+    "case": "provider credits used up",
+    "status": 402,
+    "body": "{\"error\":{\"message\":\"litellm.APIError: APIError: OpenAIException - Insufficient credits. Add more using https://example/credits. Received Model Group=up-402\\nAvailable Model Group Fallbacks=None\",\"type\":\"invalid_request_error\",\"param\":null,\"code\":\"402\"}}",
+    "kind": "provider_quota",
+    "budgetOwner": null
+  },
+  {
+    "litellm": "1.105.1",
+    "case": "provider credits used up",
+    "status": 402,
+    "body": "{\"error\":{\"message\":\"litellm.APIError: APIError: OpenAIException - Insufficient credits. Add more using https://example/credits\\n\\nLiteLLM: model group 'up-402' failed with the error above. No fallback was attempted.\",\"type\":\"invalid_request_error\",\"param\":null,\"code\":\"402\"}}",
+    "kind": "provider_quota",
+    "budgetOwner": null
+  },
+  {
+    "litellm": "1.102.4",
+    "case": "provider model not found",
+    "status": 404,
+    "body": "{\"error\":{\"message\":\"litellm.NotFoundError: OpenAIException - The model `up-404` does not exist or you do not have access to it.. Received Model Group=up-404\\nAvailable Model Group Fallbacks=None\",\"type\":\"invalid_request_error\",\"param\":null,\"code\":\"404\"}}",
+    "kind": "model_unavailable",
+    "budgetOwner": null
+  },
+  {
+    "litellm": "1.105.1",
+    "case": "provider model not found",
+    "status": 404,
+    "body": "{\"error\":{\"message\":\"litellm.NotFoundError: OpenAIException - The model `up-404` does not exist or you do not have access to it.\\n\\nLiteLLM: model group 'up-404' failed with the error above. No fallback was attempted.\",\"type\":\"invalid_request_error\",\"param\":null,\"code\":\"404\"}}",
+    "kind": "model_unavailable",
+    "budgetOwner": null
+  },
+  {
+    "litellm": "1.102.4",
+    "case": "provider overloaded",
+    "status": 503,
+    "body": "{\"error\":{\"message\":\"litellm.ServiceUnavailableError: ServiceUnavailableError: OpenAIException - The server is overloaded or not ready yet.. Received Model Group=up-503\\nAvailable Model Group Fallbacks=None\",\"type\":\"internal_server_error\",\"param\":null,\"code\":\"503\"}}",
+    "kind": "provider_unavailable",
+    "budgetOwner": null
+  },
+  {
+    "litellm": "1.105.1",
+    "case": "provider overloaded",
+    "status": 503,
+    "body": "{\"error\":{\"message\":\"litellm.ServiceUnavailableError: ServiceUnavailableError: OpenAIException - The server is overloaded or not ready yet.\\n\\nLiteLLM: model group 'up-503' failed with the error above. No fallback was attempted.\",\"type\":\"internal_server_error\",\"param\":null,\"code\":\"503\"}}",
+    "kind": "provider_unavailable",
+    "budgetOwner": null
+  },
+  {
+    "litellm": "1.102.4",
+    "case": "provider quota used up",
+    "status": 429,
+    "body": "{\"error\":{\"message\":\"litellm.RateLimitError: RateLimitError: OpenAIException - You exceeded your current quota, please check your plan and billing details.. Received Model Group=up-quota\\nAvailable Model Group Fallbacks=None\",\"type\":\"throttling_error\",\"param\":null,\"code\":\"429\"}}",
+    "kind": "provider_quota",
+    "budgetOwner": null
+  },
+  {
+    "litellm": "1.105.1",
+    "case": "provider quota used up",
+    "status": 429,
+    "body": "{\"error\":{\"message\":\"litellm.RateLimitError: RateLimitError: OpenAIException - You exceeded your current quota, please check your plan and billing details.\\n\\nLiteLLM: model group 'up-quota' failed with the error above. No fallback was attempted.\",\"type\":\"throttling_error\",\"param\":null,\"code\":\"429\"}}",
+    "kind": "provider_quota",
+    "budgetOwner": null
+  },
+  {
+    "litellm": "1.102.4",
+    "case": "provider rate limit",
+    "status": 429,
+    "body": "{\"error\":{\"message\":\"litellm.RateLimitError: RateLimitError: OpenAIException - Rate limit reached for requests. Received Model Group=up-429\\nAvailable Model Group Fallbacks=None\",\"type\":\"throttling_error\",\"param\":null,\"code\":\"429\"}}",
+    "kind": "rate_limited",
+    "budgetOwner": null
+  },
+  {
+    "litellm": "1.105.1",
+    "case": "provider rate limit",
+    "status": 429,
+    "body": "{\"error\":{\"message\":\"litellm.RateLimitError: RateLimitError: OpenAIException - Rate limit reached for requests\\n\\nLiteLLM: model group 'up-429' failed with the error above. No fallback was attempted.\",\"type\":\"throttling_error\",\"param\":null,\"code\":\"429\"}}",
+    "kind": "rate_limited",
+    "budgetOwner": null
+  },
+  {
+    "litellm": "1.102.4",
+    "case": "provider refused the gateway's key",
+    "status": 401,
+    "body": "{\"error\":{\"message\":\"litellm.AuthenticationError: AuthenticationError: OpenAIException - Incorrect API key provided.. Received Model Group=up-401\\nAvailable Model Group Fallbacks=None\",\"type\":\"authentication_error\",\"param\":null,\"code\":\"401\"}}",
+    "kind": "provider_auth",
+    "budgetOwner": null
+  },
+  {
+    "litellm": "1.105.1",
+    "case": "provider refused the gateway's key",
+    "status": 401,
+    "body": "{\"error\":{\"message\":\"litellm.AuthenticationError: AuthenticationError: OpenAIException - Incorrect API key provided.\\n\\nLiteLLM: model group 'up-401' failed with the error above. No fallback was attempted.\",\"type\":\"authentication_error\",\"param\":null,\"code\":\"401\"}}",
+    "kind": "provider_auth",
+    "budgetOwner": null
+  },
+  {
+    "litellm": "1.102.4",
+    "case": "team budget spent",
+    "status": 429,
+    "body": "{\"error\":{\"message\":\"Budget has been exceeded! Team=t2 Current cost: 0.12000000000001138, Max budget: 0.05\",\"type\":\"budget_exceeded\",\"param\":null,\"code\":\"429\"}}",
+    "kind": "budget_exceeded",
+    "budgetOwner": "team"
+  },
+  {
+    "litellm": "1.105.1",
+    "case": "team budget spent",
+    "status": 422,
+    "body": "{\"error\":{\"message\":\"Budget has been exceeded! Team=t2 Current cost: 0.12000000000001138, Max budget: 0.05\",\"type\":\"budget_exceeded\",\"param\":null,\"code\":\"422\"}}",
+    "kind": "budget_exceeded",
+    "budgetOwner": "team"
+  },
+  {
+    "litellm": "1.102.4",
+    "case": "unknown model",
+    "status": 400,
+    "body": "{\"error\":{\"message\":\"/chat/completions: Invalid model name passed in model=nope. Call `/v1/models` to view available models for your key.\",\"type\":\"invalid_request_error\",\"param\":null,\"code\":\"400\",\"provider_specific_fields\":{\"error\":\"/chat/completions: Invalid model name passed in model=nope. Call `/v1/models` to view available models for your key.\"}}}",
+    "kind": "model_unavailable",
+    "budgetOwner": null
+  },
+  {
+    "litellm": "1.105.1",
+    "case": "unknown model",
+    "status": 400,
+    "body": "{\"error\":{\"message\":\"/chat/completions: Invalid model name passed in model=nope. Call `/v1/models` to view available models for your key.\",\"type\":\"invalid_request_error\",\"param\":null,\"code\":\"400\",\"provider_specific_fields\":{\"error\":\"/chat/completions: Invalid model name passed in model=nope. Call `/v1/models` to view available models for your key.\"}}}",
+    "kind": "model_unavailable",
+    "budgetOwner": null
+  },
+  {
+    "litellm": "1.102.4",
+    "case": "user budget spent",
+    "status": 429,
+    "body": "{\"error\":{\"message\":\"ExceededBudget: User=u-spent over budget. Spend=1.0, Budget=0.01\",\"type\":\"budget_exceeded\",\"param\":null,\"code\":\"429\"}}",
+    "kind": "budget_exceeded",
+    "budgetOwner": "user"
+  },
+  {
+    "litellm": "1.105.1",
+    "case": "user budget spent",
+    "status": 422,
+    "body": "{\"error\":{\"message\":\"ExceededBudget: User=u-spent over budget. Spend=1.0, Budget=0.01\",\"type\":\"budget_exceeded\",\"param\":null,\"code\":\"422\"}}",
+    "kind": "budget_exceeded",
+    "budgetOwner": "user"
+  }
+]
