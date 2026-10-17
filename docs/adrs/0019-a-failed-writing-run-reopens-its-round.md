@@ -163,6 +163,11 @@ Shift stops). Both are red against the unfixed code.
   (proposed): a failed reading Run is now retried in place under the same
   budgets, and a review that never came closes `review_failed`. "Readers are
   untouched" above no longer holds once that record is implemented.
+* 2026-10-17 — refined by
+  [ADR-0105](0105-a-credential-leak-parks-the-work-item-and-closes-its-pull-request.md):
+  a Run that failed with `credential_leak` is never retried under either
+  budget; its Shift closes `credential_leak` at `needs_human`. Every other
+  failure reason is retried as this record decided.
 * Evidence: `docs/research/2026-08-08-benchmarking-the-loop.md`, and the
   `hang` scenario in `webgrip/ploeg-bench`.
 * [ADR-0010](0010-shift-owns-the-item-lease-owns-the-branch.md) — a Round is
