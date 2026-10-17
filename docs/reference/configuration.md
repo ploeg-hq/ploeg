@@ -140,6 +140,7 @@ The generator follows each binary's imports inside the module and records every 
 | `PLOEG_TEAM_MAP` | ploegd |  | Legacy assignee roster, replaced by `teams.<name>.assignees` in the `PLOEG_CONFIG` file. | [main.go](../../cmd/ploegd/main.go), [operator.go](../../cmd/ploegd/operator.go) |
 | `PLOEG_TEAM_MAX_RUNNING` | ploegd |  |  | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_TEAM_PLANS` | ploegd |  | Legacy Shift plans, replaced by `teams.<name>.plan` in the `PLOEG_CONFIG` file. A malformed plan stops ploegd at boot. | [main.go](../../cmd/ploegd/main.go) |
+| `PLOEG_TELEMETRY` | ploeg-worker |  | JSON `{endpoint, protocol, signals, resourceAttributes, logPrompts, logToolDetails}`: the OpenTelemetry collector the harness exports to. The worker sets the standard `OTEL_*` variables for every harness and `CLAUDE_CODE_*` for claude-code, adds `ploeg.team`, `ploeg.role` and `ploeg.run.alias` to the resource attributes, and logs at startup which signals the harness exports natively (chart `executor.harness.telemetry`). | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_TOOLCHAINS` | ploeg-worker |  | JSON array of mounted toolchains, each `{name, path, env}`: `path` directories go in front of the harness's `PATH` and `env` is added. The worker refuses to claim when a directory is missing (chart `executor.harness.toolchains`). | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_TRACKER_DONE_ON_MERGE` | ploegd | `false` |  | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_USAGE_REPORT` | ploegd | `true` | Publish the usage and evidence report on each agent pull request. Default on; "false" is the kill switch (chart `env.PLOEG_USAGE_REPORT`). | [main.go](../../cmd/ploegd/main.go) |
@@ -243,6 +244,7 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `executor.harness.image` |  | `""` | Agent image. REQUIRED with the executor enabled, here, in runnerImage or per team: Ploeg publishes no agent image, so the render fails without one. | values.yaml |
 | `executor.harness.name` |  | `openhands` | openhands \| exec \| claude-code \| acp \| claude-environment (PLOEG_HARNESS) | values.yaml |
 | `executor.harness.outcomeFile` |  | `""` | exec harness only: OutcomeReport JSON path override | values.yaml |
+| `executor.harness.telemetry` |  | `{}` | OpenTelemetry collector the harness exports to (PLOEG_TELEMETRY). Set at executor, team or Role level; the most specific block wins whole. The worker adds ploeg.team, ploeg.role and ploeg.run.alias to the resource attributes. What each harness exports natively: claude-code metrics, logs and traces; openhands and acp/openhands traces; acp/opencode, exec and claude-environment none (claude-environment sessions export from the self-hosted runner's own environment). {} exports nothing. | values.yaml |
 | `executor.harness.timeout` |  | `100m` | Stops a harness that runs longer than this (`PLOEG_HARNESS_TIMEOUT`). | values.yaml |
 | `executor.harness.toolchains` |  | `[]` | Language toolchains mounted read-only at /opt/ploeg/toolchains/<name> as image volumes (Kubernetes >= 1.35), pulled by the kubelet, so a Run can run the target repository's checks without registry egress. `path` lists directories inside the image to put on PATH (default /bin); `env` is set in the harness environment (PLOEG_TOOLCHAINS). | values.yaml |
 | `executor.harness.verify` |  | `[]` | Shell command lines a Run is told to run before it hands off, and that ploeg-worker runs itself after a writing Run that opened or updated a pull request; the result is posted on the pull request (PLOEG_VERIFY_COMMANDS). Write a formatter check so it fails on output, e.g. test -z "$(gofmt -l .)". | values.yaml |
@@ -490,6 +492,7 @@ name becomes the workload suffix (ploeg-worker-<team>-<role>); writes marks the 
 | `toolchains` | array |  |
 | `verify` | array |  |
 | `verifyTimeout` | string |  |
+| `telemetry` | [telemetry](#telemetry) |  |
 
 ### allowedHarness
 
@@ -510,6 +513,20 @@ name becomes the workload suffix (ploeg-worker-<team>-<role>); writes marks the 
 | `toolchains` | array |  |
 | `verify` | array |  |
 | `verifyTimeout` | string |  |
+| `telemetry` | [telemetry](#telemetry) |  |
+
+### telemetry
+
+OpenTelemetry collector the harness exports to (PLOEG_TELEMETRY). Empty exports nothing; a non-empty block needs endpoint.
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `endpoint` | string |  |
+| `protocol` | one of `"http/protobuf"`, `"http/json"`, `"grpc"` |  |
+| `signals` | array |  |
+| `resourceAttributes` | object |  |
+| `logPrompts` | boolean |  |
+| `logToolDetails` | boolean |  |
 
 ### toolchain
 

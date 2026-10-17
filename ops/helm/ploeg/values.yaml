@@ -272,6 +272,20 @@ executor:
     # e.g. test -z "$(gofmt -l .)".
     verify: []
     verifyTimeout: "" # Go duration for the worker's own run; "" = 15m (PLOEG_VERIFY_TIMEOUT)
+    # OpenTelemetry collector the harness exports to (PLOEG_TELEMETRY). Set
+    # at executor, team or Role level; the most specific block wins whole.
+    # The worker adds ploeg.team, ploeg.role and ploeg.run.alias to the
+    # resource attributes. What each harness exports natively: claude-code
+    # metrics, logs and traces; openhands and acp/openhands traces; acp/opencode,
+    # exec and claude-environment none (claude-environment sessions export from
+    # the self-hosted runner's own environment). {} exports nothing.
+    # endpoint: http://otel-collector.observability.svc:4318
+    # protocol: http/protobuf   # or http/json, grpc
+    # signals: [metrics, logs, traces]
+    # resourceAttributes: {deployment.environment: production}
+    # logPrompts: false         # prompt text can carry ticket content
+    # logToolDetails: false
+    telemetry: {}
     # acp harness only. One adapter speaks Zed's Agent CLIENT Protocol (stdio
     # JSON-RPC, wire version 1) to any ACP-capable agent. Unrelated to IBM's
     # former Agent COMMUNICATION Protocol, which merged into A2A — see ADR-0007.

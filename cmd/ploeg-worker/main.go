@@ -17,10 +17,12 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/ploeg-hq/ploeg/pkg/harness"
+	"github.com/ploeg-hq/ploeg/pkg/harness/adapters/claudeenv"
 	"github.com/ploeg-hq/ploeg/pkg/llmbroker"
 	"github.com/ploeg-hq/ploeg/pkg/worker"
 )
@@ -214,6 +216,9 @@ func run(log *slog.Logger) error {
 	if err := worker.CheckToolchains(cfg.Toolchains); err != nil {
 		return err
 	}
+	if cfg.Telemetry, err = worker.ParseTelemetry(os.Getenv("PLOEG_TELEMETRY")); err != nil {
+		return err
+	}
 	if cfg.VerifyCommands, err = worker.ParseVerifyCommands(os.Getenv("PLOEG_VERIFY_COMMANDS")); err != nil {
 		return err
 	}
@@ -237,6 +242,7 @@ func run(log *slog.Logger) error {
 	podUID := os.Getenv("POD_UID")
 	log.Info("ploeg-worker starting", "version", version, "team", cfg.Team, "harness", hc.Name, "node", nodeName, "pod_uid", podUID)
 	warnWhenCredentialIsolationOff(log, cfg, hc)
+	logTelemetryReach(log, cfg, hc)
 
 	// A worker pod is killed for reasons that have nothing to do with the
 	// agent: an eviction, a drain, a Job deadline, a node going away. Without
@@ -263,6 +269,32 @@ func warnWhenCredentialIsolationOff(log *slog.Logger, cfg worker.Config, hc work
 		"reason", envOr("PLOEG_CREDENTIAL_ISOLATION_OFF_REASON", "disabled"),
 		"llm_key_isolation", cfg.LLMKeyIsolation,
 		"forge_token_isolation", cfg.ForgeTokenIsolation)
+}
+
+// logTelemetryReach says what a telemetry setting reaches for this harness,
+// so a harness that exports nothing natively is visible in the pod log
+// instead of looking like a broken collector.
+func logTelemetryReach(log *slog.Logger, cfg worker.Config, hc worker.HarnessConfig) {
+	if cfg.Telemetry == nil {
+		return
+	}
+	profile := ""
+	if hc.Name == "acp" {
+		profile = cmp.Or(hc.ACP.Profile, "opencode")
+	}
+	native := worker.TelemetrySupport(hc.Name, profile)
+	switch {
+	case hc.Name == claudeenv.Name:
+		log.Warn("telemetry is not exported by this worker: claude-environment sessions run on the self-hosted runner, which needs its own telemetry environment",
+			"endpoint", cfg.Telemetry.Endpoint)
+	case len(native) == 0:
+		log.Warn("telemetry is configured but this harness exports no OpenTelemetry signals natively",
+			"harness", hc.Name, "profile", profile, "endpoint", cfg.Telemetry.Endpoint)
+	default:
+		log.Info("telemetry exported by the harness",
+			"harness", hc.Name, "profile", profile, "endpoint", cfg.Telemetry.Endpoint,
+			"requested", strings.Join(cfg.Telemetry.Signals, ","), "native", strings.Join(native, ","))
+	}
 }
 
 func rejectAdministrativeEnvironment() error {

@@ -81,6 +81,9 @@ type Config struct {
 	// Toolchains are mounted language toolchains put on the harness's PATH
 	// (PLOEG_TOOLCHAINS).
 	Toolchains []Toolchain
+	// Telemetry points the harness at an OpenTelemetry collector
+	// (PLOEG_TELEMETRY); nil exports nothing.
+	Telemetry *Telemetry
 	// VerifyCommands are the checks a Run is told to run and a writing Run
 	// is verified with afterwards (PLOEG_VERIFY_COMMANDS).
 	VerifyCommands []string
@@ -514,7 +517,7 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 		RepoDir:    cloneDir,
 		ScratchDir: scratchDir,
 		Prompt:     taskPrompt(harnessSpec, planner, writes, priorPR, onReviewBranch) + support,
-		BaseEnv:    append(withToolchains(harnessEnvironment(os.Environ(), home, scratchDir, writes, harnessForgeToken, w.Cfg.LLMBaseURL, harnessModelName(w.Cfg)), w.Cfg.Toolchains), runEnv...),
+		BaseEnv:    append(append(withToolchains(harnessEnvironment(os.Environ(), home, scratchDir, writes, harnessForgeToken, w.Cfg.LLMBaseURL, harnessModelName(w.Cfg)), w.Cfg.Toolchains), runEnv...), w.runTelemetryEnvironment(claimed.Role, trace)...),
 		LLM:        harness.LLMEnv{BaseURL: w.Cfg.LLMBaseURL, Model: model, TraceID: trace},
 		Stdout:     io.MultiWriter(os.Stdout, &logTail),
 		Stderr:     io.MultiWriter(os.Stderr, &logTail),

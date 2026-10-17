@@ -292,6 +292,7 @@ global executor.harness defaults field-by-field (explicit hasKey checks, so
 {{- $hToolchains := $rh.toolchains | default ($th.toolchains | default $gh.toolchains) }}
 {{- $hVerify := $rh.verify | default ($th.verify | default $gh.verify) }}
 {{- $hVerifyTimeout := $rh.verifyTimeout | default ($th.verifyTimeout | default $gh.verifyTimeout) }}
+{{- $hTelemetry := $rh.telemetry | default ($th.telemetry | default $gh.telemetry) }}
 {{- /* Each toolchain is an image volume the kubelet pulls, mounted read-only
      at /opt/ploeg/toolchains/<name>. The worker learns the mounted PATH
      directories from PLOEG_TOOLCHAINS, so the Run's sandbox needs no
@@ -464,6 +465,10 @@ spec:
         {{- if $hVerifyTimeout }}
         - name: PLOEG_VERIFY_TIMEOUT
           value: {{ $hVerifyTimeout | quote }}
+        {{- end }}
+        {{- if $hTelemetry }}
+        - name: PLOEG_TELEMETRY
+          value: {{ toJson $hTelemetry | replace "$(" "$$(" | quote }}
         {{- end }}
         {{- if eq $hName "acp" }}
         {{- if $acpProfile }}
