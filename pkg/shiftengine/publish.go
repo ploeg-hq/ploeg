@@ -85,7 +85,7 @@ func (e *Engine) pullRequestThread(ctx context.Context, si store.ShiftInfo, repo
 	}
 	repo = item.Target.Owner + "/" + item.Target.Repo
 	if _, pr = pullRequest(reports, repo); pr == 0 && item.Origin == work.OriginPullRequest {
-		// The Shift explains a pull request someone else opened (ADR-0106):
+		// The Shift reads a pull request someone else opened (ADR-0106):
 		// the thread is that pull request, recorded by Ploeg, not by a Run.
 		pr = item.SourcePR
 	}

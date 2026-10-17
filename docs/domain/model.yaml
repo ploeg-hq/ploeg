@@ -187,7 +187,7 @@ terms:
       comes from a Tracker Item, from an Admission for an Operator Consumer
       (a manual-origin Work Item, or the one an Operator Execution links),
       from other work (a Follow-Up), or from a pull request someone else
-      opened that a Team explains (a Dependency Update Explanation). Ploeg
+      opened that a Team reads (a Pull Request Reading). Ploeg
       keeps one record per Work Item and runs Shifts against it; a failed
       Shift leaves it in place.
       Tracker-originated content remains owned by the Tracker Item.
@@ -363,20 +363,21 @@ terms:
     context: Dispatch
     see_also: [Work Item, Forge Event, Team, Work Target]
 
-  - name: Dependency Update Explanation
+  - name: Pull Request Reading
     definition: >
-      A Work Item of origin pull_request: Ploeg's record that a Team explains
-      one pull request someone else opened, such as a dependency bot's update,
-      on that pull request (Ploeg ADR-0106). A registered Work Target opts in
-      per author. Its Shift runs only the Team's reading Roles on the pull
-      request's own branch, never a writer; the reader's findings are posted
-      as a comment on the pull request, its Verdict opens no fix Round, and
-      the follow-up work it proposes becomes Follow-Ups under the Team's
-      created-work limits. One per pull request, bound to it in Ploeg's own
-      record; explained again when the pull request's title changes, up to a
-      cap. It waits as awaiting_review until the pull request merges or
-      closes, or parks as needs_human when the reader says a merge would
-      break the repository.
+      A Work Item of origin pull_request: Ploeg's record that a Team reads
+      one pull request someone else opened and reports on it there (Ploeg
+      ADR-0106). A registered Work Target routes the pull requests of listed
+      authors to a Team with an instruction in the operator's words; Ploeg
+      itself knows nothing about the authors or the subject. Its Shift runs
+      only the Team's reading Roles on the pull request's own branch, never a
+      writer; the reader's findings are posted as a comment on the pull
+      request, its Verdict opens no fix Round, and the follow-up work it
+      proposes becomes Follow-Ups under the Team's created-work limits. One
+      per pull request, bound to it in Ploeg's own record; read again when the
+      pull request's title changes, up to a cap. It waits as awaiting_review
+      until the pull request merges or closes, or parks as needs_human when
+      the reader says a merge would break the repository.
     context: Dispatch
     see_also: [Work Item, Follow-Up, Verdict, Work Target, Forge Event]
 
@@ -677,7 +678,7 @@ entities:
         required: true
       - name: origin
         type: "enum(assignment, follow_up, operator, pull_request)"
-        description: Whether the item came from a tracker, Forge Event, Operator Consumer or a pull request someone else opened that a Team explains.
+        description: Whether the item came from a tracker, Forge Event, Operator Consumer or a pull request someone else opened that a Team reads.
         required: true
       - name: priority
         type: integer

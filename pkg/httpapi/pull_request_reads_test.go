@@ -17,27 +17,27 @@ import (
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
-type recordingExplainer struct {
+type recordingReader struct {
 	mu    sync.Mutex
 	calls []string
 }
 
-func (r *recordingExplainer) Consider(_ context.Context, forge, repo string, pr int, author string) {
+func (r *recordingReader) Consider(_ context.Context, forge, repo string, pr int, author string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.calls = append(r.calls, forge+" "+repo+" #"+strconv.Itoa(pr)+" by "+author)
 }
 
-func TestForgeWebhook_OpenedAndPushedPullRequestsReachTheExplainer(t *testing.T) {
+func TestForgeWebhook_OpenedAndPushedPullRequestsReachTheReader(t *testing.T) {
 	reset(t)
 	if _, err := testPool.Exec(context.Background(), "DELETE FROM forge_deliveries"); err != nil {
 		t.Fatal(err)
 	}
-	explainer := &recordingExplainer{}
+	explainer := &recordingReader{}
 	log := slog.New(slog.DiscardHandler)
 	h := (&Server{Store: testStore, Log: log,
-		Forges:            map[string]provider.ForgeProvider{"forgejo": &forgejo.Provider{Secret: "shh", Log: log}},
-		DependencyUpdates: explainer,
+		Forges:           map[string]provider.ForgeProvider{"forgejo": &forgejo.Provider{Secret: "shh", Log: log}},
+		PullRequestReads: explainer,
 	}).Handler()
 	opened := pullRequestEvent("opened", "h1")
 	opened["sender"] = map[string]any{"login": "renovate"}
@@ -65,15 +65,15 @@ func TestForgeWebhook_OpenedAndPushedPullRequestsReachTheExplainer(t *testing.T)
 
 // A failed check or a request for changes on a pull request Ploeg only
 // explains must never make a Team push to that pull request (ADR-0106).
-func TestFailedCheckOnAnExplainedPullRequestCreatesNoRepair(t *testing.T) {
+func TestFailedCheckOnAReadPullRequestCreatesNoRepair(t *testing.T) {
 	ctx := context.Background()
 	h := followUpServer(t, enabled(0))
-	id, _, result, err := testStore.EnsurePullRequestExplanation(ctx, store.PullRequestExplanation{
+	id, _, result, err := testStore.EnsurePullRequestReading(ctx, store.PullRequestReading{
 		Forge: "forgejo", Target: work.Target{Owner: "webgrip", Repo: "ploeg", BaseBranch: "development"}, Team: "bronze",
-		Number: 18, Title: "Explain", Description: "d", URL: "u", HeadBranch: "renovate/x", Author: "renovate", PullRequestTitle: "t",
+		Number: 18, Title: "Read", Description: "d", URL: "u", HeadBranch: "renovate/x", Author: "renovate", PullRequestTitle: "t",
 	})
-	if err != nil || result != store.PullRequestExplanationCreated {
-		t.Fatalf("explanation: %q %v", result, err)
+	if err != nil || result != store.PullRequestReadingCreated {
+		t.Fatalf("reading: %q %v", result, err)
 	}
 	e := &shiftengine.Engine{Store: testStore, Log: slog.New(slog.DiscardHandler), Plans: mustPlans(t, `{"bronze": {"rounds": [
 		{"roles": [{"name": "builder", "writes": true, "cap": 2}]},
@@ -93,7 +93,7 @@ func TestFailedCheckOnAnExplainedPullRequestCreatesNoRepair(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got := workItemState(t, id); got != "awaiting_review" {
-		t.Fatalf("setup: explanation is %q, want awaiting_review", got)
+		t.Fatalf("setup: reading is %q, want awaiting_review", got)
 	}
 
 	if code := forgeEvent(t, h, "chk-1", checkFailed("renovate/x")); code != http.StatusAccepted {
@@ -103,13 +103,13 @@ func TestFailedCheckOnAnExplainedPullRequestCreatesNoRepair(t *testing.T) {
 		t.Fatalf("review webhook returned %d", code)
 	}
 	if rows := followUps(t, id); len(rows) != 0 {
-		t.Errorf("follow-ups on the explained pull request = %+v, want none", rows)
+		t.Errorf("follow-ups on the read pull request = %+v, want none", rows)
 	}
 	if live, _ := testStore.LiveShiftForItem(ctx, id); live != nil {
 		t.Error("a request for changes opened a shift on someone else's pull request")
 	}
 	if got := workItemState(t, id); got != "awaiting_review" {
-		t.Errorf("explanation is %q after the events, want awaiting_review", got)
+		t.Errorf("reading is %q after the events, want awaiting_review", got)
 	}
 }
 

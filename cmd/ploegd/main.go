@@ -417,17 +417,17 @@ func run(log *slog.Logger) error {
 		log.Info("pull request merge detection enabled", "reconcile_every", reviewEvery,
 			"tracker_done_on_merge", reviews.MarkTrackerDone)
 	}
-	var dependencyUpdates *shiftengine.DependencyUpdateWatch
-	if routes := cfg.DependencyUpdates(); len(routes) > 0 {
+	var readPullRequests *shiftengine.PullRequestReadWatch
+	if routes := cfg.PullRequestReads(); len(routes) > 0 {
 		if engine == nil || len(forges) == 0 {
-			return fmt.Errorf("targets with dependencyUpdates need the shift engine and a forge provider")
+			return fmt.Errorf("targets with readPullRequests need the shift engine and a forge provider")
 		}
-		dependencyUpdates = &shiftengine.DependencyUpdateWatch{
+		readPullRequests = &shiftengine.PullRequestReadWatch{
 			Store: st, Forges: forges, DefaultForge: forgeID, Routes: routes, Plans: plans, Engine: engine, Log: log,
 		}
-		srv.DependencyUpdates = dependencyUpdates
+		srv.PullRequestReads = readPullRequests
 		for _, r := range routes {
-			log.Info("dependency update pull requests are explained", "target", r.Key,
+			log.Info("pull request reads are enabled", "target", r.Key,
 				"repo", r.Target.Owner+"/"+r.Target.Repo, "team", r.Policy.Team, "authors", r.Policy.Authors,
 				"reconcile_every", reviewEvery)
 		}
@@ -460,8 +460,8 @@ func run(log *slog.Logger) error {
 	if reviews != nil {
 		go reviewLoop(ctx, reviews, reviewEvery)
 	}
-	if dependencyUpdates != nil {
-		go dependencyUpdateLoop(ctx, dependencyUpdates, reviewEvery)
+	if readPullRequests != nil {
+		go pullRequestReadLoop(ctx, readPullRequests, reviewEvery)
 	}
 	go deployCheckLoop(ctx, srv, deployCheckEvery)
 	if srv.Notes != nil {

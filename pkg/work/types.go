@@ -74,7 +74,7 @@ var CostStatuses = []CostStatus{CostObserved, CostProvisional, CostSettled, Cost
 // Origin records whether a WorkItem came from the tracker (assignment), from
 // other work as a follow-up: a forge event (R9) or a Run that created it
 // (Product R12), or from a pull request someone else opened that a Team
-// explains (OriginPullRequest, ADR-0106).
+// reads (OriginPullRequest, ADR-0106).
 type Origin string
 
 const (

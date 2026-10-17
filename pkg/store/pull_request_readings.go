@@ -10,10 +10,10 @@ import (
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
-// PullRequestExplanation asks for the Work Item that explains one pull request
-// someone else opened (ADR-0106): a dependency update from a bot, read on its
-// own branch by a Team's reading Roles and explained in a comment on it.
-type PullRequestExplanation struct {
+// PullRequestReading asks for the Work Item that reads one pull request
+// someone else opened (ADR-0106), such as a dependency bot's update: read on
+// its own branch by a Team's reading Roles and reported on in a comment on it.
+type PullRequestReading struct {
 	// Forge is the forge dialect, as provider.ForgeProvider.Name returns it.
 	Forge  string
 	Target work.Target
@@ -30,55 +30,55 @@ type PullRequestExplanation struct {
 	HeadSHA    string
 	Author     string
 	// PullRequestTitle is the pull request's own title. A changed title is
-	// what makes Ploeg explain the same pull request again.
+	// what makes Ploeg read the same pull request again.
 	PullRequestTitle string
-	// MaxOpen caps the explanations of this target queued or running at
+	// MaxOpen caps the readings of this target queued or running at
 	// once; MaxReviews caps the Shifts one pull request gets.
 	MaxOpen    int
 	MaxReviews int
 }
 
-// PullRequestExplanationResult says what EnsurePullRequestExplanation did.
-type PullRequestExplanationResult string
+// PullRequestReadingResult says what EnsurePullRequestReading did.
+type PullRequestReadingResult string
 
 const (
-	// PullRequestExplanationCreated means a new Work Item is queued.
-	PullRequestExplanationCreated PullRequestExplanationResult = "created"
-	// PullRequestExplanationRequeued means the pull request's Work Item is queued
+	// PullRequestReadingCreated means a new Work Item is queued.
+	PullRequestReadingCreated PullRequestReadingResult = "created"
+	// PullRequestReadingRequeued means the pull request's Work Item is queued
 	// again because the pull request's title changed.
-	PullRequestExplanationRequeued PullRequestExplanationResult = "requeued"
-	// PullRequestExplanationUnchanged means the pull request was explained with
+	PullRequestReadingRequeued PullRequestReadingResult = "requeued"
+	// PullRequestReadingUnchanged means the pull request was read with
 	// this title already.
-	PullRequestExplanationUnchanged PullRequestExplanationResult = "unchanged"
-	// PullRequestExplanationLive means a Shift is working on the explanation now.
-	PullRequestExplanationLive PullRequestExplanationResult = "live"
-	// PullRequestExplanationCapped means the pull request had its MaxReviews
+	PullRequestReadingUnchanged PullRequestReadingResult = "unchanged"
+	// PullRequestReadingLive means a Shift is working on the reading now.
+	PullRequestReadingLive PullRequestReadingResult = "live"
+	// PullRequestReadingCapped means the pull request had its MaxReviews
 	// Shifts.
-	PullRequestExplanationCapped PullRequestExplanationResult = "capped"
-	// PullRequestExplanationOpenCap means MaxOpen explanations of the target are
+	PullRequestReadingCapped PullRequestReadingResult = "capped"
+	// PullRequestReadingOpenCap means MaxOpen readings of the target are
 	// queued or running.
-	PullRequestExplanationOpenCap PullRequestExplanationResult = "open_cap"
-	// PullRequestExplanationForeign means Ploeg records this pull request as one
-	// of its own Teams' deliveries, which is never explained this way.
-	PullRequestExplanationForeign PullRequestExplanationResult = "foreign"
+	PullRequestReadingOpenCap PullRequestReadingResult = "open_cap"
+	// PullRequestReadingForeign means Ploeg records this pull request as one
+	// of its own Teams' deliveries, which is never read this way.
+	PullRequestReadingForeign PullRequestReadingResult = "foreign"
 )
 
-// PullRequestExplanationExternalID is the provider-scoped id of the Work Item that
-// explains one pull request. One pull request has one such Work Item.
-func PullRequestExplanationExternalID(forge, repo string, number int) string {
+// PullRequestReadingExternalID is the provider-scoped id of the Work Item that
+// reads one pull request. One pull request has one such Work Item.
+func PullRequestReadingExternalID(forge, repo string, number int) string {
 	return fmt.Sprintf("pr:%s:%s:%d", forge, repo, number)
 }
 
-// EnsurePullRequestExplanation creates the Work Item that explains a pull request,
+// EnsurePullRequestReading creates the Work Item that reads a pull request,
 // or queues the existing one again when the pull request's title changed, in
 // one transaction with the pull request record that binds the two. It
 // reports what it did; only Created and Requeued leave a queued Work Item.
-func (s *Store) EnsurePullRequestExplanation(ctx context.Context, req PullRequestExplanation) (int64, work.WorkItem, PullRequestExplanationResult, error) {
+func (s *Store) EnsurePullRequestReading(ctx context.Context, req PullRequestReading) (int64, work.WorkItem, PullRequestReadingResult, error) {
 	if req.Forge == "" || req.Number <= 0 || !req.Target.Resolved() || req.Team == "" {
 		return 0, work.WorkItem{}, "", errors.New("a pull request review needs a forge, a positive number, a resolved target and a team")
 	}
 	if req.MaxOpen <= 0 {
-		req.MaxOpen = work.DefaultMaxOpenExplanations
+		req.MaxOpen = work.DefaultMaxOpenPullRequestReads
 	}
 	if req.MaxReviews <= 0 {
 		req.MaxReviews = work.DefaultMaxReviewsPerPullRequest
@@ -108,12 +108,12 @@ func (s *Store) EnsurePullRequestExplanation(ctx context.Context, req PullReques
 		Scan(&id, &title, &state, &origin, &live, &reviewed)
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
-		return s.createPullRequestExplanation(ctx, tx, req, repo)
+		return s.createPullRequestReading(ctx, tx, req, repo)
 	case err != nil:
 		return 0, work.WorkItem{}, "", err
 	}
 	if work.Origin(origin) != work.OriginPullRequest {
-		return id, work.WorkItem{}, PullRequestExplanationForeign, tx.Commit(ctx)
+		return id, work.WorkItem{}, PullRequestReadingForeign, tx.Commit(ctx)
 	}
 	item, err := s.WorkItem(ctx, id)
 	if err != nil {
@@ -121,11 +121,11 @@ func (s *Store) EnsurePullRequestExplanation(ctx context.Context, req PullReques
 	}
 	switch {
 	case live || state == string(work.StateQueued) || state == string(work.StateActive) || state == string(work.StateIngested):
-		return id, item, PullRequestExplanationLive, tx.Commit(ctx)
+		return id, item, PullRequestReadingLive, tx.Commit(ctx)
 	case title != nil && *title == req.PullRequestTitle:
-		return id, item, PullRequestExplanationUnchanged, tx.Commit(ctx)
+		return id, item, PullRequestReadingUnchanged, tx.Commit(ctx)
 	case reviewed >= req.MaxReviews:
-		return id, item, PullRequestExplanationCapped, tx.Commit(ctx)
+		return id, item, PullRequestReadingCapped, tx.Commit(ctx)
 	}
 	tag, err := tx.Exec(ctx, `
 		UPDATE work_items
@@ -137,7 +137,7 @@ func (s *Store) EnsurePullRequestExplanation(ctx context.Context, req PullReques
 		return 0, work.WorkItem{}, "", err
 	}
 	if tag.RowsAffected() == 0 {
-		return id, item, PullRequestExplanationLive, tx.Commit(ctx)
+		return id, item, PullRequestReadingLive, tx.Commit(ctx)
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE pull_requests SET title = $5, branch = NULLIF($6, ''), head_sha = COALESCE(NULLIF($7, ''), head_sha),
@@ -146,7 +146,7 @@ func (s *Store) EnsurePullRequestExplanation(ctx context.Context, req PullReques
 		req.Forge, req.Target.Owner, req.Target.Repo, req.Number, req.PullRequestTitle, req.HeadBranch, req.HeadSHA); err != nil {
 		return 0, work.WorkItem{}, "", err
 	}
-	if err := audit(ctx, tx, "ploegd:dependency-updates", "pull_request_explanation.requeued", &id, map[string]any{
+	if err := audit(ctx, tx, "ploegd:dependency-updates", "pull_request_reading.requeued", &id, map[string]any{
 		"repo": repo, "pr": req.Number, "team": req.Team, "title": req.PullRequestTitle, "reviews": reviewed, "cap": req.MaxReviews,
 	}); err != nil {
 		return 0, work.WorkItem{}, "", err
@@ -156,10 +156,10 @@ func (s *Store) EnsurePullRequestExplanation(ctx context.Context, req PullReques
 		return 0, work.WorkItem{}, "", err
 	}
 	item.State, item.Team, item.Title, item.Description, item.Priority, item.SourceBranch = work.StateQueued, req.Team, req.Title, req.Description, req.Priority, req.HeadBranch
-	return id, item, PullRequestExplanationRequeued, tx.Commit(ctx)
+	return id, item, PullRequestReadingRequeued, tx.Commit(ctx)
 }
 
-func (s *Store) createPullRequestExplanation(ctx context.Context, tx pgx.Tx, req PullRequestExplanation, repo string) (int64, work.WorkItem, PullRequestExplanationResult, error) {
+func (s *Store) createPullRequestReading(ctx context.Context, tx pgx.Tx, req PullRequestReading, repo string) (int64, work.WorkItem, PullRequestReadingResult, error) {
 	var open int
 	if err := tx.QueryRow(ctx, `
 		SELECT count(*) FROM work_items
@@ -169,16 +169,16 @@ func (s *Store) createPullRequestExplanation(ctx context.Context, tx pgx.Tx, req
 		return 0, work.WorkItem{}, "", err
 	}
 	if open >= req.MaxOpen {
-		if err := audit(ctx, tx, "ploegd:dependency-updates", "pull_request_explanation.skipped", nil, map[string]any{
-			"reason": string(PullRequestExplanationOpenCap), "repo": repo, "pr": req.Number, "open": open, "cap": req.MaxOpen,
+		if err := audit(ctx, tx, "ploegd:dependency-updates", "pull_request_reading.skipped", nil, map[string]any{
+			"reason": string(PullRequestReadingOpenCap), "repo": repo, "pr": req.Number, "open": open, "cap": req.MaxOpen,
 		}); err != nil {
 			return 0, work.WorkItem{}, "", err
 		}
-		return 0, work.WorkItem{}, PullRequestExplanationOpenCap, tx.Commit(ctx)
+		return 0, work.WorkItem{}, PullRequestReadingOpenCap, tx.Commit(ctx)
 	}
 	item := work.WorkItem{
 		Provider:     work.ProviderPloeg,
-		ExternalID:   PullRequestExplanationExternalID(req.Forge, repo, req.Number),
+		ExternalID:   PullRequestReadingExternalID(req.Forge, repo, req.Number),
 		Team:         req.Team,
 		State:        work.StateQueued,
 		Origin:       work.OriginPullRequest,
@@ -215,11 +215,11 @@ func (s *Store) createPullRequestExplanation(ctx context.Context, tx pgx.Tx, req
 		req.Forge, t.Owner, t.Repo, req.Number, id, req.HeadBranch, req.HeadSHA, req.Author, req.PullRequestTitle); err != nil {
 		return 0, work.WorkItem{}, "", err
 	}
-	if err := audit(ctx, tx, "ploegd:dependency-updates", "pull_request_explanation.created", &id, map[string]any{
+	if err := audit(ctx, tx, "ploegd:dependency-updates", "pull_request_reading.created", &id, map[string]any{
 		"repo": repo, "pr": req.Number, "team": req.Team, "author": req.Author, "title": req.PullRequestTitle,
 		"branch": req.HeadBranch, "open": open + 1, "cap": req.MaxOpen,
 	}); err != nil {
 		return 0, work.WorkItem{}, "", err
 	}
-	return id, item, PullRequestExplanationCreated, tx.Commit(ctx)
+	return id, item, PullRequestReadingCreated, tx.Commit(ctx)
 }

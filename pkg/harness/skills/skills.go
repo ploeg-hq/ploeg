@@ -19,9 +19,9 @@ var files embed.FS
 
 // The skills Ploeg ships.
 const (
-	VerifyBeforeHandoff     = "ploeg-verify-before-handoff"
-	ReviewAgainstWorkItem   = "ploeg-review-against-work-item"
-	ExplainDependencyUpdate = "ploeg-explain-a-dependency-update"
+	VerifyBeforeHandoff   = "ploeg-verify-before-handoff"
+	ReviewAgainstWorkItem = "ploeg-review-against-work-item"
+	ReadAPullRequest      = "ploeg-read-a-pull-request"
 )
 
 // CanonicalDir is the directory under the Run's HOME that every Run gets,
@@ -78,11 +78,11 @@ func ForRun(writes, planner bool) ([]Skill, error) {
 	}
 }
 
-// ForExplainer returns the skills of a reading Run that explains a pull
-// request someone else opened, such as a dependency update (ADR-0106): how to
-// explain it, and how to run the repository's checks against it.
-func ForExplainer() ([]Skill, error) {
-	return named(ExplainDependencyUpdate, VerifyBeforeHandoff)
+// ForPullRequestReader returns the skills of a reading Run that reads a pull
+// request someone else opened (ADR-0106): how to report on it, and how to
+// run the repository's checks against it.
+func ForPullRequestReader() ([]Skill, error) {
+	return named(ReadAPullRequest, VerifyBeforeHandoff)
 }
 
 func named(want ...string) ([]Skill, error) {

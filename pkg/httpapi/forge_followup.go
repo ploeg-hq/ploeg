@@ -20,8 +20,8 @@ func (s *Server) actOnForgeEvent(ctx context.Context, providerName string, ev pr
 			s.reworkOnChangesRequested(ctx, providerName, ev)
 		}
 	case provider.ForgePROpened, provider.ForgePRSynchronized:
-		if s.DependencyUpdates != nil && ev.PR > 0 && ev.Repo != "" {
-			s.DependencyUpdates.Consider(ctx, providerName, ev.Repo, ev.PR, ev.Actor)
+		if s.PullRequestReads != nil && ev.PR > 0 && ev.Repo != "" {
+			s.PullRequestReads.Consider(ctx, providerName, ev.Repo, ev.PR, ev.Actor)
 		}
 	}
 }
@@ -39,8 +39,8 @@ func (s *Server) forgeEventOwner(ctx context.Context, providerName string, ev pr
 	}
 	if found && owner.Origin == work.OriginPullRequest {
 		// The branch belongs to a pull request someone else opened, which a
-		// Team explains and never writes to (ADR-0106): no repair, no rework.
-		s.Log.Debug("forge event is on a pull request Ploeg only explains", "provider", providerName, "kind", ev.Kind,
+		// Team reads and never writes to (ADR-0106): no repair, no rework.
+		s.Log.Debug("forge event is on a pull request Ploeg only reads", "provider", providerName, "kind", ev.Kind,
 			"repo", ev.Repo, "branch", ev.Branch, "work_item", owner.WorkItemID)
 		return owner, false
 	}

@@ -17,7 +17,7 @@ type BranchOwner struct {
 	State      work.State
 	// Origin is the owning Work Item's origin. A branch owned through
 	// OriginPullRequest belongs to someone else's pull request, which Ploeg
-	// explains and never writes to (ADR-0106).
+	// reads and never writes to (ADR-0106).
 	Origin work.Origin
 }
 

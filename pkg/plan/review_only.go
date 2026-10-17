@@ -3,7 +3,7 @@ package plan
 // ReviewOnly reduces the plan to one Round holding the reading Roles of its
 // last Round that has a reader who is neither a shadow nor a planner, with a
 // pool of those Roles' caps and no fix loop (ADR-0106). It is the plan a
-// Shift runs when it explains a pull request someone else opened: nothing may
+// Shift runs when it reads a pull request someone else opened: nothing may
 // write to that branch, and no verdict re-opens a writer. It reports false
 // when the plan has no such Round. A reading Role without a cap leaves the
 // pool unmetered, as the Team configured it; otherwise the pool is the sum of

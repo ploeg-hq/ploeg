@@ -57,7 +57,7 @@ func ComposePrompt(spec harness.TaskSpec, writes bool, priorPR string, onReviewB
 	writeKnowledge(&b, spec)
 
 	if !writes && item.Origin == work.OriginPullRequest {
-		writeExplainContract(&b, spec, base, noun, priorPR)
+		writeReadPullRequestContract(&b, spec, base, noun, priorPR)
 		writeReaderRepositoryInstructions(&b, base, true)
 		return b.String()
 	}
@@ -186,33 +186,33 @@ func ComposePrompt(spec harness.TaskSpec, writes bool, priorPR string, onReviewB
 	return b.String()
 }
 
-// writeExplainContract is the reading contract of a Run that explains a pull
-// request someone else opened (ADR-0106): the branch under review is that
-// pull request's, Ploeg posts the findings on it, no fix Round follows the
-// verdict, and the follow-up work goes into created Work Items.
-func writeExplainContract(b *strings.Builder, spec harness.TaskSpec, base, noun, priorPR string) {
+// writeReadPullRequestContract is the reading contract of a Run that reads a
+// pull request someone else opened (ADR-0106): the branch under review is
+// that pull request's, Ploeg posts the findings on it, no fix Round follows
+// the verdict, and the follow-up work goes into created Work Items.
+func writeReadPullRequestContract(b *strings.Builder, spec harness.TaskSpec, base, noun, priorPR string) {
 	link := priorPR
 	if link == "" {
 		link = spec.WorkItem.URL
 	}
-	fmt.Fprintf(b, `## Delivery contract (explain a dependency update)
+	fmt.Fprintf(b, `## Delivery contract (read a pull request)
 
 - The repository checkout is your working directory, standing on branch %[1]s,
   which is the %[3]s's own branch. Its base branch %[2]s is also present, so
-  "git diff %[2]s...%[1]s" is the change you explain. READ it, and read the
-  %[3]s itself for the author's description and release notes: %[4]s
+  "git diff %[2]s...%[1]s" is the change you report on. READ it, and read the
+  %[3]s itself for the author's description: %[4]s
 - Do NOT modify, commit or push anything. Your clone's origin has no
   credentials in it and this run was given no forge token, so a push has
   nothing to authenticate with.
 - Do not open, update, comment on, or merge a %[3]s. Ploeg posts your
   findings as a comment on the %[3]s named above; a person reads them there
   before merging.
-- Deliver your explanation by writing this JSON to the file named by the
+- Deliver your report by writing this JSON to the file named by the
   PLOEG_OUTCOME_FILE environment variable, as the LAST thing you do:
 
       {"outcome": "no_change_needed",
        "summary": "<one line>",
-       "findings": "<your explanation, markdown, with the sections the Work Item asks for>",
+       "findings": "<your report, markdown, with what the Work Item's instructions ask for>",
        "verdict": "approve",
        "createdWorkItems": [
          {"title": "<imperative, at most 200 characters>",
@@ -225,7 +225,7 @@ func writeExplainContract(b *strings.Builder, spec harness.TaskSpec, base, noun,
   "request_changes" when a merge as it stands would break this repository or
   its checks, and absent when you cannot tell. No fix Round follows either
   verdict: nobody rewrites this %[3]s, and a person reads your verdict on it.
-- "createdWorkItems" lists the follow-up work this update needs or makes
+- "createdWorkItems" lists the follow-up work this change needs or makes
   possible, each as a Work Item another agent can do without your session;
   leave it out when there is none. Ploeg stores each within the Team's
   created-work limits, and a person approves them before they run unless the

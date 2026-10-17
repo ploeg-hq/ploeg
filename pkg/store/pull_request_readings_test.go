@@ -8,20 +8,20 @@ import (
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
-func explanation(number int, title string) PullRequestExplanation {
-	return PullRequestExplanation{
+func reading(number int, title string) PullRequestReading {
+	return PullRequestReading{
 		Forge: "forgejo", Target: work.Target{Forge: "forgejo", Owner: "webgrip", Repo: "example", BaseBranch: "development"},
-		Team: "silver", Priority: 2, Number: number, Title: "Explain dependency update #386: " + title,
+		Team: "silver", Priority: 2, Number: number, Title: "Read pull request #386: " + title,
 		Description: "brief", URL: "https://forgejo/webgrip/example/pulls/386", HeadBranch: "renovate/opencode", HeadSHA: "h1",
 		Author: "renovate", PullRequestTitle: title, MaxOpen: 2, MaxReviews: 2,
 	}
 }
 
-func TestEnsurePullRequestExplanation_CreatesOneQueuedItemBoundToThePullRequest(t *testing.T) {
+func TestEnsurePullRequestReading_CreatesOneQueuedItemBoundToThePullRequest(t *testing.T) {
 	ctx := context.Background()
 	resetTables(t)
-	id, item, result, err := testStore.EnsurePullRequestExplanation(ctx, explanation(386, "opencode 1.19.1"))
-	if err != nil || result != PullRequestExplanationCreated {
+	id, item, result, err := testStore.EnsurePullRequestReading(ctx, reading(386, "opencode 1.19.1"))
+	if err != nil || result != PullRequestReadingCreated {
 		t.Fatalf("result = %q, err = %v", result, err)
 	}
 	if item.Origin != work.OriginPullRequest || item.State != work.StateQueued || item.SourceBranch != "renovate/opencode" ||
@@ -42,16 +42,16 @@ func TestEnsurePullRequestExplanation_CreatesOneQueuedItemBoundToThePullRequest(
 		t.Errorf("pull request row = %d %q %q", bound, title, state)
 	}
 
-	again, _, result, err := testStore.EnsurePullRequestExplanation(ctx, explanation(386, "opencode 1.19.1"))
-	if err != nil || result != PullRequestExplanationLive || again != id {
+	again, _, result, err := testStore.EnsurePullRequestReading(ctx, reading(386, "opencode 1.19.1"))
+	if err != nil || result != PullRequestReadingLive || again != id {
 		t.Errorf("second call while queued: result = %q id = %d err = %v, want live on the same item", result, again, err)
 	}
 }
 
-func TestEnsurePullRequestExplanation_ExplainsAgainOnlyWhenTheTitleChangedWithinTheCap(t *testing.T) {
+func TestEnsurePullRequestReading_ExplainsAgainOnlyWhenTheTitleChangedWithinTheCap(t *testing.T) {
 	ctx := context.Background()
 	resetTables(t)
-	id, _, _, err := testStore.EnsurePullRequestExplanation(ctx, explanation(386, "opencode 1.19.1"))
+	id, _, _, err := testStore.EnsurePullRequestReading(ctx, reading(386, "opencode 1.19.1"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,37 +66,37 @@ func TestEnsurePullRequestExplanation_ExplainsAgainOnlyWhenTheTitleChangedWithin
 		}
 	}
 	settle()
-	if _, _, result, _ := testStore.EnsurePullRequestExplanation(ctx, explanation(386, "opencode 1.19.1")); result != PullRequestExplanationUnchanged {
+	if _, _, result, _ := testStore.EnsurePullRequestReading(ctx, reading(386, "opencode 1.19.1")); result != PullRequestReadingUnchanged {
 		t.Errorf("same title after settling: %q, want unchanged", result)
 	}
-	again, item, result, err := testStore.EnsurePullRequestExplanation(ctx, explanation(386, "opencode 1.19.2"))
-	if err != nil || result != PullRequestExplanationRequeued || again != id {
+	again, item, result, err := testStore.EnsurePullRequestReading(ctx, reading(386, "opencode 1.19.2"))
+	if err != nil || result != PullRequestReadingRequeued || again != id {
 		t.Fatalf("changed title: result = %q id = %d err = %v, want the same item requeued", result, again, err)
 	}
-	if item.State != work.StateQueued || item.Title != "Explain dependency update #386: opencode 1.19.2" {
+	if item.State != work.StateQueued || item.Title != "Read pull request #386: opencode 1.19.2" {
 		t.Errorf("requeued item = %+v", item)
 	}
 	if got, _ := testStore.WorkItem(ctx, id); got.State != work.StateQueued {
 		t.Errorf("stored state = %q, want queued", got.State)
 	}
 	settle()
-	if _, _, result, _ := testStore.EnsurePullRequestExplanation(ctx, explanation(386, "opencode 1.19.3")); result != PullRequestExplanationCapped {
+	if _, _, result, _ := testStore.EnsurePullRequestReading(ctx, reading(386, "opencode 1.19.3")); result != PullRequestReadingCapped {
 		t.Errorf("third title after two shifts: %q, want capped at maxReviews 2", result)
 	}
 }
 
-func TestEnsurePullRequestExplanation_CapsHowManyExplanationsRunAtOnce(t *testing.T) {
+func TestEnsurePullRequestReading_CapsHowManyExplanationsRunAtOnce(t *testing.T) {
 	ctx := context.Background()
 	resetTables(t)
 	for n := 1; n <= 2; n++ {
-		req := explanation(n, "t")
-		if _, _, result, err := testStore.EnsurePullRequestExplanation(ctx, req); err != nil || result != PullRequestExplanationCreated {
+		req := reading(n, "t")
+		if _, _, result, err := testStore.EnsurePullRequestReading(ctx, req); err != nil || result != PullRequestReadingCreated {
 			t.Fatalf("#%d: %q %v", n, result, err)
 		}
 	}
-	id, _, result, err := testStore.EnsurePullRequestExplanation(ctx, explanation(3, "t"))
-	if err != nil || result != PullRequestExplanationOpenCap || id != 0 {
-		t.Errorf("third open explanation: result = %q id = %d err = %v, want open_cap", result, id, err)
+	id, _, result, err := testStore.EnsurePullRequestReading(ctx, reading(3, "t"))
+	if err != nil || result != PullRequestReadingOpenCap || id != 0 {
+		t.Errorf("third open reading: result = %q id = %d err = %v, want open_cap", result, id, err)
 	}
 	var n int
 	if err := testStore.pool.QueryRow(ctx, `SELECT count(*) FROM work_items WHERE origin = 'pull_request'`).Scan(&n); err != nil || n != 2 {
@@ -104,7 +104,7 @@ func TestEnsurePullRequestExplanation_CapsHowManyExplanationsRunAtOnce(t *testin
 	}
 }
 
-func TestEnsurePullRequestExplanation_LeavesAPloegPullRequestAlone(t *testing.T) {
+func TestEnsurePullRequestReading_LeavesAPloegPullRequestAlone(t *testing.T) {
 	ctx := context.Background()
 	resetTables(t)
 	id, _, err := testStore.IngestAssigned(ctx, work.WorkItem{Provider: "vikunja", ExternalID: "900", Team: "silver", Title: "t",
@@ -115,8 +115,8 @@ func TestEnsurePullRequestExplanation_LeavesAPloegPullRequestAlone(t *testing.T)
 	if _, err := testStore.RecordPullRequestFacts(ctx, PullRequestFacts{Forge: "forgejo", Repo: "webgrip/example", Number: 386, WorkItemID: id, State: "open"}); err != nil {
 		t.Fatal(err)
 	}
-	owner, _, result, err := testStore.EnsurePullRequestExplanation(ctx, explanation(386, "t"))
-	if err != nil || result != PullRequestExplanationForeign || owner != id {
+	owner, _, result, err := testStore.EnsurePullRequestReading(ctx, reading(386, "t"))
+	if err != nil || result != PullRequestReadingForeign || owner != id {
 		t.Errorf("result = %q owner = %d err = %v, want foreign on the Ploeg item", result, owner, err)
 	}
 }
@@ -124,7 +124,7 @@ func TestEnsurePullRequestExplanation_LeavesAPloegPullRequestAlone(t *testing.T)
 func TestAReaderOfAnExplanationNeverClaimsAsPreAuthor(t *testing.T) {
 	ctx := context.Background()
 	resetTables(t)
-	id, _, _, err := testStore.EnsurePullRequestExplanation(ctx, explanation(386, "t"))
+	id, _, _, err := testStore.EnsurePullRequestReading(ctx, reading(386, "t"))
 	if err != nil {
 		t.Fatal(err)
 	}

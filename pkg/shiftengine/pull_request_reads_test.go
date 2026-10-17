@@ -56,8 +56,8 @@ func renovatePull() provider.PullRequestSummary {
 		URL: "https://forgejo.webgrip.dev/webgrip/example/pulls/386"}
 }
 
-// explainerPlan: a writer, then a reviewer beside a shadow — the bronze shape.
-func explainerPlan() plan.Plans {
+// readerPlan: a writer, then a reviewer beside a shadow — the bronze shape.
+func readerPlan() plan.Plans {
 	plans, err := plan.Parse(`{"silver": {"pool": 9.2, "maxFixRounds": 2, "rounds": [
 		{"roles": [{"name": "builder", "writes": true, "cap": 2}]},
 		{"roles": [{"name": "reviewer", "writes": false, "cap": 0.4},
@@ -69,42 +69,42 @@ func explainerPlan() plan.Plans {
 	return plans
 }
 
-func exampleRoute() work.DependencyUpdateRoute {
-	return work.DependencyUpdateRoute{Key: "example",
+func exampleRoute() work.PullRequestReadRoute {
+	return work.PullRequestReadRoute{Key: "example",
 		Target: work.Target{Forge: "webgrip", Owner: "webgrip", Repo: "example", BaseBranch: "development"},
-		Policy: work.DependencyUpdates{Authors: []string{"renovate"}, Team: "silver", Priority: 2}}
+		Policy: work.PullRequestReads{Authors: []string{"renovate"}, Team: "silver", Priority: 2, Instructions: "Explain the dependency update."}}
 }
 
-func newDependencyWatch(forge *listingForge, e *Engine) *DependencyUpdateWatch {
-	return &DependencyUpdateWatch{Store: testStore, Forges: map[string]provider.ForgeProvider{"webgrip": forge, "forgejo": forge},
-		DefaultForge: "webgrip", Routes: []work.DependencyUpdateRoute{exampleRoute()}, Plans: e.Plans, Engine: e,
+func newReadWatch(forge *listingForge, e *Engine) *PullRequestReadWatch {
+	return &PullRequestReadWatch{Store: testStore, Forges: map[string]provider.ForgeProvider{"webgrip": forge, "forgejo": forge},
+		DefaultForge: "webgrip", Routes: []work.PullRequestReadRoute{exampleRoute()}, Plans: e.Plans, Engine: e,
 		Log: slog.New(slog.DiscardHandler)}
 }
 
-func explainedItem(t *testing.T) (int64, store.ShiftInfo) {
+func readItem(t *testing.T) (int64, store.ShiftInfo) {
 	t.Helper()
 	ctx := context.Background()
 	var id int64
 	if err := testPool.QueryRow(ctx, `SELECT id FROM work_items WHERE origin = 'pull_request' AND source_pr = 386`).Scan(&id); err != nil {
-		t.Fatalf("no explanation Work Item: %v", err)
+		t.Fatalf("no reading Work Item: %v", err)
 	}
 	si, err := testStore.LiveShiftForItem(ctx, id)
 	if err != nil || si == nil {
-		t.Fatalf("no live shift on the explanation: %v", err)
+		t.Fatalf("no live shift on the reading: %v", err)
 	}
 	return id, *si
 }
 
-func TestDependencyUpdates_AReviewerExplainsOnTheBotsBranchAndThePullRequestWaitsForAPerson(t *testing.T) {
+func TestPullRequestReads_AReaderReportsOnTheBotsBranchAndThePullRequestWaitsForAPerson(t *testing.T) {
 	ctx := context.Background()
 	resetTables(t)
-	e := newEngine(explainerPlan())
+	e := newEngine(readerPlan())
 	forge := &listingForge{fakeForge: &fakeForge{}, pulls: []provider.PullRequestSummary{renovatePull()}}
 	e.Forges, e.DefaultForge = map[string]provider.ForgeProvider{"webgrip": forge}, "webgrip"
-	w := newDependencyWatch(forge, e)
+	w := newReadWatch(forge, e)
 
 	w.Reconcile(ctx)
-	id, si := explainedItem(t)
+	id, si := readItem(t)
 	if si.Branch != "renovate/opencode" || si.Origin != work.OriginPullRequest {
 		t.Fatalf("shift = %+v, want the pull request's own branch", si)
 	}
@@ -143,6 +143,9 @@ func TestDependencyUpdates_AReviewerExplainsOnTheBotsBranchAndThePullRequestWait
 	if got := itemState(t, id); got != "awaiting_review" {
 		t.Errorf("item state = %q, want awaiting_review: the pull request waits for a person", got)
 	}
+	if item, _ := testStore.WorkItem(ctx, id); !strings.Contains(item.Description, "Explain the dependency update.") || !strings.HasPrefix(item.Title, "Read pull request #386:") {
+		t.Errorf("work item = %q / %q, want the route's instructions and Ploeg's title", item.Title, item.Description)
+	}
 	if _, closed, reason := shiftRow(t, si.ID); !closed || (reason != reasonPlanExhausted && reason != reasonApproved) {
 		t.Errorf("shift closed %v reason %q, want closed after the one reading round with no writer round", closed, reason)
 	}
@@ -156,7 +159,7 @@ func TestDependencyUpdates_AReviewerExplainsOnTheBotsBranchAndThePullRequestWait
 		}
 	}
 	if len(onPR) == 0 || !strings.Contains(strings.Join(onPR, "\n"), "session sharing was removed") {
-		t.Errorf("comments on the pull request = %q, want the reviewer's explanation", onPR)
+		t.Errorf("comments on the pull request = %q, want the reviewer's findings", onPR)
 	}
 	if strings.Contains(strings.Join(onPR, "\n"), "shadow findings") {
 		t.Error("the shadow's findings were posted")
@@ -169,7 +172,7 @@ func TestDependencyUpdates_AReviewerExplainsOnTheBotsBranchAndThePullRequestWait
 	}
 	var items int
 	if err := testPool.QueryRow(ctx, `SELECT count(*) FROM work_items WHERE origin = 'pull_request'`).Scan(&items); err != nil || items != 1 {
-		t.Errorf("explanation items = %d, want 1", items)
+		t.Errorf("reading items = %d, want 1", items)
 	}
 
 	// The bot moves the pull request to a newer version: explained again.
@@ -208,14 +211,14 @@ func TestDependencyUpdates_AReviewerExplainsOnTheBotsBranchAndThePullRequestWait
 	}
 }
 
-func TestDependencyUpdates_RequestChangesParksForAPersonAndRunsNoWriter(t *testing.T) {
+func TestPullRequestReads_RequestChangesParksForAPersonAndRunsNoWriter(t *testing.T) {
 	ctx := context.Background()
 	resetTables(t)
-	e := newEngine(explainerPlan())
+	e := newEngine(readerPlan())
 	forge := &listingForge{fakeForge: &fakeForge{}, pulls: []provider.PullRequestSummary{renovatePull()}}
 	e.Forges, e.DefaultForge = map[string]provider.ForgeProvider{"webgrip": forge}, "webgrip"
-	newDependencyWatch(forge, e).Reconcile(ctx)
-	id, si := explainedItem(t)
+	newReadWatch(forge, e).Reconcile(ctx)
+	id, si := readItem(t)
 
 	reviewer, err := testStore.ClaimRole(ctx, "silver", "reviewer", time.Minute, 0.4)
 	if err != nil {
@@ -238,19 +241,19 @@ func TestDependencyUpdates_RequestChangesParksForAPersonAndRunsNoWriter(t *testi
 	}
 }
 
-func TestDependencyUpdates_ConsiderTakesAWebhookOnceAndIgnoresOtherAuthors(t *testing.T) {
+func TestPullRequestReads_ConsiderTakesAWebhookOnceAndIgnoresOtherAuthors(t *testing.T) {
 	ctx := context.Background()
 	resetTables(t)
-	e := newEngine(explainerPlan())
+	e := newEngine(readerPlan())
 	forge := &listingForge{fakeForge: &fakeForge{}, pulls: []provider.PullRequestSummary{renovatePull()}}
-	w := newDependencyWatch(forge, e)
+	w := newReadWatch(forge, e)
 
 	w.Consider(ctx, "forgejo", "WebGrip/Example", 386, "renovate")
-	id, _ := explainedItem(t)
+	id, _ := readItem(t)
 	w.Consider(ctx, "forgejo", "webgrip/example", 386, "renovate")
 	var items int
 	if err := testPool.QueryRow(ctx, `SELECT count(*) FROM work_items WHERE origin = 'pull_request'`).Scan(&items); err != nil || items != 1 {
-		t.Errorf("explanation items = %d, want 1 after two webhooks", items)
+		t.Errorf("reading items = %d, want 1 after two webhooks", items)
 	}
 	forge.lmu.Lock()
 	forge.pulls = append(forge.pulls, provider.PullRequestSummary{Number: 400, Title: "mine", Author: "ryan", HeadBranch: "feat/x", BaseBranch: "development"})
@@ -258,22 +261,68 @@ func TestDependencyUpdates_ConsiderTakesAWebhookOnceAndIgnoresOtherAuthors(t *te
 	w.Consider(ctx, "forgejo", "webgrip/example", 400, "ryan")
 	w.Consider(ctx, "forgejo", "webgrip/other", 386, "renovate")
 	if err := testPool.QueryRow(ctx, `SELECT count(*) FROM work_items WHERE origin = 'pull_request'`).Scan(&items); err != nil || items != 1 {
-		t.Errorf("explanation items = %d, want 1: other authors and repositories are not explained", items)
+		t.Errorf("reading items = %d, want 1: other authors and repositories are not explained", items)
 	}
 	if got := itemState(t, id); got != "queued" && got != "active" {
 		t.Errorf("item state = %q", got)
 	}
 }
 
-func TestDependencyUpdates_ATeamWithoutAReaderExplainsNothing(t *testing.T) {
+func TestPullRequestReads_ATeamWithoutAReaderReadsNothing(t *testing.T) {
 	ctx := context.Background()
 	resetTables(t)
 	plans, _ := plan.Parse(`{"silver": {"rounds": [{"roles": [{"name": "builder", "writes": true}]}]}}`)
 	e := newEngine(plans)
 	forge := &listingForge{fakeForge: &fakeForge{}, pulls: []provider.PullRequestSummary{renovatePull()}}
-	newDependencyWatch(forge, e).Reconcile(ctx)
+	newReadWatch(forge, e).Reconcile(ctx)
 	var items int
 	if err := testPool.QueryRow(ctx, `SELECT count(*) FROM work_items WHERE origin = 'pull_request'`).Scan(&items); err != nil || items != 0 {
-		t.Errorf("explanation items = %d, want 0 for a plan with no reading Role", items)
+		t.Errorf("reading items = %d, want 0 for a plan with no reading Role", items)
+	}
+}
+
+// A Team made for reading alone: one reading Role, no writer. Its plan
+// reduces to itself, and it reads a pull request end to end.
+func TestPullRequestReads_AReaderOnlyTeamReadsWithItsOneRole(t *testing.T) {
+	ctx := context.Background()
+	resetTables(t)
+	plans, err := plan.Parse(`{"dependencies": {"rounds": [{"roles": [{"name": "explainer", "writes": false, "cap": 0.5}]}]}}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := newEngine(plans)
+	forge := &listingForge{fakeForge: &fakeForge{}, pulls: []provider.PullRequestSummary{renovatePull()}}
+	e.Forges, e.DefaultForge = map[string]provider.ForgeProvider{"webgrip": forge}, "webgrip"
+	w := newReadWatch(forge, e)
+	route := exampleRoute()
+	route.Policy.Team = "dependencies"
+	w.Routes = []work.PullRequestReadRoute{route}
+	w.Reconcile(ctx)
+	id, si := readItem(t)
+	if si.Team != "dependencies" || si.Branch != "renovate/opencode" {
+		t.Fatalf("shift = %+v", si)
+	}
+	if n, _ := testStore.PendingRuns(ctx, "dependencies", "explainer"); n != 1 {
+		t.Fatalf("pending explainer runs = %d, want 1", n)
+	}
+	run, err := testStore.ClaimRole(ctx, "dependencies", "explainer", time.Minute, 0.5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.PreAuthor || run.Item.Origin != work.OriginPullRequest {
+		t.Errorf("claim = pre-author %v origin %q", run.PreAuthor, run.Item.Origin)
+	}
+	if _, err := testStore.ReportOutcome(ctx, run.RunToken, store.Report(work.OutcomeNoChangeNeeded, "read", "", nil, nil, nil).
+		WithVerdict("approve").WithFindings("## What changes\n\nnothing that breaks here")); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.EvaluateItem(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	if got := itemState(t, id); got != "awaiting_review" {
+		t.Errorf("item state = %q, want awaiting_review", got)
+	}
+	if len(forge.comments) == 0 || forge.comments[0].PR != 386 || !strings.Contains(forge.comments[0].Body, "nothing that breaks here") {
+		t.Errorf("comments = %+v, want the explainer's findings on #386", forge.comments)
 	}
 }

@@ -75,10 +75,11 @@ type Target struct {
 	// Forge names which forge instance holds the repo. Empty = the
 	// deployment's single forge.
 	Forge string `yaml:"forge"`
-	// DependencyUpdates opts this repository in to having the open pull
-	// requests of listed authors, such as a dependency bot, explained on the
-	// pull request by a Team's reading Roles (ADR-0106). Omitted = none.
-	DependencyUpdates *work.DependencyUpdates `yaml:"dependencyUpdates"`
+	// ReadPullRequests routes the open pull requests of listed authors,
+	// such as a dependency bot's, to a Team that reads them and reports on
+	// the pull request (ADR-0106). Each route names its authors, its Team and
+	// what the reader delivers. Omitted = nothing is read.
+	ReadPullRequests []work.PullRequestReads `yaml:"readPullRequests"`
 }
 
 // Project routes one tracker container to one repository, or to the
@@ -307,22 +308,21 @@ func (f *File) validateTargets() error {
 		if !ownerName(f.Targets[key].Repo) {
 			return fmt.Errorf("targets.%s: repo %q must be owner/name", key, f.Targets[key].Repo)
 		}
-		if err := f.validateDependencyUpdates(f.Targets[key].DependencyUpdates); err != nil {
-			return fmt.Errorf("targets.%s.dependencyUpdates: %w", key, err)
+		for i, route := range f.Targets[key].ReadPullRequests {
+			if err := f.validatePullRequestReads(route); err != nil {
+				return fmt.Errorf("targets.%s.readPullRequests[%d]: %w", key, i, err)
+			}
 		}
 	}
 	return nil
 }
 
-func (f *File) validateDependencyUpdates(d *work.DependencyUpdates) error {
-	if d == nil {
-		return nil
-	}
+func (f *File) validatePullRequestReads(d work.PullRequestReads) error {
 	if !d.Enabled() {
-		return fmt.Errorf("needs at least one author whose pull requests are explained")
+		return fmt.Errorf("needs at least one author whose pull requests are read")
 	}
 	if strings.TrimSpace(d.Team) == "" {
-		return fmt.Errorf("needs the team that explains them")
+		return fmt.Errorf("needs the team that reads them")
 	}
 	if len(f.Teams) > 0 {
 		if _, ok := f.Teams[d.Team]; !ok {
@@ -338,17 +338,19 @@ func (f *File) validateDependencyUpdates(d *work.DependencyUpdates) error {
 	return nil
 }
 
-// DependencyUpdates returns every registered target that opted in to having
-// its dependency-update pull requests explained, with its policy, in key
-// order (ADR-0106). A target without a policy is absent.
-func (f *File) DependencyUpdates() []work.DependencyUpdateRoute {
-	var out []work.DependencyUpdateRoute
+// PullRequestReads returns every route of every registered target whose
+// pull requests a Team reads, in target key order and then route order
+// (ADR-0106). A target without routes is absent.
+func (f *File) PullRequestReads() []work.PullRequestReadRoute {
+	var out []work.PullRequestReadRoute
 	for _, key := range sortedTargetKeys(f.Targets) {
 		t := f.Targets[key]
-		if t.DependencyUpdates == nil || !t.DependencyUpdates.Enabled() {
-			continue
+		for _, route := range t.ReadPullRequests {
+			if !route.Enabled() {
+				continue
+			}
+			out = append(out, work.PullRequestReadRoute{Key: key, Target: targetOf(t), Policy: route})
 		}
-		out = append(out, work.DependencyUpdateRoute{Key: key, Target: targetOf(t), Policy: *t.DependencyUpdates})
 	}
 	return out
 }

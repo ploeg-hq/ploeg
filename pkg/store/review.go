@@ -26,7 +26,7 @@ type ReviewItem struct {
 	// Run from an older worker.
 	Delivery *harness.Delivery
 	// Origin is the Work Item's origin, and SourcePR the pull request a Work
-	// Item of OriginPullRequest explains (ADR-0106): the pull request to
+	// Item of OriginPullRequest reads (ADR-0106): the pull request to
 	// watch when no writer of its own opened one.
 	Origin   work.Origin
 	SourcePR int
