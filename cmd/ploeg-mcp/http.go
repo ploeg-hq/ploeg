@@ -25,6 +25,7 @@ const defaultListen = ":8090"
 type groupConsumer struct {
 	Group    string `json:"group"`
 	TokenEnv string `json:"tokenEnv"`
+	Execute  bool   `json:"execute"`
 }
 
 type httpConfig struct {
@@ -93,13 +94,13 @@ func loadHTTPConfig(getenv func(string) string, lookup func(string) (string, boo
 		if err != nil {
 			return nil, fmt.Errorf("group %q: PLOEG_URL or %s: %w", g.Group, g.TokenEnv, err)
 		}
-		cfg.servers = append(cfg.servers, newServer(client))
+		cfg.servers = append(cfg.servers, newServer(client, g.Execute))
 	}
 	return cfg, nil
 }
 
 func parseGroups(raw string) ([]groupConsumer, error) {
-	const shape = "PLOEG_MCP_GROUPS must be a JSON array of {group, tokenEnv}, first match wins"
+	const shape = "PLOEG_MCP_GROUPS must be a JSON array of {group, tokenEnv, execute}, first match wins"
 	if len(raw) > 65536 {
 		return nil, errors.New("PLOEG_MCP_GROUPS exceeds 64 KiB")
 	}
@@ -172,7 +173,8 @@ func (cfg *httpConfig) admit(next http.Handler, logger *slog.Logger) http.Handle
 		for i, g := range cfg.groups {
 			if slices.Contains(groups, g.Group) {
 				logger.Info("mcp request", "sub", info.UserID, "username", username, "group", g.Group, "method", r.Method)
-				next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), consumerKey{}, i)))
+				ctx := context.WithValue(r.Context(), consumerKey{}, i)
+				next.ServeHTTP(w, r.WithContext(withPerson(ctx, person{Subject: info.UserID, Username: username})))
 				return
 			}
 		}

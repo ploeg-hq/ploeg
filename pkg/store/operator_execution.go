@@ -369,12 +369,30 @@ func (s *Store) CommandOperatorExecution(ctx context.Context, id, consumer, acto
 	if _, err = tx.Exec(ctx, `INSERT INTO operator_execution_events(execution_id,revision,actor,kind,detail) VALUES($1,$2,$3,$4,$5)`, id, e.Revision, eventActor, "execution."+c.Action, detail); err != nil {
 		return e, err
 	}
+	if personCommands[c.Action] {
+		workItemID, err := strconv.ParseInt(e.WorkItemID, 10, 64)
+		if err != nil {
+			return e, err
+		}
+		if err = audit(ctx, tx, "operator:"+consumer+":"+eventActor, AuditOperatorExecutionCommanded, &workItemID, map[string]any{
+			"execution": e.ID, "command": c.Action, "command_id": c.ID, "revision": e.Revision, "state": e.State, "characters": len([]rune(c.Text)),
+		}); err != nil {
+			return e, err
+		}
+	}
 	response, _ = json.Marshal(e)
 	if _, err = tx.Exec(ctx, `INSERT INTO operator_execution_commands(execution_id,command_id,fingerprint,response) VALUES($1,$2,$3,$4)`, id, c.ID, fingerprint, response); err != nil {
 		return e, err
 	}
 	return e, tx.Commit(ctx)
 }
+
+// AuditOperatorExecutionCommanded is the audit action of an execution command
+// a person gives: message, pause, resume, cancel, handback or take-control.
+// The executor's own start, heartbeat, report and close are not audited here.
+const AuditOperatorExecutionCommanded = "operator.execution.commanded"
+
+var personCommands = map[string]bool{"message": true, "pause": true, "resume": true, "cancel": true, "handback": true, "take-control": true}
 
 // OperatorNeedsHumanReasonPrefix starts the reason a work_item.needs_human
 // event carries when an operator execution's own state hands its Work Item to

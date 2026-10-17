@@ -418,6 +418,27 @@ The server overrides any `authenticatedBy` supplied in a command body.
 Consumers must derive both identities from authenticated session authorization,
 never forward an untrusted browser header.
 
+Every operator change records who made it and how, in one shape on every route
+(ADR 0108). A request other than `GET` may carry each of these headers at most
+once: `X-Ploeg-Actor` (the person), `X-Ploeg-Acting-User` (a person acting on
+the actor's behalf), `X-Ploeg-Via` (the channel: 1 to 128 printable ASCII
+characters, such as `mcp:Claude Code 2.1.296` or `browser`) and
+`X-Ploeg-Confirmation` (`<confirmation id>:<lowercase SHA-256 hex of the text
+the person agreed to>`). A repeated or malformed header answers 400
+`actor_required`, `invalid_acting_user`, `invalid_via` or
+`invalid_confirmation` before anything changes, and the last three need
+`X-Ploeg-Actor`. Each audit event the request writes under the consumer's name
+carries `detail.attribution` with `consumer`, `actor`, `actingUser`, `via` and
+`confirmation` (empty ones omitted) next to the event's existing detail keys.
+A person's execution command (`message`, `pause`, `resume`, `cancel`,
+`handback`, `take-control`) is audited as `operator.execution.commanded` on the
+execution's Work Item; the executor's `start`, `heartbeat`, `report` and
+`close` are not. `GET /api/v1/operator/events?actor=<identity>` keeps the
+events whose attribution names that identity as `actor` or `actingUser`;
+events recorded before attribution existed carry none and never match. Ploeg
+trusts the consumer to name the person truthfully: guard a consumer's token
+like an administrator's credential.
+
 Managed workers use the [worker control contract](worker-control.md); deployment and conservative accounting recovery are documented in [managed worker operations](../ops/managed-workers.md).
 
 The [operator delivery contract](operator-delivery.md) and [versioned schema](operator-delivery.schema.json) govern canonical candidates, trusted verification, human approval and durable publication barriers for a completed Operator Execution.

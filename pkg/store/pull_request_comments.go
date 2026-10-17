@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"strconv"
 	"time"
@@ -161,11 +160,5 @@ func auditPullRequestComment(ctx context.Context, tx pgx.Tx, workItemID int64, a
 	for k, v := range extra {
 		detail[k] = v
 	}
-	raw, err := json.Marshal(detail)
-	if err != nil {
-		return err
-	}
-	_, err = tx.Exec(ctx, `INSERT INTO audit_log (actor, action, work_item_id, detail) VALUES ($1, $2, $3, $4)`,
-		c.Actor, action, workItemID, raw)
-	return err
+	return audit(ctx, tx, c.Actor, action, &workItemID, detail)
 }

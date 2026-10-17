@@ -37,11 +37,30 @@ type remote struct {
 
 func newRemote(t *testing.T) *remote {
 	t.Helper()
+	return newRemoteTokens(t, func(r *remote) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			r.mu.Lock()
+			r.upstream = append(r.upstream, req.Header.Get("Authorization"))
+			r.mu.Unlock()
+			if req.URL.Path != "/api/v1/operator/work-items" {
+				http.NotFound(w, req)
+				return
+			}
+			_, _ = w.Write([]byte(`{"items":[],"nextCursor":null}`))
+		})
+	}, `[{"group":"ploeg-admins","tokenEnv":"ADMINS_TOKEN"},{"group":"ploeg-readers","tokenEnv":"READERS_TOKEN"}]`, randomToken(t), randomToken(t))
+}
+
+// newRemoteTokens serves ploeg-mcp http in front of the ploegd that upstream
+// returns; groups is PLOEG_MCP_GROUPS, and ADMINS_TOKEN and READERS_TOKEN hold
+// admins and readers.
+func newRemoteTokens(t *testing.T, upstream func(*remote) http.Handler, groups, admins, readers string) *remote {
+	t.Helper()
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := &remote{t: t, key: key, readers: randomToken(t), admins: randomToken(t)}
+	r := &remote{t: t, key: key, readers: readers, admins: admins}
 
 	idp := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		b := func(i *big.Int) string { return base64.RawURLEncoding.EncodeToString(i.Bytes()) }
@@ -50,16 +69,7 @@ func newRemote(t *testing.T) *remote {
 	t.Cleanup(idp.Close)
 	r.issuer = idp.URL + "/application/o/ploeg-mcp/"
 
-	ploegd := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		r.mu.Lock()
-		r.upstream = append(r.upstream, req.Header.Get("Authorization"))
-		r.mu.Unlock()
-		if req.URL.Path != "/api/v1/operator/work-items" {
-			http.NotFound(w, req)
-			return
-		}
-		_, _ = w.Write([]byte(`{"items":[],"nextCursor":null}`))
-	}))
+	ploegd := httptest.NewServer(upstream(r))
 	t.Cleanup(ploegd.Close)
 
 	srv := httptest.NewUnstartedServer(nil)
@@ -71,7 +81,7 @@ func newRemote(t *testing.T) *remote {
 		"PLOEG_MCP_JWKS_URL":       idp.URL + "/application/o/ploeg-mcp/jwks/",
 		"PLOEG_MCP_CLIENT_IDS":     "ploeg-mcp, other-client",
 		"PLOEG_MCP_REQUEST_SCOPES": "openid ploeg:read offline_access",
-		"PLOEG_MCP_GROUPS":         `[{"group":"ploeg-admins","tokenEnv":"ADMINS_TOKEN"},{"group":"ploeg-readers","tokenEnv":"READERS_TOKEN"}]`,
+		"PLOEG_MCP_GROUPS":         groups,
 		"ADMINS_TOKEN":             r.admins,
 		"READERS_TOKEN":            r.readers,
 	}
@@ -287,7 +297,7 @@ func TestHTTPConfigurationIsRefusedWhenIncomplete(t *testing.T) {
 		"no client ids":        {"PLOEG_MCP_CLIENT_IDS", " , "},
 		"no groups":            {"PLOEG_MCP_GROUPS", "[]"},
 		"groups not JSON":      {"PLOEG_MCP_GROUPS", "ploeg-readers=READERS_TOKEN"},
-		"an unknown field":     {"PLOEG_MCP_GROUPS", `[{"group":"g","tokenEnv":"READERS_TOKEN","execute":true}]`},
+		"an unknown field":     {"PLOEG_MCP_GROUPS", `[{"group":"g","tokenEnv":"READERS_TOKEN","verify":true}]`},
 		"a missing token":      {"READERS_TOKEN", ""},
 		"two scopes required":  {"PLOEG_MCP_SCOPE", "ploeg:read ploeg:steer"},
 		"a lifetime too long":  {"PLOEG_MCP_MAX_TOKEN_LIFETIME", "48h"},

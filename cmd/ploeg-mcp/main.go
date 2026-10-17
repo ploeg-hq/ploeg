@@ -1,4 +1,4 @@
-// Command ploeg-mcp serves Ploeg's operator API as read-only MCP tools.
+// Command ploeg-mcp serves Ploeg's operator API as MCP tools.
 //
 // Without arguments it speaks MCP over stdio for a person's own AI client,
 // reading PLOEG_URL and PLOEG_MCP_TOKEN, the bearer credential of an Operator
@@ -8,7 +8,10 @@
 // resource server: it verifies the caller's access token from
 // PLOEG_MCP_ISSUER, maps the caller's groups to Operator Consumers through
 // PLOEG_MCP_GROUPS, and calls ploegd with that consumer's token, never the
-// caller's.
+// caller's. A group marked execute also gets action tools, which name the
+// person and their client to ploegd and act only after the person confirms
+// the exact effect through an MCP elicitation (ADR-0108). Stdio mode only
+// reads.
 package main
 
 import (
@@ -55,7 +58,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "ploeg-mcp: set PLOEG_URL and PLOEG_MCP_TOKEN:", err)
 		os.Exit(2)
 	}
-	if err := newServer(client).Run(ctx, &mcp.StdioTransport{}); err != nil && ctx.Err() == nil {
+	if err := newServer(client, false).Run(ctx, &mcp.StdioTransport{}); err != nil && ctx.Err() == nil {
 		fmt.Fprintln(os.Stderr, "ploeg-mcp:", err)
 		os.Exit(1)
 	}

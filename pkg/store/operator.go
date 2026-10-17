@@ -30,6 +30,9 @@ type OperatorFilter struct {
 	WorkItemID int64
 	Provider   string
 	ExternalID string
+	// Actor keeps events whose attribution names this person as actor or
+	// acting user (ADR-0108). Events only.
+	Actor string
 }
 
 type OperatorTeam struct {
@@ -424,7 +427,13 @@ const operatorEventJSON = `jsonb_build_object(
 		'phase', CASE WHEN jsonb_typeof(a.detail->'phase') = 'string' THEN left(a.detail->>'phase', 256) END,
 		'reason', CASE WHEN jsonb_typeof(a.detail->'reason') = 'string' THEN left(a.detail->>'reason', 4096) END,
 		'infraFailures', CASE WHEN jsonb_typeof(a.detail->'infra_failures') = 'number' THEN a.detail->'infra_failures' END,
-		'requestId', CASE WHEN a.action = 'operator.work_item.admitted' AND jsonb_typeof(a.detail->'request_id') = 'string' THEN left(a.detail->>'request_id', 128) END)))`
+		'requestId', CASE WHEN a.action = 'operator.work_item.admitted' AND jsonb_typeof(a.detail->'request_id') = 'string' THEN left(a.detail->>'request_id', 128) END,
+		'attribution', CASE WHEN jsonb_typeof(a.detail->'attribution') = 'object' AND jsonb_typeof(a.detail->'attribution'->'consumer') = 'string' AND jsonb_typeof(a.detail->'attribution'->'actor') = 'string' THEN jsonb_build_object(
+			'consumer', left(a.detail->'attribution'->>'consumer', 128),
+			'actor', left(a.detail->'attribution'->>'actor', 128),
+			'actingUser', CASE WHEN jsonb_typeof(a.detail->'attribution'->'actingUser') = 'string' THEN left(a.detail->'attribution'->>'actingUser', 128) END,
+			'via', CASE WHEN jsonb_typeof(a.detail->'attribution'->'via') = 'string' THEN left(a.detail->'attribution'->>'via', 128) END,
+			'confirmation', CASE WHEN jsonb_typeof(a.detail->'attribution'->'confirmation') = 'string' THEN left(a.detail->'attribution'->>'confirmation', 193) END) END)))`
 
 func (s *Store) OperatorTeams(ctx context.Context, teams []string, registered map[string][]string) ([]OperatorTeam, error) {
 	rows, err := s.pool.Query(ctx, `
@@ -646,9 +655,15 @@ func (s *Store) OperatorEvents(ctx context.Context, f OperatorFilter) ([]Operato
 		cursor, order = `($4::bigint = 0 OR a.id < $4)`, `a.id DESC`
 		position = f.Before
 	}
+	args := []any{f.Teams, f.Team, f.WorkItemID, position, f.Limit + 1}
+	person := ``
+	if f.Actor != "" {
+		person = ` AND a.detail ? 'attribution' AND (a.detail->'attribution'->>'actor' = $6 OR a.detail->'attribution'->>'actingUser' = $6)`
+		args = append(args, f.Actor)
+	}
 	rows, err := s.pool.Query(ctx, `SELECT `+operatorEventJSON+` FROM audit_log a JOIN work_items i ON i.id = a.work_item_id
 		WHERE ($1::text[] IS NULL OR i.team = ANY($1)) AND ($2 = '' OR i.team = $2)
-		AND ($3::bigint = 0 OR i.id = $3) AND `+cursor+` ORDER BY `+order+` LIMIT $5`, f.Teams, f.Team, f.WorkItemID, position, f.Limit+1)
+		AND ($3::bigint = 0 OR i.id = $3) AND `+cursor+person+` ORDER BY `+order+` LIMIT $5`, args...)
 	if err != nil {
 		return nil, false, err
 	}
