@@ -63,7 +63,7 @@ Ploeg's execution record for tracker, follow-up or operator work.
 | `target` | `Work Target` |  | Forge coordinates the item's Runs act on; absent means unresolved (R11). |
 | `route_rule` | `string` |  | Id of the Routing Rule that decided team and target; recorded for audit. |
 | `state` | `enum(ingested, proposed, queued, active, needs_human, awaiting_review, stale, done, withdrawn)` | yes | Dispatch lifecycle position. active means a Team is working the item through a live Shift. proposed means a Run created the item and it waits for a person to approve or reject it; no Team can claim it. awaiting_review means Ploeg's work succeeded and its pull request is ready for human review. withdrawn means a person took the mandate back by unassigning the Tracker Item or cancelling it through the operator API. |
-| `origin` | `enum(assignment, follow_up, operator)` | yes | Whether the item came from a tracker, Forge Event or Operator Consumer. |
+| `origin` | `enum(assignment, follow_up, operator, pull_request)` | yes | Whether the item came from a tracker, Forge Event, Operator Consumer or a pull request someone else opened that a Team explains. |
 | `priority` | `integer` |  | Rank mirrored from the tracker; drives Team Queue order. |
 
 **Relationships**

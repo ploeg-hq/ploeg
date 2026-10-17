@@ -908,7 +908,7 @@ func TestEnginePublishesReportOnClose(t *testing.T) {
 	if err := e.EvaluateItem(ctx, id); err != nil {
 		t.Fatal(err)
 	}
-	_, closed, reason := shiftRow(t, id)
+	_, closed, reason := shiftRowForItem(t, id)
 	if !closed || reason != reasonPlanExhausted {
 		t.Fatalf("shift not closed by the plan: closed=%v reason=%q", closed, reason)
 	}
@@ -943,7 +943,7 @@ func TestPublishUsage_DoesNotChangeOutcome(t *testing.T) {
 	if err := e.EvaluateItem(ctx, id); err != nil {
 		t.Fatal(err)
 	}
-	round, closed, reason := shiftRow(t, id)
+	round, closed, reason := shiftRowForItem(t, id)
 	if !closed || reason != reasonPlanExhausted || round != 2 {
 		t.Errorf("shift row = round %d, closed %v, reason %q", round, closed, reason)
 	}

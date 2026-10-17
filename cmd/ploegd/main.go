@@ -417,6 +417,21 @@ func run(log *slog.Logger) error {
 		log.Info("pull request merge detection enabled", "reconcile_every", reviewEvery,
 			"tracker_done_on_merge", reviews.MarkTrackerDone)
 	}
+	var dependencyUpdates *shiftengine.DependencyUpdateWatch
+	if routes := cfg.DependencyUpdates(); len(routes) > 0 {
+		if engine == nil || len(forges) == 0 {
+			return fmt.Errorf("targets with dependencyUpdates need the shift engine and a forge provider")
+		}
+		dependencyUpdates = &shiftengine.DependencyUpdateWatch{
+			Store: st, Forges: forges, DefaultForge: forgeID, Routes: routes, Plans: plans, Engine: engine, Log: log,
+		}
+		srv.DependencyUpdates = dependencyUpdates
+		for _, r := range routes {
+			log.Info("dependency update pull requests are explained", "target", r.Key,
+				"repo", r.Target.Owner+"/"+r.Target.Repo, "team", r.Policy.Team, "authors", r.Policy.Authors,
+				"reconcile_every", reviewEvery)
+		}
+	}
 	webhookCheck, err := newVikunjaWebhookCheck(vik, cfg.Trackers.Vikunja.Projects, log)
 	if err != nil {
 		return err
@@ -444,6 +459,9 @@ func run(log *slog.Logger) error {
 	go sweepLoop(ctx, log, st, sweeper, forgeSweeper, engine, srv, sweepEvery, settleAfter)
 	if reviews != nil {
 		go reviewLoop(ctx, reviews, reviewEvery)
+	}
+	if dependencyUpdates != nil {
+		go dependencyUpdateLoop(ctx, dependencyUpdates, reviewEvery)
 	}
 	go deployCheckLoop(ctx, srv, deployCheckEvery)
 	if srv.Notes != nil {

@@ -25,6 +25,7 @@ These runbooks cover the recurring operator tasks for a cluster deployment of Pl
 | [Connect GitHub as a forge](connect-github-as-a-forge.md) | Runs should open pull requests on GitHub, or a GitHub push, webhook or token mint fails |
 | [Ask Ploeg from an AI client over MCP](ask-ploeg-from-an-ai-client.md) | A person wants to ask Claude Code, Codex or Cursor what waits for them, why, and what it cost |
 | [Serve Ploeg's MCP tools over HTTPS with a browser sign-in](serve-ploeg-mcp-over-https.md) | People should reach Ploeg's MCP tools from Claude Code, VS Code or Cursor through one URL and their identity provider, without a local binary or token |
+| [Explain dependency updates on their pull requests](explain-dependency-updates.md) | A dependency bot opens pull requests and the people who merge them want Ploeg's explanation of the impact, the risk and the follow-up work on each one |
 
 For accounts whose final cost is uncertain, [Reconcile uncertainty](../ops/managed-workers.md#reconcile-uncertainty) sets the rules these runbooks follow.
 

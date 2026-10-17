@@ -19,8 +19,9 @@ var files embed.FS
 
 // The skills Ploeg ships.
 const (
-	VerifyBeforeHandoff   = "ploeg-verify-before-handoff"
-	ReviewAgainstWorkItem = "ploeg-review-against-work-item"
+	VerifyBeforeHandoff     = "ploeg-verify-before-handoff"
+	ReviewAgainstWorkItem   = "ploeg-review-against-work-item"
+	ExplainDependencyUpdate = "ploeg-explain-a-dependency-update"
 )
 
 // CanonicalDir is the directory under the Run's HOME that every Run gets,
@@ -67,15 +68,24 @@ func All() ([]Skill, error) {
 // own change; a reader verifies and reviews someone else's; a planner changes
 // nothing and gets none.
 func ForRun(writes, planner bool) ([]Skill, error) {
-	var want []string
 	switch {
 	case planner:
 		return nil, nil
 	case writes:
-		want = []string{VerifyBeforeHandoff}
+		return named(VerifyBeforeHandoff)
 	default:
-		want = []string{ReviewAgainstWorkItem, VerifyBeforeHandoff}
+		return named(ReviewAgainstWorkItem, VerifyBeforeHandoff)
 	}
+}
+
+// ForExplainer returns the skills of a reading Run that explains a pull
+// request someone else opened, such as a dependency update (ADR-0106): how to
+// explain it, and how to run the repository's checks against it.
+func ForExplainer() ([]Skill, error) {
+	return named(ExplainDependencyUpdate, VerifyBeforeHandoff)
+}
+
+func named(want ...string) ([]Skill, error) {
 	all, err := All()
 	if err != nil {
 		return nil, err

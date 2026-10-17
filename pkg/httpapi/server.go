@@ -60,6 +60,10 @@ type Server struct {
 	// Reviews settles awaiting_review Work Items from merged and closed pull
 	// request events. Nil = those events are recorded only.
 	Reviews ReviewSettler
+	// DependencyUpdates queues an explanation when a pull request a
+	// registered target's policy covers is opened or pushed to (ADR-0106).
+	// Nil = no target opted in; the events are recorded only.
+	DependencyUpdates PullRequestExplainer
 	// ForgeCreds mints the per-run push credential a writing Run gets
 	// (ADR-0013 tier 2). Nil = the worker keeps its env credential, which is
 	// the pre-tier-2 behaviour.
@@ -132,6 +136,13 @@ type Server struct {
 // ReviewSettler is implemented by shiftengine.ReviewWatch.
 type ReviewSettler interface {
 	HandleForgeEvent(ctx context.Context, forge string, ev provider.ForgeEvent) error
+}
+
+// PullRequestExplainer is implemented by shiftengine.DependencyUpdateWatch
+// (ADR-0106). Consider decides whether a pull request that was opened or
+// pushed to is one a Team explains, and queues the Work Item when it is.
+type PullRequestExplainer interface {
+	Consider(ctx context.Context, forge, repo string, pr int, author string)
 }
 
 // RoleCaps is the slice of the team-plan config the claim path needs.

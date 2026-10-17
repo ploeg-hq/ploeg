@@ -25,6 +25,11 @@ type ReviewItem struct {
 	// Delivery is that Run's admitted delivery record (ADR-0059); nil for a
 	// Run from an older worker.
 	Delivery *harness.Delivery
+	// Origin is the Work Item's origin, and SourcePR the pull request a Work
+	// Item of OriginPullRequest explains (ADR-0106): the pull request to
+	// watch when no writer of its own opened one.
+	Origin   work.Origin
+	SourcePR int
 }
 
 // AwaitingReview lists every Work Item in awaiting_review that Ploeg owns,
@@ -33,7 +38,7 @@ func (s *Store) AwaitingReview(ctx context.Context) ([]ReviewItem, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT w.id, w.provider, w.external_id,
 		       w.target_forge, w.target_owner, w.target_repo, w.target_base_branch,
-		       COALESCE(last.links, '{}'), last.delivery
+		       COALESCE(last.links, '{}'), last.delivery, w.origin, w.source_pr
 		FROM work_items w
 		LEFT JOIN LATERAL (SELECT r.links, r.delivery FROM agent_runs r
 		                   WHERE r.work_item_id = w.id AND r.writes AND r.state = 'finished'
@@ -52,7 +57,7 @@ func (s *Store) AwaitingReview(ctx context.Context) ([]ReviewItem, error) {
 		var t work.Target
 		var delivery []byte
 		if err := rows.Scan(&it.WorkItemID, &it.Provider, &it.ExternalID,
-			&t.Forge, &t.Owner, &t.Repo, &t.BaseBranch, &it.Links, &delivery); err != nil {
+			&t.Forge, &t.Owner, &t.Repo, &t.BaseBranch, &it.Links, &delivery, &it.Origin, &it.SourcePR); err != nil {
 			return nil, err
 		}
 		if delivery != nil {

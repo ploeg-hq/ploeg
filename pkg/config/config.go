@@ -75,6 +75,10 @@ type Target struct {
 	// Forge names which forge instance holds the repo. Empty = the
 	// deployment's single forge.
 	Forge string `yaml:"forge"`
+	// DependencyUpdates opts this repository in to having the open pull
+	// requests of listed authors, such as a dependency bot, explained on the
+	// pull request by a Team's reading Roles (ADR-0106). Omitted = none.
+	DependencyUpdates *work.DependencyUpdates `yaml:"dependencyUpdates"`
 }
 
 // Project routes one tracker container to one repository, or to the
@@ -303,8 +307,50 @@ func (f *File) validateTargets() error {
 		if !ownerName(f.Targets[key].Repo) {
 			return fmt.Errorf("targets.%s: repo %q must be owner/name", key, f.Targets[key].Repo)
 		}
+		if err := f.validateDependencyUpdates(f.Targets[key].DependencyUpdates); err != nil {
+			return fmt.Errorf("targets.%s.dependencyUpdates: %w", key, err)
+		}
 	}
 	return nil
+}
+
+func (f *File) validateDependencyUpdates(d *work.DependencyUpdates) error {
+	if d == nil {
+		return nil
+	}
+	if !d.Enabled() {
+		return fmt.Errorf("needs at least one author whose pull requests are explained")
+	}
+	if strings.TrimSpace(d.Team) == "" {
+		return fmt.Errorf("needs the team that explains them")
+	}
+	if len(f.Teams) > 0 {
+		if _, ok := f.Teams[d.Team]; !ok {
+			return fmt.Errorf("team %q is not in teams", d.Team)
+		}
+	}
+	if d.Priority < 0 {
+		return fmt.Errorf("priority must not be negative")
+	}
+	if d.MaxOpen < 0 || d.MaxReviewsPerPullRequest < 0 {
+		return fmt.Errorf("maxOpen and maxReviewsPerPullRequest must be 0 (the default) or more")
+	}
+	return nil
+}
+
+// DependencyUpdates returns every registered target that opted in to having
+// its dependency-update pull requests explained, with its policy, in key
+// order (ADR-0106). A target without a policy is absent.
+func (f *File) DependencyUpdates() []work.DependencyUpdateRoute {
+	var out []work.DependencyUpdateRoute
+	for _, key := range sortedTargetKeys(f.Targets) {
+		t := f.Targets[key]
+		if t.DependencyUpdates == nil || !t.DependencyUpdates.Enabled() {
+			continue
+		}
+		out = append(out, work.DependencyUpdateRoute{Key: key, Target: targetOf(t), Policy: *t.DependencyUpdates})
+	}
+	return out
 }
 
 func (f *File) validateRoute(p Project) error {

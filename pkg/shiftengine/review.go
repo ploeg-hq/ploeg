@@ -126,6 +126,11 @@ func (w *ReviewWatch) targets(ctx context.Context) ([]reviewTarget, error) {
 		}
 		repo := it.Target.Owner + "/" + it.Target.Repo
 		link, pr := store.RunPullRequest(it.Delivery, it.Links, repo)
+		if pr == 0 && it.Origin == work.OriginPullRequest {
+			// The item explains a pull request someone else opened
+			// (ADR-0106): a merge or close of that pull request settles it.
+			pr = it.SourcePR
+		}
 		if pr == 0 {
 			continue
 		}

@@ -126,7 +126,8 @@
           "enum": ["ingested", "proposed", "queued", "active", "leased", "needs_human", "awaiting_review", "stale", "done", "withdrawn"],
           "description": "active means a Team is working the item (ADR-0093). leased is its retired name, which ploegd no longer sends; it stays in the enum until the deprecated forms are removed."
         },
-        "origin": { "type": "string", "enum": ["assignment", "follow_up"] },
+        "origin": { "type": "string", "enum": ["assignment", "follow_up", "pull_request"],
+          "description": "pull_request is a Work Item that explains a pull request someone else opened, read on its own branch by reading Roles only (ADR-0106)." },
         "priority": { "type": "integer" },
         "title": { "type": "string" },
         "description": { "type": "string" },
