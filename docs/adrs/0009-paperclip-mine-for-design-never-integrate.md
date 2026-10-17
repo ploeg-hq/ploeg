@@ -137,3 +137,4 @@ than as an unattributed idea.
   [research/2026-07-28-paperclip-fit.md](../research/2026-07-28-paperclip-fit.md).
 * Migrated from `docs/design.md` §8 on 2026-07-29.
 * Adopted semantics: backlog #9, #10, #15, #16, #21, #44, #58, #60, #64, #86.
+* 2026-10-17 — Re-confirmed by the [team-manifest sweep](../research/2026-10-17-team-manifest-standards.md): Paperclip v2026.1012.0 now ships the team object the owner describes (Agent `budgetMonthlyCents` at org, agent and project scope with warn at 80 % and pause at 100 %, `permissions`, `capabilities`, `chainOfCommand`, a Teams Catalog with `TEAM.md`, `trustLevel` and `requiredSkills`); [ADR-0110](0110-a-team-is-ploegs-own-manifest-of-charter-crew-permissions-intake-and-skills.md) mines that field list. Still never a dependency.
