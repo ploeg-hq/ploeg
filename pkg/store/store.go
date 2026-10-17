@@ -523,6 +523,9 @@ func (s *Store) ReportOutcome(ctx context.Context, runToken string, rep harnessR
 	if next == work.StateAwaitingReview && rep.Verification.HoldsBackReview() {
 		next = work.StateNeedsHuman
 	}
+	if rep.FailureReason != nil && work.FailureReason(*rep.FailureReason).ParksForHuman() {
+		next = work.StateNeedsHuman
+	}
 	var verification, delivery []byte
 	if rep.Verification != nil {
 		if verification, err = json.Marshal(rep.Verification); err != nil {

@@ -197,6 +197,14 @@ func (f FailureReason) IsInfra() bool {
 	return false
 }
 
+// ParksForHuman reports whether a Run that failed for f stops its Work Item
+// for a person instead of being retried by either retry budget (ADR-0105). A
+// retry after a credential leak would give fresh credentials to the same
+// agent on the same branch, so only a person may decide to try again.
+func (f FailureReason) ParksForHuman() bool {
+	return f == FailureCredentialLeak
+}
+
 // InfraFailureReasons lists the IsInfra reasons for SQL that must partition
 // runs the same way. Derived from the enum so a new reason cannot be added to
 // one and forgotten in the other.

@@ -87,15 +87,32 @@ func (e *Engine) pullRequestThread(ctx context.Context, si store.ShiftInfo, repo
 	if _, pr = pullRequest(reports, repo); pr == 0 {
 		return nil, "", 0, "no pull request on this shift yet"
 	}
-	forgeID := item.Target.Forge
+	fp, skip = e.forgeOf(*item.Target)
+	return fp, repo, pr, skip
+}
+
+func (e *Engine) targetForge(ctx context.Context, si store.ShiftInfo) (fp provider.ForgeProvider, repo, skip string) {
+	item, err := e.Store.WorkItem(ctx, si.WorkItemID)
+	if err != nil {
+		return nil, "", "work item read failed"
+	}
+	if item.Target == nil {
+		return nil, "", "work item has no resolved target"
+	}
+	fp, skip = e.forgeOf(*item.Target)
+	return fp, item.Target.Owner + "/" + item.Target.Repo, skip
+}
+
+func (e *Engine) forgeOf(target work.Target) (provider.ForgeProvider, string) {
+	forgeID := target.Forge
 	if forgeID == "" {
 		forgeID = e.DefaultForge
 	}
 	fp, ok := e.Forges[forgeID]
 	if !ok {
-		return nil, "", 0, "no provider for forge " + strconv.Quote(forgeID)
+		return nil, "no provider for forge " + strconv.Quote(forgeID)
 	}
-	return fp, repo, pr, ""
+	return fp, ""
 }
 
 // budgetExhausted reports whether a close reason says the Shift's pool could

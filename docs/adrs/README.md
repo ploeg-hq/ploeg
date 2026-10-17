@@ -179,6 +179,7 @@ fails otherwise.
 | [0102](0102-an-operator-consumer-admits-work-items-that-ploeg-worker-executes.md) | An Operator Consumer admits Work Items that ploeg-worker executes | accepted | 2026-10-14 |
 | [0103](0103-an-operator-admission-may-choose-each-runs-model-from-the-models-its-roles-policy-lists.md) | An operator admission may choose each Run's model from the models its Role's policy lists | proposed | 2026-10-13 |
 | [0104](0104-a-message-to-an-attended-run-reaches-it-at-the-next-prompt-turn-and-context-items-still-wait.md) | A message to an attended Run reaches it at the next prompt turn, and context items still wait for the next Run | proposed | 2026-10-13 |
+| [0105](0105-a-credential-leak-parks-the-work-item-and-closes-its-pull-request.md) | A credential leak parks the Work Item and closes its pull request | accepted | 2026-10-17 |
 
 ## Review calendar
 
@@ -218,6 +219,7 @@ triggers.
 | 2027-01-31 | [0102](0102-an-operator-consumer-admits-work-items-that-ploeg-worker-executes.md) — or sooner, when a consumer needs a plan override per Admission, polling the operator event feed measurably loads ploegd, ADR-0100 or ADR-0101 is rejected, or Operator Executions are still admitted |
 | 2027-01-31 | [0103](0103-an-operator-admission-may-choose-each-runs-model-from-the-models-its-roles-policy-lists.md) — or sooner, when a Role's policy lists more than four models, a consumer needs a model no Role of its Team lists, LiteLLM prices advisor iterations per model, or a chosen model regularly exhausts its Role's cap |
 | 2027-01-31 | [0104](0104-a-message-to-an-attended-run-reaches-it-at-the-next-prompt-turn-and-context-items-still-wait.md) — or sooner, when people weekly ask an attended Run to read a file they just attached, a non-ACP Harness gains mid-Run input, or ADR-0100 is rejected |
+| 2027-01-31 | [0105](0105-a-credential-leak-parks-the-work-item-and-closes-its-pull-request.md) — or sooner, when ADR-0060's outbox is built, a leak-guard false positive parks a Work Item twice in a month, a second failure reason is proposed to park, or a forge refuses a leak close ploegd could fix |
 | 2027-01-31 | [0047](0047-ploeg-learns-where-a-merged-change-is-deployed-from-a-generic-deploy-endpoint.md) — or sooner, when a GitOps controller should report deploys directly, deploys keep filling the 50-pull-request batch, or a third forge provider is added |
 | 2027-01-31 | [0048](0048-a-pool-held-by-unsettled-runs-waits-for-settlement-before-it-parks.md) — or sooner, when a fix round closes on unsettled holds or a Shift parks as held more than once a month |
 | 2027-01-31 | [0049](0049-a-run-card-reads-the-gateway-for-usage-so-far-while-a-run-is-running.md) — or sooner, when a card read during a Run passes 1 s at p95, LiteLLM offers a per-key token total, or the worker reports usage during a Run |

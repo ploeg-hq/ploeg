@@ -182,6 +182,11 @@ Go/SQL agreement the split rests on.
 
 ## More Information
 
+* 2026-10-17 — refined by
+  [ADR-0105](0105-a-credential-leak-parks-the-work-item-and-closes-its-pull-request.md):
+  a Run that failed with `credential_leak` is never retried under either
+  budget; its Shift closes `credential_leak` at `needs_human`. Every other
+  failure reason is retried as this record decided.
 * Evidence: the 2026-08-13 investigation of Shift 73 / work item 98 — three
   runs reclaimed `lease_lost`, LiteLLM spend ledger showing completed model
   calls right up to each kill, and container memory peaking at 458Mi against a
