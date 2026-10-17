@@ -68,6 +68,7 @@ type Recorder struct {
 	log  *slog.Logger
 
 	mu          sync.Mutex
+	progress    Progress
 	seq         int64
 	pending     []Entry
 	open        *Entry
@@ -291,9 +292,6 @@ func (r *Recorder) toolIDLocked(id string) string {
 }
 
 func (r *Recorder) appendLocked(e Entry) {
-	if r.truncated || r.disabled {
-		return
-	}
 	if e.At.IsZero() {
 		e.At = r.opts.Now()
 	}
@@ -302,12 +300,15 @@ func (r *Recorder) appendLocked(e Entry) {
 		secrets = r.opts.Secrets()
 	}
 	e = Clamp(NewRedactor(secrets...).Entry(e))
+	r.noteProgressLocked(e)
+	if r.truncated || r.disabled {
+		return
+	}
 	e.Seq = r.seq + 1
 	size := Size(e)
-	if r.entries+1 >= MaxRunEntries || r.bytes+size > MaxRunBytes {
+	if !Fits(r.entries, r.bytes, size) {
 		r.truncated = true
-		e = Entry{Seq: e.Seq, At: e.At, Kind: KindTruncated, Text: "The transcript reached its limit of " +
-			strconv.Itoa(MaxRunEntries) + " entries or " + strconv.Itoa(MaxRunBytes>>20) + " MiB; later activity is not recorded."}
+		e = Marker(e.Seq, e.At)
 		size = Size(e)
 	}
 	r.seq = e.Seq
@@ -324,6 +325,46 @@ func (r *Recorder) appendLocked(e Entry) {
 		default:
 		}
 	}
+}
+
+// Progress is what a Run had got to: its latest plan and its last few tool
+// calls, redacted like the transcript. The worker writes it into the note it
+// leaves when a Run stops, so the next Run starts where this one ended.
+type Progress struct {
+	Plan   []Step
+	Recent []Entry
+}
+
+// maxRecentTools is how many of the latest tool calls Progress keeps.
+const maxRecentTools = 5
+
+func (r *Recorder) noteProgressLocked(e Entry) {
+	switch e.Kind {
+	case KindPlan:
+		r.progress.Plan = slices.Clone(e.Plan)
+	case KindToolCall:
+		for i, prior := range r.progress.Recent {
+			if prior.ToolCallID == e.ToolCallID {
+				r.progress.Recent = slices.Delete(r.progress.Recent, i, i+1)
+				break
+			}
+		}
+		r.progress.Recent = append(r.progress.Recent, e)
+		if len(r.progress.Recent) > maxRecentTools {
+			r.progress.Recent = r.progress.Recent[len(r.progress.Recent)-maxRecentTools:]
+		}
+	}
+}
+
+// Progress returns the Run's latest plan and last tool calls. A nil Recorder
+// has none.
+func (r *Recorder) Progress() Progress {
+	if r == nil {
+		return Progress{}
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return Progress{Plan: slices.Clone(r.progress.Plan), Recent: slices.Clone(r.progress.Recent)}
 }
 
 func (r *Recorder) loop() {

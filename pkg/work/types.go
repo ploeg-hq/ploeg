@@ -144,8 +144,10 @@ const (
 	// it, because it sees only an expired lease, not why the pod died.
 	FailureInfraNode FailureReason = "infra_node"
 	// FailureInfraLLM is written when a Run that needed the model gateway
-	// failed without any gateway traffic, or an ACP harness reported an
-	// authentication, quota or upstream error.
+	// failed without any gateway traffic, or an ACP harness could not create
+	// its session because the gateway or provider refused it: a spent LiteLLM
+	// budget, a rejected key, a rate limit or quota, or an upstream error
+	// (litellm.ClassifyError).
 	FailureInfraLLM FailureReason = "infra_llm"
 	// FailureAgentError is written when the harness exited with an error.
 	FailureAgentError FailureReason = "agent_error"
@@ -195,6 +197,14 @@ func (f FailureReason) IsInfra() bool {
 		return true
 	}
 	return false
+}
+
+// ParksForHuman reports whether a Run that failed for f stops its Work Item
+// for a person instead of being retried by either retry budget (ADR-0105). A
+// retry after a credential leak would give fresh credentials to the same
+// agent on the same branch, so only a person may decide to try again.
+func (f FailureReason) ParksForHuman() bool {
+	return f == FailureCredentialLeak
 }
 
 // InfraFailureReasons lists the IsInfra reasons for SQL that must partition

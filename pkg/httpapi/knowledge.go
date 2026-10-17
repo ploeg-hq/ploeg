@@ -2,7 +2,10 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
+	"io"
 	"net/http"
+	"regexp"
 	"time"
 
 	"github.com/ploeg-hq/ploeg/pkg/harness"
@@ -143,4 +146,47 @@ func (s *Server) deferNote(ctx context.Context, log interface{ Warn(string, ...a
 	if err := s.Store.DeferNoteWrite(context.WithoutCancel(ctx), note.ID, cause, noteWriteBackoff, noteWriteMaxDelay); err != nil {
 		log.Warn("work item note retry not recorded; its lease expires instead", "err", err)
 	}
+}
+
+// maxLiveNotesPerRun bounds what one Run can send while it works: the
+// agent's learnings plus the worker's stop note.
+const (
+	maxLiveNotesPerRun = maxNotesPerRun + 1
+	liveNotesBodyLimit = 64 << 10
+)
+
+var liveNoteKey = regexp.MustCompile(`^[a-z0-9-]{1,32}$`)
+
+// handleRunNotes stores the notes a running Run sends while it works, so a
+// Run that is stopped later keeps what it found (ADR-0088, amended
+// 2026-10-17). A deployment without a notes graph answers 404, and the
+// worker then keeps the learnings for its outcome.
+func (s *Server) handleRunNotes(w http.ResponseWriter, r *http.Request) {
+	if s.Notes == nil {
+		http.NotFound(w, r)
+		return
+	}
+	var req harness.RunNotesRequest
+	if err := json.NewDecoder(io.LimitReader(r.Body, liveNotesBodyLimit)).Decode(&req); err != nil {
+		http.Error(w, "notes must be a JSON runNotesRequest", http.StatusBadRequest)
+		return
+	}
+	if len(req.Notes) == 0 || len(req.Notes) > maxLiveNotesPerRun {
+		http.Error(w, "send between 1 and 11 notes", http.StatusBadRequest)
+		return
+	}
+	notes := make([]store.LiveNote, 0, len(req.Notes))
+	for _, n := range req.Notes {
+		if !liveNoteKey.MatchString(n.Key) || len(keptLearnings([]harness.Learning{n.Learning})) == 0 {
+			http.Error(w, "each note needs a key and a learning with a type, title and body", http.StatusBadRequest)
+			return
+		}
+		notes = append(notes, store.LiveNote{Key: n.Key, ByWorker: n.ByWorker, Learning: n.Learning})
+	}
+	queued, err := s.Store.QueueLiveNotes(r.Context(), r.PathValue("token"), notes)
+	if err != nil {
+		runError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, harness.RunNotesResponse{Queued: queued})
 }

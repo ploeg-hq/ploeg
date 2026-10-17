@@ -51,17 +51,16 @@ func executionActor(w http.ResponseWriter, r *http.Request) (OperatorPrincipal, 
 		operatorError(w, 403, "execution_forbidden", "This consumer cannot control executions.")
 		return p, "", false
 	}
-	actor := r.Header.Get("X-Ploeg-Actor")
-	if len(r.Header.Values("X-Ploeg-Actor")) != 1 || !operatorName.MatchString(actor) {
+	a, bad := operatorAttribution(r, p.Name)
+	if bad != nil {
+		operatorError(w, 400, bad.code, bad.message)
+		return p, "", false
+	}
+	if a.Actor == "" {
 		operatorError(w, 400, "actor_required", "An authenticated actor identity is required.")
 		return p, "", false
 	}
-	acting := r.Header.Values("X-Ploeg-Acting-User")
-	if len(acting) > 1 || (len(acting) == 1 && !operatorName.MatchString(acting[0])) {
-		operatorError(w, 400, "invalid_acting_user", "Supply one valid authenticated acting identity.")
-		return p, "", false
-	}
-	return p, actor, true
+	return p, a.Actor, true
 }
 
 func decodeExecution(w http.ResponseWriter, r *http.Request, out any) bool {
@@ -140,7 +139,18 @@ func (s *Server) handleAdmitExecution(w http.ResponseWriter, r *http.Request) {
 	operatorJSON(w, status, map[string]any{"schemaVersion": "1.0", "execution": e, "created": created})
 }
 
-func (s *Server) executionForRequest(w http.ResponseWriter, r *http.Request) (OperatorPrincipal, store.OperatorExecution, bool) {
+// executionAccess says who may use an execution route. ownerAccess lets any
+// execute-capable consumer with the execution's Team in scope act for the
+// execution's owner (ADR-0108); admitterAccess keeps the route to the consumer
+// that admitted it. Both need X-Ploeg-Actor to name the owner.
+type executionAccess bool
+
+const (
+	admitterAccess executionAccess = false
+	ownerAccess    executionAccess = true
+)
+
+func (s *Server) executionForRequest(w http.ResponseWriter, r *http.Request, access executionAccess) (OperatorPrincipal, store.OperatorExecution, bool) {
 	p, actor, ok := executionActor(w, r)
 	if !ok {
 		return p, store.OperatorExecution{}, false
@@ -150,20 +160,20 @@ func (s *Server) executionForRequest(w http.ResponseWriter, r *http.Request) (Op
 		operatorError(w, 404, "not_found", "Execution not found.")
 		return p, store.OperatorExecution{}, false
 	}
-	e, err := s.Store.OperatorExecution(r.Context(), id, p.Name, actor)
+	e, err := s.Store.OwnedOperatorExecution(r.Context(), id, actor)
 	if err != nil {
 		executionError(w, err)
 		return p, e, false
 	}
-	if !p.AllowsTeam(e.Team) {
+	if !p.AllowsTeam(e.Team) || (access == admitterAccess && e.Consumer != p.Name) {
 		operatorError(w, 404, "not_found", "Execution not found.")
-		return p, e, false
+		return p, store.OperatorExecution{}, false
 	}
 	return p, e, true
 }
 
 func (s *Server) handleReadExecution(w http.ResponseWriter, r *http.Request) {
-	_, e, ok := s.executionForRequest(w, r)
+	_, e, ok := s.executionForRequest(w, r, ownerAccess)
 	if !ok {
 		return
 	}
@@ -171,12 +181,16 @@ func (s *Server) handleReadExecution(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleExecutionCommand(w http.ResponseWriter, r *http.Request) {
-	p, e, ok := s.executionForRequest(w, r)
+	p, e, ok := s.executionForRequest(w, r, ownerAccess)
 	if !ok {
 		return
 	}
 	var command store.OperatorExecutionCommand
 	if !decodeExecution(w, r, &command) {
+		return
+	}
+	if e.Consumer != p.Name && !store.IsPersonExecutionCommand(command.Action) {
+		operatorError(w, 403, "executor_command_forbidden", "Only the consumer that admitted this execution may send this command. A person's message, pause, resume, cancel, take-control or handback is accepted from any consumer in scope.")
 		return
 	}
 	if !operatorName.MatchString(command.ID) || command.ExpectedRevision < 1 || command.Generation < 1 || len(command.Text) > 20000 {
@@ -196,7 +210,7 @@ func (s *Server) handleExecutionCommand(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Server) handleExecutionEvents(w http.ResponseWriter, r *http.Request) {
-	_, e, ok := s.executionForRequest(w, r)
+	_, e, ok := s.executionForRequest(w, r, ownerAccess)
 	if !ok {
 		return
 	}
@@ -222,7 +236,7 @@ func (s *Server) handleExecutionEvents(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleExecutionCredential(w http.ResponseWriter, r *http.Request) {
-	_, e, ok := s.executionForRequest(w, r)
+	_, e, ok := s.executionForRequest(w, r, admitterAccess)
 	if !ok {
 		return
 	}
@@ -245,7 +259,7 @@ func (s *Server) handleExecutionCredential(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Server) handleExecutionBlock(w http.ResponseWriter, r *http.Request) {
-	_, e, ok := s.executionForRequest(w, r)
+	_, e, ok := s.executionForRequest(w, r, admitterAccess)
 	if !ok {
 		return
 	}
@@ -263,7 +277,7 @@ func (s *Server) handleExecutionBlock(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleExecutionSpend(w http.ResponseWriter, r *http.Request) {
-	_, e, ok := s.executionForRequest(w, r)
+	_, e, ok := s.executionForRequest(w, r, admitterAccess)
 	if !ok {
 		return
 	}

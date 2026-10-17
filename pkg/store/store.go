@@ -167,6 +167,9 @@ func audit(ctx context.Context, tx pgx.Tx, actor, action string, workItemID *int
 	if err != nil {
 		return err
 	}
+	if b, err = attributedDetail(ctx, actor, b); err != nil {
+		return err
+	}
 	_, err = tx.Exec(ctx,
 		`INSERT INTO audit_log (actor, action, work_item_id, detail) VALUES ($1, $2, $3, $4)`,
 		actor, action, workItemID, b)
@@ -521,6 +524,9 @@ func (s *Store) ReportOutcome(ctx context.Context, runToken string, rep harnessR
 	}
 	next := work.StateForOutcome(rep.Outcome)
 	if next == work.StateAwaitingReview && rep.Verification.HoldsBackReview() {
+		next = work.StateNeedsHuman
+	}
+	if rep.FailureReason != nil && work.FailureReason(*rep.FailureReason).ParksForHuman() {
 		next = work.StateNeedsHuman
 	}
 	var verification, delivery []byte

@@ -37,6 +37,7 @@ func TestBuild_StopReasonMatrix(t *testing.T) {
 		wantOutcome work.Outcome
 		wantFailure work.FailureReason
 		reasonHas   string
+		summaryHas  string
 	}{
 		{
 			name:        "lease lost outranks everything",
@@ -73,6 +74,51 @@ func TestBuild_StopReasonMatrix(t *testing.T) {
 			res:         result{phase: phaseNewSess, stderrTail: "HTTP 429 quota exceeded"},
 			wantOutcome: work.OutcomeFailed,
 			wantFailure: work.FailureInfraLLM,
+		},
+		{
+			name:        "LiteLLM 1.102 spent budget (HTTP 429) on session/new is infra_llm",
+			state:       newSessionState(),
+			res:         result{phase: phaseNewSess, stderrTail: `Error: 429 {"error":{"message":"Budget has been exceeded! Key=ploeg-0123456789ab Current cost: 1.0, Max budget: 0.5","type":"budget_exceeded","param":null,"code":"429"}}`},
+			wantOutcome: work.OutcomeFailed,
+			wantFailure: work.FailureInfraLLM,
+			summaryHas:  "a LiteLLM budget is spent",
+		},
+		{
+			name:        "LiteLLM 1.105 spent budget (HTTP 422) on session/new is infra_llm",
+			state:       newSessionState(),
+			res:         result{phase: phaseNewSess, stderrTail: `Error: 422 {"error":{"message":"Budget has been exceeded! Key=ploeg-0123456789ab Current cost: 1.0, Max budget: 0.5","type":"budget_exceeded","param":null,"code":"422"}}`},
+			wantOutcome: work.OutcomeFailed,
+			wantFailure: work.FailureInfraLLM,
+			summaryHas:  "a LiteLLM budget is spent",
+		},
+		{
+			name:        "spent budget reworded by the agent is infra_llm",
+			state:       newSessionState(),
+			res:         result{phase: phaseNewSess, err: errors.New("session/new: ExceededBudget: User=ploeg over budget")},
+			wantOutcome: work.OutcomeFailed,
+			wantFailure: work.FailureInfraLLM,
+		},
+		{
+			name:        "bare 422 from the gateway on session/new is infra_llm",
+			state:       newSessionState(),
+			res:         result{phase: phaseNewSess, err: errors.New("session/new: HTTP 422 Unprocessable Entity")},
+			wantOutcome: work.OutcomeFailed,
+			wantFailure: work.FailureInfraLLM,
+		},
+		{
+			name:        "model the key may not use on session/new is infra_llm",
+			state:       newSessionState(),
+			res:         result{phase: phaseNewSess, stderrTail: `{"error":{"message":"The requested model 'glm' is not available for this API key, or the model name is invalid.","type":"key_model_access_denied","param":"model","code":"403"}}`},
+			wantOutcome: work.OutcomeFailed,
+			wantFailure: work.FailureInfraLLM,
+			summaryHas:  "the model is not available to the Run's key",
+		},
+		{
+			name:        "a number that only contains a status stays infra_node",
+			state:       newSessionState(),
+			res:         result{phase: phaseNewSess, err: errors.New("process 14229 exited: disk full")},
+			wantOutcome: work.OutcomeFailed,
+			wantFailure: work.FailureInfraNode,
 		},
 		{
 			name:        "unrecognised session/new failure stays infra_node",
@@ -181,6 +227,9 @@ func TestBuild_StopReasonMatrix(t *testing.T) {
 			}
 			if tc.reasonHas != "" && !strings.Contains(got.StuckReason, tc.reasonHas) {
 				t.Errorf("stuckReason %q does not contain %q", got.StuckReason, tc.reasonHas)
+			}
+			if tc.summaryHas != "" && !strings.Contains(got.Summary, tc.summaryHas) {
+				t.Errorf("summary %q does not contain %q", got.Summary, tc.summaryHas)
 			}
 			// R4, enforced at the source rather than only at the report API.
 			if got.Outcome == work.OutcomeStuck && strings.TrimSpace(got.StuckReason) == "" {

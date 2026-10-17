@@ -2,10 +2,12 @@ package acp
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/ploeg-hq/ploeg/pkg/harness"
+	"github.com/ploeg-hq/ploeg/pkg/litellm"
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
@@ -73,8 +75,12 @@ func Build(s *sessionState, r result) harness.OutcomeReport {
 		return rep
 	case phaseNewSess:
 		rep.Outcome = work.OutcomeFailed
+		reason, kind := classifyStartFailure(r)
 		rep.Summary = "acp session could not be created"
-		rep.FailureReason = classifyStartFailure(r)
+		if why := kind.Describe(); why != "" {
+			rep.Summary += ": " + why
+		}
+		rep.FailureReason = reason
 		rep.StuckReason = detail(r, s)
 		return rep
 	}
@@ -202,22 +208,34 @@ func buildUsage(s *sessionState) *harness.Usage {
 
 // classifyStartFailure separates "the pod is broken" from "the LLM plane is
 // broken". Both are retryable, but they page different people and the
-// distinction is visible in agent_runs.failure_reason.
-func classifyStartFailure(r result) string {
-	msg := strings.ToLower(r.stderrTail)
+// distinction is visible in agent_runs.failure_reason. LiteLLM's own error
+// wording decides first, so a spent budget is infra_llm whichever HTTP status
+// the gateway gave it; the status-and-keyword needles cover agents that
+// reword the gateway's answer.
+func classifyStartFailure(r result) (string, litellm.ErrorKind) {
+	msg := r.stderrTail
 	if r.err != nil {
-		msg += " " + strings.ToLower(r.err.Error())
+		msg += " " + r.err.Error()
 	}
+	if kind := litellm.ClassifyError(0, []byte(msg)).Kind; kind != litellm.ErrorUnknown {
+		return string(work.FailureInfraLLM), kind
+	}
+	if gatewayStatus.MatchString(msg) {
+		return string(work.FailureInfraLLM), litellm.ErrorUnknown
+	}
+	lower := strings.ToLower(msg)
 	for _, needle := range []string{
 		"auth_required", "authentication", "unauthor", "forbidden",
-		"401", "403", "429", "quota", "rate limit", "upstream", "api key",
+		"quota", "rate limit", "upstream", "api key",
 	} {
-		if strings.Contains(msg, needle) {
-			return string(work.FailureInfraLLM)
+		if strings.Contains(lower, needle) {
+			return string(work.FailureInfraLLM), litellm.ErrorUnknown
 		}
 	}
-	return string(work.FailureInfraNode)
+	return string(work.FailureInfraNode), litellm.ErrorUnknown
 }
+
+var gatewayStatus = regexp.MustCompile(`\b(?:401|402|403|422|429)\b`)
 
 type watchdogKind int
 

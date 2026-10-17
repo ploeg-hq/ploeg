@@ -25,12 +25,14 @@ const defaultListen = ":8090"
 type groupConsumer struct {
 	Group    string `json:"group"`
 	TokenEnv string `json:"tokenEnv"`
+	Execute  bool   `json:"execute"`
 }
 
 type httpConfig struct {
 	listen          string
 	resource        *url.URL
 	issuer          string
+	personNamespace string
 	clientIDs       []string
 	jwksURL         string
 	requiredScope   string
@@ -79,6 +81,14 @@ func loadHTTPConfig(getenv func(string) string, lookup func(string) (string, boo
 			return nil, errors.New("PLOEG_MCP_MAX_TOKEN_LIFETIME must be a positive duration of at most 24h")
 		}
 	}
+	cfg.personNamespace = cfg.issuer
+	if ns, set := lookup("PLOEG_MCP_SUBJECT_NAMESPACE"); set {
+		ns = strings.TrimSpace(ns)
+		if ns == "" || len(ns) > 2048 || strings.ContainsFunc(ns, func(r rune) bool { return r < 0x20 || r == 0x7f }) {
+			return nil, errors.New("PLOEG_MCP_SUBJECT_NAMESPACE, when set, must be 1 to 2048 printable characters, such as the issuer person ids were first recorded under")
+		}
+		cfg.personNamespace = ns
+	}
 	cfg.verifier, err = mcpauth.NewVerifier(mcpauth.Config{Issuer: cfg.issuer, Audiences: cfg.clientIDs, JWKSURL: cfg.jwksURL, Leeway: time.Minute, MaxLifetime: cfg.maxLifetime})
 	if err != nil {
 		return nil, fmt.Errorf("PLOEG_MCP_ISSUER, PLOEG_MCP_CLIENT_IDS or PLOEG_MCP_JWKS_URL: %w", err)
@@ -93,13 +103,13 @@ func loadHTTPConfig(getenv func(string) string, lookup func(string) (string, boo
 		if err != nil {
 			return nil, fmt.Errorf("group %q: PLOEG_URL or %s: %w", g.Group, g.TokenEnv, err)
 		}
-		cfg.servers = append(cfg.servers, newServer(client))
+		cfg.servers = append(cfg.servers, newServer(client, g.Execute))
 	}
 	return cfg, nil
 }
 
 func parseGroups(raw string) ([]groupConsumer, error) {
-	const shape = "PLOEG_MCP_GROUPS must be a JSON array of {group, tokenEnv}, first match wins"
+	const shape = "PLOEG_MCP_GROUPS must be a JSON array of {group, tokenEnv, execute}, first match wins"
 	if len(raw) > 65536 {
 		return nil, errors.New("PLOEG_MCP_GROUPS exceeds 64 KiB")
 	}
@@ -171,8 +181,10 @@ func (cfg *httpConfig) admit(next http.Handler, logger *slog.Logger) http.Handle
 		username, _ := info.Extra["username"].(string)
 		for i, g := range cfg.groups {
 			if slices.Contains(groups, g.Group) {
-				logger.Info("mcp request", "sub", info.UserID, "username", username, "group", g.Group, "method", r.Method)
-				next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), consumerKey{}, i)))
+				id := operatorclient.PersonID(cfg.personNamespace, info.UserID)
+				logger.Info("mcp request", "sub", info.UserID, "person", id, "username", username, "group", g.Group, "method", r.Method)
+				ctx := context.WithValue(r.Context(), consumerKey{}, i)
+				next.ServeHTTP(w, r.WithContext(withPerson(ctx, person{ID: id, Subject: info.UserID, Username: username})))
 				return
 			}
 		}

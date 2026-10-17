@@ -72,6 +72,7 @@ Chosen option: "relay through ploegd with policy fallback", because it is the on
 
 ## More Information
 
+* 2026-10-14 — The owner confirmed that a Team mode of `deny_all` refuses a permission request without relaying it, also when `autoApprove` is false: a person cannot widen what the Team forbids.
 * OpenSpec change `interactive-runs`. Depends on ADR-0102 (proposed, OpenSpec change `submit-work-items`) for the attended flag. Relates to ADR-0006 (not superseded; one of its re-evaluation triggers has fired, see the change's Open Question 1), ADR-0068 (narrowed by [ADR-0104](0104-a-message-to-an-attended-run-reaches-it-at-the-next-prompt-turn-and-context-items-still-wait.md), not superseded; Open Question 8, resolved) and backlog #101.
 * 2026-10-13: the owner rejected losing interactivity and decided that interaction runs inside Ploeg: Ploeg relays permission requests, questions and streamed events to the operator consumer and takes answers, messages, pause and resume back. This diverges from Unfold ADR-0023. Proposed.
 * 2026-10-13 — The owner decided that "Approve tool use automatically" is a per-Run `autoApprove` flag: true decides permissions by the Team's permission mode without relaying them, false relays every permission request and lets the Team's mode decide when its deadline passes. Questions, messages and pause reach the person either way. Unattended Runs are unchanged.

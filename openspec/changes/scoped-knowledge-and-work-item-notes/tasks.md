@@ -21,6 +21,7 @@ The owner chose on 2026-10-12 to build behind an off-by-default setting while th
 - [x] 3.1 `learnings[].scope` in `outcomereport.v1` and the Go type, with the refusing schema case
 - [ ] 3.2 Migration: `knowledge_note_outbox` and `knowledge_promotions` — slice 1 added `work_item_note_outbox` (0051); Promotions get their own migration
 - [x] 3.3 Outbox writer with read-back and the unwritten-row metric (`PloegWorkItemNotesUnwritten`)
+- [x] 3.3a Notes sent while the Run works (`PLOEG_NOTES_FILE`, `POST /runs/{token}/notes`) and the worker's stop note (owner, 2026-10-17): `TestLiveNotes_*`, `TestStopNote_*`, `TestRecorder_ProgressKeepsThePlanAndLastToolsRedacted`
 - [ ] 3.4 Promotion acceptance through a short-lived branch, resumable after a restart
 - [ ] 3.5 Repository Promotion creates an approved knowledge Work Item; the pack keeps the repository's file over the same graph concept (D8) — the pack rule is in slice 2 (`TestKnowledgePack_RepositoryFileWinsOverTheSameGraphConcept`)
 - [ ] 3.6 Note retention: 90 days after the root closes unless promoted

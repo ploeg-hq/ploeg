@@ -24,9 +24,10 @@ type TranscriptAppend struct {
 
 // AppendTranscript stores a batch of a running Run's transcript entries
 // (ADR-0090). Entries are stored by sequence number, so a resent batch
-// changes nothing. When an entry would take the Run past
-// transcript.MaxRunEntries or transcript.MaxRunBytes, a truncation marker is
-// stored in its place and every later entry is refused. Entries must already
+// changes nothing. When an entry would leave no room for the truncation
+// marker within transcript.MaxRunEntries and transcript.MaxRunBytes, the
+// marker is stored in its place and every later entry is refused; a marker
+// the worker sent is stored as transcript.Marker. Entries must already
 // be clamped and redacted.
 func (s *Store) AppendTranscript(ctx context.Context, runToken string, entries []transcript.Entry) (TranscriptAppend, error) {
 	var out TranscriptAppend
@@ -62,8 +63,8 @@ func (s *Store) AppendTranscript(ctx context.Context, runToken string, entries [
 		if err != nil {
 			return out, err
 		}
-		if e.Kind != transcript.KindTruncated && (count+1 >= transcript.MaxRunEntries || bytes+len(body) > transcript.MaxRunBytes) {
-			e = transcript.Entry{Seq: e.Seq, At: e.At, Kind: transcript.KindTruncated, Text: "The transcript reached its limit; later activity is not recorded."}
+		if e.Kind == transcript.KindTruncated || !transcript.Fits(count, bytes, len(body)) {
+			e = transcript.Marker(e.Seq, e.At)
 			if body, err = json.Marshal(e); err != nil {
 				return out, err
 			}

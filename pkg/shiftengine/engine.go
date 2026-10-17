@@ -233,6 +233,10 @@ func (e *Engine) evaluate(ctx context.Context, si store.ShiftInfo) error {
 	// produced no findings.
 	e.publishUsageReport(ctx, si)
 
+	if leak, found := leakingRun(reports, si.Round); found {
+		return e.parkForLeak(ctx, si, leak, reports)
+	}
+
 	for _, r := range reports {
 		if r.Outcome == string(work.OutcomeStuck) && !r.Shadow {
 			// A stuck Outcome parks the item under BOTH dispatch shapes: R4
@@ -343,6 +347,9 @@ func (e *Engine) close(ctx context.Context, si store.ShiftInfo, closeReason, hum
 	}
 	e.Log.Info("shift closed", "shift", si.ID, "work_item", si.WorkItemID,
 		"team", si.Team, "reason", closeReason, "item_state", string(settled))
+	if closeReason == reasonCredentialLeak {
+		e.closeLeakedPullRequests(ctx, si, reports)
+	}
 	// After the state is durable, never before: a tracker outage must not be
 	// able to leave a Shift open or an item un-transitioned.
 	//

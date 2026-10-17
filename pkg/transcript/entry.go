@@ -5,6 +5,7 @@ package transcript
 import (
 	"encoding/json"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -130,6 +131,23 @@ func Size(e Entry) int {
 		return MaxRunBytes
 	}
 	return len(b)
+}
+
+// Marker is the single truncation entry a Run's transcript ends in. It takes
+// the place of the entry at seq that would leave no room for it.
+func Marker(seq int64, at time.Time) Entry {
+	return Entry{Seq: seq, At: at, Kind: KindTruncated, Text: "The transcript reached its limit of " +
+		strconv.Itoa(MaxRunEntries) + " entries or " + strconv.Itoa(MaxRunBytes>>20) + " MiB; later activity is not recorded."}
+}
+
+var largestMarkerBytes = Size(Marker(MaxSeq, time.Date(9999, 12, 31, 23, 59, 59, 999999999, time.FixedZone("", -(23*3600+59*60)))))
+
+// Fits reports whether an entry of size bytes may join a transcript that
+// holds entries entries and bytes bytes. It fits only when a Marker still
+// fits after it, so a transcript with its Marker never exceeds MaxRunEntries
+// or MaxRunBytes.
+func Fits(entries, bytes, size int) bool {
+	return entries+2 <= MaxRunEntries && bytes+size+largestMarkerBytes <= MaxRunBytes
 }
 
 // clip cuts s to at most limit bytes without splitting a UTF-8 sequence, and

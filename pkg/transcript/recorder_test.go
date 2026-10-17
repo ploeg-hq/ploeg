@@ -243,6 +243,43 @@ func TestARunStopsRecordingAtItsLimitWithOneMarker(t *testing.T) {
 	}
 }
 
+func TestARunsMarkerFitsWithinItsByteLimit(t *testing.T) {
+	at := time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC)
+	s := &sink{}
+	r := recorder(s, Options{Now: func() time.Time { return at }})
+	recorded := MaxRunBytes - 1000
+	r.mu.Lock()
+	r.bytes = recorded
+	r.mu.Unlock()
+	for i := range 100 {
+		r.Stage(fmt.Sprintf("step %d", i))
+	}
+	closeNow(r)
+	got := s.got()
+	total := recorded
+	for _, e := range got {
+		total += Size(e)
+	}
+	if len(got) < 2 || got[len(got)-1].Kind != KindTruncated || total > MaxRunBytes {
+		t.Fatalf("recorded %d bytes ending in %s", total, kinds(got))
+	}
+}
+
+func TestAnEntryFitsOnlyWhenTheMarkerStillFitsAfterIt(t *testing.T) {
+	room := MaxRunBytes - largestMarkerBytes
+	if !Fits(0, room-100, 100) || Fits(0, room-99, 100) {
+		t.Fatal("the byte limit does not reserve room for the marker")
+	}
+	if !Fits(MaxRunEntries-2, 0, 1) || Fits(MaxRunEntries-1, 0, 1) {
+		t.Fatal("the entry limit does not reserve a slot for the marker")
+	}
+	for _, at := range []time.Time{time.Now(), time.Date(2026, 1, 2, 3, 4, 5, 123456789, time.FixedZone("", 5*3600+30*60))} {
+		if size := Size(Marker(MaxSeq, at)); size > largestMarkerBytes {
+			t.Fatalf("a marker of %d bytes exceeds the %d reserved", size, largestMarkerBytes)
+		}
+	}
+}
+
 func TestAFailedBatchIsRetriedAndOrderKept(t *testing.T) {
 	s := &sink{fail: 2}
 	r := recorder(s, Options{})
@@ -291,5 +328,35 @@ func TestClampMapsUnknownEnumValues(t *testing.T) {
 	e = Clamp(Entry{Kind: KindToolCall, ToolKind: "edit", Status: "failed"})
 	if e.ToolKind != "edit" || e.Status != "failed" {
 		t.Fatalf("known values changed: %+v", e)
+	}
+}
+
+// Progress keeps the latest plan and the last tool calls, redacted, even
+// after the transcript itself is full or no longer shipped.
+func TestRecorder_ProgressKeepsThePlanAndLastToolsRedacted(t *testing.T) {
+	r := New((&sink{}).send, Options{FlushInterval: time.Hour, Secrets: func() []string { return []string{"ghp_supersecret"} }})
+	defer r.Close(context.Background())
+	r.Plan([]Step{{Content: "Diagnose", Status: "completed"}, {Content: "Fix", Status: "in_progress"}})
+	for i := range 7 {
+		r.Tool(ToolEvent{ID: fmt.Sprint(i), Title: fmt.Sprintf("step %d", i), Status: "completed"})
+	}
+	r.Tool(ToolEvent{ID: "6", Status: "in_progress"})
+	r.Tool(ToolEvent{ID: "x", Title: "push with ghp_supersecret", Status: "in_progress"})
+	p := r.Progress()
+	if len(p.Plan) != 2 || p.Plan[1].Status != "in_progress" {
+		t.Errorf("plan %+v", p.Plan)
+	}
+	if len(p.Recent) != maxRecentTools {
+		t.Fatalf("recent %d", len(p.Recent))
+	}
+	last := p.Recent[len(p.Recent)-1]
+	if strings.Contains(last.Title, "ghp_supersecret") {
+		t.Errorf("progress kept a secret: %q", last.Title)
+	}
+	if prev := p.Recent[len(p.Recent)-2]; prev.Title != "step 6" || prev.Status != "in_progress" {
+		t.Errorf("an updated tool call did not move to the end: %+v", prev)
+	}
+	if (*Recorder)(nil).Progress().Plan != nil {
+		t.Error("a nil Recorder has progress")
 	}
 }

@@ -2,8 +2,8 @@
 type: how-to
 audience: [operator, owner]
 owner: ploeg
-last_verified: 2026-10-13
-verified_by: "Read cmd/ploeg-mcp and pkg/mcpauth; go test ./cmd/ploeg-mcp ./pkg/mcpauth; the MCP conformance suite 0.2.0-alpha.11 and the Inspector CLI --strict against the binary behind a token-injecting proxy. Not checked against a live identity provider or a running client."
+last_verified: 2026-10-17
+verified_by: "Read cmd/ploeg-mcp and pkg/mcpauth; go test ./cmd/ploeg-mcp ./pkg/mcpauth (2026-10-17, action tools); the MCP conformance suite 0.2.0-alpha.11 and the Inspector CLI --strict against the binary behind a token-injecting proxy. Not checked against a live identity provider or a running client."
 ---
 
 # Serve Ploeg's MCP tools over HTTPS with a browser sign-in
@@ -50,7 +50,8 @@ The Ploeg image ships the binary at `/usr/local/bin/ploeg-mcp`. Run it as its ow
 | `PLOEG_MCP_RESOURCE` | yes | The exact public URL clients connect to, such as `https://ploeg-mcp.example.com/mcp`. The MCP endpoint is served at its path, and the protected resource metadata names it as the resource |
 | `PLOEG_MCP_ISSUER` | yes | The provider's issuer, matched byte for byte, such as `https://id.example.com/application/o/ploeg-mcp/` |
 | `PLOEG_MCP_CLIENT_IDS` | yes | Comma-separated client ids whose tokens are accepted (`aud` and `azp`) |
-| `PLOEG_MCP_GROUPS` | yes | JSON array of `{"group", "tokenEnv"}`. The first entry whose group the person is in decides the consumer; `tokenEnv` names the variable holding that consumer's token |
+| `PLOEG_MCP_GROUPS` | yes | JSON array of `{"group", "tokenEnv", "execute"}`. The first entry whose group the person is in decides the consumer; `tokenEnv` names the variable holding that consumer's token. `execute: true` also offers that group the action tools; its consumer then needs `execute: true` in ploegd too (see [Act on work](ask-ploeg-from-an-ai-client.md#act-on-work-over-https)) |
+| `PLOEG_MCP_SUBJECT_NAMESPACE` | no | What person ids are derived under in place of the issuer: `oidc-` and the first 32 hex characters of the SHA-256 of `<namespace>\|<subject>`, with one trailing `/` removed. Set it to the issuer person ids were first recorded under when this provider application's issuer differs, or after the issuer changed, so a person keeps owning their executions ([steering](ask-ploeg-from-an-ai-client.md#steer-your-attended-executions)) |
 | `PLOEG_MCP_JWKS_URL` | no | The provider's key set; default is the `jwks_uri` of the issuer's discovery document |
 | `PLOEG_MCP_SCOPE` | no | The scope a token must carry; default `ploeg:read` |
 | `PLOEG_MCP_REQUEST_SCOPES` | no | Space-separated scopes clients are told to request, such as `openid ploeg:read offline_access`; the required scope is always added |
@@ -133,4 +134,6 @@ The first answers 401 with `resource_metadata` and `scope`; the second names the
 | 403 `insufficient_scope` | The token lacks `ploeg:read` | Attach the `ploeg:read` scope to the provider's client and sign in again |
 | 403 "none of your groups gives access to Ploeg" | The token's `groups` hold none of `PLOEG_MCP_GROUPS` | Add the person to a mapped group, or check that the `ploeg:read` mapping returns groups |
 | 503 "signing keys are unavailable" | `ploeg-mcp` cannot reach the provider's key set | Check egress to the provider and `PLOEG_MCP_JWKS_URL` |
+| An action tool answers "This client cannot ask you to confirm" | The client does not declare elicitation, or speaks a protocol older than 2026-07-28, which cannot carry a confirmation over stateless HTTP | Use a client that supports elicitation on the 2026-07-28 protocol, or act through the operator API or a consumer application |
+| An action tool answers "Ploeg refused (403 execution_forbidden)" | The group is marked `execute` in `PLOEG_MCP_GROUPS`, but its consumer is not `execute` in ploegd | Make the consumer execute-capable, or remove `execute` from the group |
 | Every tool answers "Ploeg refused PLOEG_MCP_TOKEN" | The group's consumer token is not configured in ploegd | Check the token in the group's `tokenEnv` against the chart's `operator.consumers` |

@@ -57,6 +57,17 @@ func TestFailureReason_IsInfra(t *testing.T) {
 	}
 }
 
+func TestFailureReason_OnlyACredentialLeakParksForHuman(t *testing.T) {
+	for _, f := range FailureReasons() {
+		if got, want := f.ParksForHuman(), f == FailureCredentialLeak; got != want {
+			t.Errorf("%q.ParksForHuman() = %v, want %v", f, got, want)
+		}
+	}
+	if FailureReason("").ParksForHuman() {
+		t.Error("an unclassified failure must stay retryable")
+	}
+}
+
 // The SQL in FailedRunsInRound partitions runs with InfraFailureReasons while
 // the engine partitions them with IsInfra. If the two ever disagree, attempts
 // are counted against the wrong budget and nothing in either test would say so.

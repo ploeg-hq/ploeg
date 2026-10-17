@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -336,5 +337,79 @@ func TestKnowledgeRead_ConceptsComeFromOneCommit(t *testing.T) {
 	items, commit, err := k.Concepts(context.Background(), "", "forgejo/acme/shop")
 	if err != nil || len(items) != 1 || commit != "commit-2" {
 		t.Errorf("items %+v commit %q err %v", items, commit, err)
+	}
+}
+
+func postRunNotes(t *testing.T, h http.Handler, token string, req any) *httptest.ResponseRecorder {
+	t.Helper()
+	b, _ := json.Marshal(req)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/v1/runs/"+token+"/notes", bytes.NewReader(b)))
+	return rec
+}
+
+// A note a Run sends while it works reaches later Runs of the same work
+// before the Run ends, and a resend writes nothing twice (ADR-0088, amended
+// 2026-10-17).
+func TestLiveNotes_ReachLaterRunsWhileTheRunStillWorks(t *testing.T) {
+	reset(t)
+	graph := omnigraphtest.NewNotes(t)
+	s := workItemNotesServer(t, graph)
+	h := s.Handler()
+
+	root := ingestFor(t, "9500", "bronze")
+	first := claimLegacy(t, h, "bronze")
+	req := harness.RunNotesRequest{Notes: []harness.RunNote{
+		{Key: "1", Learning: pitfall},
+		{Key: "stop", ByWorker: true, Learning: harness.Learning{Type: "Pitfall", Title: "An earlier Run stopped", Body: "It timed the mutation script."}},
+	}}
+	for range 2 {
+		if rec := postRunNotes(t, h, first.RunToken, req); rec.Code != http.StatusOK {
+			t.Fatalf("live notes: %d %s", rec.Code, rec.Body)
+		}
+	}
+	s.SweepNoteWrites(context.Background())
+	if keys := graph.Keys(); len(keys) != 2 {
+		t.Fatalf("graph holds %v", keys)
+	}
+	var byWorker int
+	for _, key := range graph.Keys() {
+		if strings.HasPrefix(fmt.Sprint(graph.Note(key)["written_by"]), "ploeg:") {
+			byWorker++
+		}
+	}
+	if byWorker != 1 {
+		t.Errorf("%d notes marked as the worker's, want the stop note only", byWorker)
+	}
+
+	child := ingestFor(t, "9501", "bronze")
+	setRoot(t, child, root)
+	second := claimLegacy(t, h, "bronze")
+	if _, resp := runKnowledgeGET(t, h, second.RunToken, ""); len(resp.Notes.Items) != 2 {
+		t.Errorf("the next Run read %d notes while the first still runs", len(resp.Notes.Items))
+	}
+}
+
+func TestLiveNotes_RefusedWhenOffMalformedOrNotRunning(t *testing.T) {
+	reset(t)
+	ingestFor(t, "9510", "bronze")
+	off := apiServer(t, nil)
+	run := claimLegacy(t, off, "bronze")
+	good := harness.RunNotesRequest{Notes: []harness.RunNote{{Key: "1", Learning: pitfall}}}
+	if rec := postRunNotes(t, off, run.RunToken, good); rec.Code != http.StatusNotFound {
+		t.Errorf("without a notes graph: %d", rec.Code)
+	}
+	h := workItemNotesServer(t, omnigraphtest.NewNotes(t)).Handler()
+	for name, req := range map[string]any{
+		"no notes":       harness.RunNotesRequest{},
+		"bad key":        harness.RunNotesRequest{Notes: []harness.RunNote{{Key: "../x", Learning: pitfall}}},
+		"empty learning": harness.RunNotesRequest{Notes: []harness.RunNote{{Key: "1", Learning: harness.Learning{Type: "Fact"}}}},
+	} {
+		if rec := postRunNotes(t, h, run.RunToken, req); rec.Code != http.StatusBadRequest {
+			t.Errorf("%s: %d", name, rec.Code)
+		}
+	}
+	if rec := postRunNotes(t, h, strings.Repeat("0", 48), good); rec.Code != http.StatusNotFound {
+		t.Errorf("unknown Run: %d", rec.Code)
 	}
 }

@@ -179,6 +179,10 @@ fails otherwise.
 | [0102](0102-an-operator-consumer-admits-work-items-that-ploeg-worker-executes.md) | An Operator Consumer admits Work Items that ploeg-worker executes | accepted | 2026-10-14 |
 | [0103](0103-an-operator-admission-may-choose-each-runs-model-from-the-models-its-roles-policy-lists.md) | An operator admission may choose each Run's model from the models its Role's policy lists | accepted | 2026-10-14 |
 | [0104](0104-a-message-to-an-attended-run-reaches-it-at-the-next-prompt-turn-and-context-items-still-wait.md) | A message to an attended Run reaches it at the next prompt turn, and context items still wait for the next Run | proposed | 2026-10-13 |
+| [0105](0105-a-credential-leak-parks-the-work-item-and-closes-its-pull-request.md) | A credential leak parks the Work Item and closes its pull request | accepted | 2026-10-17 |
+| [0106](0106-a-run-declares-an-isolation-floor-and-a-cell-runs-it-at-the-strictest-class-it-can-honour.md) | A Run declares an isolation floor, and a cell runs it at the strictest class it can honour | proposed | 2026-10-17 |
+| [0107](0107-execution-runs-in-cells-that-pull-from-one-hub.md) | Execution runs in cells that pull from one hub | proposed | 2026-10-17 |
+| [0108](0108-every-operator-action-names-its-person-and-channel-and-an-mcp-action-needs-the-persons-confirmation.md) | Every operator action names its person and channel, and an MCP action needs the person's confirmation | accepted | 2026-10-17 |
 
 ## Review calendar
 
@@ -187,6 +191,7 @@ triggers.
 
 | Due | ADRs |
 | --- | --- |
+| 2027-04-30 | [0108](0108-every-operator-action-names-its-person-and-channel-and-an-mcp-action-needs-the-persons-confirmation.md) — or sooner, when MCP standardizes proof of a person's confirmation, a deployment needs per-person authorization finer than groups, or a consumer needs Ploeg to verify the person itself |
 | 2026-10-22 | [0030](0030-target-repository-instructions-rank-below-the-delivery-contract.md) — after the first `claude-code` and reviewing Runs against a repository with its own AGENTS.md |
 | 2026-10-31 | [0006](0006-ahp-is-the-wrong-layer.md), [0007](0007-a2a-adopt-nothing-watchlist-a-facade.md), [0008](0008-litellm-is-the-credential-and-metering-seam.md), [0009](0009-paperclip-mine-for-design-never-integrate.md), [0024](0024-operator-work-uses-one-execution-authority.md), [0025](0025-management-authority-stays-in-the-control-plane.md), [0041](0041-the-openai-agents-api-stays-outside-the-run-until-it-takes-an-authorized-budget.md) — the quarterly market re-scan (`design.md` §10) |
 | 2026-11-30 | [0031](0031-runs-create-work-items-held-for-approval-within-limits.md) — or sooner, when the owner answers whether created Work Items are written back to the tracker and whether a person approves them |
@@ -218,6 +223,7 @@ triggers.
 | 2027-01-31 | [0102](0102-an-operator-consumer-admits-work-items-that-ploeg-worker-executes.md) — or sooner, when a consumer needs a plan override per Admission, polling the operator event feed measurably loads ploegd, ADR-0100 or ADR-0101 is rejected, or Operator Executions are still admitted |
 | 2027-01-31 | [0103](0103-an-operator-admission-may-choose-each-runs-model-from-the-models-its-roles-policy-lists.md) — or sooner, when a Role's policy lists more than four models, a consumer needs a model no Role of its Team lists, LiteLLM prices advisor iterations per model, or a chosen model regularly exhausts its Role's cap |
 | 2027-01-31 | [0104](0104-a-message-to-an-attended-run-reaches-it-at-the-next-prompt-turn-and-context-items-still-wait.md) — or sooner, when people weekly ask an attended Run to read a file they just attached, a non-ACP Harness gains mid-Run input, or ADR-0100 is rejected |
+| 2027-01-31 | [0105](0105-a-credential-leak-parks-the-work-item-and-closes-its-pull-request.md) — or sooner, when ADR-0060's outbox is built, a leak-guard false positive parks a Work Item twice in a month, a second failure reason is proposed to park, or a forge refuses a leak close ploegd could fix |
 | 2027-01-31 | [0047](0047-ploeg-learns-where-a-merged-change-is-deployed-from-a-generic-deploy-endpoint.md) — or sooner, when a GitOps controller should report deploys directly, deploys keep filling the 50-pull-request batch, or a third forge provider is added |
 | 2027-01-31 | [0048](0048-a-pool-held-by-unsettled-runs-waits-for-settlement-before-it-parks.md) — or sooner, when a fix round closes on unsettled holds or a Shift parks as held more than once a month |
 | 2027-01-31 | [0049](0049-a-run-card-reads-the-gateway-for-usage-so-far-while-a-run-is-running.md) — or sooner, when a card read during a Run passes 1 s at p95, LiteLLM offers a per-key token total, or the worker reports usage during a Run |

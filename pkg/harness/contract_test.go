@@ -349,3 +349,19 @@ func TestRunAPI_SchemaCompiles(t *testing.T) {
 	sch := compileSchema(t, "run-api.v1.schema.json")
 	_ = sch // compilation exercises the cross-file $refs
 }
+
+func TestRunNotes_MatchTheRunAPISchema(t *testing.T) {
+	learning := Learning{Type: "Pitfall", Title: "t", Body: "b"}
+	for def, body := range map[string]any{
+		"runNotesRequest":  RunNotesRequest{Notes: []RunNote{{Key: "3", Learning: learning}, {Key: "stop", ByWorker: true, Learning: learning}}},
+		"runNotesResponse": RunNotesResponse{Queued: 2},
+	} {
+		if err := validate(t, compileSchema(t, "run-api.v1.schema.json#/$defs/"+def), body); err != nil {
+			t.Errorf("%s violates the contract: %v", def, err)
+		}
+	}
+	if err := validate(t, compileSchema(t, "run-api.v1.schema.json#/$defs/runNotesRequest"),
+		map[string]any{"notes": []any{map[string]any{"key": "../x", "learning": map[string]any{"type": "F", "title": "t", "body": "b"}}}}); err == nil {
+		t.Error("a note key outside [a-z0-9-] validated")
+	}
+}

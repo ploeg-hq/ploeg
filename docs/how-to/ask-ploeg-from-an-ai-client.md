@@ -2,15 +2,15 @@
 type: how-to
 audience: [operator, owner]
 owner: ploeg
-last_verified: 2026-10-10
-verified_by: "Read cmd/ploeg-mcp, pkg/operatorclient, pkg/httpapi/operator.go and ops/helm/ploeg/templates/deployment.yaml; go test ./cmd/ploeg-mcp ./pkg/operatorclient; go install of v0.2.0-rc.14 on darwin/arm64 and the release assets of v0.2.0-rc.14 checked. Not checked against a live deployment or a running client."
+last_verified: 2026-10-17
+verified_by: "Read cmd/ploeg-mcp, pkg/operatorclient, pkg/httpapi/operator.go and ops/helm/ploeg/templates/deployment.yaml; go test ./cmd/ploeg-mcp ./pkg/operatorclient ./pkg/httpapi (action tools, 2026-10-17); go install of v0.2.0-rc.14 on darwin/arm64 and the release assets of v0.2.0-rc.14 checked. Not checked against a live deployment or a running client."
 ---
 
 # Ask Ploeg from an AI client over MCP
 
 **Goal:** a person asks their own AI client (Claude Code, Codex, Cursor, any MCP client) "what is waiting for me, why, and what did it cost", and the answer comes from Ploeg's operator API ([ADR-0081](../adrs/0081-ploeg-serves-its-operator-reads-as-mcp-tools-through-ploeg-mcp.md)).
 
-`ploeg-mcp` is a local process that the client starts over stdio. It reads the operator API as one Operator Consumer and changes nothing. To give people one HTTPS URL with a browser sign-in instead, see [Serve Ploeg's MCP tools over HTTPS](serve-ploeg-mcp-over-https.md).
+`ploeg-mcp` is a local process that the client starts over stdio. It reads the operator API as one Operator Consumer and changes nothing. Over HTTPS it can also act for a signed-in person who confirms each change; see [Act on work over HTTPS](#act-on-work-over-https). To give people one HTTPS URL with a browser sign-in instead, see [Serve Ploeg's MCP tools over HTTPS](serve-ploeg-mcp-over-https.md).
 
 ## 1. Give it a read-only Operator Consumer
 
@@ -94,7 +94,33 @@ Any other client takes the same command, arguments and two environment variables
 | `ploeg_recent_runs` | Runs newest first with outcome, verdict, failure reason and cost |
 | `ploeg_changes_since` | Audit events since a cursor the previous call returned |
 
-Every tool is read-only and returns its full answer as structured content and as text. Amounts are USD rounded to cents. Text that came from a tracker, a forge or an agent sits under an `untrusted` key, and the server tells the client to treat it as data.
+Every tool above is read-only and returns its full answer as structured content and as text. Amounts are USD rounded to cents. Text that came from a tracker, a forge or an agent sits under an `untrusted` key, and the server tells the client to treat it as data.
+
+## Act on work over HTTPS
+
+Over stdio `ploeg-mcp` only reads: it has no verified person to name. Over HTTPS ([Serve Ploeg's MCP tools over HTTPS](serve-ploeg-mcp-over-https.md)), a person whose group is marked `"execute": true` in `PLOEG_MCP_GROUPS`, and whose group's Operator Consumer has `execute: true` in ploegd, also gets the action tools of ADR 0108 ([ploeg-hq/ploeg#146](https://github.com/ploeg-hq/ploeg/pull/146)). Other people never see them in the tool list.
+
+| Tool | Does | Operator route |
+| --- | --- | --- |
+| `ploeg_submit_work` | Submits a new Work Item to a Team on a registered target, with an optional budget | `POST /work-items` |
+| `ploeg_approve_work` | Approves a proposed Work Item | `POST /work-items/{id}/approve` |
+| `ploeg_reject_work` | Rejects a proposed Work Item with a reason | `POST /work-items/{id}/reject` |
+| `ploeg_retry_work` | Restarts a `needs_human`, `stale` or `awaiting_review` Work Item, from Round 1 or a `fromRound`, with an optional note | `POST /work-items/{id}/requeue` |
+| `ploeg_stop_work` | Stops a Work Item: withdraws it, cancels pending Runs, stops running ones | `POST /work-items/{id}/cancel` |
+| `ploeg_add_note` | Leaves an instruction for the next Run of a live Work Item | `POST /work-items/{id}/notes` |
+| `ploeg_steer_execution` | Sends a message to, pauses, resumes or cancels an attended execution the person owns | `POST /executions/{id}/commands` |
+
+**Every action asks first.** Before it calls ploegd, the tool asks the person through an MCP elicitation that states the exact effect: which Work Item (id, title, Team and state), what will happen and what it may cost. Only an accept with the box ticked goes ahead. A decline, a cancel or an unticked box answers "Not done: you did not confirm. Nothing changed." If the Work Item changes while the person decides, nothing happens and the tool asks to be called again. A client that cannot show an elicitation is refused before anything is called. Over stateless HTTP that means the client must speak MCP 2026-07-28, which carries the confirmation inside the tool call; a 2025-11-25 client can still read but cannot act.
+
+**Every action names the person.** ploegd records each change with the person (`X-Ploeg-Actor`: Ploeg's person id, `oidc-` and the first 32 hex characters of the SHA-256 of `<issuer>|<subject>`, from the verified token's issuer with one trailing `/` removed, or `PLOEG_MCP_SUBJECT_NAMESPACE` when set, and its subject), the channel (`X-Ploeg-Via`: `mcp:` and the client's name and version, or `mcp:ploeg-mcp` when the client sends none) and the confirmation (`X-Ploeg-Confirmation`: the elicitation id and the SHA-256 of the text the person agreed to). They appear as `detail.attribution` on the change's events; `GET /api/v1/operator/events?actor=<person>` lists what one person did. The username is not sent: `X-Ploeg-Acting-User` names a different person acting on the actor's behalf, so `ploeg-mcp` writes the username next to the person id in its own request log instead.
+
+**A repeated call acts once.** Each call gets a fresh `commandId`, returned in the answer. Pass it back as `commandId` to repeat a call that timed out: submit, retry, stop and notes answer `replayed: true` and change nothing again. Approve and reject need no command id: a second decision on the same item is refused because it is no longer proposed. An execution command repeated after it acted is refused as stale.
+
+### Steer your attended executions
+
+A person steers any attended execution they own, whichever Operator Consumer admitted it, as long as the Team is in their group's consumer's Teams. `ploeg_get_work` lists a Work Item's executions with their id, state, owner and `yours: true` for the ones the signed-in person owns, and its summary names yours. Pass that id to `ploeg_steer_execution` with `message` (and the text), `pause`, `resume` or `cancel`. ploegd checks the owner: an execution of another person, or of a Team outside the consumer's scope, answers as if it did not exist and nothing changes. The executor's own commands (start, heartbeat, report, close, credentials, blocking) stay with the consumer that admitted the execution.
+
+This depends on one person id everywhere: every consumer that admits executions names its people in `X-Ploeg-Actor` with the same `oidc-` form, from the same provider subject. When `ploeg-mcp` signs people in through a provider application whose issuer differs from the issuer person ids were recorded under (a provider that puts the application's name in its issuer does this), set `PLOEG_MCP_SUBJECT_NAMESPACE` to that issuer so the ids match.
 
 ## Verify
 

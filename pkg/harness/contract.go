@@ -87,6 +87,29 @@ type ContextItem struct {
 	Note    string    `json:"note,omitempty"`
 }
 
+// RunNotesRequest is the body of POST /api/v1/runs/{token}/notes
+// (docs/contracts/run-api.v1.schema.json#/$defs/runNotesRequest): notes a
+// running Run sends while it works, so a Run stopped later keeps what it
+// found (ADR-0088, amended 2026-10-17).
+type RunNotesRequest struct {
+	Notes []RunNote `json:"notes"`
+}
+
+// RunNote is one note a running Run sends. Key is unique within the Run;
+// resending a key changes nothing.
+type RunNote struct {
+	Key string `json:"key"`
+	// ByWorker marks the worker's own note on why the Run stopped, as
+	// opposed to a finding the agent wrote.
+	ByWorker bool     `json:"byWorker,omitempty"`
+	Learning Learning `json:"learning"`
+}
+
+// RunNotesResponse is the HTTP 200 body of POST /api/v1/runs/{token}/notes.
+type RunNotesResponse struct {
+	Queued int `json:"queued"`
+}
+
 // KnowledgeResponse is the body of GET /api/v1/runs/{token}/knowledge
 // (docs/contracts/run-api.v1.schema.json#/$defs/knowledgeResponse): what the
 // Tenant's graphs hold for the Run's own scopes. It never carries a graph

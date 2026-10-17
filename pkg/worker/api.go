@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -364,3 +365,28 @@ func (a *APIClient) Knowledge(ctx context.Context, runToken string) (harness.Kno
 type knowledgeHTTPError struct{ status int }
 
 func (e *knowledgeHTTPError) Error() string { return fmt.Sprintf("knowledge: HTTP %d", e.status) }
+
+// errNotesOff is a ploegd that writes no Work Item Notes, or one too old to
+// take them while a Run works.
+var errNotesOff = errors.New("ploegd takes no notes during a Run")
+
+// Notes sends notes the Run made while it works (ADR-0088, amended
+// 2026-10-17). A key already sent changes nothing, so a retry is safe.
+func (a *APIClient) Notes(ctx context.Context, runToken string, notes []harness.RunNote) error {
+	body, err := json.Marshal(harness.RunNotesRequest{Notes: notes})
+	if err != nil {
+		return err
+	}
+	resp, err := a.request(ctx, http.MethodPost, "/api/v1/runs/"+runToken+"/notes", body, a.runCredential(runToken))
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	switch {
+	case resp.StatusCode == http.StatusNotFound:
+		return errNotesOff
+	case resp.StatusCode >= 300:
+		return fmt.Errorf("notes: HTTP %d", resp.StatusCode)
+	}
+	return nil
+}

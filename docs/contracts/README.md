@@ -442,7 +442,33 @@ if its Role's policy lists it, else the Role's default for each. The
 response's `roles` lists what each Role's Runs store.
 
 Execution requests additionally require `X-Ploeg-Actor`, the stable session
-owner identity asserted by the authenticated consumer. Commands may carry
+owner identity asserted by the authenticated consumer.
+
+Ploeg's person id for an OpenID Connect identity is `oidc-` followed by the
+first 32 lowercase hex characters of the SHA-256 of `<issuer>|<subject>`, the
+issuer with one trailing `/` removed (ADR 0108). A deployment may configure a
+subject namespace to use in place of the issuer, so ids survive an issuer
+change. A consumer that names a person in `X-Ploeg-Actor` uses this form;
+`operatorclient.PersonID` computes it, and `ploeg-mcp` derives it from the
+verified token.
+
+The execution's owner may read and steer it through any execute-capable
+consumer whose Teams include the execution's Team, not only the consumer that
+admitted it. From such a consumer, `GET /executions/{id}`, `GET
+/executions/{id}/events` and the person commands `message`, `pause`,
+`resume`, `cancel`, `take-control` and `handback` are accepted when
+`X-Ploeg-Actor` names the owner, with the same revision and generation
+conflicts. The executor commands `start`, `heartbeat`, `report` and `close`
+answer 403 `executor_command_forbidden` there, and `credential`, `block`,
+`spend`, `context` and delivery stay with the admitting consumer (404
+elsewhere). Another actor, or a Team outside the consumer's scope, answers 404
+exactly as an unknown id does. The `operator.execution.commanded` audit event
+names the consumer that sent the command in `detail.attribution.consumer`.
+
+`GET /api/v1/operator/work-items/{id}` lists the item's operator executions
+under `executions`, newest first, each with `id`, `team`, `owner`, `state`,
+`supervision` and `updatedAt` and never the admitting consumer, so an owner
+can find the execution to steer; `truncated.executions` is true past 200. Commands may carry
 `X-Ploeg-Acting-User` when an authorized administrator acts for that owner.
 Ploeg validates a single bounded identity, binds it to command replay and
 records it as the event actor; the execution owner remains unchanged. The
@@ -450,6 +476,27 @@ header defaults to the owner, including delegated internal executor reports.
 The server overrides any `authenticatedBy` supplied in a command body.
 Consumers must derive both identities from authenticated session authorization,
 never forward an untrusted browser header.
+
+Every operator change records who made it and how, in one shape on every route
+(ADR 0108). A request other than `GET` may carry each of these headers at most
+once: `X-Ploeg-Actor` (the person), `X-Ploeg-Acting-User` (a person acting on
+the actor's behalf), `X-Ploeg-Via` (the channel: 1 to 128 printable ASCII
+characters, such as `mcp:Claude Code 2.1.296` or `browser`) and
+`X-Ploeg-Confirmation` (`<confirmation id>:<lowercase SHA-256 hex of the text
+the person agreed to>`). A repeated or malformed header answers 400
+`actor_required`, `invalid_acting_user`, `invalid_via` or
+`invalid_confirmation` before anything changes, and the last three need
+`X-Ploeg-Actor`. Each audit event the request writes under the consumer's name
+carries `detail.attribution` with `consumer`, `actor`, `actingUser`, `via` and
+`confirmation` (empty ones omitted) next to the event's existing detail keys.
+A person's execution command (`message`, `pause`, `resume`, `cancel`,
+`handback`, `take-control`) is audited as `operator.execution.commanded` on the
+execution's Work Item; the executor's `start`, `heartbeat`, `report` and
+`close` are not. `GET /api/v1/operator/events?actor=<identity>` keeps the
+events whose attribution names that identity as `actor` or `actingUser`;
+events recorded before attribution existed carry none and never match. Ploeg
+trusts the consumer to name the person truthfully: guard a consumer's token
+like an administrator's credential.
 
 Managed workers use the [worker control contract](worker-control.md); deployment and conservative accounting recovery are documented in [managed worker operations](../ops/managed-workers.md).
 
