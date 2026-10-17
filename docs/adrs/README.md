@@ -185,6 +185,7 @@ fails otherwise.
 | [0108](0108-every-operator-action-names-its-person-and-channel-and-an-mcp-action-needs-the-persons-confirmation.md) | Every operator action names its person and channel, and an MCP action needs the person's confirmation | accepted | 2026-10-17 |
 | [0109](0109-a-pull-request-someone-else-opened-is-read-by-a-team-on-the-pull-request.md) | A pull request someone else opened is read by a Team on the pull request, and what the reader delivers is the route's instruction | proposed | 2026-10-17 |
 | [0110](0110-a-team-is-ploegs-own-manifest-of-charter-crew-permissions-intake-and-skills.md) | A Team is Ploeg's own manifest of charter, crew, permissions, intake and skills, with borrowed shapes and no borrowed schema | proposed | 2026-10-17 |
+| [0111](0111-a-spent-litellm-budget-wider-than-the-runs-key-parks-the-work-item.md) | A spent LiteLLM budget wider than the Run's key parks the Work Item | accepted | 2026-10-17 |
 
 ## Review calendar
 
@@ -226,6 +227,7 @@ triggers.
 | 2027-01-31 | [0103](0103-an-operator-admission-may-choose-each-runs-model-from-the-models-its-roles-policy-lists.md) — or sooner, when a Role's policy lists more than four models, a consumer needs a model no Role of its Team lists, LiteLLM prices advisor iterations per model, or a chosen model regularly exhausts its Role's cap |
 | 2027-01-31 | [0104](0104-a-message-to-an-attended-run-reaches-it-at-the-next-prompt-turn-and-context-items-still-wait.md) — or sooner, when people weekly ask an attended Run to read a file they just attached, a non-ACP Harness gains mid-Run input, or ADR-0100 is rejected |
 | 2027-01-31 | [0105](0105-a-credential-leak-parks-the-work-item-and-closes-its-pull-request.md) — or sooner, when ADR-0060's outbox is built, a leak-guard false positive parks a Work Item twice in a month, a second failure reason is proposed to park, or a forge refuses a leak close ploegd could fix |
+| 2027-01-31 | [0111](0111-a-spent-litellm-budget-wider-than-the-runs-key-parks-the-work-item.md) — or sooner, when LiteLLM reports when a spent budget resets, a Work Item parks `shared_budget_spent` wrongly twice in a month, LiteLLM changes the wording that names a budget's owner, or a third failure reason is proposed to park |
 | 2027-01-31 | [0047](0047-ploeg-learns-where-a-merged-change-is-deployed-from-a-generic-deploy-endpoint.md) — or sooner, when a GitOps controller should report deploys directly, deploys keep filling the 50-pull-request batch, or a third forge provider is added |
 | 2027-01-31 | [0048](0048-a-pool-held-by-unsettled-runs-waits-for-settlement-before-it-parks.md) — or sooner, when a fix round closes on unsettled holds or a Shift parks as held more than once a month |
 | 2027-01-31 | [0049](0049-a-run-card-reads-the-gateway-for-usage-so-far-while-a-run-is-running.md) — or sooner, when a card read during a Run passes 1 s at p95, LiteLLM offers a per-key token total, or the worker reports usage during a Run |

@@ -884,6 +884,13 @@ func resolveOutcome(adapterName string, report harness.OutcomeReport, runErr, ct
 		if report.Outcome == work.OutcomeFailed && expectsLLM &&
 			report.FailureReason == "" && noLLMTraffic(report.Usage) {
 			report.FailureReason = string(work.FailureInfraLLM)
+			if refused, ok := sharedBudgetRefusal(adapterName, logTail); ok {
+				report.FailureReason = refused.FailureReason
+				report.Summary = refused.Summary
+				if report.StuckReason == "" {
+					report.StuckReason = refused.StuckReason
+				}
+			}
 		}
 		return report
 	case runErr == nil && prURL != "" && !writes:
@@ -911,6 +918,9 @@ func resolveOutcome(adapterName string, report harness.OutcomeReport, runErr, ct
 	case runErr == nil:
 		// nil Usage = no telemetry = UNKNOWN → keep no_change_needed (VIK-586).
 		if expectsLLM && noLLMTraffic(report.Usage) {
+			if refused, ok := sharedBudgetRefusal(adapterName, logTail); ok {
+				return resolved(refused)
+			}
 			return resolved(harness.OutcomeReport{
 				Outcome:       work.OutcomeFailed,
 				Summary:       adapterName + " run finished with zero LLM spend and no PR — likely LLM infra failure",
@@ -945,6 +955,12 @@ func resolveOutcome(adapterName string, report harness.OutcomeReport, runErr, ct
 		var links []string
 		if prURL != "" {
 			links = []string{prURL}
+		}
+		if expectsLLM && noLLMTraffic(report.Usage) {
+			if refused, ok := sharedBudgetRefusal(adapterName, logTail); ok {
+				refused.Links = links
+				return resolved(refused)
+			}
 		}
 		r := resolved(harness.OutcomeReport{
 			Outcome:     work.OutcomeStuck,

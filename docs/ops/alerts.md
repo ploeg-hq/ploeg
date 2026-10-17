@@ -160,7 +160,7 @@ ORDER BY r.finished_at;
 
 One Role of one team failed three or more Runs within the hour, whatever the reason. Each Shift retries a failed Role up to its attempt limit, so repeated failure burns attempts and spend across every Work Item the Role touches.
 
-**Check first:** the reasons. `sum by (reason) (increase(ploeg_runs_finished_total{team="<team>",role="<role>",outcome="failed"}[1h]))` splits them. `infra_node`, `infra_llm` and `lease_lost` point at the cluster or the gateway; `agent_error`, `budget`, `idle` and `timeout` point at the harness, its model or its limits. Read the newest Run's summary:
+**Check first:** the reasons. `sum by (reason) (increase(ploeg_runs_finished_total{team="<team>",role="<role>",outcome="failed"}[1h]))` splits them. `infra_node`, `infra_llm` and `lease_lost` point at the cluster or the gateway; `agent_error`, `budget`, `idle` and `timeout` point at the harness, its model or its limits. `shared_budget_spent` means a LiteLLM team, user or wider budget is spent: the Work Item already parked at `needs_human` with whose budget in its reason, so raise or reset that budget and restart the item ([ADR-0111](../adrs/0111-a-spent-litellm-budget-wider-than-the-runs-key-parks-the-work-item.md)). Read the newest Run's summary:
 
 ```sql
 SELECT r.id, r.work_item_id, r.failure_reason, r.finished_at, r.summary

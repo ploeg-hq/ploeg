@@ -89,6 +89,7 @@ The first four fail against the code before this record.
 
 ## More Information
 
+* 2026-10-17 — refined by [ADR-0111](0111-a-spent-litellm-budget-wider-than-the-runs-key-parks-the-work-item.md): `ParksForHuman` is also true for `shared_budget_spent`, which parks without closing pull requests; this record's second-reason trigger was reviewed there. The work-package test is now `TestFailureReason_OnlyACredentialLeakAndASharedBudgetParkForHuman`.
 * Owner decision 2026-10-17, VIK-1882.
 * [ADR-0019](0019-a-failed-writing-run-reopens-its-round.md) and [ADR-0021](0021-infra-failures-and-agent-failures-get-separate-retry-budgets.md): the retry budgets this record exempts one reason from.
 * [ADR-0013](0013-push-rights-are-minted-per-run.md): per-Run push rights, which a retry would mint again.

@@ -75,9 +75,9 @@ func Build(s *sessionState, r result) harness.OutcomeReport {
 		return rep
 	case phaseNewSess:
 		rep.Outcome = work.OutcomeFailed
-		reason, kind := classifyStartFailure(r)
+		reason, gw := classifyStartFailure(r)
 		rep.Summary = "acp session could not be created"
-		if why := kind.Describe(); why != "" {
+		if why := gatewayCause(gw); why != "" {
 			rep.Summary += ": " + why
 		}
 		rep.FailureReason = reason
@@ -107,7 +107,17 @@ func Build(s *sessionState, r result) harness.OutcomeReport {
 	}
 
 	// The prompt died mid-flight: transport EOF, a crash, a non-zero exit.
+	// When the gateway refused the turn because a shared LiteLLM budget is
+	// spent, every retry would be refused too, so the Run says so instead of
+	// spending an agent attempt.
 	if r.phase == phasePrompt {
+		if gw := gatewayFailure(r); gw.SharedBudgetSpent() {
+			rep.Outcome = work.OutcomeFailed
+			rep.Summary = "acp agent stopped mid-prompt: " + gw.BudgetSpent()
+			rep.FailureReason = string(work.FailureSharedBudgetSpent)
+			rep.StuckReason = detail(r, s)
+			return rep
+		}
 		rep.Outcome = work.OutcomeFailed
 		rep.Summary = "acp agent exited before answering the prompt"
 		rep.FailureReason = string(work.FailureAgentError)
@@ -207,21 +217,24 @@ func buildUsage(s *sessionState) *harness.Usage {
 }
 
 // classifyStartFailure separates "the pod is broken" from "the LLM plane is
-// broken". Both are retryable, but they page different people and the
-// distinction is visible in agent_runs.failure_reason. LiteLLM's own error
-// wording decides first, so a spent budget is infra_llm whichever HTTP status
-// the gateway gave it; the status-and-keyword needles cover agents that
-// reword the gateway's answer.
-func classifyStartFailure(r result) (string, litellm.ErrorKind) {
-	msg := r.stderrTail
-	if r.err != nil {
-		msg += " " + r.err.Error()
+// broken" from "a person must fund the LLM plane". The first two are
+// retryable, but they page different people and the distinction is visible
+// in agent_runs.failure_reason. A spent LiteLLM budget wider than the Run's
+// own key is not retryable: the gateway refuses every key under it until a
+// person raises or resets it. LiteLLM's own error wording decides first,
+// whichever HTTP status the gateway gave it; the status-and-keyword needles
+// cover agents that reword the gateway's answer.
+func classifyStartFailure(r result) (string, litellm.GatewayError) {
+	msg := failureText(r)
+	gw := litellm.ClassifyError(0, []byte(msg))
+	if gw.SharedBudgetSpent() {
+		return string(work.FailureSharedBudgetSpent), gw
 	}
-	if kind := litellm.ClassifyError(0, []byte(msg)).Kind; kind != litellm.ErrorUnknown {
-		return string(work.FailureInfraLLM), kind
+	if gw.Kind != litellm.ErrorUnknown {
+		return string(work.FailureInfraLLM), gw
 	}
 	if gatewayStatus.MatchString(msg) {
-		return string(work.FailureInfraLLM), litellm.ErrorUnknown
+		return string(work.FailureInfraLLM), gw
 	}
 	lower := strings.ToLower(msg)
 	for _, needle := range []string{
@@ -229,10 +242,34 @@ func classifyStartFailure(r result) (string, litellm.ErrorKind) {
 		"quota", "rate limit", "upstream", "api key",
 	} {
 		if strings.Contains(lower, needle) {
-			return string(work.FailureInfraLLM), litellm.ErrorUnknown
+			return string(work.FailureInfraLLM), gw
 		}
 	}
-	return string(work.FailureInfraNode), litellm.ErrorUnknown
+	return string(work.FailureInfraNode), gw
+}
+
+// gatewayFailure classifies what the agent's stderr and the transport error
+// say about the model gateway. It never reads the agent's own messages or
+// tool output, which can quote gateway errors from the work itself.
+func gatewayFailure(r result) litellm.GatewayError {
+	return litellm.ClassifyError(0, []byte(failureText(r)))
+}
+
+func failureText(r result) string {
+	msg := r.stderrTail
+	if r.err != nil {
+		msg += " " + r.err.Error()
+	}
+	return msg
+}
+
+// gatewayCause says in a few words what the gateway's refusal means, naming
+// whose budget is spent when it is a budget.
+func gatewayCause(gw litellm.GatewayError) string {
+	if spent := gw.BudgetSpent(); spent != "" {
+		return spent
+	}
+	return gw.Kind.Describe()
 }
 
 var gatewayStatus = regexp.MustCompile(`\b(?:401|402|403|422|429)\b`)
