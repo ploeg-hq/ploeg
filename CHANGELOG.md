@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.2.0-rc.22
+
+### Changes
+
+- A Run that ends `failed` with `credential_leak` no longer reopens its Round, requeues or spends either retry budget: its Shift closes `credential_leak` at `needs_human`, and a Shift-less Run parks the same way. ploegd closes the Run branch's open pull request with its own forge credential and posts one fixed comment that never carries the leaked value; a failed close is audited and logged and the item parks regardless. Forgejo, GitHub and GitLab implement `provider.PullRequestCloser` (#144, ADR 0105).
+- The worker records its harness version per Run (probed once at startup) and the ACP agent it spoke to; the Teams read serves each Role's harness, model and observed harness (#137, ADR 0097).
+- `POST /api/v1/operator/work-items` lets an Operator Consumer with execute permission admit a manual-origin Work Item into its Team Queue; its Shift opens from the Team's plan and only a worker claims its Runs. Admission is idempotent by the consumer's `requestId`; a changed replay answers `409 request_conflict` (#140, ADR 0102, superseding ADR 0024).
+- `scripts/release.sh validate` fails every check explicitly, so bash before 4.1 no longer accepts a tag whose chart version does not match (#139).
+- Planning records for per-Run harness, model and attended interaction (#135, ADRs 0097-0104 proposed), the deny-all confirmation (#136) and the Hermes Agent sweep against ADR 0032 (#138).
+
+### Upgrade notes
+
+- `0054_run_harness_version.sql` and `0055_operator_work_admissions.sql` run when `ploegd` starts.
+- The chart renders `PLOEG_TEAM_HARNESSES` for ploegd from the same helper as each worker's `PLOEG_HARNESS`.
+- A GitHub App deployment needs `pull_requests: write` for the leak close; Forgejo and GitLab use the write token ploegd already comments with.
+- `operator-api.v1`, `outcomereport.v1` and `run-api.v1` gain optional fields; older consumers keep working.
+
 ## 0.2.0-rc.21
 
 ### Breaking changes
