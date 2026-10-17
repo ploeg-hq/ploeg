@@ -75,6 +75,11 @@ type Target struct {
 	// Forge names which forge instance holds the repo. Empty = the
 	// deployment's single forge.
 	Forge string `yaml:"forge"`
+	// ReadPullRequests routes the open pull requests of listed authors,
+	// such as a dependency bot's, to a Team that reads them and reports on
+	// the pull request (ADR-0109). Each route names its authors, its Team and
+	// what the reader delivers. Omitted = nothing is read.
+	ReadPullRequests []work.PullRequestReads `yaml:"readPullRequests"`
 }
 
 // Project routes one tracker container to one repository, or to the
@@ -303,8 +308,51 @@ func (f *File) validateTargets() error {
 		if !ownerName(f.Targets[key].Repo) {
 			return fmt.Errorf("targets.%s: repo %q must be owner/name", key, f.Targets[key].Repo)
 		}
+		for i, route := range f.Targets[key].ReadPullRequests {
+			if err := f.validatePullRequestReads(route); err != nil {
+				return fmt.Errorf("targets.%s.readPullRequests[%d]: %w", key, i, err)
+			}
+		}
 	}
 	return nil
+}
+
+func (f *File) validatePullRequestReads(d work.PullRequestReads) error {
+	if !d.Enabled() {
+		return fmt.Errorf("needs at least one author whose pull requests are read")
+	}
+	if strings.TrimSpace(d.Team) == "" {
+		return fmt.Errorf("needs the team that reads them")
+	}
+	if len(f.Teams) > 0 {
+		if _, ok := f.Teams[d.Team]; !ok {
+			return fmt.Errorf("team %q is not in teams", d.Team)
+		}
+	}
+	if d.Priority < 0 {
+		return fmt.Errorf("priority must not be negative")
+	}
+	if d.MaxOpen < 0 || d.MaxReviewsPerPullRequest < 0 {
+		return fmt.Errorf("maxOpen and maxReviewsPerPullRequest must be 0 (the default) or more")
+	}
+	return nil
+}
+
+// PullRequestReads returns every route of every registered target whose
+// pull requests a Team reads, in target key order and then route order
+// (ADR-0109). A target without routes is absent.
+func (f *File) PullRequestReads() []work.PullRequestReadRoute {
+	var out []work.PullRequestReadRoute
+	for _, key := range sortedTargetKeys(f.Targets) {
+		t := f.Targets[key]
+		for _, route := range t.ReadPullRequests {
+			if !route.Enabled() {
+				continue
+			}
+			out = append(out, work.PullRequestReadRoute{Key: key, Target: targetOf(t), Policy: route})
+		}
+	}
+	return out
 }
 
 func (f *File) validateRoute(p Project) error {

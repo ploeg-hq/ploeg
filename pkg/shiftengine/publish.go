@@ -84,7 +84,12 @@ func (e *Engine) pullRequestThread(ctx context.Context, si store.ShiftInfo, repo
 		return nil, "", 0, "work item has no resolved target"
 	}
 	repo = item.Target.Owner + "/" + item.Target.Repo
-	if _, pr = pullRequest(reports, repo); pr == 0 {
+	if _, pr = pullRequest(reports, repo); pr == 0 && item.Origin == work.OriginPullRequest {
+		// The Shift reads a pull request someone else opened (ADR-0109):
+		// the thread is that pull request, recorded by Ploeg, not by a Run.
+		pr = item.SourcePR
+	}
+	if pr == 0 {
 		return nil, "", 0, "no pull request on this shift yet"
 	}
 	fp, skip = e.forgeOf(*item.Target)
