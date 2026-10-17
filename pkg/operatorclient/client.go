@@ -1,10 +1,12 @@
-// Package operatorclient is a read-only Go client for Ploeg's operator API
+// Package operatorclient is a Go client for Ploeg's operator API
 // (docs/contracts/operator-api.v1.schema.json). It sends one consumer's bearer
 // credential, refuses redirects, bounds every call by time and size, and never
-// puts the credential into an error.
+// puts the credential into an error. Its write methods name the person and
+// channel of each change (ADR-0108) and need an execute-capable consumer.
 package operatorclient
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -205,10 +207,13 @@ func (c *Client) Run(ctx context.Context, id string) (store.OperatorRun, error) 
 type EventFilter struct {
 	Team       string
 	WorkItemID string
-	After      string
-	Before     string
-	Desc       bool
-	Limit      int
+	// Actor keeps events whose attribution names this person as actor or
+	// acting user.
+	Actor  string
+	After  string
+	Before string
+	Desc   bool
+	Limit  int
 }
 
 // EventPage is one page of Events. LastCursor is what to pass as After to
@@ -225,6 +230,7 @@ func (c *Client) Events(ctx context.Context, f EventFilter) (EventPage, error) {
 	q := url.Values{}
 	set(q, "team", f.Team)
 	set(q, "workItemId", f.WorkItemID)
+	set(q, "actor", f.Actor)
 	set(q, "after", f.After)
 	set(q, "before", f.Before)
 	if f.Desc {
@@ -238,15 +244,33 @@ func (c *Client) Events(ctx context.Context, f EventFilter) (EventPage, error) {
 }
 
 func (c *Client) get(ctx context.Context, path string, q url.Values, into any) error {
+	return c.do(ctx, http.MethodGet, path, q, nil, nil, into)
+}
+
+func (c *Client) do(ctx context.Context, method, path string, q url.Values, who *Attribution, payload any, into any) error {
 	u := *c.base
 	u.Path = strings.TrimRight(u.Path, "/") + "/api/v1/operator/" + path
 	u.RawQuery = q.Encode()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	var reader io.Reader
+	if payload != nil {
+		data, err := json.Marshal(payload)
+		if err != nil {
+			return errors.New("could not encode the operator request")
+		}
+		reader = bytes.NewReader(data)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, u.String(), reader)
 	if err != nil {
 		return errors.New("could not build the operator request")
 	}
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	req.Header.Set("Accept", "application/json")
+	if payload != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if who != nil {
+		who.apply(req.Header)
+	}
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return c.transportError(err)
