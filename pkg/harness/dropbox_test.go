@@ -38,3 +38,20 @@ func TestMergeDropBox_DeliveryClaimsNeverSurvive(t *testing.T) {
 		t.Errorf("a stuck drop box = %+v, want stuck with its reason and no links or failure reason", stuck)
 	}
 }
+
+func TestMergeDropBox_LearningsSurvive(t *testing.T) {
+	learned := []Learning{
+		{Type: "Pitfall", Title: "Registry pulls time out", Body: "Retry with the mirror."},
+		{Type: "Convention", Title: "Migrations are numbered", Body: "Take the next free number."},
+	}
+	got := MergeDropBox(OutcomeReport{Outcome: work.OutcomeNoChangeNeeded}, OutcomeReport{Learnings: learned})
+	if len(got.Learnings) != 2 || got.Learnings[0].Title != learned[0].Title || got.Learnings[1].Title != learned[1].Title {
+		t.Fatalf("the agent's learnings did not survive the drop box: %+v\n"+
+			"every adapter returns through MergeDropBox, so losing them here makes ADR-0066's review channel inert", got.Learnings)
+	}
+
+	kept := MergeDropBox(OutcomeReport{Learnings: learned[:1]}, OutcomeReport{Problem: "p"})
+	if len(kept.Learnings) != 1 {
+		t.Errorf("an empty drop box erased the adapter's own learnings: %+v", kept.Learnings)
+	}
+}
