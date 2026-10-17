@@ -143,3 +143,4 @@ carries the watchlisted scope and its prerequisites.
   a separate read-first server on the operator API, which creates `proposed`
   Work Items that a person approves. The A2A facade stays watchlisted; its
   triggers are unchanged.
+* 2026-10-17 — Re-confirmed, unchanged, by the [team-manifest sweep](../research/2026-10-17-team-manifest-standards.md): A2A 1.0.1's `a2a.proto` still has no team, budget or permission field, so the Agent Card stays the outward description of what a Team offers (one `AgentSkill` per Team, backlog #102) and never its manifest; the triggers above are unchanged.
