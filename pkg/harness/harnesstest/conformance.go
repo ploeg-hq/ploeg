@@ -52,6 +52,7 @@ func Run(t *testing.T, fx Fixture) {
 	t.Run("CancelKillsTheHarness", fx.cancelKillsTheHarness)
 	t.Run("ReadingRunFindingsSurviveTheAdapter", fx.readingRunFindingsSurviveTheAdapter)
 	t.Run("WritingRunProblemAndSolutionSurviveTheAdapter", fx.writingRunProblemAndSolutionSurviveTheAdapter)
+	t.Run("LearningsSurviveTheAdapter", fx.learningsSurviveTheAdapter)
 	t.Run("WritingRunAccountSurvivesGarbageOnStdout", fx.writingRunAccountSurvivesGarbageOnStdout)
 	t.Run("DeliveryClaimsNeverSurviveTheAdapter", fx.deliveryClaimsNeverSurviveTheAdapter)
 }
@@ -320,6 +321,44 @@ exit 0`)
 	if got.Problem != wantProblem || got.Solution != wantSolution {
 		t.Errorf("the writer's account did not survive the adapter:\n got problem %q solution %q\nwant problem %q solution %q",
 			got.Problem, got.Solution, wantProblem, wantSolution)
+	}
+	if got.Outcome == work.OutcomePROpened || got.Outcome == work.OutcomePRUpdated {
+		t.Errorf("an outcome-less drop box was read as %q — adapters never assert forge state", got.Outcome)
+	}
+}
+
+// learningsSurviveTheAdapter pins the third channel of the drop box
+// (ADR-0066): the learnings a Run proposes for a person to review. They
+// reach Ploeg the same way findings do, so an adapter that merges the drop
+// box without them makes the review channel inert for every Run it serves,
+// and the worker's cap and leak scan never get anything to apply to.
+func (fx Fixture) learningsSurviveTheAdapter(t *testing.T) {
+	want := []harness.Learning{
+		{Type: "Pitfall", Title: "Registry pulls time out", Body: "Retry with the mirror."},
+		{Type: "Convention", Title: "Migrations are numbered", Body: "Take the next free number."},
+	}
+	body, err := json.Marshal(map[string]any{"learnings": want})
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin := script(t, `[ -n "$PLOEG_OUTCOME_FILE" ] || { echo "PLOEG_OUTCOME_FILE unset" >&2; exit 3; }
+cat >"$PLOEG_OUTCOME_FILE" <<'JSON'
+`+string(body)+`
+JSON
+exit 0`)
+
+	got, err := fx.adapter(t, bin).Run(context.Background(), spec(), env(t))
+	if err != nil {
+		t.Logf("run returned %v (a session adapter may reject a non-protocol binary; the learnings must survive anyway)", err)
+	}
+	if len(got.Learnings) != len(want) {
+		t.Fatalf("learnings did not survive the adapter: got %d, want %d — "+
+			"a Run's proposals reach ADR-0066's review only through the drop box", len(got.Learnings), len(want))
+	}
+	for i := range want {
+		if g := got.Learnings[i]; g.Type != want[i].Type || g.Title != want[i].Title || g.Body != want[i].Body {
+			t.Errorf("learning %d = %+v, want %+v", i, g, want[i])
+		}
 	}
 	if got.Outcome == work.OutcomePROpened || got.Outcome == work.OutcomePRUpdated {
 		t.Errorf("an outcome-less drop box was read as %q — adapters never assert forge state", got.Outcome)
