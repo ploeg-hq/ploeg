@@ -199,8 +199,8 @@ func (e *Engine) evaluate(ctx context.Context, si store.ShiftInfo) error {
 	// produced no findings.
 	e.publishUsageReport(ctx, si)
 
-	if leak, found := leakingRun(reports, si.Round); found {
-		return e.parkForLeak(ctx, si, leak, reports)
+	if park, found := parkingRun(reports, si.Round); found {
+		return e.parkForHuman(ctx, si, park, reports)
 	}
 
 	for _, r := range reports {

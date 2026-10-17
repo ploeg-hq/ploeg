@@ -19,13 +19,20 @@ const leakedPullRequestComment = leakedPullRequestMarker + "\n" +
 	"A person must review it before anything from it is merged or the Work Item is assigned again. " +
 	"The branch and its commits stay for forensics; rotate the credential and read the pushed commits first."
 
-func leakingRun(reports []store.RunReport, round int) (store.RunReport, bool) {
+func parkingRun(reports []store.RunReport, round int) (store.RunReport, bool) {
 	for _, r := range reports {
 		if r.Round == round && r.Outcome == string(work.OutcomeFailed) && work.FailureReason(r.FailureReason).ParksForHuman() {
 			return r, true
 		}
 	}
 	return store.RunReport{}, false
+}
+
+func (e *Engine) parkForHuman(ctx context.Context, si store.ShiftInfo, park store.RunReport, reports []store.RunReport) error {
+	if work.FailureReason(park.FailureReason) == work.FailureSharedBudgetSpent {
+		return e.parkForSpentBudget(ctx, si, park, reports)
+	}
+	return e.parkForLeak(ctx, si, park, reports)
 }
 
 func leakParkMessage(leak store.RunReport, branch string) string {

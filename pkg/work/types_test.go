@@ -38,7 +38,7 @@ func TestFailureReason_IsString(t *testing.T) {
 
 func TestFailureReason_IsInfra(t *testing.T) {
 	infra := []FailureReason{FailureInfraNode, FailureInfraLLM, FailureLeaseLost}
-	agent := []FailureReason{FailureAgentError, FailureBudget, FailureTimeout, FailureIdle, FailureCredentialLeak}
+	agent := []FailureReason{FailureAgentError, FailureBudget, FailureTimeout, FailureIdle, FailureCredentialLeak, FailureSharedBudgetSpent}
 
 	for _, f := range infra {
 		if !f.IsInfra() {
@@ -57,9 +57,9 @@ func TestFailureReason_IsInfra(t *testing.T) {
 	}
 }
 
-func TestFailureReason_OnlyACredentialLeakParksForHuman(t *testing.T) {
+func TestFailureReason_OnlyACredentialLeakAndASharedBudgetParkForHuman(t *testing.T) {
 	for _, f := range FailureReasons() {
-		if got, want := f.ParksForHuman(), f == FailureCredentialLeak; got != want {
+		if got, want := f.ParksForHuman(), f == FailureCredentialLeak || f == FailureSharedBudgetSpent; got != want {
 			t.Errorf("%q.ParksForHuman() = %v, want %v", f, got, want)
 		}
 	}
@@ -94,6 +94,9 @@ func TestFailureReasonsListsEveryValidReason(t *testing.T) {
 	}
 	if string(FailureCredentialLeak) != "credential_leak" {
 		t.Errorf("FailureCredentialLeak = %q, want credential_leak", FailureCredentialLeak)
+	}
+	if string(FailureSharedBudgetSpent) != "shared_budget_spent" {
+		t.Errorf("FailureSharedBudgetSpent = %q, want shared_budget_spent", FailureSharedBudgetSpent)
 	}
 }
 

@@ -124,3 +124,59 @@ func TestErrorKind_DescribeEveryKnownKind(t *testing.T) {
 		t.Error("unknown must not be described")
 	}
 }
+
+func TestGatewayError_SharedBudgetSpentNamesWhoseBudget(t *testing.T) {
+	want := map[string]string{
+		"team budget spent": "the LiteLLM team budget for t2 is spent",
+		"user budget spent": "the LiteLLM user budget for u-spent is spent",
+	}
+	seen := map[string]int{}
+	for _, c := range loadCaptured(t) {
+		got := ClassifyError(c.Status, []byte(c.Body))
+		phrase, shared := want[c.Case]
+		if got.SharedBudgetSpent() != shared {
+			t.Errorf("%s %s (HTTP %d): SharedBudgetSpent = %v, want %v", c.LiteLLM, c.Case, c.Status, got.SharedBudgetSpent(), shared)
+		}
+		if shared {
+			seen[c.Case]++
+			if got.BudgetSpent() != phrase {
+				t.Errorf("%s %s: BudgetSpent = %q, want %q", c.LiteLLM, c.Case, got.BudgetSpent(), phrase)
+			}
+		}
+	}
+	for c := range want {
+		if seen[c] != 2 {
+			t.Errorf("fixture has %d captures of %q, want one per LiteLLM version", seen[c], c)
+		}
+	}
+}
+
+func TestGatewayError_BudgetSpentPerOwner(t *testing.T) {
+	tests := []struct {
+		body   string
+		shared bool
+		phrase string
+	}{
+		{`{"error":{"message":"Budget has been exceeded! Key=key (sk-...rp3Q) Current cost: 1.0, Max budget: 0.01","type":"budget_exceeded"}}`, false, "the LiteLLM key budget is spent"},
+		{`{"error":{"message":"ExceededBudget: Key over 1d budget. Spend=2.0, Budget=1.0","type":"budget_exceeded"}}`, false, "the LiteLLM key budget is spent"},
+		{`{"error":{"message":"ExceededBudget: Team=t-1 over 30d budget. Spend=2.0, Budget=1.0","type":"budget_exceeded"}}`, true, "the LiteLLM team budget for t-1 is spent"},
+		{`{"error":{"message":"Budget has been exceeded! User=u-1 in Team=t-1 Current cost: 2.0, Max budget: 1.0","type":"budget_exceeded"}}`, true, "the LiteLLM user budget for u-1 is spent"},
+		{`{"error":{"message":"ExceededBudget: End User=e-1 over budget. Spend=2.0, Budget=1.0","type":"budget_exceeded"}}`, true, "the LiteLLM end user budget for e-1 is spent"},
+		{`{"error":{"message":"Budget has been exceeded! Organization=o-1 Current cost: 2.0, Max budget: 1.0","type":"budget_exceeded"}}`, true, "the LiteLLM organization budget for o-1 is spent"},
+		{`{"error":{"message":"Budget has been exceeded! Project=p-1 Current cost: 2.0, Max budget: 1.0","type":"budget_exceeded"}}`, true, "the LiteLLM project budget for p-1 is spent"},
+		{`{"error":{"message":"Budget has been exceeded! Tag=prod Current cost: 2.0, Max budget: 1.0","type":"budget_exceeded"}}`, true, "the LiteLLM tag budget for prod is spent"},
+		{`{"error":{"message":"Budget has been exceeded! Model access group=g-1 Current cost: 2.0, Max budget: 1.0","type":"budget_exceeded"}}`, true, "the LiteLLM model access group budget for g-1 is spent"},
+		{`Error: 422 {"error":{"message":"Budget has been exceeded! Team=t2 Current cost: 0.12, Max budget: 0.05","type":"budget_exceeded"}}`, true, "the LiteLLM team budget for t2 is spent"},
+		{`{"error":"Budget has been exceeded"}`, false, "a LiteLLM budget is spent"},
+		{`not json`, false, ""},
+	}
+	for _, tc := range tests {
+		got := ClassifyError(0, []byte(tc.body))
+		if got.SharedBudgetSpent() != tc.shared || got.BudgetSpent() != tc.phrase {
+			t.Errorf("ClassifyError(%q) = shared %v %q, want shared %v %q", tc.body, got.SharedBudgetSpent(), got.BudgetSpent(), tc.shared, tc.phrase)
+		}
+	}
+	if ClassifyError(402, nil).SharedBudgetSpent() {
+		t.Error("a bare 402 names no owner, so it must not read as a shared budget")
+	}
+}

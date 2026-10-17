@@ -145,8 +145,9 @@ const (
 	FailureInfraNode FailureReason = "infra_node"
 	// FailureInfraLLM is written when a Run that needed the model gateway
 	// failed without any gateway traffic, or an ACP harness could not create
-	// its session because the gateway or provider refused it: a spent LiteLLM
-	// budget, a rejected key, a rate limit or quota, or an upstream error
+	// its session because the gateway or provider refused it: the Run's own
+	// key over its budget, a spent budget the gateway did not name, a
+	// rejected key, a rate limit or quota, or an upstream error
 	// (litellm.ClassifyError).
 	FailureInfraLLM FailureReason = "infra_llm"
 	// FailureAgentError is written when the harness exited with an error.
@@ -166,18 +167,24 @@ const (
 	// credentials, or its canary, in a forge request or a pushed commit. The
 	// Run's pushed commits stay on its branch for forensics.
 	FailureCredentialLeak FailureReason = "credential_leak"
+	// FailureSharedBudgetSpent is written when the model gateway refused the
+	// Run because a LiteLLM budget wider than the Run's own key is spent: a
+	// team, user, end user, organization, project, tag or model access group
+	// budget (litellm.GatewayError.SharedBudgetSpent). Every retry would be
+	// refused the same way until a person raises or resets that budget.
+	FailureSharedBudgetSpent FailureReason = "shared_budget_spent"
 )
 
 // FailureReasons lists every known failure reason, for metrics and SQL that
 // must cover the whole enum.
 func FailureReasons() []FailureReason {
-	return []FailureReason{FailureInfraNode, FailureInfraLLM, FailureAgentError, FailureBudget, FailureLeaseLost, FailureTimeout, FailureIdle, FailureCredentialLeak}
+	return []FailureReason{FailureInfraNode, FailureInfraLLM, FailureAgentError, FailureBudget, FailureLeaseLost, FailureTimeout, FailureIdle, FailureCredentialLeak, FailureSharedBudgetSpent}
 }
 
 // Valid reports whether f is a known failure reason enum value.
 func (f FailureReason) Valid() bool {
 	switch f {
-	case FailureInfraNode, FailureInfraLLM, FailureAgentError, FailureBudget, FailureLeaseLost, FailureTimeout, FailureIdle, FailureCredentialLeak:
+	case FailureInfraNode, FailureInfraLLM, FailureAgentError, FailureBudget, FailureLeaseLost, FailureTimeout, FailureIdle, FailureCredentialLeak, FailureSharedBudgetSpent:
 		return true
 	}
 	return false
@@ -200,11 +207,13 @@ func (f FailureReason) IsInfra() bool {
 }
 
 // ParksForHuman reports whether a Run that failed for f stops its Work Item
-// for a person instead of being retried by either retry budget (ADR-0105). A
-// retry after a credential leak would give fresh credentials to the same
-// agent on the same branch, so only a person may decide to try again.
+// for a person instead of being retried by either retry budget. A retry after
+// a credential leak would give fresh credentials to the same agent on the
+// same branch (ADR-0105), and a retry after a shared LiteLLM budget is spent
+// would be refused by the gateway again (ADR-0111), so only a person may
+// decide to try again.
 func (f FailureReason) ParksForHuman() bool {
-	return f == FailureCredentialLeak
+	return f == FailureCredentialLeak || f == FailureSharedBudgetSpent
 }
 
 // InfraFailureReasons lists the IsInfra reasons for SQL that must partition

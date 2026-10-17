@@ -48,11 +48,48 @@ const (
 )
 
 // GatewayError is one classified gateway failure: its kind, whose budget for
-// ErrorBudgetExceeded, and LiteLLM's error type when the body carried one.
+// ErrorBudgetExceeded and that owner's id as the gateway named it, and
+// LiteLLM's error type when the body carried one.
 type GatewayError struct {
-	Kind        ErrorKind
-	BudgetOwner BudgetOwner
-	Type        string
+	Kind          ErrorKind
+	BudgetOwner   BudgetOwner
+	BudgetSubject string
+	Type          string
+}
+
+// SharedBudgetSpent reports whether g is a spent LiteLLM budget that the
+// gateway named and that is wider than the caller's own key: a team, user,
+// end user, organization, project, tag or model access group budget. Every
+// key under that owner is refused until a person raises or resets the
+// budget, so a fresh key does not help.
+func (g GatewayError) SharedBudgetSpent() bool {
+	return g.Kind == ErrorBudgetExceeded && g.BudgetOwner != "" && g.BudgetOwner != BudgetOfKey
+}
+
+// BudgetSpent says whose LiteLLM budget is spent, such as "the LiteLLM team
+// budget for t2 is spent". It returns "" unless g is ErrorBudgetExceeded.
+func (g GatewayError) BudgetSpent() string {
+	if g.Kind != ErrorBudgetExceeded {
+		return ""
+	}
+	if g.BudgetOwner == "" {
+		return "a LiteLLM budget is spent"
+	}
+	s := "the LiteLLM " + g.BudgetOwner.label() + " budget"
+	if g.BudgetSubject != "" {
+		s += " for " + g.BudgetSubject
+	}
+	return s + " is spent"
+}
+
+func (o BudgetOwner) label() string {
+	switch o {
+	case BudgetOfEndUser:
+		return "end user"
+	case BudgetOfModelGroup:
+		return "model access group"
+	}
+	return string(o)
 }
 
 var (
@@ -75,14 +112,14 @@ var (
 		owner   BudgetOwner
 	}{
 		{regexp.MustCompile(`\bKey[= ]|\bKey over\b`), BudgetOfKey},
-		{regexp.MustCompile(`\bEnd User=`), BudgetOfEndUser},
-		{regexp.MustCompile(`\bTeamMember=|\bUser=\S+ in Team=`), BudgetOfUser},
-		{regexp.MustCompile(`\bTeam=`), BudgetOfTeam},
-		{regexp.MustCompile(`\bUser=`), BudgetOfUser},
-		{regexp.MustCompile(`\bOrganization=`), BudgetOfOrganization},
-		{regexp.MustCompile(`\bProject=`), BudgetOfProject},
-		{regexp.MustCompile(`\bTag=`), BudgetOfTag},
-		{regexp.MustCompile(`(?i)\bModel access group=`), BudgetOfModelGroup},
+		{regexp.MustCompile(`\bEnd User=([^\s,;"\\]+)`), BudgetOfEndUser},
+		{regexp.MustCompile(`\bTeamMember=([^\s,;"\\]+)|\bUser=([^\s,;"\\]+) in Team=`), BudgetOfUser},
+		{regexp.MustCompile(`\bTeam=([^\s,;"\\]+)`), BudgetOfTeam},
+		{regexp.MustCompile(`\bUser=([^\s,;"\\]+)`), BudgetOfUser},
+		{regexp.MustCompile(`\bOrganization=([^\s,;"\\]+)`), BudgetOfOrganization},
+		{regexp.MustCompile(`\bProject=([^\s,;"\\]+)`), BudgetOfProject},
+		{regexp.MustCompile(`\bTag=([^\s,;"\\]+)`), BudgetOfTag},
+		{regexp.MustCompile(`(?i)\bModel access group=([^\s,;"\\]+)`), BudgetOfModelGroup},
 	}
 )
 
@@ -98,7 +135,8 @@ func ClassifyError(status int, body []byte) GatewayError {
 	known := func(kind ErrorKind) GatewayError { return GatewayError{Kind: kind, Type: typ} }
 	switch {
 	case budgetTypes[typ] || budgetWords.MatchString(text):
-		return GatewayError{Kind: ErrorBudgetExceeded, BudgetOwner: budgetOwner(message), Type: typ}
+		owner, subject := budgetOwner(message)
+		return GatewayError{Kind: ErrorBudgetExceeded, BudgetOwner: owner, BudgetSubject: subject, Type: typ}
 	case modelWords.MatchString(text):
 		return known(ErrorModelUnavailable)
 	case keyTypes[typ]:
@@ -194,11 +232,18 @@ func errorParts(body []byte) (typ, message string) {
 	return typ, message
 }
 
-func budgetOwner(message string) BudgetOwner {
+func budgetOwner(message string) (BudgetOwner, string) {
 	for _, o := range budgetOwners {
-		if o.pattern.MatchString(message) {
-			return o.owner
+		m := o.pattern.FindStringSubmatch(message)
+		if m == nil {
+			continue
 		}
+		for _, subject := range m[1:] {
+			if subject = strings.TrimRight(subject, ".:!"); subject != "" {
+				return o.owner, subject
+			}
+		}
+		return o.owner, ""
 	}
-	return ""
+	return "", ""
 }
