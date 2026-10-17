@@ -27,6 +27,14 @@ import (
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
+// personNamespace is the subject namespace the acting remote is configured
+// with, and signedInPerson the person id of its token's subject "subject-1" under it:
+// the first 32 hex characters of sha256("https://id.example.com/application/o/ploeg|subject-1").
+const (
+	personNamespace = "https://id.example.com/application/o/ploeg/"
+	signedInPerson  = "oidc-6435b71f32dd50c4582f6f3f1c0e55bf"
+)
+
 var actionTools = []string{"ploeg_submit_work", "ploeg_approve_work", "ploeg_reject_work", "ploeg_retry_work", "ploeg_stop_work", "ploeg_add_note", "ploeg_steer_execution"}
 
 type readyForge struct{}
@@ -45,13 +53,16 @@ type acting struct {
 // ploeg-readers to the read-only consumer mcp-reader.
 func newActingRemote(t *testing.T) acting {
 	t.Helper()
-	stewards, readers := randomToken(t), randomToken(t)
+	stewards, readers, admitter := randomToken(t), randomToken(t), randomToken(t)
 	raw, _ := json.Marshal([]map[string]any{
 		{"name": "mcp-steward", "tokenEnv": "STEWARD", "teams": []string{"pewter", "brass"}, "execute": true},
 		{"name": "mcp-reader", "tokenEnv": "READER", "teams": []string{"pewter"}, "execute": false},
+		{"name": "another-consumer", "tokenEnv": "ADMITTER", "teams": []string{"pewter", "tin"}, "execute": true},
 	})
+	tokens := map[string]string{"STEWARD": stewards, "READER": readers, "ADMITTER": admitter}
 	consumers, err := httpapi.ParseOperatorConsumers(string(raw), func(name string) (string, bool) {
-		return map[string]string{"STEWARD": stewards, "READER": readers}[name], name == "STEWARD" || name == "READER"
+		v, ok := tokens[name]
+		return v, ok
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -66,9 +77,10 @@ func newActingRemote(t *testing.T) acting {
 		Engine:         &shiftengine.Engine{Store: testStore, Plans: plans, Log: log},
 		Readiness:      target.NewGate(map[string]work.Target{"app": app}, map[string]provider.RepositoryInspector{"forgejo": readyForge{}}),
 		WorkerSecurity: &httpapi.WorkerSecurity{AllowLegacy: true},
-		OperatorConfig: httpapi.OperatorConfig{Consumers: consumers, Teams: map[string][]string{"pewter": {"builder"}, "brass": {}}}}).Handler()
+		OperatorConfig: httpapi.OperatorConfig{Consumers: consumers, Teams: map[string][]string{"pewter": {"builder"}, "brass": {}, "tin": {}}}}).Handler()
 	r := newRemoteTokens(t, func(*remote) http.Handler { return ploegd },
-		`[{"group":"ploeg-stewards","tokenEnv":"ADMINS_TOKEN","execute":true},{"group":"ploeg-readers","tokenEnv":"READERS_TOKEN"}]`, stewards, readers)
+		`[{"group":"ploeg-stewards","tokenEnv":"ADMINS_TOKEN","execute":true},{"group":"ploeg-readers","tokenEnv":"READERS_TOKEN"}]`, stewards, readers,
+		map[string]string{"PLOEG_MCP_SUBJECT_NAMESPACE": personNamespace})
 	return acting{remote: r, ploegd: ploegd}
 }
 
@@ -176,8 +188,8 @@ func confirmed(message string) string {
 
 func wantConfirmedBy(t *testing.T, got store.Attribution, message string) {
 	t.Helper()
-	if got.Consumer != "mcp-steward" || got.Actor != "ryan" || got.Via != "mcp:Test Client 1.2.3" || !strings.HasSuffix(got.Confirmation, ":"+confirmed(message)) || !strings.HasPrefix(got.Confirmation, "confirm-") {
-		t.Fatalf("attribution = %+v, want mcp-steward, ryan, mcp:Test Client 1.2.3 and the hash of %q", got, message)
+	if got.Consumer != "mcp-steward" || got.Actor != signedInPerson || got.ActingUser != "" || got.Via != "mcp:Test Client 1.2.3" || !strings.HasSuffix(got.Confirmation, ":"+confirmed(message)) || !strings.HasPrefix(got.Confirmation, "confirm-") {
+		t.Fatalf("attribution = %+v, want mcp-steward, `+signedInPerson+`, mcp:Test Client 1.2.3 and the hash of %q", got, message)
 	}
 }
 
@@ -310,7 +322,7 @@ func TestEachActionCallsPloegOnlyAfterThePersonConfirms(t *testing.T) {
 	got, _ = lastAttribution(t, proposed[1], "work_item.rejected")
 	wantConfirmedBy(t, got, yes.last())
 
-	e, _, err := testStore.AdmitOperatorExecution(context.Background(), "mcp-steward", "ryan", store.AdmitOperatorExecution{SessionID: "mcp-steer", Team: "pewter", Title: "Steer me",
+	e, _, err := testStore.AdmitOperatorExecution(context.Background(), "mcp-steward", signedInPerson, store.AdmitOperatorExecution{SessionID: "mcp-steer", Team: "pewter", Title: "Steer me",
 		Objective: "Exercise steering through ploeg-mcp.", RepositoryID: "app", RepositoryURL: "https://forge.example/webgrip/app.git", CrewID: "crew", Demo: true}, time.Minute)
 	if err != nil {
 		t.Fatal(err)
@@ -323,6 +335,66 @@ func TestEachActionCallsPloegOnlyAfterThePersonConfirms(t *testing.T) {
 	wantConfirmedBy(t, got, yes.last())
 	if _, res := act(t, cs, "ploeg_steer_execution", map[string]any{"executionId": e.ID, "action": "explode"}); !res.IsError {
 		t.Fatal("an unknown steering action went ahead")
+	}
+}
+
+func TestAPersonSteersTheirExecutionAdmittedThroughAnotherConsumer(t *testing.T) {
+	a := newActingRemote(t)
+	yes := accept()
+	cs := a.client(t, []string{"ploeg-stewards"}, yes)
+	ctx := context.Background()
+	admit := func(session, actor, team string) store.OperatorExecution {
+		e, _, err := testStore.AdmitOperatorExecution(ctx, "another-consumer", actor, store.AdmitOperatorExecution{SessionID: session, Team: team, Title: "Started elsewhere",
+			Objective: "Exercise steering an execution another consumer admitted.", RepositoryID: "app", RepositoryURL: "https://forge.example/webgrip/app.git", CrewID: "crew", Demo: true}, time.Minute)
+		if err != nil {
+			t.Fatal(err)
+		}
+		e, err = testStore.CommandOperatorExecution(ctx, e.ID, "another-consumer", actor, store.OperatorExecutionCommand{ID: "start-" + session, Action: "start", ExpectedRevision: e.Revision, Generation: e.Generation}, time.Minute)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return e
+	}
+	mine := admit("elsewhere-mine", signedInPerson, "pewter")
+
+	res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "ploeg_get_work", Arguments: map[string]any{"ref": mine.WorkItemID}})
+	if err != nil || res.IsError {
+		t.Fatalf("get work: %v %s", err, textOf(res))
+	}
+	var work getOut
+	raw, _ := json.Marshal(res.StructuredContent)
+	_ = json.Unmarshal(raw, &work)
+	if len(work.Executions) != 1 || work.Executions[0].ID != mine.ID || !work.Executions[0].Yours || work.Executions[0].Owner != signedInPerson || work.Executions[0].State != "running" || !strings.Contains(work.Summary, mine.ID) {
+		t.Fatalf("get work lists %+v, summary %q", work.Executions, work.Summary)
+	}
+
+	messaged, res := act(t, cs, "ploeg_steer_execution", map[string]any{"executionId": mine.ID, "action": "message", "text": "Prefer the small fix."})
+	if res.IsError || !messaged.Done || messaged.State != "running" {
+		t.Fatalf("message: %s %+v", textOf(res), messaged)
+	}
+	got, _ := lastAttribution(t, mine.WorkItemID, store.AuditOperatorExecutionCommanded)
+	wantConfirmedBy(t, got, yes.last())
+	paused, res := act(t, cs, "ploeg_steer_execution", map[string]any{"executionId": mine.ID, "action": "pause"})
+	if res.IsError || !paused.Done || paused.State != "pause_requested" {
+		t.Fatalf("pause: %s %+v", textOf(res), paused)
+	}
+	got, n := lastAttribution(t, mine.WorkItemID, store.AuditOperatorExecutionCommanded)
+	wantConfirmedBy(t, got, yes.last())
+	if n != 2 {
+		t.Fatalf("%d commands audited, want 2", n)
+	}
+
+	for name, e := range map[string]store.OperatorExecution{
+		"another person's": admit("elsewhere-theirs", "oidc-00000000000000000000000000000000", "pewter"),
+		"another Team's":   admit("elsewhere-tin", signedInPerson, "tin"),
+	} {
+		if _, res := act(t, cs, "ploeg_steer_execution", map[string]any{"executionId": e.ID, "action": "pause"}); !res.IsError || !strings.Contains(textOf(res), "nothing changed") {
+			t.Fatalf("%s execution was steered: %s", name, textOf(res))
+		}
+		after, err := testStore.OperatorExecution(ctx, e.ID, "another-consumer", e.Actor)
+		if err != nil || after.State != "running" || after.Revision != e.Revision {
+			t.Fatalf("%s execution changed: %+v %v", name, after, err)
+		}
 	}
 }
 

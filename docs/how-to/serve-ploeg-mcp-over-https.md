@@ -51,6 +51,7 @@ The Ploeg image ships the binary at `/usr/local/bin/ploeg-mcp`. Run it as its ow
 | `PLOEG_MCP_ISSUER` | yes | The provider's issuer, matched byte for byte, such as `https://id.example.com/application/o/ploeg-mcp/` |
 | `PLOEG_MCP_CLIENT_IDS` | yes | Comma-separated client ids whose tokens are accepted (`aud` and `azp`) |
 | `PLOEG_MCP_GROUPS` | yes | JSON array of `{"group", "tokenEnv", "execute"}`. The first entry whose group the person is in decides the consumer; `tokenEnv` names the variable holding that consumer's token. `execute: true` also offers that group the action tools; its consumer then needs `execute: true` in ploegd too (see [Act on work](ask-ploeg-from-an-ai-client.md#act-on-work-over-https)) |
+| `PLOEG_MCP_SUBJECT_NAMESPACE` | no | What person ids are derived under in place of the issuer: `oidc-` and the first 32 hex characters of the SHA-256 of `<namespace>\|<subject>`, with one trailing `/` removed. Set it to the issuer person ids were first recorded under when this provider application's issuer differs, or after the issuer changed, so a person keeps owning their executions ([steering](ask-ploeg-from-an-ai-client.md#steer-your-attended-executions)) |
 | `PLOEG_MCP_JWKS_URL` | no | The provider's key set; default is the `jwks_uri` of the issuer's discovery document |
 | `PLOEG_MCP_SCOPE` | no | The scope a token must carry; default `ploeg:read` |
 | `PLOEG_MCP_REQUEST_SCOPES` | no | Space-separated scopes clients are told to request, such as `openid ploeg:read offline_access`; the required scope is always added |

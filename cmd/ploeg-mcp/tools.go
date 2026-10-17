@@ -38,7 +38,7 @@ func newServer(c *operatorclient.Client, actions bool) *mcp.Server {
 	mcp.AddTool(srv, &mcp.Tool{Name: "ploeg_find_work", Title: "Find Work Items", Annotations: readOnly("Find Work Items"),
 		Description: "List Work Items, filtered by state or Team, oldest id first. Pass nextCursor back as after for the next page."}, s.findWork)
 	mcp.AddTool(srv, &mcp.Tool{Name: "ploeg_get_work", Title: "Get a Work Item", Annotations: readOnly("Get a Work Item"),
-		Description: "One Work Item with why it waits, its latest Shift's budget, spend and held budget, its Runs, its pull request and recent events. ref is a Ploeg id (184), provider:externalId (vikunja:1897) or a tracker task URL. detail=full adds descriptions, findings and event details."}, s.getWork)
+		Description: "One Work Item with why it waits, its latest Shift's budget, spend and held budget, its Runs, its pull request, recent events and its attended executions (yours are marked, to steer with ploeg_steer_execution). ref is a Ploeg id (184), provider:externalId (vikunja:1897) or a tracker task URL. detail=full adds descriptions, findings and event details."}, s.getWork)
 	mcp.AddTool(srv, &mcp.Tool{Name: "ploeg_recent_runs", Title: "Recent Runs", Annotations: readOnly("Recent Runs"),
 		Description: "Runs newest first with role, outcome, verdict, failure reason and cost. Pass nextCursor back as before for older Runs."}, s.recentRuns)
 	mcp.AddTool(srv, &mcp.Tool{Name: "ploeg_changes_since", Title: "Changes since", Annotations: readOnly("Changes since"),
@@ -243,6 +243,15 @@ type pullRequest struct {
 	MergedAt              string   `json:"mergedAt,omitempty"`
 }
 
+type execLine struct {
+	ID          string `json:"id"`
+	State       string `json:"state"`
+	Supervision string `json:"supervision" jsonschema:"human while a person attends it, background after a handback"`
+	Owner       string `json:"owner" jsonschema:"the person id the execution belongs to"`
+	Yours       bool   `json:"yours" jsonschema:"true when you are signed in over HTTP and own it, so ploeg_steer_execution can steer it"`
+	UpdatedAt   string `json:"updatedAt"`
+}
+
 type getOut struct {
 	Summary       string        `json:"summary"`
 	ID            string        `json:"id"`
@@ -260,7 +269,8 @@ type getOut struct {
 	Runs          []runLine     `json:"runs"`
 	Shifts        []shiftLine   `json:"shifts"`
 	Events        []eventLine   `json:"events"`
-	Truncated     bool          `json:"truncated" jsonschema:"true when Ploeg cut Shifts, Runs or events"`
+	Executions    []execLine    `json:"executions" jsonschema:"attended executions bound to this Work Item, newest first; steer yours with ploeg_steer_execution"`
+	Truncated     bool          `json:"truncated" jsonschema:"true when Ploeg cut Shifts, Runs, events or executions"`
 	Untrusted     untrustedWork `json:"untrusted"`
 }
 
@@ -281,7 +291,13 @@ func (s *server) getWork(ctx context.Context, _ *mcp.CallToolRequest, in getIn) 
 	i := d.Item
 	out = getOut{ID: i.ID, Team: i.Team, State: i.State, Tracker: i.Provider + ":" + i.ExternalID, TaskURL: i.URL,
 		Attempts: i.Attempts, InfraFailures: i.InfraFailures, Untrusted: untrustedWork{Title: clip(i.Title, 300)},
-		Truncated: d.Truncated.Shifts || d.Truncated.Runs || d.Truncated.Events}
+		Truncated: d.Truncated.Shifts || d.Truncated.Runs || d.Truncated.Events || d.Truncated.Executions}
+	me, signedIn := personFrom(ctx)
+	out.Executions = make([]execLine, 0, len(d.Executions))
+	for _, e := range d.Executions {
+		out.Executions = append(out.Executions, execLine{ID: e.ID, State: e.State, Supervision: e.Supervision, Owner: e.Owner,
+			Yours: signedIn && e.Owner == me.ID, UpdatedAt: stamp(&e.UpdatedAt)})
+	}
 	if full {
 		out.Untrusted.Description = clip(i.Description, 4000)
 	}
@@ -342,6 +358,12 @@ func (s *server) getWork(ctx context.Context, _ *mcp.CallToolRequest, in getIn) 
 		out.Summary += " Ploeg said: " + out.WaitingReason
 	} else if out.LatestShift != nil && out.LatestShift.CloseReason != "" {
 		out.Summary += " Latest Shift closed: " + out.LatestShift.CloseReason
+	}
+	for _, e := range out.Executions {
+		if e.Yours {
+			out.Summary += fmt.Sprintf(" Your attended execution %s is %s.", e.ID, e.State)
+			break
+		}
 	}
 	return nil, out, nil
 }
