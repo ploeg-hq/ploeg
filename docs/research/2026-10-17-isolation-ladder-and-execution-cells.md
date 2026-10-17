@@ -1,6 +1,6 @@
 # The isolation ladder, and execution cells for agents at scale
 
-Date: 2026-10-17 · Ticket: none yet · Decision records: none yet. This dossier proposes two:
+Date: 2026-10-17 · Ticket: none yet · Decision records: [ADR-0106](../adrs/0106-a-run-declares-an-isolation-floor-and-a-cell-runs-it-at-the-strictest-class-it-can-honour.md) and [ADR-0107](../adrs/0107-execution-runs-in-cells-that-pull-from-one-hub.md), both proposed, and epic [VIK-2065](https://vikunja.webgrip.dev/tasks/2065). They record:
 "a Run declares an isolation class and a cell advertises what it can honour" and "execution
 runs in cells that pull from one hub". It continues
 [2026-09-28-credential-isolation-cluster-plan.md](2026-09-28-credential-isolation-cluster-plan.md)

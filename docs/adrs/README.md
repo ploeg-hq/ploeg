@@ -180,6 +180,8 @@ fails otherwise.
 | [0103](0103-an-operator-admission-may-choose-each-runs-model-from-the-models-its-roles-policy-lists.md) | An operator admission may choose each Run's model from the models its Role's policy lists | proposed | 2026-10-13 |
 | [0104](0104-a-message-to-an-attended-run-reaches-it-at-the-next-prompt-turn-and-context-items-still-wait.md) | A message to an attended Run reaches it at the next prompt turn, and context items still wait for the next Run | proposed | 2026-10-13 |
 | [0105](0105-a-credential-leak-parks-the-work-item-and-closes-its-pull-request.md) | A credential leak parks the Work Item and closes its pull request | accepted | 2026-10-17 |
+| [0106](0106-a-run-declares-an-isolation-floor-and-a-cell-runs-it-at-the-strictest-class-it-can-honour.md) | A Run declares an isolation floor, and a cell runs it at the strictest class it can honour | proposed | 2026-10-17 |
+| [0107](0107-execution-runs-in-cells-that-pull-from-one-hub.md) | Execution runs in cells that pull from one hub | proposed | 2026-10-17 |
 
 ## Review calendar
 
