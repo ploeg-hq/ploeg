@@ -26,7 +26,7 @@ func (e *Engine) retryFailedReaders(ctx context.Context, si store.ShiftInfo, fai
 				"agent_attempts", f.AgentAttempts(), "infra_attempts", f.InfraAttempts)
 			continue
 		}
-		retry = append(retry, store.Role{Name: f.Role, Writes: false, Cap: e.capFor(si.Team, f.Role)})
+		retry = append(retry, store.Role{Name: f.Role, Writes: false, Cap: e.capFor(si.Team, f.Role), Selection: e.selection(si.Team, f.Role)})
 	}
 	if len(retry) == 0 {
 		return false, nil

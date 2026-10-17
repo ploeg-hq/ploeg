@@ -223,6 +223,13 @@ A durable, explicitly approved operation to publish one verified Delivery Candid
 
 **See also:** [Delivery Candidate](#delivery-candidate), [Verification Receipt](#verification-receipt), [Operator Execution](#operator-execution)  
 
+## Pull Request Reading
+*Context: Dispatch*
+
+A Work Item of origin pull_request: Ploeg's record that a Team reads one pull request someone else opened and reports on it there (Ploeg ADR-0109). A registered Work Target routes the pull requests of listed authors to a Team with an instruction in the operator's words; Ploeg itself knows nothing about the authors or the subject. Its Shift runs only the Team's reading Roles on the pull request's own branch, never a writer; the reader's findings are posted as a comment on the pull request, its Verdict opens no fix Round, and the follow-up work it proposes becomes Follow-Ups under the Team's created-work limits. One per pull request, bound to it in Ploeg's own record; read again when the pull request's title changes, up to a cap. It waits as awaiting_review until the pull request merges or closes, or parks as needs_human when the reader says a merge would break the repository.
+
+**See also:** [Work Item](#work-item), [Follow-Up](#follow-up), [Verdict](#verdict), [Work Target](#work-target), [Forge Event](#forge-event)  
+
 ## Push Credential
 *Context: Execution*
 
@@ -359,7 +366,7 @@ Evidence reported by an explicitly authorized verifier for one Delivery Candidat
 ## Work Item
 *Context: Dispatch*
 
-A unit of work: something we have decided to do, or a problem described well enough that a solution can be formulated or at least conceived. It comes from a Tracker Item, from an Admission for an Operator Consumer (a manual-origin Work Item, or the one an Operator Execution links), or from other work (a Follow-Up). Ploeg keeps one record per Work Item and runs Shifts against it; a failed Shift leaves it in place. Tracker-originated content remains owned by the Tracker Item. Manual-origin content is registered by an authenticated Operator Consumer and never silently creates a Tracker Item.
+A unit of work: something we have decided to do, or a problem described well enough that a solution can be formulated or at least conceived. It comes from a Tracker Item, from an Admission for an Operator Consumer (a manual-origin Work Item, or the one an Operator Execution links), from other work (a Follow-Up), or from a pull request someone else opened that a Team reads (a Pull Request Reading). Ploeg keeps one record per Work Item and runs Shifts against it; a failed Shift leaves it in place. Tracker-originated content remains owned by the Tracker Item. Manual-origin content is registered by an authenticated Operator Consumer and never silently creates a Tracker Item.
 
 **Do not use:** task, ticket  
 **See also:** [Tracker Item](#tracker-item), [Lease](#lease), [Follow-Up](#follow-up), [Work Target](#work-target)  

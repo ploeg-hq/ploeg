@@ -323,6 +323,23 @@
                       "minLength": 1
                     }
                   }
+                },
+                "harnessOutsideAllowlist": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "for": {
+                      "type": "string",
+                      "pattern": "^([0-9]+(ms|s|m|h|d|w|y))+$"
+                    },
+                    "severity": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  }
                 }
               }
             }
@@ -650,6 +667,16 @@
                 "type": "string",
                 "enum": ["keda", "sandbox"],
                 "description": "Optional: this team's executor while executor.type is keda or sandbox; unset = executor.type. Lets one team run under the experimental sandbox executor while the others stay on keda."
+              },
+              "harnesses": {
+                "type": "array",
+                "minItems": 1,
+                "items": {"$ref": "#/definitions/allowedHarness"},
+                "description": "ADR-0098/ADR-0099, planned teams only: the Harnesses an operator admission may choose per Run. Each entry renders its own workload per Role and replaces the Role's harness block; unset = the one configured harness."
+              },
+              "allowUnqualifiedHarnesses": {
+                "type": "boolean",
+                "description": "ADR-0098: admit an allowed Harness that is not qualified even when it is not the Role's default. Default false."
               }
             },
             "//": "repoOwner/repoName are NOT required: the repository belongs to the work item, resolved at ingest (R11). They remain as a per-team fallback while teams migrate.",
@@ -1019,7 +1046,7 @@
     },
     "config": {
       "type": "object",
-      "description": "ploegd's routing and roster as a file (mounted at /etc/ploeg/ploeg.yaml). Projects are NAMED and resolved to tracker ids at boot, so no magic numbers live in cluster config. `targets:` registers repositories a `repo/<key>` label may select, and a project's `default:`/`allow:` name them (ADR-0038). A project's `gates:` maps its statuses or bucket titles to the delivery gates development, test, acceptance and done (ADR-0051), and Ploeg records every tracker status move of a project with `gates:` (ADR-0080). The Run card keys `cards`, a target's or project's `cardStyle`, `release`, `rarity` and `cardShape`, a project's `statusKinds` and a team's `cards` and `workingHours` are unknown keys that fail the boot (ADR-0080). Empty = the legacy PLOEG_TARGET_MAP/PLOEG_TEAM_MAP/PLOEG_TEAM_PLANS env vars still apply."
+      "description": "ploegd's routing and roster as a file (mounted at /etc/ploeg/ploeg.yaml). Projects are NAMED and resolved to tracker ids at boot, so no magic numbers live in cluster config. `targets:` registers repositories a `repo/<key>` label may select, and a project's `default:`/`allow:` name them (ADR-0038). A project's `gates:` maps its statuses or bucket titles to the delivery gates development, test, acceptance and done (ADR-0051), and Ploeg records every tracker status move of a project with `gates:` (ADR-0080). A target's `readPullRequests:` lists routes: the `authors` whose open pull requests a `team` reads and reports on, on the pull request, with the operator's `instructions` and `maxOpen` and `maxReviewsPerPullRequest` caps (ADR-0109). The Run card keys `cards`, a target's or project's `cardStyle`, `release`, `rarity` and `cardShape`, a project's `statusKinds` and a team's `cards` and `workingHours` are unknown keys that fail the boot (ADR-0080). Empty = the legacy PLOEG_TARGET_MAP/PLOEG_TEAM_MAP/PLOEG_TEAM_PLANS env vars still apply."
     }
   },
   "definitions": {
@@ -1079,6 +1106,25 @@
         "dindResources": {
           "type": "object",
           "description": "Overrides executor.dindResources for this role's DinD sidecar (only rendered when the role runs harness.dind)."
+        },
+        "harnesses": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^(acp/)?[a-z0-9][a-z0-9._-]{0,63}$"},
+          "description": "ADR-0098: narrows the team's harnesses for this Role, by key (acp/<profile> or the Harness name)."
+        },
+        "defaultHarness": {
+          "type": "string",
+          "pattern": "^(acp/)?[a-z0-9][a-z0-9._-]{0,63}$",
+          "description": "ADR-0098: this Role's default Harness key; it must be one the Role allows."
+        },
+        "models": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1},
+          "description": "ADR-0103: the model aliases an admission may choose for this Role's Runs. It must contain the Role's default, model or the team's model. Unset = that model alone."
         }
       },
       "//": "name becomes the workload suffix (ploeg-worker-<team>-<role>); writes marks the round's single writer (ADR-0010); cap bounds one Run's spend against the pool (ADR-0012); model/maxReplicaCount/harness override the team's values for this role's workload.",
@@ -1098,6 +1144,81 @@
             "acp",
             "claude-environment"
           ]
+        },
+        "image": {
+          "type": "string"
+        },
+        "entrypoint": {
+          "type": "string"
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "outcomeFile": {
+          "type": "string"
+        },
+        "dind": {
+          "type": "boolean"
+        },
+        "credentialIsolation": {
+          "enum": [
+            "",
+            "proxy"
+          ],
+          "description": "Explicit per-workload setting for both credential proxies (ADR-0034). Unset = executor.forgeTokenIsolation and executor.litellm.keyIsolation apply to a qualified harness without DinD, and every other workload runs with both off."
+        },
+        "timeout": {
+          "type": "string",
+          "pattern": "^$|^0$|^[0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h)$"
+        },
+        "idleTimeout": {
+          "type": "string",
+          "pattern": "^$|^0$|^[0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h)$"
+        },
+        "acp": {
+          "$ref": "#/definitions/acp"
+        },
+        "claudeEnvironment": {
+          "$ref": "#/definitions/claudeEnvironment"
+        },
+        "toolchains": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/toolchain"
+          }
+        },
+        "verify": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[^\\n\\r]+$"
+          }
+        },
+        "verifyTimeout": {
+          "type": "string",
+          "pattern": "^$|^0$|^[0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h)$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "allowedHarness": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "enum": [
+            "openhands",
+            "exec",
+            "claude-code",
+            "acp"
+          ]
+        },
+        "default": {
+          "type": "boolean",
+          "description": "ADR-0098: this entry is each Role's default Harness unless the Role names defaultHarness. At most one entry; none = the first."
         },
         "image": {
           "type": "string"

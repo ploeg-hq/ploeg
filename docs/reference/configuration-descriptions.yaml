@@ -8,7 +8,7 @@ env:
   PLOEG_CREDENTIAL_ISOLATION_OFF_REASON: "Why the chart left a credential proxy off for this workload: `unqualified`, `dind` or `disabled`. ploeg-worker logs it in one boot WARN with the harness name."
   PLOEG_DEFAULT_TEAM: Team that receives work from an assignee no Team lists.
   PLOEG_TEAM_MAP: Legacy assignee roster, replaced by `teams.<name>.assignees` in the `PLOEG_CONFIG` file.
-  PLOEG_TEAM_HARNESSES: "Each Role's configured Harness as JSON, team to Role to `{name, profile}`; a plan-less team's workload is the Role `\"\"`. The chart renders it from the same values as each worker's `PLOEG_HARNESS` and `PLOEG_ACP_PROFILE`, and the Teams read shows it (ADR-0097). Unset reads every Role's Harness as null; a malformed value stops ploegd at boot."
+  PLOEG_TEAM_HARNESSES: "Each Role's Harness configuration as JSON, team to Role to `{name, profile, allowed, allowUnqualified}`: the default Harness, the allowlist an operator admission may choose from, each entry with its `qualification`, and the team's opt-in to unqualified Harnesses (ADR-0097, ADR-0098). A plan-less team's workload is the Role `\"\"`. The chart renders it from the same values as each worker's `PLOEG_HARNESS` and `PLOEG_ACP_PROFILE`, and the Teams read shows it. Unset reads every Role's Harness as null and stores no Harness on a Run; a malformed value, or a default outside its allowlist, stops ploegd at boot."
   PLOEG_TEAM_PLANS: Legacy Shift plans, replaced by `teams.<name>.plan` in the `PLOEG_CONFIG` file. A malformed plan stops ploegd at boot.
   PLOEG_TARGET_MAP: Legacy routing from tracker scope to repository, rendered from the org.yaml roster manifest. Replaced by `trackers.<tracker>.projects` in the `PLOEG_CONFIG` file.
   PLOEG_VIKUNJA_SECRET: Secret that verifies `X-Vikunja-Signature` on `POST /webhooks/tracker/vikunja`. The chart reads it from `webhook.existingSecret`. Unset rejects every Vikunja webhook.
@@ -65,7 +65,7 @@ env:
   PLOEG_WORKER_BOOTSTRAPS:
     ploegd: Bootstrap registry, a JSON array of `token`, `team` and `role` entries (chart `executor.workerAuth.bootstrapSecret`).
     ploeg-worker: Controller-only. The worker refuses to start when it is set.
-  PLOEG_WORKER_LLM_POLICIES: Trusted team and role inference policies. The chart builds them from each team and role model and budget plus `executor.workerAuth.additionalLLMPolicies`.
+  PLOEG_WORKER_LLM_POLICIES: "Trusted team and role inference policies. Each lists the `models` a Run of the Role may call and its `defaultModel`, which must be one of them (ADR-0103). The chart builds them from each team and role model, models and budget plus `executor.workerAuth.additionalLLMPolicies`."
   PLOEG_LLM_SETTLE_AFTER: Quiet period after which the settlement sweep settles a blocked Run's account from LiteLLM spend logs.
   PLOEG_LLM_CORRECTION_WINDOW: How long a spend-log settlement stays provisional. Every 15 minutes in this window the correction sweep reads the spend logs again and charges any late entry as an adjustment. `0` makes the first settlement final; a negative value refuses to start. The window is fixed at each account's first settlement.
   PLOEG_ASK_ALLOWANCE_USD: Monthly Ask Allowance, in US dollars, that a Team's period opens with (ADR-0082). A period keeps the limit its first Ask opened it with. At most 10000 with four decimals; anything else refuses to start.

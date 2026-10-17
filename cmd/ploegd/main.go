@@ -324,6 +324,9 @@ func run(log *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("operator configuration: %w", err)
 	}
+	if engine != nil {
+		engine.Selections = httpapi.RunSelections{Harnesses: operator.TeamHarnesses, LLM: llmControl}
+	}
 	deploys, err := deployAuth()
 	if err != nil {
 		return err
@@ -417,6 +420,21 @@ func run(log *slog.Logger) error {
 		log.Info("pull request merge detection enabled", "reconcile_every", reviewEvery,
 			"tracker_done_on_merge", reviews.MarkTrackerDone)
 	}
+	var readPullRequests *shiftengine.PullRequestReadWatch
+	if routes := cfg.PullRequestReads(); len(routes) > 0 {
+		if engine == nil || len(forges) == 0 {
+			return fmt.Errorf("targets with readPullRequests need the shift engine and a forge provider")
+		}
+		readPullRequests = &shiftengine.PullRequestReadWatch{
+			Store: st, Forges: forges, DefaultForge: forgeID, Routes: routes, Plans: plans, Engine: engine, Log: log,
+		}
+		srv.PullRequestReads = readPullRequests
+		for _, r := range routes {
+			log.Info("pull request reads are enabled", "target", r.Key,
+				"repo", r.Target.Owner+"/"+r.Target.Repo, "team", r.Policy.Team, "authors", r.Policy.Authors,
+				"reconcile_every", reviewEvery)
+		}
+	}
 	webhookCheck, err := newVikunjaWebhookCheck(vik, cfg.Trackers.Vikunja.Projects, log)
 	if err != nil {
 		return err
@@ -444,6 +462,9 @@ func run(log *slog.Logger) error {
 	go sweepLoop(ctx, log, st, sweeper, forgeSweeper, engine, srv, sweepEvery, settleAfter)
 	if reviews != nil {
 		go reviewLoop(ctx, reviews, reviewEvery)
+	}
+	if readPullRequests != nil {
+		go pullRequestReadLoop(ctx, readPullRequests, reviewEvery)
 	}
 	go deployCheckLoop(ctx, srv, deployCheckEvery)
 	if srv.Notes != nil {

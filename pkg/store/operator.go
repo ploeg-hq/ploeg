@@ -55,12 +55,42 @@ type OperatorRole struct {
 	// ObservedHarness is the newest Harness version a Run of this team and
 	// Role recorded, nil when none did.
 	ObservedHarness *OperatorObservedHarness `json:"observedHarness"`
+	// Harnesses is the Role's Harness allowlist, each entry with its
+	// qualification and the newest version a Run of the Role recorded with it
+	// (ADR-0098); nil when ploegd was not given the Role's Harness.
+	Harnesses []OperatorAllowedHarness `json:"harnesses"`
+	// PendingByHarness counts the Role's pending Runs per stored Harness key
+	// and says whether the current allowlist still contains it (ADR-0099).
+	PendingByHarness []OperatorPendingHarness `json:"pendingByHarness"`
+	// Models and DefaultModel are the models the Role's managed inference
+	// policy lists and its default (ADR-0103); nil without a policy.
+	Models       []string `json:"models"`
+	DefaultModel *string  `json:"defaultModel"`
 }
 
 // OperatorRoleHarness is a Role's configured Harness and agent profile.
 type OperatorRoleHarness struct {
 	Name    string  `json:"name"`
 	Profile *string `json:"profile"`
+}
+
+// OperatorAllowedHarness is one entry of a Role's Harness allowlist.
+// Qualification is qualified or unqualified, nil when ploegd was not told.
+type OperatorAllowedHarness struct {
+	Key             string  `json:"key"`
+	Name            string  `json:"name"`
+	Profile         *string `json:"profile"`
+	Qualification   *string `json:"qualification"`
+	Default         bool    `json:"default"`
+	ObservedVersion *string `json:"observedVersion"`
+}
+
+// OperatorPendingHarness is the number of a Role's pending Runs that store
+// one Harness key.
+type OperatorPendingHarness struct {
+	Harness string `json:"harness"`
+	Pending int    `json:"pending"`
+	Allowed bool   `json:"allowed"`
 }
 
 // OperatorObservedHarness is the Harness a Run of a Role recorded with its

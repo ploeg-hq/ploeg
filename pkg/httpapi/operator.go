@@ -237,7 +237,10 @@ func (s *Server) handleOperatorTeams(w http.ResponseWriter, r *http.Request) {
 			sort.Strings(teams[i].PinnedScopes)
 		}
 	}
-	s.describeRoles(teams)
+	if err := s.describeRoles(r.Context(), teams); err != nil {
+		operatorReadError(w, err)
+		return
+	}
 	operatorJSON(w, 200, map[string]any{"schemaVersion": "1.0", "teams": teams})
 }
 

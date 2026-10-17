@@ -112,7 +112,7 @@ spec:
             - name: PLOEG_TEAM_PLANS
               value: "{\"gold\":{\"maxFixRounds\":0,\"pool\":\"6\",\"rounds\":[{\"roles\":[{\"cap\":\"0.50\",\"harness\":{\"dind\":false},\"name\":\"analyst\",\"writes\":false},{\"cap\":\"0.50\",\"harness\":{\"acp\":{\"profile\":\"openhands\"},\"dind\":false,\"name\":\"acp\"},\"name\":\"tests\",\"writes\":false}]},{\"roles\":[{\"cap\":\"3.00\",\"model\":\"litellm_proxy/claude-sonnet-5\",\"name\":\"builder\",\"writes\":true}]},{\"roles\":[{\"cap\":\"0.75\",\"harness\":{\"dind\":false},\"model\":\"litellm_proxy/claude-sonnet-5\",\"name\":\"reviewer\",\"writes\":false}]},{\"roles\":[{\"cap\":\"3.00\",\"model\":\"litellm_proxy/claude-sonnet-5\",\"name\":\"builder\",\"writes\":true}]}]}}"
             - name: PLOEG_TEAM_HARNESSES
-              value: "{\"bronze\":{\"\":{\"name\":\"openhands\"}},\"copper\":{\"\":{\"name\":\"exec\"}},\"gold\":{\"analyst\":{\"name\":\"openhands\"},\"builder\":{\"name\":\"openhands\"},\"reviewer\":{\"name\":\"openhands\"},\"tests\":{\"name\":\"acp\",\"profile\":\"openhands\"}},\"lead\":{\"\":{\"name\":\"acp\",\"profile\":\"custom\"}},\"pewter\":{\"\":{\"name\":\"claude-environment\"}},\"tin\":{\"\":{\"name\":\"openhands\"}},\"zinc\":{\"\":{\"name\":\"openhands\"}}}"
+              value: "{\"bronze\":{\"\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"openhands\",\"qualification\":\"qualified\"}],\"name\":\"openhands\"}},\"copper\":{\"\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"exec\",\"qualification\":\"qualified\"}],\"name\":\"exec\"}},\"gold\":{\"analyst\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"openhands\",\"qualification\":\"qualified\"}],\"name\":\"openhands\"},\"builder\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"openhands\",\"qualification\":\"qualified\"}],\"name\":\"openhands\"},\"reviewer\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"openhands\",\"qualification\":\"qualified\"}],\"name\":\"openhands\"},\"tests\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"acp\",\"profile\":\"openhands\",\"qualification\":\"qualified\"}],\"name\":\"acp\",\"profile\":\"openhands\"}},\"lead\":{\"\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"acp\",\"profile\":\"custom\",\"qualification\":\"unqualified\"}],\"name\":\"acp\",\"profile\":\"custom\"}},\"pewter\":{\"\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"claude-environment\",\"qualification\":\"unqualified\"}],\"name\":\"claude-environment\"}},\"tin\":{\"\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"openhands\",\"qualification\":\"qualified\"}],\"name\":\"openhands\"}},\"zinc\":{\"\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"openhands\",\"qualification\":\"qualified\"}],\"name\":\"openhands\"}}}"
             - name: PLOEG_TEAM_MAX_RUNNING
               value: "{\"zinc\":2}"
             - name: PLOEG_FORGEJO_URL
@@ -174,7 +174,7 @@ spec:
                   name: ploeg-worker-bootstrap
                   key: registry.json
             - name: PLOEG_WORKER_LLM_POLICIES
-              value: "[{\"budgetUsd\":2,\"models\":[\"deepseek-chat\"],\"role\":\"\",\"team\":\"bronze\",\"ttl\":\"4h\"},{\"budgetUsd\":3,\"models\":[\"claude-sonnet-5\"],\"role\":\"\",\"team\":\"copper\",\"ttl\":\"4h\"},{\"budgetUsd\":1,\"models\":[\"claude-sonnet-5\"],\"role\":\"\",\"team\":\"pewter\",\"ttl\":\"4h\"},{\"budgetUsd\":1,\"litellmTeamId\":\"agents-orders\",\"mcpAccessGroups\":[\"observability-read-orders\"],\"models\":[\"deepseek-chat\"],\"role\":\"\",\"team\":\"tin\",\"ttl\":\"4h\"},{\"budgetUsd\":1,\"models\":[\"deepseek-chat\"],\"role\":\"\",\"team\":\"zinc\",\"ttl\":\"4h\"},{\"budgetUsd\":1,\"models\":[\"claude-sonnet-5\"],\"role\":\"\",\"team\":\"lead\",\"ttl\":\"4h\"},{\"budgetUsd\":0.5,\"models\":[\"deepseek-chat\"],\"role\":\"analyst\",\"team\":\"gold\",\"ttl\":\"4h\"},{\"budgetUsd\":0.5,\"models\":[\"deepseek-chat\"],\"role\":\"tests\",\"team\":\"gold\",\"ttl\":\"4h\"},{\"budgetUsd\":3,\"models\":[\"claude-sonnet-5\"],\"role\":\"builder\",\"team\":\"gold\",\"ttl\":\"4h\"},{\"budgetUsd\":0.75,\"models\":[\"claude-sonnet-5\"],\"role\":\"reviewer\",\"team\":\"gold\",\"ttl\":\"4h\"}]"
+              value: "[{\"budgetUsd\":2,\"defaultModel\":\"deepseek-chat\",\"models\":[\"deepseek-chat\"],\"role\":\"\",\"team\":\"bronze\",\"ttl\":\"4h\"},{\"budgetUsd\":3,\"defaultModel\":\"claude-sonnet-5\",\"models\":[\"claude-sonnet-5\"],\"role\":\"\",\"team\":\"copper\",\"ttl\":\"4h\"},{\"budgetUsd\":1,\"defaultModel\":\"claude-sonnet-5\",\"models\":[\"claude-sonnet-5\"],\"role\":\"\",\"team\":\"pewter\",\"ttl\":\"4h\"},{\"budgetUsd\":1,\"defaultModel\":\"deepseek-chat\",\"litellmTeamId\":\"agents-orders\",\"mcpAccessGroups\":[\"observability-read-orders\"],\"models\":[\"deepseek-chat\"],\"role\":\"\",\"team\":\"tin\",\"ttl\":\"4h\"},{\"budgetUsd\":1,\"defaultModel\":\"deepseek-chat\",\"models\":[\"deepseek-chat\"],\"role\":\"\",\"team\":\"zinc\",\"ttl\":\"4h\"},{\"budgetUsd\":1,\"defaultModel\":\"claude-sonnet-5\",\"models\":[\"claude-sonnet-5\"],\"role\":\"\",\"team\":\"lead\",\"ttl\":\"4h\"},{\"budgetUsd\":0.5,\"defaultModel\":\"deepseek-chat\",\"models\":[\"deepseek-chat\"],\"role\":\"analyst\",\"team\":\"gold\",\"ttl\":\"4h\"},{\"budgetUsd\":0.5,\"defaultModel\":\"deepseek-chat\",\"models\":[\"deepseek-chat\"],\"role\":\"tests\",\"team\":\"gold\",\"ttl\":\"4h\"},{\"budgetUsd\":3,\"defaultModel\":\"claude-sonnet-5\",\"models\":[\"claude-sonnet-5\"],\"role\":\"builder\",\"team\":\"gold\",\"ttl\":\"4h\"},{\"budgetUsd\":0.75,\"defaultModel\":\"claude-sonnet-5\",\"models\":[\"claude-sonnet-5\"],\"role\":\"reviewer\",\"team\":\"gold\",\"ttl\":\"4h\"}]"
           readinessProbe:
             httpGet:
               path: /readyz
@@ -1744,16 +1744,17 @@ spec:
         dbName: "app"
         sslmode: "require"
         # THE claim predicate for a Role, and it must stay byte-identical to
-        # store.ClaimRole and store.PendingRuns: pending runs for this team and
-        # role. Served index-only by agent_runs_claimable, which migration 0008
-        # created verbatim for this query:
-        #   CREATE INDEX agent_runs_claimable
-        #       ON agent_runs (team, role, id) WHERE state = 'pending';
+        # store.ClaimRoleFor and store.PendingRunsFor: pending runs for this
+        # team and role that store this workload's Harness key or none
+        # (ADR-0099). Served by agent_runs_claimable_harness, which migration
+        # 0056 created for this query:
+        #   CREATE INDEX agent_runs_claimable_harness
+        #       ON agent_runs (team, role, harness_requested, id) WHERE state = 'pending';
         # Overshoot merely wastes a pod that exits 0 empty-handed; undershoot
         # stalls Work Items with no error anywhere, which is the worst failure
         # this system can have. TestClaimRoleAgreesWithPendingRuns keeps the
         # two Go callers honest; this comment is the third copy's leash.
-        query: "SELECT COUNT(*) FROM agent_runs WHERE team = 'gold' AND role = 'analyst' AND state = 'pending'"
+        query: "SELECT COUNT(*) FROM agent_runs WHERE team = 'gold' AND role = 'analyst' AND state = 'pending' AND (harness_requested IS NULL OR harness_requested = 'openhands')"
         targetQueryValue: "1"
         activationTargetQueryValue: "0"
       authenticationRef:
@@ -1941,16 +1942,17 @@ spec:
         dbName: "app"
         sslmode: "require"
         # THE claim predicate for a Role, and it must stay byte-identical to
-        # store.ClaimRole and store.PendingRuns: pending runs for this team and
-        # role. Served index-only by agent_runs_claimable, which migration 0008
-        # created verbatim for this query:
-        #   CREATE INDEX agent_runs_claimable
-        #       ON agent_runs (team, role, id) WHERE state = 'pending';
+        # store.ClaimRoleFor and store.PendingRunsFor: pending runs for this
+        # team and role that store this workload's Harness key or none
+        # (ADR-0099). Served by agent_runs_claimable_harness, which migration
+        # 0056 created for this query:
+        #   CREATE INDEX agent_runs_claimable_harness
+        #       ON agent_runs (team, role, harness_requested, id) WHERE state = 'pending';
         # Overshoot merely wastes a pod that exits 0 empty-handed; undershoot
         # stalls Work Items with no error anywhere, which is the worst failure
         # this system can have. TestClaimRoleAgreesWithPendingRuns keeps the
         # two Go callers honest; this comment is the third copy's leash.
-        query: "SELECT COUNT(*) FROM agent_runs WHERE team = 'gold' AND role = 'tests' AND state = 'pending'"
+        query: "SELECT COUNT(*) FROM agent_runs WHERE team = 'gold' AND role = 'tests' AND state = 'pending' AND (harness_requested IS NULL OR harness_requested = 'acp/openhands')"
         targetQueryValue: "1"
         activationTargetQueryValue: "0"
       authenticationRef:
@@ -2190,16 +2192,17 @@ spec:
         dbName: "app"
         sslmode: "require"
         # THE claim predicate for a Role, and it must stay byte-identical to
-        # store.ClaimRole and store.PendingRuns: pending runs for this team and
-        # role. Served index-only by agent_runs_claimable, which migration 0008
-        # created verbatim for this query:
-        #   CREATE INDEX agent_runs_claimable
-        #       ON agent_runs (team, role, id) WHERE state = 'pending';
+        # store.ClaimRoleFor and store.PendingRunsFor: pending runs for this
+        # team and role that store this workload's Harness key or none
+        # (ADR-0099). Served by agent_runs_claimable_harness, which migration
+        # 0056 created for this query:
+        #   CREATE INDEX agent_runs_claimable_harness
+        #       ON agent_runs (team, role, harness_requested, id) WHERE state = 'pending';
         # Overshoot merely wastes a pod that exits 0 empty-handed; undershoot
         # stalls Work Items with no error anywhere, which is the worst failure
         # this system can have. TestClaimRoleAgreesWithPendingRuns keeps the
         # two Go callers honest; this comment is the third copy's leash.
-        query: "SELECT COUNT(*) FROM agent_runs WHERE team = 'gold' AND role = 'builder' AND state = 'pending'"
+        query: "SELECT COUNT(*) FROM agent_runs WHERE team = 'gold' AND role = 'builder' AND state = 'pending' AND (harness_requested IS NULL OR harness_requested = 'openhands')"
         targetQueryValue: "1"
         activationTargetQueryValue: "0"
       authenticationRef:
@@ -2385,16 +2388,17 @@ spec:
         dbName: "app"
         sslmode: "require"
         # THE claim predicate for a Role, and it must stay byte-identical to
-        # store.ClaimRole and store.PendingRuns: pending runs for this team and
-        # role. Served index-only by agent_runs_claimable, which migration 0008
-        # created verbatim for this query:
-        #   CREATE INDEX agent_runs_claimable
-        #       ON agent_runs (team, role, id) WHERE state = 'pending';
+        # store.ClaimRoleFor and store.PendingRunsFor: pending runs for this
+        # team and role that store this workload's Harness key or none
+        # (ADR-0099). Served by agent_runs_claimable_harness, which migration
+        # 0056 created for this query:
+        #   CREATE INDEX agent_runs_claimable_harness
+        #       ON agent_runs (team, role, harness_requested, id) WHERE state = 'pending';
         # Overshoot merely wastes a pod that exits 0 empty-handed; undershoot
         # stalls Work Items with no error anywhere, which is the worst failure
         # this system can have. TestClaimRoleAgreesWithPendingRuns keeps the
         # two Go callers honest; this comment is the third copy's leash.
-        query: "SELECT COUNT(*) FROM agent_runs WHERE team = 'gold' AND role = 'reviewer' AND state = 'pending'"
+        query: "SELECT COUNT(*) FROM agent_runs WHERE team = 'gold' AND role = 'reviewer' AND state = 'pending' AND (harness_requested IS NULL OR harness_requested = 'openhands')"
         targetQueryValue: "1"
         activationTargetQueryValue: "0"
       authenticationRef:

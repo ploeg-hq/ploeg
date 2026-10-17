@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -24,7 +25,11 @@ type LLMPolicy struct {
 	Role      string   `json:"role"`
 	BudgetUSD float64  `json:"budgetUsd"`
 	Models    []string `json:"models"`
-	TTL       string   `json:"ttl"`
+	// DefaultModel is the model a Run of this Role calls when its admission
+	// chose none (ADR-0103). It must be one of Models; empty is Models' only
+	// entry, or no default when Models lists more than one.
+	DefaultModel string `json:"defaultModel,omitempty"`
+	TTL          string `json:"ttl"`
 	// LiteLLMTeamID mints the Run's key inside this LiteLLM team (its
 	// team_id). MCPAccessGroups grants the key those MCP access groups, which
 	// the team must allow. Both empty = no team and no MCP tools (ADR-0078).
@@ -68,6 +73,9 @@ func NewLLMControl(st *store.Store, broker ManagedLLMBroker, policiesJSON string
 				return nil, fmt.Errorf("empty model scope")
 			}
 		}
+		if p.DefaultModel != "" && !slices.Contains(p.Models, p.DefaultModel) {
+			return nil, fmt.Errorf("managed LLM policy %s: default model is not in its models", key)
+		}
 		if err := validMCPGrant(p); err != nil {
 			return nil, err
 		}
@@ -95,6 +103,18 @@ func validMCPGrant(p LLMPolicy) error {
 	return nil
 }
 
+// Default is the policy's default model, empty when it names none and lists
+// more than one.
+func (p LLMPolicy) Default() string {
+	if p.DefaultModel != "" {
+		return p.DefaultModel
+	}
+	if len(p.Models) == 1 {
+		return p.Models[0]
+	}
+	return ""
+}
+
 // Policy returns the managed inference policy of a team and Role.
 func (c *LLMControl) Policy(team, role string) (LLMPolicy, bool) {
 	for _, p := range c.Policies {
@@ -116,7 +136,11 @@ func (c *LLMControl) Reserve(ctx context.Context, runToken string) error {
 			if err != nil {
 				return err
 			}
-			return c.Store.ReserveLLMAccount(ctx, store.LLMAccount{RunToken: runToken, Alias: litellm.Alias(runToken), Authorized: p.BudgetUSD, Models: p.Models, TTLSeconds: int64(ttl.Seconds()),
+			models := p.Models
+			if run.Model != "" {
+				models = []string{run.Model}
+			}
+			return c.Store.ReserveLLMAccount(ctx, store.LLMAccount{RunToken: runToken, Alias: litellm.Alias(runToken), Authorized: p.BudgetUSD, Models: models, TTLSeconds: int64(ttl.Seconds()),
 				GatewayTeamID: p.LiteLLMTeamID, MCPAccessGroups: p.MCPAccessGroups})
 		}
 	}

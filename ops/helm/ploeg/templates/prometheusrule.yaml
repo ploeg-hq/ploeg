@@ -211,4 +211,19 @@ spec:
             {{- end }}
         {{- end }}
         {{- end }}
+        {{- with $a.harnessOutsideAllowlist }}
+        {{- if .enabled }}
+        - alert: PloegHarnessOutsideAllowlist
+          expr: max by (team, role, harness) (ploeg_runs_pending_outside_allowlist{ {{- $sel -}} }) > 0
+          for: {{ .for }}
+          labels:
+            severity: {{ .severity }}
+          annotations:
+            summary: "Pending Runs of {{ "{{" }} $labels.team {{ "}}" }}/{{ "{{" }} $labels.role {{ "}}" }} store a Harness no workload claims"
+            description: "{{ "{{" }} $value {{ "}}" }} pending Run(s) store Harness {{ "{{" }} $labels.harness {{ "}}" }}, which the current allowlist of the Role no longer contains. Ploeg leaves them as they are: restore the allowlist entry, or cancel or requeue the Work Item."
+            {{- if $runbook }}
+            runbook_url: {{ printf "%s#ploegharnessoutsideallowlist" $runbook }}
+            {{- end }}
+        {{- end }}
+        {{- end }}
 {{- end }}

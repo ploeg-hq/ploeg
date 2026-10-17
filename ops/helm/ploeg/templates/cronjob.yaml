@@ -1,7 +1,9 @@
 {{- if and .Values.executor.enabled (eq (.Values.executor.type | default "keda") "cronjob") }}
 {{- $root := . }}
 {{- range $team := .Values.executor.teams }}
-{{- range $role := (include "ploeg.teamRoles" $team | fromJsonArray) }}
+{{- range $planRole := (include "ploeg.teamRoles" $team | fromJsonArray) }}
+{{- range $w := (include "ploeg.roleWorkloads" (dict "root" $root "team" $team "role" $planRole) | fromJsonArray) }}
+{{- $role := $w.role }}
 ---
 # The KEDA-free executor (docs/contracts/executor.md): a plain CronJob per
 # (team, Role) polls by spawning a worker on a schedule. Empty-handed claim =
@@ -10,7 +12,7 @@
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: {{ include "ploeg.workloadName" (dict "root" $root "team" $team "role" $role) }}
+  name: {{ include "ploeg.workloadName" (dict "root" $root "team" $team "role" $role "suffix" $w.suffix) }}
   labels: {{- include "ploeg.labels" $root | nindent 4 }}
 spec:
   schedule: {{ $root.Values.executor.cronjob.schedule | quote }}
@@ -27,6 +29,7 @@ spec:
       activeDeadlineSeconds: {{ $root.Values.executor.activeDeadlineSeconds }}
       template:
         {{- include "ploeg.workerPodTemplate" (dict "root" $root "team" $team "role" $role) | nindent 8 }}
+{{- end }}
 {{- end }}
 {{- end }}
 {{- end }}

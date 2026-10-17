@@ -63,7 +63,7 @@ func TestShadowReviewSeries(t *testing.T) {
 			{Team: "bronze", Role: "shadow-reviewer", Primary: "request_changes", Shadow: "approve"}: 1,
 			{Team: "bronze", Role: "shadow-reviewer", Primary: "approve", Shadow: "approve"}:         4,
 		},
-	}, nil))
+	}, nil, nil))
 	want := `# TYPE ploeg_shadow_reviews_total counter
 ploeg_shadow_reviews_total{team="bronze",role="shadow-reviewer",primary="approve",shadow="approve"} 4
 ploeg_shadow_reviews_total{team="bronze",role="shadow-reviewer",primary="request_changes",shadow="approve"} 1

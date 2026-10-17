@@ -192,6 +192,9 @@ func (w *Worker) RunContext(parent context.Context) error {
 		branch = work.Branch(item)
 	}
 	trace := litellm.Alias(claimed.RunToken)
+	configured := w.Cfg
+	w.Cfg = withClaimedModel(w.Cfg, claimed.Model)
+	defer func() { w.Cfg = configured }()
 	unscoped := w.Log
 	w.Log = runLogger(unscoped, w.Cfg.Team, claimed, trace)
 	defer func() { w.Log = unscoped }()
@@ -419,6 +422,9 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	}
 	planner := claimed.Planner && !writes
 	skillSet, err := skills.ForRun(writes, planner)
+	if !writes && !planner && item.Origin == work.OriginPullRequest {
+		skillSet, err = skills.ForPullRequestReader()
+	}
 	if err != nil {
 		return stuckReport("could not load Ploeg's skills", err.Error())
 	}
@@ -1059,6 +1065,19 @@ func renewLoop(ctx context.Context, cancel context.CancelCauseFunc, api *APIClie
 			}
 		}
 	}
+}
+
+func withClaimedModel(cfg Config, model string) Config {
+	if model == "" {
+		return cfg
+	}
+	prefix := ""
+	if scope := ModelList(cfg.LLMModel); len(scope) == 1 {
+		prefix = strings.TrimSuffix(cfg.LLMModel, scope[0])
+	}
+	cfg.LLMModel = prefix + model
+	cfg.LLMModels = []string{model}
+	return cfg
 }
 
 // ModelList returns a singleton slice containing model (with common proxy

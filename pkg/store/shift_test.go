@@ -136,6 +136,7 @@ func TestClaimRoleAgreesWithPendingRuns(t *testing.T) {
 			t.Errorf("role %s: PendingRuns said %d, ClaimRole yielded %d — the KEDA mirror has drifted", role, want, got)
 		}
 	}
+	claimRoleAgreesAcrossHarnesses(t)
 }
 
 // ADR-0012's hard case. Five readers start at once against a pool that funds

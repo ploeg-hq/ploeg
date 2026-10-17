@@ -63,7 +63,8 @@ func runSandboxLaunch(log *slog.Logger) error {
 
 func failUnstartedRun(log *slog.Logger, cause error) {
 	claimed, err := worker.FailUnstartedRun(os.Getenv("PLOEG_API_URL"), os.Getenv("PLOEG_WORKER_BOOTSTRAP_TOKEN"),
-		envOr("PLOEG_WORKER_ID", os.Getenv("POD_UID")), os.Getenv("PLOEG_TEAM"), os.Getenv("PLOEG_ROLE"), cause.Error())
+		envOr("PLOEG_WORKER_ID", os.Getenv("POD_UID")), os.Getenv("PLOEG_TEAM"), os.Getenv("PLOEG_ROLE"),
+		os.Getenv("PLOEG_HARNESS"), os.Getenv("PLOEG_ACP_PROFILE"), cause.Error())
 	switch {
 	case err != nil:
 		log.Error("unstarted run not reported; the sweeper or the next launcher finds it", "err", err)

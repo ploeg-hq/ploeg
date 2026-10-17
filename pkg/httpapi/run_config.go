@@ -13,21 +13,23 @@ type PlanHashes interface {
 	Hash(team string) string
 }
 
-// runHarness is what a worker says about its harness in its claim.
+// runHarness is what a worker says about its harness in its claim, and Model
+// the model the Run stores (ADR-0103).
 type runHarness struct {
 	Name    string
 	Profile string
 	Version string
+	Model   string
 }
 
 // recordRunConfig records what a Run was configured with when ploegd claimed
-// or admitted it (ADR-0091). The model comes from the (team, Role) managed
-// inference policy, the plan hash from the team's plan, and the harness from
-// the worker's claim. A failure leaves the fields unknown; it never stops
-// the Run.
+// or admitted it (ADR-0091). The model is the one the Run stores (ADR-0103),
+// else the single model of its (team, Role) managed inference policy; the
+// plan hash comes from the team's plan, and the harness from the worker's
+// claim. A failure leaves the fields unknown; it never stops the Run.
 func (s *Server) recordRunConfig(ctx context.Context, runToken, team, role string, withPlan bool, h runHarness) {
-	c := store.RunConfig{Harness: h.Name, HarnessProfile: h.Profile, HarnessVersion: h.Version, PloegdVersion: s.Version}
-	if s.LLMControl != nil {
+	c := store.RunConfig{Harness: h.Name, HarnessProfile: h.Profile, HarnessVersion: h.Version, PloegdVersion: s.Version, ConfiguredModel: h.Model}
+	if s.LLMControl != nil && c.ConfiguredModel == "" {
 		if p, ok := s.LLMControl.Policy(team, role); ok && len(p.Models) == 1 {
 			c.ConfiguredModel = p.Models[0]
 		}
