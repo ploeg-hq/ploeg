@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -39,6 +40,10 @@ type keySet struct {
 	keys      map[string]crypto.PublicKey
 	fetchedAt time.Time
 	triedAt   time.Time
+
+	loaded  atomic.Bool
+	loadMu  sync.Mutex
+	loading chan struct{}
 }
 
 func newKeySet(issuer, jwksURL string, client *http.Client, now func() time.Time) *keySet {
@@ -59,6 +64,7 @@ func (s *keySet) key(ctx context.Context, kid string) (crypto.PublicKey, error) 
 		s.triedAt = now
 		if keys, err := s.fetch(ctx); err == nil {
 			s.keys, s.fetchedAt = keys, now
+			s.loaded.Store(true)
 		} else if s.keys == nil {
 			return nil, fmt.Errorf("%w: %v", ErrKeysUnavailable, err)
 		}
@@ -72,16 +78,34 @@ func (s *keySet) key(ctx context.Context, kid string) (crypto.PublicKey, error) 
 	return nil, errors.New("the token's key id is not among the issuer's signing keys")
 }
 
+// ready reports whether the keys are loaded. A fetch it starts runs to its
+// own timeout even when ctx ends first, so a readiness probe shorter than the
+// issuer's answer still loads the keys for the next probe.
 func (s *keySet) ready(ctx context.Context) error {
-	s.mu.Lock()
-	loaded := s.keys != nil
-	s.mu.Unlock()
-	if loaded {
+	if s.loaded.Load() {
 		return nil
 	}
-	_, err := s.key(ctx, "")
-	if errors.Is(err, ErrKeysUnavailable) {
-		return err
+	s.loadMu.Lock()
+	if s.loading == nil {
+		done := make(chan struct{})
+		s.loading = done
+		go func() {
+			_, _ = s.key(context.WithoutCancel(ctx), "")
+			s.loadMu.Lock()
+			s.loading = nil
+			s.loadMu.Unlock()
+			close(done)
+		}()
+	}
+	done := s.loading
+	s.loadMu.Unlock()
+	select {
+	case <-done:
+	case <-ctx.Done():
+		return fmt.Errorf("%w: %v", ErrKeysUnavailable, ctx.Err())
+	}
+	if !s.loaded.Load() {
+		return ErrKeysUnavailable
 	}
 	return nil
 }
