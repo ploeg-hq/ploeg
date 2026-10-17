@@ -37,6 +37,8 @@ Chosen option: "Work Item Notes written directly, readable within the root Work 
 * **Accepting writes the concept.** ploegd, as the Tenant's review actor, forks a branch from the knowledge graph's `main`, writes the concept, merges and deletes the branch in one operation. No proposal branch stays open, so schema changes are never blocked by waiting reviews.
 * **Repository scope also goes to git.** Accepting a Promotion with `repository` scope also creates a Work Item for that repository ([0031](0031-runs-create-work-items-held-for-approval-within-limits.md)), already approved by the accepting admin, whose Run adds the concept as one OKF file under the repository's `knowledge/` directory and opens a pull request the repository's owners review and merge. The graph concept is what Runs read until then. Once the file is on the repository's default branch, a pack that finds the same concept in both sources keeps the repository's file, because the client owns their git.
 * **Writing once.** The outcome and a note outbox row are stored in one transaction; ploegd writes outbox rows to the notes graph until the commit is confirmed, with a merge load keyed on the Run's trace and the learning's index, so a replay changes nothing. An acceptance records its branch name before it starts; after a restart ploegd finds the concept on `main` and finishes, or deletes the branch and retries.
+* **Notes as the Run works.** A Run does not wait for its outcome to keep what it found. The agent appends each finding as one JSON line to `PLOEG_NOTES_FILE`; the worker reads the file every few seconds, withholds a line that carries one of the Run's credentials, and sends the rest to `POST /api/v1/runs/{token}/notes`, at most ten per Run. ploegd stores each in the same outbox, keyed on the Run's trace and the line number, so a resend changes nothing and the note reaches later Runs within seconds.
+* **A stopped Run leaves a note.** When a Run ends failed or stuck, except for a credential leak, the worker sends its own note, marked as the worker's: the stop reason, the plan and how far it got, its last commands and whether it opened a pull request. No model writes it. The next Run of the work reads it like any other note.
 * **Retention.** A Work Item Note is kept while its root Work Item is open and for 90 days after it closes, unless a Promotion references it.
 
 ### Consequences
@@ -58,6 +60,8 @@ Proposed checks, in the existing `go test ./...` CI step once built:
 * `TestPromotion_AcceptanceSurvivesARestart`: ploegd stops between the merge and the delete; on restart the concept exists once and no branch remains.
 * `TestPromotion_RepositoryScopeCreatesAKnowledgeWorkItem`: accepting a repository-scoped Promotion creates one approved Work Item naming the concept, and accepting it again creates none.
 * `TestKnowledgePack_RepositoryFileWinsOverTheSameGraphConcept`.
+* `TestLiveNotes_ReachLaterRunsWhileTheRunStillWorks`: a note a Run sends while it works is in the next Run's notes before the first ends, and a resend writes nothing twice.
+* `TestStopNote_SaysWhereTheStoppedRunGot`: a Run stopped by its watchdog leaves the worker's note with the stop reason, the plan and the last command; a Run that delivered or leaked leaves none.
 * The OutcomeReport schema case that refuses an unknown `scope`.
 
 ## Pros and Cons of the Options
@@ -84,4 +88,5 @@ Proposed checks, in the existing `go test ./...` CI step once built:
 * Replaces 0066 once accepted; on acceptance set `supersedes: 0066` and mark 0066 superseded in the Records index. Until then both stay proposed, and 0066's cap and fields remain the contract.
 * Unfold system ADR-0034 (proposed) records the product decision.
 * 2026-10-11 — Proposed after the owner chose direct Work Item Notes with review only for a wider scope.
+* 2026-10-17 — Amended after Run 305 (Work Item 190) was stopped by the idle watchdog and lost two measured findings that would only have been kept with its outcome. The owner asked for knowledge to be pushed right away: notes are now sent while the Run works, and a stopped Run leaves a note of its own.
 * 2026-10-11 — Owner answers: a person's session note reaches Runs at once, like a Run's; only a Tenant admin promotes; an accepted repository Promotion opens a pull request to the repository's `knowledge/` now, not later. Kept proposed until the measurement spike (VIK-1859) reports.

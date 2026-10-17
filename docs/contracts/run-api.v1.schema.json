@@ -232,6 +232,36 @@
       "required": ["accepted", "truncated"],
       "additionalProperties": false
     },
+    "runNotesRequest": {
+      "description": "Body of POST /api/v1/runs/{token}/notes: Work Item Notes a running Run sends while it works, before its outcome (ADR-0088, amended 2026-10-17). Resending a key changes nothing.",
+      "type": "object",
+      "properties": {
+        "notes": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 11,
+          "items": {
+            "type": "object",
+            "properties": {
+              "key": { "type": "string", "pattern": "^[a-z0-9-]{1,32}$", "description": "Unique within the Run: the line number in the agent's notes file, or stop for the worker's stop note." },
+              "byWorker": { "type": "boolean", "description": "The worker's own account of why the Run stopped, not a finding of the agent." },
+              "learning": { "$ref": "outcomereport.v1.schema.json#/$defs/learning" }
+            },
+            "required": ["key", "learning"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["notes"],
+      "additionalProperties": false
+    },
+    "runNotesResponse": {
+      "description": "HTTP 200 body of POST /api/v1/runs/{token}/notes.",
+      "type": "object",
+      "properties": { "queued": { "type": "integer", "minimum": 0 } },
+      "required": ["queued"],
+      "additionalProperties": false
+    },
     "knowledgeResponse": {
       "description": "HTTP 200 body of GET /api/v1/runs/{token}/knowledge: what the Tenant's graphs hold for this Run's own scopes, which ploegd takes from its records and never from the request (ADR-0087, proposed). Carries no graph credential.",
       "type": "object",

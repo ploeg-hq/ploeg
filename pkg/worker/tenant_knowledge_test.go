@@ -99,8 +99,8 @@ func TestWorkItemNotes_OffOrOlderPloegdChangesNothing(t *testing.T) {
 
 func TestLearningsInvitation_SaysNotesReachLaterRunsAtOnce(t *testing.T) {
 	var on, off strings.Builder
-	writeLearningsInvitation(&on, true)
-	writeLearningsInvitation(&off, false)
+	writeLearningsInvitation(&on, learningsLive)
+	writeLearningsInvitation(&off, learningsReviewed)
 	if !strings.Contains(on.String(), "without review") || !strings.Contains(on.String(), `"scope"`) || strings.Contains(on.String(), "A person reviews every entry") {
 		t.Errorf("notes invitation:\n%s", on.String())
 	}

@@ -53,6 +53,40 @@ reading the key back.
 - **WHEN** an outbox row is still unwritten after a day
 - **THEN** ploegd reports it as a metric an alert can fire on, and the Run's outcome is unaffected
 
+### Requirement: A Run sends its notes while it works
+
+A Run with a notes graph SHALL be able to send each finding as it makes it,
+through the notes file the worker names in `PLOEG_NOTES_FILE`, and ploegd
+SHALL store it in the note outbox at once, so it reaches later Runs of the
+same root before the Run ends and is kept if the Run is stopped. A line that
+carries one of the Run's credentials MUST NOT be sent. Resending a note's key
+MUST NOT store it twice.
+
+#### Scenario: A finding reaches the next Run before the first ends
+
+- **GIVEN** a running Run that appended a learning to its notes file
+- **WHEN** the next Run of a Work Item under the same root asks for its knowledge
+- **THEN** that learning is among its notes, while the first Run still runs
+
+#### Scenario: A Run that is stopped keeps what it sent
+
+- **GIVEN** a Run that sent two notes and was then stopped by its idle watchdog
+- **WHEN** its outcome reports no learnings
+- **THEN** both notes are in the notes graph
+
+### Requirement: A stopped Run leaves a note
+
+When a Run ends failed or stuck, except for a credential leak, the worker
+SHALL send one note of its own, marked as the worker's, with the stop reason,
+the plan and how far it got, its last commands and whether it opened a pull
+request. No model SHALL write it.
+
+#### Scenario: The next Run starts where the stopped one ended
+
+- **GIVEN** a Run stopped by its idle watchdog with step 2 of 6 in progress
+- **WHEN** the next Run of the work is briefed
+- **THEN** its notes include the worker's note naming the stop, the plan with step 2 in progress and the last command
+
 ### Requirement: A wider scope reaches other work only through an accepted Promotion
 
 A learning with a scope wider than `work-item` SHALL also create a pending
