@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.0-rc.24
+
+### Changes
+
+- A Team is proposed as Ploeg's own manifest of charter, crew, permissions, intake and skills, after a sweep of agent-description standards, team frameworks and permission and budget formats found no standard to adopt and three shapes to borrow (ADR 0110, proposed; research record 2026-10-17). No behaviour change.
+
 ## 0.2.0-rc.23
 
 The `v0.2.0-rc.22` tag points at the commit before its release preparation, so its release refused it and rc.22 was never published. Its changes ship here.
