@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -127,6 +128,48 @@ func TestTranscriptStopsAtItsLimitWithOneMarker(t *testing.T) {
 	got, err := testStore.AppendTranscript(ctx, token, stages(transcript.MaxRunEntries, 2))
 	if err != nil || !got.Truncated || got.Accepted != 1 {
 		t.Fatalf("entry limit: %+v %v", got, err)
+	}
+}
+
+func TestTranscriptMarkerFitsWithinTheByteLimit(t *testing.T) {
+	token, id := claimTranscriptRun(t)
+	ctx := context.Background()
+	if got, err := testStore.AppendTranscript(ctx, token, stages(1, 1)); err != nil || got.Accepted != 1 {
+		t.Fatal(got, err)
+	}
+	var stored int
+	if err := testStore.pool.QueryRow(ctx, `SELECT sum(bytes) FROM run_transcript_entries WHERE run_id = $1`, id).Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := testStore.pool.Exec(ctx, `INSERT INTO run_transcript_entries (run_id, seq, at, kind, body, bytes)
+		VALUES ($1, 2, now(), 'stage', '{}', $2)`, id, transcript.MaxRunBytes-stored-1000); err != nil {
+		t.Fatal(err)
+	}
+	got, err := testStore.AppendTranscript(ctx, token, stages(3, 50))
+	if err != nil || !got.Truncated || got.Accepted < 2 {
+		t.Fatalf("append at the edge: %+v %v", got, err)
+	}
+	var bytes, markers int
+	if err := testStore.pool.QueryRow(ctx, `SELECT sum(bytes), count(*) FILTER (WHERE kind = 'truncated')
+		FROM run_transcript_entries WHERE run_id = $1`, id).Scan(&bytes, &markers); err != nil {
+		t.Fatal(err)
+	}
+	if bytes > transcript.MaxRunBytes || markers != 1 {
+		t.Fatalf("stored %d bytes with %d markers", bytes, markers)
+	}
+}
+
+func TestTranscriptStoresAWorkersMarkerAsTheMarker(t *testing.T) {
+	token, id := claimTranscriptRun(t)
+	ctx := context.Background()
+	at := time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC)
+	sent := transcript.Entry{Seq: 1, At: at, Kind: transcript.KindTruncated, Text: strings.Repeat("x", transcript.MaxTextBytes)}
+	if got, err := testStore.AppendTranscript(ctx, token, []transcript.Entry{sent}); err != nil || !got.Truncated || got.Accepted != 1 {
+		t.Fatalf("append: %+v %v", got, err)
+	}
+	page, err := testStore.OperatorTranscript(ctx, id, nil, 0, 10)
+	if err != nil || len(page.Entries) != 1 || !reflect.DeepEqual(page.Entries[0], transcript.Marker(1, at)) {
+		t.Fatalf("stored %d entries, %v; want only the marker", len(page.Entries), err)
 	}
 }
 

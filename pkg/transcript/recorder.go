@@ -304,10 +304,9 @@ func (r *Recorder) appendLocked(e Entry) {
 	e = Clamp(NewRedactor(secrets...).Entry(e))
 	e.Seq = r.seq + 1
 	size := Size(e)
-	if r.entries+1 >= MaxRunEntries || r.bytes+size > MaxRunBytes {
+	if !Fits(r.entries, r.bytes, size) {
 		r.truncated = true
-		e = Entry{Seq: e.Seq, At: e.At, Kind: KindTruncated, Text: "The transcript reached its limit of " +
-			strconv.Itoa(MaxRunEntries) + " entries or " + strconv.Itoa(MaxRunBytes>>20) + " MiB; later activity is not recorded."}
+		e = Marker(e.Seq, e.At)
 		size = Size(e)
 	}
 	r.seq = e.Seq
