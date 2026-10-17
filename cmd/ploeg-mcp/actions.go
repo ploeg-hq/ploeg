@@ -31,6 +31,7 @@ const (
 var identityName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$`)
 
 type person struct {
+	ID       string
 	Subject  string
 	Username string
 }
@@ -41,13 +42,9 @@ func withPerson(ctx context.Context, p person) context.Context {
 	return context.WithValue(ctx, personKey{}, p)
 }
 
-func (p person) actor() (string, bool) {
-	for _, name := range []string{p.Username, p.Subject} {
-		if identityName.MatchString(name) {
-			return name, true
-		}
-	}
-	return "", false
+func personFrom(ctx context.Context) (person, bool) {
+	p, ok := ctx.Value(personKey{}).(person)
+	return p, ok && p.ID != ""
 }
 
 func via(info *mcp.Implementation) string {
@@ -118,15 +115,11 @@ type action[In any] struct {
 
 func (a action[In]) handler(ctx context.Context, req *mcp.CallToolRequest, in In) (*mcp.CallToolResult, actionOut, error) {
 	var out actionOut
-	p, ok := ctx.Value(personKey{}).(person)
+	p, ok := personFrom(ctx)
 	if !ok {
 		return nil, out, errors.New("ploeg-mcp acts only over HTTP for a signed-in person; nothing changed")
 	}
-	actor, ok := p.actor()
-	if !ok {
-		return nil, out, errors.New("your username and subject cannot name you to Ploeg (1 to 128 letters, digits, '.', '_', ':' or '-'); nothing changed")
-	}
-	who := operatorclient.Attribution{Actor: actor, Via: via(req.ClientInfo())}
+	who := operatorclient.Attribution{Actor: p.ID, Via: via(req.ClientInfo())}
 	if caps := req.ClientCapabilities(); caps == nil || caps.Elicitation == nil {
 		return nil, out, errors.New(cannotConfirm)
 	}
@@ -227,7 +220,7 @@ func registerActions(srv *mcp.Server, s *server) {
 		Description: "Leave an instruction that the next Run of a live Work Item reads. Asks the person to confirm first."},
 		action[noteIn]{commandID: func(in noteIn) string { return in.CommandID }, describe: s.describeNote, act: s.note})
 	addAction(srv, &mcp.Tool{Name: "ploeg_steer_execution", Title: "Steer an attended execution", Annotations: destructive(true),
-		Description: "Send a message to, pause, resume or cancel an attended execution you own. Asks the person to confirm first."},
+		Description: "Send a message to, pause, resume or cancel an attended execution you own, whichever application started it, when its Team is in your access. Find its executionId in ploeg_get_work, which lists a Work Item's executions and marks yours. Asks the person to confirm first."},
 		action[steerIn]{commandID: func(in steerIn) string { return in.CommandID }, describe: s.describeSteer, act: s.steer})
 }
 
@@ -467,7 +460,7 @@ func (s *server) steer(ctx context.Context, who operatorclient.Attribution, comm
 
 func explainExecution(err error) error {
 	if errors.Is(err, operatorclient.ErrNotFound) {
-		return errors.New("no attended execution with that id belongs to you through this group's consumer; nothing changed")
+		return errors.New("no attended execution with that id is yours in this group's Teams; nothing changed. ploeg_get_work lists a Work Item's executions and marks yours")
 	}
 	return explain(err)
 }

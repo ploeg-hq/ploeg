@@ -48,13 +48,13 @@ func newRemote(t *testing.T) *remote {
 			}
 			_, _ = w.Write([]byte(`{"items":[],"nextCursor":null}`))
 		})
-	}, `[{"group":"ploeg-admins","tokenEnv":"ADMINS_TOKEN"},{"group":"ploeg-readers","tokenEnv":"READERS_TOKEN"}]`, randomToken(t), randomToken(t))
+	}, `[{"group":"ploeg-admins","tokenEnv":"ADMINS_TOKEN"},{"group":"ploeg-readers","tokenEnv":"READERS_TOKEN"}]`, randomToken(t), randomToken(t), nil)
 }
 
 // newRemoteTokens serves ploeg-mcp http in front of the ploegd that upstream
 // returns; groups is PLOEG_MCP_GROUPS, and ADMINS_TOKEN and READERS_TOKEN hold
-// admins and readers.
-func newRemoteTokens(t *testing.T, upstream func(*remote) http.Handler, groups, admins, readers string) *remote {
+// admins and readers. extra adds or overrides environment variables.
+func newRemoteTokens(t *testing.T, upstream func(*remote) http.Handler, groups, admins, readers string, extra map[string]string) *remote {
 	t.Helper()
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -84,6 +84,9 @@ func newRemoteTokens(t *testing.T, upstream func(*remote) http.Handler, groups, 
 		"PLOEG_MCP_GROUPS":         groups,
 		"ADMINS_TOKEN":             r.admins,
 		"READERS_TOKEN":            r.readers,
+	}
+	for k, v := range extra {
+		env[k] = v
 	}
 	cfg, err := loadHTTPConfig(func(k string) string { return env[k] }, func(k string) (string, bool) { v, ok := env[k]; return v, ok })
 	if err != nil {
@@ -303,6 +306,7 @@ func TestHTTPConfigurationIsRefusedWhenIncomplete(t *testing.T) {
 		"a lifetime too long":  {"PLOEG_MCP_MAX_TOKEN_LIFETIME", "48h"},
 		"a duplicated group":   {"PLOEG_MCP_GROUPS", `[{"group":"g","tokenEnv":"READERS_TOKEN"},{"group":"g","tokenEnv":"READERS_TOKEN"}]`},
 		"a lowercase tokenEnv": {"PLOEG_MCP_GROUPS", `[{"group":"g","tokenEnv":"readers"}]`},
+		"a blank namespace":    {"PLOEG_MCP_SUBJECT_NAMESPACE", " "},
 	} {
 		env := map[string]string{}
 		for k, v := range good {
@@ -314,5 +318,30 @@ func TestHTTPConfigurationIsRefusedWhenIncomplete(t *testing.T) {
 		} else if strings.Contains(err.Error(), good["READERS_TOKEN"]) {
 			t.Errorf("%s: the error carries the token", name)
 		}
+	}
+}
+
+func TestThePersonNamespaceIsTheIssuerUnlessConfigured(t *testing.T) {
+	env := map[string]string{
+		"PLOEG_URL":            "http://ploeg:8080",
+		"PLOEG_MCP_RESOURCE":   "https://mcp.example/mcp",
+		"PLOEG_MCP_ISSUER":     "https://id.example/application/o/ploeg-mcp/",
+		"PLOEG_MCP_CLIENT_IDS": "ploeg-mcp",
+		"PLOEG_MCP_GROUPS":     `[{"group":"ploeg-readers","tokenEnv":"READERS_TOKEN"}]`,
+		"READERS_TOKEN":        strings.Repeat("a", 64),
+	}
+	load := func() *httpConfig {
+		cfg, err := loadHTTPConfig(func(k string) string { return env[k] }, func(k string) (string, bool) { v, ok := env[k]; return v, ok })
+		if err != nil {
+			t.Fatal(err)
+		}
+		return cfg
+	}
+	if got := load().personNamespace; got != env["PLOEG_MCP_ISSUER"] {
+		t.Fatalf("default namespace %q, want the issuer", got)
+	}
+	env["PLOEG_MCP_SUBJECT_NAMESPACE"] = " https://id.example/application/o/former/ "
+	if got := load().personNamespace; got != "https://id.example/application/o/former/" {
+		t.Fatalf("configured namespace %q", got)
 	}
 }
