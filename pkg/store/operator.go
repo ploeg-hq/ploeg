@@ -261,7 +261,10 @@ type OperatorDetail struct {
 	Runs        []OperatorRun        `json:"runs"`
 	Checkpoints []OperatorCheckpoint `json:"checkpoints"`
 	Events      []OperatorEvent      `json:"events"`
-	Truncated   OperatorTruncated    `json:"truncated"`
+	// Executions are the operator executions bound to the Work Item, newest
+	// first, so their owner can find one to steer.
+	Executions []OperatorExecutionBrief `json:"executions"`
+	Truncated  OperatorTruncated        `json:"truncated"`
 }
 
 type OperatorTruncated struct {
@@ -269,6 +272,7 @@ type OperatorTruncated struct {
 	Runs        bool `json:"runs"`
 	Checkpoints bool `json:"checkpoints"`
 	Events      bool `json:"events"`
+	Executions  bool `json:"executions"`
 }
 
 const operatorShiftJSON = `jsonb_build_object(
@@ -626,6 +630,19 @@ func (s *Store) OperatorItem(ctx context.Context, id int64, teams []string) (Ope
 		return detail, err
 	}
 	detail.Events, detail.Truncated.Events, _ = operatorPage(allEvents, limit)
+	executions, err := tx.Query(ctx, `SELECT e.id,i.team,e.actor,e.state,e.supervision,e.updated_at FROM operator_executions e JOIN work_items i ON i.id=e.work_item_id WHERE e.work_item_id=$1 ORDER BY e.created_at DESC,e.id LIMIT $2`, id, limit+1)
+	if err != nil {
+		return detail, err
+	}
+	allExecutions, err := pgx.CollectRows(executions, func(row pgx.CollectableRow) (OperatorExecutionBrief, error) {
+		var b OperatorExecutionBrief
+		err := row.Scan(&b.ID, &b.Team, &b.Owner, &b.State, &b.Supervision, &b.UpdatedAt)
+		return b, err
+	})
+	if err != nil {
+		return detail, err
+	}
+	detail.Executions, detail.Truncated.Executions, _ = operatorPage(allExecutions, limit)
 	return detail, tx.Commit(ctx)
 }
 

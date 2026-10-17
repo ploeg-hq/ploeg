@@ -1007,6 +1007,56 @@
         }
       }
     },
+    "executionBrief": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "team",
+        "owner",
+        "state",
+        "supervision",
+        "updatedAt"
+      ],
+      "description": "One operator execution bound to the Work Item. owner is the person id the execution was admitted for (its X-Ploeg-Actor). The execution's owner may read and steer it through GET and POST /api/v1/operator/executions/{id} from any execute-capable Operator Consumer whose Teams include team (ADR-0108).",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "team": {
+          "type": "string"
+        },
+        "owner": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "state": {
+          "enum": [
+            "admitted",
+            "running",
+            "waiting_input",
+            "pause_requested",
+            "paused",
+            "cancel_requested",
+            "cancelled",
+            "completed",
+            "failed",
+            "interrupted"
+          ]
+        },
+        "supervision": {
+          "enum": [
+            "human",
+            "background"
+          ]
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
     "eventDetail": {
       "type": "object",
       "additionalProperties": false,
@@ -1125,7 +1175,8 @@
         "shifts",
         "runs",
         "checkpoints",
-        "events"
+        "events",
+        "executions"
       ],
       "properties": {
         "shifts": {
@@ -1138,6 +1189,9 @@
           "type": "boolean"
         },
         "events": {
+          "type": "boolean"
+        },
+        "executions": {
           "type": "boolean"
         }
       }
@@ -1202,6 +1256,7 @@
         "runs",
         "checkpoints",
         "events",
+        "executions",
         "truncated"
       ],
       "properties": {
@@ -1233,6 +1288,12 @@
           "type": "array",
           "items": {
             "$ref": "#/$defs/event"
+          }
+        },
+        "executions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/executionBrief"
           }
         },
         "truncated": {

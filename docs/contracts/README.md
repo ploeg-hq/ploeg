@@ -409,7 +409,33 @@ notes as above. Its cancel calls no tracker, and a withdrawn admitted Work
 Item stays withdrawn: admit new work with a new `requestId`.
 
 Execution requests additionally require `X-Ploeg-Actor`, the stable session
-owner identity asserted by the authenticated consumer. Commands may carry
+owner identity asserted by the authenticated consumer.
+
+Ploeg's person id for an OpenID Connect identity is `oidc-` followed by the
+first 32 lowercase hex characters of the SHA-256 of `<issuer>|<subject>`, the
+issuer with one trailing `/` removed (ADR 0108). A deployment may configure a
+subject namespace to use in place of the issuer, so ids survive an issuer
+change. A consumer that names a person in `X-Ploeg-Actor` uses this form;
+`operatorclient.PersonID` computes it, and `ploeg-mcp` derives it from the
+verified token.
+
+The execution's owner may read and steer it through any execute-capable
+consumer whose Teams include the execution's Team, not only the consumer that
+admitted it. From such a consumer, `GET /executions/{id}`, `GET
+/executions/{id}/events` and the person commands `message`, `pause`,
+`resume`, `cancel`, `take-control` and `handback` are accepted when
+`X-Ploeg-Actor` names the owner, with the same revision and generation
+conflicts. The executor commands `start`, `heartbeat`, `report` and `close`
+answer 403 `executor_command_forbidden` there, and `credential`, `block`,
+`spend`, `context` and delivery stay with the admitting consumer (404
+elsewhere). Another actor, or a Team outside the consumer's scope, answers 404
+exactly as an unknown id does. The `operator.execution.commanded` audit event
+names the consumer that sent the command in `detail.attribution.consumer`.
+
+`GET /api/v1/operator/work-items/{id}` lists the item's operator executions
+under `executions`, newest first, each with `id`, `team`, `owner`, `state`,
+`supervision` and `updatedAt` and never the admitting consumer, so an owner
+can find the execution to steer; `truncated.executions` is true past 200. Commands may carry
 `X-Ploeg-Acting-User` when an authorized administrator acts for that owner.
 Ploeg validates a single bounded identity, binds it to command replay and
 records it as the event actor; the execution owner remains unchanged. The

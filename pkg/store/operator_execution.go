@@ -36,6 +36,9 @@ type OperatorExecution struct {
 	CreatedAt     time.Time `json:"createdAt"`
 	UpdatedAt     time.Time `json:"updatedAt"`
 	RunToken      string    `json:"-"`
+	// Consumer is the Operator Consumer that admitted the execution. Only it
+	// may send executor commands; it is never serialized.
+	Consumer string `json:"-"`
 }
 
 type AdmitOperatorExecution struct {
@@ -77,12 +80,12 @@ func executionFingerprint(value any) string {
 	return hex.EncodeToString(sum[:])
 }
 
-const executionSelect = `SELECT e.id,e.session_id,e.work_item_id::text,e.shift_id::text,e.run_id::text,w.team,e.actor,e.revision,e.generation,e.state,e.supervision,e.demo,e.stop_confirmed,sh.budget,e.expires_at,e.created_at,e.updated_at,r.run_token
+const executionSelect = `SELECT e.id,e.session_id,e.work_item_id::text,e.shift_id::text,e.run_id::text,w.team,e.actor,e.revision,e.generation,e.state,e.supervision,e.demo,e.stop_confirmed,sh.budget,e.expires_at,e.created_at,e.updated_at,r.run_token,e.consumer
 FROM operator_executions e JOIN work_items w ON w.id=e.work_item_id JOIN shifts sh ON sh.id=e.shift_id JOIN agent_runs r ON r.id=e.run_id `
 
 func scanOperatorExecution(row pgx.Row) (OperatorExecution, error) {
 	var e OperatorExecution
-	err := row.Scan(&e.ID, &e.SessionID, &e.WorkItemID, &e.ShiftID, &e.RunID, &e.Team, &e.Actor, &e.Revision, &e.Generation, &e.State, &e.Supervision, &e.Demo, &e.StopConfirmed, &e.BudgetUSD, &e.ExpiresAt, &e.CreatedAt, &e.UpdatedAt, &e.RunToken)
+	err := row.Scan(&e.ID, &e.SessionID, &e.WorkItemID, &e.ShiftID, &e.RunID, &e.Team, &e.Actor, &e.Revision, &e.Generation, &e.State, &e.Supervision, &e.Demo, &e.StopConfirmed, &e.BudgetUSD, &e.ExpiresAt, &e.CreatedAt, &e.UpdatedAt, &e.RunToken, &e.Consumer)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return e, ErrExecutionNotFound
 	}
@@ -165,15 +168,40 @@ func (s *Store) OperatorExecution(ctx context.Context, id, consumer, actor strin
 	return scanOperatorExecution(s.pool.QueryRow(ctx, executionSelect+`WHERE e.id=$1 AND e.consumer=$2 AND e.actor=$3`, id, consumer, actor))
 }
 
+// OwnedOperatorExecution returns the execution whose owner is actor, whichever
+// Operator Consumer admitted it (ADR-0108). Callers decide what the requesting
+// consumer may do with it: OperatorExecution.Consumer names the admitting one.
+func (s *Store) OwnedOperatorExecution(ctx context.Context, id, actor string) (OperatorExecution, error) {
+	return scanOperatorExecution(s.pool.QueryRow(ctx, executionSelect+`WHERE e.id=$1 AND e.actor=$2`, id, actor))
+}
+
+// OperatorExecutionBrief is one operator execution as a Work Item's detail
+// lists it: enough for its owner to find it and steer it.
+type OperatorExecutionBrief struct {
+	ID          string    `json:"id"`
+	Team        string    `json:"team"`
+	Owner       string    `json:"owner"`
+	State       string    `json:"state"`
+	Supervision string    `json:"supervision"`
+	UpdatedAt   time.Time `json:"updatedAt"`
+}
+
+// CommandOperatorExecution applies one command to the execution actor owns.
+// consumer is the requesting Operator Consumer: a person command (see
+// IsPersonExecutionCommand) is accepted from any consumer, an executor command
+// only from the admitting one. Team scope is the caller's to check.
 func (s *Store) CommandOperatorExecution(ctx context.Context, id, consumer, actor string, c OperatorExecutionCommand, ttl time.Duration) (OperatorExecution, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return OperatorExecution{}, err
 	}
 	defer tx.Rollback(ctx)
-	e, err := scanOperatorExecution(tx.QueryRow(ctx, executionSelect+`WHERE e.id=$1 AND e.consumer=$2 AND e.actor=$3 FOR UPDATE OF e`, id, consumer, actor))
+	e, err := scanOperatorExecution(tx.QueryRow(ctx, executionSelect+`WHERE e.id=$1 AND e.actor=$2 FOR UPDATE OF e`, id, actor))
 	if err != nil {
 		return e, err
+	}
+	if e.Consumer != consumer && !personCommands[c.Action] {
+		return OperatorExecution{}, ErrExecutionNotFound
 	}
 	fingerprint := executionFingerprint(c)
 	var prior string
@@ -188,6 +216,7 @@ func (s *Store) CommandOperatorExecution(ctx context.Context, id, consumer, acto
 			return e, err
 		}
 		saved.RunToken = e.RunToken
+		saved.Consumer = e.Consumer
 		return saved, tx.Commit(ctx)
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
@@ -391,6 +420,11 @@ func (s *Store) CommandOperatorExecution(ctx context.Context, id, consumer, acto
 // a person gives: message, pause, resume, cancel, handback or take-control.
 // The executor's own start, heartbeat, report and close are not audited here.
 const AuditOperatorExecutionCommanded = "operator.execution.commanded"
+
+// IsPersonExecutionCommand reports whether action is a command a person gives
+// an execution they own, which any execute-capable Operator Consumer with the
+// execution's Team in scope may send for them (ADR-0108).
+func IsPersonExecutionCommand(action string) bool { return personCommands[action] }
 
 var personCommands = map[string]bool{"message": true, "pause": true, "resume": true, "cancel": true, "handback": true, "take-control": true}
 

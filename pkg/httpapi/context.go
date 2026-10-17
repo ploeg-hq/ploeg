@@ -69,7 +69,7 @@ func (s *Server) handleAddWorkItemContext(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) handleAddExecutionContext(w http.ResponseWriter, r *http.Request) {
-	p, e, ok := s.executionForRequest(w, r)
+	p, e, ok := s.executionForRequest(w, r, admitterAccess)
 	if !ok {
 		return
 	}
