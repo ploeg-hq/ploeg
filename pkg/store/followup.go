@@ -15,6 +15,10 @@ type BranchOwner struct {
 	WorkItemID int64
 	Team       string
 	State      work.State
+	// Origin is the owning Work Item's origin. A branch owned through
+	// OriginPullRequest belongs to someone else's pull request, which Ploeg
+	// reads and never writes to (ADR-0109).
+	Origin work.Origin
 }
 
 // FindBranchOwner resolves a pull request branch in a repository ("owner/name")
@@ -28,14 +32,14 @@ func (s *Store) FindBranchOwner(ctx context.Context, repo, branch string) (Branc
 	var o BranchOwner
 	var state string
 	err := s.pool.QueryRow(ctx, `
-		SELECT w.id, w.team, w.state FROM work_items w
+		SELECT w.id, w.team, w.state, w.origin FROM work_items w
 		WHERE w.id = (
 			SELECT CASE WHEN i.source_run_id IS NULL THEN COALESCE(i.source_work_item_id, i.id) ELSE i.id END
 			FROM shifts sh JOIN work_items i ON i.id = sh.work_item_id
 			WHERE sh.branch = $1 AND i.target_owner <> ''
 			  AND i.target_owner || '/' || i.target_repo = $2
 			ORDER BY sh.id DESC
-			LIMIT 1)`, branch, repo).Scan(&o.WorkItemID, &o.Team, &state)
+			LIMIT 1)`, branch, repo).Scan(&o.WorkItemID, &o.Team, &state, &o.Origin)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return BranchOwner{}, false, nil
 	}

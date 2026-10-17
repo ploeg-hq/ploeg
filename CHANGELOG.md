@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.0-rc.24
+
+### Changes
+
+- A registered target can route the open pull requests of listed authors, such as Renovate's, to a Team that reads them and reports on the pull request: `targets.<key>.readPullRequests` lists routes with `authors`, `team` and the operator's `instructions`, and ploegd queues one Work Item of origin `pull_request` per pull request, found on the review reconcile interval or from a `pull_request` webhook. Its Shift runs only the Team's reading Roles on the pull request's own branch, with a pool of their caps and no fix loop; a Team whose whole plan is one reading Role is valid for this. The reader's findings are posted as a comment on the pull request, its follow-up proposals become created Work Items, and nothing of Ploeg's writes to the author's branch. A pull request whose title changes is read again, up to a cap. Ploeg names no author and knows no subject: what the reader delivers is the route's instruction and the repository's and Team's skills. Forgejo implements `provider.PullRequestLister`; the reader gets the embedded skill `ploeg-read-a-pull-request` (ADR 0109, proposed).
+
+### Upgrade notes
+
+- `0057_pull_request_title.sql` runs when `ploegd` starts.
+- `taskspec.v1` gains the Work Item origin `pull_request`; a consumer that enumerates origins should accept it. Without a `readPullRequests` route on a target nothing changes.
+
 ## 0.2.0-rc.23
 
 The `v0.2.0-rc.22` tag points at the commit before its release preparation, so its release refused it and rc.22 was never published. Its changes ship here.

@@ -21,6 +21,7 @@ var files embed.FS
 const (
 	VerifyBeforeHandoff   = "ploeg-verify-before-handoff"
 	ReviewAgainstWorkItem = "ploeg-review-against-work-item"
+	ReadAPullRequest      = "ploeg-read-a-pull-request"
 )
 
 // CanonicalDir is the directory under the Run's HOME that every Run gets,
@@ -67,15 +68,24 @@ func All() ([]Skill, error) {
 // own change; a reader verifies and reviews someone else's; a planner changes
 // nothing and gets none.
 func ForRun(writes, planner bool) ([]Skill, error) {
-	var want []string
 	switch {
 	case planner:
 		return nil, nil
 	case writes:
-		want = []string{VerifyBeforeHandoff}
+		return named(VerifyBeforeHandoff)
 	default:
-		want = []string{ReviewAgainstWorkItem, VerifyBeforeHandoff}
+		return named(ReviewAgainstWorkItem, VerifyBeforeHandoff)
 	}
+}
+
+// ForPullRequestReader returns the skills of a reading Run that reads a pull
+// request someone else opened (ADR-0109): how to report on it, and how to
+// run the repository's checks against it.
+func ForPullRequestReader() ([]Skill, error) {
+	return named(ReadAPullRequest, VerifyBeforeHandoff)
+}
+
+func named(want ...string) ([]Skill, error) {
 	all, err := All()
 	if err != nil {
 		return nil, err

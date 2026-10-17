@@ -19,7 +19,7 @@ func TestEmbeddedSkillsFollowTheAgentSkillsFormat(t *testing.T) {
 			t.Errorf("%s: a Ploeg skill carries the ploeg- prefix so a target repository's skill of the same purpose cannot collide with it", s.Name)
 		}
 	}
-	if got, want := strings.Join(names, ","), ReviewAgainstWorkItem+","+VerifyBeforeHandoff; got != want {
+	if got, want := strings.Join(names, ","), ReadAPullRequest+","+ReviewAgainstWorkItem+","+VerifyBeforeHandoff; got != want {
 		t.Fatalf("embedded skills = %s, want %s", got, want)
 	}
 }
