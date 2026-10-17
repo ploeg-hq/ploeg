@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-13
+status: accepted
+date: 2026-10-17
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -43,7 +43,7 @@ Rules:
 * Good, because a new team is a roster entry and a label, with no account, login or share.
 * Good, because a person can try a different team on one ticket by changing a label before assigning.
 * Good, because conflicting signals stop the work instead of guessing which team pays.
-* Bad, because the start signal and the routing are now two fields a person must get right. Unfold's Work Item page shows which team a ticket will go to, and why, before it is assigned.
+* Bad, because the start signal and the routing are now two fields a person must get right. The operator API answers which team a ticket will go to, and why, so a consumer can show it before the ticket is assigned.
 * Bad, because label names become a contract with the roster: renaming a board label silently drops its routing. ploegd logs a warning when a configured team label is absent from a board it watches.
 
 ### Confirmation
@@ -66,8 +66,10 @@ Rules:
 ## Re-evaluation triggers
 
 * A tracker gains a first-class "agent" or "delegate" field that is a better start signal than assignment.
-* Customers ask to start work from Unfold instead of the tracker.
+* People start most work through an operator consumer instead of the tracker.
 
 ## More Information
+
+* 2026-10-17 — The owner accepted this record as written; the per-team tracker user `copper` is lent to team `pewter` until it is built.
 
 * Related: [ADR-0038](0038-a-repo-label-selects-among-registered-targets-and-the-board-default-is-the-fallback.md) (a label already selects the repository), [ADR-0094](0094-a-person-connects-a-teams-claude-login-from-unfold-and-the-teams-worker-signs-in.md).

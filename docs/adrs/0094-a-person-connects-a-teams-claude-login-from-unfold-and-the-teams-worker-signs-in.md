@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-13
+status: rejected
+date: 2026-10-17
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -79,5 +79,7 @@ The `kubectl` recipe stays in the runner README as the operator fallback.
 * A team needs more than one concurrent worker on one login.
 
 ## More Information
+
+* 2026-10-17 — Rejected by the owner before it was built: a team-wide login makes every Run act as one person. [ADR-0112](0112-a-claude-environment-run-uses-the-claude-login-of-the-person-it-acts-for.md) gives each Run the login of the person it acts for, and keeps this record's sign-in relay.
 
 * Related: [ADR-0084](0084-a-claude-code-run-can-execute-in-a-teams-self-hosted-claude-environment.md) (the harness and the login volume), [ADR-0034](0034-the-harness-gets-placeholders-the-worker-keeps-credentials.md).
