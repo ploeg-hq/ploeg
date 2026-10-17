@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.2.0-rc.25
+
+### Breaking changes
+
+- None. The telemetry setting is optional; without it nothing changes.
+
+### Changes
+
+- A Run's Harness can export OpenTelemetry to a collector set per Team and Role: `executor.harness.telemetry` (overridable on a Team and a Role) reaches the worker as `PLOEG_TELEMETRY`. The worker sets the standard `OTEL_*` variables for every Harness and Claude Code's own on top, always tags `ploeg.team`, `ploeg.role` and `ploeg.run.alias`, keeps prompt text off unless `logPrompts` is set, and logs at startup which signals the Harness exports natively: claude-code metrics, logs and traces; openhands and acp/openhands traces; acp/opencode, exec and claude-environment none (#158, ADR-0113, proposed).
+- `ploeg-mcp` becomes ready behind a slow issuer: readiness starts one shared fetch of the discovery document and key set with its own five-second timeout instead of cancelling it with each one-second probe. rc.24's `ploeg-mcp` never became ready on an issuer answering in about a second (#159).
+
+### Upgrade notes
+
+- New optional chart value `executor.harness.telemetry`, also per Team and per Role. A block without `endpoint` is refused by the schema.
+
 ## 0.2.0-rc.24
 
 ### Changes
