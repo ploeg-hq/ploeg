@@ -1,9 +1,21 @@
 # Changelog
 
-## 0.2.0-rc.22
+## 0.2.0-rc.23
+
+The `v0.2.0-rc.22` tag points at the commit before its release preparation, so its release refused it and rc.22 was never published. Its changes ship here.
+
+### Breaking changes
+
+- None. ploeg-mcp in HTTP mode now sends Ploeg's person id as `X-Ploeg-Actor` instead of the username (#150); ploegd from this release reads it, and stdio mode is unchanged.
 
 ### Changes
 
+- ploeg-mcp over HTTP gains action tools for a group marked `execute` in `PLOEG_MCP_GROUPS`: submit, approve, reject, retry, stop, add a note and steer an execution. Each states its exact effect in an MCP elicitation and calls ploegd only after the person accepts, as that person, with the client as channel and the confirmation recorded (#147, ADR-0108). Stdio stays read-only.
+- ploeg-mcp names the person by Ploeg's person id, derived from the verified token's issuer and subject (or `PLOEG_MCP_SUBJECT_NAMESPACE`); `ploeg_get_work` lists a Work Item's attended executions and marks the signed-in person's own, which `ploeg_steer_execution` can steer (#150).
+- LiteLLM gateway errors are classified by LiteLLM's error type and wording before the HTTP status, so a spent budget is recognised at any status, including LiteLLM 1.104's 422; a failed ACP session start names the class, and a process id no longer matches as a 429 (#151).
+- A Run's stored transcript stays within its byte limit, truncation marker included (#143).
+- A Run's learnings written to the outcome drop box are kept with its outcome (#152).
+- Every operator mutation records its consumer, person, channel and confirmation (ADR-0108, #146), with the owner's answers after slice 1 (#148); isolation classes and execution cells are proposed (ADRs 0106 and 0107). Migration 0056 adds the attribution columns to the audit log.
 - A Run that ends `failed` with `credential_leak` no longer reopens its Round, requeues or spends either retry budget: its Shift closes `credential_leak` at `needs_human`, and a Shift-less Run parks the same way. ploegd closes the Run branch's open pull request with its own forge credential and posts one fixed comment that never carries the leaked value; a failed close is audited and logged and the item parks regardless. Forgejo, GitHub and GitLab implement `provider.PullRequestCloser` (#144, ADR 0105).
 - The worker records its harness version per Run (probed once at startup) and the ACP agent it spoke to; the Teams read serves each Role's harness, model and observed harness (#137, ADR 0097).
 - `POST /api/v1/operator/work-items` lets an Operator Consumer with execute permission admit a manual-origin Work Item into its Team Queue; its Shift opens from the Team's plan and only a worker claims its Runs. Admission is idempotent by the consumer's `requestId`; a changed replay answers `409 request_conflict` (#140, ADR 0102, superseding ADR 0024).
@@ -12,7 +24,7 @@
 
 ### Upgrade notes
 
-- `0054_run_harness_version.sql` and `0055_operator_work_admissions.sql` run when `ploegd` starts.
+- `0054_run_harness_version.sql`, `0055_operator_work_admissions.sql` and `0056_audit_log_attributed.sql` run when `ploegd` starts.
 - The chart renders `PLOEG_TEAM_HARNESSES` for ploegd from the same helper as each worker's `PLOEG_HARNESS`.
 - A GitHub App deployment needs `pull_requests: write` for the leak close; Forgejo and GitLab use the write token ploegd already comments with.
 - `operator-api.v1`, `outcomereport.v1` and `run-api.v1` gain optional fields; older consumers keep working.
