@@ -155,6 +155,18 @@ func shiftRow(t *testing.T, id int64) (round int, closed bool, reason string) {
 	return
 }
 
+// shiftRowForItem reads the newest Shift of a Work Item. Tests that hold
+// only the Work Item id use it; shift and item ids only coincide by accident.
+func shiftRowForItem(t *testing.T, workItemID int64) (round int, closed bool, reason string) {
+	t.Helper()
+	if err := testPool.QueryRow(context.Background(),
+		"SELECT round, closed_at IS NOT NULL, close_reason FROM shifts WHERE work_item_id = $1 ORDER BY id DESC LIMIT 1", workItemID).
+		Scan(&round, &closed, &reason); err != nil {
+		t.Fatalf("read shift of item %d: %v", workItemID, err)
+	}
+	return
+}
+
 // EnsureShift on a queued planned item opens the Shift AND its first Round —
 // the spec's "first assignment opens a Shift" scenario, with pending runs the
 // scale signal can see.

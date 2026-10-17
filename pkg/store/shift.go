@@ -465,6 +465,11 @@ func (s *Store) ClaimRoleFor(ctx context.Context, team, role, harness string, tt
 	if tg.Resolved() {
 		it.Target = &tg
 	}
+	// The branch under review of a pull request someone else opened exists
+	// before any Run (ADR-0109); its reader never runs before the author.
+	if it.Origin == work.OriginPullRequest {
+		preAuthor = false
+	}
 
 	if err := audit(ctx, tx, "team:"+team, "run.claimed", &workItemID, map[string]any{
 		"shift": shiftID, "role": role, "round": round,
@@ -638,6 +643,9 @@ type ShiftInfo struct {
 	Team       string
 	Round      int
 	Branch     string
+	// Origin is the Work Item's origin. A Shift on a Work Item of
+	// OriginPullRequest runs only reading Roles (ADR-0109).
+	Origin work.Origin
 }
 
 // LiveShifts enumerates every open Shift — the sweeper's worklist. Without
@@ -645,8 +653,9 @@ type ShiftInfo struct {
 // outcome report and its evaluation would strand the Shift forever (R2).
 func (s *Store) LiveShifts(ctx context.Context) ([]ShiftInfo, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, work_item_id, team, round, branch FROM shifts
-		WHERE closed_at IS NULL AND NOT EXISTS(SELECT 1 FROM operator_executions e WHERE e.shift_id=shifts.id) ORDER BY id`)
+		SELECT s.id, s.work_item_id, s.team, s.round, s.branch, w.origin FROM shifts s
+		JOIN work_items w ON w.id = s.work_item_id
+		WHERE s.closed_at IS NULL AND NOT EXISTS(SELECT 1 FROM operator_executions e WHERE e.shift_id=s.id) ORDER BY s.id`)
 	if err != nil {
 		return nil, err
 	}
@@ -654,7 +663,7 @@ func (s *Store) LiveShifts(ctx context.Context) ([]ShiftInfo, error) {
 	var out []ShiftInfo
 	for rows.Next() {
 		var si ShiftInfo
-		if err := rows.Scan(&si.ID, &si.WorkItemID, &si.Team, &si.Round, &si.Branch); err != nil {
+		if err := rows.Scan(&si.ID, &si.WorkItemID, &si.Team, &si.Round, &si.Branch, &si.Origin); err != nil {
 			return nil, err
 		}
 		out = append(out, si)
@@ -709,9 +718,10 @@ func (s *Store) ShiftInfoByID(ctx context.Context, shiftID int64) (ShiftInfo, er
 func (s *Store) LiveShiftForItem(ctx context.Context, workItemID int64) (*ShiftInfo, error) {
 	var si ShiftInfo
 	err := s.pool.QueryRow(ctx, `
-		SELECT id, work_item_id, team, round, branch FROM shifts
-		WHERE work_item_id = $1 AND closed_at IS NULL AND NOT EXISTS(SELECT 1 FROM operator_executions e WHERE e.shift_id=shifts.id)`, workItemID).
-		Scan(&si.ID, &si.WorkItemID, &si.Team, &si.Round, &si.Branch)
+		SELECT s.id, s.work_item_id, s.team, s.round, s.branch, w.origin FROM shifts s
+		JOIN work_items w ON w.id = s.work_item_id
+		WHERE s.work_item_id = $1 AND s.closed_at IS NULL AND NOT EXISTS(SELECT 1 FROM operator_executions e WHERE e.shift_id=s.id)`, workItemID).
+		Scan(&si.ID, &si.WorkItemID, &si.Team, &si.Round, &si.Branch, &si.Origin)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}

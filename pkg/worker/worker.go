@@ -422,6 +422,9 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	}
 	planner := claimed.Planner && !writes
 	skillSet, err := skills.ForRun(writes, planner)
+	if !writes && !planner && item.Origin == work.OriginPullRequest {
+		skillSet, err = skills.ForPullRequestReader()
+	}
 	if err != nil {
 		return stuckReport("could not load Ploeg's skills", err.Error())
 	}

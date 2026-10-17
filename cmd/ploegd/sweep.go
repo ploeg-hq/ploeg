@@ -152,6 +152,26 @@ func reviewLoop(ctx context.Context, reviews *shiftengine.ReviewWatch, every tim
 	}
 }
 
+// pullRequestReadLoop lists each opted-in target's open pull requests on the
+// review interval, so a dependency update whose webhook never arrived is
+// read within one interval (ADR-0109).
+func pullRequestReadLoop(ctx context.Context, watch *shiftengine.PullRequestReadWatch, every time.Duration) {
+	if every <= 0 {
+		return
+	}
+	watch.Reconcile(ctx)
+	t := time.NewTicker(every)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			watch.Reconcile(ctx)
+		}
+	}
+}
+
 func deployCheckLoop(ctx context.Context, server *httpapi.Server, every time.Duration) {
 	server.SweepDeployChecks(ctx)
 	t := time.NewTicker(every)

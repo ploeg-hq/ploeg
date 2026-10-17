@@ -97,7 +97,7 @@ const (
 // Shift is left alone, and the shifts_one_live_per_item index settles the
 // race two openers can still run into.
 func (e *Engine) EnsureShift(ctx context.Context, workItemID int64, item work.WorkItem) error {
-	tp, planned, _ := e.planFor(item.Team)
+	tp, planned, _ := e.planForItem(item.Team, item.Origin)
 	if !planned {
 		return nil
 	}
@@ -175,6 +175,23 @@ func (e *Engine) planFor(team string) (tp plan.TeamPlan, ok, synthesized bool) {
 	}, true, true
 }
 
+// planForItem is planFor, except that a Work Item reading a pull request
+// someone else opened (ADR-0109) gets only the reading Roles of its Team's
+// review Round: nothing may write to that pull request's branch, and no
+// verdict re-opens a writer. A Team whose plan has no such Round cannot
+// read, and the item is not planned.
+func (e *Engine) planForItem(team string, origin work.Origin) (tp plan.TeamPlan, ok, synthesized bool) {
+	tp, ok, synthesized = e.planFor(team)
+	if !ok || origin != work.OriginPullRequest {
+		return tp, ok, synthesized
+	}
+	review, found := tp.ReviewOnly()
+	if !found {
+		return plan.TeamPlan{}, false, false
+	}
+	return review, true, false
+}
+
 // EvaluateItem advances the live Shift on a Work Item, if any — the fast path
 // the outcome handler calls. A missing live Shift is not an error: the other
 // evaluator may have closed it first.
@@ -193,8 +210,12 @@ func (e *Engine) EvaluateItem(ctx context.Context, workItemID int64) error {
 // them has finished; the next Round comes from the plan; a stuck Run freezes
 // the plan; an exhausted plan closes the Shift and asks a person to merge.
 func (e *Engine) evaluate(ctx context.Context, si store.ShiftInfo) error {
-	tp, planned, synthesized := e.planFor(si.Team)
+	tp, planned, synthesized := e.planForItem(si.Team, si.Origin)
 	if !planned {
+		if si.Origin == work.OriginPullRequest {
+			return e.close(ctx, si, "no reading role in the plan",
+				"team "+si.Team+" has no reading Role that is not a shadow, so nobody can read the pull request; shift closed", false, nil)
+		}
 		// The plan was removed while the Shift ran (or uniform dispatch was
 		// switched off under it). Freezing silently would strand the item;
 		// close loudly and hand it to a person.
@@ -330,7 +351,7 @@ func (e *Engine) close(ctx context.Context, si store.ShiftInfo, closeReason, hum
 		if outcome, ok := terminalOutcome(reports); ok {
 			next = work.StateForOutcome(outcome)
 		}
-	} else if readyForReview(closeReason, reports) {
+	} else if readyForReview(closeReason, reports) || (si.Origin == work.OriginPullRequest && readingPublished(closeReason, reports)) {
 		next = work.StateAwaitingReview
 	}
 	if next == work.StateAwaitingReview && checksHoldBackReview(reports) {
@@ -429,6 +450,19 @@ func readyForReview(closeReason string, reports []store.RunReport) bool {
 		}
 	}
 	return false
+}
+
+// readingPublished reports whether a Shift that reads someone else's
+// pull request (ADR-0109) ended with the pull request still waiting for a
+// person: its readers finished, or failed without a review, and the acting
+// reader did not say a merge as it stands would break the repository. There
+// is no writer to look for, because nothing of Ploeg's writes to that pull
+// request.
+func readingPublished(closeReason string, reports []store.RunReport) bool {
+	if closeReason != reasonApproved && closeReason != reasonPlanExhausted && closeReason != reasonReviewFailed {
+		return false
+	}
+	return !lastReviewRequestsChanges(reports)
 }
 
 // lastReviewRequestsChanges reports whether the last reading Run after the
