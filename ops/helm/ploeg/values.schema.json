@@ -1201,7 +1201,8 @@
         "verifyTimeout": {
           "type": "string",
           "pattern": "^$|^0$|^[0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h)$"
-        }
+        },
+        "telemetry": { "$ref": "#/definitions/telemetry" }
       },
       "additionalProperties": false
     },
@@ -1276,9 +1277,29 @@
         "verifyTimeout": {
           "type": "string",
           "pattern": "^$|^0$|^[0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h)$"
-        }
+        },
+        "telemetry": { "$ref": "#/definitions/telemetry" }
       },
       "additionalProperties": false
+    },
+    "telemetry": {
+      "type": "object",
+      "description": "OpenTelemetry collector the harness exports to (PLOEG_TELEMETRY). Empty exports nothing; a non-empty block needs endpoint.",
+      "properties": {
+        "endpoint": { "type": "string", "pattern": "^https?://[^\\s]+$" },
+        "protocol": { "enum": ["http/protobuf", "http/json", "grpc"] },
+        "signals": { "type": "array", "uniqueItems": true, "items": { "enum": ["metrics", "logs", "traces"] } },
+        "resourceAttributes": {
+          "type": "object",
+          "propertyNames": { "pattern": "^[^=, ]+$", "not": { "enum": ["ploeg.team", "ploeg.role", "ploeg.run.alias"] } },
+          "additionalProperties": { "type": "string", "pattern": "^[^=,]*$" }
+        },
+        "logPrompts": { "type": "boolean" },
+        "logToolDetails": { "type": "boolean" }
+      },
+      "additionalProperties": false,
+      "if": { "minProperties": 1 },
+      "then": { "required": ["endpoint"] }
     },
     "toolchain": {
       "type": "object",

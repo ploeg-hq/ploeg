@@ -187,6 +187,7 @@ fails otherwise.
 | [0110](0110-a-team-is-ploegs-own-manifest-of-charter-crew-permissions-intake-and-skills.md) | A Team is Ploeg's own manifest of charter, crew, permissions, intake and skills, with borrowed shapes and no borrowed schema | proposed | 2026-10-17 |
 | [0111](0111-a-spent-litellm-budget-wider-than-the-runs-key-parks-the-work-item.md) | A spent LiteLLM budget wider than the Run's key parks the Work Item | accepted | 2026-10-17 |
 | [0112](0112-a-claude-environment-run-uses-the-claude-login-of-the-person-it-acts-for.md) | A claude-environment Run uses the Claude login of the person it acts for, and a person's own Claude Code may carry it | proposed | 2026-10-17 |
+| [0113](0113-a-runs-harness-exports-opentelemetry-to-a-collector-set-per-team-and-role.md) | A Run's Harness exports OpenTelemetry to a collector set per Team and Role | proposed | 2026-10-17 |
 
 ## Review calendar
 
@@ -249,5 +250,6 @@ triggers.
 | 2027-01-31 | [0110](0110-a-team-is-ploegs-own-manifest-of-charter-crew-permissions-intake-and-skills.md) — or sooner, when a foundation-governed spec adds a team object, a permission grant or a money budget, agents.yaml or OpenEnvelope ships a consumer, kagent or Ark re-adds a Team CRD with a budget or permissions, Agent Skills' `allowed-tools` leaves experimental, OTel GenAI adds a cost attribute, or Paperclip publishes its Team schema |
 | 2027-01-31 | [0095](0095-work-is-handed-to-ploeg-by-assigning-one-ploeg-user-and-a-team-label-picks-the-team.md) — or sooner, when a tracker gains a first-class agent or delegate field, or most work starts through an operator consumer |
 | 2027-01-31 | [0112](0112-a-claude-environment-run-uses-the-claude-login-of-the-person-it-acts-for.md) — or sooner, when Anthropic offers delegated or session-only authorization, the copied-credential spike fails, or a person's Runs must dispatch while their seat is suspended |
+| 2027-01-31 | [0113](0113-a-runs-harness-exports-opentelemetry-to-a-collector-set-per-team-and-role.md) — or sooner, when a Harness Ploeg runs gains native OTLP export, ploegd emits a trace per Run, or a collector needs authentication headers from a Secret |
 | 2027-04-30 | [0081](0081-ploeg-serves-its-operator-reads-as-mcp-tools-through-ploeg-mcp.md) — or sooner, when a person asks to propose, approve or cancel work from an AI client, someone needs the tools without a route to ploegd, or the MCP Go SDK ships a major version |
 | 2027-04-01 | [0005](0005-build-a-dedicated-dispatch-plane.md), [0032](0032-keep-the-dispatch-plane-and-compete-on-authorized-spend.md), [0071](0071-ploeg-keeps-its-state-in-postgresql-and-is-not-a-kubernetes-operator.md), [0073](0073-ploeg-stays-in-go-and-admits-rust-only-as-a-separately-deployed-component.md), [0077](0077-ploeg-knows-work-sources-and-change-destinations-never-vendors.md) — the project review gate (`design.md` §10) |
