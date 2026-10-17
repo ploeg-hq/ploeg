@@ -33,6 +33,7 @@ type issuer struct {
 	keys    map[string]crypto.Signer
 	fetches atomic.Int32
 	down    atomic.Bool
+	delay   atomic.Int64
 }
 
 func newIssuer(t *testing.T) *issuer {
@@ -44,6 +45,7 @@ func newIssuer(t *testing.T) *issuer {
 	})
 	mux.HandleFunc("/application/o/ploeg-mcp/jwks/", func(w http.ResponseWriter, r *http.Request) {
 		is.fetches.Add(1)
+		time.Sleep(time.Duration(is.delay.Load()))
 		if is.down.Load() {
 			http.Error(w, "down", http.StatusBadGateway)
 			return
@@ -279,6 +281,34 @@ func TestAnUnreachableKeySetIsNotBlamedOnTheToken(t *testing.T) {
 	clock = clock.Add(2 * time.Hour)
 	if _, err := v.Verify(context.Background(), is.sign("rsa-1", is.accessClaims()), nil); !errors.Is(err, auth.ErrInvalidToken) {
 		t.Fatalf("stale keys should still be used while the issuer is down; got %v", err)
+	}
+}
+
+func TestASlowIssuerStillBecomesReadyBehindAProbeThatGivesUpFirst(t *testing.T) {
+	is := newIssuer(t)
+	is.delay.Store(int64(time.Second))
+	clock := now
+	v := verifier(t, is, &clock)
+	probe := func() error {
+		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+		defer cancel()
+		return v.Ready(ctx)
+	}
+	if err := probe(); !errors.Is(err, mcpauth.ErrKeysUnavailable) {
+		t.Fatalf("first probe: want ErrKeysUnavailable while the keys load, got %v", err)
+	}
+	if err := probe(); !errors.Is(err, mcpauth.ErrKeysUnavailable) {
+		t.Fatalf("second probe: want ErrKeysUnavailable while the keys load, got %v", err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for probe() != nil {
+		if time.Now().After(deadline) {
+			t.Fatal("the keys never loaded behind probes shorter than the issuer's answer")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if got := is.fetches.Load(); got != 1 {
+		t.Fatalf("want one key fetch shared by every probe, got %d", got)
 	}
 }
 
