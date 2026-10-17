@@ -169,7 +169,18 @@ func (s *Server) operatorAuth(next http.Handler) http.Handler {
 		if isContextUpload(r) {
 			timeout = 60 * time.Second
 		}
-		ctx, cancel := context.WithTimeout(context.WithValue(r.Context(), operatorPrincipalKey{}, *principal), timeout)
+		ctx := context.WithValue(r.Context(), operatorPrincipalKey{}, *principal)
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			attribution, bad := operatorAttribution(r, principal.Name)
+			if bad != nil {
+				operatorError(w, http.StatusBadRequest, bad.code, bad.message)
+				return
+			}
+			if attribution.Actor != "" {
+				ctx = store.WithAttribution(ctx, attribution)
+			}
+		}
+		ctx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
@@ -370,7 +381,7 @@ func operatorFilter(w http.ResponseWriter, r *http.Request, events bool) (store.
 	}
 	allowed := map[string]bool{"team": true, "after": true, "limit": true, "order": true, "before": true}
 	if events {
-		allowed["workItemId"] = true
+		allowed["workItemId"], allowed["actor"] = true, true
 	} else {
 		allowed["state"], allowed["needsHuman"] = true, true
 		allowed["provider"], allowed["externalId"] = true, true
@@ -460,6 +471,13 @@ func operatorFilter(w http.ResponseWriter, r *http.Request, events bool) (store.
 			operatorError(w, 400, "invalid_request", "provider and externalId must be given together as valid tracker identifiers.")
 			return f, false
 		}
+	}
+	if actor := q.Get("actor"); actor != "" {
+		if !operatorName.MatchString(actor) {
+			operatorError(w, 400, "invalid_request", "actor is an X-Ploeg-Actor or X-Ploeg-Acting-User identity.")
+			return f, false
+		}
+		f.Actor = actor
 	}
 	if item := q.Get("workItemId"); item != "" {
 		f.WorkItemID, err = store.OperatorCursor(item)

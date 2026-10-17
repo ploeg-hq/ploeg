@@ -51,17 +51,16 @@ func executionActor(w http.ResponseWriter, r *http.Request) (OperatorPrincipal, 
 		operatorError(w, 403, "execution_forbidden", "This consumer cannot control executions.")
 		return p, "", false
 	}
-	actor := r.Header.Get("X-Ploeg-Actor")
-	if len(r.Header.Values("X-Ploeg-Actor")) != 1 || !operatorName.MatchString(actor) {
+	a, bad := operatorAttribution(r, p.Name)
+	if bad != nil {
+		operatorError(w, 400, bad.code, bad.message)
+		return p, "", false
+	}
+	if a.Actor == "" {
 		operatorError(w, 400, "actor_required", "An authenticated actor identity is required.")
 		return p, "", false
 	}
-	acting := r.Header.Values("X-Ploeg-Acting-User")
-	if len(acting) > 1 || (len(acting) == 1 && !operatorName.MatchString(acting[0])) {
-		operatorError(w, 400, "invalid_acting_user", "Supply one valid authenticated acting identity.")
-		return p, "", false
-	}
-	return p, actor, true
+	return p, a.Actor, true
 }
 
 func decodeExecution(w http.ResponseWriter, r *http.Request, out any) bool {
