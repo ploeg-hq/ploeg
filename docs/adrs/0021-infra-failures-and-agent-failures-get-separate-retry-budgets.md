@@ -183,6 +183,11 @@ Go/SQL agreement the split rests on.
 ## More Information
 
 * 2026-10-17 — refined by
+  [ADR-0111](0111-a-spent-litellm-budget-wider-than-the-runs-key-parks-the-work-item.md):
+  a Run the gateway refused because a LiteLLM budget wider than its own key
+  is spent fails `shared_budget_spent` and is never retried under either
+  budget; its Shift closes `shared_budget_spent` at `needs_human`.
+* 2026-10-17 — refined by
   [ADR-0105](0105-a-credential-leak-parks-the-work-item-and-closes-its-pull-request.md):
   a Run that failed with `credential_leak` is never retried under either
   budget; its Shift closes `credential_leak` at `needs_human`. Every other
