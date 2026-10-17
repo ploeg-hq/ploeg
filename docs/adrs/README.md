@@ -182,6 +182,7 @@ fails otherwise.
 | [0105](0105-a-credential-leak-parks-the-work-item-and-closes-its-pull-request.md) | A credential leak parks the Work Item and closes its pull request | accepted | 2026-10-17 |
 | [0106](0106-a-run-declares-an-isolation-floor-and-a-cell-runs-it-at-the-strictest-class-it-can-honour.md) | A Run declares an isolation floor, and a cell runs it at the strictest class it can honour | proposed | 2026-10-17 |
 | [0107](0107-execution-runs-in-cells-that-pull-from-one-hub.md) | Execution runs in cells that pull from one hub | proposed | 2026-10-17 |
+| [0108](0108-every-operator-action-names-its-person-and-channel-and-an-mcp-action-needs-the-persons-confirmation.md) | Every operator action names its person and channel, and an MCP action needs the person's confirmation | accepted | 2026-10-17 |
 
 ## Review calendar
 
@@ -190,6 +191,7 @@ triggers.
 
 | Due | ADRs |
 | --- | --- |
+| 2027-04-30 | [0108](0108-every-operator-action-names-its-person-and-channel-and-an-mcp-action-needs-the-persons-confirmation.md) — or sooner, when MCP standardizes proof of a person's confirmation, a deployment needs per-person authorization finer than groups, or a consumer needs Ploeg to verify the person itself |
 | 2026-10-22 | [0030](0030-target-repository-instructions-rank-below-the-delivery-contract.md) — after the first `claude-code` and reviewing Runs against a repository with its own AGENTS.md |
 | 2026-10-31 | [0006](0006-ahp-is-the-wrong-layer.md), [0007](0007-a2a-adopt-nothing-watchlist-a-facade.md), [0008](0008-litellm-is-the-credential-and-metering-seam.md), [0009](0009-paperclip-mine-for-design-never-integrate.md), [0024](0024-operator-work-uses-one-execution-authority.md), [0025](0025-management-authority-stays-in-the-control-plane.md), [0041](0041-the-openai-agents-api-stays-outside-the-run-until-it-takes-an-authorized-budget.md) — the quarterly market re-scan (`design.md` §10) |
 | 2026-11-30 | [0031](0031-runs-create-work-items-held-for-approval-within-limits.md) — or sooner, when the owner answers whether created Work Items are written back to the tracker and whether a person approves them |
