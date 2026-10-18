@@ -9,6 +9,7 @@ bash scripts/brand-marks.sh
 bash scripts/license-check.sh
 bash scripts/test-release-policy.sh
 bash scripts/test-contract-bundle.sh
+bash scripts/test-release-consumers.sh
 openspec validate --all --strict
 required=ops/helm/ploeg/ci/required-values.yaml
 helm lint ops/helm/ploeg -f "$required"

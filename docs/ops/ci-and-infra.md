@@ -34,7 +34,7 @@ On 2026-09-27, homelab-cluster's `kubernetes/apps/forgejo/networkpolicy.yaml` al
 
 ## Credentials and signing
 
-GitHub publication uses the workflow's short-lived repository token. Pull requests receive no publishing secrets.
+GitHub publication uses the workflow's short-lived repository token. The one long-lived credential is `RELEASE_CONSUMER_TOKEN_FORGEJO`, which opens consumer pull requests after a candidate ([releases](release-versioning.md#consumer-pull-requests)). Pull requests receive no publishing secrets.
 
 Every release signs the `ploegd` and `claude-runner` images and the OCI chart by digest with keyless cosign: the release job requests a GitHub Actions OIDC token (`id-token: write`), Fulcio issues a short-lived certificate for the workflow identity, and the signature is recorded in the public Rekor log. No signing key exists to store or rotate. `scripts/release.sh` verifies each signature before it publishes the release and lists the signed digests in `signed-artifacts.txt`. Verify a release with:
 
