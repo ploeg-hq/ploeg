@@ -435,7 +435,19 @@ person's answer `{commandId, answer}` (1 to 4096 characters): it needs
 `execute` permission, `X-Ploeg-Actor` and team scope, answers 201, 200 for a
 replayed `commandId`, 404 for a question to a person the Work Item does not
 have, 409 `already_answered` and 409 `command_conflict`, and is audited as
-`question.answered`. It queues nothing: answer, then requeue.
+`question.answered`. It queues nothing: answer, then resume.
+
+A requeue body with `"resume": true` resumes a Work Item whose last Shift
+stopped on a question to a person instead of restarting it: the new Shift
+reopens the plan Round that asked on the parked Shift's branch, is briefed
+with the parked Shift's earlier Rounds, and gets the parked Shift's unspent
+pool (at least that Round's cap) unless `poolUsd` is given. It cannot take
+`fromRound` (400), answers 409 `question_unanswered` while a question of that
+Round waits and 409 `nothing_to_resume` when nothing is parked, and is
+audited as `work_item.requeued` with `resume: true`. Work Item detail's
+`resume` names the Round it reopens, `roundCapUsd` (the most that Round can
+be authorized), `poolUsd` (the most the resumed Shift can spend in all),
+`ready` and `waitingQuestionIds`; it is null when there is nothing to resume.
 
 `POST /api/v1/operator/work-items/{id}/requeue` restarts stopped work
 ([ADR-0044](../adrs/0044-an-operator-restarts-stopped-work-from-a-round-they-choose.md)).

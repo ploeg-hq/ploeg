@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/ploeg-hq/ploeg/pkg/harness"
 	"github.com/ploeg-hq/ploeg/pkg/store"
@@ -87,5 +88,80 @@ func TestFindingsAndQuestionsOverTheAPIs(t *testing.T) {
 	}
 	if len(next.Questions) != 1 || next.Questions[0].Answer != "Yes, by the mobile app." || next.Questions[0].AnsweredBy != "person" {
 		t.Fatalf("writer questions = %+v", next.Questions)
+	}
+}
+
+// ADR-0121: Work Item detail offers the resume with its Round's cap, and the
+// requeue endpoint resumes once every question is answered.
+func TestResumeOverTheOperatorAPI(t *testing.T) {
+	ctx := context.Background()
+	f := newRequeueFixture(t)
+	s, token := f.server, f.token
+	id := f.item(t, "5701")
+	f.run(t, id, "builder", work.OutcomePROpened, "opened", []string{"https://forgejo/o/r/pulls/3"}, nil)
+	run, err := testStore.ClaimRole(ctx, "bronze", "reviewer", time.Minute, 0)
+	if err != nil || run == nil {
+		t.Fatalf("claim reviewer: %v", err)
+	}
+	if _, err := testStore.ReportOutcome(ctx, run.RunToken, store.Report(work.OutcomeNoChangeNeeded, "read", "", nil, nil, nil).
+		WithBlackboard(nil, nil, []harness.Question{{To: harness.AskPerson, Text: "Is the old API still public?"}}, nil)); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.engine.EvaluateItem(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+
+	detail := func() map[string]any {
+		t.Helper()
+		w := operatorGet(s, token, fmt.Sprintf("/api/v1/operator/work-items/%d", id))
+		if w.Code != 200 {
+			t.Fatalf("detail: %d %s", w.Code, w.Body)
+		}
+		validOperatorResponse(t, w)
+		var body map[string]any
+		if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+			t.Fatal(err)
+		}
+		return body
+	}
+	offer, _ := detail()["resume"].(map[string]any)
+	if offer == nil || offer["fromRound"] != float64(2) || offer["roundCapUsd"] != float64(1) || offer["ready"] != false {
+		t.Fatalf("resume offer = %+v", offer)
+	}
+	waiting := offer["waitingQuestionIds"].([]any)
+	qid := waiting[0].(string)
+
+	if w := operatorExecutionRequest(s, "POST", requeuePath(id), token, "alice", map[string]any{"commandId": "r0", "resume": true, "fromRound": 2}); w.Code != 400 {
+		t.Fatalf("resume with fromRound: %d %s", w.Code, w.Body)
+	}
+	if w := operatorExecutionRequest(s, "POST", requeuePath(id), token, "alice", map[string]any{"commandId": "r1", "resume": true}); w.Code != 409 || errorCode(t, w) != "question_unanswered" {
+		t.Fatalf("resume before the answer: %d %s", w.Code, w.Body)
+	}
+	if w := operatorExecutionRequest(s, "POST", fmt.Sprintf("/api/v1/operator/work-items/%d/questions/%s/answer", id, qid), token, "alice",
+		map[string]any{"commandId": "a1", "answer": "No, internal only."}); w.Code != 201 {
+		t.Fatalf("answer: %d %s", w.Code, w.Body)
+	}
+	if offer, _ := detail()["resume"].(map[string]any); offer == nil || offer["ready"] != true {
+		t.Fatalf("resume offer after the answer = %+v", offer)
+	}
+	w := operatorExecutionRequest(s, "POST", requeuePath(id), token, "alice", map[string]any{"commandId": "r2", "resume": true})
+	if w.Code != 200 {
+		t.Fatalf("resume: %d %s", w.Code, w.Body)
+	}
+	validOperatorResponse(t, w)
+	var body struct {
+		Requeue struct {
+			FromRound int  `json:"fromRound"`
+			Resume    bool `json:"resume"`
+		} `json:"requeue"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil || body.Requeue.FromRound != 2 || !body.Requeue.Resume {
+		t.Fatalf("resume response = %s", w.Body)
+	}
+	if d := detail(); d["resume"] != nil {
+		t.Fatalf("a resumed Work Item still offers a resume: %v", d["resume"])
+	}
+	if w := operatorExecutionRequest(s, "POST", requeuePath(id), token, "alice", map[string]any{"commandId": "r2", "resume": true}); w.Code != 200 {
+		t.Fatalf("replayed resume: %d %s", w.Code, w.Body)
 	}
 }

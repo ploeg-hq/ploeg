@@ -284,6 +284,7 @@ func (s *Server) handleOperatorItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.linkTask(&detail.Item)
+	detail.Resume = s.resumeOffer(r.Context(), id)
 	operatorJSON(w, 200, struct {
 		SchemaVersion string `json:"schemaVersion"`
 		store.OperatorDetail

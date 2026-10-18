@@ -198,6 +198,9 @@ func (s *Store) FindingsBrief(ctx context.Context, shiftID int64, round int, wri
 	if err != nil {
 		return nil, nil, err
 	}
+	if runs, err = lineageRuns(ctx, s.pool, runs, shiftID); err != nil {
+		return nil, nil, err
+	}
 	persons, err := personAnswers(ctx, s.pool, workItemID)
 	if err != nil {
 		return nil, nil, err
@@ -397,4 +400,114 @@ func operatorLedger(ctx context.Context, q querier, workItemID int64) ([]Operato
 			ShadowRole: d.ShadowRole, PrimaryVerdict: d.PrimaryVerdict, ShadowVerdict: d.ShadowVerdict})
 	}
 	return fs, qs, ds, nil
+}
+
+// CloseReasonQuestionForPerson is the close reason of a Shift that stopped
+// on a question to a person (ADR-0121).
+const CloseReasonQuestionForPerson = "question_for_person"
+
+// ParkedQuestion is a Work Item's last Shift when it stopped on a question
+// to a person and nothing has run since: the Round that asked, the Shift's
+// unspent pool and the questions of that Round still waiting.
+type ParkedQuestion struct {
+	WorkItemID int64
+	Team       string
+	ShiftID    int64
+	Round      int
+	Remaining  float64
+	Waiting    []string
+}
+
+// ParkedOnQuestion returns the Work Item's parked Shift, or false when its
+// last Shift is open, did not stop on a question to a person, or the Work
+// Item is no longer needs_human.
+func (s *Store) ParkedOnQuestion(ctx context.Context, workItemID int64) (ParkedQuestion, bool, error) {
+	p := ParkedQuestion{WorkItemID: workItemID}
+	var state, reason string
+	var closed bool
+	err := s.pool.QueryRow(ctx, `SELECT i.state, i.team, sh.id, sh.round, COALESCE(sh.close_reason, ''), sh.closed_at IS NOT NULL
+		FROM work_items i JOIN LATERAL (SELECT * FROM shifts WHERE work_item_id = i.id ORDER BY id DESC LIMIT 1) sh ON true
+		WHERE i.id = $1`, workItemID).Scan(&state, &p.Team, &p.ShiftID, &p.Round, &reason, &closed)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return p, false, nil
+	}
+	if err != nil {
+		return p, false, err
+	}
+	if !closed || reason != CloseReasonQuestionForPerson || state != "needs_human" {
+		return p, false, nil
+	}
+	ledger, err := s.Ledger(ctx, p.ShiftID)
+	if err != nil {
+		return p, false, err
+	}
+	p.Remaining = max(ledger.Remaining(), 0)
+	waiting, err := s.QuestionsForPerson(ctx, workItemID, p.ShiftID, p.Round)
+	if err != nil {
+		return p, false, err
+	}
+	for _, q := range waiting {
+		p.Waiting = append(p.Waiting, q.ID)
+	}
+	return p, true, nil
+}
+
+// lineageRuns maps the Runs of the Shifts a resume continued into shiftID
+// (ADR-0121). A Shift a resume opened at Round F continues the parked Shift
+// at the Round A that asked, so each of the parked Shift's Runs before A
+// counts as an earlier Round of shiftID, renumbered by A-F; a chain of
+// resumes adds up. The Runs of Round A and later, which the resume runs
+// again, and Runs of other Shifts are returned unchanged.
+func lineageRuns(ctx context.Context, q queryRower, runs []findings.Run, shiftID int64) ([]findings.Run, error) {
+	type segment struct {
+		before, shiftBy int
+	}
+	segments := map[int64]segment{}
+	current, shiftBy := shiftID, 0
+	for range 32 {
+		var previous int64
+		var from, resumes int
+		err := q.QueryRow(ctx, `SELECT COALESCE(previous_shift_id, 0), from_round, COALESCE(resumes_round, 0)
+			FROM work_item_requeues WHERE shift_id = $1`, current).Scan(&previous, &from, &resumes)
+		if errors.Is(err, pgx.ErrNoRows) {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		if resumes == 0 || previous == 0 {
+			break
+		}
+		shiftBy += resumes - from
+		segments[previous] = segment{before: resumes, shiftBy: shiftBy}
+		current = previous
+	}
+	if len(segments) == 0 {
+		return runs, nil
+	}
+	out := make([]findings.Run, 0, len(runs))
+	for _, r := range runs {
+		if seg, ok := segments[r.ShiftID]; ok && r.Round < seg.before {
+			r.Round -= seg.shiftBy
+			r.ShiftID = shiftID
+		}
+		out = append(out, r)
+	}
+	return out, nil
+}
+
+// ResumePlan is what resuming a Work Item parked on a question to a person
+// would do (ADR-0121): reopen FromRound of the Team's plan, the Round that
+// asked, on the parked Shift's branch, with a pool of PoolUSD. RoundCapUSD is
+// the most the reopened Round's Runs can be authorized, the sum of its Roles'
+// caps; PoolUSD bounds the resumed Shift as a whole, including the Rounds
+// after it. Waiting names the questions still without an answer; a resume is
+// refused until it is empty.
+type ResumePlan struct {
+	ShiftID     int64
+	AskedRound  int
+	FromRound   int
+	RoundCapUSD float64
+	PoolUSD     float64
+	Waiting     []string
 }

@@ -22,3 +22,9 @@ CREATE TABLE question_answers (
     UNIQUE (work_item_id, question_id),
     UNIQUE (consumer, command_id)
 );
+
+-- A requeue that resumes a Shift parked on a question to a person: the Round
+-- of the parked Shift that asked. NULL is a full restart, which is every
+-- requeue recorded before this migration.
+ALTER TABLE work_item_requeues
+    ADD COLUMN resumes_round INTEGER CHECK (resumes_round IS NULL OR resumes_round >= 1);

@@ -315,6 +315,21 @@ type OperatorDetail struct {
 	Findings            []OperatorFinding            `json:"findings"`
 	Questions           []OperatorQuestion           `json:"questions"`
 	ReviewDisagreements []OperatorReviewDisagreement `json:"reviewDisagreements"`
+	// Resume is what resuming the Work Item would do when its last Shift
+	// stopped on a question to a person; nil otherwise. The shift engine
+	// fills it.
+	Resume *OperatorResume `json:"resume"`
+}
+
+// OperatorResume is a resume a consumer can offer (ADR-0121).
+type OperatorResume struct {
+	ShiftID            string   `json:"shiftId"`
+	AskedRound         int      `json:"askedRound"`
+	FromRound          int      `json:"fromRound"`
+	RoundCapUSD        float64  `json:"roundCapUsd"`
+	PoolUSD            float64  `json:"poolUsd"`
+	Ready              bool     `json:"ready"`
+	WaitingQuestionIDs []string `json:"waitingQuestionIds"`
 }
 
 type OperatorTruncated struct {

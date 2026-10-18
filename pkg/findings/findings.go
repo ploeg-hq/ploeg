@@ -157,18 +157,18 @@ func threads(runs []Run) []*thread {
 // nothing (ADR-0096).
 func Brief(runs []Run, shiftID int64, round int, writes bool, persons map[string]PersonAnswer) ([]harness.BriefedFinding, []harness.BriefedQuestion) {
 	var shift []Run
-	lastRead := 0
+	lastRead, read := 0, false
 	for _, r := range runs {
 		if r.ShiftID != shiftID || r.Round >= round || r.Shadow {
 			continue
 		}
 		shift = append(shift, r)
-		if !r.Writes && r.Finished && r.Round > lastRead {
-			lastRead = r.Round
+		if !r.Writes && r.Finished && (!read || r.Round > lastRead) {
+			lastRead, read = r.Round, true
 		}
 	}
 	var briefed []harness.BriefedFinding
-	if lastRead > 0 {
+	if read {
 		for _, t := range threads(shift) {
 			if t.lastRaised != lastRead {
 				continue

@@ -264,3 +264,91 @@ func TestFindingsCommentListsFindingsAndAnswersByID(t *testing.T) {
 		t.Errorf("writer comment:\n%s", answers)
 	}
 }
+
+// A fix Round's writer asks a person; after the answer a resume reopens the
+// writing Round on the same branch, briefed with the review's findings and
+// the answer, without running the first writer or the review again.
+func TestQuestions_AResumeReopensTheRoundThatAsked(t *testing.T) {
+	ctx := context.Background()
+	e := newEngine(shadowPlan(t))
+	resetFindingTables(t)
+	id := startShadowShift(t, e, "2104")
+	buildAndOpenPR(t, e, id)
+	claimAndReport(t, "reviewer", func(run store.ClaimedRun) error {
+		_, err := testStore.ReportOutcome(ctx, run.RunToken, store.Report(work.OutcomeNoChangeNeeded, "read it", "", nil, nil, nil).
+			WithVerdict(harness.VerdictRequestChanges).WithBlackboard([]harness.ReviewFinding{{Title: "prices round wrong"}}, nil, nil, nil))
+		return err
+	})
+	reportRole(t, "shadow-reviewer", verdictReport(work.OutcomeNoChangeNeeded, harness.VerdictApprove, ""))
+	evaluate(t, e, id)
+	claimAndReport(t, "builder", func(run store.ClaimedRun) error {
+		_, err := testStore.ReportOutcome(ctx, run.RunToken, store.Report(work.OutcomeNoChangeNeeded, "need a decision", "", nil, nil, nil).
+			WithBlackboard(nil, nil, []harness.Question{{To: harness.AskPerson, Text: "Round half up or half even?"}}, nil))
+		return err
+	})
+	evaluate(t, e, id)
+
+	plan, ok, err := e.ResumePlan(ctx, id)
+	if err != nil || !ok {
+		t.Fatalf("resume plan: %v %v", ok, err)
+	}
+	if plan.AskedRound != 3 || plan.FromRound != 1 || plan.RoundCapUSD != 2 || len(plan.Waiting) != 1 {
+		t.Fatalf("resume plan = %+v", plan)
+	}
+	resume := store.RequeueCommand{FromRound: 1, Resume: true, CommandID: "resume-1"}
+	if _, err := e.Requeue(ctx, id, nil, "operator:c:ryan", "ryan", resume, 100); err != store.ErrQuestionUnanswered {
+		t.Fatalf("resume before the answer = %v, want ErrQuestionUnanswered", err)
+	}
+	if _, err := testStore.AnswerQuestion(ctx, id, nil, store.QuestionAnswerCommand{Consumer: "c", CommandID: "a1", Actor: "operator:c:ryan",
+		QuestionID: plan.Waiting[0], Answer: "Half up."}); err != nil {
+		t.Fatal(err)
+	}
+	ledger, err := testStore.Ledger(ctx, plan.ShiftID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan, _, _ = e.ResumePlan(ctx, id); len(plan.Waiting) != 0 || plan.PoolUSD != max(ledger.Remaining(), 2) {
+		t.Fatalf("resume plan after the answer = %+v (ledger %+v)", plan, ledger)
+	}
+	res, err := e.Requeue(ctx, id, nil, "operator:c:ryan", "ryan", resume, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.FromRound != 1 || res.PreviousShiftID != plan.ShiftID || res.PoolUSD != plan.PoolUSD {
+		t.Fatalf("resume = %+v", res)
+	}
+	if again, err := e.Requeue(ctx, id, nil, "operator:c:ryan", "ryan", resume, 100); err != nil || !again.Replayed || again.ShiftID != res.ShiftID {
+		t.Fatalf("replayed resume = %+v, %v", again, err)
+	}
+	var branch, previousBranch string
+	if err := testPool.QueryRow(ctx, `SELECT a.branch, b.branch FROM shifts a, shifts b WHERE a.id = $1 AND b.id = $2`, res.ShiftID, plan.ShiftID).Scan(&branch, &previousBranch); err != nil {
+		t.Fatal(err)
+	}
+	if branch != previousBranch {
+		t.Fatalf("resumed on %q, parked on %q", branch, previousBranch)
+	}
+	if n := pendingRuns(t, res.ShiftID, "reviewer"); n != 0 {
+		t.Fatalf("the review ran again before the writer: %d pending", n)
+	}
+	run, err := testStore.ClaimRole(ctx, "bronze", "builder", time.Minute, 1)
+	if err != nil || run == nil || run.ShiftID != res.ShiftID {
+		t.Fatalf("claim the resumed writer: %+v %v", run, err)
+	}
+	fs, qs := brief(t, *run)
+	if len(fs) != 1 || fs[0].Title != "prices round wrong" {
+		t.Fatalf("the resumed writer lost the review's findings: %+v", fs)
+	}
+	if len(qs) != 1 || qs[0].Answer != "Half up." {
+		t.Fatalf("the resumed writer lacks the answer: %+v", qs)
+	}
+	var detail string
+	if err := testPool.QueryRow(ctx, `SELECT detail::text FROM audit_log WHERE work_item_id = $1 AND action = 'work_item.requeued'`, id).Scan(&detail); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(detail, `"resume": true`) || !strings.Contains(detail, `"resumes_round": 3`) {
+		t.Fatalf("requeue audit = %s", detail)
+	}
+	if _, err := e.Requeue(ctx, id, nil, "operator:c:ryan", "ryan", store.RequeueCommand{FromRound: 1, Resume: true, CommandID: "resume-2"}, 100); err != store.ErrNothingToResume {
+		t.Fatalf("a resume with nothing parked = %v, want ErrNothingToResume", err)
+	}
+}

@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -78,4 +79,31 @@ func (s *Server) handleOperatorQuestionAnswer(w http.ResponseWriter, r *http.Req
 		"createdAt":  stored.CreatedAt.UTC().Format(time.RFC3339Nano),
 		"replayed":   stored.Replayed,
 	}})
+}
+
+// ResumePlanner is implemented by the shift engine: what resuming a Work
+// Item parked on a question to a person would do (ADR-0121).
+type ResumePlanner interface {
+	ResumePlan(ctx context.Context, workItemID int64) (store.ResumePlan, bool, error)
+}
+
+func (s *Server) resumeOffer(ctx context.Context, workItemID int64) *store.OperatorResume {
+	planner, ok := s.Engine.(ResumePlanner)
+	if !ok {
+		return nil
+	}
+	plan, ok, err := planner.ResumePlan(ctx, workItemID)
+	if err != nil {
+		s.logger().Error("resume plan read failed; detail shows none", "work_item", workItemID, "err", err)
+		return nil
+	}
+	if !ok {
+		return nil
+	}
+	waiting := plan.Waiting
+	if waiting == nil {
+		waiting = []string{}
+	}
+	return &store.OperatorResume{ShiftID: strconv.FormatInt(plan.ShiftID, 10), AskedRound: plan.AskedRound, FromRound: plan.FromRound,
+		RoundCapUSD: plan.RoundCapUSD, PoolUSD: plan.PoolUSD, Ready: len(plan.Waiting) == 0, WaitingQuestionIDs: waiting}
 }

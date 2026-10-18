@@ -28,7 +28,7 @@ func questionMessage(waiting []harness.BriefedQuestion) string {
 		}
 		fmt.Fprintf(&b, "Question %s from %s in round %d: “%s”", q.ID, q.Role, q.Round, strings.TrimSpace(q.Text))
 	}
-	b.WriteString(". Answer each question by its id, then queue the Work Item again")
+	b.WriteString(". Answer each question by its id, then resume the Work Item")
 	msg := b.String()
 	if r := []rune(msg); len(r) > maxQuestionMessageRunes {
 		msg = string(r[:maxQuestionMessageRunes]) + "…"
@@ -48,4 +48,34 @@ func (e *Engine) parkForQuestions(ctx context.Context, si store.ShiftInfo, repor
 		return false, nil
 	}
 	return true, e.close(ctx, si, reasonQuestionForPerson, questionMessage(waiting), false, reports)
+}
+
+// ResumePlan returns the resume of a Work Item parked on a question to a
+// person, or false when there is nothing to resume or the Team's plan no
+// longer has a Round for it.
+func (e *Engine) ResumePlan(ctx context.Context, workItemID int64) (store.ResumePlan, bool, error) {
+	parked, ok, err := e.Store.ParkedOnQuestion(ctx, workItemID)
+	if err != nil || !ok {
+		return store.ResumePlan{}, false, err
+	}
+	tp, planned, _ := e.planFor(parked.Team)
+	if !planned || len(tp.Rounds) == 0 {
+		return store.ResumePlan{}, false, nil
+	}
+	from := parked.Round
+	if from > len(tp.Rounds) {
+		from = len(tp.Rounds)
+		if writer, ok := tp.WriterRound(); ok && (parked.Round-len(tp.Rounds))%2 == 1 {
+			from = writer + 1
+		}
+	}
+	if from < 1 {
+		return store.ResumePlan{}, false, nil
+	}
+	p := store.ResumePlan{ShiftID: parked.ShiftID, AskedRound: parked.Round, FromRound: from, Waiting: parked.Waiting}
+	for _, role := range tp.Rounds[from-1].Roles {
+		p.RoundCapUSD += role.CapUSD()
+	}
+	p.PoolUSD = max(parked.Remaining, p.RoundCapUSD)
+	return p, true, nil
 }
