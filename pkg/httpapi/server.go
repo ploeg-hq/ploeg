@@ -519,6 +519,11 @@ type claimResponse struct {
 	Branch     string            `json:"branch,omitempty"`
 	Authorized float64           `json:"authorized,omitempty"`
 	Briefing   []harness.Finding `json:"briefing,omitempty"`
+	// ReviewFindings are the findings of the Shift's last review Round by
+	// id, each with the writer's answer, and Questions the questions that
+	// reach this Run (ADR-0121). Both absent when there are none.
+	ReviewFindings []harness.BriefedFinding  `json:"reviewFindings,omitempty"`
+	Questions      []harness.BriefedQuestion `json:"questions,omitempty"`
 	// ForgeToken is a push credential minted for THIS run and revoked when it
 	// settles (ADR-0013 tier 2). Empty = use the env credential. Never logged,
 	// never audited, never in a Task Spec (R8).
@@ -661,6 +666,9 @@ func (s *Server) respondClaimedRun(w http.ResponseWriter, r *http.Request, req c
 		}
 	}
 	resp.Context = s.claimContext(r.Context(), run.RunToken)
+	if resp.ReviewFindings, resp.Questions, err = s.Store.FindingsBrief(r.Context(), run.ShiftID, run.Round, run.Writes); err != nil {
+		s.Log.Error("findings briefing read failed; run proceeds without it", "shift", run.ShiftID, "err", err)
+	}
 	if notes, err := s.Store.ShiftReviews(r.Context(), run.ShiftID, run.Round); err != nil {
 		s.Log.Error("review briefing read failed; run proceeds without it", "shift", run.ShiftID, "err", err)
 	} else {
@@ -696,7 +704,8 @@ func (s *Server) respondClaimedRun(w http.ResponseWriter, r *http.Request, req c
 
 	s.Log.Info("run claimed", "team", req.Team, "role", run.Role, "shift", run.ShiftID,
 		"round", run.Round, "writes", run.Writes, "authorized", run.Authorized,
-		"briefing", len(resp.Briefing), "context", len(resp.Context), "deadline", run.Deadline)
+		"briefing", len(resp.Briefing), "review_findings", len(resp.ReviewFindings), "questions", len(resp.Questions),
+		"context", len(resp.Context), "deadline", run.Deadline)
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -793,6 +802,9 @@ func validateOutcomeReport(req harness.OutcomeReport) error {
 	if req.Delivery != nil && !req.Delivery.Observed.Valid() {
 		return errors.New("delivery.observed must be opened, updated, none or unknown")
 	}
+	if err := harness.ValidateBlackboard(req); err != nil {
+		return err
+	}
 	return harness.ValidateCreatedWorkItems(req.CreatedWorkItems)
 }
 
@@ -822,6 +834,7 @@ func (s *Server) handleOutcome(w http.ResponseWriter, r *http.Request) {
 	report := store.Report(req.Outcome, req.Summary, req.StuckReason, req.Links, usage, failureReason).
 		WithFindings(req.Findings).WithVerdict(req.Verdict).WithProblemAndSolution(req.Problem, req.Solution).
 		WithVerification(req.Verification).WithDelivery(req.Delivery).
+		WithBlackboard(req.FindingItems, req.FindingAnswers, req.Questions, req.QuestionAnswers).
 		WithCreatedWork(req.CreatedWorkItems, s.createdWorkPolicy, s.knownTeam)
 	if s.Notes != nil {
 		report = report.WithNotes(keptLearnings(req.Learnings))

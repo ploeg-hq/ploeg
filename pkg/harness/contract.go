@@ -28,6 +28,13 @@ type TaskSpec struct {
 	// Ploeg reads them from the Shift and injects them; the agent never calls
 	// a forge or a Ploeg API to fetch them (R6).
 	Briefing []Finding `json:"briefing,omitempty"`
+	// ReviewFindings are the findings of the Shift's last review Round with
+	// the writer's answer to each (ADR-0121). A writer answers them; a reader
+	// checks the answers. Empty when that review raised none by id.
+	ReviewFindings []BriefedFinding `json:"reviewFindings,omitempty"`
+	// Questions are the questions earlier Runs asked that reach this Run,
+	// answered or not (ADR-0121).
+	Questions []BriefedQuestion `json:"questions,omitempty"`
 	// OpenSpec is the OpenSpec change the Work Item names, located in the
 	// clone and rendered as a brief by the worker. Nil when it names none.
 	OpenSpec *OpenSpecBrief `json:"openSpec,omitempty"`
@@ -297,6 +304,20 @@ type OutcomeReport struct {
 	// (ADR-0097). Only the worker sets it and replaces any value an adapter
 	// or agent reported; absent on a payload from an older worker.
 	Harness *RunHarness `json:"harness,omitempty"`
+	// FindingItems are a reading Run's findings by id (ADR-0121). ploegd
+	// assigns each new finding its id; an entry naming a briefed finding's id
+	// raises that finding again. Ignored from a writing Role.
+	FindingItems []ReviewFinding `json:"findingItems,omitempty"`
+	// FindingAnswers are a writing Run's answers to the findings it was
+	// briefed with. Ignored from a reading Role.
+	FindingAnswers []FindingAnswer `json:"findingAnswers,omitempty"`
+	// Questions are what the Run asks a person, the next reviewer or the
+	// next Run instead of guessing. A question to a person parks the Work
+	// Item at needs_human when the Round ends.
+	Questions []Question `json:"questions,omitempty"`
+	// QuestionAnswers are the Run's answers to questions it was briefed
+	// with that were addressed to a reviewer or the next Run.
+	QuestionAnswers []QuestionAnswer `json:"questionAnswers,omitempty"`
 }
 
 // RunHarness names the Harness a Run ran with. A field the worker does not

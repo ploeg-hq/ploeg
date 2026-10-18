@@ -55,3 +55,24 @@ func TestMergeDropBox_LearningsSurvive(t *testing.T) {
 		t.Errorf("an empty drop box erased the adapter's own learnings: %+v", kept.Learnings)
 	}
 }
+
+// ADR-0121: an agent's blackboard entries survive the merge, and a malformed
+// entry costs only itself.
+func TestMergeDropBox_KeepsValidBlackboardEntries(t *testing.T) {
+	box := OutcomeReport{
+		FindingItems:    []ReviewFinding{{Title: "ok"}, {Title: ""}},
+		FindingAnswers:  []FindingAnswer{{FindingID: "f1-1", Status: AnswerFixed}, {FindingID: "f1-2", Status: AnswerDisagree}},
+		Questions:       []Question{{ID: "q9-9", To: AskPerson, Text: "which?"}, {To: "team", Text: "x"}},
+		QuestionAnswers: []QuestionAnswer{{QuestionID: "q1-1", Answer: "yes"}},
+	}
+	got := MergeDropBox(OutcomeReport{Outcome: "failed", Summary: "adapter"}, box)
+	if len(got.FindingItems) != 1 || len(got.FindingAnswers) != 1 || len(got.Questions) != 1 || len(got.QuestionAnswers) != 1 {
+		t.Fatalf("merged = %+v", got)
+	}
+	if got.Questions[0].ID != "" {
+		t.Fatalf("an agent cannot choose a question id: %+v", got.Questions[0])
+	}
+	if err := ValidateBlackboard(got); err != nil {
+		t.Fatalf("merged report fails the contract: %v", err)
+	}
+}

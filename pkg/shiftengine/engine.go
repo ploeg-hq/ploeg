@@ -258,6 +258,10 @@ func (e *Engine) evaluate(ctx context.Context, si store.ShiftInfo) error {
 		return e.parkForHuman(ctx, si, park, reports)
 	}
 
+	if parked, err := e.parkForQuestions(ctx, si, reports); parked || err != nil {
+		return err
+	}
+
 	for _, r := range reports {
 		if r.Outcome == string(work.OutcomeStuck) && !r.Shadow {
 			// A stuck Outcome parks the item under BOTH dispatch shapes: R4

@@ -252,6 +252,7 @@ func credentialLeakReport(report harness.OutcomeReport, leak credentialLeak, bra
 	report.Findings = ""
 	report.CreatedWorkItems = nil
 	report.Learnings = nil
+	report.FindingItems, report.FindingAnswers, report.Questions, report.QuestionAnswers = nil, nil, nil, nil
 	return report
 }
 

@@ -406,6 +406,49 @@ The same transaction marks them consumed by that Run and audits
 consumed when the claim response is built; a claim response lost in transit
 loses its notes with it.
 
+### Findings, answers and questions
+
+A reading Run may list its findings in `findingItems` next to the prose
+`findings`; a writing Run answers the findings it was briefed with in
+`findingAnswers` (`fixed`, `disagree` with a reason, `out_of_scope`,
+`deferred`); any Run may ask in `questions` (`to`: `person`, `reviewer` or
+`next_run`) and answer a briefed question to a reviewer or the next Run in
+`questionAnswers`
+([ADR-0121](../adrs/0121-findings-carry-ids-writers-answer-them-and-a-run-asks-instead-of-guessing.md)).
+ploegd assigns the ids (`f<runId>-<n>`, `q<runId>-<n>`), keeps only what the
+Run's kind may report and drops everything from a shadow except its findings.
+A report without these fields behaves as before.
+
+The claim response and the Task Spec carry `reviewFindings`, the findings of
+the Shift's last review Round each with the writer's answer or `unanswered`,
+and `questions`, the questions that reach the Run with their answers. A
+question to a person parks the Work Item at `needs_human` when its Round ends,
+with Shift close reason `question_for_person` and the question in the close
+message.
+
+On the operator API every Run shape carries `findingItems`, `findingAnswers`,
+`questions` and `questionAnswers`, and Work Item detail carries `findings`,
+`questions` (with `waitingForPerson`) and `reviewDisagreements`, the review
+Rounds where a shadow reviewer's verdict differed from the acting readers'.
+`POST /api/v1/operator/work-items/{id}/questions/{questionId}/answer` stores a
+person's answer `{commandId, answer}` (1 to 4096 characters): it needs
+`execute` permission, `X-Ploeg-Actor` and team scope, answers 201, 200 for a
+replayed `commandId`, 404 for a question to a person the Work Item does not
+have, 409 `already_answered` and 409 `command_conflict`, and is audited as
+`question.answered`. It queues nothing: answer, then resume.
+
+A requeue body with `"resume": true` resumes a Work Item whose last Shift
+stopped on a question to a person instead of restarting it: the new Shift
+reopens the plan Round that asked on the parked Shift's branch, is briefed
+with the parked Shift's earlier Rounds, and gets the parked Shift's unspent
+pool (at least that Round's cap) unless `poolUsd` is given. It cannot take
+`fromRound` (400), answers 409 `question_unanswered` while a question of that
+Round waits and 409 `nothing_to_resume` when nothing is parked, and is
+audited as `work_item.requeued` with `resume: true`. Work Item detail's
+`resume` names the Round it reopens, `roundCapUsd` (the most that Round can
+be authorized), `poolUsd` (the most the resumed Shift can spend in all),
+`ready` and `waitingQuestionIds`; it is null when there is nothing to resume.
+
 `POST /api/v1/operator/work-items/{id}/requeue` restarts stopped work
 ([ADR-0044](../adrs/0044-an-operator-restarts-stopped-work-from-a-round-they-choose.md)).
 It needs `execute` permission, `X-Ploeg-Actor` and team scope. Without a body

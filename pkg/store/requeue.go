@@ -24,6 +24,12 @@ var (
 	ErrRequeueConflict = errors.New("command id was used for a different requeue")
 	// ErrRoundNotInPlan reports a starting Round the Team's plan does not have.
 	ErrRoundNotInPlan = errors.New("starting round is not in the team's plan")
+	// ErrNothingToResume reports a resume of a Work Item whose last Shift did
+	// not stop on a question to a person (ADR-0121).
+	ErrNothingToResume = errors.New("the work item's last shift did not stop on a question to a person")
+	// ErrQuestionUnanswered reports a resume while a question of the parked
+	// Round still waits for a person.
+	ErrQuestionUnanswered = errors.New("a question of the parked round has no answer yet")
 	// ErrPoolAboveLimit reports a pool above the consumer's budget limit.
 	ErrPoolAboveLimit = errors.New("pool exceeds the consumer's budget limit")
 )
@@ -73,6 +79,7 @@ func queueAssigned(ctx context.Context, tx pgx.Tx, workItemID int64, state strin
 // PoolUSD is nil when the caller left the pool to the Team's plan.
 type RequeueCommand struct {
 	FromRound     int      `json:"fromRound"`
+	Resume        bool     `json:"resume,omitempty"`
 	PoolUSD       *float64 `json:"poolUsd"`
 	Note          string   `json:"note"`
 	CommandID     string   `json:"commandId"`
@@ -93,6 +100,15 @@ type RequeueRequest struct {
 	OpenShift        bool
 	Branch           string
 	NeedsPullRequest bool
+	// ResumesRound is the Round of the Shift parked on a question to a
+	// person that a resume reopens (ADR-0121); zero when there is none to
+	// resume. ResumeUnanswered is true while a question of it still waits.
+	ResumesRound     int
+	ResumeUnanswered bool
+	// ResumeFromRound is the plan Round a resume reopens; it replaces
+	// Command.FromRound, which stays as the caller sent it so a replay of
+	// the command matches.
+	ResumeFromRound int
 }
 
 // Requeued is the result of a requeue, or of its replay.
@@ -166,6 +182,12 @@ func (s *Store) RequeueWorkItem(ctx context.Context, req RequeueRequest) (Requeu
 	if operatorOwned {
 		return out, ErrOperatorOwned
 	}
+	if req.Command.Resume && req.ResumesRound == 0 {
+		return out, ErrNothingToResume
+	}
+	if req.Command.Resume && req.ResumeUnanswered {
+		return out, ErrQuestionUnanswered
+	}
 	if req.Command.ExpectedState != "" && req.Command.ExpectedState != state {
 		return out, ErrStateMismatch
 	}
@@ -203,6 +225,9 @@ func (s *Store) RequeueWorkItem(ctx context.Context, req RequeueRequest) (Requeu
 		return out, ErrNotRequeueable
 	}
 	out.State, out.FromRound, out.PoolUSD = work.StateQueued, req.Command.FromRound, req.PoolUSD
+	if req.Command.Resume && req.ResumeFromRound > 0 {
+		out.FromRound = req.ResumeFromRound
+	}
 	out.CommandID, out.Note = req.Command.CommandID, req.Command.Note
 	if req.OpenShift {
 		if allotted > 0 && (out.PoolUSD <= 0 || allotted < out.PoolUSD) {
@@ -215,19 +240,27 @@ func (s *Store) RequeueWorkItem(ctx context.Context, req RequeueRequest) (Requeu
 		}
 	}
 
+	resumes := 0
+	if req.Command.Resume {
+		resumes = req.ResumesRound
+	}
 	var commandID *string
 	if out.CommandID != "" {
 		commandID = &out.CommandID
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO work_item_requeues
-			(work_item_id, command_id, fingerprint, actor, from_round, pool_usd, note, previous_state, previous_shift_id, shift_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULLIF($9, 0), NULLIF($10, 0))`,
+			(work_item_id, command_id, fingerprint, actor, from_round, pool_usd, note, previous_state, previous_shift_id, shift_id, resumes_round)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULLIF($9, 0), NULLIF($10, 0), NULLIF($11, 0))`,
 		req.WorkItemID, commandID, fingerprint, req.Actor, out.FromRound, out.PoolUSD, out.Note, state,
-		out.PreviousShiftID, out.ShiftID); err != nil {
+		out.PreviousShiftID, out.ShiftID, resumes); err != nil {
 		return out, err
 	}
 	detail := map[string]any{"from_round": out.FromRound, "pool_usd": out.PoolUSD, "previous_state": state,
 		"command_id": out.CommandID, "note": out.Note}
+	if resumes != 0 {
+		detail["resume"] = true
+		detail["resumes_round"] = resumes
+	}
 	if out.PreviousShiftID != 0 {
 		detail["previous_shift"] = out.PreviousShiftID
 	}

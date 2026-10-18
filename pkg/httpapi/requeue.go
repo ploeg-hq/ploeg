@@ -29,6 +29,7 @@ type requeueBody struct {
 	Note          *string  `json:"note"`
 	CommandID     *string  `json:"commandId"`
 	ExpectedState *string  `json:"expectedState"`
+	Resume        *bool    `json:"resume"`
 }
 
 const maxRequeueNote = 4096
@@ -80,6 +81,7 @@ func (s *Server) handleOperatorRequeue(w http.ResponseWriter, r *http.Request) {
 		"previousShiftId": optionalID(res.PreviousShiftID),
 		"commandId":       optionalString(res.CommandID),
 		"replayed":        res.Replayed,
+		"resume":          cmd.Resume,
 	}})
 }
 
@@ -100,6 +102,13 @@ func requeueCommand(w http.ResponseWriter, body requeueBody) (store.RequeueComma
 	if body.PoolUSD != nil && (math.IsNaN(*body.PoolUSD) || math.IsInf(*body.PoolUSD, 0) || *body.PoolUSD < 0) {
 		operatorError(w, 400, "invalid_requeue", "poolUsd must be a non-negative amount.")
 		return cmd, false
+	}
+	if body.Resume != nil && *body.Resume {
+		if body.FromRound != nil {
+			operatorError(w, 400, "invalid_requeue", "A resume reopens the Round that asked; leave out fromRound.")
+			return cmd, false
+		}
+		cmd.Resume = true
 	}
 	if body.Note != nil {
 		cmd.Note = strings.TrimSpace(*body.Note)
@@ -156,6 +165,10 @@ func requeueError(w http.ResponseWriter, err error) bool {
 		operatorError(w, 422, "nothing_to_review", "The Rounds before fromRound include a writing Round, and no earlier Shift opened or updated a pull request.")
 	case errors.Is(err, store.ErrRoundNotInPlan):
 		operatorError(w, 422, "round_not_in_plan", "fromRound is not a Round in the team's current plan.")
+	case errors.Is(err, store.ErrNothingToResume):
+		operatorError(w, 409, "nothing_to_resume", "The work item's last Shift did not stop on a question to a person, or the Team's plan has no Round to reopen.")
+	case errors.Is(err, store.ErrQuestionUnanswered):
+		operatorError(w, 409, "question_unanswered", "A question of the parked Round has no answer yet. Answer it first.")
 	case errors.Is(err, store.ErrPoolAboveLimit):
 		operatorError(w, 400, "pool_above_limit", "The pool exceeds the consumer's maxBudgetUsd.")
 	default:

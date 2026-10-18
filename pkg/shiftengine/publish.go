@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/ploeg-hq/ploeg/pkg/harness"
 	"github.com/ploeg-hq/ploeg/pkg/provider"
 	"github.com/ploeg-hq/ploeg/pkg/store"
 	"github.com/ploeg-hq/ploeg/pkg/work"
@@ -47,7 +48,7 @@ func (e *Engine) publishRound(ctx context.Context, si store.ShiftInfo, reports [
 	}
 	var pending []store.RunReport
 	for _, r := range reports {
-		if r.Round == round && !r.Shadow && strings.TrimSpace(r.Findings) != "" {
+		if r.Round == round && !r.Shadow && (strings.TrimSpace(r.Findings) != "" || len(r.FindingItems) > 0 || len(r.FindingAnswers) > 0) {
 			pending = append(pending, r)
 		}
 	}
@@ -252,6 +253,8 @@ func findingsComment(r store.RunReport) string {
 		fmt.Fprintf(&b, "_%s_\n\n", r.Summary)
 	}
 	b.WriteString(r.Findings)
+	writeFindingItems(&b, r.FindingItems)
+	writeFindingAnswers(&b, r.FindingAnswers)
 	if r.Writes {
 		b.WriteString("\n\n<sub>Posted by Ploeg for the writing Run that pushed this branch.</sub>")
 	} else {
@@ -371,4 +374,50 @@ func trackerMessage(settled work.State, reason, link string, runs, rounds int, b
 		fmt.Fprintf(&b, "\n<sub>%d agent run(s) across %d round(s).</sub>", runs, rounds)
 	}
 	return b.String()
+}
+
+// writeFindingItems lists a reader's findings by id (ADR-0121), so the
+// writer's answers on the thread can be read against them.
+func writeFindingItems(b *strings.Builder, items []harness.ReviewFinding) {
+	if len(items) == 0 {
+		return
+	}
+	b.WriteString("\n\n#### Findings\n")
+	for _, f := range items {
+		fmt.Fprintf(b, "\n- `%s`", f.ID)
+		if f.Severity != "" {
+			fmt.Fprintf(b, " (%s)", f.Severity)
+		}
+		fmt.Fprintf(b, " **%s**", oneLine(f.Title))
+		if f.Path != "" {
+			fmt.Fprintf(b, " in `%s", oneLine(f.Path))
+			if f.Line > 0 {
+				fmt.Fprintf(b, ":%d", f.Line)
+			}
+			b.WriteString("`")
+		}
+		if body := strings.TrimSpace(f.Body); body != "" {
+			b.WriteString("\n\n  ")
+			b.WriteString(strings.ReplaceAll(body, "\n", "\n  "))
+		}
+	}
+}
+
+// writeFindingAnswers lists a writer's answers to the findings it was
+// briefed with (ADR-0121).
+func writeFindingAnswers(b *strings.Builder, answers []harness.FindingAnswer) {
+	if len(answers) == 0 {
+		return
+	}
+	b.WriteString("\n\n#### Answers to the review\n")
+	for _, a := range answers {
+		fmt.Fprintf(b, "\n- `%s`: %s", a.FindingID, strings.ReplaceAll(a.Status, "_", " "))
+		if reason := strings.TrimSpace(a.Reason); reason != "" {
+			fmt.Fprintf(b, " — %s", oneLine(reason))
+		}
+	}
+}
+
+func oneLine(s string) string {
+	return strings.Join(strings.Fields(s), " ")
 }

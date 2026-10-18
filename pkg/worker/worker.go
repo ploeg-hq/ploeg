@@ -369,6 +369,9 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 		Branch:   branch,
 		TraceID:  trace,
 		Briefing: claimed.Briefing,
+
+		ReviewFindings: claimed.ReviewFindings,
+		Questions:      claimed.Questions,
 	}
 
 	// A PR on this branch BEFORE the harness runs is a previous run's work:
@@ -836,6 +839,18 @@ func resolveOutcome(adapterName string, report harness.OutcomeReport, runErr, ct
 		}
 		if r.Problem == "" && r.Solution == "" {
 			r.Problem, r.Solution = report.Problem, report.Solution
+		}
+		if r.FindingItems == nil {
+			r.FindingItems = report.FindingItems
+		}
+		if r.FindingAnswers == nil {
+			r.FindingAnswers = report.FindingAnswers
+		}
+		if r.Questions == nil {
+			r.Questions = report.Questions
+		}
+		if r.QuestionAnswers == nil {
+			r.QuestionAnswers = report.QuestionAnswers
 		}
 		return r
 	}

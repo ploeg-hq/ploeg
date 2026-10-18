@@ -172,6 +172,38 @@
     "harness": {
       "$ref": "#/$defs/runHarness",
       "description": "The Harness the Run ran with, as the worker knows it (ADR-0097, proposed): its name and agent profile from the worker's configuration, the version the worker's startup probe read from the Harness binary, and the agent's own name and version when it identified itself, such as an ACP agent's agentInfo from initialize. Only the worker sets it: it replaces any value an adapter or agent wrote into its outcome file. ploegd records each fact once and keeps a value recorded at claim. Recording it never changes the Outcome. Optional: a report from an older worker has none, and a fact the worker does not know is left out."
+    },
+    "findingItems": {
+      "type": "array",
+      "maxItems": 50,
+      "description": "A reading Run's findings by id (ADR-0121), next to the findings prose. ploegd assigns each new finding the id f<runId>-<n> when it stores it; an entry whose id names a finding an acting reader raised earlier on the Work Item raises that finding again and clears its answer. Ignored from a writing Role. A shadow's findings are stored for comparison and never briefed or answered. Optional: a report without it is unchanged, and its findings stay prose only.",
+      "items": {
+        "$ref": "#/$defs/reviewFinding"
+      }
+    },
+    "findingAnswers": {
+      "type": "array",
+      "maxItems": 100,
+      "description": "A writing Run's answer to each finding it was briefed with (ADR-0121). ploegd keeps an answer only for a finding an acting reader of the Work Item raised, and counts it only when the writer ran after the finding was last raised. Ignored from a reading Role. A finding a writer left out is shown as unanswered to the next reviewer and on the operator API.",
+      "items": {
+        "$ref": "#/$defs/findingAnswer"
+      }
+    },
+    "questions": {
+      "type": "array",
+      "maxItems": 5,
+      "description": "What the Run asks instead of guessing (ADR-0121). ploegd assigns each the id q<runId>-<n>. A question to a person parks the Work Item at needs_human when the Round ends, with close reason question_for_person and the question text; a person's answer briefs every later Run of the Work Item. A question to the reviewer briefs the later reading Runs of the Shift, one to the next Run every later Run of the Shift. Dropped from a shadow Run. Optional.",
+      "items": {
+        "$ref": "#/$defs/question"
+      }
+    },
+    "questionAnswers": {
+      "type": "array",
+      "maxItems": 20,
+      "description": "The Run's answers to questions to a reviewer or the next Run that it was briefed with (ADR-0121). ploegd keeps an answer only for such a question an acting Run of the Work Item asked; a question to a person is answered only by a person. Dropped from a shadow Run. Optional.",
+      "items": {
+        "$ref": "#/$defs/questionAnswer"
+      }
     }
   },
   "$defs": {
@@ -419,6 +451,64 @@
         "command",
         "result"
       ],
+      "additionalProperties": false
+    },
+    "reviewFinding": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^f[1-9][0-9]{0,18}-[1-9][0-9]{0,3}$",
+          "description": "absent for a new finding; the id of an earlier finding to raise it again"
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["blocking", "should_fix", "nit"],
+          "description": "blocking: must change before merge; should_fix: should change; nit: a preference"
+        },
+        "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "body": { "type": "string", "maxLength": 4000, "description": "markdown: what is wrong, why it matters, what to change" },
+        "path": { "type": "string", "maxLength": 512, "description": "the repository-relative file the finding is about" },
+        "line": { "type": "integer", "minimum": 1 }
+      },
+      "required": ["title"],
+      "additionalProperties": false
+    },
+    "findingAnswer": {
+      "type": "object",
+      "properties": {
+        "findingId": { "type": "string", "pattern": "^f[1-9][0-9]{0,18}-[1-9][0-9]{0,3}$" },
+        "status": {
+          "type": "string",
+          "enum": ["fixed", "disagree", "out_of_scope", "deferred"],
+          "description": "fixed: the code changed so it no longer applies; disagree: unchanged, reason required; out_of_scope: belongs to other work; deferred: to be done later"
+        },
+        "reason": { "type": "string", "maxLength": 2000 }
+      },
+      "required": ["findingId", "status"],
+      "if": { "properties": { "status": { "const": "disagree" } } },
+      "then": { "required": ["reason"], "properties": { "reason": { "minLength": 1, "pattern": "\\S" } } },
+      "additionalProperties": false
+    },
+    "question": {
+      "type": "object",
+      "properties": {
+        "to": {
+          "type": "string",
+          "enum": ["person", "reviewer", "next_run"]
+        },
+        "text": { "type": "string", "minLength": 1, "maxLength": 2000 }
+      },
+      "required": ["to", "text"],
+      "additionalProperties": false
+    },
+    "questionAnswer": {
+      "type": "object",
+      "properties": {
+        "questionId": { "type": "string", "pattern": "^q[1-9][0-9]{0,18}-[1-9][0-9]{0,3}$" },
+        "answer": { "type": "string", "minLength": 1, "maxLength": 4000 }
+      },
+      "required": ["questionId", "answer"],
       "additionalProperties": false
     },
     "learning": {

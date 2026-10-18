@@ -60,6 +60,8 @@
           "description": "USD ceiling the run's LLM credential must be minted at: min(roleCap, poolRemaining) (ADR-0012). Absent or 0 = use the worker's env budget."
         },
         "briefing": { "$ref": "taskspec.v1.schema.json#/$defs/briefing" },
+        "reviewFindings": { "$ref": "taskspec.v1.schema.json#/$defs/reviewFindings" },
+        "questions": { "$ref": "taskspec.v1.schema.json#/$defs/briefedQuestions" },
         "forgeToken": {
           "type": "string",
           "description": "Push credential for this run. Absent = use the worker's env credential. Never logged, never audited, never in a Task Spec (R8)."
