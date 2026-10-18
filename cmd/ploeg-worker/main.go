@@ -281,7 +281,7 @@ func logTelemetryReach(log *slog.Logger, cfg worker.Config, hc worker.HarnessCon
 	if hc.Name == "acp" {
 		profile = cmp.Or(hc.ACP.Profile, "opencode")
 	}
-	native := worker.TelemetrySupport(hc.Name, profile)
+	native := worker.TelemetrySupport(hc.Name, profile, cfg.Telemetry.AllowHarnesses)
 	if len(native) == 0 {
 		log.Warn("telemetry is configured but withheld from this harness",
 			"harness", hc.Name, "profile", profile, "endpoint", cfg.Telemetry.Endpoint,

@@ -1,0 +1,13 @@
+# CI-only values: allowHarnesses accepts only openhands, the one harness whose
+# telemetry is withheld for a reason an operator can resolve.
+executor:
+  enabled: true
+  teams:
+    - name: bronze
+      model: litellm_proxy/deepseek-chat
+      budget: "2"
+      harness:
+        image: harbor.webgrip.dev/webgrip/agent:0.1.0
+        telemetry:
+          endpoint: http://otel-collector.observability.svc:4318
+          allowHarnesses: [opencode]
