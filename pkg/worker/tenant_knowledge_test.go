@@ -77,10 +77,8 @@ func TestKnowledgeRead_UnavailableGraphDoesNotStopTheWorker(t *testing.T) {
 	if !notes.on || brief == nil || len(brief.Concepts) != 0 || brief.Sources[0].Status != harness.KnowledgeUnavailable {
 		t.Fatalf("notes %+v brief %+v", notes, brief)
 	}
-	var prompt strings.Builder
-	writeKnowledge(&prompt, harness.TaskSpec{Knowledge: brief})
-	if prompt.Len() != 0 {
-		t.Errorf("an empty pack reached the prompt: %q", prompt.String())
+	if prompt := ComposePrompt(harness.TaskSpec{Knowledge: brief}, true, "", false); strings.Contains(prompt, "## Knowledge pack") {
+		t.Errorf("an empty pack reached the prompt: %q", prompt)
 	}
 }
 

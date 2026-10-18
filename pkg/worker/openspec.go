@@ -298,10 +298,6 @@ type openSpecValidation struct {
 	} `json:"summary"`
 }
 
-func openSpecValidateCommand(id string) string {
-	return "openspec validate " + id + " --type change --strict --json --no-interactive"
-}
-
 func validateOpenSpecChange(ctx context.Context, root, id, home string) openSpecGate {
 	command := openSpecValidateCommand(id)
 	out, stderr, err := runOpenSpec(ctx, root, home, "validate", id, "--type", "change", "--strict", "--json", "--no-interactive")
