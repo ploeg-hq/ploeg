@@ -91,6 +91,7 @@ for case in "ops/helm/ploeg/ci/reject-reader-without-read-token-values.yaml:read
 	"ops/helm/ploeg/ci/reject-forge-admin-token-values.yaml:adminTokenSecret is not supported" \
 	"ops/helm/ploeg/ci/reject-runtimeclass-non-string-values.yaml:runtimeClassName" \
 	"ops/helm/ploeg/ci/reject-telemetry-without-endpoint-values.yaml:endpoint" \
+	"ops/helm/ploeg/ci/reject-telemetry-unknown-opt-in-values.yaml:allowHarnesses" \
 	"ops/helm/ploeg/ci/reject-missing-database-values.yaml:database.existingSecret.name is required" \
 	"ops/helm/ploeg/ci/reject-missing-litellm-admin-url-values.yaml:executor.litellm.adminUrl is required" \
 	"ops/helm/ploeg/ci/reject-missing-gateway-values.yaml:executor.litellm.baseUrl is required" \

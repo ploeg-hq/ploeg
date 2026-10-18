@@ -35,6 +35,11 @@ type TaskSpec struct {
 	// Questions are the questions earlier Runs asked that reach this Run,
 	// answered or not (ADR-0121).
 	Questions []BriefedQuestion `json:"questions,omitempty"`
+	// ActiveWork names the other active Shifts in the Run's repository and
+	// the paths they share with it, as ploegd rendered it within the active
+	// work section's budget (ADR-0123, ADR-0124). Tracker titles in it are
+	// quoted.
+	ActiveWork string `json:"activeWork,omitempty"`
 	// OpenSpec is the OpenSpec change the Work Item names, located in the
 	// clone and rendered as a brief by the worker. Nil when it names none.
 	OpenSpec *OpenSpecBrief `json:"openSpec,omitempty"`
@@ -64,6 +69,18 @@ type KnowledgeBrief struct {
 	Bytes    int               `json:"bytes"`
 	// Omitted counts matching concepts the size limit left out.
 	Omitted int `json:"omitted,omitempty"`
+	// Notes are the keys of the Work Item Notes the pack holds and Levels
+	// each level's budget and use; the worker reports both in its briefed
+	// checkpoint (ADR-0124), so they are not part of the Task Spec.
+	Notes  []string         `json:"-"`
+	Levels []KnowledgeLevel `json:"-"`
+}
+
+// KnowledgeLevel is what one level of a knowledge pack used of its budget.
+type KnowledgeLevel struct {
+	Level                         string
+	Budget, Bytes, Items, Omitted int
+	Digest                        string
 }
 
 // ContextRef names one context item a claim hands a Run: what to download

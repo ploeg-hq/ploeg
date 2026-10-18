@@ -345,6 +345,10 @@ type Checkpoint struct {
 	// it knows them before it pushes. Ploeg keeps the newest list per Shift
 	// and names it to other Runs in the same repository (ADR-0123).
 	PlannedPaths []string `json:"plannedPaths,omitempty"`
+
+	// Board is what the Run's briefing was read at and held, sent with the
+	// briefed checkpoint (ADR-0124).
+	Board *BoardBriefing `json:"board,omitempty"`
 }
 
 // PhasePromptStarted is the checkpoint phase a worker writes when the

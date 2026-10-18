@@ -552,7 +552,7 @@ spec:
               - name: PLOEG_HARNESS_IDLE_TIMEOUT
                 value: "15m"
               - name: PLOEG_TELEMETRY
-                value: "{\"endpoint\":\"http://otel-collector.observability.svc:4318\",\"resourceAttributes\":{\"deployment.environment\":\"ci\"},\"signals\":[\"logs\",\"traces\"]}"
+                value: "{\"allowHarnesses\":[\"openhands\"],\"endpoint\":\"http://otel-collector.observability.svc:4318\",\"resourceAttributes\":{\"deployment.environment\":\"ci\"},\"signals\":[\"logs\",\"traces\"]}"
               - name: LLM_MODEL
                 value: "litellm_proxy/claude-sonnet-5"
               - name: LITELLM_KEY_BUDGET

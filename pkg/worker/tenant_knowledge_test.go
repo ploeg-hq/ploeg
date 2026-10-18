@@ -55,7 +55,7 @@ func TestWorkItemNotes_BriefTheRunUnderTheirOwnHeading(t *testing.T) {
 	if brief == nil || len(brief.Concepts) != 1 || !strings.HasPrefix(brief.Concepts[0], "notes/") {
 		t.Fatalf("brief %+v", brief)
 	}
-	if !strings.Contains(brief.Index, "## Notes from earlier work on this Work Item") || !strings.Contains(brief.Index, "without review") {
+	if !strings.Contains(brief.Index, "### Notes") || !strings.Contains(brief.Index, "untrusted text is quoted") {
 		t.Errorf("index does not set the notes apart:\n%s", brief.Index)
 	}
 	if got := brief.Sources[len(brief.Sources)-1]; got.Name != notesSource || got.Commit != "commit-7" {

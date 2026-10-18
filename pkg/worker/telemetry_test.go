@@ -109,19 +109,51 @@ func TestTelemetryEnvironmentNeverCarriesTheRunToken(t *testing.T) {
 }
 
 func TestTelemetrySupportNamesWhatEachHarnessExports(t *testing.T) {
+	optIn := []string{"openhands"}
 	for _, tc := range []struct {
 		harness, profile string
+		allow            []string
 		want             []string
 	}{
-		{"claude-code", "", []string{"metrics", "logs", "traces"}},
-		{"openhands", "", nil},
-		{"acp", "openhands", nil},
-		{"acp", "opencode", nil},
-		{"exec", "", nil},
-		{"claude-environment", "", nil},
+		{"claude-code", "", nil, []string{"metrics", "logs", "traces"}},
+		{"openhands", "", nil, nil},
+		{"acp", "openhands", nil, nil},
+		{"openhands", "", optIn, []string{"traces"}},
+		{"acp", "openhands", optIn, []string{"traces"}},
+		{"acp", "opencode", optIn, nil},
+		{"exec", "", optIn, nil},
+		{"claude-environment", "", optIn, nil},
 	} {
-		if got := TelemetrySupport(tc.harness, tc.profile); !slices.Equal(got, tc.want) {
-			t.Errorf("TelemetrySupport(%s, %s) = %v, want %v", tc.harness, tc.profile, got, tc.want)
+		if got := TelemetrySupport(tc.harness, tc.profile, tc.allow); !slices.Equal(got, tc.want) {
+			t.Errorf("TelemetrySupport(%s, %s, %v) = %v, want %v", tc.harness, tc.profile, tc.allow, got, tc.want)
+		}
+	}
+}
+
+func TestParseTelemetryAcceptsOnlyOpenHandsAsAnOptIn(t *testing.T) {
+	got, err := ParseTelemetry(`{"endpoint":"http://alloy:4318","allowHarnesses":["openhands"]}`)
+	if err != nil || !slices.Equal(got.AllowHarnesses, []string{"openhands"}) {
+		t.Fatalf("ParseTelemetry(openhands opt-in) = %v, %v", got, err)
+	}
+	for name, raw := range map[string]string{
+		"unknown harness": `{"endpoint":"http://alloy:4318","allowHarnesses":["opencode"]}`,
+		"repeated entry":  `{"endpoint":"http://alloy:4318","allowHarnesses":["openhands","openhands"]}`,
+	} {
+		if _, err := ParseTelemetry(raw); err == nil {
+			t.Errorf("%s: %s was accepted", name, raw)
+		}
+	}
+}
+
+func TestOpenHandsOptInGetsTheStandardVariablesOnly(t *testing.T) {
+	setting := &Telemetry{Endpoint: "http://alloy:4318", Protocol: "http/protobuf", Signals: telemetrySignals, AllowHarnesses: []string{"openhands"}}
+	for _, profile := range []struct{ harness, profile string }{{"openhands", ""}, {"acp", "openhands"}} {
+		env := telemetryEnvironment(setting, profile.harness, profile.profile, "bronze", "builder", testRunAlias)
+		if envValue(env, "OTEL_EXPORTER_OTLP_ENDPOINT") != "http://alloy:4318" {
+			t.Errorf("%s/%s with the opt-in got no endpoint: %v", profile.harness, profile.profile, env)
+		}
+		if envValue(env, "CLAUDE_CODE_ENABLE_TELEMETRY") != "" {
+			t.Errorf("%s/%s got Claude Code's variables: %v", profile.harness, profile.profile, env)
 		}
 	}
 }
@@ -133,14 +165,14 @@ type namedRecorder struct {
 
 func (a *namedRecorder) Name() string { return a.name }
 
-func runRecordingTelemetry(t *testing.T, harnessName string) *namedRecorder {
+func runRecordingTelemetry(t *testing.T, harnessName string, allow ...string) *namedRecorder {
 	t.Helper()
 	forgeURL := gitForge(t, map[string]string{"main.go": "package main\n"})
 	adapter := &namedRecorder{name: harnessName}
 	w := New(Config{APIURL: contextAPI(t, nil), ForgeURL: forgeURL, DefaultForge: harness.ForgeForgejo, BuilderToken: "tok",
 		ForgeTokenAccess: ForgeTokenReadOnly, RepoOwner: "webgrip", RepoName: "example", BaseBranch: "development",
 		WorkDir: t.TempDir(), RepoKnowledgeDir: "-", Team: "bronze",
-		Telemetry: &Telemetry{Endpoint: "http://alloy:4318", Protocol: "http/protobuf", Signals: []string{"traces"}}},
+		Telemetry: &Telemetry{Endpoint: "http://alloy:4318", Protocol: "http/protobuf", Signals: []string{"traces"}, AllowHarnesses: allow}},
 		adapter, llmbroker.Static{}, discardLog())
 	claimed := &ClaimResponse{RunToken: "rt", Role: "reviewer", PreAuthor: true, WorkItem: work.WorkItem{ID: "7", Title: "read"}}
 	w.execute(context.Background(), claimed, "agent/vik-7", testRunAlias, "", "")
@@ -198,5 +230,15 @@ func TestHarnessesWithoutSafeTelemetryGetNoOTELVariables(t *testing.T) {
 		if TelemetryWithheldReason(tc.harness, tc.profile) == "" {
 			t.Errorf("%s/%s withholds telemetry without saying why", tc.harness, tc.profile)
 		}
+	}
+}
+
+func TestWorkerHandsOptedInOpenHandsItsTraces(t *testing.T) {
+	adapter := runRecordingTelemetry(t, "openhands", "openhands")
+	if got := envValue(adapter.env, "OTEL_TRACES_EXPORTER"); got != "otlp" {
+		t.Fatalf("opted-in OpenHands OTEL_TRACES_EXPORTER = %q, want otlp", got)
+	}
+	if got := envValue(adapter.env, "OTEL_RESOURCE_ATTRIBUTES"); got != "ploeg.role=reviewer,ploeg.run.alias="+testRunAlias+",ploeg.team=bronze" {
+		t.Fatalf("opted-in OpenHands resource attributes = %q", got)
 	}
 }
