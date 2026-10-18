@@ -31,6 +31,10 @@ git commit --quiet -m candidate
 git update-ref refs/remotes/origin/development HEAD
 git tag v0.2.0-rc.1
 bash scripts/release.sh validate v0.2.0-rc.1
+git commit --quiet --allow-empty -m tag-only-candidate
+git update-ref refs/remotes/origin/development HEAD
+git tag v0.2.0-rc.2
+bash scripts/release.sh validate v0.2.0-rc.2
 printf 'version: 0.2.0\nappVersion: 0.2.0\n' > ops/helm/ploeg/Chart.yaml
 git add -- ops/helm/ploeg/Chart.yaml
 git commit --quiet -m stable-on-development

@@ -18,8 +18,10 @@ else
   git merge-base --is-ancestor "$commit" origin/main
 fi
 [[ "$(git rev-parse HEAD)" == "$commit" ]] || exit 1
-[[ "$(sed -n 's/^version: *//p' ops/helm/ploeg/Chart.yaml)" == "$version" ]] || exit 1
-[[ "$(sed -n 's/^appVersion: *//p' ops/helm/ploeg/Chart.yaml)" == "$version" ]] || exit 1
+if [[ "$tag" != *-rc.* ]]; then
+  [[ "$(sed -n 's/^version: *//p' ops/helm/ploeg/Chart.yaml)" == "$version" ]] || { echo "Chart.yaml version does not match the stable tag $tag" >&2; exit 1; }
+  [[ "$(sed -n 's/^appVersion: *//p' ops/helm/ploeg/Chart.yaml)" == "$version" ]] || { echo "Chart.yaml appVersion does not match the stable tag $tag" >&2; exit 1; }
+fi
 [[ "$mode" == publish ]] || exit 0
 : "${GITHUB_REPOSITORY:?}"
 : "${GITHUB_ACTOR:?}"
@@ -58,7 +60,7 @@ docker buildx build --file ops/claude-runner/Dockerfile --platform linux/amd64 \
   --label "org.opencontainers.image.version=$version" --label "org.opencontainers.image.revision=$commit" \
   --provenance=mode=max --sbom=true --metadata-file dist/claude-runner-image-metadata.json \
   --tag "$runner_image" --push .
-helm package ops/helm/ploeg --destination dist
+helm package ops/helm/ploeg --version "$version" --app-version "$version" --destination dist
 printf '%s' "$GH_TOKEN" | helm registry login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
 helm push "dist/ploeg-$version.tgz" oci://ghcr.io/ploeg-hq/charts
 printf '%s\n' "$commit" > dist/source-commit.txt
