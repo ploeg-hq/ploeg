@@ -29,20 +29,19 @@ review-by: 2027-01-18
 Chosen option: "One workflow on every push to `development` cuts the candidate and calls the release workflow", because it needs no secret beyond the workflow's token and leaves exactly one path to publication.
 
 * `development` stays the trunk, and `main` the line of stable releases. A stable `v0.x.y` may be tagged only on `main`; a candidate is tagged only by the release candidate workflow, on `development`.
-* On every push to `development`, [the release candidate workflow](../../.github/workflows/release-candidate.yml) checks out the branch head and runs semantic-release. When there is a releasable commit, it writes the version into `ops/helm/ploeg/Chart.yaml` (`version` and `appVersion`) and the notes into `CHANGELOG.md`, commits `chore(release): v0.x.y-rc.N [skip ci]` to `development`, tags that commit, and opens a draft GitHub release.
-* The same run calls [the release workflow](../../.github/workflows/release.yml) with the tag. It validates ancestry and chart versions with `scripts/release.sh validate`, runs `mise run verify` and `mise run docs-check`, pushes the images and chart, uploads the assets to the draft and publishes it as a prerelease. A pushed stable tag still starts the release workflow itself; a pushed candidate tag does not.
+* On every push to `development`, [the release candidate workflow](../../.github/workflows/release-candidate.yml) checks out the branch head and runs semantic-release. When there is a releasable commit, it tags that commit `v0.x.y-rc.N` and opens a draft GitHub release, and writes nothing back to `development` ([ADR 0115](0115-candidates-are-calculated-from-conventional-commits-and-a-stable-release-stays-a-reviewed-tag.md)).
+* The same run calls [the release workflow](../../.github/workflows/release.yml) with the tag. It validates ancestry with `scripts/release.sh validate`, runs `mise run verify` and `mise run docs-check`, pushes the images and the chart packaged at the tag's version, uploads the assets to the draft and publishes it as a prerelease. A pushed stable tag still starts the release workflow itself; a pushed candidate tag does not.
 * Candidate tags never move. A candidate whose publication failed stays a dead tag, and the next releasable merge cuts the next number, as `v0.2.0-rc.22` did.
 
 ### Consequences
 
 * Good, because a merge to `development` produces a published candidate with no hand step.
-* Good, because the release commit carries `[skip ci]` and is pushed with the workflow token, so it starts no further workflow.
-* Bad, because the release commit is pushed straight to `development`, so the `Protect development` ruleset must let the GitHub Actions identity bypass its required `verify` check.
+* Good, because nothing is pushed to `development`, so the `Protect development` ruleset and its required `verify` check stay as they are, and the tag pushed with the workflow token starts no further workflow.
 * Bad, because the gates run after the tag exists, so a candidate that fails them burns its number; the pull request's own CI is what stands in front of that.
 
 ### Confirmation
 
-`bash scripts/test-release-policy.sh`, run by `mise run verify`, fails when `release.sh` refuses a candidate on `development`, accepts a stable tag only on `development`, or accepts a candidate on neither branch. `scripts/release.sh publish` refuses a published release at the tag, and a draft that already carries assets. The first releasable merge after this change shows the run: one `Release candidate` workflow with a `cut` job and a `publish` job, and a published prerelease whose chart version matches its tag.
+`bash scripts/test-release-policy.sh`, run by `mise run verify`, fails when `release.sh` refuses a candidate on `development`, accepts a stable tag only on `development`, or accepts a candidate on neither branch. `scripts/release.sh publish` refuses a published release at the tag, and a draft that already carries assets. The first releasable merge after this change shows the run: one `Release candidate` workflow with a `cut` job and a `publish` job, and a published prerelease whose packaged chart version matches its tag, and no new commit on `development`.
 
 ## Pros and Cons of the Options
 
@@ -57,9 +56,10 @@ Chosen option: "One workflow on every push to `development` cuts the candidate a
 
 ## Re-evaluation triggers
 
-GitHub lets a workflow token's tag push start other workflows, `development` needs a required check the release commit cannot pass, two candidates are cut from one merge, or a candidate's publication fails twice in a month.
+GitHub lets a workflow token's tag push start other workflows, the `Protect development` ruleset accepts GitHub Actions as a bypass actor, two candidates are cut from one merge, or a candidate's publication fails twice in a month.
 
 ## More Information
 
 * Owner decisions D1 and D4 of [homelab-cluster ADR-0069](https://forgejo.webgrip.dev/webgrip/homelab-cluster/src/branch/main/docs/techdocs/docs/adr/adr-0069-one-delivery-contract.md), 2026-10-17.
 * [Evidence: fixture and dry-run](../research/2026-10-18-release-candidates-from-semantic-release.md); [releases](../ops/release-versioning.md).
+* 2026-10-18 — Candidates became tags only (ADR 0115): the `Protect development` ruleset cannot take GitHub Actions as a bypass actor, so a release commit to `development` would be refused.

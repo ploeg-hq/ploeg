@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing tag with matching chart version whose publication is missing (for example v0.1.0)
+        description: Existing tag whose publication is missing; a stable tag needs a matching chart version (for example v0.1.0)
         required: true
         type: string
 permissions:

@@ -31,6 +31,7 @@ Chosen option: "Calculate candidates from conventional commits; keep stable rele
 * semantic-release, configured by [`.releaserc.cjs`](../../.releaserc.cjs) through the shared configuration's GitHub adapter, calculates the next `v0.x.y-rc.N` from the conventional commits since the previous tag. `feat`, `fix`, `perf`, `refactor`, `revert` and dependency bumps release; other types do not.
 * A breaking change bumps the minor version, not the major, and keeps its notice in the release notes. The configuration refuses to load if any analyzer rule still cuts a major.
 * Before anything is written, `scripts/release.sh check` refuses a version that is not a `0.x.y-rc.N` candidate or whose tag already exists.
+* A candidate is a tag only. semantic-release tags the merged commit on `development` and writes nothing back to the branch: no release commit, no `Chart.yaml` bump and no `CHANGELOG.md` entry. The release workflow packages the chart with the tag's version as `version` and `appVersion`, and the candidate's notes live on its GitHub release. `.releaserc.cjs` refuses to load if a release commit would be made.
 * A stable `v0.x.y` is still tagged by a person on `main`, and published by the release workflow, as before.
 * Everything else in ADR 0063 stands: the module starts at `v0.1.0`, zero-major numbering does not claim production qualification, published tags and artifacts never move, and no `latest` alias is published.
 
@@ -39,11 +40,11 @@ Chosen option: "Calculate candidates from conventional commits; keep stable rele
 * Good, because a candidate needs no preparation pull request and no hand-pushed tag.
 * Good, because a breaking change can no longer turn into `v1.0.0-rc.1`, which happened once under the shared rules (ADR 0028).
 * Bad, because every releasable merge is a candidate and tags multiply; candidates were already disposable.
-* Bad, because the changelog is generated from commit subjects, so the hand-written "Breaking changes" and "Upgrade notes" sections stop unless the commits carry them.
+* Bad, because a candidate's notes are generated from commit subjects and kept only on its GitHub release, so the hand-written "Breaking changes" and "Upgrade notes" sections stop unless the commits carry them, and `CHANGELOG.md` and `Chart.yaml` in git move only with a stable release.
 
 ### Confirmation
 
-`bash scripts/test-release-policy.sh`, run by `mise run verify`, fails when `release.sh check` accepts a stable tag, a major or malformed tag, or a tag that already exists. The release candidate workflow runs that check as semantic-release's `verifyRelease` step, before the chart, changelog or tag are written. `.releaserc.cjs` throws at load time when an analyzer rule still releases a major. [The 2026-10-18 fixture runs](../research/2026-10-18-release-candidates-from-semantic-release.md) record a fix cutting `0.2.0-rc.27`, a breaking change cutting `0.2.0-rc.28`, and the guard refusing the version the shared defaults would compute.
+`bash scripts/test-release-policy.sh`, run by `mise run verify`, fails when `release.sh check` accepts a stable tag, a major or malformed tag, or a tag that already exists. The release candidate workflow runs that check as semantic-release's `verifyRelease` step, before the tag is written, and `release.sh validate` requires a matching `Chart.yaml` only for a stable tag. `.releaserc.cjs` throws at load time when an analyzer rule still releases a major. [The 2026-10-18 fixture runs](../research/2026-10-18-release-candidates-from-semantic-release.md) record a fix cutting `0.2.0-rc.27` as a tag only, with the packaged chart at `0.2.0-rc.27`, a breaking change cutting `0.2.0-rc.28`, and the guard refusing the version the shared defaults would compute.
 
 ## Pros and Cons of the Options
 
@@ -64,3 +65,4 @@ The owner decides stable releases follow a merge into `main` automatically, the 
 
 * Ryan decided on 2026-10-17 that each project releases from its home forge, Ploeg from GitHub, and that every releasable Ploeg merge to `development` cuts a candidate (decisions D1 and D4 of homelab-cluster ADR-0069 and its RFC).
 * [Evidence: fixture and dry-run](../research/2026-10-18-release-candidates-from-semantic-release.md); [releases](../ops/release-versioning.md); [ADR 0116](0116-every-releasable-merge-to-development-cuts-a-candidate.md) for where candidates are cut.
+* 2026-10-18 — Candidates became tags only. The first version of this record had semantic-release commit the chart version and changelog back to `development`, but the `Protect development` ruleset requires the `verify` check on every push and accepts only the repository admin role as a bypass actor; GitHub Actions cannot be added, so the release commit would be refused. The owner chose a tag on the merged commit, with the chart versioned when it is packaged.

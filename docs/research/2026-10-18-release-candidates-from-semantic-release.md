@@ -1,5 +1,7 @@
 # Release candidates from semantic-release: fixture and dry-run
 
+Runs 1 to 5 tested the first design, which committed the chart and changelog back to `development`. The section *Tag-only candidates* at the end records why that was dropped and the rerun of the design in force.
+
 Evidence for [ADR 0115](../adrs/0115-candidates-are-calculated-from-conventional-commits-and-a-stable-release-stays-a-reviewed-tag.md) and [ADR 0116](../adrs/0116-every-releasable-merge-to-development-cuts-a-candidate.md), recorded on 2026-10-18 against `development` at `bfe58d1` (`v0.2.0-rc.26`).
 
 ## Toolchain
@@ -80,3 +82,32 @@ Release note for version 0.2.0-rc.27:
 ## What these runs do not show
 
 They did not push to GitHub, open a draft release or run the release workflow. The first releasable merge after this change is the first run of `release-candidate.yml`, its `workflow_call` into `release.yml`, and `release.sh publish` against a draft release. The `Protect development` ruleset's required `verify` check would reject the release commit until the GitHub Actions identity can bypass it.
+
+## Tag-only candidates
+
+The first live runs after the merge of #164 showed the release commit refused. Run 39105597812 (merge of #166) failed in `@semantic-release/git`'s prepare step:
+
+```text
+git push --tags 'https://x-access-token:[secure]@github.com/ploeg-hq/ploeg' 'HEAD:development'
+remote: error: GH013: Repository rule violations found for refs/heads/development.
+ ! [remote rejected] HEAD -> development (push declined due to repository rule violations)
+```
+
+No tag and no draft release were left behind. The `Protect development` ruleset (24451069) has the rules `deletion`, `non_fast_forward` and `required_status_checks` (`verify`), and its only bypass actor is the repository admin role; GitHub Actions cannot be added. The `Release tags are immutable` ruleset (24445407, `refs/tags/v*`) has the rules `deletion`, `update` and `non_fast_forward` and no bypass actors, so it does not restrict creating a tag.
+
+### Run 6: a fix cuts a tag only
+
+`webgrip/semantic-release-config` cloned at `v1.4.0` (243b6a0) and installed with `npm ci --omit=dev`, a fresh bare clone of `ploeg-hq/ploeg` at `a235879` as `origin`, this change and `fix(fixture): a releasable change lands on development` pushed to it, GitHub publish step removed. The plugin list has no `@semantic-release/git` and no `@semantic-release/changelog`.
+
+```text
+Found git tag v0.2.0-rc.26 associated with version 0.2.0-rc.26 on branch development
+Found 9 commits since last release
+The next release version is 0.2.0-rc.27
+Call script bash scripts/release.sh check v0.2.0-rc.27
+Created tag v0.2.0-rc.27
+FIXTURE RESULT: v0.2.0-rc.26 -> v0.2.0-rc.27 (channel null)
+```
+
+`development` stayed at the fix commit (693ba67), which `v0.2.0-rc.27` tags; `GITHUB_OUTPUT` received `version=0.2.0-rc.27` and `tag=v0.2.0-rc.27`. At the tag, `Chart.yaml` still says `0.2.0-rc.26`, and `bash scripts/release.sh validate v0.2.0-rc.27` passed. `release.sh`'s own `helm package ops/helm/ploeg --version "$version" --app-version "$version"` produced `ploeg-0.2.0-rc.27.tgz` whose `Chart.yaml` reads `version: 0.2.0-rc.27` and `appVersion: 0.2.0-rc.27`; rendering it gives `image: ghcr.io/ploeg-hq/ploegd:0.2.0-rc.27` and `helm.sh/chart: ploeg-0.2.0-rc.27`. A stable tag on the same commit is still refused: `Chart.yaml version does not match the stable tag v0.2.9`.
+
+The nine commits include `feat(contracts)` from #163, so the first run after this change merges cuts `v0.2.0-rc.27`.
