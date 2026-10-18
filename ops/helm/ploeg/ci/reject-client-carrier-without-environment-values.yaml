@@ -1,0 +1,15 @@
+# CI-only values that MUST fail to render (scripts/helm-golden.sh): a
+# client-carried claude-environment team needs the environment its Runs
+# dispatch to (ADR-0112).
+executor:
+  enabled: true
+  teams:
+    - name: brass
+      model: litellm_proxy/claude-sonnet-5
+      budget: "1"
+      harness:
+        name: claude-environment
+        image: harbor.webgrip.dev/webgrip/claude-dispatch:0.1.0
+        dind: false
+        claudeEnvironment:
+          carrier: client

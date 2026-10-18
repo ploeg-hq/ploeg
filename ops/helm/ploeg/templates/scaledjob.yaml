@@ -4,7 +4,7 @@
 {{- range $team := .Values.executor.teams }}
 {{- $sandbox := eq (include "ploeg.teamExecutorType" (dict "root" $root "team" $team)) "sandbox" }}
 {{- range $planRole := (include "ploeg.teamRoles" $team | fromJsonArray) }}
-{{- range $w := (include "ploeg.roleWorkloads" (dict "root" $root "team" $team "role" $planRole) | fromJsonArray) }}
+{{- range $w := (include "ploeg.workerWorkloads" (dict "root" $root "team" $team "role" $planRole) | fromJsonArray) }}
 {{- $role := $w.role }}
 ---
 # One ScaledJob per (team, Role) — the flagship executor. A team without a

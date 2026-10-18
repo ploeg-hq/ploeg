@@ -1355,7 +1355,8 @@
         "environmentId": { "type": "string", "pattern": "^$|^ccpool_.+" },
         "loginSecret": { "type": "string", "description": "Secret with the keys refreshToken and scopes (CLAUDE_CODE_OAUTH_REFRESH_TOKEN, CLAUDE_CODE_OAUTH_SCOPES)." },
         "loginVolume": { "type": "string", "description": "PersistentVolumeClaim holding a signed-in Claude config directory, mounted as PLOEG_CLAUDE_CONFIG_DIR. Wins over loginSecret." },
-        "pollInterval": { "type": "string", "pattern": "^$|^[0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h)$" }
+        "pollInterval": { "type": "string", "pattern": "^$|^[0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h)$" },
+        "carrier": { "enum": ["", "client"], "description": "client: the person's own Claude Code carries the Runs (ADR-0112); the chart renders no worker for them and needs no login, only environmentId." }
       },
       "additionalProperties": false
     },

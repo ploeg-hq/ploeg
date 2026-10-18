@@ -81,11 +81,12 @@ func (s *Store) AdmitOperatorWorkItem(ctx context.Context, consumer, actor strin
 		return OperatorWorkAdmission{}, err
 	}
 	err = tx.QueryRow(ctx, `INSERT INTO work_items(provider,external_id,revision,team,state,origin,title,description,
-		target_forge,target_owner,target_repo,target_base_branch,route_rule,budget_usd,harness_requested,model_requested)
-	VALUES('manual',$1,$2,$3,'queued','operator',$4,$5,$6,$7,$8,$9,$10,$11,NULLIF($12,''),NULLIF($13,''))
+		target_forge,target_owner,target_repo,target_base_branch,route_rule,budget_usd,harness_requested,model_requested,acts_for)
+	VALUES('manual',$1,$2,$3,'queued','operator',$4,$5,$6,$7,$8,$9,$10,$11,NULLIF($12,''),NULLIF($13,''),$14)
 	ON CONFLICT (provider,external_id) DO NOTHING RETURNING id`,
 		key, fingerprint, input.Team, input.Title, input.Description,
-		target.Forge, target.Owner, target.Repo, target.BaseBranch, OperatorWorkAdmissionRouteRule, budgetUSD, input.Harness, input.Model).Scan(&itemID)
+		target.Forge, target.Owner, target.Repo, target.BaseBranch, OperatorWorkAdmissionRouteRule, budgetUSD, input.Harness, input.Model,
+		ActingPerson(ctx, actor)).Scan(&itemID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return OperatorWorkAdmission{}, ErrRequestConflict
 	}
@@ -133,4 +134,14 @@ func (s *Store) OperatorWorkAdmitted(ctx context.Context, consumer, requestID st
 	var admitted bool
 	err := s.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM operator_work_admissions WHERE consumer=$1 AND request_id=$2)`, consumer, requestID).Scan(&admitted)
 	return admitted, err
+}
+
+// ActingPerson is the person an operator request acts for (ADR-0108,
+// ADR-0112): X-Ploeg-Acting-User when the consumer acts on a person's
+// behalf, else the actor.
+func ActingPerson(ctx context.Context, actor string) string {
+	if a, ok := AttributionFrom(ctx); ok && a.ActingUser != "" {
+		return a.ActingUser
+	}
+	return actor
 }

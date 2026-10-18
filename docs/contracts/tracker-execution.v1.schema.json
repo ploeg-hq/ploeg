@@ -260,6 +260,17 @@
             }
           ],
           "description": "The Work Item's premise check before its first writer (ADR-0123); null when its Team runs none or it has not run yet. Optional: absent from older Ploeg releases."
+        },
+        "waitingForClient": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/clientWait"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The Run of this Work Item that waits for the person it acts for to start it from their own Claude Code (ADR-0112); null when none waits. While one waits the Work Item is needs_human and no worker claims the Run. Optional: absent from older Ploeg releases."
         }
       }
     },
@@ -521,6 +532,59 @@
               "type": "null"
             }
           ]
+        }
+      }
+    },
+    "clientWait": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "A client-carried Run that waits for its person (ADR-0112). The person claims it with POST /api/v1/operator/work-items/{id}/claim.",
+      "required": [
+        "reason",
+        "message",
+        "actsFor",
+        "handedBy",
+        "runId",
+        "role",
+        "round",
+        "writes"
+      ],
+      "properties": {
+        "reason": {
+          "const": "start_from_claude_code",
+          "description": "The needs_human reason code; the same code is detail.reason of the work_item.needs_human event."
+        },
+        "message": {
+          "type": "string",
+          "description": "The sentence that tells people to start this from their Claude Code, naming the person it acts for or, while Ploeg knows none, the tracker user who handed it."
+        },
+        "actsFor": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Ploeg's person id of the person the Run acts for: the admission's X-Ploeg-Acting-User, else its X-Ploeg-Actor, or the person configuration maps the handing tracker user to (trackers.<kind>.people). Null while Ploeg knows no person, and then nobody can claim the Run."
+        },
+        "handedBy": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The tracker user who handed the Work Item to Ploeg; null for admitted work. Tracker text; untrusted."
+        },
+        "runId": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]{0,18}$"
+        },
+        "role": {
+          "type": "string"
+        },
+        "round": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "writes": {
+          "type": "boolean"
         }
       }
     }

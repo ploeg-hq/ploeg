@@ -123,6 +123,7 @@ The 2026-10-18 spike showed that every refresh replaces the refresh token, so a 
 
 * 2026-10-17 — The owner rejected a shared login. Work should count towards the person who started it, several people should be able to use it inside a company, and progress should be shareable. This record replaces ADR-0094 and the seat choice in ADR-0084.
 * 2026-10-18 — The owner asked whether storing logins is allowed. It is not settled, so this record now stores none: client-carried Runs only, with an API fallback. The spike passed, and its findings are kept with the parked option. The question went to Anthropic's sales team.
+* 2026-10-18 — First increment built: `harness.claudeEnvironment.carrier: client`, Runs stored with carrier `client` that no worker claims, the `needs_human` wait `start_from_claude_code` with `waitingForClient` on the Work Item, `trackers.<tracker>.people` for tracker users, and `POST /api/v1/operator/work-items/{id}/claim`. The `pkg/httpapi` Confirmation tests are in `client_carried_test.go`. Not built yet: `unattended: api`, registering a session a person already runs, batch claims and deprecating the login volume.
 * Related:
   * [ADR-0084](0084-a-claude-code-run-can-execute-in-a-teams-self-hosted-claude-environment.md)
   * [ADR-0094](0094-a-person-connects-a-teams-claude-login-from-unfold-and-the-teams-worker-signs-in.md) (rejected)

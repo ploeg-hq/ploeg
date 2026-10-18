@@ -108,6 +108,10 @@ spec:
             {{- $allowed = append $allowed $a }}
             {{- if $w.default }}
             {{- $entry = omit $a "qualification" }}
+            {{- if eq ($w.carrier | default "") "client" }}
+            {{- $_ := set $entry "carrier" "client" }}
+            {{- $_ := set $entry "environmentId" $w.environmentId }}
+            {{- end }}
             {{- end }}
             {{- end }}
             {{- $_ := set $entry "allowed" $allowed }}

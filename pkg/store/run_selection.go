@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"slices"
 
 	"github.com/jackc/pgx/v5"
@@ -16,7 +18,17 @@ type RoleSelection struct {
 	DefaultHarness string
 	Models         []string
 	DefaultModel   string
+	// ClientCarried lists the Harness keys whose Runs the person's own client
+	// carries (ADR-0112): such a Run is never claimed by a worker.
+	ClientCarried []string
 }
+
+// CarrierClient is the carrier of a Run the person's own client carries.
+const CarrierClient = "client"
+
+// NeedsHumanStartFromClient is the needs_human reason code of a Work Item
+// whose client-carried Run waits for its person to start it (ADR-0112).
+const NeedsHumanStartFromClient = "start_from_claude_code"
 
 // Resolve returns the Harness key and model a Run of this Role stores: the
 // requested one when the Role allows it, otherwise the Role's default.
@@ -50,12 +62,60 @@ func insertPendingRun(ctx context.Context, tx pgx.Tx, workItemID, shiftID int64,
 		return err
 	}
 	harness, model := r.Selection.Resolve(requestedHarness, requestedModel)
+	carrier := ""
+	if harness != "" && slices.Contains(r.Selection.ClientCarried, harness) {
+		carrier = CarrierClient
+	}
 	_, err = tx.Exec(ctx, `
-		INSERT INTO agent_runs (work_item_id, shift_id, team, role, round, writes, shadow, state, run_token, started_at, harness_requested, model_selected)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8, NULL, NULLIF($9, ''), NULLIF($10, ''))`,
-		workItemID, shiftID, team, r.Name, round, r.Writes, r.Shadow, token, harness, model)
-	return err
+		INSERT INTO agent_runs (work_item_id, shift_id, team, role, round, writes, shadow, state, run_token, started_at, harness_requested, model_selected, carrier)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8, NULL, NULLIF($9, ''), NULLIF($10, ''), NULLIF($11, ''))`,
+		workItemID, shiftID, team, r.Name, round, r.Writes, r.Shadow, token, harness, model, carrier)
+	if err != nil || carrier == "" {
+		return err
+	}
+	return waitForClient(ctx, tx, workItemID, team, r.Name, round)
 }
+
+// waitForClient parks a Work Item whose new Run a client carries at
+// needs_human, naming the person it acts for: no worker will claim the Run,
+// so a person has to start it from their own Claude Code (ADR-0112).
+func waitForClient(ctx context.Context, tx pgx.Tx, workItemID int64, team, role string, round int) error {
+	var person, handedBy string
+	err := tx.QueryRow(ctx, `
+		UPDATE work_items SET state = 'needs_human', updated_at = now()
+		WHERE id = $1 AND NOT operator_owned
+		RETURNING acts_for, handed_by`, workItemID).Scan(&person, &handedBy)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return audit(ctx, tx, "team:"+team, "work_item.needs_human", &workItemID, map[string]any{
+		"reason": NeedsHumanStartFromClient, "message": ClientWaitMessage(person, handedBy),
+		"actsFor": person, "handedBy": handedBy, "role": role, "round": round,
+	})
+}
+
+// ClientWaitMessage is the sentence that tells people a client-carried Run
+// waits for its person (ADR-0112). operatorClientWaitJSON renders the same
+// sentences in SQL.
+func ClientWaitMessage(person, handedBy string) string {
+	switch {
+	case person != "":
+		return fmt.Sprintf(clientWaitForPerson, person)
+	case handedBy != "":
+		return fmt.Sprintf(clientWaitForTrackerUser, handedBy)
+	default:
+		return clientWaitForNobody
+	}
+}
+
+const (
+	clientWaitForPerson      = "Start this from your Claude Code: it acts for %s, who claims it and dispatches it with their own Claude login."
+	clientWaitForTrackerUser = "Start this from your Claude Code: it acts for tracker user %s, whom Ploeg cannot match to a person, so nobody can claim it until configuration maps them to one."
+	clientWaitForNobody      = "Start this from your Claude Code: Ploeg does not know which person it acts for, so nobody can claim it."
+)
 
 func runRequest(ctx context.Context, tx pgx.Tx, workItemID int64) (harness, model string, err error) {
 	err = tx.QueryRow(ctx, `SELECT COALESCE(harness_requested, ''), COALESCE(model_requested, '') FROM work_items WHERE id = $1`,

@@ -2,7 +2,7 @@
 {{- $root := . }}
 {{- range $team := .Values.executor.teams }}
 {{- range $planRole := (include "ploeg.teamRoles" $team | fromJsonArray) }}
-{{- range $w := (include "ploeg.roleWorkloads" (dict "root" $root "team" $team "role" $planRole) | fromJsonArray) }}
+{{- range $w := (include "ploeg.workerWorkloads" (dict "root" $root "team" $team "role" $planRole) | fromJsonArray) }}
 {{- $role := $w.role }}
 ---
 # The KEDA-free executor (docs/contracts/executor.md): a plain CronJob per
