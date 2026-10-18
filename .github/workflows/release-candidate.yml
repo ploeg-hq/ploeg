@@ -66,3 +66,33 @@ jobs:
     uses: ./.github/workflows/contract-bundle.yml
     with:
       tag: ${{ needs.cut.outputs.tag }}
+  consumers:
+    needs: [cut, contract-bundle]
+    if: needs.cut.outputs.tag != '' && vars.RELEASE_CONSUMERS != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        consumer: ${{ fromJSON(vars.RELEASE_CONSUMERS || '[]') }}
+    concurrency:
+      group: ploeg-release-consumer-${{ matrix.consumer.url }}-${{ matrix.consumer.repo }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@7a4e45a543138629540c9a1616d08632b893e492 # v5.0.1
+        with:
+          version: 2026.9.18
+          install: false
+          cache: false
+      - name: Run the consumer's recipe for this release and open its pull request
+        env:
+          RELEASE_CONSUMER: ${{ toJSON(matrix.consumer) }}
+          RELEASE_CONSUMER_TOKEN: ${{ matrix.consumer.forge == 'forgejo' && secrets.RELEASE_CONSUMER_TOKEN_FORGEJO || '' }}
+          RELEASE_TAG: ${{ needs.cut.outputs.tag }}
+          RELEASE_URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ needs.cut.outputs.tag }}
+        run: python3 scripts/release-consumers.py "$RELEASE_TAG"
