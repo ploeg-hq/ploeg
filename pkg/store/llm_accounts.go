@@ -74,7 +74,7 @@ func (s *Store) ReserveLLMAccount(ctx context.Context, a LLMAccount) error {
 		return err
 	}
 	defer tx.Rollback(ctx)
-	var id int64
+	var id *int64
 	var authorized float64
 	if err := tx.QueryRow(ctx, `SELECT work_item_id, authorized FROM agent_runs
 		WHERE run_token = $1 AND state = 'running' FOR UPDATE`, a.RunToken).Scan(&id, &authorized); err != nil {
@@ -104,7 +104,7 @@ func (s *Store) ReserveLLMAccount(ctx context.Context, a LLMAccount) error {
 		VALUES ($1,$2,$3,$4,$5,$6,$7)`, a.RunToken, a.Alias, a.Authorized, models, a.TTLSeconds, a.GatewayTeamID, mcpGroups); err != nil {
 		return err
 	}
-	if err := audit(ctx, tx, "ploegd:llm", "llm.reserved", &id, map[string]any{"alias": a.Alias, "authorized": a.Authorized}); err != nil {
+	if err := audit(ctx, tx, "ploegd:llm", "llm.reserved", id, map[string]any{"alias": a.Alias, "authorized": a.Authorized}); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
@@ -370,11 +370,12 @@ func (s *Store) SettleLLMAccount(ctx context.Context, token string, st LLMSettle
 	var state string
 	var previous, observed *float64
 	var known bool
-	var id int64
-	var shiftID *int64
-	if err := tx.QueryRow(ctx, `SELECT a.state,a.reconciled_spend,a.observed_spend,a.cost_known,r.work_item_id,r.shift_id
+	var id, shiftID *int64
+	var runID int64
+	var team string
+	if err := tx.QueryRow(ctx, `SELECT a.state,a.reconciled_spend,a.observed_spend,a.cost_known,r.work_item_id,r.shift_id,r.id,r.team
 		FROM run_llm_accounts a JOIN agent_runs r USING(run_token) WHERE a.run_token=$1 AND r.state='finished'
-		FOR UPDATE OF a,r`, token).Scan(&state, &previous, &observed, &known, &id, &shiftID); err != nil {
+		FOR UPDATE OF a,r`, token).Scan(&state, &previous, &observed, &known, &id, &shiftID, &runID, &team); err != nil {
 		return false, err
 	}
 	if state != "blocked" && state != "reconciled" && !(state == "reserved" && spend == 0) {
@@ -426,7 +427,10 @@ func (s *Store) SettleLLMAccount(ctx context.Context, token string, st LLMSettle
 	if correction {
 		detail["adjustment"] = true
 	}
-	if err := audit(ctx, tx, "ploegd:reconciliation", "llm.reconciled", &id, detail); err != nil {
+	if id == nil {
+		detail["team"], detail["run"] = team, runID
+	}
+	if err := audit(ctx, tx, "ploegd:reconciliation", "llm.reconciled", id, detail); err != nil {
 		return false, err
 	}
 	return true, tx.Commit(ctx)

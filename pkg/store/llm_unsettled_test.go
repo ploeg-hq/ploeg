@@ -88,7 +88,7 @@ func TestUnsettledFinishedAccountsSelectsWhatTheBlockSweepRetries(t *testing.T) 
 		if account.HeldUSD != hold {
 			t.Fatalf("Run %d holds %v, listed %v", account.RunID, hold, account.HeldUSD)
 		}
-		if account.Since.IsZero() || account.WorkItemID == 0 {
+		if account.Since.IsZero() || account.WorkItemID == nil {
 			t.Fatalf("Run %d lacks since or Work Item: %+v", account.RunID, account)
 		}
 	}

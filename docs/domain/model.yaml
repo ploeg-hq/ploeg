@@ -90,16 +90,16 @@ terms:
 
   - name: Hold
     definition: >
-      Budget kept back against a Shift pool or an Ask Allowance for work that
-      started and has not settled. A Run's Hold starts at what it was
-      authorized and ends when its spend settles. A Hold is derived from the
+      Budget kept back against a Shift pool, an Ask Allowance or a Chat
+      Allowance for work that started and has not settled. A Run's Hold
+      starts at what it was authorized and ends when its spend settles. A Hold is derived from the
       Runs, never stored as a counter. The verb and adjective are "held".
       Authorized names only the ceiling a budget allows a Run to spend; the
       Hold is how much of it is still kept back.
     context: Dispatch
     synonyms: [held budget]
     avoid: [reservation, reserved (for money), authorization (for money kept back)]
-    see_also: [Shift, Run, Ask Allowance, Inference Account, Cost Status]
+    see_also: [Shift, Run, Ask Allowance, Chat Allowance, Inference Account, Cost Status]
 
   - name: Cost Status
     definition: >
@@ -135,6 +135,31 @@ terms:
       - term: Shift
         note: A Shift's Budget pays for delivering one Work Item. An Ask never spends it.
     see_also: [Ask, Team]
+
+  - name: Chat
+    definition: >
+      One chat message: a read-only Run with the Role chat about no Work Item,
+      admitted for an Operator Consumer outside any Shift, Round or Lease.
+      Ploeg authorizes it against the Team's Chat Allowance under the Team's
+      ask inference policy and returns a key capped at the per-chat Budget;
+      the consumer makes the model calls. Chat spend is the Team's and never
+      appears in a Work Item's facts.
+    context: Integration
+    not_to_be_confused_with:
+      - term: Ask
+        note: An Ask is about one Work Item and is paid from the Ask Allowance; a chat message is about none and is paid from the Chat Allowance.
+    see_also: [Chat Allowance, Ask, Run, Inference Account]
+
+  - name: Chat Allowance
+    definition: >
+      The amount of chat spend a Team may authorize in one UTC calendar month,
+      kept apart from its Ask Allowance. A chat message is admitted only when
+      the limit less settled and held chat spend covers the per-chat Budget.
+    context: Integration
+    not_to_be_confused_with:
+      - term: Ask Allowance
+        note: Asks and chat messages are capped apart; spending one never refuses the other.
+    see_also: [Chat, Ask Allowance, Team]
 
   - name: Tenant
     definition: >

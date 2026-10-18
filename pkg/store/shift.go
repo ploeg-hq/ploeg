@@ -553,6 +553,7 @@ const harnessPredicate = `($3 = '' OR harness_requested IS NULL OR harness_reque
 
 // ExpiredRun is a Run the sweeper reclaimed.
 type ExpiredRun struct {
+	// WorkItemID is zero for a chat Run, which has no Work Item (ADR-0128).
 	WorkItemID int64
 	ShiftID    int64
 	Team, Role string
@@ -595,8 +596,12 @@ func (s *Store) ExpireRuns(ctx context.Context) ([]ExpiredRun, error) {
 	var out []ExpiredRun
 	for rows.Next() {
 		var e ExpiredRun
-		if err := rows.Scan(&e.WorkItemID, &e.ShiftID, &e.Team, &e.Role, &e.RunToken, &e.Writes); err != nil {
+		var workItemID *int64
+		if err := rows.Scan(&workItemID, &e.ShiftID, &e.Team, &e.Role, &e.RunToken, &e.Writes); err != nil {
 			return nil, err
+		}
+		if workItemID != nil {
+			e.WorkItemID = *workItemID
 		}
 		out = append(out, e)
 	}
@@ -615,7 +620,11 @@ func (s *Store) ExpireRuns(ctx context.Context) ([]ExpiredRun, error) {
 			Scan(&e.ForgeTokenID); err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return nil, err
 		}
-		if err := audit(ctx, tx, "ploegd:sweeper", "run.expired", &e.WorkItemID, map[string]any{
+		var workItemID *int64
+		if e.WorkItemID != 0 {
+			workItemID = &e.WorkItemID
+		}
+		if err := audit(ctx, tx, "ploegd:sweeper", "run.expired", workItemID, map[string]any{
 			"team": e.Team, "role": e.Role, "shift": e.ShiftID, "writes": e.Writes,
 		}); err != nil {
 			return nil, err
