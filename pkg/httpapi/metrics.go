@@ -196,6 +196,8 @@ func renderMetrics(m store.OperationalMetrics, webhooks *WebhookCoverage, harnes
 	for _, k := range sortedBriefedRuns(m.BriefedNotes) {
 		b.sample("ploeg_run_briefed_notes_total", float64(m.BriefedNotes[k]), "team", k.Team, "role", k.Role)
 	}
+	b.family("ploeg_awaiting_review_with_unsuccessful_ci", "gauge", "Work Items in awaiting_review whose pull request's head CI, as last read from the forge, is not success (ADR-0119); stays at 0.")
+	b.sample("ploeg_awaiting_review_with_unsuccessful_ci", float64(m.AwaitingReviewWithUnsuccessfulCI))
 	b.family("ploeg_work_item_notes_unwritten", "gauge", "Work Item Notes the outbox has not yet written to the Tenant's notes graph.")
 	b.sample("ploeg_work_item_notes_unwritten", float64(m.UnwrittenNotes))
 	b.family("ploeg_work_item_note_oldest_unwritten_seconds", "gauge", "How long the oldest unwritten Work Item Note has waited for the notes graph; 0 when none waits.")

@@ -115,6 +115,15 @@ func (p LLMPolicy) Default() string {
 	return ""
 }
 
+// policyRole is the Role whose managed inference policy pays for a Run of
+// role: a chat Run is metered under its Team's ask policy (ADR-0128).
+func policyRole(role string) string {
+	if role == work.ChatRole {
+		return work.AskRole
+	}
+	return role
+}
+
 // Policy returns the managed inference policy of a team and Role.
 func (c *LLMControl) Policy(team, role string) (LLMPolicy, bool) {
 	for _, p := range c.Policies {
@@ -130,8 +139,9 @@ func (c *LLMControl) Reserve(ctx context.Context, runToken string) error {
 	if err != nil {
 		return err
 	}
+	role := policyRole(run.Role)
 	for _, p := range c.Policies {
-		if p.Team == run.Team && p.Role == run.Role {
+		if p.Team == run.Team && p.Role == role {
 			ttl, err := time.ParseDuration(p.TTL)
 			if err != nil {
 				return err

@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/ploeg-hq/ploeg/pkg/githubapi"
 	"github.com/ploeg-hq/ploeg/pkg/provider"
@@ -310,7 +311,7 @@ func nonNegative(n *int) *int {
 }
 
 func (pr pullRequest) facts() (provider.PullRequestFacts, error) {
-	facts := provider.PullRequestFacts{HeadSHA: pr.Head.SHA,
+	facts := provider.PullRequestFacts{HeadSHA: pr.Head.SHA, BaseSHA: pr.Base.SHA,
 		Additions: nonNegative(pr.Additions), Deletions: nonNegative(pr.Deletions), ChangedFiles: nonNegative(pr.ChangedFiles),
 		OpenedAt: provider.ParseForgeTime(pr.CreatedAt), Author: pr.User.name(), Draft: pr.Draft}
 	switch {
@@ -386,17 +387,20 @@ func (p *Provider) CommitStatus(ctx context.Context, repo, sha string) (provider
 	}
 	out := provider.CommitStatus{SHA: sha, Checks: []provider.CommitCheck{}}
 	var states []provider.CommitState
-	add := func(context string, state provider.CommitState) {
-		out.Checks = append(out.Checks, provider.CommitCheck{Context: context, State: state})
-		states = append(states, state)
+	add := func(check provider.CommitCheck) {
+		out.Checks = append(out.Checks, check)
+		states = append(states, check.State)
 	}
 	commit := base + "/commits/" + url.PathEscape(sha)
 	err = p.pages(ctx, commit+fmt.Sprintf("/status?per_page=%d", perPage), owner, name, statusMaxPages,
 		func(raw json.RawMessage) (bool, error) {
 			var page struct {
 				Statuses []struct {
-					Context string `json:"context"`
-					State   string `json:"state"`
+					Context     string `json:"context"`
+					State       string `json:"state"`
+					Description string `json:"description"`
+					TargetURL   string `json:"target_url"`
+					UpdatedAt   string `json:"updated_at"`
 				} `json:"statuses"`
 			}
 			if err := json.Unmarshal(raw, &page); err != nil {
@@ -404,7 +408,8 @@ func (p *Provider) CommitStatus(ctx context.Context, repo, sha string) (provider
 			}
 			for _, s := range page.Statuses {
 				if state, known := statusState(s.State); known {
-					add(s.Context, state)
+					add(provider.CommitCheck{Context: s.Context, State: state, Description: s.Description,
+						TargetURL: s.TargetURL, UpdatedAt: forgeTimeOrZero(s.UpdatedAt)})
 				}
 			}
 			return len(page.Statuses) > 0, nil
@@ -422,7 +427,8 @@ func (p *Provider) CommitStatus(ctx context.Context, repo, sha string) (provider
 			}
 			for _, run := range page.CheckRuns {
 				if state, known := run.state(); known {
-					add(run.Name, state)
+					add(provider.CommitCheck{Context: run.Name, State: state, Description: run.Output.Title,
+						TargetURL: run.DetailsURL, Cancelled: run.cancelled(), UpdatedAt: forgeTimeOrZero(run.CompletedAt)})
 				}
 			}
 			return len(page.CheckRuns) > 0, nil
@@ -447,9 +453,70 @@ func statusState(s string) (provider.CommitState, bool) {
 }
 
 type checkRun struct {
-	Name       string `json:"name"`
-	Status     string `json:"status"`
-	Conclusion string `json:"conclusion"`
+	Name        string `json:"name"`
+	Status      string `json:"status"`
+	Conclusion  string `json:"conclusion"`
+	DetailsURL  string `json:"details_url"`
+	CompletedAt string `json:"completed_at"`
+	Output      struct {
+		Title string `json:"title"`
+	} `json:"output"`
+}
+
+func (c checkRun) cancelled() bool {
+	return c.Status == "completed" && c.Conclusion == "cancelled"
+}
+
+func forgeTimeOrZero(s string) time.Time {
+	if t := provider.ParseForgeTime(s); t != nil {
+		return *t
+	}
+	return time.Time{}
+}
+
+const reRunMaxPages = 5
+
+// ReRunCI asks GitHub Actions to run the failed and cancelled jobs of every
+// workflow run on sha again (ADR-0119). Check runs from other apps and
+// commit statuses are not GitHub's to re-run and are left alone. A sha with
+// no failed or cancelled workflow run returns provider.ErrNoReRun.
+func (p *Provider) ReRunCI(ctx context.Context, repo, sha string) error {
+	base, owner, name, err := p.repoBase(repo)
+	if err != nil {
+		return err
+	}
+	var runs []int64
+	err = p.pages(ctx, base+fmt.Sprintf("/actions/runs?head_sha=%s&per_page=%d", url.QueryEscape(sha), perPage), owner, name, reRunMaxPages,
+		func(raw json.RawMessage) (bool, error) {
+			var page struct {
+				WorkflowRuns []struct {
+					ID         int64  `json:"id"`
+					Status     string `json:"status"`
+					Conclusion string `json:"conclusion"`
+				} `json:"workflow_runs"`
+			}
+			if err := json.Unmarshal(raw, &page); err != nil {
+				return false, err
+			}
+			for _, r := range page.WorkflowRuns {
+				if r.Status == "completed" && r.Conclusion != "success" && r.Conclusion != "skipped" && r.Conclusion != "neutral" {
+					runs = append(runs, r.ID)
+				}
+			}
+			return len(page.WorkflowRuns) > 0, nil
+		})
+	if err != nil {
+		return fmt.Errorf("github: workflow runs %s@%s: %w", repo, sha, err)
+	}
+	if len(runs) == 0 {
+		return provider.ErrNoReRun
+	}
+	for _, id := range runs {
+		if err := p.call(ctx, http.MethodPost, fmt.Sprintf("%s/actions/runs/%d/rerun-failed-jobs", base, id), owner, name, nil, nil); err != nil {
+			return fmt.Errorf("github: re-run workflow run %d of %s: %w", id, repo, err)
+		}
+	}
+	return nil
 }
 
 func (c checkRun) state() (provider.CommitState, bool) {

@@ -293,6 +293,7 @@ func run(log *slog.Logger) error {
 			Trackers:     trackers,
 			Uniform:      uniform,
 			UsageReport:  usageReport,
+			CIWaits:      ciWaits(cfg),
 			ReportLinks: shiftengine.ReportLinks{
 				WorkItem:       os.Getenv("PLOEG_REPORT_WORK_ITEM_URL"),
 				TeamDashboard:  os.Getenv("PLOEG_REPORT_TEAM_DASHBOARD_URL"),
@@ -360,6 +361,14 @@ func run(log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	chatAllowance, err := usdFromEnv("PLOEG_CHAT_ALLOWANCE_USD", httpapi.DefaultChatAllowanceUSD)
+	if err != nil {
+		return err
+	}
+	chatBudget, err := usdFromEnv("PLOEG_CHAT_BUDGET_USD", httpapi.DefaultChatBudgetUSD)
+	if err != nil {
+		return err
+	}
 	runTranscripts, err := switchEnv("PLOEG_RUN_TRANSCRIPTS", true)
 	if err != nil {
 		return err
@@ -387,13 +396,15 @@ func run(log *slog.Logger) error {
 		ClaudeSessions: claudeSessions(log),
 		CreatedWork:    createdWork,
 
-		MetricsCacheTTL: durationOr("PLOEG_METRICS_CACHE_TTL", httpapi.DefaultMetricsCacheTTL),
-		AskAllowanceUSD: askAllowance,
-		AskBudgetUSD:    askBudget,
-		FollowUps:       cfg.ForgeFollowUps(),
-		ForgeBots:       forgeBots(),
-		Deploys:         deploys,
-		Gates:           gates,
+		MetricsCacheTTL:  durationOr("PLOEG_METRICS_CACHE_TTL", httpapi.DefaultMetricsCacheTTL),
+		AskAllowanceUSD:  askAllowance,
+		AskBudgetUSD:     askBudget,
+		ChatAllowanceUSD: chatAllowance,
+		ChatBudgetUSD:    chatBudget,
+		FollowUps:        cfg.ForgeFollowUps(),
+		ForgeBots:        forgeBots(),
+		Deploys:          deploys,
+		Gates:            gates,
 
 		ContextMaxBytes:      contextMax,
 		ContextMaxTotalBytes: contextMaxTotal,
@@ -422,6 +433,7 @@ func run(log *slog.Logger) error {
 			Trackers:        trackers,
 			MarkTrackerDone: envOr("PLOEG_TRACKER_DONE_ON_MERGE", "false") == "true",
 			OutcomeNotes:    srv.Notes != nil,
+			CIWaits:         ciWaits(cfg),
 			Log:             log,
 		}
 		srv.Reviews = reviews
@@ -612,4 +624,12 @@ func dispatchGate(engine *shiftengine.Engine, cfg *config.File, log *slog.Logger
 	}
 	log.Info("dispatch gate", "dependency_hold", hold, "dependency_recheck", engine.DependencyRecheck.String(), "premise_check_teams", len(engine.PremiseModels))
 	return nil
+}
+
+func ciWaits(cfg *config.File) shiftengine.CIWaits {
+	out := shiftengine.CIWaits{}
+	for _, w := range cfg.CIWaits() {
+		out[shiftengine.CIRoute(w.Forge, w.Repo)] = w.Timeout
+	}
+	return out
 }

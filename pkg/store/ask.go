@@ -24,22 +24,26 @@ var ErrAskConflict = errors.New("ask conflicts with an earlier ask of the same i
 var ErrAllowanceExhausted = errors.New("allowance cannot cover the per-Ask Budget")
 
 // AllowancePurposeAsk and AllowanceScopeTeam are the purpose and scope kind
-// phase 1 of ADR-0082 uses.
+// phase 1 of ADR-0082 uses. AllowancePurposeChat is the purpose of a Team's
+// Chat Allowance (ADR-0128).
 const (
-	AllowancePurposeAsk = "ask"
-	AllowanceScopeTeam  = "team"
+	AllowancePurposeAsk  = "ask"
+	AllowancePurposeChat = "chat"
+	AllowanceScopeTeam   = "team"
 )
 
-// AllowanceExhaustedError carries the allowance an Ask was refused against.
+// AllowanceExhaustedError carries the allowance an Ask or a chat message was
+// refused against.
 type AllowanceExhaustedError struct{ Allowance Allowance }
 
 func (e *AllowanceExhaustedError) Error() string { return ErrAllowanceExhausted.Error() }
 func (e *AllowanceExhaustedError) Unwrap() error { return ErrAllowanceExhausted }
 
-// Allowance is one scope's allowance for one period. SettledUSD is the
-// reconciled spend of the period's Asks, HeldUSD what their unsettled
-// accounts still hold, and RemainingUSD the limit less both, never below
-// zero. ResetAt is the end of the period.
+// Allowance is one scope's allowance for one purpose and period. SettledUSD
+// is the reconciled spend of the period's Asks or chat messages, HeldUSD what
+// their unsettled accounts still hold, and RemainingUSD the limit less both,
+// never below zero. ResetAt is the end of the period. Count is how many were
+// admitted against it; each purpose's view names it.
 type Allowance struct {
 	Purpose      string    `json:"purpose"`
 	ScopeKind    string    `json:"scopeKind"`
@@ -50,7 +54,7 @@ type Allowance struct {
 	SettledUSD   float64   `json:"settledUsd"`
 	HeldUSD      float64   `json:"heldUsd"`
 	RemainingUSD float64   `json:"remainingUsd"`
-	AskCount     int64     `json:"askCount"`
+	Count        int64     `json:"-"`
 }
 
 // AskSpend is what an Ask has cost so far. CostStatus is observed while its
@@ -134,19 +138,23 @@ func scanAsk(row pgx.Row) (Ask, error) {
 	if err != nil {
 		return a, err
 	}
-	switch {
-	case a.Spend.KeyState == "reconciled" && !known:
-		a.Spend.CostStatus, a.Spend.USD = work.CostUnknown, reconciled
-	case a.Spend.KeyState == "reconciled" && !correcting:
-		a.Spend.CostStatus, a.Spend.USD = work.CostSettled, reconciled
-	case a.Spend.KeyState == "reconciled":
-		a.Spend.CostStatus, a.Spend.USD = work.CostProvisional, reconciled
-	case observed == nil:
-		a.Spend.CostStatus = work.CostUnknown
-	default:
-		a.Spend.CostStatus, a.Spend.USD = work.CostObserved, observed
-	}
+	a.Spend.costFrom(observed, reconciled, known, correcting)
 	return a, nil
+}
+
+func (sp *AskSpend) costFrom(observed, reconciled *float64, known, correcting bool) {
+	switch {
+	case sp.KeyState == "reconciled" && !known:
+		sp.CostStatus, sp.USD = work.CostUnknown, reconciled
+	case sp.KeyState == "reconciled" && !correcting:
+		sp.CostStatus, sp.USD = work.CostSettled, reconciled
+	case sp.KeyState == "reconciled":
+		sp.CostStatus, sp.USD = work.CostProvisional, reconciled
+	case observed == nil:
+		sp.CostStatus = work.CostUnknown
+	default:
+		sp.CostStatus, sp.USD = work.CostObserved, observed
+	}
 }
 
 func askFingerprint(in AdmitAsk) string {
@@ -214,24 +222,10 @@ func (s *Store) AdmitAsk(ctx context.Context, consumer, actor string, in AdmitAs
 	if team != in.Team {
 		return Ask{}, false, ErrAskConflict
 	}
-	start, end := MonthPeriod(at)
-	if _, err = tx.Exec(ctx, `INSERT INTO inference_allowances (purpose, scope_kind, scope_id, period_start, period_end, limit_usd)
-		VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (purpose, scope_kind, scope_id, period_start) DO NOTHING`,
-		AllowancePurposeAsk, AllowanceScopeTeam, team, start, end, in.LimitUSD); err != nil {
-		return Ask{}, false, err
-	}
-	var allowanceID int64
-	if err = tx.QueryRow(ctx, `SELECT id FROM inference_allowances
-		WHERE purpose = $1 AND scope_kind = $2 AND scope_id = $3 AND period_start = $4 FOR UPDATE`,
-		AllowancePurposeAsk, AllowanceScopeTeam, team, start).Scan(&allowanceID); err != nil {
-		return Ask{}, false, err
-	}
-	state, covers, err := allowanceByID(ctx, tx, allowanceID, in.BudgetUSD)
+	start, _ := MonthPeriod(at)
+	allowanceID, err := lockTeamAllowance(ctx, tx, AllowancePurposeAsk, team, at, in.LimitUSD, in.BudgetUSD)
 	if err != nil {
 		return Ask{}, false, err
-	}
-	if !covers {
-		return Ask{}, false, &AllowanceExhaustedError{Allowance: state}
 	}
 	token, err := newToken()
 	if err != nil {
@@ -260,21 +254,47 @@ func (s *Store) AdmitAsk(ctx context.Context, consumer, actor string, in AdmitAs
 	return admitted, true, tx.Commit(ctx)
 }
 
+// lockTeamAllowance creates a Team's allowance row for purpose and the month
+// holding at when none exists, locks it for the rest of tx and returns its id,
+// or an *AllowanceExhaustedError when it cannot cover budget.
+func lockTeamAllowance(ctx context.Context, tx pgx.Tx, purpose, team string, at time.Time, limit, budget float64) (int64, error) {
+	start, end := MonthPeriod(at)
+	if _, err := tx.Exec(ctx, `INSERT INTO inference_allowances (purpose, scope_kind, scope_id, period_start, period_end, limit_usd)
+		VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (purpose, scope_kind, scope_id, period_start) DO NOTHING`,
+		purpose, AllowanceScopeTeam, team, start, end, limit); err != nil {
+		return 0, err
+	}
+	var id int64
+	if err := tx.QueryRow(ctx, `SELECT id FROM inference_allowances
+		WHERE purpose = $1 AND scope_kind = $2 AND scope_id = $3 AND period_start = $4 FOR UPDATE`,
+		purpose, AllowanceScopeTeam, team, start).Scan(&id); err != nil {
+		return 0, err
+	}
+	state, covers, err := allowanceByID(ctx, tx, id, budget)
+	if err != nil {
+		return 0, err
+	}
+	if !covers {
+		return 0, &AllowanceExhaustedError{Allowance: state}
+	}
+	return id, nil
+}
+
 func allowanceByID(ctx context.Context, q pgx.Tx, id int64, budget float64) (Allowance, bool, error) {
 	var a Allowance
 	var covers bool
 	err := q.QueryRow(ctx, `WITH spend AS (
 			SELECT COALESCE(SUM(CASE WHEN la.state = 'reconciled' THEN la.reconciled_spend ELSE 0 END), 0) AS settled,
 			       COALESCE(SUM(h.reserved), 0) AS held, count(*) AS asks
-			FROM asks k JOIN agent_runs r ON r.id = k.run_id
+			FROM (SELECT run_id FROM asks WHERE allowance_id = $1
+			      UNION ALL SELECT run_id FROM chats WHERE allowance_id = $1) k JOIN agent_runs r ON r.id = k.run_id
 			JOIN run_budget_holds h ON h.run_token = r.run_token
-			LEFT JOIN run_llm_accounts la ON la.run_token = r.run_token
-			WHERE k.allowance_id = $1)
+			LEFT JOIN run_llm_accounts la ON la.run_token = r.run_token)
 		SELECT al.purpose, al.scope_kind, al.scope_id, al.period_start, al.period_end, al.limit_usd::float8,
 		       s.settled::float8, s.held::float8, GREATEST(al.limit_usd - s.settled - s.held, 0)::float8, s.asks,
 		       al.limit_usd - s.settled - s.held >= $2::numeric
 		FROM inference_allowances al, spend s WHERE al.id = $1`, id, budget).
-		Scan(&a.Purpose, &a.ScopeKind, &a.ScopeID, &a.PeriodStart, &a.ResetAt, &a.LimitUSD, &a.SettledUSD, &a.HeldUSD, &a.RemainingUSD, &a.AskCount, &covers)
+		Scan(&a.Purpose, &a.ScopeKind, &a.ScopeID, &a.PeriodStart, &a.ResetAt, &a.LimitUSD, &a.SettledUSD, &a.HeldUSD, &a.RemainingUSD, &a.Count, &covers)
 	return a, covers, err
 }
 

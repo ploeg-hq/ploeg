@@ -29,7 +29,7 @@ func TestAdmitAskRefusesOnceTheAllowanceCannotCoverTheBudget(t *testing.T) {
 		t.Fatalf("third Ask admitted past the allowance: %v", err)
 	}
 	a := exhausted.Allowance
-	if a.LimitUSD != 0.05 || a.HeldUSD != 0.04 || a.RemainingUSD != 0.01 || a.AskCount != 2 ||
+	if a.LimitUSD != 0.05 || a.HeldUSD != 0.04 || a.RemainingUSD != 0.01 || a.Count != 2 ||
 		!a.ResetAt.Equal(time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)) || a.ScopeKind != "team" || a.ScopeID != "silver" {
 		t.Fatalf("refused allowance: %+v", a)
 	}
@@ -107,11 +107,11 @@ func TestAdmitAskCountsAgainstTheMonthItWasAskedIn(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !jan.PeriodStart.Equal(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)) || !jan.ResetAt.Equal(time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)) ||
-		jan.AskCount != 1 || jan.LimitUSD != 0.02 {
+		jan.Count != 1 || jan.LimitUSD != 0.02 {
 		t.Fatalf("January: %+v", jan)
 	}
 	march, err := testStore.Allowance(ctx, AllowancePurposeAsk, AllowanceScopeTeam, "silver", time.Date(2026, 3, 2, 0, 0, 0, 0, time.UTC), 2)
-	if err != nil || march.LimitUSD != 2 || march.RemainingUSD != 2 || march.AskCount != 0 {
+	if err != nil || march.LimitUSD != 2 || march.RemainingUSD != 2 || march.Count != 0 {
 		t.Fatalf("an unopened period: %+v %v", march, err)
 	}
 }

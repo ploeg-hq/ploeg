@@ -35,7 +35,7 @@ func (s *Store) UnsettledLLMAccounts(ctx context.Context, after int64, quietFor 
 	}
 	rows, err := s.pool.Query(ctx, `SELECT r.id,a.run_token,a.gateway_key_id,a.alias,a.state,a.updated_at,r.shift_id,COALESCE(a.observed_spend,0)::float8,
 		a.gateway_key_id<>'' OR COALESCE(a.observed_spend,0)>0 OR EXISTS(SELECT 1 FROM audit_log l
-			WHERE l.work_item_id=r.work_item_id AND l.action IN ('llm.minting','llm.issued','llm.unknown') AND l.detail->>'alias'=a.alias)
+			WHERE l.work_item_id IS NOT DISTINCT FROM r.work_item_id AND l.action IN ('llm.minting','llm.issued','llm.unknown') AND l.detail->>'alias'=a.alias)
 		FROM run_llm_accounts a JOIN agent_runs r USING(run_token)
 		WHERE r.state='finished' AND r.id>$1
 		AND (a.state='reserved' OR (a.state='blocked' AND a.updated_at<=now()-make_interval(secs=>$2)))

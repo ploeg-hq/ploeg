@@ -112,6 +112,13 @@ type OperatorRunFilter struct {
 
 const operatorScope = `($1::text[] IS NULL OR i.team = ANY($1))`
 
+// operatorRunTeam is the Team of a Run joined to its Work Item i with a LEFT
+// JOIN: the Work Item's Team, or the Run's own for a chat Run, which has no
+// Work Item (ADR-0128).
+const operatorRunTeam = `COALESCE(i.team, r.team)`
+
+const operatorRunScope = `($1::text[] IS NULL OR ` + operatorRunTeam + ` = ANY($1))`
+
 const operatorRunTokens = `CASE WHEN jsonb_typeof(r.usage->'%[1]s') = 'number' AND (r.usage->>'%[1]s')::numeric BETWEEN 0 AND 9000000000000000
 	THEN to_jsonb(floor((r.usage->>'%[1]s')::numeric)::bigint) ELSE '0'::jsonb END`
 
@@ -272,8 +279,8 @@ func (s *Store) OperatorSummary(ctx context.Context, teams []string, registered 
 	}); err != nil {
 		return nil, err
 	}
-	if err := scan(`SELECT i.team, r.state, count(*) FROM agent_runs r JOIN work_items i ON i.id = r.work_item_id
-		WHERE r.state IN ('pending', 'running') AND `+operatorScope+` GROUP BY i.team, r.state`, []any{teams}, func(rows pgx.Rows) error {
+	if err := scan(`SELECT `+operatorRunTeam+`, r.state, count(*) FROM agent_runs r LEFT JOIN work_items i ON i.id = r.work_item_id
+		WHERE r.state IN ('pending', 'running') AND `+operatorRunScope+` GROUP BY 1, r.state`, []any{teams}, func(rows pgx.Rows) error {
 		var team, state string
 		var n int64
 		if err := rows.Scan(&team, &state, &n); err != nil {
@@ -288,9 +295,9 @@ func (s *Store) OperatorSummary(ctx context.Context, teams []string, registered 
 	}); err != nil {
 		return nil, err
 	}
-	if err := scan(`SELECT i.team, count(*), count(*) FILTER (WHERE r.outcome = 'failed'), count(*) FILTER (WHERE r.outcome = 'stuck')
-		FROM agent_runs r JOIN work_items i ON i.id = r.work_item_id
-		WHERE r.finished_at IS NOT NULL AND r.finished_at >= $2 AND `+operatorScope+` GROUP BY i.team`, []any{teams, since}, func(rows pgx.Rows) error {
+	if err := scan(`SELECT `+operatorRunTeam+`, count(*), count(*) FILTER (WHERE r.outcome = 'failed'), count(*) FILTER (WHERE r.outcome = 'stuck')
+		FROM agent_runs r LEFT JOIN work_items i ON i.id = r.work_item_id
+		WHERE r.finished_at IS NOT NULL AND r.finished_at >= $2 AND `+operatorRunScope+` GROUP BY 1`, []any{teams, since}, func(rows pgx.Rows) error {
 		var team string
 		var finished, failed, stuck int64
 		if err := rows.Scan(&team, &finished, &failed, &stuck); err != nil {
@@ -305,6 +312,11 @@ func (s *Store) OperatorSummary(ctx context.Context, teams []string, registered 
 	if err := scan(`SELECT team, COALESCE(sum(v), 0)::float8 FROM (
 		SELECT i.team, (a.detail->>'delta')::numeric AS v FROM audit_log a JOIN work_items i ON i.id = a.work_item_id
 		WHERE a.action = 'llm.reconciled' AND a.at >= $2 AND jsonb_typeof(a.detail->'delta') = 'number' AND `+operatorScope+`
+		UNION ALL
+		SELECT a.detail->>'team', (a.detail->>'delta')::numeric FROM audit_log a
+		WHERE a.action = 'llm.reconciled' AND a.work_item_id IS NULL AND a.at >= $2
+		AND jsonb_typeof(a.detail->'delta') = 'number' AND jsonb_typeof(a.detail->'team') = 'string'
+		AND ($1::text[] IS NULL OR a.detail->>'team' = ANY($1))
 		UNION ALL
 		SELECT i.team, (r.usage->>'costUsd')::numeric FROM agent_runs r JOIN work_items i ON i.id = r.work_item_id
 		WHERE r.finished_at IS NOT NULL AND r.finished_at >= $2
@@ -321,12 +333,12 @@ func (s *Store) OperatorSummary(ctx context.Context, teams []string, registered 
 	}); err != nil {
 		return nil, err
 	}
-	if err := scan(`SELECT i.team, COALESCE(sum(h.reserved), 0)::float8 FROM run_budget_holds h
-		JOIN agent_runs r ON r.run_token = h.run_token JOIN work_items i ON i.id = r.work_item_id
+	if err := scan(`SELECT `+operatorRunTeam+`, COALESCE(sum(h.reserved), 0)::float8 FROM run_budget_holds h
+		JOIN agent_runs r ON r.run_token = h.run_token LEFT JOIN work_items i ON i.id = r.work_item_id
 		WHERE h.run_token IN (
 			SELECT run_token FROM agent_runs WHERE state = 'running'
 			UNION SELECT run_token FROM run_llm_accounts WHERE state <> 'reconciled' OR COALESCE(observed_spend, 0) > reconciled_spend)
-		AND `+operatorScope+` GROUP BY i.team`, []any{teams}, func(rows pgx.Rows) error {
+		AND `+operatorRunScope+` GROUP BY 1`, []any{teams}, func(rows pgx.Rows) error {
 		var team string
 		var v float64
 		if err := rows.Scan(&team, &v); err != nil {
