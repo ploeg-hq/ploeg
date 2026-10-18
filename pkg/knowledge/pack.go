@@ -11,6 +11,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"unicode"
@@ -37,6 +38,54 @@ type Source struct {
 	// work, so every one is offered, newest first, after the reviewed
 	// knowledge and under its own heading.
 	Unreviewed bool
+	// Level is the narrowest scope the source speaks for (LevelWorkItem,
+	// LevelRepository, LevelClient or LevelTenant), which picks the budget
+	// its concepts are selected under. LevelFromPath takes each concept's
+	// level from the first segment of its path instead, as the Tenant's
+	// graph names them. Empty shares the budget of Select.
+	Level         string
+	LevelFromPath bool
+	// Cite names the version the source was read at, such as a graph commit
+	// or the commit a repository was cloned at; the index cites it per item.
+	Cite string
+}
+
+// The levels a pack is selected at, narrowest first (ADR-0124). Each has a
+// budget of its own, so a wide level cannot crowd out what is known about
+// this very work.
+const (
+	LevelWorkItem   = "work_item"
+	LevelRepository = "repository"
+	LevelClient     = "client"
+	LevelTenant     = "tenant"
+)
+
+// Levels is the order levels are selected and listed in.
+var Levels = []string{LevelWorkItem, LevelRepository, LevelClient, LevelTenant, ""}
+
+// Budgets bounds each level's concept documents in bytes. A level without a
+// budget selects nothing.
+type Budgets map[string]int
+
+// DefaultBudgets splits total across the levels: three eighths each to the
+// Work Item and the repository, an eighth each to the Client and the
+// Tenant. Zero is DefaultBudgetBytes.
+func DefaultBudgets(total int) Budgets {
+	if total <= 0 {
+		total = DefaultBudgetBytes
+	}
+	wide := total / 8
+	narrow := (total - 2*wide) / 2
+	return Budgets{LevelWorkItem: narrow, LevelRepository: total - 2*wide - narrow, LevelClient: wide, LevelTenant: wide}
+}
+
+// Section is what one level of a pack used of its budget.
+type Section struct {
+	Level   string
+	Budget  int
+	Bytes   int
+	Items   int
+	Omitted int
 }
 
 // Query is what the pack is selected for.
@@ -57,6 +106,10 @@ type Selected struct {
 	Reason string
 	// Unreviewed is set for a Work Item Note.
 	Unreviewed bool
+	// Level is the level the concept was selected at; Cite names what it
+	// was read from.
+	Level string
+	Cite  string
 }
 
 // Pack is the selection for one Query.
@@ -70,15 +123,32 @@ type Pack struct {
 	// Digests are each source's content digest, so a Run records exactly
 	// which knowledge it was given.
 	Digests map[string]string
+	// Sections are each level's budget and use, narrowest first; one
+	// unnamed section when every source shares Select's budget.
+	Sections []Section
 }
 
 // Select ranks every concept against q, adds the concepts the best matches
 // link to, and keeps as many as fit budget bytes, best first. A concept with
 // no matching term and no link from a selected concept is never included.
+// Every source shares the one budget, whatever its level.
 func Select(sources []Source, q Query, budget int) Pack {
 	if budget <= 0 {
 		budget = DefaultBudgetBytes
 	}
+	shared := make([]Source, len(sources))
+	for i, s := range sources {
+		s.Level, s.LevelFromPath = "", false
+		shared[i] = s
+	}
+	return SelectWithin(shared, q, Budgets{"": budget})
+}
+
+// SelectWithin selects like Select, but each level under its own budget,
+// narrowest level first. Within a level the best matches come first, a
+// fresher concept ahead of an older one with the same score, then the Work
+// Item Notes, newest first.
+func SelectWithin(sources []Source, q Query, budgets Budgets) Pack {
 	terms := queryTerms(q)
 	labels := map[string]bool{}
 	for _, l := range q.Labels {
@@ -87,10 +157,12 @@ func Select(sources []Source, q Query, budget int) Pack {
 	pack := Pack{Digests: map[string]string{}}
 	type key struct{ source, path string }
 	byKey := map[key]okf.Concept{}
+	origin := map[string]Source{}
 	scored := map[key]Selected{}
 	var notes []Selected
 	for _, s := range sources {
 		pack.Digests[s.Name] = Digest(s.Bundle)
+		origin[s.Name] = s
 		if s.Unreviewed {
 			for _, c := range s.Bundle.Concepts {
 				pack.Considered++
@@ -132,15 +204,51 @@ func Select(sources []Source, q Query, budget int) Pack {
 		all = append(all, s)
 	}
 	sortSelected(all)
+	sort.SliceStable(notes, func(i, j int) bool { return notes[i].Concept.Timestamp.After(notes[j].Concept.Timestamp) })
 	all = append(all, notes...)
+	byLevel := map[string][]Selected{}
 	for _, s := range all {
-		size := len(okf.Format(s.Concept))
-		if pack.Bytes+size > budget {
-			pack.Omitted++
+		src := origin[s.Source]
+		s.Level = src.Level
+		if src.LevelFromPath {
+			s.Level, _, _ = strings.Cut(s.Concept.Path, "/")
+		}
+		if s.Unreviewed && s.Level == "" && budgets[LevelWorkItem] > 0 {
+			s.Level = LevelWorkItem
+		}
+		s.Cite = src.Cite
+		if s.Unreviewed {
+			if note, ok := s.Concept.Extra["note"].(string); ok && note != "" {
+				s.Cite = "note " + note
+			}
+		}
+		byLevel[s.Level] = append(byLevel[s.Level], s)
+	}
+	for _, level := range Levels {
+		budget, ok := budgets[level]
+		if !ok {
+			pack.Omitted += len(byLevel[level])
 			continue
 		}
-		pack.Bytes += size
-		pack.Selected = append(pack.Selected, s)
+		sec := Section{Level: level, Budget: budget}
+		for _, s := range byLevel[level] {
+			size := len(okf.Format(s.Concept))
+			if sec.Bytes+size > budget {
+				sec.Omitted++
+				continue
+			}
+			sec.Bytes += size
+			sec.Items++
+			pack.Selected = append(pack.Selected, s)
+		}
+		pack.Bytes += sec.Bytes
+		pack.Omitted += sec.Omitted
+		pack.Sections = append(pack.Sections, sec)
+	}
+	for level, list := range byLevel {
+		if !slices.Contains(Levels, level) {
+			pack.Omitted += len(list)
+		}
 	}
 	return pack
 }
@@ -153,6 +261,9 @@ func sortSelected(list []Selected) {
 		pi, pj := list[i].Concept.Type == PitfallType, list[j].Concept.Type == PitfallType
 		if pi != pj {
 			return pi
+		}
+		if ti, tj := list[i].Concept.Timestamp, list[j].Concept.Timestamp; !ti.Equal(tj) {
+			return ti.After(tj)
 		}
 		if list[i].Source != list[j].Source {
 			return list[i].Source < list[j].Source
@@ -287,7 +398,9 @@ func (p Pack) Write(dir string) (string, error) {
 	return index, os.WriteFile(filepath.Join(dir, okf.IndexFile), []byte(index), 0o644)
 }
 
-// Index renders the pack's table of contents.
+// Index renders the pack's table of contents. A pack selected by level
+// lists each level under its own heading, narrowest first, with what its
+// budget held; every entry cites what it was read from.
 func (p Pack) Index() string {
 	var b strings.Builder
 	b.WriteString("# Knowledge pack\n\n")
@@ -296,22 +409,21 @@ func (p Pack) Index() string {
 		fmt.Fprintf(&b, "; %d more matched but did not fit", p.Omitted)
 	}
 	b.WriteString(".\n\n")
-	notes := 0
-	for _, s := range p.Selected {
-		if s.Unreviewed {
-			notes++
-			continue
-		}
-		writeEntry(&b, s)
-	}
-	if notes > 0 {
-		b.WriteString("\n## Notes from earlier work on this Work Item\n\n")
-		b.WriteString("Earlier Runs of this work wrote these without review. Check each against\nthe code before you rely on it.\n\n")
-		for _, s := range p.Selected {
-			if s.Unreviewed {
-				writeEntry(&b, s)
+	if p.byLevel() {
+		b.WriteString("Narrowest first: what is known about this Work Item, then its repository, its Client and the Tenant. Each level has a budget of its own.\n")
+		for _, sec := range p.Sections {
+			if sec.Items == 0 {
+				continue
 			}
+			fmt.Fprintf(&b, "\n## %s (%d of %d bytes", levelTitle(sec.Level), sec.Bytes, sec.Budget)
+			if sec.Omitted > 0 {
+				fmt.Fprintf(&b, ", %d left out", sec.Omitted)
+			}
+			b.WriteString(")\n\n")
+			p.writeLevel(&b, sec.Level)
 		}
+	} else {
+		p.writeLevel(&b, "")
 	}
 	sources := make([]string, 0, len(p.Digests))
 	for name := range p.Digests {
@@ -329,8 +441,59 @@ func (p Pack) Index() string {
 	return b.String()
 }
 
+func (p Pack) byLevel() bool {
+	for _, sec := range p.Sections {
+		if sec.Level != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func levelTitle(level string) string {
+	switch level {
+	case LevelWorkItem:
+		return "This Work Item"
+	case LevelRepository:
+		return "This repository"
+	case LevelClient:
+		return "This Client"
+	case LevelTenant:
+		return "The Tenant"
+	}
+	return "Other knowledge"
+}
+
+func (p Pack) writeLevel(b *strings.Builder, level string) {
+	notes := 0
+	for _, s := range p.Selected {
+		if s.Level != level {
+			continue
+		}
+		if s.Unreviewed {
+			notes++
+			continue
+		}
+		writeEntry(b, s)
+	}
+	if notes == 0 {
+		return
+	}
+	b.WriteString("\n### Notes from earlier work on this Work Item\n\n")
+	b.WriteString("Earlier Runs of this work wrote these without review, newest first. Check each\nagainst the code before you rely on it.\n\n")
+	for _, s := range p.Selected {
+		if s.Level == level && s.Unreviewed {
+			writeEntry(b, s)
+		}
+	}
+}
+
 func writeEntry(b *strings.Builder, s Selected) {
-	fmt.Fprintf(b, "- [%s](%s) (%s, %s): %s", okf.DisplayName(s.Concept), path.Join(s.Source, s.Concept.Path), s.Concept.Type, s.Source, s.Reason)
+	cite := s.Source
+	if s.Cite != "" {
+		cite = s.Cite
+	}
+	fmt.Fprintf(b, "- [%s](%s) (%s, %s): %s", okf.DisplayName(s.Concept), path.Join(s.Source, s.Concept.Path), s.Concept.Type, cite, s.Reason)
 	if s.Concept.Description != "" {
 		fmt.Fprintf(b, ". %s", s.Concept.Description)
 	}

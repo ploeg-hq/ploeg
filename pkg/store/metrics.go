@@ -70,6 +70,12 @@ type OperationalMetrics struct {
 	// shadow Role, the verdict the Round's acting readers gave and the
 	// shadow's own verdict. Like FinishedRuns it only grows.
 	ShadowReviews map[ShadowReviewKey]int
+	// BriefedRuns counts every finished Run that recorded its briefing
+	// (ADR-0124) by team, Role and whether it was briefed with any Work Item
+	// Note, and BriefedNotes the notes those Runs were briefed with. Like
+	// FinishedRuns both only grow.
+	BriefedRuns  map[BriefedRunsKey]int
+	BriefedNotes map[BriefedRunsKey]int
 	// PendingRunsByHarness counts pending Runs per team, Role and stored
 	// Harness key (ADR-0099). ploegd compares it with the current allowlist.
 	PendingRunsByHarness []PendingHarnessRuns
@@ -122,6 +128,8 @@ func (s *Store) OperationalMetrics(ctx context.Context) (OperationalMetrics, err
 		OldestQueuedSeconds:                map[string]float64{},
 		FinishedRuns:                       map[RunOutcomeKey]int{},
 		ShadowReviews:                      map[ShadowReviewKey]int{},
+		BriefedRuns:                        map[BriefedRunsKey]int{},
+		BriefedNotes:                       map[BriefedRunsKey]int{},
 		UnsettledLLMAccounts:               map[string]int{},
 	}
 	for _, state := range UnsettledLLMAccountStates {
@@ -365,6 +373,9 @@ func (s *Store) OperationalMetrics(ctx context.Context) (OperationalMetrics, err
 	if m.PendingRunsByHarness, err = pendingRunsByHarness(ctx, tx); err != nil {
 		return m, err
 	}
+	if err := briefedRuns(ctx, tx, m.BriefedRuns, m.BriefedNotes); err != nil {
+		return m, err
+	}
 	return m, tx.Commit(ctx)
 }
 
@@ -410,4 +421,37 @@ func knownFailureReasons() []string {
 		reasons = append(reasons, string(reason))
 	}
 	return reasons
+}
+
+// BriefedRunsKey labels one ploeg_runs_briefed_total series. Notes is "with"
+// when the Run was briefed with at least one Work Item Note, else "without";
+// BriefedNotes keys carry Notes "with" only.
+type BriefedRunsKey struct {
+	Team, Role, Notes string
+}
+
+func briefedRuns(ctx context.Context, tx pgx.Tx, runs, notes map[BriefedRunsKey]int) error {
+	rows, err := tx.Query(ctx, `SELECT team, COALESCE(role, ''), cardinality(COALESCE(briefed_notes, '{}')) > 0,
+			count(*), COALESCE(sum(cardinality(COALESCE(briefed_notes, '{}'))), 0)
+		FROM agent_runs WHERE board_briefed_at IS NOT NULL AND state = 'finished'
+		GROUP BY 1, 2, 3`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var team, role string
+		var with bool
+		var n, briefed int
+		if err := rows.Scan(&team, &role, &with, &n, &briefed); err != nil {
+			return err
+		}
+		k := BriefedRunsKey{Team: team, Role: role, Notes: "without"}
+		if with {
+			k.Notes = "with"
+			notes[k] += briefed
+		}
+		runs[k] += n
+	}
+	return rows.Err()
 }

@@ -72,6 +72,12 @@ type RunEnv struct {
 	// PromptStarted receives the moment the agent's prompt starts and the
 	// limits that stop it (ADR-0114). Nil = the worker records none.
 	PromptStarted func(PromptStart)
+	// CatchUp is called once when the agent's prompt turn ends on its own,
+	// before the session closes. A non-empty answer is what changed on the
+	// board since the Run's briefing, sent to the agent as one further
+	// prompt turn by an adapter that can take one (ADR-0124). Nil, or an
+	// adapter with a single turn, sends nothing.
+	CatchUp func(context.Context) string
 }
 
 // PromptStart is when a Run's prompt started and the limits that stop it.

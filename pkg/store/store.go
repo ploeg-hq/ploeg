@@ -479,6 +479,13 @@ func (s *Store) Checkpoint(ctx context.Context, runToken string, cp work.Checkpo
 		}
 		detail["planned_paths"] = len(cp.PlannedPaths)
 	}
+	if cp.Phase == work.PhaseBriefed && cp.Board != nil {
+		if err := recordBriefing(ctx, tx, runToken, cp.Board); err != nil {
+			return err
+		}
+		detail["briefed_notes"] = len(cp.Board.Notes)
+		detail["briefed_concepts"] = len(cp.Board.Concepts)
+	}
 	if err := audit(ctx, tx, "team:"+team, "checkpoint.written", &id, detail); err != nil {
 		return err
 	}

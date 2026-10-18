@@ -64,6 +64,18 @@ type KnowledgeBrief struct {
 	Bytes    int               `json:"bytes"`
 	// Omitted counts matching concepts the size limit left out.
 	Omitted int `json:"omitted,omitempty"`
+	// Notes are the keys of the Work Item Notes the pack holds and Levels
+	// each level's budget and use; the worker reports both in its briefed
+	// checkpoint (ADR-0124), so they are not part of the Task Spec.
+	Notes  []string         `json:"-"`
+	Levels []KnowledgeLevel `json:"-"`
+}
+
+// KnowledgeLevel is what one level of a knowledge pack used of its budget.
+type KnowledgeLevel struct {
+	Level                         string
+	Budget, Bytes, Items, Omitted int
+	Digest                        string
 }
 
 // ContextRef names one context item a claim hands a Run: what to download

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ploeg-hq/ploeg/pkg/boardview"
 	"github.com/ploeg-hq/ploeg/pkg/harness"
 	"github.com/ploeg-hq/ploeg/pkg/knowledge"
 	"github.com/ploeg-hq/ploeg/pkg/okf"
@@ -32,7 +33,7 @@ const repoKnowledgeSource = "repo"
 // conforming OKF concept is logged and left out.
 func (w *Worker) knowledgeSources(cloneDir string, extra ...knowledge.Source) []knowledge.Source {
 	var sources []knowledge.Source
-	add := func(name, dir string) {
+	add := func(name, dir, level string) {
 		if info, err := os.Stat(dir); err != nil || !info.IsDir() {
 			return
 		}
@@ -46,7 +47,7 @@ func (w *Worker) knowledgeSources(cloneDir string, extra ...knowledge.Source) []
 		}
 		if len(b.Concepts) > 0 {
 			b.Name = name
-			sources = append(sources, knowledge.Source{Name: name, Bundle: b})
+			sources = append(sources, knowledge.Source{Name: name, Bundle: b, Level: level})
 		}
 	}
 	repoDir := w.Cfg.RepoKnowledgeDir
@@ -54,12 +55,18 @@ func (w *Worker) knowledgeSources(cloneDir string, extra ...knowledge.Source) []
 		repoDir = DefaultRepoKnowledgeDir
 	}
 	if repoDir != "-" && filepath.IsLocal(repoDir) {
-		add(repoKnowledgeSource, filepath.Join(cloneDir, repoDir))
+		add(repoKnowledgeSource, filepath.Join(cloneDir, repoDir), knowledge.LevelRepository)
 	}
 	for _, dir := range w.Cfg.KnowledgeDirs {
-		add(filepath.Base(filepath.Clean(dir)), dir)
+		add(filepath.Base(filepath.Clean(dir)), dir, knowledge.LevelTenant)
 	}
-	return append(sources, extra...)
+	for _, e := range extra {
+		if e.Level == "" {
+			e.Level = knowledge.LevelWorkItem
+		}
+		sources = append(sources, e)
+	}
+	return sources
 }
 
 // knowledgePack selects the pack for item from the configured sources, the
@@ -94,7 +101,7 @@ func (w *Worker) knowledgePack(cloneDir string, item work.WorkItem, dir string, 
 	if len(sources) == 0 {
 		return graphOnlyBrief(provenance)
 	}
-	pack := knowledge.Select(sources, knowledge.Query{Title: item.Title, Description: item.Description, Labels: item.Labels}, w.Cfg.KnowledgeBudget)
+	pack := knowledge.SelectWithin(sources, knowledge.Query{Title: item.Title, Description: item.Description, Labels: item.Labels}, knowledge.DefaultBudgets(w.Cfg.KnowledgeBudget))
 	if len(pack.Selected) == 0 {
 		w.Log.Info("no knowledge matched the Work Item", "considered", pack.Considered)
 		return graphOnlyBrief(provenance)
@@ -105,6 +112,15 @@ func (w *Worker) knowledgePack(cloneDir string, item work.WorkItem, dir string, 
 		return nil
 	}
 	brief := &harness.KnowledgeBrief{Index: index, Concepts: pack.Paths(), Bytes: pack.Bytes, Omitted: pack.Omitted}
+	for _, s := range pack.Selected {
+		if note, ok := s.Concept.Extra["note"].(string); ok && s.Unreviewed && note != "" {
+			brief.Notes = append(brief.Notes, note)
+		}
+	}
+	for _, sec := range pack.Sections {
+		brief.Levels = append(brief.Levels, harness.KnowledgeLevel{Level: sec.Level, Budget: sec.Budget, Bytes: sec.Bytes, Items: sec.Items, Omitted: sec.Omitted,
+			Digest: levelDigest(pack, sec.Level)})
+	}
 	for _, s := range sources {
 		if s.Unreviewed || s.Name == graphSource {
 			continue
@@ -305,4 +321,17 @@ func (w *Worker) keepLearnings(report harness.OutcomeReport, trace, ref string) 
 	}
 	w.Log.Info("kept the Run's learnings for review", "count", len(concepts), "dir", dir)
 	return report
+}
+
+// levelDigest is a digest of the concepts one level of pack selected, in
+// order, so a replay can tell whether it rebuilt the same section.
+func levelDigest(pack knowledge.Pack, level string) string {
+	var b strings.Builder
+	for _, s := range pack.Selected {
+		if s.Level == level {
+			b.WriteString(s.Source + "/" + s.Concept.Path + "\x00")
+			b.Write(okf.Format(s.Concept))
+		}
+	}
+	return boardview.Digest(b.String())
 }

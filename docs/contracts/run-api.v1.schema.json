@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://webgrip.dev/ploeg/contracts/run-api.v1.schema.json",
   "title": "Run API",
-  "description": "Message bodies of ploegd's run API — the executor contract surface (docs/contracts/executor.md). Endpoints: POST /api/v1/claim, POST /api/v1/runs/{token}/renew, POST /api/v1/runs/{token}/checkpoint, POST /api/v1/runs/{token}/outcome, POST /api/v1/runs/{token}/forge-credential (ADR-0086: a writing Run refreshes an expiring push credential; 409 when the deployment mints none), POST /api/v1/runs/{token}/transcript (ADR-0090: a batch of the Run's transcript; 404 when PLOEG_RUN_TRANSCRIPTS is off), POST and GET /api/v1/runs/{token}/claude-session, POST /api/v1/claude-sessions/forge-credential and POST /api/v1/claude-sessions/report (ADR-0084; all answer 404 unless PLOEG_CLAUDE_ENVIRONMENTS is true), POST /api/v1/runs/{token}/claude-session and POST /api/v1/claude-sessions/forge-credential (ADR-0084; both answer 404 unless PLOEG_CLAUDE_ENVIRONMENTS is true). GET /api/v1/queue/depth and its queueDepthResponse were removed on 2026-09-23 because nothing consumed them; executors read the scale signal by SQL (docs/contracts/executor.md).",
+  "description": "Message bodies of ploegd's run API — the executor contract surface (docs/contracts/executor.md). Endpoints: POST /api/v1/claim, POST /api/v1/runs/{token}/renew, POST /api/v1/runs/{token}/checkpoint, POST /api/v1/runs/{token}/outcome, POST /api/v1/runs/{token}/forge-credential (ADR-0086: a writing Run refreshes an expiring push credential; 409 when the deployment mints none), POST /api/v1/runs/{token}/transcript (ADR-0090: a batch of the Run's transcript; 404 when PLOEG_RUN_TRANSCRIPTS is off), POST /api/v1/runs/{token}/board (ADR-0124: what changed on the board since the Run's briefing; 409 for a Run claimed without recorded versions, 404 from an older Ploeg), POST and GET /api/v1/runs/{token}/claude-session, POST /api/v1/claude-sessions/forge-credential and POST /api/v1/claude-sessions/report (ADR-0084; all answer 404 unless PLOEG_CLAUDE_ENVIRONMENTS is true), POST /api/v1/runs/{token}/claude-session and POST /api/v1/claude-sessions/forge-credential (ADR-0084; both answer 404 unless PLOEG_CLAUDE_ENVIRONMENTS is true). GET /api/v1/queue/depth and its queueDepthResponse were removed on 2026-09-23 because nothing consumed them; executors read the scale signal by SQL (docs/contracts/executor.md).",
   "$defs": {
     "claimRequest": {
       "type": "object",
@@ -93,6 +93,10 @@
           "minLength": 1,
           "maxLength": 256,
           "description": "The model resolved for this Run when its Round opened, from its Role's managed inference policy (ADR-0103). The worker passes it to the Harness as LLM_MODEL, keeping the gateway prefix of its own LLM_MODEL, and mints for it alone; the Run's key allows no other model. Absent = the worker's LLM_MODEL."
+        },
+        "board": {
+          "$ref": "#/$defs/boardVersions",
+          "description": "The part of the Run's version vector ploegd recorded at the claim (ADR-0124): ploegSequence and trackerRevision. Absent from an older Ploeg, or when it could not be recorded; the worker then neither reports its briefing nor catches up."
         }
       },
       "required": ["runToken", "deadline", "workItem"],
@@ -341,6 +345,137 @@
         "contested": { "type": "boolean", "description": "Another current note on the same subject disagrees and a person has not decided yet." }
       },
       "required": ["key", "type", "title", "body"],
+      "additionalProperties": false
+    },
+    "boardVersions": {
+      "description": "The version vector of the four owned sources a Run's briefing was read at (ADR-0124): the forge commit the Run started from, Ploeg's audit sequence, the notes and knowledge graph commits, and the Work Item's tracker revision. An absent value is unknown.",
+      "type": "object",
+      "properties": {
+        "forgeCommit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$"
+        },
+        "ploegSequence": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "The highest audit event id when the Run was claimed."
+        },
+        "notesCommit": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "conceptsCommit": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "trackerRevision": {
+          "type": "string",
+          "description": "The Work Item's revision as the tracker last reported it."
+        }
+      },
+      "required": [
+        "ploegSequence"
+      ],
+      "additionalProperties": false
+    },
+    "boardChangesRequest": {
+      "description": "POST /api/v1/runs/{token}/board body: the checkpoint the Run catches up at and how the answer reaches its agent (ADR-0124). refresh keeps the agent's board file current (delivery file); before_finish is the last look when the agent's turn ends, sent as a further prompt turn (prompt) or left for the next Round's briefing (next_round). forgeHead is the Run's branch head as the worker read it now, and forgeMovedByOthers says it holds a commit the Run did not make.",
+      "type": "object",
+      "properties": {
+        "checkpoint": {
+          "enum": [
+            "refresh",
+            "before_finish"
+          ]
+        },
+        "delivery": {
+          "enum": [
+            "file",
+            "prompt",
+            "next_round"
+          ]
+        },
+        "forgeHead": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$"
+        },
+        "forgeMovedByOthers": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "checkpoint",
+        "delivery"
+      ],
+      "additionalProperties": false
+    },
+    "boardChange": {
+      "description": "One thing that changed since a Run's briefing. summary is Ploeg's own words; untrusted is text a tracker, an agent or a person wrote, which the agent is shown only as quoted data; cite names the record the change was read from.",
+      "type": "object",
+      "properties": {
+        "source": {
+          "enum": [
+            "forge",
+            "ploeg",
+            "graph",
+            "tracker"
+          ]
+        },
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "cite": {
+          "type": "string",
+          "minLength": 1
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "untrusted": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "kind",
+        "cite",
+        "summary"
+      ],
+      "additionalProperties": false
+    },
+    "boardChangesResponse": {
+      "description": "HTTP 200 body of POST /api/v1/runs/{token}/board: the versions the briefing was read at (since), the versions now (current) and at most 12 changes, newest first; omitted counts the changes left out. Ploeg's events leave out the Run's own progress and every outcome, and notes written by Runs of the same Round are left out, so Runs of one Round never observe each other (ADR-0010).",
+      "type": "object",
+      "properties": {
+        "since": {
+          "$ref": "#/$defs/boardVersions"
+        },
+        "current": {
+          "$ref": "#/$defs/boardVersions"
+        },
+        "changes": {
+          "type": "array",
+          "maxItems": 12,
+          "items": {
+            "$ref": "#/$defs/boardChange"
+          }
+        },
+        "omitted": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "since",
+        "current",
+        "changes"
+      ],
       "additionalProperties": false
     }
   }
