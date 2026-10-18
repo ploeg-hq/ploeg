@@ -116,7 +116,7 @@ func (p LLMPolicy) Default() string {
 }
 
 // policyRole is the Role whose managed inference policy pays for a Run of
-// role: a chat Run is metered under its Team's ask policy (ADR-0115).
+// role: a chat Run is metered under its Team's ask policy (ADR-0128).
 func policyRole(role string) string {
 	if role == work.ChatRole {
 		return work.AskRole

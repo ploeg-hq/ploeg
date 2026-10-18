@@ -24,6 +24,17 @@ func (e *Engine) Requeue(ctx context.Context, workItemID int64, teams []string, 
 	}
 	req := store.RequeueRequest{WorkItemID: workItemID, Teams: teams, Team: item.Team, Actor: actor,
 		Command: cmd, Branch: work.Branch(item)}
+	var resumePool *float64
+	if cmd.Resume {
+		plan, ok, err := e.ResumePlan(ctx, workItemID)
+		if err != nil {
+			return store.Requeued{WorkItemID: workItemID}, err
+		}
+		if ok {
+			cmd.FromRound, req.ResumesRound, req.ResumeUnanswered = plan.FromRound, plan.AskedRound, len(plan.Waiting) > 0
+			req.ResumeFromRound, resumePool = plan.FromRound, &plan.PoolUSD
+		}
+	}
 	tp, planned, _ := e.planFor(item.Team)
 	if planned {
 		if cmd.FromRound < 1 || cmd.FromRound > len(tp.Rounds) {
@@ -35,6 +46,9 @@ func (e *Engine) Requeue(ctx context.Context, workItemID int64, teams []string, 
 			}
 		}
 		req.OpenShift, req.PoolUSD = true, float64(tp.Pool)
+		if resumePool != nil {
+			req.PoolUSD = *resumePool
+		}
 	} else if cmd.FromRound != 1 {
 		return store.Requeued{WorkItemID: workItemID}, store.ErrRoundNotInPlan
 	}

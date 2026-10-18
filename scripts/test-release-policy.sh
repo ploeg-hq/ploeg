@@ -31,6 +31,10 @@ git commit --quiet -m candidate
 git update-ref refs/remotes/origin/development HEAD
 git tag v0.2.0-rc.1
 bash scripts/release.sh validate v0.2.0-rc.1
+git commit --quiet --allow-empty -m tag-only-candidate
+git update-ref refs/remotes/origin/development HEAD
+git tag v0.2.0-rc.2
+bash scripts/release.sh validate v0.2.0-rc.2
 printf 'version: 0.2.0\nappVersion: 0.2.0\n' > ops/helm/ploeg/Chart.yaml
 git add -- ops/helm/ploeg/Chart.yaml
 git commit --quiet -m stable-on-development
@@ -45,4 +49,9 @@ git add -- ops/helm/ploeg/Chart.yaml
 git commit --quiet -m candidate-elsewhere
 git tag v0.3.0-rc.1
 if bash scripts/release.sh validate v0.3.0-rc.1; then echo 'accepted a candidate on neither development nor main' >&2; exit 1; fi
+bash scripts/release.sh check v0.3.0-rc.2
+for tag in v0.3.0 v1.0.0-rc.1 v0.3.0-rc.0 invalid; do
+  if bash scripts/release.sh check "$tag"; then echo "accepted $tag as an automatic candidate" >&2; exit 1; fi
+done
+if bash scripts/release.sh check v0.3.0-rc.1; then echo 'accepted an existing tag as the next candidate' >&2; exit 1; fi
 echo 'Release tag, version and ancestry checks passed'

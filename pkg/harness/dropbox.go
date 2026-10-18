@@ -59,10 +59,12 @@ func ReadDropBox(path string) (OutcomeReport, error) {
 //
 // The split is deliberate and is the whole of the precedence rule:
 //
-//   - Findings, Verdict, Problem, Solution, CreatedWorkItems and Learnings
-//     are the agent's to report and ALWAYS survive. ploegd applies the Team's
-//     limits to created work; the worker caps learnings and withholds any
-//     that carry a credential (ADR-0066). A run that produced a review and
+//   - Findings, Verdict, Problem, Solution, CreatedWorkItems, Learnings and
+//     the blackboard fields (FindingItems, FindingAnswers, Questions,
+//     QuestionAnswers; ADR-0121) are the agent's to report and ALWAYS
+//     survive; a blackboard entry the contract refuses is dropped alone.
+//     ploegd applies the Team's limits to created work; the worker caps
+//     learnings and withholds any that carry a credential (ADR-0066). A run that produced a review and
 //     then failed its shutdown handshake still did the review, and dropping
 //     it loses work that was actually done.
 //   - Outcome and Summary fill in only where the adapter concluded nothing,
@@ -94,6 +96,19 @@ func MergeDropBox(base, box OutcomeReport) OutcomeReport {
 	}
 	if len(box.Learnings) > 0 {
 		base.Learnings = box.Learnings
+	}
+	box, _ = SanitizeBlackboard(box)
+	if len(box.FindingItems) > 0 {
+		base.FindingItems = box.FindingItems
+	}
+	if len(box.FindingAnswers) > 0 {
+		base.FindingAnswers = box.FindingAnswers
+	}
+	if len(box.Questions) > 0 {
+		base.Questions = box.Questions
+	}
+	if len(box.QuestionAnswers) > 0 {
+		base.QuestionAnswers = box.QuestionAnswers
 	}
 	if base.Outcome == "" && box.Outcome != "" && !box.Outcome.AssertsDelivery() {
 		base.Outcome = box.Outcome

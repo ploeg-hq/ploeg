@@ -173,8 +173,28 @@ func TestProfile_AgentApprovalFollowsThePermissionMode(t *testing.T) {
 	}
 }
 
-func TestProfile_QwenCodeConfigOverrideReplacesTheSettings(t *testing.T) {
-	p, err := Lookup("qwen-code", ProfileOverrides{ConfigJSON: `{"hand":"written"}`})
+func TestProfile_QwenCodeConfigOverrideReplacesTheSettingsButKeepsTheWorkspaceUntrusted(t *testing.T) {
+	for _, override := range []string{`{"hand":"written"}`, `{"hand":"written","security":{"folderTrust":{"enabled":false},"auth":{"selectedType":"openai"}}}`} {
+		p, err := Lookup("qwen-code", ProfileOverrides{ConfigJSON: override})
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, extra, err := p.Prepare(testSpec(), profileEnv(t), PermissionAllowAll)
+		if err != nil {
+			t.Fatal(err)
+		}
+		settings := qwenSettings(t, extra)
+		if settings["hand"] != "written" {
+			t.Errorf("override %s ignored; settings = %v", override, settings)
+		}
+		if !qwenFolderTrustOn(settings) {
+			t.Errorf("override %s left folder trust off; settings = %v", override, settings)
+		}
+	}
+}
+
+func TestProfile_QwenCodeTreatsTheRepositoryAsAnUntrustedWorkspace(t *testing.T) {
+	p, err := Lookup("qwen-code", ProfileOverrides{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,9 +202,40 @@ func TestProfile_QwenCodeConfigOverrideReplacesTheSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if b, _ := os.ReadFile(envValue(t, extra, "QWEN_CODE_SYSTEM_SETTINGS_PATH")); string(b) != `{"hand":"written"}` {
-		t.Errorf("override ignored; settings = %s", b)
+	settings := qwenSettings(t, extra)
+	if !qwenFolderTrustOn(settings) {
+		t.Fatalf("folder trust is off, so Qwen Code would load the repository's .env, settings and hooks: %v", settings)
 	}
+	security, _ := settings["security"].(map[string]any)
+	if auth, _ := security["auth"].(map[string]any); auth["selectedType"] != "openai" {
+		t.Errorf("security.auth lost: %v", security)
+	}
+	trusted := envValue(t, extra, "QWEN_CODE_TRUSTED_FOLDERS_PATH")
+	if !strings.HasPrefix(trusted, envValue(t, extra, "QWEN_HOME")) {
+		t.Errorf("trusted folders %q are not the Run's own, empty list", trusted)
+	}
+	if _, err := os.Stat(trusted); !os.IsNotExist(err) {
+		t.Errorf("the Run's trusted folders list should not exist, so nothing is trusted: %v", err)
+	}
+}
+
+func qwenSettings(t *testing.T, extra []string) map[string]any {
+	t.Helper()
+	b, err := os.ReadFile(envValue(t, extra, "QWEN_CODE_SYSTEM_SETTINGS_PATH"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var settings map[string]any
+	if err := json.Unmarshal(b, &settings); err != nil {
+		t.Fatalf("settings are not JSON: %v\n%s", err, b)
+	}
+	return settings
+}
+
+func qwenFolderTrustOn(settings map[string]any) bool {
+	security, _ := settings["security"].(map[string]any)
+	trust, _ := security["folderTrust"].(map[string]any)
+	return trust["enabled"] == true
 }
 
 func TestProfile_GooseUsesTheLiteLLMProviderThroughEnvironmentOnly(t *testing.T) {
@@ -340,5 +391,65 @@ func TestProfile_OpenHandsRefusesARunWithoutAModel(t *testing.T) {
 	env.LLM.Model = ""
 	if _, _, err := p.Prepare(testSpec(), env, PermissionAllowAll); err == nil {
 		t.Fatal("openhands started without a model; its agent settings would be invalid")
+	}
+}
+
+func TestProfile_GooseDisablesEveryPluginTheRepositoryShips(t *testing.T) {
+	env := profileEnv(t)
+	for _, name := range []string{"evil", "also-evil"} {
+		if err := os.MkdirAll(filepath.Join(env.RepoDir, ".agents", "plugins", name, "hooks"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(env.RepoDir, ".agents", "plugins", "not-a-plugin"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p, err := Lookup("goose", ProfileOverrides{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, extra, err := p.Prepare(testSpec(), env, PermissionAllowAll)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(envValue(t, extra, "GOOSE_PATH_ROOT"), "config", "config.yaml"))
+	if err != nil {
+		t.Fatalf("goose config not written: %v", err)
+	}
+	var cfg struct {
+		Plugins map[string]struct {
+			Enabled bool `json:"enabled"`
+		} `json:"plugins"`
+	}
+	if err := json.Unmarshal(raw, &cfg); err != nil {
+		t.Fatalf("goose config is not the JSON subset of YAML: %v\n%s", err, raw)
+	}
+	resolved, err := filepath.EvalSymlinks(env.RepoDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, repo := range []string{env.RepoDir, resolved} {
+		for _, name := range []string{"evil", "also-evil"} {
+			root := filepath.Join(repo, ".agents", "plugins", name)
+			entry, ok := cfg.Plugins[root]
+			if !ok || entry.Enabled {
+				t.Errorf("plugin %s is not disabled in %s", root, raw)
+			}
+		}
+	}
+	if _, ok := cfg.Plugins[filepath.Join(env.RepoDir, ".agents", "plugins", "not-a-plugin")]; ok {
+		t.Errorf("a plain file was listed as a plugin: %s", raw)
+	}
+}
+
+func TestProfile_GooseWritesNoConfigWhenTheRepositoryShipsNoPlugins(t *testing.T) {
+	env := profileEnv(t)
+	p, _ := Lookup("goose", ProfileOverrides{})
+	_, extra, err := p.Prepare(testSpec(), env, PermissionAllowAll)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(envValue(t, extra, "GOOSE_PATH_ROOT"), "config", "config.yaml")); !os.IsNotExist(err) {
+		t.Errorf("goose config written for a repository without plugins: %v", err)
 	}
 }

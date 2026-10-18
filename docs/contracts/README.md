@@ -16,6 +16,22 @@ change either side and the test tells you.
 | [acp-profiles.md](acp-profiles.md) | The `acp` harness profiles: launch command, gateway wiring, instruction files and approval mapping per agent, and what an image needs to run them. |
 | [executor.md](executor.md) | The executor SPI: what any launcher (KEDA, CronJob, agent-sandbox, a human with curl) must and must not do. |
 
+## The contract bundle
+
+Every release also publishes these contracts as one OCI artifact, so a consumer pins a released Ploeg by version and digest instead of checking out its source ([homelab ADR-0069](https://forgejo.webgrip.dev/webgrip/homelab-cluster/src/branch/main/docs/techdocs/docs/adr/adr-0069-one-delivery-contract.md), layer 4). A consumer reads it for its contract tests, its glossary, its decision records and the Ploeg pages it republishes in its own documentation.
+
+| | |
+| --- | --- |
+| Reference | `ghcr.io/ploeg-hq/ploeg-contract:<version>`, the release tag without its `v` |
+| Artifact type | `application/vnd.ploeg.contract.v1+json` |
+| Layer | one `application/vnd.ploeg.contract.layer.v1.tar+gzip`, `ploeg-contract-<version>.tar.gz` |
+| `ploeg-contract.json` | `schemaVersion` 1, `name`, `version`, `commit` (the tagged commit) and `source` |
+| `docs/` | every tracked file under `docs/`: these schemas, the domain model, the ADR ledger and the guides |
+| `pkg/`, `cmd/` | the non-test Go files, which define the codes no schema lists yet (Shift close reasons, `needs_human` reasons, audit actions) |
+| `files.txt` | every tracked path at the tag, one per line, so a consumer can check a link into a file the bundle leaves out |
+
+[scripts/contract-bundle.sh](../../scripts/contract-bundle.sh) builds the bundle from a checkout of the tag with `git archive` and `gzip -n`, so two builds of one tag are byte for byte equal. [The contract bundle workflow](../../.github/workflows/contract-bundle.yml) publishes it: the release candidate workflow calls it for each candidate, a successful `Release` run for a stable tag starts it, and a maintainer can dispatch it for an existing tag ([ADR 0117](../adrs/0117-every-release-publishes-a-contract-bundle-for-consumers.md)). It never overwrites a tag that carries a different bundle, and a re-run that finds the same layer digest succeeds without pushing. `bash scripts/contract-bundle.sh build v0.x.y <checkout>` writes the archive to `dist/contract-bundle/` without publishing it. [scripts/test-contract-bundle.sh](../../scripts/test-contract-bundle.sh), part of `mise run verify`, checks its contents, that two builds are equal and that it refuses a checkout that is not at the tag or has local changes.
+
 ## Versioning policy
 
 - **v1 is frozen.** Additive *optional* fields are allowed (with a schema
@@ -148,7 +164,7 @@ change either side and the test tells you.
   fields; `harness` and `model` (ADR-0098, ADR-0103) extend it, and the
   changes that add `attended` and `autoApprove` will. The operator event feed's `detail` gains the optional
   `requestId` on `operator.work_item.admitted`. An older Ploeg answers 405.
-- Since [ADR-0115](../adrs/0115-a-chat-message-is-a-read-only-run-about-no-work-item-paid-from-a-teams-chat-allowance.md)
+- Since [ADR-0128](../adrs/0128-a-chat-message-is-a-read-only-run-about-no-work-item-paid-from-a-teams-chat-allowance.md)
   an operator consumer with execute permission admits a chat message for a
   team in its scope with `POST /api/v1/operator/teams/{team}/chats`
   (`chatAdmitRequest`, answered by `chatAdmitResponse`), reads it with `GET
@@ -408,6 +424,49 @@ The same transaction marks them consumed by that Run and audits
 consumed when the claim response is built; a claim response lost in transit
 loses its notes with it.
 
+### Findings, answers and questions
+
+A reading Run may list its findings in `findingItems` next to the prose
+`findings`; a writing Run answers the findings it was briefed with in
+`findingAnswers` (`fixed`, `disagree` with a reason, `out_of_scope`,
+`deferred`); any Run may ask in `questions` (`to`: `person`, `reviewer` or
+`next_run`) and answer a briefed question to a reviewer or the next Run in
+`questionAnswers`
+([ADR-0121](../adrs/0121-findings-carry-ids-writers-answer-them-and-a-run-asks-instead-of-guessing.md)).
+ploegd assigns the ids (`f<runId>-<n>`, `q<runId>-<n>`), keeps only what the
+Run's kind may report and drops everything from a shadow except its findings.
+A report without these fields behaves as before.
+
+The claim response and the Task Spec carry `reviewFindings`, the findings of
+the Shift's last review Round each with the writer's answer or `unanswered`,
+and `questions`, the questions that reach the Run with their answers. A
+question to a person parks the Work Item at `needs_human` when its Round ends,
+with Shift close reason `question_for_person` and the question in the close
+message.
+
+On the operator API every Run shape carries `findingItems`, `findingAnswers`,
+`questions` and `questionAnswers`, and Work Item detail carries `findings`,
+`questions` (with `waitingForPerson`) and `reviewDisagreements`, the review
+Rounds where a shadow reviewer's verdict differed from the acting readers'.
+`POST /api/v1/operator/work-items/{id}/questions/{questionId}/answer` stores a
+person's answer `{commandId, answer}` (1 to 4096 characters): it needs
+`execute` permission, `X-Ploeg-Actor` and team scope, answers 201, 200 for a
+replayed `commandId`, 404 for a question to a person the Work Item does not
+have, 409 `already_answered` and 409 `command_conflict`, and is audited as
+`question.answered`. It queues nothing: answer, then resume.
+
+A requeue body with `"resume": true` resumes a Work Item whose last Shift
+stopped on a question to a person instead of restarting it: the new Shift
+reopens the plan Round that asked on the parked Shift's branch, is briefed
+with the parked Shift's earlier Rounds, and gets the parked Shift's unspent
+pool (at least that Round's cap) unless `poolUsd` is given. It cannot take
+`fromRound` (400), answers 409 `question_unanswered` while a question of that
+Round waits and 409 `nothing_to_resume` when nothing is parked, and is
+audited as `work_item.requeued` with `resume: true`. Work Item detail's
+`resume` names the Round it reopens, `roundCapUsd` (the most that Round can
+be authorized), `poolUsd` (the most the resumed Shift can spend in all),
+`ready` and `waitingQuestionIds`; it is null when there is nothing to resume.
+
 `POST /api/v1/operator/work-items/{id}/requeue` restarts stopped work
 ([ADR-0044](../adrs/0044-an-operator-restarts-stopped-work-from-a-round-they-choose.md)).
 It needs `execute` permission, `X-Ploeg-Actor` and team scope. Without a body
@@ -537,3 +596,26 @@ like an administrator's credential.
 Managed workers use the [worker control contract](worker-control.md); deployment and conservative accounting recovery are documented in [managed worker operations](../ops/managed-workers.md).
 
 The [operator delivery contract](operator-delivery.md) and [versioned schema](operator-delivery.schema.json) govern canonical candidates, trusted verification, human approval and durable publication barriers for a completed Operator Execution.
+
+## Notes and their provenance
+
+[ADR-0122](../adrs/0122-every-note-carries-its-provenance-untrusted-text-is-quoted-and-a-wider-level-needs-evidence-or-a-person.md)
+adds optional fields only. `GET /api/v1/runs/{token}/knowledge` now serves the
+notes of the Run's root Work Item and the repository-level notes of its
+repository and Client, narrowest level first and newest first, without notes
+another note superseded, a person retracted, or that expired. Each
+`workItemNote` may carry `level`, `subject`, `authorKind`, `author`,
+`sourceRefs`, `trust`, `observedAt`, `expiresAt`, `promotedFrom`, `evidence`,
+`approvedBy` and `contested`; a reader that finds none of them, from an older
+ploegd, treats the note as an untrusted Work Item note a Run wrote. A
+`learning` may carry `subject`, `supersedes` and `expiresAt`. Text whose
+`trust` is not `trusted` is data: a consumer renders it quoted, never as an
+instruction.
+
+`POST /api/v1/operator/work-items/{id}/knowledge-notes` keeps a person's note,
+and `GET /api/v1/operator/knowledge/reviews` with
+`POST /api/v1/operator/knowledge/reviews/{id}/decision` let a person decide
+promotions and contradictions. Their shapes and answers are in
+[operator-api.v1.schema.json](operator-api.v1.schema.json). The steering
+route `POST /api/v1/operator/work-items/{id}/notes` is unchanged: its notes
+brief one Run and are not kept as knowledge.

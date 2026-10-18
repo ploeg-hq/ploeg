@@ -1,26 +1,33 @@
 name: Release
 on:
   push:
-    tags: ['v0.*']
+    tags: ['v0.*', '!v0.*-rc.*']
+  workflow_call:
+    inputs:
+      tag:
+        description: Candidate tag the release candidate workflow just cut
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing reviewed tag with matching chart version (for example v0.1.0)
+        description: Existing tag whose publication is missing; a stable tag needs a matching chart version (for example v0.1.0)
         required: true
         type: string
 permissions:
   contents: read
-concurrency:
-  group: ploeg-release
-  cancel-in-progress: false
 jobs:
   release:
     if: github.repository == 'ploeg-hq/ploeg'
     runs-on: ubuntu-24.04
+    concurrency:
+      group: ploeg-publish-${{ inputs.tag || github.ref_name }}
+      cancel-in-progress: false
     timeout-minutes: 45
     permissions:
       contents: write
       packages: write
+      id-token: write
     env:
       RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
     steps:

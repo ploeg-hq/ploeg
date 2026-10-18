@@ -188,6 +188,7 @@ func deployCheckLoop(ctx context.Context, server *httpapi.Server, every time.Dur
 
 func noteWriteLoop(ctx context.Context, server *httpapi.Server, every time.Duration) {
 	server.SweepNoteWrites(ctx)
+	server.SweepConceptPromotions(ctx)
 	t := time.NewTicker(every)
 	defer t.Stop()
 	for {
@@ -196,6 +197,7 @@ func noteWriteLoop(ctx context.Context, server *httpapi.Server, every time.Durat
 			return
 		case <-t.C:
 			server.SweepNoteWrites(ctx)
+			server.SweepConceptPromotions(ctx)
 		}
 	}
 }

@@ -28,11 +28,18 @@ type Telemetry struct {
 	// LogToolDetails exports tool names and arguments where the harness
 	// supports it.
 	LogToolDetails bool `json:"logToolDetails,omitempty"`
+	// AllowHarnesses opts a harness whose telemetry is withheld by default
+	// into receiving it. Only "openhands" can be listed: its tracing fails
+	// every prompt unless the agent image ships an lmnr that accepts the
+	// SDK's call (ADR-0113), which Ploeg cannot see from the worker.
+	AllowHarnesses []string `json:"allowHarnesses,omitempty"`
 }
 
 var telemetrySignals = []string{"metrics", "logs", "traces"}
 
 var telemetryProtocols = map[string]bool{"http/protobuf": true, "http/json": true, "grpc": true}
+
+var optInHarnesses = map[string]bool{"openhands": true}
 
 var reservedResourceAttributes = map[string]bool{"ploeg.team": true, "ploeg.role": true, "ploeg.run.alias": true}
 
@@ -67,6 +74,16 @@ func ParseTelemetry(raw string) (*Telemetry, error) {
 		}
 		seen[s] = true
 	}
+	optedIn := map[string]bool{}
+	for _, h := range t.AllowHarnesses {
+		if !optInHarnesses[h] {
+			return nil, fmt.Errorf("PLOEG_TELEMETRY: allowHarnesses entry %q is not openhands", h)
+		}
+		if optedIn[h] {
+			return nil, fmt.Errorf("PLOEG_TELEMETRY: allowHarnesses entry %q is listed twice", h)
+		}
+		optedIn[h] = true
+	}
 	if len(t.Signals) == 0 {
 		t.Signals = append([]string{}, telemetrySignals...)
 	}
@@ -85,25 +102,44 @@ func (t *Telemetry) exports(signal string) bool {
 	return t != nil && slices.Contains(t.Signals, signal)
 }
 
-// TelemetrySupport names the signals a harness exports natively, so the
-// worker can say at startup what a telemetry setting will and will not reach.
-func TelemetrySupport(harnessName, acpProfile string) []string {
+// TelemetrySupport names the signals a harness exports natively and is given
+// OpenTelemetry variables for. claude-code always is; openhands only when the
+// setting lists it in allowHarnesses. Every other harness gets none:
+// setting OTEL_* is not inert for every agent (see TelemetryWithheldReason).
+func TelemetrySupport(harnessName, acpProfile string, allow []string) []string {
 	switch {
 	case harnessName == "claude-code":
 		return telemetrySignals
-	case harnessName == "openhands", harnessName == "acp" && acpProfile == "openhands":
+	case isOpenHands(harnessName, acpProfile) && slices.Contains(allow, "openhands"):
 		return []string{"traces"}
 	default:
 		return nil
 	}
 }
 
+// TelemetryWithheldReason says why a harness gets no telemetry variables, for
+// the worker's startup log.
+func TelemetryWithheldReason(harnessName, acpProfile string) string {
+	switch {
+	case isOpenHands(harnessName, acpProfile):
+		return "OpenHands' Laminar tracing fails every prompt unless the agent image ships an lmnr that accepts openhands-sdk 1.21.0's rollout_entrypoint call (agent-runner 1.3.0 did not; 1.4.0 pins lmnr 0.7.49); list openhands in telemetry.allowHarnesses once the image does"
+	case harnessName == "claude-environment":
+		return "claude-environment sessions run on the self-hosted runner, whose own environment carries telemetry"
+	default:
+		return "the harness exports no OpenTelemetry signals natively"
+	}
+}
+
+func isOpenHands(harnessName, acpProfile string) bool {
+	return harnessName == "openhands" || harnessName == "acp" && acpProfile == "openhands"
+}
+
 // telemetryEnvironment is the harness environment that points a Run's agent
-// at the configured collector. The standard OTEL_* variables are set for
-// every harness, since an agent that does not read them ignores them; the
-// variables a runtime needs on top are added for that runtime only.
+// at the configured collector. Only a harness in TelemetrySupport gets it:
+// OpenHands turned an OTLP endpoint into a failed prompt on one agent image,
+// so "an agent that does not read the variables ignores them" does not hold.
 func telemetryEnvironment(t *Telemetry, harnessName, acpProfile, team, role, alias string) []string {
-	if t == nil {
+	if t == nil || len(TelemetrySupport(harnessName, acpProfile, t.AllowHarnesses)) == 0 {
 		return nil
 	}
 	env := []string{

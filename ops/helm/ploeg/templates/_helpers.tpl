@@ -373,6 +373,8 @@ spec:
   {{- end }}
   securityContext:
     fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
   initContainers:
     # Extracts ploeg-worker from the distroless ploegd image via
     # self-copy (no shell in distroless).
@@ -669,6 +671,9 @@ spec:
            simply does not fit — and the readers do not build anything, so
            they never needed a builder's CPU. Same field-by-field override
            shape as harness above. */}}
+      {{- with $root.Values.executor.workerSecurityContext }}
+      securityContext: {{- toYaml . | nindent 8 }}
+      {{- end }}
       resources: {{- toYaml (default $root.Values.executor.workerResources $role.workerResources) | nindent 8 }}
   volumes:
     - name: worker-bin

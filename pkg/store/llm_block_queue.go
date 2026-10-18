@@ -39,7 +39,7 @@ func (s *Store) PendingLLMBlocks(ctx context.Context, after int64, limit int) ([
 // when the account last changed state.
 type UnsettledAccount struct {
 	RunID int64 `json:"runId,string"`
-	// WorkItemID is nil for a chat Run, which has no Work Item (ADR-0115).
+	// WorkItemID is nil for a chat Run, which has no Work Item (ADR-0128).
 	WorkItemID   *string   `json:"workItemId"`
 	Team         string    `json:"team"`
 	AccountState string    `json:"accountState"`

@@ -28,6 +28,18 @@ type TaskSpec struct {
 	// Ploeg reads them from the Shift and injects them; the agent never calls
 	// a forge or a Ploeg API to fetch them (R6).
 	Briefing []Finding `json:"briefing,omitempty"`
+	// ReviewFindings are the findings of the Shift's last review Round with
+	// the writer's answer to each (ADR-0121). A writer answers them; a reader
+	// checks the answers. Empty when that review raised none by id.
+	ReviewFindings []BriefedFinding `json:"reviewFindings,omitempty"`
+	// Questions are the questions earlier Runs asked that reach this Run,
+	// answered or not (ADR-0121).
+	Questions []BriefedQuestion `json:"questions,omitempty"`
+	// ActiveWork names the other active Shifts in the Run's repository and
+	// the paths they share with it, as ploegd rendered it within the active
+	// work section's budget (ADR-0123, ADR-0124). Tracker titles in it are
+	// quoted.
+	ActiveWork string `json:"activeWork,omitempty"`
 	// OpenSpec is the OpenSpec change the Work Item names, located in the
 	// clone and rendered as a brief by the worker. Nil when it names none.
 	OpenSpec *OpenSpecBrief `json:"openSpec,omitempty"`
@@ -57,6 +69,18 @@ type KnowledgeBrief struct {
 	Bytes    int               `json:"bytes"`
 	// Omitted counts matching concepts the size limit left out.
 	Omitted int `json:"omitted,omitempty"`
+	// Notes are the keys of the Work Item Notes the pack holds and Levels
+	// each level's budget and use; the worker reports both in its briefed
+	// checkpoint (ADR-0124), so they are not part of the Task Spec.
+	Notes  []string         `json:"-"`
+	Levels []KnowledgeLevel `json:"-"`
+}
+
+// KnowledgeLevel is what one level of a knowledge pack used of its budget.
+type KnowledgeLevel struct {
+	Level                         string
+	Budget, Bytes, Items, Omitted int
+	Digest                        string
 }
 
 // ContextRef names one context item a claim hands a Run: what to download
@@ -167,6 +191,22 @@ type WorkItemNote struct {
 	SuggestedScope string    `json:"suggestedScope,omitempty"`
 	WrittenBy      string    `json:"writtenBy,omitempty"`
 	WrittenAt      time.Time `json:"writtenAt,omitzero"`
+	// Provenance (ADR-0122). An older ploegd sends none of these; a reader
+	// then treats the note as an untrusted Work Item note a Run wrote.
+	Level        string    `json:"level,omitempty"`
+	Subject      string    `json:"subject,omitempty"`
+	AuthorKind   string    `json:"authorKind,omitempty"`
+	Author       string    `json:"author,omitempty"`
+	SourceRefs   []string  `json:"sourceRefs,omitempty"`
+	Trust        string    `json:"trust,omitempty"`
+	ObservedAt   time.Time `json:"observedAt,omitzero"`
+	ExpiresAt    time.Time `json:"expiresAt,omitzero"`
+	PromotedFrom string    `json:"promotedFrom,omitempty"`
+	Evidence     []string  `json:"evidence,omitempty"`
+	ApprovedBy   string    `json:"approvedBy,omitempty"`
+	// Contested is set while a person has not yet decided between this note
+	// and another current note on the same subject that disagrees with it.
+	Contested bool `json:"contested,omitempty"`
 }
 
 // KnowledgeSource is one bundle a pack drew from and its content digest.
@@ -197,6 +237,16 @@ type Learning struct {
 	// work-item (the default), repository, client or tenant. A wider scope
 	// is only a suggestion; a Tenant admin decides it as a Promotion.
 	Scope string `json:"scope,omitempty"`
+	// Subject names what the learning is about, so a later note on the same
+	// subject replaces it or is flagged as disagreeing (ADR-0122). Absent,
+	// it is the type and title.
+	Subject string `json:"subject,omitempty"`
+	// Supersedes is the key of a note the Run was briefed with that this
+	// learning replaces.
+	Supersedes string `json:"supersedes,omitempty"`
+	// ExpiresAt is when a volatile fact stops being true, at most a year
+	// ahead; no Run reads the note after it.
+	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
 }
 
 // Finding is one earlier Run's contribution to the blackboard, attributed to
@@ -297,6 +347,20 @@ type OutcomeReport struct {
 	// (ADR-0097). Only the worker sets it and replaces any value an adapter
 	// or agent reported; absent on a payload from an older worker.
 	Harness *RunHarness `json:"harness,omitempty"`
+	// FindingItems are a reading Run's findings by id (ADR-0121). ploegd
+	// assigns each new finding its id; an entry naming a briefed finding's id
+	// raises that finding again. Ignored from a writing Role.
+	FindingItems []ReviewFinding `json:"findingItems,omitempty"`
+	// FindingAnswers are a writing Run's answers to the findings it was
+	// briefed with. Ignored from a reading Role.
+	FindingAnswers []FindingAnswer `json:"findingAnswers,omitempty"`
+	// Questions are what the Run asks a person, the next reviewer or the
+	// next Run instead of guessing. A question to a person parks the Work
+	// Item at needs_human when the Round ends.
+	Questions []Question `json:"questions,omitempty"`
+	// QuestionAnswers are the Run's answers to questions it was briefed
+	// with that were addressed to a reviewer or the next Run.
+	QuestionAnswers []QuestionAnswer `json:"questionAnswers,omitempty"`
 }
 
 // RunHarness names the Harness a Run ran with. A field the worker does not

@@ -40,11 +40,19 @@ func (e *StatusError) Error() string {
 	return fmt.Sprintf("omnigraph: HTTP %d: %s", e.Status, e.Body)
 }
 
+// ErrPreconditionFailed is a conditional mutation the server refused with
+// 412 because the branch moved past the commit it was conditioned on. The
+// server wrote nothing: re-read, decide again, and only then write.
+var ErrPreconditionFailed = errors.New("omnigraph: the graph moved past the commit the write was based on")
+
 // Retryable reports whether trying the same request later may succeed.
 func Retryable(err error) bool {
 	var se *StatusError
 	if errors.As(err, &se) {
 		return se.Status == http.StatusTooManyRequests || se.Status >= 500
+	}
+	if errors.Is(err, ErrPreconditionFailed) {
+		return false
 	}
 	return err != nil
 }
@@ -61,12 +69,28 @@ func (c *Client) Read(ctx context.Context, graph, name string, params map[string
 // Mutate invokes the stored mutation name on graph's main branch and returns
 // the commit it published; empty when it matched nothing.
 func (c *Client) Mutate(ctx context.Context, graph, name string, params map[string]any) (string, error) {
+	return c.mutate(ctx, graph, name, params, "")
+}
+
+// MutateIf invokes the stored mutation name only if graph's main branch is
+// still at commit, the graph_commit_id of the read the write was decided on.
+// It answers ErrPreconditionFailed when the branch moved, and never falls back
+// to an unconditional write: a server without the conditional route answers
+// 404 like an unknown query.
+func (c *Client) MutateIf(ctx context.Context, graph, name string, params map[string]any, commit string) (string, error) {
+	if commit == "" {
+		return "", errors.New("omnigraph: a conditional write needs the commit it was based on")
+	}
+	return c.mutate(ctx, graph, name, params, commit)
+}
+
+func (c *Client) mutate(ctx context.Context, graph, name string, params map[string]any, ifCommit string) (string, error) {
 	var out struct {
 		Commit *struct {
 			ID string `json:"graph_commit_id"`
 		} `json:"commit"`
 	}
-	if err := c.invoke(ctx, graph, name, params, &out); err != nil {
+	if err := c.invokeAt(ctx, graph, name, params, ifCommit, &out); err != nil {
 		return "", err
 	}
 	if out.Commit == nil {
@@ -76,6 +100,10 @@ func (c *Client) Mutate(ctx context.Context, graph, name string, params map[stri
 }
 
 func (c *Client) invoke(ctx context.Context, graph, name string, params map[string]any, out any) error {
+	return c.invokeAt(ctx, graph, name, params, "", out)
+}
+
+func (c *Client) invokeAt(ctx context.Context, graph, name string, params map[string]any, ifCommit string, out any) error {
 	if !queryName.MatchString(name) {
 		return fmt.Errorf("omnigraph: refusing stored query name %q", name)
 	}
@@ -87,9 +115,15 @@ func (c *Client) invoke(ctx context.Context, graph, name string, params map[stri
 		return err
 	}
 	endpoint := strings.TrimRight(c.BaseURL, "/") + "/graphs/" + url.PathEscape(graph) + "/queries/" + name
+	if ifCommit != "" {
+		endpoint += "/if-graph-commit"
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
 		return err
+	}
+	if ifCommit != "" {
+		req.Header.Set("Omnigraph-If-Graph-Commit", ifCommit)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
@@ -106,6 +140,9 @@ func (c *Client) invoke(ctx context.Context, graph, name string, params map[stri
 	data, err := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
 	if err != nil {
 		return fmt.Errorf("omnigraph %s/%s: %w", graph, name, err)
+	}
+	if resp.StatusCode == http.StatusPreconditionFailed && ifCommit != "" {
+		return fmt.Errorf("%w (%s/%s at %s)", ErrPreconditionFailed, graph, name, ifCommit)
 	}
 	if resp.StatusCode != http.StatusOK {
 		return &StatusError{Status: resp.StatusCode, Body: strings.TrimSpace(string(data[:min(len(data), 300)]))}

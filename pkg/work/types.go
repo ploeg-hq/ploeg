@@ -340,6 +340,15 @@ type Checkpoint struct {
 	// Limits are the limits that stop the Run's prompt, sent with the
 	// prompt_started checkpoint (ADR-0114).
 	Limits *RunLimits `json:"limits,omitempty"`
+
+	// PlannedPaths are the repository paths the Run plans to change, when
+	// it knows them before it pushes. Ploeg keeps the newest list per Shift
+	// and names it to other Runs in the same repository (ADR-0123).
+	PlannedPaths []string `json:"plannedPaths,omitempty"`
+
+	// Board is what the Run's briefing was read at and held, sent with the
+	// briefed checkpoint (ADR-0124).
+	Board *BoardBriefing `json:"board,omitempty"`
 }
 
 // PhasePromptStarted is the checkpoint phase a worker writes when the
@@ -370,6 +379,6 @@ const AskRole = "ask"
 
 // ChatRole is the Role of a chat message: a read-only Run about no Work Item,
 // with no Shift, no Round and no Lease, paid from a Team's Chat Allowance and
-// metered under the Team's ask inference policy (ADR-0115). No crew Role may
+// metered under the Team's ask inference policy (ADR-0128). No crew Role may
 // take this name.
 const ChatRole = "chat"

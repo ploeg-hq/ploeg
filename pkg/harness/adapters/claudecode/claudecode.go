@@ -266,5 +266,6 @@ func agentReported(box harness.OutcomeReport) bool {
 		strings.TrimSpace(box.Findings) != "" ||
 		strings.TrimSpace(box.Problem) != "" ||
 		strings.TrimSpace(box.Solution) != "" ||
-		len(box.CreatedWorkItems) > 0
+		len(box.CreatedWorkItems) > 0 || len(box.FindingItems) > 0 ||
+		len(box.FindingAnswers) > 0 || len(box.Questions) > 0 || len(box.QuestionAnswers) > 0
 }

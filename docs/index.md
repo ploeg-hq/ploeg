@@ -15,6 +15,7 @@ Use these sources for the current implementation. The [architecture](architectur
 - [Operator runbooks](how-to/index.md): stuck Leases and Runs, credential rotation, draining, spend, database recovery
 - [Managed workers and recovery](ops/managed-workers.md)
 - [Metrics and alerts](ops/alerts.md)
+- [Briefings: versions, catch-up, usefulness and replay](ops/briefings.md)
 - [Tracker configuration](ops/board.md)
 - [Configuration reference](reference/configuration.md): every environment variable and Helm value, generated from the source
 - [CI and infrastructure](ops/ci-and-infra.md)

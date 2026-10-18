@@ -250,16 +250,30 @@ func (a *Adapter) Run(ctx context.Context, spec harness.TaskSpec, env harness.Ru
 	defer cancelPrompt()
 
 	harness.ReportPromptStart(ctx, env, a.opts.PromptTimeout, a.opts.IdleTimeout)
-	done := make(chan promptOutcome, 1)
-	go func() {
-		resp, err := conn.Prompt(promptCtx, sdk.PromptRequest{
-			SessionId: sess.SessionId,
-			Prompt:    []sdk.ContentBlock{{Text: &sdk.ContentBlockText{Text: env.Prompt}}},
-		})
-		done <- promptOutcome{resp, err}
-	}()
+	var done chan promptOutcome
+	turn := func(text string) (promptOutcome, stopWhy) {
+		done = make(chan promptOutcome, 1)
+		go func(done chan<- promptOutcome) {
+			resp, err := conn.Prompt(promptCtx, sdk.PromptRequest{
+				SessionId: sess.SessionId,
+				Prompt:    []sdk.ContentBlock{{Text: &sdk.ContentBlockText{Text: text}}},
+			})
+			done <- promptOutcome{resp, err}
+		}(done)
+		return a.awaitPrompt(ctx, done, cl, state, conn, sess.SessionId, log)
+	}
 
-	stop, why := a.awaitPrompt(ctx, done, cl, state, conn, sess.SessionId, log)
+	stop, why := turn(env.Prompt)
+	// The agent's turn ended on its own: before it finishes, it catches up
+	// with the board once, in a further turn, when anything changed
+	// (ADR-0124).
+	if why == stopNormal && stop.err == nil && env.CatchUp != nil &&
+		ParseStopReason(string(stop.resp.StopReason)) == StopEndTurn {
+		if text := env.CatchUp(ctx); text != "" {
+			env.Transcript.Stage("Catching up with the board before finishing")
+			stop, why = turn(text)
+		}
+	}
 	switch why {
 	case stopNormal:
 		res.phase = phaseCompleted

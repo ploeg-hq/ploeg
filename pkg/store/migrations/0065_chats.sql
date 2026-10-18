@@ -1,4 +1,4 @@
--- ADR-0115: a chat message is a read-only Run with the Role 'chat' about no
+-- ADR-0128: a chat message is a read-only Run with the Role 'chat' about no
 -- Work Item, outside any Shift, Round or Lease, paid from the Team's monthly
 -- Chat Allowance (purpose 'chat' in inference_allowances).
 --

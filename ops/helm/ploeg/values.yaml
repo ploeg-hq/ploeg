@@ -124,6 +124,11 @@ knowledgeGraph: {}
 #   runTokenSecret:
 #     name: ploeg-omnigraph-run
 #     key: token
+#   # ADR-0122: the review actor that writes Client and Tenant promotions a
+#   # person accepted to conceptsGraph. Unset leaves them accepted and waiting.
+#   reviewTokenSecret:
+#     name: ploeg-omnigraph-review
+#     key: token
 
 # Plain PLOEG_* env rendered onto the deployment.
 env:
@@ -275,16 +280,20 @@ executor:
     # OpenTelemetry collector the harness exports to (PLOEG_TELEMETRY). Set
     # at executor, team or Role level; the most specific block wins whole.
     # The worker adds ploeg.team, ploeg.role and ploeg.run.alias to the
-    # resource attributes. What each harness exports natively: claude-code
-    # metrics, logs and traces; openhands and acp/openhands traces; acp/opencode,
-    # exec and claude-environment none (claude-environment sessions export from
-    # the self-hosted runner's own environment). {} exports nothing.
+    # resource attributes. claude-code receives it (metrics, logs and traces).
+    # openhands and acp/openhands receive it (traces) only when listed in
+    # allowHarnesses: their tracing fails every prompt on an agent image whose
+    # lmnr rejects the SDK's call (agent-runner 1.3.0; 1.4.0 is fine, ADR-0113).
+    # acp/opencode and exec export nothing, and claude-environment sessions
+    # export from the self-hosted runner's own environment; the worker logs why
+    # it withholds the variables. {} exports nothing.
     # endpoint: http://otel-collector.observability.svc:4318
     # protocol: http/protobuf   # or http/json, grpc
     # signals: [metrics, logs, traces]
     # resourceAttributes: {deployment.environment: production}
     # logPrompts: false         # prompt text can carry ticket content
     # logToolDetails: false
+    # allowHarnesses: [openhands]  # only once the agent image's lmnr is compatible
     telemetry: {}
     # acp harness only. One adapter speaks Zed's Agent CLIENT Protocol (stdio
     # JSON-RPC, wire version 1) to any ACP-capable agent. Unrelated to IBM's
@@ -535,6 +544,22 @@ executor:
   # Python cold import alone took 2m20s before the agent did anything
   # (measured, silver run 2026-07-27). More than 1 core buys that phase
   # nothing; less throttles every runner-side step.
+  # The harness container's securityContext. The default meets the Kubernetes
+  # `restricted` Pod Security Standard, so the worker namespace can enforce it:
+  # a fixed non-root uid (1000, the group fsGroup already gives the shared work
+  # directory), no privilege escalation, no capabilities and the runtime's
+  # seccomp profile. A harness image that must run as root sets this to {} or
+  # to its own context and loses `restricted`. The DinD sidecar stays
+  # privileged whatever this says.
+  workerSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: [ALL]
+    seccompProfile:
+      type: RuntimeDefault
   workerBinResources:
     requests: {cpu: 50m, memory: 64Mi}
     limits: {cpu: 50m, memory: 64Mi}
@@ -690,3 +715,5 @@ config: {}
 #         repairFailedChecks: true    # a failed check queues a repair Follow-Up
 #         maxRepairs: 2               # repair Follow-Ups per pull request; 0 = 2
 #         reworkOnChangesRequested: true  # a person's "request changes" sends it back
+#       premiseCheck:                 # ADR-0123; omit = no premise check (the default)
+#         model: hetzner-qwen3-8-27b  # a gateway model priced at zero; ploegd refuses any other

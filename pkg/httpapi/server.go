@@ -114,7 +114,7 @@ type Server struct {
 	AskAllowanceUSD float64
 	AskBudgetUSD    float64
 	// ChatAllowanceUSD is the limit a Team's monthly Chat Allowance opens
-	// with and ChatBudgetUSD the per-chat Budget (ADR-0115). Zero means
+	// with and ChatBudgetUSD the per-chat Budget (ADR-0128). Zero means
 	// DefaultChatAllowanceUSD and DefaultChatBudgetUSD.
 	ChatAllowanceUSD float64
 	ChatBudgetUSD    float64
@@ -129,6 +129,10 @@ type Server struct {
 	// Knowledge is the Tenant's reviewed knowledge graph (ADR-0087,
 	// proposed). Nil serves Runs no graph concepts.
 	Knowledge ConceptGraph
+	// Concepts writes accepted Client and Tenant promotions to the reviewed
+	// knowledge graph as the Tenant's review actor (ADR-0122). Nil leaves
+	// them accepted and waiting.
+	Concepts ConceptWriter
 	// Version is this ploegd's version, recorded on each Run it claims or
 	// admits (ADR-0091). Empty records it as unknown.
 	Version string
@@ -220,6 +224,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/v1/runs/{token}/context/{id}", s.handleRunContext)
 	mux.HandleFunc("GET /api/v1/runs/{token}/knowledge", s.handleRunKnowledge)
 	mux.HandleFunc("POST /api/v1/runs/{token}/notes", s.handleRunNotes)
+	mux.HandleFunc("POST /api/v1/runs/{token}/board", s.handleRunBoard)
 	mux.HandleFunc("POST /api/v1/runs/{token}/claude-session", s.handleRecordClaudeSession)
 	mux.HandleFunc("GET /api/v1/runs/{token}/claude-session", s.handleClaudeSessionState)
 	mux.HandleFunc("POST /api/v1/runs/{token}/transcript", s.handleRunTranscript)
@@ -524,6 +529,14 @@ type claimResponse struct {
 	Branch     string            `json:"branch,omitempty"`
 	Authorized float64           `json:"authorized,omitempty"`
 	Briefing   []harness.Finding `json:"briefing,omitempty"`
+	// ReviewFindings are the findings of the Shift's last review Round by
+	// id, each with the writer's answer, and Questions the questions that
+	// reach this Run (ADR-0121). Both absent when there are none.
+	ReviewFindings []harness.BriefedFinding  `json:"reviewFindings,omitempty"`
+	Questions      []harness.BriefedQuestion `json:"questions,omitempty"`
+	// ActiveWork is the other active work in the Run's repository, within
+	// the active work section's budget (ADR-0123, ADR-0124).
+	ActiveWork string `json:"activeWork,omitempty"`
 	// ForgeToken is a push credential minted for THIS run and revoked when it
 	// settles (ADR-0013 tier 2). Empty = use the env credential. Never logged,
 	// never audited, never in a Task Spec (R8).
@@ -550,6 +563,9 @@ type claimResponse struct {
 	// Model is the model resolved for the Run (ADR-0103); the worker calls it
 	// instead of its configured one. Absent when the Run stores none.
 	Model string `json:"model,omitempty"`
+	// Board is the half of the Run's version vector ploegd recorded at the
+	// claim (ADR-0124); absent when it could not be recorded.
+	Board *work.BoardVersions `json:"board,omitempty"`
 }
 
 // handleClaim leases the next unit of work for a team. 204 = empty-handed
@@ -603,7 +619,8 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 	s.recordRunConfig(r.Context(), claimed.RunToken, req.Team, "", true, runHarness{Name: req.Harness, Profile: req.HarnessProfile, Version: req.HarnessVersion})
 	s.Log.Info("lease acquired", "team", req.Team, "work_item", claimed.Item.ID, "deadline", claimed.Deadline)
 	writeJSON(w, http.StatusOK, claimResponse{RunToken: claimed.RunToken, Deadline: claimed.Deadline, WorkItem: claimed.Item,
-		Context: s.claimContext(r.Context(), claimed.RunToken), Briefing: s.consumeOperatorNotes(r.Context(), claimed.Item.ID, claimed.RunToken, 0)})
+		Context: s.claimContext(r.Context(), claimed.RunToken), Board: s.recordBoardClaim(r.Context(), claimed.RunToken),
+		Briefing: s.consumeOperatorNotes(r.Context(), claimed.Item.ID, claimed.RunToken, 0)})
 }
 
 // claimRole serves a Shift-scoped claim, carrying everything the Run needs
@@ -652,30 +669,34 @@ func (s *Server) respondClaimedRun(w http.ResponseWriter, r *http.Request, req c
 	if planners, ok := s.RoleCaps.(PlannerRoles); ok && !run.Writes {
 		resp.Planner = planners.IsPlanner(req.Team, run.Role)
 	}
-	// Prior Rounds only: this Round's siblings are still running, and Runs in
-	// one Round never observe each other (ADR-0010).
+	resp.Board = s.recordBoardClaim(r.Context(), run.RunToken)
+	var in store.ReplayInputs
 	reports, err := s.Store.RoundReports(r.Context(), run.ShiftID)
 	if err != nil {
 		s.Log.Error("briefing read failed; run proceeds without it", "shift", run.ShiftID, "err", err)
 	}
-	for _, rep := range reports {
-		if rep.Round < run.Round && rep.Findings != "" && !rep.Shadow {
-			resp.Briefing = append(resp.Briefing, harness.Finding{
-				Role: rep.Role, Round: rep.Round, Findings: rep.Findings,
-			})
-		}
-	}
+	in.Reports = reports
 	resp.Context = s.claimContext(r.Context(), run.RunToken)
+	if resp.ReviewFindings, resp.Questions, err = s.Store.FindingsBrief(r.Context(), run.ShiftID, run.Round, run.Writes); err != nil {
+		s.Log.Error("findings briefing read failed; run proceeds without it", "shift", run.ShiftID, "err", err)
+	}
+	resp.ActiveWork = s.activeWork(r.Context(), run.Item.ID)
 	if notes, err := s.Store.ShiftReviews(r.Context(), run.ShiftID, run.Round); err != nil {
 		s.Log.Error("review briefing read failed; run proceeds without it", "shift", run.ShiftID, "err", err)
 	} else {
-		resp.Briefing = append(resp.Briefing, reviewBriefing(notes)...)
+		in.Reviews = notes
 	}
 	if brief, restarted, err := s.Store.ShiftRestartBrief(r.Context(), run.ShiftID); err != nil {
 		s.Log.Error("restart briefing read failed; run proceeds without it", "shift", run.ShiftID, "err", err)
 	} else if restarted {
-		resp.Briefing = append([]harness.Finding{restartBriefing(brief)}, resp.Briefing...)
+		in.Restart = &brief
 	}
+	if catchUps, err := s.Store.PriorRoundCatchUps(r.Context(), run.ShiftID, run.Round, time.Time{}); err != nil {
+		s.Log.Error("board catch-up briefing read failed; run proceeds without it", "shift", run.ShiftID, "err", err)
+	} else {
+		in.CatchUps = catchUps
+	}
+	resp.Briefing = shiftBriefing(in, run.Round)
 	// Push rights are minted per writing Run, so holding the Lease and being
 	// able to push are one fact rather than two that can disagree. A reader
 	// gets nothing here — it has no Lease and no business pushing.
@@ -701,7 +722,8 @@ func (s *Server) respondClaimedRun(w http.ResponseWriter, r *http.Request, req c
 
 	s.Log.Info("run claimed", "team", req.Team, "role", run.Role, "shift", run.ShiftID,
 		"round", run.Round, "writes", run.Writes, "authorized", run.Authorized,
-		"briefing", len(resp.Briefing), "context", len(resp.Context), "deadline", run.Deadline)
+		"briefing", len(resp.Briefing), "review_findings", len(resp.ReviewFindings), "questions", len(resp.Questions),
+		"context", len(resp.Context), "deadline", run.Deadline)
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -798,6 +820,9 @@ func validateOutcomeReport(req harness.OutcomeReport) error {
 	if req.Delivery != nil && !req.Delivery.Observed.Valid() {
 		return errors.New("delivery.observed must be opened, updated, none or unknown")
 	}
+	if err := harness.ValidateBlackboard(req); err != nil {
+		return err
+	}
 	return harness.ValidateCreatedWorkItems(req.CreatedWorkItems)
 }
 
@@ -827,6 +852,7 @@ func (s *Server) handleOutcome(w http.ResponseWriter, r *http.Request) {
 	report := store.Report(req.Outcome, req.Summary, req.StuckReason, req.Links, usage, failureReason).
 		WithFindings(req.Findings).WithVerdict(req.Verdict).WithProblemAndSolution(req.Problem, req.Solution).
 		WithVerification(req.Verification).WithDelivery(req.Delivery).
+		WithBlackboard(req.FindingItems, req.FindingAnswers, req.Questions, req.QuestionAnswers).
 		WithCreatedWork(req.CreatedWorkItems, s.createdWorkPolicy, s.knownTeam)
 	if s.Notes != nil {
 		report = report.WithNotes(keptLearnings(req.Learnings))

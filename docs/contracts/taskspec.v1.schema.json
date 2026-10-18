@@ -34,6 +34,9 @@
       "description": "run trace id; doubles as the LiteLLM key alias Grafana joins on"
     },
     "briefing": { "$ref": "#/$defs/briefing" },
+    "reviewFindings": { "$ref": "#/$defs/reviewFindings" },
+    "questions": { "$ref": "#/$defs/briefedQuestions" },
+    "activeWork": { "type": "string", "maxLength": 2000, "description": "The other active Shifts in the Run's repository and the paths they share with it, rendered by ploegd within the active work section's budget of 2,000 bytes (ADR-0123, ADR-0124); tracker titles in it are quoted. Absent when there is none." },
     "openSpec": { "$ref": "#/$defs/openSpec" },
     "knowledge": { "$ref": "#/$defs/knowledge" },
     "context": {
@@ -97,6 +100,55 @@
       },
       "required": ["change", "root", "source", "brief"],
       "additionalProperties": false
+    },
+    "reviewFindings": {
+      "type": "array",
+      "description": "The findings by id of the Shift's last review Round before this Run (ADR-0121), each with the writer's answer after it was last raised. A writer answers them in findingAnswers; a reader checks the answers. Absent when that review raised none by id.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "pattern": "^f[1-9][0-9]{0,18}-[1-9][0-9]{0,3}$" },
+          "severity": { "type": "string", "enum": ["blocking", "should_fix", "nit"] },
+          "title": { "type": "string" },
+          "body": { "type": "string" },
+          "path": { "type": "string" },
+          "line": { "type": "integer", "minimum": 1 },
+          "role": { "type": "string", "description": "the reading Role that last raised it" },
+          "round": { "type": "integer", "minimum": 1, "description": "the Round it was last raised in" },
+          "answer": {
+            "type": "object",
+            "properties": {
+              "status": { "type": "string", "enum": ["fixed", "disagree", "out_of_scope", "deferred"] },
+              "reason": { "type": "string" },
+              "role": { "type": "string" },
+              "round": { "type": "integer", "minimum": 1 }
+            },
+            "required": ["status", "role", "round"],
+            "additionalProperties": false
+          },
+          "unanswered": { "type": "boolean", "description": "true when a writing Run finished after the finding was last raised without answering it" }
+        },
+        "required": ["id", "title", "role", "round"],
+        "additionalProperties": false
+      }
+    },
+    "briefedQuestions": {
+      "type": "array",
+      "description": "The questions earlier Runs asked that reach this Run (ADR-0121): every question to a person on the Work Item (at most the newest 10), with a person's answer once given, and the Shift's earlier questions to the next Run, and to the reviewer for a reading Run, with a Run's answer once given.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "pattern": "^q[1-9][0-9]{0,18}-[1-9][0-9]{0,3}$" },
+          "to": { "type": "string", "enum": ["person", "reviewer", "next_run"] },
+          "text": { "type": "string" },
+          "role": { "type": "string", "description": "the Role of the Run that asked" },
+          "round": { "type": "integer", "minimum": 1 },
+          "answer": { "type": "string" },
+          "answeredBy": { "type": "string", "description": "person, or the Role of the Run that answered; absent while unanswered" }
+        },
+        "required": ["id", "to", "text", "role", "round"],
+        "additionalProperties": false
+      }
     },
     "briefing": {
       "type": "array",

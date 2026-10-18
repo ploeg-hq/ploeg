@@ -25,7 +25,7 @@ var ErrAllowanceExhausted = errors.New("allowance cannot cover the per-Ask Budge
 
 // AllowancePurposeAsk and AllowanceScopeTeam are the purpose and scope kind
 // phase 1 of ADR-0082 uses. AllowancePurposeChat is the purpose of a Team's
-// Chat Allowance (ADR-0115).
+// Chat Allowance (ADR-0128).
 const (
 	AllowancePurposeAsk  = "ask"
 	AllowancePurposeChat = "chat"

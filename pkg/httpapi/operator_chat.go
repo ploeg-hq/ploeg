@@ -15,15 +15,15 @@ import (
 )
 
 // MaxChatMessageRunes bounds the message an operator consumer sends with a
-// chat admission. Ploeg keeps only its SHA-256 (ADR-0115).
+// chat admission. Ploeg keeps only its SHA-256 (ADR-0128).
 const MaxChatMessageRunes = 4000
 
 // DefaultChatAllowanceUSD is the monthly Chat Allowance a Team's period opens
-// with (PLOEG_CHAT_ALLOWANCE_USD, ADR-0115).
+// with (PLOEG_CHAT_ALLOWANCE_USD, ADR-0128).
 const DefaultChatAllowanceUSD = 2.00
 
 // DefaultChatBudgetUSD is the per-chat Budget (PLOEG_CHAT_BUDGET_USD,
-// ADR-0115). It is larger than the per-Ask Budget because one chat message
+// ADR-0128). It is larger than the per-Ask Budget because one chat message
 // may take several tool-calling model calls.
 const DefaultChatBudgetUSD = 0.05
 

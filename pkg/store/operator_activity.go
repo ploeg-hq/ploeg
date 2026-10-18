@@ -114,7 +114,7 @@ const operatorScope = `($1::text[] IS NULL OR i.team = ANY($1))`
 
 // operatorRunTeam is the Team of a Run joined to its Work Item i with a LEFT
 // JOIN: the Work Item's Team, or the Run's own for a chat Run, which has no
-// Work Item (ADR-0115).
+// Work Item (ADR-0128).
 const operatorRunTeam = `COALESCE(i.team, r.team)`
 
 const operatorRunScope = `($1::text[] IS NULL OR ` + operatorRunTeam + ` = ANY($1))`

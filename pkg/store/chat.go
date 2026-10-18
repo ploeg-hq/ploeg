@@ -23,7 +23,7 @@ var ErrChatConflict = errors.New("chat conflicts with an earlier chat of the sam
 type ChatSpend = AskSpend
 
 // Chat is one chat message: a read-only Run about no Work Item, outside any
-// Shift, paid from its Team's Chat Allowance (ADR-0115). State is open while
+// Shift, paid from its Team's Chat Allowance (ADR-0128). State is open while
 // its Run runs before its deadline, finished once the consumer finished it,
 // and expired when its deadline passed first.
 type Chat struct {
@@ -94,7 +94,7 @@ func chatFingerprint(in AdmitChat) string {
 // Allowance for the period, or returns the chat an earlier admission with the
 // same consumer and chatId created. It creates no Shift, no Lease and no
 // Work Item. The period's allowance row is locked for the whole admission, so
-// concurrent admissions see each other's holds (ADR-0012, ADR-0115).
+// concurrent admissions see each other's holds (ADR-0012, ADR-0128).
 func (s *Store) AdmitChat(ctx context.Context, consumer, actor string, in AdmitChat) (Chat, bool, error) {
 	if in.ChatID == "" || in.Team == "" || !questionDigest.MatchString(in.MessageSHA256) || !validSpend(in.BudgetUSD) || in.BudgetUSD <= 0 ||
 		!validSpend(in.LimitUSD) || in.TTL < time.Second {
