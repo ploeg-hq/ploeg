@@ -56,3 +56,12 @@ jobs:
     uses: ./.github/workflows/release.yml
     with:
       tag: ${{ needs.cut.outputs.tag }}
+  contract-bundle:
+    needs: [cut, publish]
+    if: needs.cut.outputs.tag != ''
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/contract-bundle.yml
+    with:
+      tag: ${{ needs.cut.outputs.tag }}
