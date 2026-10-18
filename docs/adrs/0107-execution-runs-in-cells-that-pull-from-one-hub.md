@@ -89,17 +89,20 @@ decision to a reservation. A cell is that design pointed at a hub URL.
   `hardened` rung or above. Cell gateway is the default; zero-secret is for capacity
   trusted less than the credentials.
 * **Placement of the first hub and cells.** The hub is the production cluster of
-  VIK-1764; the homelab is the staging hub and, through its Kata workers, a production
-  `isolated` cell. Cloud VMs become `standard` and `hardened` cells. Fleet management of
-  Talos cells is optional and never a cell's dependency, per the owner's decision on
-  VIK-1766.
+  VIK-1764. That cluster pairs rented control-plane and app VMs with one rented
+  bare-metal worker joined over a private VLAN, so it honours `isolated` itself (owner
+  decision on VIK-1767, 2026-10-18). The homelab is the staging hub and a second
+  `isolated` cell. Shared-CPU cloud VMs become `standard` and `hardened` cells. Fleet
+  management of Talos cells is optional and never a cell's dependency, per the owner's
+  decision on VIK-1766.
 
 ### Consequences
 
 * Good, because capacity is added by installing one chart on any cluster and pointing it
   at the hub, which is the selling point stated in product terms.
-* Good, because the strongest execution, Kata on owned hardware, and the cheapest
-  availability, a rented control plane, no longer have to be the same machine.
+* Good, because the strongest execution, Kata on bare metal, and the cheapest
+  availability, a rented control plane, no longer have to be the same kind of machine,
+  and a cluster may mix both.
 * Good, because a Tenant can be a cell: its Runs never share a kernel, a node or a network
   with another Tenant's.
 * Good, because nothing in a cell depends on KubeSpan or on Sidero's hosted discovery
@@ -176,3 +179,7 @@ decision to a reservation. A cell is that design pointed at a hub URL.
   which multi-forge cells need), [0106](0106-a-run-declares-an-isolation-floor-and-a-cell-runs-it-at-the-strictest-class-it-can-honour.md).
 * Board: [VIK-1764](https://vikunja.webgrip.dev/tasks/1764) (the production cluster),
   [VIK-1741](https://vikunja.webgrip.dev/tasks/1741) (the Tenant boundary).
+* 2026-10-18 — Placement amended: the production cluster carries its own bare-metal
+  Kata worker (Hetzner AX41 over vSwitch, cap €185 a month), decided on
+  [VIK-1767](https://vikunja.webgrip.dev/tasks/1767). The homelab is no longer
+  production's only `isolated` capacity.
