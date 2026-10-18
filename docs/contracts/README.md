@@ -290,6 +290,24 @@ the claim is kept when the report names another, and the difference is
 logged. Recording never refuses or changes a claim or an Outcome. Both read
 null when unknown, as for every Run recorded before migration 0054.
 
+Every Run shape may also carry `limits`, the limits that stop the Run's
+prompt
+([ADR-0114](../adrs/0114-each-run-records-the-limits-that-stop-its-prompt.md)):
+`{"promptSeconds": 5400, "idleSeconds": 600, "promptStartedAt": "2026-10-17T08:34:05Z"}`.
+The worker sends them in a `prompt_started` checkpoint when the prompt
+starts. `promptSeconds` counts from `promptStartedAt`: for `acp` it is the
+earlier of the profile's prompt timeout and what is left of the worker's
+harness timeout, for every other Harness what is left of the harness
+timeout. `idleSeconds` counts from the agent's last activity: the `acp`
+idle timeout over protocol activity, or the worker's idle watchdog over
+output and model traffic for `openhands`, `claude-code` and `exec`. An
+absent limit is no limit, as `idleSeconds` is for `claude-environment`.
+ploegd keeps the first report (migration 0059) and records nothing when
+`promptStartedAt` lies more than five minutes before the Run started or
+after its own clock. `limits` is absent, never null or zero, when unknown:
+before the prompt starts, from an older worker, for an Ask or an operator
+execution, and for every Run recorded before migration 0059.
+
 The Teams read's Roles carry `harness` (`{name, profile}` from
 `PLOEG_TEAM_HARNESSES`, which the chart renders from the same values as each
 worker's `PLOEG_HARNESS` and `PLOEG_ACP_PROFILE`), `model` (the Role's

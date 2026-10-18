@@ -92,6 +92,7 @@ func (a *Adapter) Run(ctx context.Context, spec harness.TaskSpec, env harness.Ru
 	if env.Checkpoint != nil {
 		env.Checkpoint(work.Checkpoint{Phase: "agent_started", Branch: spec.Branch})
 	}
+	harness.ReportPromptStart(ctx, env, 0, 0)
 
 	state, err := a.wait(ctx, env)
 	if err != nil {

@@ -336,6 +336,23 @@ type Checkpoint struct {
 	// InstructionFiles is every agent instruction file the worker found in
 	// the clone before the harness ran, with the digest of what it read.
 	InstructionFiles []InstructionFile `json:"instructionFiles,omitempty"`
+
+	// Limits are the limits that stop the Run's prompt, sent with the
+	// prompt_started checkpoint (ADR-0114).
+	Limits *RunLimits `json:"limits,omitempty"`
+}
+
+// PhasePromptStarted is the checkpoint phase a worker writes when the
+// agent's prompt starts, carrying the Run's limits.
+const PhasePromptStarted = "prompt_started"
+
+// RunLimits are the limits that stop a Run's prompt (ADR-0114). PromptSeconds
+// is the most the prompt may run from PromptStartedAt and IdleSeconds how long
+// the agent may show no activity. Zero is no limit.
+type RunLimits struct {
+	PromptSeconds   int64     `json:"promptSeconds,omitempty"`
+	IdleSeconds     int64     `json:"idleSeconds,omitempty"`
+	PromptStartedAt time.Time `json:"promptStartedAt"`
 }
 
 // InstructionFile is one agent instruction or configuration file in a Run's

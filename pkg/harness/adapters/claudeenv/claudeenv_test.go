@@ -231,3 +231,19 @@ func TestLastJSONObject(t *testing.T) {
 		}
 	}
 }
+
+func TestRun_ReportsThePromptStartBoundOnlyByTheRunsDeadline(t *testing.T) {
+	f := &fakeExec{dispatch: okDispatch}
+	sessions := &fakeSessions{reportAt: 1, state: harness.RemoteSessionState{Reported: true, ExitReason: "completed", FinalMessage: "Done."}}
+	env := runEnv(t, sessions)
+	var seen []harness.PromptStart
+	env.PromptStarted = func(p harness.PromptStart) { seen = append(seen, p) }
+	ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
+	defer cancel()
+	if _, err := adapter(f).Run(ctx, spec(), env); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if len(seen) != 1 || seen[0].Prompt > time.Hour || seen[0].Prompt < 59*time.Minute || seen[0].Idle != 0 {
+		t.Fatalf("prompt starts = %+v, want one bound by the hour deadline and no idle limit", seen)
+	}
+}
