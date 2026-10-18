@@ -1,4 +1,4 @@
-package worker
+package taskprompt
 
 import (
 	"fmt"
@@ -8,7 +8,7 @@ import (
 )
 
 // maxReviewFindingsBytes caps what the findings by id add to the prompt, on
-// top of maxBriefingBytes.
+// top of MaxBriefingBytes.
 const maxReviewFindingsBytes = 8000
 
 // writeReviewFindings renders the findings of the last review by id
