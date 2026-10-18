@@ -8,3 +8,5 @@ knowledgeGraph:
   runTokenSecret:
     name: ploeg-omnigraph-run
     key: token
+  reviewTokenSecret:
+    name: acme-omnigraph-review

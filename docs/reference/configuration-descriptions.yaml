@@ -7,6 +7,8 @@ env:
   PLOEG_FORGE_TOKEN_ISOLATION: "`proxy` keeps a writer's forge token in ploeg-worker behind a loopback proxy limited to the Run's repository (ADR-0034). The chart sets it only for a qualified harness without DinD."
   PLOEG_CREDENTIAL_ISOLATION_OFF_REASON: "Why the chart left a credential proxy off for this workload: `unqualified`, `dind` or `disabled`. ploeg-worker logs it in one boot WARN with the harness name."
   PLOEG_DEFAULT_TEAM: Team that receives work from an assignee no Team lists.
+  PLOEG_DEPENDENCY_HOLD: "Holds a queued Work Item's first Shift while its tracker says it waits for an item that is not done (ADR-0123). `false` switches the hold off."
+  PLOEG_DEPENDENCY_RECHECK: How often ploegd reads a held Work Item's tracker dependencies again, as a Go duration.
   PLOEG_TEAM_MAP: Legacy assignee roster, replaced by `teams.<name>.assignees` in the `PLOEG_CONFIG` file.
   PLOEG_TEAM_HARNESSES: "Each Role's Harness configuration as JSON, team to Role to `{name, profile, allowed, allowUnqualified}`: the default Harness, the allowlist an operator admission may choose from, each entry with its `qualification`, and the team's opt-in to unqualified Harnesses (ADR-0097, ADR-0098). A plan-less team's workload is the Role `\"\"`. The chart renders it from the same values as each worker's `PLOEG_HARNESS` and `PLOEG_ACP_PROFILE`, and the Teams read shows it. Unset reads every Role's Harness as null and stores no Harness on a Run; a malformed value, or a default outside its allowlist, stops ploegd at boot."
   PLOEG_TEAM_PLANS: Legacy Shift plans, replaced by `teams.<name>.plan` in the `PLOEG_CONFIG` file. A malformed plan stops ploegd at boot.
@@ -112,7 +114,8 @@ env:
   PATH: Passed to `git` and `openspec` subprocesses; also on the harness allowlist.
   PLOEG_OMNIGRAPH_URL: "Base URL of the Omnigraph server that holds the Tenant's graphs, for example `http://omnigraph.ai.svc.cluster.local:8080` (ADR-0087, ADR-0088, proposed). It needs `PLOEG_OMNIGRAPH_RUN_TOKEN` and at least one of `PLOEG_NOTES_GRAPH` and `PLOEG_KNOWLEDGE_GRAPH`; any other partial setting is a startup error. Unset = no Tenant knowledge."
   PLOEG_KNOWLEDGE_GRAPH: "Id of the Tenant's reviewed knowledge graph on `PLOEG_OMNIGRAPH_URL`, which declares the `tenant-knowledge` stored queries `tenant_concepts`, `client_concepts` and `repository_concepts`. Each Run is served the concepts of its Tenant, Client and repository; a repository's own `knowledge/` file wins over the same graph concept."
-  PLOEG_NOTES_GRAPH: "Id of the Tenant's notes graph on `PLOEG_OMNIGRAPH_URL`, which declares the `tenant-notes` stored queries `add_note`, `note_by_key` and `root_notes`."
+  PLOEG_NOTES_GRAPH: "Id of the Tenant's notes graph on `PLOEG_OMNIGRAPH_URL`, which declares the `tenant-notes` stored queries `add_note`, `add_note_superseding`, `note_by_key`, `root_notes`, `repository_notes`, `subject_notes`, `client_note_count` and `delete_client_notes`, and serves the conditional `if-graph-commit` route (Omnigraph 0.11 or later). A bundle from before ADR-0122 makes every note wait: ploegd never writes a note unconditionally."
+  PLOEG_OMNIGRAPH_REVIEW_TOKEN: "Bearer token of the Tenant's review actor, the only actor that may change the reviewed knowledge graph. With it, ploegd writes the Client and Tenant promotions a person accepted as concepts (ADR-0122). Unset leaves accepted promotions waiting; Runs are unaffected."
   PLOEG_OMNIGRAPH_RUN_TOKEN: "Bearer token of the Tenant's run actor: read both graphs, write only notes `main`. Only ploegd holds it; worker pods never see it (ADR-0087, proposed)."
   PLOEG_NOTES_WRITE_INTERVAL: "How often ploegd writes waiting Work Item Notes to the notes graph. Default 15s."
   PLOEG_RUN_TRANSCRIPTS:

@@ -2,11 +2,16 @@ package knowledgegraph
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strings"
+	"time"
 
 	"github.com/ploeg-hq/ploeg/pkg/harness"
+	"github.com/ploeg-hq/ploeg/pkg/notes"
 	"github.com/ploeg-hq/ploeg/pkg/okf"
 	"github.com/ploeg-hq/ploeg/pkg/omnigraph"
+	"github.com/ploeg-hq/ploeg/pkg/store"
 )
 
 // Concept scopes (ADR-0087, proposed).
@@ -17,9 +22,80 @@ const (
 )
 
 // Knowledge is one Tenant's reviewed knowledge graph, read as its run actor.
+// Review is the Tenant's review actor, which alone may change the graph: it
+// writes a Client or Tenant promotion a person accepted, and purges a
+// Client. Nil when the deployment configures none; those then wait.
 type Knowledge struct {
 	Client *omnigraph.Client
+	Review *omnigraph.Client
 	Graph  string
+}
+
+// ErrNoReviewActor is a write the knowledge graph needs its review actor
+// for, on a deployment that configures none.
+var ErrNoReviewActor = errors.New("the knowledge graph's review actor is not configured")
+
+// PutConcept writes p as one reviewed concept, keyed so writing it again
+// changes nothing, and returns the commit. The concept keeps where it came
+// from and who accepted it; an untrusted note stays marked untrusted in the
+// document, so the briefing quotes it.
+func (k *Knowledge) PutConcept(ctx context.Context, p store.ConceptPromotion) (string, error) {
+	if k.Review == nil {
+		return "", ErrNoReviewActor
+	}
+	owner := ""
+	switch p.TargetLevel {
+	case notes.LevelClient:
+		owner = p.Note.Client
+		if owner == "" {
+			return "", fmt.Errorf("%w: %s belongs to no Client", notes.ErrNotPromotable, p.Note.Key)
+		}
+	case notes.LevelTenant:
+	default:
+		return "", fmt.Errorf("%w: %s is not a knowledge graph level", notes.ErrNotPromotable, p.TargetLevel)
+	}
+	path := notes.SubjectOf("", p.Note.Title)[1:] + ".md"
+	if path == ".md" {
+		path = "note.md"
+	}
+	doc := okf.Format(okf.Concept{
+		Path: path, Type: p.Note.Type, Title: p.Note.Title, Description: p.Note.Description,
+		Resource: p.Note.Resource, Tags: p.Note.Tags, Timestamp: p.DecidedAt, Body: p.Note.Body,
+		Extra: map[string]any{"status": "reviewed", "trust": string(p.Note.Trust), "from-note": p.Note.Key,
+			"author": p.Note.WrittenBy(), "accepted-by": p.ApprovedBy},
+	})
+	return k.Review.Mutate(ctx, k.Graph, "put_concept", map[string]any{
+		"slug": ConceptSlug(string(p.TargetLevel), owner, path), "scope": string(p.TargetLevel),
+		"client": nilIfEmpty(owner), "repository": nil, "type": p.Note.Type, "title": p.Note.Title,
+		"description": nilIfEmpty(p.Note.Description), "resource": nilIfEmpty(p.Note.Resource),
+		"tags": nilIfNone(p.Note.Tags), "body": string(doc), "from_note": p.Note.Key,
+		"accepted_by": p.ApprovedBy, "accepted_at": p.DecidedAt.UTC().Format(time.RFC3339Nano),
+	})
+}
+
+// PurgeClient removes every concept of client and of its repositories from
+// the graph's main branch and reports how many of the Client's concepts
+// remain.
+func (k *Knowledge) PurgeClient(ctx context.Context, client string, repositories []string) (int, error) {
+	if k.Review == nil {
+		return 0, ErrNoReviewActor
+	}
+	if client == "" {
+		return 0, errors.New("a purge names one Client")
+	}
+	if _, err := k.Review.Mutate(ctx, k.Graph, "delete_client_concepts", map[string]any{"client": client}); err != nil {
+		return 0, err
+	}
+	for _, repository := range repositories {
+		if _, err := k.Review.Mutate(ctx, k.Graph, "delete_repository_concepts", map[string]any{"repository": repository}); err != nil {
+			return 0, err
+		}
+	}
+	res, err := k.Review.Read(ctx, k.Graph, "client_concept_count", map[string]any{"client": client})
+	if err != nil {
+		return 0, err
+	}
+	return count(res, "concepts"), nil
 }
 
 // ConceptSlug is a concept's graph key: its scope, the Client or repository

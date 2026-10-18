@@ -473,6 +473,12 @@ func (s *Store) Checkpoint(ctx context.Context, runToken string, cp work.Checkpo
 		}
 		detail["limits"] = cp.Limits
 	}
+	if cp.PlannedPaths != nil {
+		if _, err := recordPlannedPaths(ctx, tx, runToken, cp.PlannedPaths); err != nil {
+			return err
+		}
+		detail["planned_paths"] = len(cp.PlannedPaths)
+	}
 	if err := audit(ctx, tx, "team:"+team, "checkpoint.written", &id, detail); err != nil {
 		return err
 	}

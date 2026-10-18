@@ -29,6 +29,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -131,7 +132,19 @@ type Team struct {
 	// CreatedWork limits the Work Items this Team's Runs may create
 	// (ADR-0031). Absent fields take followup.Default.
 	CreatedWork *CreatedWork `yaml:"createdWork"`
+	// PremiseCheck opts this Team in to the premise check before its
+	// writer (ADR-0123). Omitted = no check.
+	PremiseCheck *PremiseCheck `yaml:"premiseCheck"`
 }
+
+// PremiseCheck names the gateway model a Team's premise check calls. ploegd
+// refuses to call it unless the gateway prices every deployment of it at
+// zero.
+type PremiseCheck struct {
+	Model string `yaml:"model"`
+}
+
+var gatewayModel = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:/@-]{0,127}$`)
 
 // CreatedWork overrides followup.Default for one Team. Every field is
 // optional.
@@ -269,6 +282,11 @@ func (f *File) Validate() error {
 		}
 		if err := plan.Validate(*t.Plan); err != nil {
 			return fmt.Errorf("teams.%s.plan: %w", name, err)
+		}
+	}
+	for _, name := range sortedTeamNames(f.Teams) {
+		if pc := f.Teams[name].PremiseCheck; pc != nil && !gatewayModel.MatchString(pc.Model) {
+			return fmt.Errorf("teams.%s.premiseCheck.model: must name one gateway model, got %q", name, pc.Model)
 		}
 	}
 	for _, name := range sortedTeamNames(f.Teams) {
@@ -549,6 +567,18 @@ func (f *File) ForgeFollowUps() map[string]work.ForgeFollowUps {
 	for name, t := range f.Teams {
 		if t.ForgeFollowUps.Enabled() {
 			out[name] = t.ForgeFollowUps
+		}
+	}
+	return out
+}
+
+// PremiseChecks maps every Team that opted in to the premise check to the
+// gateway model it calls (ADR-0123).
+func (f *File) PremiseChecks() map[string]string {
+	out := map[string]string{}
+	for name, t := range f.Teams {
+		if t.PremiseCheck != nil {
+			out[name] = t.PremiseCheck.Model
 		}
 	}
 	return out

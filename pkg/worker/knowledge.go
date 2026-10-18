@@ -206,6 +206,12 @@ the end. Use type Pitfall, Convention or Fact; at most 10 notes. Add
 beyond this work; that is a suggestion a person decides. Do not repeat these
 notes in a "learnings" array, and do not restate the Work Item, the knowledge
 pack or its notes.
+Add "subject": "<what it is about>" when the title alone would not match a
+later note on the same thing; a later note on that subject replaces yours or
+is flagged for a person when it disagrees. Add "supersedes": "<note key>"
+when you replace a note you were briefed with, and "expiresAt":
+"<RFC 3339 time>" for a fact that stops holding (a red pipeline, a pinned
+version); never note live state without one.
 
 `)
 }
@@ -228,6 +234,12 @@ without review. Add "scope": "repository", "client" or "tenant" only when an
 entry clearly holds beyond this work; that is a suggestion a person decides.
 Leave the array out when you learned nothing new; do not restate the Work
 Item, the knowledge pack or its notes.
+Add "subject": "<what it is about>" when the title alone would not match a
+later note on the same thing; a later note on that subject replaces yours or
+is flagged for a person when it disagrees. Add "supersedes": "<note key>"
+when you replace a note you were briefed with, and "expiresAt":
+"<RFC 3339 time>" for a fact that stops holding (a red pipeline, a pinned
+version); never note live state without one.
 
 `)
 }

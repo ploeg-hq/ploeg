@@ -6,12 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/ploeg-hq/ploeg/pkg/harness"
+	"github.com/ploeg-hq/ploeg/pkg/notes"
 )
 
 // NoteScopes are the scopes a learning may suggest (ADR-0088). Absent means
@@ -36,29 +37,72 @@ func queueWorkItemNotes(ctx context.Context, tx pgx.Tx, runID int64, notes []har
 }
 
 // queueNote stores one note under the Run's trace alias and suffix. The key
-// makes a resent note a no-op, so a retried request never writes twice.
-func queueNote(ctx context.Context, q interface {
-	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
-}, runID int64, suffix, writer string, l harness.Learning) error {
+// makes a resent note a no-op, so a retried request never writes twice. A
+// Run's or the worker's note is untrusted Work Item note; a wider suggested
+// scope also opens the promotion a person or a merge decides (ADR-0122).
+func queueNote(ctx context.Context, q pgx.Tx, runID int64, suffix, writer string, l harness.Learning) error {
 	scope := l.Scope
 	if !NoteScopes[scope] {
 		scope = "work-item"
 	}
-	l.Scope = ""
+	subject := noteSubject(l)
+	supersedes := clipText(l.Supersedes, 300)
+	var expires *time.Time
+	if l.ExpiresAt != nil && l.ExpiresAt.After(time.Now()) && time.Until(*l.ExpiresAt) <= notes.MaxExpiry {
+		at := l.ExpiresAt.UTC()
+		expires = &at
+	}
+	l.Scope, l.Subject, l.Supersedes, l.ExpiresAt = "", "", "", nil
 	body, err := json.Marshal(l)
 	if err != nil {
 		return err
 	}
-	_, err = q.Exec(ctx, `
+	var key string
+	err = q.QueryRow(ctx, `
 		INSERT INTO work_item_note_outbox
-			(note_key, run_id, work_item_id, root_work_item_id, repository, learning, suggested_scope, written_by)
+			(note_key, run_id, work_item_id, root_work_item_id, repository, learning, suggested_scope, written_by,
+			 level, subject, author_kind, author, trust, source_refs, observed_at, expires_at, supersedes)
 		SELECT r.trace_alias || '/' || $2::text, r.id, w.id, COALESCE(w.root_work_item_id, w.id),
 		       CASE WHEN w.target_repo = '' THEN '' ELSE w.target_forge || '/' || w.target_owner || '/' || w.target_repo END,
-		       $3, $4, $5 || ':' || r.trace_alias
+		       $3, $4, $5 || ':' || r.trace_alias,
+		       'work-item', $6, $5, r.trace_alias, 'untrusted',
+		       ARRAY['run:' || r.trace_alias, 'work-item:' || w.id::text], now(), $7, $8
 		FROM agent_runs r JOIN work_items w ON w.id = r.work_item_id
 		WHERE r.id = $1
-		ON CONFLICT (note_key) DO NOTHING`, runID, suffix, body, scope, writer)
+		ON CONFLICT (note_key) DO NOTHING
+		RETURNING note_key`, runID, suffix, body, scope, writer, subject, expires, supersedes).Scan(&key)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if scope == "work-item" {
+		return nil
+	}
+	_, err = q.Exec(ctx, `
+		INSERT INTO note_reviews (kind, note_key, work_item_id, repository, client, subject, target_level)
+		SELECT 'promotion', note_key, work_item_id, repository, client, subject, suggested_scope
+		FROM work_item_note_outbox WHERE note_key = $1
+		ON CONFLICT DO NOTHING`, key)
 	return err
+}
+
+// noteSubject is the subject a learning names, folded like a derived one, or
+// its type and title.
+func noteSubject(l harness.Learning) string {
+	if s := strings.TrimSpace(l.Subject); s != "" {
+		return notes.SubjectOf("", s)[1:]
+	}
+	return notes.SubjectOf(l.Type, l.Title)
+}
+
+func clipText(s string, n int) string {
+	s = strings.TrimSpace(s)
+	if len(s) > n {
+		return s[:n]
+	}
+	return s
 }
 
 // LiveNote is a note a running Run sends while it works, before its outcome:
@@ -101,7 +145,8 @@ func (s *Store) QueueLiveNotes(ctx context.Context, runToken string, notes []Liv
 	return len(notes), tx.Commit(ctx)
 }
 
-// PendingNote is one Work Item Note the outbox still has to write.
+// PendingNote is one note the outbox still has to write, with its
+// provenance (ADR-0122).
 type PendingNote struct {
 	ID             int64
 	Key            string
@@ -113,6 +158,83 @@ type PendingNote struct {
 	WrittenBy      string
 	CreatedAt      time.Time
 	Attempts       int
+
+	Level        string
+	Client       string
+	Subject      string
+	AuthorKind   string
+	Author       string
+	Trust        string
+	SourceRefs   []string
+	ObservedAt   time.Time
+	ExpiresAt    time.Time
+	Supersedes   string
+	PromotedFrom string
+	Evidence     []string
+	ApprovedBy   string
+	// RunID is the Run that wrote the note; nil for a note no Run wrote.
+	RunID *int64
+	// RunStartedAt is when the writing Run started, and so read its notes;
+	// zero for a note no Run wrote.
+	RunStartedAt time.Time
+}
+
+// Note is the pending note with its provenance, as the notes graph stores
+// it.
+func (p PendingNote) Note() notes.Note {
+	observed := p.ObservedAt
+	if observed.IsZero() {
+		observed = p.CreatedAt
+	}
+	return notes.Note{
+		Key:          p.Key,
+		RootWorkItem: strconv.FormatInt(p.RootWorkItemID, 10),
+		WorkItem:     strconv.FormatInt(p.WorkItemID, 10),
+		Repository:   p.Repository,
+		Client:       p.Client,
+		Type:         p.Learning.Type, Title: p.Learning.Title, Description: p.Learning.Description,
+		Resource: p.Learning.Resource, Tags: p.Learning.Tags, Body: p.Learning.Body,
+		SuggestedLevel: notes.Level(p.SuggestedScope),
+		Level:          notes.Level(p.Level),
+		Subject:        p.Subject,
+		AuthorKind:     notes.AuthorKind(p.AuthorKind),
+		Author:         p.Author,
+		SourceRefs:     p.SourceRefs,
+		Trust:          notes.Trust(p.Trust),
+		ObservedAt:     observed.UTC(),
+		WrittenAt:      p.CreatedAt.UTC(),
+		ExpiresAt:      p.ExpiresAt,
+		Supersedes:     p.Supersedes,
+		PromotedFrom:   p.PromotedFrom,
+		Evidence:       p.Evidence,
+		ApprovedBy:     p.ApprovedBy,
+	}.Normalize(p.WrittenBy)
+}
+
+const pendingNoteColumns = `id, note_key, work_item_id, root_work_item_id, repository, learning, suggested_scope, written_by,
+	created_at, attempts, level, client, subject, author_kind, author, trust, source_refs, observed_at, expires_at,
+	supersedes, promoted_from, evidence, approved_by, run_id,
+	(SELECT started_at FROM agent_runs WHERE agent_runs.id = run_id)`
+
+func scanPendingNote(row pgx.Row) (PendingNote, error) {
+	var n PendingNote
+	var learning []byte
+	var observed, expires, started *time.Time
+	if err := row.Scan(&n.ID, &n.Key, &n.WorkItemID, &n.RootWorkItemID, &n.Repository, &learning,
+		&n.SuggestedScope, &n.WrittenBy, &n.CreatedAt, &n.Attempts, &n.Level, &n.Client, &n.Subject,
+		&n.AuthorKind, &n.Author, &n.Trust, &n.SourceRefs, &observed, &expires,
+		&n.Supersedes, &n.PromotedFrom, &n.Evidence, &n.ApprovedBy, &n.RunID, &started); err != nil {
+		return n, err
+	}
+	for dst, src := range map[*time.Time]*time.Time{&n.ObservedAt: observed, &n.ExpiresAt: expires, &n.RunStartedAt: started} {
+		if src != nil {
+			*dst = src.UTC()
+		}
+	}
+	if err := json.Unmarshal(learning, &n.Learning); err != nil {
+		return n, fmt.Errorf("note %s: %w", n.Key, err)
+	}
+	return n, nil
 }
 
 // ClaimNoteWrites hands out at most limit due notes and holds them for lease,
@@ -127,22 +249,16 @@ func (s *Store) ClaimNoteWrites(ctx context.Context, limit int, lease time.Durat
 			  AND (claimed_until IS NULL OR claimed_until < now())
 			ORDER BY id LIMIT $1
 			FOR UPDATE SKIP LOCKED)
-		RETURNING id, note_key, work_item_id, root_work_item_id, repository, learning, suggested_scope, written_by, created_at, attempts`,
-		limit, lease)
+		RETURNING `+pendingNoteColumns, limit, lease)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var out []PendingNote
 	for rows.Next() {
-		var n PendingNote
-		var learning []byte
-		if err := rows.Scan(&n.ID, &n.Key, &n.WorkItemID, &n.RootWorkItemID, &n.Repository, &learning,
-			&n.SuggestedScope, &n.WrittenBy, &n.CreatedAt, &n.Attempts); err != nil {
+		n, err := scanPendingNote(rows)
+		if err != nil {
 			return nil, err
-		}
-		if err := json.Unmarshal(learning, &n.Learning); err != nil {
-			return nil, fmt.Errorf("note %s: %w", n.Key, err)
 		}
 		out = append(out, n)
 	}

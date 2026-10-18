@@ -124,6 +124,11 @@ knowledgeGraph: {}
 #   runTokenSecret:
 #     name: ploeg-omnigraph-run
 #     key: token
+#   # ADR-0122: the review actor that writes Client and Tenant promotions a
+#   # person accepted to conceptsGraph. Unset leaves them accepted and waiting.
+#   reviewTokenSecret:
+#     name: ploeg-omnigraph-review
+#     key: token
 
 # Plain PLOEG_* env rendered onto the deployment.
 env:
@@ -707,3 +712,5 @@ config: {}
 #         repairFailedChecks: true    # a failed check queues a repair Follow-Up
 #         maxRepairs: 2               # repair Follow-Ups per pull request; 0 = 2
 #         reworkOnChangesRequested: true  # a person's "request changes" sends it back
+#       premiseCheck:                 # ADR-0123; omit = no premise check (the default)
+#         model: hetzner-qwen3-8-27b  # a gateway model priced at zero; ploegd refuses any other
