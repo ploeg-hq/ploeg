@@ -559,7 +559,7 @@ func (s *Store) ReportOutcome(ctx context.Context, runToken string, rep harnessR
 	var id, runID int64
 	var team string
 	var shiftID *int64
-	var shadow bool
+	var shadow, writes bool
 	if err := tx.QueryRow(ctx, `
 		UPDATE agent_runs
 		SET state = 'finished', finished_at = now(), outcome = $1, summary = $2,
@@ -569,10 +569,10 @@ func (s *Store) ReportOutcome(ctx context.Context, runToken string, rep harnessR
 		    verification = CASE WHEN writes THEN $13::jsonb ELSE NULL END,
 		    evidence_version = $14, delivery = $15::jsonb, delivery_source = $16
 		WHERE run_token = $9 AND state = 'running'
-		RETURNING id, work_item_id, team, shift_id, shadow`,
+		RETURNING id, work_item_id, team, shift_id, shadow, writes`,
 		string(rep.Outcome), rep.Summary, rep.StuckReason, rep.Links, rep.Usage,
 		rep.FailureReason, rep.Findings, rep.Verdict, runToken, digest, rep.Problem, rep.Solution, verification,
-		CurrentEvidenceVersion, delivery, deliverySource).Scan(&runID, &id, &team, &shiftID, &shadow); err != nil {
+		CurrentEvidenceVersion, delivery, deliverySource).Scan(&runID, &id, &team, &shiftID, &shadow, &writes); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			if err := tx.QueryRow(ctx, `SELECT work_item_id,shift_id FROM agent_runs
 				WHERE run_token=$1 AND state='finished' AND outcome_digest=$2
@@ -628,6 +628,13 @@ func (s *Store) ReportOutcome(ctx context.Context, runToken string, rep harnessR
 	}
 	if admitted.changed != "" {
 		outcomeDetail["delivery_changed_outcome"] = admitted.changed
+	}
+	blackboard, err := recordBlackboard(ctx, tx, runID, id, writes, shadow, rep)
+	if err != nil {
+		return OutcomeResult{}, err
+	}
+	if len(blackboard) > 0 {
+		outcomeDetail["blackboard"] = blackboard
 	}
 	if shadow {
 		outcomeDetail["shadow"] = true
@@ -700,9 +707,15 @@ type harnessReport struct {
 	Created       []harness.CreatedWorkItem `json:",omitempty"`
 	Verification  *harness.Verification     `json:",omitempty"` // the worker's own check run; stored for a writing Run only
 	Delivery      *harness.Delivery         `json:",omitempty"` // the worker's forge observation (ADR-0059); bound to the Run before it is stored
-	policyFor     func(team string) followup.Policy
-	knownTeam     func(string) bool
-	notes         []harness.Learning // kept learnings to write as Work Item Notes; outside the digest
+	// FindingItems, FindingAnswers, Questions and QuestionAnswers are the
+	// Run's blackboard entries (ADR-0121) before ploegd assigns their ids.
+	FindingItems    []harness.ReviewFinding  `json:",omitempty"`
+	FindingAnswers  []harness.FindingAnswer  `json:",omitempty"`
+	Questions       []harness.Question       `json:",omitempty"`
+	QuestionAnswers []harness.QuestionAnswer `json:",omitempty"`
+	policyFor       func(team string) followup.Policy
+	knownTeam       func(string) bool
+	notes           []harness.Learning // kept learnings to write as Work Item Notes; outside the digest
 }
 
 // WithCreatedWork attaches the Work Items a Run proposes (ADR-0031).

@@ -83,6 +83,15 @@ func fullTaskSpec() TaskSpec {
 			{Role: "analyst", Round: 1, Findings: "## analyst\n- the retry loop is unbounded"},
 			{Role: "security", Round: 1, Findings: "## security\n- the token is logged at debug"},
 		},
+		ReviewFindings: []BriefedFinding{
+			{ReviewFinding: ReviewFinding{ID: "f12-1", Severity: SeverityBlocking, Title: "unbounded retry", Body: "cap it", Path: "pkg/a.go", Line: 3},
+				Role: "reviewer", Round: 2, Answer: &BriefedAnswer{Status: AnswerDisagree, Reason: "bounded by ctx", Role: "builder", Round: 3}},
+			{ReviewFinding: ReviewFinding{ID: "f12-2", Title: "naming"}, Role: "reviewer", Round: 2, Unanswered: true},
+		},
+		Questions: []BriefedQuestion{
+			{ID: "q10-1", To: AskPerson, Text: "which locale?", Role: "builder", Round: 1, Answer: "nl-NL", AnsweredBy: "person"},
+			{ID: "q10-2", To: AskNextRun, Text: "did it migrate?", Role: "builder", Round: 1},
+		},
 		OpenSpec: &OpenSpecBrief{Change: "add-widget", Root: "apps/ploeg", Source: OpenSpecSourceCLI,
 			Brief: "Pending tasks:\n- 1.1 add the widget"},
 		Knowledge: &KnowledgeBrief{
@@ -180,6 +189,15 @@ func TestOutcomeReport_MatchesSchema(t *testing.T) {
 		Usage:      &Usage{InputTokens: 100, OutputTokens: 50, CostUSD: 0.42, SessionID: "sess-1"},
 		Learnings: []Learning{{Type: "Pitfall", Title: "Registry pulls time out", Description: "the sandbox reaches only its gateway",
 			Resource: "https://example.test/AGENTS.md", Tags: []string{"sandbox"}, Body: "Skip the gate and list it.", Scope: "repository"}},
+		FindingItems: []ReviewFinding{{Severity: SeverityShouldFix, Title: "new", Body: "b", Path: "a.go", Line: 1},
+			{ID: "f12-1", Title: "raised again"}},
+		FindingAnswers: []FindingAnswer{{FindingID: "f12-1", Status: AnswerFixed},
+			{FindingID: "f12-2", Status: AnswerDisagree, Reason: "intended"}},
+		Questions:       []Question{{To: AskPerson, Text: "which locale?"}, {To: AskReviewer, Text: "cache?"}},
+		QuestionAnswers: []QuestionAnswer{{QuestionID: "q10-2", Answer: "yes"}},
+	}
+	if err := ValidateBlackboard(full); err != nil {
+		t.Errorf("full OutcomeReport fails ValidateBlackboard: %v", err)
 	}
 	if err := validate(t, sch, full); err != nil {
 		t.Errorf("full OutcomeReport does not validate: %v", err)
@@ -320,6 +338,33 @@ func TestOutcomeReport_SchemaRejectsInvalid(t *testing.T) {
 		"outcome": "no_change_needed", "summary": "x", "verdict": "ship_it",
 	}); err == nil {
 		t.Error("unknown verdict enum validated")
+	}
+
+	// ADR-0121: the blackboard fields' shapes are closed, and Go agrees.
+	for name, extra := range map[string]map[string]any{
+		"disagree without reason": {"findingAnswers": []any{map[string]any{"findingId": "f1-1", "status": "disagree"}}},
+		"disagree blank reason":   {"findingAnswers": []any{map[string]any{"findingId": "f1-1", "status": "disagree", "reason": " "}}},
+		"unknown answer status":   {"findingAnswers": []any{map[string]any{"findingId": "f1-1", "status": "ignored"}}},
+		"answer names a question": {"findingAnswers": []any{map[string]any{"findingId": "q1-1", "status": "fixed"}}},
+		"finding without title":   {"findingItems": []any{map[string]any{"body": "x"}}},
+		"invented finding id":     {"findingItems": []any{map[string]any{"id": "F-1", "title": "x"}}},
+		"unknown severity":        {"findingItems": []any{map[string]any{"title": "x", "severity": "critical"}}},
+		"question to a team":      {"questions": []any{map[string]any{"to": "team", "text": "x"}}},
+		"question with an id":     {"questions": []any{map[string]any{"id": "q1-1", "to": "person", "text": "x"}}},
+		"empty question answer":   {"questionAnswers": []any{map[string]any{"questionId": "q1-1", "answer": ""}}},
+	} {
+		body := map[string]any{"outcome": "no_change_needed", "summary": "x"}
+		for k, v := range extra {
+			body[k] = v
+		}
+		if err := validate(t, sch, body); err == nil {
+			t.Errorf("%s: schema accepted it", name)
+		}
+		b, _ := json.Marshal(body)
+		var rep OutcomeReport
+		if err := json.Unmarshal(b, &rep); err == nil && ValidateBlackboard(rep) == nil {
+			t.Errorf("%s: ValidateBlackboard accepted it", name)
+		}
 	}
 
 	for name, usage := range map[string]map[string]any{

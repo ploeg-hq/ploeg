@@ -872,6 +872,10 @@ type RunReport struct {
 	// (ADR-0059); nil for a Run from an older worker or stored before
 	// ploegd kept it.
 	Delivery *harness.Delivery
+	// FindingItems and FindingAnswers are the Run's findings by id and its
+	// answers to findings (ADR-0121), as stored; nil when it reported none.
+	FindingItems   []harness.ReviewFinding
+	FindingAnswers []harness.FindingAnswer
 }
 
 // CurrentEvidenceVersion is the evidence_version ReportOutcome stores: the
@@ -894,17 +898,27 @@ func (s *Store) RoundReports(ctx context.Context, shiftID int64) ([]RunReport, e
 }
 
 const runReportColumns = `role, round, writes, shadow, COALESCE(outcome, ''), summary, findings, links, verdict, verification,
-		       COALESCE(failure_reason, ''), COALESCE(evidence_version, 0), delivery`
+		       COALESCE(failure_reason, ''), COALESCE(evidence_version, 0), delivery, finding_items, finding_answers`
 
 func collectRunReports(rows pgx.Rows) ([]RunReport, error) {
 	defer rows.Close()
 	var out []RunReport
 	for rows.Next() {
 		var r RunReport
-		var verification, delivery []byte
+		var verification, delivery, items, answers []byte
 		if err := rows.Scan(&r.Role, &r.Round, &r.Writes, &r.Shadow, &r.Outcome, &r.Summary, &r.Findings, &r.Links, &r.Verdict, &verification,
-			&r.FailureReason, &r.EvidenceVersion, &delivery); err != nil {
+			&r.FailureReason, &r.EvidenceVersion, &delivery, &items, &answers); err != nil {
 			return nil, err
+		}
+		if items != nil {
+			if err := json.Unmarshal(items, &r.FindingItems); err != nil {
+				return nil, fmt.Errorf("decode run finding items: %w", err)
+			}
+		}
+		if answers != nil {
+			if err := json.Unmarshal(answers, &r.FindingAnswers); err != nil {
+				return nil, fmt.Errorf("decode run finding answers: %w", err)
+			}
 		}
 		if delivery != nil {
 			r.Delivery = new(harness.Delivery)

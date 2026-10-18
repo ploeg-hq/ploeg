@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/ploeg-hq/ploeg/pkg/harness"
 )
 
 var ErrOperatorNotFound = errors.New("operator resource not found")
@@ -262,7 +264,18 @@ type OperatorRun struct {
 	// that a settled cost is provisional.
 	CostFinal bool `json:"costFinal"`
 	OperatorRunConfig
+	// FindingItems, FindingAnswers, Questions and QuestionAnswers are what
+	// the Run reported by id (ADR-0121), with the ids ploegd assigned; empty
+	// for a Run that reported none.
+	FindingItems    []harness.ReviewFinding  `json:"findingItems"`
+	FindingAnswers  []harness.FindingAnswer  `json:"findingAnswers"`
+	Questions       []harness.Question       `json:"questions"`
+	QuestionAnswers []harness.QuestionAnswer `json:"questionAnswers"`
 }
+
+const operatorRunBlackboardJSON = `jsonb_build_object(
+	'findingItems', COALESCE(r.finding_items, '[]'::jsonb), 'findingAnswers', COALESCE(r.finding_answers, '[]'::jsonb),
+	'questions', COALESCE(r.questions, '[]'::jsonb), 'questionAnswers', COALESCE(r.question_answers, '[]'::jsonb))`
 
 type OperatorCheckpoint struct {
 	ID         string    `json:"id"`
@@ -295,6 +308,13 @@ type OperatorDetail struct {
 	// first, so their owner can find one to steer.
 	Executions []OperatorExecutionBrief `json:"executions"`
 	Truncated  OperatorTruncated        `json:"truncated"`
+	// Findings, Questions and ReviewDisagreements are the Work Item's
+	// findings by id with their answers, the questions its Runs asked, and
+	// the review Rounds where a shadow reviewer's verdict differed from the
+	// acting reviewers' (ADR-0121).
+	Findings            []OperatorFinding            `json:"findings"`
+	Questions           []OperatorQuestion           `json:"questions"`
+	ReviewDisagreements []OperatorReviewDisagreement `json:"reviewDisagreements"`
 }
 
 type OperatorTruncated struct {
@@ -443,7 +463,7 @@ var operatorRunJSON = `jsonb_build_object(
 	'costStatus', ` + operatorRunCostStatus + `,
 	` + operatorRunSettlementJSON + `,
 	` + operatorRunConfigJSON + `,
-	'keyAlias', CASE WHEN r.started_at IS NOT NULL THEN 'ploeg-' || left(r.run_token, 12) ELSE NULL END)`
+	'keyAlias', CASE WHEN r.started_at IS NOT NULL THEN 'ploeg-' || left(r.run_token, 12) ELSE NULL END) || ` + operatorRunBlackboardJSON
 
 const operatorCheckpointJSON = `jsonb_build_object(
 	'id', c.id::text, 'workItemId', c.work_item_id::text, 'phase', c.phase, 'branch', left(c.branch, 1024),
@@ -673,6 +693,9 @@ func (s *Store) OperatorItem(ctx context.Context, id int64, teams []string) (Ope
 		return detail, err
 	}
 	detail.Executions, detail.Truncated.Executions, _ = operatorPage(allExecutions, limit)
+	if detail.Findings, detail.Questions, detail.ReviewDisagreements, err = operatorLedger(ctx, tx, id); err != nil {
+		return detail, err
+	}
 	return detail, tx.Commit(ctx)
 }
 

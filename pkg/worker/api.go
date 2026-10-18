@@ -51,6 +51,11 @@ type ClaimResponse struct {
 	// at (ADR-0012). Zero = fall back to the worker's env budget.
 	Authorized float64           `json:"authorized,omitempty"`
 	Briefing   []harness.Finding `json:"briefing,omitempty"`
+	// ReviewFindings and Questions are the Shift's findings by id with their
+	// answers, and the questions that reach this Run (ADR-0121). Absent from
+	// an older ploegd.
+	ReviewFindings []harness.BriefedFinding  `json:"reviewFindings,omitempty"`
+	Questions      []harness.BriefedQuestion `json:"questions,omitempty"`
 	// ForgeToken is a push credential minted for this run alone and revoked
 	// when it settles (ADR-0013 tier 2). Empty = use the env credential.
 	ForgeToken string `json:"forgeToken,omitempty"`

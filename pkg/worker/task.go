@@ -54,6 +54,8 @@ func ComposePrompt(spec harness.TaskSpec, writes bool, priorPR string, onReviewB
 		writeOpenSpec(&b, spec, openSpecForReader, base)
 	}
 	writeBriefing(&b, spec.Briefing)
+	writeReviewFindings(&b, spec.ReviewFindings, writes)
+	writeQuestions(&b, spec.Questions, writes)
 	writeKnowledge(&b, spec)
 
 	if !writes && item.Origin == work.OriginPullRequest {
@@ -104,6 +106,7 @@ func ComposePrompt(spec harness.TaskSpec, writes bool, priorPR string, onReviewB
 - If the work cannot be reviewed at all, explain why on stderr and exit
   non-zero.
 `, noun)
+		writeBlackboardContract(&b, spec, false)
 		// The pull request the findings will land on. A reader was never told
 		// it existed, which made "review the pull request" unsayable — it
 		// could only ever review a branch it had not been given either.
@@ -178,10 +181,11 @@ func ComposePrompt(spec harness.TaskSpec, writes bool, priorPR string, onReviewB
       - Added docs/adrs/0023-typescript-7-route.md, naming both blockers
         and the condition that clears each.
 
-  Put nothing else in the file: Ploeg reads the forge to learn what you
-  delivered.
+  Put nothing else in the file apart from the fields below: Ploeg reads the
+  forge to learn what you delivered.
 - If the Work Item cannot be completed, explain why on stderr and exit non-zero.
 `, noun)
+	writeBlackboardContract(&b, spec, true)
 	writeWriterRepositoryInstructions(&b, noun)
 	return b.String()
 }
