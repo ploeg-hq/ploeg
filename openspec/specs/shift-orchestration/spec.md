@@ -218,6 +218,43 @@ and keep the fix-round cap or budget reason when the fix loop ran out.
 - **THEN** the Shift closes `checks_not_passed` and the Work Item reaches
   `needs_human`
 
+### Requirement: A pull request is ready for review only when the forge's CI passed on its head
+
+A Work Item SHALL reach `awaiting_review` only when the forge's combined
+commit status at the pull request's head, as the forge reports the head, is
+`success`, or the forge reports no status for that commit (ADR-0119). While it
+is `pending` the Shift SHALL stay open and SHALL close `ci_not_finished` once
+the route's `ci.waitTimeout` (default 60 minutes) has passed. A failing check
+the provider does not mark cancelled, and that does not also fail on the pull
+request's base commit, SHALL re-open the writing Round as a fix round within
+the fix-round cap and budget, whatever a reviewer's verdict, with each failing
+check in the writer's briefing. A cancelled check, or one failing on the base
+commit too, SHALL NOT open a fix round: Ploeg SHALL ask the forge to re-run CI
+once, and SHALL close `ci_not_passed` when it still does not pass or the forge
+cannot re-run. A Work Item in `awaiting_review` whose head CI stops being
+`success` SHALL leave `awaiting_review` after the same wait and re-run.
+
+#### Scenario: Red forge CI with fix rounds left
+
+- **GIVEN** a writer whose checks passed and a reviewer that approved
+- **WHEN** a forge check on the pull request's head failed and is not cancelled
+- **THEN** the writing Round re-opens with that check in its briefing
+
+#### Scenario: Cancelled forge CI
+
+- **GIVEN** a forge check on the pull request's head that the forge reports
+  cancelled
+- **WHEN** one re-run still does not pass
+- **THEN** the Shift closes `ci_not_passed`, no fix round runs, and the Work
+  Item reaches `needs_human`
+
+#### Scenario: Forge CI still running
+
+- **GIVEN** a forge check on the pull request's head that is still pending
+- **WHEN** the route's `ci.waitTimeout` passes
+- **THEN** the Shift closes `ci_not_finished` and the Work Item reaches
+  `needs_human`
+
 ### Requirement: An exhausted budget pool parks the item rather than failing it
 
 When `ClaimRole` raises `ErrBudgetExhausted`, ploegd SHALL move the Work Item

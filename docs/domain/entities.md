@@ -62,7 +62,7 @@ Ploeg's execution record for tracker, follow-up or operator work.
 | `team` | `string` |  | Team the item is queued for — the claiming Team, not the codebase; empty until assigned. |
 | `target` | `Work Target` |  | Forge coordinates the item's Runs act on; absent means unresolved (R11). |
 | `route_rule` | `string` |  | Id of the Routing Rule that decided team and target; recorded for audit. |
-| `state` | `enum(ingested, proposed, queued, active, needs_human, awaiting_review, stale, done, withdrawn)` | yes | Dispatch lifecycle position. active means a Team is working the item through a live Shift. proposed means a Run created the item and it waits for a person to approve or reject it; no Team can claim it. awaiting_review means Ploeg's work succeeded and its pull request is ready for human review. withdrawn means a person took the mandate back by unassigning the Tracker Item or cancelling it through the operator API. |
+| `state` | `enum(ingested, proposed, queued, active, needs_human, awaiting_review, stale, done, withdrawn)` | yes | Dispatch lifecycle position. active means a Team is working the item through a live Shift. proposed means a Run created the item and it waits for a person to approve or reject it; no Team can claim it. awaiting_review means Ploeg's work succeeded and its pull request, with the forge's CI passed on its head, is ready for human review. withdrawn means a person took the mandate back by unassigning the Tracker Item or cancelling it through the operator API. |
 | `origin` | `enum(assignment, follow_up, operator, pull_request)` | yes | Whether the item came from a tracker, Forge Event, Operator Consumer or a pull request someone else opened that a Team reads. |
 | `priority` | `integer` |  | Rank mirrored from the tracker; drives Team Queue order. |
 
@@ -90,6 +90,7 @@ stateDiagram-v2
     active --> done : Terminal Outcome reported (issue_updated, follow_up_created, no_change_needed)
     active --> awaiting_review : A pull request was opened or updated and the Shift closed successfully
     awaiting_review --> queued : Re-assignment in the tracker is a fresh mandate
+    awaiting_review --> needs_human : The forge's CI on the pull request's head stopped being success and the wait and one re-run did not bring it back (ADR-0119)
     needs_human --> queued : Human re-queues after resolving the blocker
     needs_human --> done : Human closes the item
     stale --> queued : Human or explicit policy re-queues

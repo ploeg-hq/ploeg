@@ -113,6 +113,11 @@ type Server struct {
 	// DefaultAskAllowanceUSD and DefaultAskBudgetUSD.
 	AskAllowanceUSD float64
 	AskBudgetUSD    float64
+	// ChatAllowanceUSD is the limit a Team's monthly Chat Allowance opens
+	// with and ChatBudgetUSD the per-chat Budget (ADR-0128). Zero means
+	// DefaultChatAllowanceUSD and DefaultChatBudgetUSD.
+	ChatAllowanceUSD float64
+	ChatBudgetUSD    float64
 	// DisableRunTranscripts refuses Run transcripts (ADR-0090): the
 	// ingestion route answers 404 and workers stop sending. Transcripts
 	// already stored stay readable.
@@ -680,6 +685,13 @@ func (s *Server) respondClaimedRun(w http.ResponseWriter, r *http.Request, req c
 		s.Log.Error("review briefing read failed; run proceeds without it", "shift", run.ShiftID, "err", err)
 	} else {
 		in.Reviews = notes
+	}
+	if run.Writes {
+		if failures, err := s.Store.CIFixBriefing(r.Context(), run.ShiftID, run.Round); err != nil {
+			s.Log.Error("forge CI briefing read failed; run proceeds without it", "shift", run.ShiftID, "err", err)
+		} else if len(failures) > 0 {
+			resp.Briefing = append(resp.Briefing, forgeCIBriefing(failures, run.Round))
+		}
 	}
 	if brief, restarted, err := s.Store.ShiftRestartBrief(r.Context(), run.ShiftID); err != nil {
 		s.Log.Error("restart briefing read failed; run proceeds without it", "shift", run.ShiftID, "err", err)
