@@ -73,6 +73,18 @@ type Engine struct {
 	// Selections resolves the Harness and model each Role's Runs store
 	// (ADR-0098, ADR-0103). Nil stores neither.
 	Selections RoleSelections
+	// Premise runs the premise check of the Teams in PremiseModels before
+	// their first Shift opens (ADR-0123). Nil = no check.
+	Premise PremiseChecker
+	// PremiseModels maps a Team that opted in to the gateway model its
+	// premise check calls.
+	PremiseModels map[string]string
+	// HoldDependencies holds a queued Work Item's first Shift while a
+	// tracker item it waits for is not done (ADR-0123).
+	HoldDependencies bool
+	// DependencyRecheck is how often a held Work Item's tracker is read
+	// again. Zero means DefaultDependencyRecheck.
+	DependencyRecheck time.Duration
 }
 
 // RoleSelections is what a Role of a team may run and call.
@@ -101,6 +113,12 @@ const (
 // Shift is left alone, and the shifts_one_live_per_item index settles the
 // race two openers can still run into.
 func (e *Engine) EnsureShift(ctx context.Context, workItemID int64, item work.WorkItem) error {
+	return e.ensureShift(ctx, workItemID, item, nil)
+}
+
+// ensureShift is EnsureShift. A non-nil sweep allows premise checks; the
+// fast path leaves them to the next sweep.
+func (e *Engine) ensureShift(ctx context.Context, workItemID int64, item work.WorkItem, sweep *sweepAllowance) error {
 	tp, planned, _ := e.planForItem(item.Team, item.Origin)
 	if !planned {
 		return nil
@@ -110,6 +128,10 @@ func (e *Engine) EnsureShift(ctx context.Context, workItemID int64, item work.Wo
 		return err
 	}
 	if live == nil {
+		admitted, err := e.admit(ctx, workItemID, item, sweep)
+		if err != nil || !admitted {
+			return err
+		}
 		branch := work.Branch(item)
 		if _, err := e.Store.OpenShift(ctx, workItemID, item.Team, branch, float64(tp.Pool)); err != nil {
 			// Unique-index violation = someone else opened it between our read
@@ -268,6 +290,10 @@ func (e *Engine) evaluate(ctx context.Context, si store.ShiftInfo) error {
 
 	if park, found := parkingRun(reports, si.Round); found {
 		return e.parkForHuman(ctx, si, park, reports)
+	}
+
+	if parked, err := e.parkForQuestions(ctx, si, reports); parked || err != nil {
+		return err
 	}
 
 	for _, r := range reports {
@@ -531,13 +557,14 @@ func (e *Engine) EvaluateAll(ctx context.Context) {
 	if err != nil {
 		e.Log.Error("shift sweep: queued-without-shift read failed", "err", err)
 	}
+	sweep := &sweepAllowance{premiseChecks: premiseChecksPerSweep}
 	for _, id := range ids {
 		item, err := e.Store.WorkItem(ctx, id)
 		if err != nil {
 			e.Log.Error("shift sweep: work item read failed", "work_item", id, "err", err)
 			continue
 		}
-		if err := e.EnsureShift(ctx, id, item); err != nil {
+		if err := e.ensureShift(ctx, id, item, sweep); err != nil {
 			e.Log.Error("shift sweep: ensure failed", "work_item", id, "err", err)
 		}
 	}

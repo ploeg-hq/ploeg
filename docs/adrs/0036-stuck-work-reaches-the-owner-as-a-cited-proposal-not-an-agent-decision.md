@@ -282,6 +282,10 @@ This record is proposed, and nothing has been built yet. When the slices land,
 
 `go test ./internal/ledger/` gates this record.
 
+### History
+
+* **2026-10-18: T0 decided by ADR-0123.** [ADR-0123](0123-dispatch-waits-for-tracker-dependencies-and-an-opt-in-free-premise-check.md) builds the premise check as a ploegd classifier call on a gateway model priced at zero, before the first Shift opens, instead of a reading Role with `preflight: true`. It answers `proceed`, `ask` with a question, or `too_big`; `ask` and `too_big` park the Work Item at `needs_human` without a Shift. It ships off for every Team, so owner decision 3 (on for `bronze`) becomes a homelab configuration change. The rest of this ladder stays proposed.
+
 ## Pros and Cons of the Options
 
 ### Ladder B: a lead that applies decisions within a mandate

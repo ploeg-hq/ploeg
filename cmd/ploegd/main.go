@@ -22,6 +22,7 @@ import (
 	"github.com/ploeg-hq/ploeg/pkg/litellm"
 	"github.com/ploeg-hq/ploeg/pkg/llmbroker"
 	"github.com/ploeg-hq/ploeg/pkg/plan"
+	"github.com/ploeg-hq/ploeg/pkg/premise"
 	"github.com/ploeg-hq/ploeg/pkg/provider"
 	"github.com/ploeg-hq/ploeg/pkg/provider/clickup"
 	"github.com/ploeg-hq/ploeg/pkg/provider/forgejo"
@@ -301,6 +302,9 @@ func run(log *slog.Logger) error {
 			},
 		}
 		log.Info("shift engine enabled", "planned_teams", len(plans), "uniform", uniform, "usage_report", usageReport)
+		if err := dispatchGate(engine, cfg, log); err != nil {
+			return err
+		}
 	} else {
 		log.Info("shift engine disabled (no plans, PLOEG_SHIFTS_UNIFORM=false)")
 	}
@@ -402,6 +406,9 @@ func run(log *slog.Logger) error {
 	}
 	if concepts != nil {
 		srv.Knowledge = concepts
+		if concepts.Review != nil {
+			srv.Concepts = concepts
+		}
 	}
 	log.Info("forge follow-ups loaded", "teams", len(srv.FollowUps))
 	if engine != nil {
@@ -415,6 +422,7 @@ func run(log *slog.Logger) error {
 			DefaultForge:    forgeID,
 			Trackers:        trackers,
 			MarkTrackerDone: envOr("PLOEG_TRACKER_DONE_ON_MERGE", "false") == "true",
+			OutcomeNotes:    srv.Notes != nil,
 			CIWaits:         ciWaits(cfg),
 			Log:             log,
 		}
@@ -580,6 +588,32 @@ func durationOr(key string, def time.Duration) time.Duration {
 		}
 	}
 	return def
+}
+
+// dispatchGate wires what holds a Work Item before its first Shift
+// (ADR-0123). A tracker dependency holds it unless
+// PLOEG_DEPENDENCY_HOLD=false; a Team's premise check needs the LiteLLM
+// management credentials, because ploegd reads the model's price and mints
+// the check's key with them.
+func dispatchGate(engine *shiftengine.Engine, cfg *config.File, log *slog.Logger) error {
+	hold, err := switchEnv("PLOEG_DEPENDENCY_HOLD", true)
+	if err != nil {
+		return err
+	}
+	engine.HoldDependencies = hold
+	engine.DependencyRecheck = durationOr("PLOEG_DEPENDENCY_RECHECK", shiftengine.DefaultDependencyRecheck)
+	models := cfg.PremiseChecks()
+	if len(models) > 0 {
+		url, key := os.Getenv("LITELLM_ADMIN_URL"), os.Getenv("LITELLM_MASTER_KEY")
+		if url == "" || key == "" {
+			log.Warn("premise check configured for a Team but LITELLM_ADMIN_URL or LITELLM_MASTER_KEY is unset; no premise check runs", "teams", len(models))
+		} else {
+			engine.Premise = &premise.Checker{Gateway: litellm.NewClient(url, key), Log: log}
+			engine.PremiseModels = models
+		}
+	}
+	log.Info("dispatch gate", "dependency_hold", hold, "dependency_recheck", engine.DependencyRecheck.String(), "premise_check_teams", len(engine.PremiseModels))
+	return nil
 }
 
 func ciWaits(cfg *config.File) shiftengine.CIWaits {

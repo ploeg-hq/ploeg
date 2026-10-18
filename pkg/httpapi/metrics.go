@@ -96,6 +96,17 @@ func sortedRunOutcomes(m map[store.RunOutcomeKey]int) []store.RunOutcomeKey {
 	return keys
 }
 
+func sortedBriefedRuns(m map[store.BriefedRunsKey]int) []store.BriefedRunsKey {
+	keys := make([]store.BriefedRunsKey, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	slices.SortFunc(keys, func(a, b store.BriefedRunsKey) int {
+		return cmp.Or(cmp.Compare(a.Team, b.Team), cmp.Compare(a.Role, b.Role), cmp.Compare(a.Notes, b.Notes))
+	})
+	return keys
+}
+
 func sortedShadowReviews(m map[store.ShadowReviewKey]int) []store.ShadowReviewKey {
 	keys := make([]store.ShadowReviewKey, 0, len(m))
 	for k := range m {
@@ -176,6 +187,14 @@ func renderMetrics(m store.OperationalMetrics, webhooks *WebhookCoverage, harnes
 		if harnessAllowed == nil || !harnessAllowed(p.Team, p.Role, p.Harness) {
 			b.sample("ploeg_runs_pending_outside_allowlist", float64(p.Pending), "team", p.Team, "role", p.Role, "harness", p.Harness)
 		}
+	}
+	b.family("ploeg_runs_briefed_total", "counter", "Finished Runs that recorded their briefing (ADR-0124), by team, Role and whether the briefing held any Work Item Note (notes is with or without).")
+	for _, k := range sortedBriefedRuns(m.BriefedRuns) {
+		b.sample("ploeg_runs_briefed_total", float64(m.BriefedRuns[k]), "team", k.Team, "role", k.Role, "notes", k.Notes)
+	}
+	b.family("ploeg_run_briefed_notes_total", "counter", "Work Item Notes the finished Runs of a team and Role were briefed with (ADR-0124).")
+	for _, k := range sortedBriefedRuns(m.BriefedNotes) {
+		b.sample("ploeg_run_briefed_notes_total", float64(m.BriefedNotes[k]), "team", k.Team, "role", k.Role)
 	}
 	b.family("ploeg_awaiting_review_with_unsuccessful_ci", "gauge", "Work Items in awaiting_review whose pull request's head CI, as last read from the forge, is not success (ADR-0119); stays at 0.")
 	b.sample("ploeg_awaiting_review_with_unsuccessful_ci", float64(m.AwaitingReviewWithUnsuccessfulCI))

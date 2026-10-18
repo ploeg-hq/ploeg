@@ -11,8 +11,10 @@ import (
 	"github.com/ploeg-hq/ploeg/pkg/omnigraph"
 )
 
-// tenantGraphs wires the Tenant's notes graph (ADR-0088) and reviewed
-// knowledge graph (ADR-0087), both proposed. Each is off unless named; a
+// tenantGraphs wires the Tenant's notes graph (ADR-0088, ADR-0122) and
+// reviewed knowledge graph (ADR-0087), with the review actor that writes
+// accepted Client and Tenant promotions when PLOEG_OMNIGRAPH_REVIEW_TOKEN
+// names one. Each is off unless named; a
 // named graph needs the server and the run actor's token, and a server or
 // token without any graph is an error, so a typo cannot silently turn
 // knowledge off.
@@ -35,7 +37,11 @@ func tenantGraphs(log *slog.Logger) (*knowledgegraph.Notes, *knowledgegraph.Know
 	}
 	if knowledgeGraph != "" {
 		knowledge = &knowledgegraph.Knowledge{Client: client, Graph: knowledgeGraph}
+		if review := os.Getenv("PLOEG_OMNIGRAPH_REVIEW_TOKEN"); review != "" {
+			knowledge.Review = &omnigraph.Client{BaseURL: url, Token: review, HTTP: &http.Client{Timeout: 30 * time.Second}}
+		}
 	}
-	log.Info("tenant knowledge", "notes_graph", notesGraph, "knowledge_graph", knowledgeGraph)
+	log.Info("tenant knowledge", "notes_graph", notesGraph, "knowledge_graph", knowledgeGraph,
+		"review_actor", knowledge != nil && knowledge.Review != nil)
 	return notes, knowledge, nil
 }

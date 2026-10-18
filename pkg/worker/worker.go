@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ploeg-hq/ploeg/pkg/boardview"
 	"github.com/ploeg-hq/ploeg/pkg/harness"
 	"github.com/ploeg-hq/ploeg/pkg/harness/skills"
 	"github.com/ploeg-hq/ploeg/pkg/knowledge"
@@ -369,6 +370,10 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 		Branch:   branch,
 		TraceID:  trace,
 		Briefing: claimed.Briefing,
+
+		ReviewFindings: claimed.ReviewFindings,
+		ActiveWork:     claimed.ActiveWork,
+		Questions:      claimed.Questions,
 	}
 
 	// A PR on this branch BEFORE the harness runs is a previous run's work:
@@ -496,6 +501,28 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 			support += invitation.String()
 		}
 	}
+	var board *boardWatch
+	if claimed.Board != nil && w.API != nil {
+		since := *claimed.Board
+		since.ForgeCommit = headCommit(ctx, cloneDir)
+		cp := briefedCheckpoint(branch, since.ForgeCommit, spec, graphs, writes)
+		since.NotesCommit, since.ConceptsCommit = cp.Board.NotesCommit, cp.Board.ConceptsCommit
+		if err := w.API.Checkpoint(claimed.RunToken, cp); err != nil {
+			w.Log.Warn("briefing versions not recorded; the Run cannot be replayed", "err", err)
+		}
+		forge := remoteForgeHead(cloneDir, cloneURL, forgeCred.current, branch, since.ForgeCommit, writes)
+		path := filepath.Join(scratchDir, "board.md")
+		if board, err = startBoardWatch(path, w.API, claimed.RunToken, forge, w.Log); err != nil {
+			w.Log.Warn("could not create the board file; the Run is not caught up", "err", err)
+			board = nil
+		} else {
+			defer board.Close()
+			if w.Adapter.Name() != "claude-environment" {
+				runEnv = append(runEnv, boardview.FileEnv+"="+path)
+				support += boardSection(since)
+			}
+		}
+	}
 	w.Log.Info("prepared the Run's sandbox", "skills", len(skillSet), "toolchains", len(w.Cfg.Toolchains), "verify_commands", len(verifyCommands))
 	harnessSpec, harnessForgeToken := spec, forgeToken
 	var gitEnv []string
@@ -536,6 +563,7 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 				w.Log.Warn("prompt start not recorded; the Run's limits stay unknown", "err", err)
 			}
 		},
+		CatchUp: board.catchUp,
 	}
 
 	env.BaseEnv = append(env.BaseEnv, gitEnv...)
@@ -563,6 +591,8 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	env.Transcript.Stage(harnessFinished(w.Adapter.Name(), report, mintErr, runErr))
 	closeTranscript(env.Transcript)
 	notesLive.Close(context.WithoutCancel(ctx))
+	board.Close()
+	board.finish(context.WithoutCancel(ctx))
 	if mintErr != nil {
 		return stuckReport("failed to mint per-run LiteLLM key", mintErr.Error())
 	}
@@ -836,6 +866,18 @@ func resolveOutcome(adapterName string, report harness.OutcomeReport, runErr, ct
 		}
 		if r.Problem == "" && r.Solution == "" {
 			r.Problem, r.Solution = report.Problem, report.Solution
+		}
+		if r.FindingItems == nil {
+			r.FindingItems = report.FindingItems
+		}
+		if r.FindingAnswers == nil {
+			r.FindingAnswers = report.FindingAnswers
+		}
+		if r.Questions == nil {
+			r.Questions = report.Questions
+		}
+		if r.QuestionAnswers == nil {
+			r.QuestionAnswers = report.QuestionAnswers
 		}
 		return r
 	}

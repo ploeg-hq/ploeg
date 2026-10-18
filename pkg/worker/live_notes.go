@@ -239,8 +239,12 @@ func stopNote(final harness.OutcomeReport, progress transcript.Progress, elapsed
 		Description: clip("What the previous Run had done when it stopped, recorded by Ploeg", 300),
 		Tags:        []string{"run-stopped"},
 		Body:        clip(b.String(), 4000),
+		Subject:     stopNoteSubject,
 	}
 }
+
+// stopNoteSubject makes each stop note replace the previous one (ADR-0122).
+const stopNoteSubject = "run-stopped"
 
 func roundElapsed(d time.Duration) time.Duration {
 	if d < time.Minute {

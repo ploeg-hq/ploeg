@@ -43,6 +43,7 @@ executor:
           signals: [logs, traces]
           resourceAttributes:
             deployment.environment: ci
+          allowHarnesses: [openhands]
     # ADR-0084: Runs execute as Claude Code sessions in the Team's self-hosted
     # environment; the worker only dispatches and waits.
     - name: pewter

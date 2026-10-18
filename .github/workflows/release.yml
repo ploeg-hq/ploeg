@@ -27,6 +27,7 @@ jobs:
     permissions:
       contents: write
       packages: write
+      id-token: write
     env:
       RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
     steps:

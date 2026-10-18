@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/ploeg-hq/ploeg/pkg/harness"
 )
 
 var ErrOperatorNotFound = errors.New("operator resource not found")
@@ -183,6 +185,34 @@ type OperatorItem struct {
 	LatestShift    *OperatorShift       `json:"latestShift"`
 	Lease          *OperatorLease       `json:"lease"`
 	PullRequest    *OperatorPullRequest `json:"pullRequest"`
+	// WaitingFor lists the tracker items this Work Item waits for that are
+	// not done; a queued Work Item with any gets no Shift (ADR-0123).
+	WaitingFor []OperatorDependency `json:"waitingFor"`
+	// PremiseCheck is the Work Item's premise check, nil when none ran.
+	PremiseCheck *OperatorPremiseCheck `json:"premiseCheck"`
+}
+
+// OperatorDependency is one open tracker dependency of a Work Item.
+// WorkItemID is Ploeg's Work Item for it, nil when Ploeg has none.
+type OperatorDependency struct {
+	Provider    string    `json:"provider"`
+	ExternalID  string    `json:"externalId"`
+	Title       string    `json:"title"`
+	Kind        string    `json:"kind"`
+	WorkItemID  *string   `json:"workItemId"`
+	FirstSeenAt time.Time `json:"firstSeenAt"`
+	CheckedAt   time.Time `json:"checkedAt"`
+}
+
+// OperatorPremiseCheck is a Work Item's premise check (ADR-0123). Verdict
+// is null while attempts failed without an answer.
+type OperatorPremiseCheck struct {
+	Verdict   *string    `json:"verdict"`
+	Question  string     `json:"question"`
+	Reason    string     `json:"reason"`
+	Model     string     `json:"model"`
+	Attempts  int        `json:"attempts"`
+	CheckedAt *time.Time `json:"checkedAt"`
 }
 
 type OperatorShift struct {
@@ -262,7 +292,18 @@ type OperatorRun struct {
 	// that a settled cost is provisional.
 	CostFinal bool `json:"costFinal"`
 	OperatorRunConfig
+	// FindingItems, FindingAnswers, Questions and QuestionAnswers are what
+	// the Run reported by id (ADR-0121), with the ids ploegd assigned; empty
+	// for a Run that reported none.
+	FindingItems    []harness.ReviewFinding  `json:"findingItems"`
+	FindingAnswers  []harness.FindingAnswer  `json:"findingAnswers"`
+	Questions       []harness.Question       `json:"questions"`
+	QuestionAnswers []harness.QuestionAnswer `json:"questionAnswers"`
 }
+
+const operatorRunBlackboardJSON = `jsonb_build_object(
+	'findingItems', COALESCE(r.finding_items, '[]'::jsonb), 'findingAnswers', COALESCE(r.finding_answers, '[]'::jsonb),
+	'questions', COALESCE(r.questions, '[]'::jsonb), 'questionAnswers', COALESCE(r.question_answers, '[]'::jsonb))`
 
 type OperatorCheckpoint struct {
 	ID         string    `json:"id"`
@@ -295,6 +336,28 @@ type OperatorDetail struct {
 	// first, so their owner can find one to steer.
 	Executions []OperatorExecutionBrief `json:"executions"`
 	Truncated  OperatorTruncated        `json:"truncated"`
+	// Findings, Questions and ReviewDisagreements are the Work Item's
+	// findings by id with their answers, the questions its Runs asked, and
+	// the review Rounds where a shadow reviewer's verdict differed from the
+	// acting reviewers' (ADR-0121).
+	Findings            []OperatorFinding            `json:"findings"`
+	Questions           []OperatorQuestion           `json:"questions"`
+	ReviewDisagreements []OperatorReviewDisagreement `json:"reviewDisagreements"`
+	// Resume is what resuming the Work Item would do when its last Shift
+	// stopped on a question to a person; nil otherwise. The shift engine
+	// fills it.
+	Resume *OperatorResume `json:"resume"`
+}
+
+// OperatorResume is a resume a consumer can offer (ADR-0121).
+type OperatorResume struct {
+	ShiftID            string   `json:"shiftId"`
+	AskedRound         int      `json:"askedRound"`
+	FromRound          int      `json:"fromRound"`
+	RoundCapUSD        float64  `json:"roundCapUsd"`
+	PoolUSD            float64  `json:"poolUsd"`
+	Ready              bool     `json:"ready"`
+	WaitingQuestionIDs []string `json:"waitingQuestionIds"`
 }
 
 type OperatorTruncated struct {
@@ -348,7 +411,19 @@ const operatorItemJSON = `jsonb_build_object(
 		|| COALESCE(` + operatorPullRequestMergeJSON + `, jsonb_build_object(
 			'number', substring((` + operatorPullRequestURL + `) from '/(?:pulls?|merge_requests)/([0-9]{1,9})/?$')::int,
 			'mergeState', 'unknown', 'baseBranch', NULLIF(left(i.target_base_branch, 1024), ''), 'checkedAt', NULL))
-		ELSE NULL END)`
+		ELSE NULL END) || ` + operatorDispatchHoldJSON
+
+// operatorDispatchHoldJSON is what holds a Work Item before its first Shift
+// (ADR-0123): its open tracker dependencies and its premise check.
+const operatorDispatchHoldJSON = `jsonb_build_object(
+	'waitingFor', (SELECT COALESCE(jsonb_agg(jsonb_build_object('provider', d.provider, 'externalId', d.external_id,
+			'title', left(d.title, 4096), 'kind', d.kind, 'workItemId', dw.id::text, 'firstSeenAt', d.first_seen_at,
+			'checkedAt', i.dependencies_checked_at) ORDER BY d.first_seen_at, d.external_id), '[]'::jsonb)
+		FROM (SELECT * FROM work_item_dependencies WHERE work_item_id = i.id AND NOT done ORDER BY first_seen_at, external_id LIMIT 50) d
+		LEFT JOIN work_items dw ON dw.provider = d.provider AND dw.external_id = d.external_id),
+	'premiseCheck', (SELECT jsonb_build_object('verdict', p.verdict, 'question', left(p.question, 1024), 'reason', left(p.reason, 512),
+			'model', p.model, 'attempts', p.attempts, 'checkedAt', p.checked_at)
+		FROM work_item_premise_checks p WHERE p.work_item_id = i.id))`
 
 const operatorPullRequestMergeJSON = `(SELECT jsonb_build_object(
 	'number', p.number, 'mergeState', COALESCE(p.merge_state, 'unknown'),
@@ -443,7 +518,7 @@ var operatorRunJSON = `jsonb_build_object(
 	'costStatus', ` + operatorRunCostStatus + `,
 	` + operatorRunSettlementJSON + `,
 	` + operatorRunConfigJSON + `,
-	'keyAlias', CASE WHEN r.started_at IS NOT NULL THEN 'ploeg-' || left(r.run_token, 12) ELSE NULL END)`
+	'keyAlias', CASE WHEN r.started_at IS NOT NULL THEN 'ploeg-' || left(r.run_token, 12) ELSE NULL END) || ` + operatorRunBlackboardJSON
 
 const operatorCheckpointJSON = `jsonb_build_object(
 	'id', c.id::text, 'workItemId', c.work_item_id::text, 'phase', c.phase, 'branch', left(c.branch, 1024),
@@ -673,6 +748,9 @@ func (s *Store) OperatorItem(ctx context.Context, id int64, teams []string) (Ope
 		return detail, err
 	}
 	detail.Executions, detail.Truncated.Executions, _ = operatorPage(allExecutions, limit)
+	if detail.Findings, detail.Questions, detail.ReviewDisagreements, err = operatorLedger(ctx, tx, id); err != nil {
+		return detail, err
+	}
 	return detail, tx.Commit(ctx)
 }
 

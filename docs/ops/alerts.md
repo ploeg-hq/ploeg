@@ -24,6 +24,8 @@ The exposition is written by hand in the Prometheus text format (`version=0.0.4`
 | `ploeg_runs_failed_total` | `reason` | Runs ever recorded failed with each failure reason. A counter: Runs are never deleted. Every known reason is present at `0`. Kept for one release beside `ploeg_runs_finished_total`, which replaces it ([ADR-0076](../adrs/0076-run-health-is-observable-by-team-and-role-through-one-correlation-key.md)); move dashboards and rules to `sum by (reason) (ploeg_runs_finished_total{outcome="failed"})` |
 | `ploeg_runs_without_observed_delivery_last_day` | `source` | Runs finished in the last day whose report had no delivery record from the worker (`legacy`) or one that named another forge, repository, branch or pull request (`mismatch`) |
 | `ploeg_shadow_reviews_total` | `team`, `role`, `primary`, `shadow` | Finished shadow Runs ([ADR-0096](../adrs/0096-a-shadow-reader-records-its-verdict-and-never-acts.md)) by Team and shadow Role, with the verdict the Round's acting readers gave (`primary`) and the shadow's own (`shadow`), each `approve`, `request_changes` or `none`. A counter. Absent until a shadow Run finishes. See [reading shadow reviews](#reading-shadow-reviews) |
+| `ploeg_runs_briefed_total` | `team`, `role`, `notes` | Finished Runs that recorded their briefing ([ADR-0124](../adrs/0124-agents-communicate-through-a-blackboard-of-four-owned-sources-that-ploeg-reads-at-a-version-vector.md)), by Team, Role and whether it held any Work Item Note (`with` or `without`). A counter. See [briefings](briefings.md) |
+| `ploeg_run_briefed_notes_total` | `team`, `role` | Work Item Notes those Runs were briefed with. A counter |
 | `ploeg_runs_pending_outside_allowlist` | `team`, `role`, `harness` | Pending Runs that store a Harness the current allowlist of their Role no longer contains, so no workload claims them ([ADR-0099](../adrs/0099-each-allowed-harness-runs-in-its-own-workload-and-the-claim-selects-on-it.md)). Absent when there are none. The Teams read shows the same counts as `pendingByHarness` |
 | `ploeg_awaiting_review_with_unsuccessful_ci` | | Work Items in `awaiting_review` whose open pull request's head CI, as last read from the forge, is not `success` ([ADR-0119](../adrs/0119-a-pull-request-is-ready-for-review-only-when-the-forges-ci-passed-on-its-head.md)). A pull request whose forge reported no checks does not count. Should stay at `0` |
 | `ploeg_tracker_webhooks_missing` | | Configured Vikunja projects with no assignment webhook to Ploeg |
@@ -201,7 +203,7 @@ If a pull request exists on the forge but not here, the forge's facts did not re
 
 `max by (team) (ploeg_work_item_oldest_queued_seconds) > waitSeconds`. Default: 3600 s, `for: 10m`, warning.
 
-A claimable Work Item of the team has waited more than an hour for a worker. Items in backoff (`next_eligible_at` in the future) and operator-owned items are not counted. Usually the team's builder slots are all taken (its ScaledJob's `maxReplicaCount`), or the executor is not scaling.
+A claimable Work Item of the team has waited more than an hour for a worker. Items in backoff (`next_eligible_at` in the future), operator-owned items and items held for an open tracker dependency (ADR-0123) are not counted. Usually the team's builder slots are all taken (its ScaledJob's `maxReplicaCount`), or the executor is not scaling.
 
 **Check first:** what the team is running and what waits.
 

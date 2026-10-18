@@ -331,6 +331,13 @@ spec:
                 secretKeyRef:
                   name: {{ required "knowledgeGraph.runTokenSecret.name is required with knowledgeGraph.url" .runTokenSecret.name }}
                   key: {{ .runTokenSecret.key | default "token" }}
+            {{- with .reviewTokenSecret }}
+            - name: PLOEG_OMNIGRAPH_REVIEW_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "knowledgeGraph.reviewTokenSecret.name is required with knowledgeGraph.reviewTokenSecret" .name }}
+                  key: {{ .key | default "token" }}
+            {{- end }}
             {{- end }}
             {{- end }}
             {{- include "ploeg.workerControlEnv" . | nindent 12 }}
