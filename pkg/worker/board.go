@@ -221,7 +221,7 @@ func headCommit(ctx context.Context, cloneDir string) string {
 // briefedCheckpoint records what the Run's briefing was read at and held:
 // the commit its clone stands on, the graph commits, the notes and concepts
 // it showed and each section's budget (ADR-0124).
-func briefedCheckpoint(branch, forge string, spec harness.TaskSpec, graphs tenantKnowledge) work.Checkpoint {
+func briefedCheckpoint(branch, forge string, spec harness.TaskSpec, graphs tenantKnowledge, writes bool) work.Checkpoint {
 	board := &work.BoardBriefing{ForgeCommit: forge}
 	if graphs.provenance != nil {
 		board.NotesCommit = graphs.provenance.Commit
@@ -230,7 +230,10 @@ func briefedCheckpoint(branch, forge string, spec harness.TaskSpec, graphs tenan
 		board.ConceptsCommit = graphs.conceptsProvenance.Commit
 	}
 	_, findings := boardview.Findings(spec.Briefing)
-	board.Sections = append(board.Sections, findings)
+	_, review := boardview.ReviewFindings(spec.ReviewFindings, writes)
+	_, questions := boardview.Questions(spec.Questions, writes)
+	_, active := boardview.ActiveWork(spec.ActiveWork)
+	board.Sections = append(board.Sections, findings, review, questions, active)
 	if k := spec.Knowledge; k != nil {
 		board.Notes = k.Notes
 		board.Concepts = k.Concepts

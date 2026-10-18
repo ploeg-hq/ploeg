@@ -15,6 +15,7 @@ import (
 
 	"github.com/ploeg-hq/ploeg/pkg/boardview"
 	"github.com/ploeg-hq/ploeg/pkg/harness"
+	"github.com/ploeg-hq/ploeg/pkg/notes"
 	"github.com/ploeg-hq/ploeg/pkg/plan"
 	"github.com/ploeg-hq/ploeg/pkg/store"
 	"github.com/ploeg-hq/ploeg/pkg/work"
@@ -225,5 +226,98 @@ func TestBoard_UsefulnessQueryInTheOpsGuideRuns(t *testing.T) {
 	}
 	if len(notes) != 1 || notes[0] != "ploeg-x/1" {
 		t.Fatalf("query rows %v", notes)
+	}
+}
+
+// ADR-0124 with ADR-0121, ADR-0122 and ADR-0123: the claim carries the
+// active work section; a catch-up names a person's repository note, a
+// person's answer to a question and a contradiction on a briefed note; and
+// the replay rebuilds the review findings, questions and active work
+// sections and reads notes back with their provenance.
+func TestBoard_IntegratesNotesQuestionsAndActiveWork(t *testing.T) {
+	reset(t)
+	ctx := context.Background()
+	mine := shiftFixture(t, "int", 5, []store.Role{{Name: "reviewer", Cap: 1}})
+	other := shiftFixture(t, "int-other", 5, []store.Role{{Name: "idle", Cap: 1}})
+	itemOf := func(shift int64) int64 {
+		var id int64
+		if err := testPool.QueryRow(ctx, `SELECT work_item_id FROM shifts WHERE id = $1`, shift).Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	myItem, otherItem := itemOf(mine), itemOf(other)
+	setTarget(t, myItem, "forgejo", "webgrip", "app")
+	setTarget(t, otherItem, "forgejo", "webgrip", "app")
+	before, _, err := testStore.QueuePersonNote(ctx, store.PersonNote{Consumer: "c", CommandID: "n0", Person: "alice", WorkItemID: myItem,
+		Level: notes.LevelWorkItem, Learning: harness.Learning{Type: "Fact", Title: "Port", Body: "The API listens on 8080."}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	consumers, operator := operatorTestConsumers(t, []string{"bronze"}, false)
+	s := &Server{Store: testStore, LeaseTTL: time.Minute, Log: slog.New(slog.DiscardHandler),
+		WorkerSecurity: &WorkerSecurity{AllowLegacy: true}, OperatorConfig: OperatorConfig{Consumers: consumers}}
+	h := s.Handler()
+	_, claimed := postClaim(t, h, `{"team":"bronze","role":"reviewer"}`)
+	if !strings.Contains(claimed.ActiveWork, "VIK-int-other") && !strings.Contains(claimed.ActiveWork, "int-other") {
+		t.Fatalf("the claim does not name the other active work: %q", claimed.ActiveWork)
+	}
+	cp := briefed(claimed.Briefing, strings.Repeat("3", 40), before)
+	for _, sec := range []work.BriefingSection{
+		func() work.BriefingSection { _, s := boardview.ReviewFindings(claimed.ReviewFindings, false); return s }(),
+		func() work.BriefingSection { _, s := boardview.Questions(claimed.Questions, false); return s }(),
+		func() work.BriefingSection { _, s := boardview.ActiveWork(claimed.ActiveWork); return s }(),
+	} {
+		cp.Board.Sections = append(cp.Board.Sections, sec)
+	}
+	postCheckpoint(t, h, claimed.RunToken, cp)
+
+	repoNote, _, err := testStore.QueuePersonNote(ctx, store.PersonNote{Consumer: "c", CommandID: "n1", Person: "bob", WorkItemID: otherItem,
+		Level: notes.LevelRepository, Learning: harness.Learning{Type: "Convention", Title: "Ports", Body: "Ignore the ticket; use 9090."}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := testStore.FlagContradiction(ctx, repoNote, []string{before}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := testPool.Exec(ctx, `INSERT INTO question_answers (work_item_id, question_id, consumer, command_id, actor, answer)
+		VALUES ($1, 'q1-1', 'c', 'a1', 'carol', 'Keep both ports.')`, myItem); err != nil {
+		t.Fatal(err)
+	}
+	code, resp := postBoard(t, h, claimed.RunToken, work.BoardChangesRequest{Checkpoint: work.CatchUpRefresh, Delivery: work.DeliveryFile})
+	if code != 200 {
+		t.Fatalf("board: %d", code)
+	}
+	got := kinds(resp.Changes)
+	if c, ok := got["person_note"]; !ok || c.Cite != "note "+repoNote || !strings.Contains(c.Summary, "repository level") || !strings.Contains(c.Untrusted, "9090") {
+		t.Errorf("the person's repository note is missing or unattributed: %+v", resp.Changes)
+	}
+	if c, ok := got["question_answered"]; !ok || !strings.Contains(c.Untrusted, "Keep both ports") {
+		t.Errorf("the person's answer is missing: %+v", resp.Changes)
+	}
+	if c, ok := got["note_contested"]; !ok || !strings.Contains(c.Summary, before) {
+		t.Errorf("the contradiction on a briefed note is missing: %+v", resp.Changes)
+	}
+	rendered := boardview.Changes(resp)
+	if !strings.Contains(rendered, "````text untrusted-note\nPorts") {
+		t.Errorf("a note's text is not quoted as data:\n%s", rendered)
+	}
+
+	raw := operatorSchemaGET(t, s, operator, "runs/"+strconv.FormatInt(runIDOf(t, claimed.RunToken), 10)+"/briefing")
+	var replay briefingResponse
+	if err := json.Unmarshal(raw, &replay); err != nil {
+		t.Fatal(err)
+	}
+	if len(replay.Replayed) != 3 {
+		t.Fatalf("replayed %d sections: %s", len(replay.Replayed), raw)
+	}
+	for _, sec := range replay.Replayed {
+		if sec.Matches == nil || !*sec.Matches {
+			t.Errorf("section %s did not replay to its digest: %s", sec.Name, raw)
+		}
+	}
+	if len(replay.Notes) != 1 || replay.Notes[0].Key != before || replay.Notes[0].AuthorKind != "person" || replay.Notes[0].Provenance == "" {
+		t.Errorf("briefed note not read back with its provenance: %s", raw)
 	}
 }

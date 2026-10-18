@@ -54,6 +54,8 @@ func ComposePrompt(spec harness.TaskSpec, writes bool, priorPR string, onReviewB
 	writeBriefing(&b, spec.Briefing)
 	writeReviewFindings(&b, spec.ReviewFindings, writes)
 	writeQuestions(&b, spec.Questions, writes)
+	activeWork, _ := boardview.ActiveWork(spec.ActiveWork)
+	b.WriteString(activeWork)
 	writeKnowledge(&b, spec)
 
 	if !writes && item.Origin == work.OriginPullRequest {

@@ -35,7 +35,7 @@ type BoardBriefing struct {
 // The names of a briefing's sections, each with a fixed budget (ADR-0124).
 const (
 	SectionFindings   = "findings"
-	SectionWorkItem   = "work_item"
+	SectionWorkItem   = "work-item"
 	SectionRepository = "repository"
 	SectionClient     = "client"
 	SectionTenant     = "tenant"

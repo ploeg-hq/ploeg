@@ -45,3 +45,28 @@ func TestSelectWithin_GivesEachLevelItsOwnBudgetNarrowestFirst(t *testing.T) {
 		t.Errorf("default budgets %v", b)
 	}
 }
+
+// ADR-0122 with ADR-0124: a note is selected under the budget of the level
+// it is read at, so a repository note never spends the Work Item's budget.
+func TestSelectWithin_RoutesANoteByItsLevel(t *testing.T) {
+	repo := concept("repo-note.md", "Convention", "Repository note", "", nil, "store migration")
+	repo.Extra = map[string]any{"note": "person/1", "level": LevelRepository}
+	own := concept("own-note.md", "Fact", "Own note", "", nil, "store migration")
+	own.Extra = map[string]any{"note": "ploeg-a/1", "level": LevelWorkItem}
+	p := SelectWithin([]Source{{Name: "notes", Bundle: okf.Bundle{Name: "notes", Concepts: []okf.Concept{repo, own}}, Unreviewed: true, Level: LevelWorkItem}},
+		Query{Title: "x"}, DefaultBudgets(0))
+	levels := map[string]string{}
+	for _, s := range p.Selected {
+		levels[s.Concept.Path] = s.Level
+	}
+	if levels["repo-note.md"] != LevelRepository || levels["own-note.md"] != LevelWorkItem {
+		t.Fatalf("levels %v", levels)
+	}
+	if LevelWorkItem != "work-item" {
+		t.Fatalf("the Work Item level is spelled %q, not the notes contract's work-item", LevelWorkItem)
+	}
+	index := p.Index()
+	if !strings.Contains(index, "## This repository") || !strings.Contains(index, "a note on this repository") || strings.Contains(index, "without review") {
+		t.Errorf("index:\n%s", index)
+	}
+}

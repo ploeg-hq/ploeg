@@ -56,6 +56,9 @@ type ClaimResponse struct {
 	// an older ploegd.
 	ReviewFindings []harness.BriefedFinding  `json:"reviewFindings,omitempty"`
 	Questions      []harness.BriefedQuestion `json:"questions,omitempty"`
+	// ActiveWork is the other active work in the Run's repository, rendered
+	// by ploegd within its section's budget (ADR-0123, ADR-0124).
+	ActiveWork string `json:"activeWork,omitempty"`
 	// ForgeToken is a push credential minted for this run alone and revoked
 	// when it settles (ADR-0013 tier 2). Empty = use the env credential.
 	ForgeToken string `json:"forgeToken,omitempty"`

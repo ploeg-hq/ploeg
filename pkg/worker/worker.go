@@ -372,6 +372,7 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 		Briefing: claimed.Briefing,
 
 		ReviewFindings: claimed.ReviewFindings,
+		ActiveWork:     claimed.ActiveWork,
 		Questions:      claimed.Questions,
 	}
 
@@ -504,7 +505,7 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	if claimed.Board != nil && w.API != nil {
 		since := *claimed.Board
 		since.ForgeCommit = headCommit(ctx, cloneDir)
-		cp := briefedCheckpoint(branch, since.ForgeCommit, spec, graphs)
+		cp := briefedCheckpoint(branch, since.ForgeCommit, spec, graphs, writes)
 		since.NotesCommit, since.ConceptsCommit = cp.Board.NotesCommit, cp.Board.ConceptsCommit
 		if err := w.API.Checkpoint(claimed.RunToken, cp); err != nil {
 			w.Log.Warn("briefing versions not recorded; the Run cannot be replayed", "err", err)

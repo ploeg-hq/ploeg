@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/ploeg-hq/ploeg/pkg/harness"
+	"github.com/ploeg-hq/ploeg/pkg/notes"
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
@@ -116,9 +117,7 @@ func writeChanges(b *strings.Builder, changes []work.BoardChange) {
 		}
 		b.WriteString("\n")
 		if t := strings.TrimSpace(c.Untrusted); t != "" {
-			for _, line := range strings.Split(t, "\n") {
-				fmt.Fprintf(b, "  > %s\n", line)
-			}
+			b.WriteString(notes.Quote(t))
 		}
 	}
 }

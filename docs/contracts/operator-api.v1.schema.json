@@ -6151,7 +6151,7 @@
         "name": {
           "enum": [
             "findings",
-            "work_item",
+            "work-item",
             "repository",
             "client",
             "tenant",
@@ -6227,7 +6227,7 @@
       "additionalProperties": false
     },
     "briefingResponse": {
-      "description": "GET /api/v1/operator/runs/{id}/briefing: a Run's briefing replayed from what it recorded (ADR-0124). versions is the version vector it was read at; findings is the findings section rebuilt from the records its claim read (earlier Rounds' findings, reviews, the restart, catch-ups left for its Round and the people's notes it consumed), with matches true when its digest equals the one the worker reported; notes are the Work Item Notes it showed, read back by key (missingNotes lists keys Ploeg holds no note for); concepts are the knowledge concepts it showed, as pointers at versions.conceptsCommit; catchUps are the catch-ups it was given, oldest first. recorded is false for a Run claimed before ADR-0124, and then only the empty lists are served. A Run outside the consumer's teams answers 404. An older Ploeg answers 404.",
+      "description": "GET /api/v1/operator/runs/{id}/briefing: a Run's briefing replayed from what it recorded (ADR-0124). versions is the version vector it was read at; findings is the findings section rebuilt from the records its claim read (earlier Rounds' findings, reviews, the restart, catch-ups left for its Round and the people's notes it consumed), with matches true when its digest equals the one the worker reported; notes are the Work Item Notes it showed, read back by key (missingNotes lists keys Ploeg holds no note for); concepts are the knowledge concepts it showed, as pointers at versions.conceptsCommit; replayed rebuilds the review_findings and questions sections from the Shift's findings ledger (ADR-0121) and the active_work section from the live Shifts (ADR-0123), each with matches against the digest the worker reported; active work is live state and matches only while nothing changed. catchUps are the catch-ups it was given, oldest first. recorded is false for a Run claimed before ADR-0124, and then only the empty lists are served. A Run outside the consumer's teams answers 404. An older Ploeg answers 404.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -6235,6 +6235,7 @@
         "runId",
         "recorded",
         "sections",
+        "replayed",
         "notes",
         "missingNotes",
         "concepts",
@@ -6306,6 +6307,55 @@
             }
           }
         },
+        "replayed": {
+          "type": "array",
+          "maxItems": 3,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "items",
+              "digest",
+              "untrusted"
+            ],
+            "properties": {
+              "name": {
+                "enum": [
+                  "review_findings",
+                  "questions",
+                  "active_work"
+                ]
+              },
+              "items": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "digest": {
+                "type": "string"
+              },
+              "recordedDigest": {
+                "type": "string"
+              },
+              "matches": {
+                "type": "boolean"
+              },
+              "untrusted": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "text"
+                ],
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "description": "The section as Ploeg renders it now: other agents', people's and trackers' words, shown as data."
+                  }
+                }
+              }
+            }
+          }
+        },
         "notes": {
           "type": "array",
           "maxItems": 200,
@@ -6323,6 +6373,29 @@
               },
               "type": {
                 "type": "string"
+              },
+              "level": {
+                "enum": [
+                  "work-item",
+                  "repository"
+                ]
+              },
+              "trust": {
+                "enum": [
+                  "trusted",
+                  "untrusted"
+                ]
+              },
+              "authorKind": {
+                "enum": [
+                  "run",
+                  "person",
+                  "ploeg"
+                ]
+              },
+              "provenance": {
+                "type": "string",
+                "description": "Who wrote the note, at which level and from what, as the briefing showed it (ADR-0122)."
               },
               "writtenBy": {
                 "type": "string"

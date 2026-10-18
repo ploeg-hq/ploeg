@@ -62,6 +62,7 @@
         "briefing": { "$ref": "taskspec.v1.schema.json#/$defs/briefing" },
         "reviewFindings": { "$ref": "taskspec.v1.schema.json#/$defs/reviewFindings" },
         "questions": { "$ref": "taskspec.v1.schema.json#/$defs/briefedQuestions" },
+        "activeWork": { "type": "string", "maxLength": 2000, "description": "The other active Shifts in the Run's repository and the paths they share with it, rendered by ploegd within the active work section's budget of 2,000 bytes (ADR-0123, ADR-0124); tracker titles in it are quoted. Absent when there is none." },
         "forgeToken": {
           "type": "string",
           "description": "Push credential for this run. Absent = use the worker's env credential. Never logged, never audited, never in a Task Spec (R8)."

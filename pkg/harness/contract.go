@@ -35,6 +35,11 @@ type TaskSpec struct {
 	// Questions are the questions earlier Runs asked that reach this Run,
 	// answered or not (ADR-0121).
 	Questions []BriefedQuestion `json:"questions,omitempty"`
+	// ActiveWork names the other active Shifts in the Run's repository and
+	// the paths they share with it, as ploegd rendered it within the active
+	// work section's budget (ADR-0123, ADR-0124). Tracker titles in it are
+	// quoted.
+	ActiveWork string `json:"activeWork,omitempty"`
 	// OpenSpec is the OpenSpec change the Work Item names, located in the
 	// clone and rendered as a brief by the worker. Nil when it names none.
 	OpenSpec *OpenSpecBrief `json:"openSpec,omitempty"`

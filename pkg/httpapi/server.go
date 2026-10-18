@@ -529,6 +529,9 @@ type claimResponse struct {
 	// reach this Run (ADR-0121). Both absent when there are none.
 	ReviewFindings []harness.BriefedFinding  `json:"reviewFindings,omitempty"`
 	Questions      []harness.BriefedQuestion `json:"questions,omitempty"`
+	// ActiveWork is the other active work in the Run's repository, within
+	// the active work section's budget (ADR-0123, ADR-0124).
+	ActiveWork string `json:"activeWork,omitempty"`
 	// ForgeToken is a push credential minted for THIS run and revoked when it
 	// settles (ADR-0013 tier 2). Empty = use the env credential. Never logged,
 	// never audited, never in a Task Spec (R8).
@@ -672,6 +675,7 @@ func (s *Server) respondClaimedRun(w http.ResponseWriter, r *http.Request, req c
 	if resp.ReviewFindings, resp.Questions, err = s.Store.FindingsBrief(r.Context(), run.ShiftID, run.Round, run.Writes); err != nil {
 		s.Log.Error("findings briefing read failed; run proceeds without it", "shift", run.ShiftID, "err", err)
 	}
+	resp.ActiveWork = s.activeWork(r.Context(), run.Item.ID)
 	if notes, err := s.Store.ShiftReviews(r.Context(), run.ShiftID, run.Round); err != nil {
 		s.Log.Error("review briefing read failed; run proceeds without it", "shift", run.ShiftID, "err", err)
 	} else {

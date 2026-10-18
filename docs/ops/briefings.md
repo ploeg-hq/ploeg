@@ -11,19 +11,20 @@ A Run's briefing is its view of the blackboard ([ADR-0124](../adrs/0124-agents-c
 | `briefed_notes`, `briefed_concepts` | worker | The keys of the Work Item Notes and the paths of the concepts the briefing showed |
 | `briefing_sections` | worker | Each section's fixed budget, bytes used, items shown and left out, and digest |
 
-Every column is written once and is `NULL` for a Run claimed before migration `0063`, which reads as unknown. Each catch-up with changes, and every `before_finish`, is a row in `run_board_catch_ups`.
+Every column is written once and is `NULL` for a Run claimed before migration `0063`, which reads as unknown. Each catch-up with changes, and every `before_finish`, is a row in `run_board_catch_ups`. A catch-up names Ploeg's events, people's instructions, new notes the Run may read (with their provenance), people's answers to questions and contradictions flagged on briefed notes.
 
 ## Sections and budgets
 
 | Section | Budget | Holds |
 | --- | --- | --- |
 | `findings` | 8,000 bytes | Earlier Rounds' findings, reviews, a restart, people's notes and board changes left for the Round, newest Round first |
-| `work_item` | 3/8 of the knowledge budget (9,000 of 24,000 bytes) | The Work Item's notes, newest first, and concepts from its context |
-| `repository` | 3/8 | The repository's own bundle and the graph's repository concepts |
+| `work-item` | 3/8 of the knowledge budget (9,000 of 24,000 bytes) | The Work Item's `work-item` notes, newest first, and concepts from its context |
+| `repository` | 3/8 | The repository's `repository` notes, its own bundle and the graph's repository concepts |
 | `client` | 1/8 | The graph's Client concepts |
 | `tenant` | 1/8 | The graph's Tenant concepts and configured bundles (`PLOEG_KNOWLEDGE_DIRS`) |
-| `review_findings`, `questions` | Their own, set by ADR-0121 | Answered review findings and questions with their answers (in flight) |
-| `active_work` | 2,000 bytes | Other live Shifts on the same repository and the paths they touch, overlaps first (ADR-0123, in flight) |
+| `review_findings` | 8,000 bytes | The last review's findings by id, with the writer's answers for a reader (ADR-0121) |
+| `questions` | 4,000 bytes | Questions earlier Runs asked and their answers (ADR-0121) |
+| `active_work` | 2,000 bytes | Other live Shifts on the same repository and the paths they touch, overlaps first (ADR-0123) |
 
 `PLOEG_KNOWLEDGE_BUDGET_BYTES` sets the knowledge budget the four levels split. A level's unused budget is not lent to another.
 
@@ -71,4 +72,4 @@ A note whose Shifts take fewer Rounds and less spend than the Team's Shifts with
 
 ## Replay a briefing
 
-`GET /api/v1/operator/runs/{id}/briefing` answers the Run's version vector, its sections, the findings section rebuilt from the records its claim read with `matches` (true when the digest equals the one the worker reported), the notes it showed read back by key, the concepts as paths at `versions.conceptsCommit`, and every catch-up it was given. `matches` false means a record the claim read changed afterwards or the worker rendered differently; the rebuilt text shows what Ploeg holds now.
+`GET /api/v1/operator/runs/{id}/briefing` answers the Run's version vector, its sections, the findings section rebuilt from the records its claim read with `matches` (true when the digest equals the one the worker reported), `replayed` with the review findings, questions and active work sections rebuilt from what Ploeg holds now (active work is live, so it matches only while nothing changed), the notes it showed read back by key with their provenance, the concepts as paths at `versions.conceptsCommit`, and every catch-up it was given. `matches` false means a record the claim read changed afterwards or the worker rendered differently; the rebuilt text shows what Ploeg holds now.

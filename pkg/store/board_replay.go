@@ -9,7 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/ploeg-hq/ploeg/pkg/harness"
+	"github.com/ploeg-hq/ploeg/pkg/notes"
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
@@ -22,6 +22,7 @@ type BriefingRecord struct {
 	ShiftID    int64
 	Round      int
 	Role       string
+	Writes     bool
 	ClaimedAt  *time.Time
 	BriefedAt  *time.Time
 	Versions   work.BoardVersions
@@ -46,13 +47,13 @@ func (s *Store) OperatorBriefing(ctx context.Context, runID int64, teams []strin
 	rec := BriefingRecord{RunID: runID}
 	var seq *int64
 	var sections []byte
-	err := s.pool.QueryRow(ctx, `SELECT r.work_item_id, COALESCE(r.shift_id, 0), r.round, COALESCE(r.role, ''),
+	err := s.pool.QueryRow(ctx, `SELECT r.work_item_id, COALESCE(r.shift_id, 0), r.round, COALESCE(r.role, ''), r.writes,
 			r.board_claimed_at, r.board_briefed_at, r.board_ploeg_sequence, COALESCE(r.board_tracker_revision, ''),
 			COALESCE(r.board_forge_commit, ''), COALESCE(r.board_notes_commit, ''), COALESCE(r.board_concepts_commit, ''),
 			COALESCE(r.briefed_notes, '{}'), COALESCE(r.briefed_concepts, '{}'), r.briefing_sections
 		FROM agent_runs r JOIN work_items i ON i.id = r.work_item_id
 		WHERE r.id = $1 AND ($2::text[] IS NULL OR i.team = ANY($2))`, runID, teams).Scan(
-		&rec.WorkItemID, &rec.ShiftID, &rec.Round, &rec.Role, &rec.ClaimedAt, &rec.BriefedAt, &seq,
+		&rec.WorkItemID, &rec.ShiftID, &rec.Round, &rec.Role, &rec.Writes, &rec.ClaimedAt, &rec.BriefedAt, &seq,
 		&rec.Versions.TrackerRevision, &rec.Versions.ForgeCommit, &rec.Versions.NotesCommit, &rec.Versions.ConceptsCommit,
 		&rec.Notes, &rec.Concepts, &sections)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -156,40 +157,31 @@ func (s *Store) BriefingReplayInputs(ctx context.Context, rec BriefingRecord) (R
 	return in, err
 }
 
-// NotesByKey reads the Work Item Notes Ploeg queued under keys, in the order
-// of keys; a key Ploeg holds no note for is left out. Notes are append-only,
-// so a note read now is the note a Run was briefed with.
-func (s *Store) NotesByKey(ctx context.Context, keys []string) ([]harness.WorkItemNote, error) {
+// NotesByKey reads the notes Ploeg queued under keys, with their
+// provenance, in the order of keys; a key Ploeg holds no note for is left
+// out. Notes are append-only, so a note read now is the note a Run was
+// briefed with.
+func (s *Store) NotesByKey(ctx context.Context, keys []string) ([]notes.Note, error) {
 	if len(keys) == 0 {
-		return []harness.WorkItemNote{}, nil
+		return []notes.Note{}, nil
 	}
-	rows, err := s.pool.Query(ctx, `SELECT o.note_key, o.work_item_id, o.repository, o.learning, o.suggested_scope, o.written_by, o.created_at
-		FROM work_item_note_outbox o WHERE o.note_key = ANY($1::text[])`, keys)
+	rows, err := s.pool.Query(ctx, `SELECT `+pendingNoteColumns+` FROM work_item_note_outbox WHERE note_key = ANY($1::text[])`, keys)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	byKey := map[string]harness.WorkItemNote{}
+	byKey := map[string]notes.Note{}
 	for rows.Next() {
-		var n harness.WorkItemNote
-		var workItem int64
-		var body []byte
-		if err := rows.Scan(&n.Key, &workItem, &n.Repository, &body, &n.SuggestedScope, &n.WrittenBy, &n.WrittenAt); err != nil {
+		p, err := scanPendingNote(rows)
+		if err != nil {
 			return nil, err
 		}
-		var l harness.Learning
-		if err := json.Unmarshal(body, &l); err != nil {
-			return nil, fmt.Errorf("decode note %s: %w", n.Key, err)
-		}
-		n.WorkItem = fmt.Sprint(workItem)
-		n.Type, n.Title, n.Description, n.Resource, n.Tags, n.Body = l.Type, l.Title, l.Description, l.Resource, l.Tags, l.Body
-		n.WrittenAt = n.WrittenAt.UTC()
-		byKey[n.Key] = n
+		byKey[p.Key] = p.Note()
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	out := make([]harness.WorkItemNote, 0, len(keys))
+	out := make([]notes.Note, 0, len(keys))
 	for _, k := range keys {
 		if n, ok := byKey[k]; ok {
 			out = append(out, n)

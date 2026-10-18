@@ -92,7 +92,7 @@
               "name": {
                 "enum": [
                   "findings",
-                  "work_item",
+                  "work-item",
                   "repository",
                   "client",
                   "tenant",

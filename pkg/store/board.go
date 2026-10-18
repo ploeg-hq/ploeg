@@ -15,7 +15,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/ploeg-hq/ploeg/pkg/harness"
+	"github.com/ploeg-hq/ploeg/pkg/notes"
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
@@ -128,6 +128,7 @@ type boardRun struct {
 	since                           work.BoardVersions
 	briefedNotes                    []string
 	revision, title, description    string
+	repository                      string
 }
 
 func (s *Store) loadBoardRun(ctx context.Context, runToken string) (boardRun, error) {
@@ -137,11 +138,12 @@ func (s *Store) loadBoardRun(ctx context.Context, runToken string) (boardRun, er
 	err := s.pool.QueryRow(ctx, `SELECT r.id, r.work_item_id, COALESCE(r.shift_id, 0), r.round, r.board_claimed_at, r.board_ploeg_sequence,
 			COALESCE(r.board_tracker_revision, ''), COALESCE(r.board_forge_commit, ''), COALESCE(r.board_notes_commit, ''),
 			COALESCE(r.board_concepts_commit, ''), COALESCE(r.briefed_notes, '{}'),
-			COALESCE(w.root_work_item_id, w.id), w.revision, w.title, w.description
+			COALESCE(w.root_work_item_id, w.id), w.revision, w.title, w.description,
+			CASE WHEN w.target_repo = '' THEN '' ELSE w.target_forge || '/' || w.target_owner || '/' || w.target_repo END
 		FROM agent_runs r JOIN work_items w ON w.id = r.work_item_id
 		WHERE r.run_token = $1 AND r.state = 'running'`, runToken).Scan(&r.id, &r.workItemID, &r.shiftID, &r.round, &claimed, &seq,
 		&r.since.TrackerRevision, &r.since.ForgeCommit, &r.since.NotesCommit, &r.since.ConceptsCommit, &r.briefedNotes,
-		&r.rootID, &r.revision, &r.title, &r.description)
+		&r.rootID, &r.revision, &r.title, &r.description, &r.repository)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return r, ErrUnknownRun
 	}
@@ -163,8 +165,10 @@ const quietActions = `a.action NOT LIKE 'checkpoint.%' AND a.action NOT LIKE 'll
 	AND a.action NOT LIKE 'outcome.%' AND a.action NOT IN ('run.claimed', '` + AuditOperatorNoteAdded + `', '` + AuditOperatorNoteConsumed + `')`
 
 // BoardChanges answers what changed on the board since the running Run's
-// briefing (ADR-0124): Ploeg's own events for the Work Item, notes people
-// left and notes written for its root Work Item, the tracker task's
+// briefing (ADR-0124): Ploeg's own events for the Work Item, instructions
+// people left, notes on its root Work Item or repository that it may read
+// (notes.ForRun), answers people gave to its Work Item's questions,
+// contradictions flagged on notes it was briefed with, the tracker task's
 // revision, the knowledge graph commit (conceptsCommit is the commit ploegd
 // read now, "" when unknown) and the forge head the worker read. Notes of the
 // Run's own Round are left out, so its siblings stay unobserved. A catch-up
@@ -189,11 +193,15 @@ func (s *Store) BoardChanges(ctx context.Context, runToken string, req work.Boar
 		return resp, err
 	}
 	changes = append(changes, notes...)
-	written, err := s.boardWorkItemNotes(ctx, run)
-	if err != nil {
-		return resp, err
+	for _, read := range []func(context.Context, boardRun) ([]work.BoardChange, error){
+		s.boardWorkItemNotes, s.boardQuestionAnswers, s.boardContestedNotes,
+	} {
+		more, err := read(ctx, run)
+		if err != nil {
+			return resp, err
+		}
+		changes = append(changes, more...)
 	}
-	changes = append(changes, written...)
 	now := time.Now().UTC()
 	resp.Current.TrackerRevision = run.revision
 	if run.revision != run.since.TrackerRevision {
@@ -294,37 +302,113 @@ func (s *Store) boardOperatorNotes(ctx context.Context, run boardRun) ([]work.Bo
 	return out, rows.Err()
 }
 
+// boardWorkItemNotes is every note queued since the claim that the Run may
+// read, through the same filter a briefing uses (notes.ForRun, ADR-0122):
+// notes of its root Work Item and of its repository, written by people,
+// Ploeg or Runs outside its own Round, current and not already briefed.
 func (s *Store) boardWorkItemNotes(ctx context.Context, run boardRun) ([]work.BoardChange, error) {
-	rows, err := s.pool.Query(ctx, `SELECT o.note_key, o.created_at, o.learning FROM work_item_note_outbox o
-		WHERE o.root_work_item_id = $1 AND o.created_at > $2 AND NOT (o.note_key = ANY($3::text[]))
-			AND o.run_id <> $4
-			AND NOT ($5 <> 0 AND o.run_id IN (SELECT id FROM agent_runs WHERE shift_id = $5 AND round = $6))
-		ORDER BY o.id DESC LIMIT $7`, run.rootID, run.claimedAt, run.briefedNotes, run.id, run.shiftID, run.round, work.MaxBoardChanges+1)
+	rows, err := s.pool.Query(ctx, `SELECT `+pendingNoteColumns+` FROM work_item_note_outbox o
+		WHERE o.created_at > $2 AND NOT (o.note_key = ANY($3::text[]))
+			AND (o.root_work_item_id = $1 OR (o.level = 'repository' AND o.repository <> '' AND o.repository = $8))
+			AND (o.run_id IS NULL OR (o.run_id <> $4
+				AND NOT ($5 <> 0 AND o.run_id IN (SELECT id FROM agent_runs WHERE shift_id = $5 AND round = $6))))
+		ORDER BY o.id DESC LIMIT $7`, run.rootID, run.claimedAt, run.briefedNotes, run.id, run.shiftID, run.round,
+		4*work.MaxBoardChanges, run.repository)
+	if err != nil {
+		return nil, err
+	}
+	var all []notes.Note
+	for rows.Next() {
+		p, err := scanPendingNote(rows)
+		if err != nil {
+			rows.Close()
+			return nil, err
+		}
+		all = append(all, p.Note())
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	keys := make([]string, 0, len(all))
+	for _, n := range all {
+		keys = append(keys, n.Key)
+	}
+	contested, err := s.ContestedKeys(ctx, keys)
+	if err != nil {
+		return nil, err
+	}
+	view := notes.ForRun(notes.Scope{RootWorkItem: strconv.FormatInt(run.rootID, 10), Repository: run.repository}, all, contested, time.Now())
+	out := make([]work.BoardChange, 0, len(view.Notes))
+	for _, n := range view.Notes {
+		kind := "work_item_note"
+		if n.AuthorKind == notes.AuthorPerson {
+			kind = "person_note"
+		}
+		text := n.Title
+		if n.Description != "" {
+			text += "\n" + n.Description
+		}
+		out = append(out, work.BoardChange{Source: work.SourceGraph, Kind: kind, At: n.WrittenAt.UTC(),
+			Cite:      "note " + n.Key,
+			Summary:   "A note was written after your briefing. " + notes.Provenance(n),
+			Untrusted: clipRunes(text+"\n\n"+n.Body, boardNoteLimit)})
+	}
+	return out, nil
+}
+
+// boardQuestionAnswers is every answer a person gave since the claim to a
+// question a Run of this Work Item asked (ADR-0121).
+func (s *Store) boardQuestionAnswers(ctx context.Context, run boardRun) ([]work.BoardChange, error) {
+	rows, err := s.pool.Query(ctx, `SELECT question_id, actor, answer, created_at FROM question_answers
+		WHERE work_item_id = $1 AND created_at > $2 ORDER BY id DESC LIMIT $3`, run.workItemID, run.claimedAt, work.MaxBoardChanges+1)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var out []work.BoardChange
 	for rows.Next() {
-		var key string
+		var id, actor, answer string
 		var at time.Time
-		var body []byte
-		if err := rows.Scan(&key, &at, &body); err != nil {
+		if err := rows.Scan(&id, &actor, &answer, &at); err != nil {
 			return nil, err
 		}
-		var l harness.Learning
-		if err := json.Unmarshal(body, &l); err != nil {
-			continue
+		out = append(out, work.BoardChange{Source: work.SourcePloeg, Kind: "question_answered", At: at.UTC(),
+			Cite:      "question " + id,
+			Summary:   "A person (" + notes.Inline(actor, 64) + ") answered question " + id + ". The answer is the person's decision.",
+			Untrusted: clipRunes(answer, boardTextLimit)})
+	}
+	return out, rows.Err()
+}
+
+// boardContestedNotes is every contradiction flag raised since the claim on
+// a note the Run was briefed with (ADR-0122): a person has not decided yet
+// which note holds.
+func (s *Store) boardContestedNotes(ctx context.Context, run boardRun) ([]work.BoardChange, error) {
+	if len(run.briefedNotes) == 0 {
+		return nil, nil
+	}
+	rows, err := s.pool.Query(ctx, `SELECT id, note_key, conflicts_with, created_at FROM note_reviews
+		WHERE kind = 'contradiction' AND state = 'open' AND created_at > $2
+			AND (note_key = ANY($1::text[]) OR conflicts_with && $1::text[])
+		ORDER BY id DESC LIMIT $3`, run.briefedNotes, run.claimedAt, work.MaxBoardChanges+1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []work.BoardChange
+	for rows.Next() {
+		var id int64
+		var key string
+		var conflicts []string
+		var at time.Time
+		if err := rows.Scan(&id, &key, &conflicts, &at); err != nil {
+			return nil, err
 		}
-		text := l.Title
-		if l.Description != "" {
-			text += "\n" + l.Description
-		}
-		text += "\n\n" + l.Body
-		out = append(out, work.BoardChange{Source: work.SourceGraph, Kind: "work_item_note", At: at.UTC(),
-			Cite:      "note " + key,
-			Summary:   "An earlier Run of this work wrote a " + l.Type + " note after your briefing, without review.",
-			Untrusted: clipRunes(text, boardNoteLimit)})
+		out = append(out, work.BoardChange{Source: work.SourceGraph, Kind: "note_contested", At: at.UTC(),
+			Cite: "note review " + strconv.FormatInt(id, 10),
+			Summary: fmt.Sprintf("Note %s now disagrees with %s, and a person has not decided which holds. Rely on neither without checking the code.",
+				notes.Inline(key, 120), notes.Inline(strings.Join(conflicts, ", "), 300))})
 	}
 	return out, rows.Err()
 }
