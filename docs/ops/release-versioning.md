@@ -17,7 +17,28 @@ A stable `v0.x.y` stays a reviewed act. Merge `development` into `main`, set `ve
 ## After publication
 
 1. Verify the published release assets, image digest, Helm pull and an unauthenticated image pull. Set newly created GHCR packages public if the organization's package policy creates them private.
-2. Consumers update their pins through reviewed changes and run their own integration qualification. A release does not update a deployment.
+2. Consumers update their pins through their own pull requests and run their own integration qualification. A release does not update a deployment.
+
+## Consumer pull requests
+
+When the repository variable `RELEASE_CONSUMERS` is set, the `consumers` job of the release candidate workflow opens each consumer's update after the contract bundle is published ([ADR 0127](../adrs/0127-a-release-opens-each-consumers-update-by-running-the-consumers-own-recipe.md)). The variable is a JSON list:
+
+```json
+[{"forge": "forgejo", "url": "https://forge.example", "repo": "owner/name", "base": "development", "recipe": "scripts/consume-release.sh", "message": "fix(deps): update ploeg to {version}"}]
+```
+
+For each entry, [scripts/release-consumers.py](../../scripts/release-consumers.py) clones `base`, runs `<recipe> <version>` from the checkout root, commits what changed on `ploeg/<version>` as the token's user, opens or updates the pull request and asks the forge to merge it when the base branch's required checks succeed. It closes the same user's older `ploeg/` pull requests. `message` and `merge_style` (`merge` by default) are optional. A recipe gets git, a POSIX shell, Python 3 and mise, and never the token.
+
+The token is the repository secret `RELEASE_CONSUMER_TOKEN_FORGEJO`: a Forgejo access token of a user with write access to the consumer repositories only, with the `write:repository`, `write:issue` (the superseded comment) and `read:user` scopes, allowed to merge into `base` by its branch protection. Without the variable the job is skipped.
+
+To try an entry without writing anything, run the script with `RELEASE_CONSUMERS_DRY_RUN=true`: it clones, runs the recipe, commits locally, prints the commit and stops.
+
+```sh
+RELEASE_CONSUMER='{"forge":"forgejo","url":"https://forge.example","repo":"owner/name","base":"development","recipe":"scripts/consume-release.sh"}' \
+RELEASE_CONSUMERS_DRY_RUN=true python3 scripts/release-consumers.py v0.2.0-rc.28
+```
+
+A failed `consumers` job is rerun from the workflow run; the rerun updates the same branch and pull request.
 
 A maintainer can dispatch the release workflow with an existing tag whose publication is missing; publication refuses a published release, a draft that already carries assets, and existing artifacts.
 
