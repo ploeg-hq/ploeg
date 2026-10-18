@@ -124,7 +124,16 @@ func opencodeProfile(configJSON string) Profile {
 			if err := os.WriteFile(path, []byte(doc), 0o600); err != nil {
 				return nil, fmt.Errorf("write opencode config: %w", err)
 			}
-			return []string{"OPENCODE_CONFIG=" + path}, nil
+			// OPENCODE_DISABLE_PROJECT_CONFIG stops opencode from loading the
+			// repository's own opencode.json and .opencode/ — which otherwise
+			// start the repository's plugins and MCP servers inside the Run at
+			// session/new, before any prompt. Checked against the opencode
+			// binary: a repository plugin and a repository MCP server both ran
+			// without this and neither ran with it, and session/new still
+			// succeeds. The gateway wiring comes from OPENCODE_CONFIG above, not
+			// the project config, so it is unaffected; the root AGENTS.md still
+			// resolves. ADR-0125.
+			return []string{"OPENCODE_CONFIG=" + path, "OPENCODE_DISABLE_PROJECT_CONFIG=true"}, nil
 		},
 	}
 }

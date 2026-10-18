@@ -1,0 +1,101 @@
+name: Attack drill
+# A recurring drill (ADR-0125) that exercises every supported harness against a
+# hostile repository: prompt-injection instruction files, repository plugins and
+# config that try to auto-start code, and the credential-isolation proxies. It
+# makes no model call — agents stop at session/new and the gateway is
+# unroutable — so it costs no model spend.
+on:
+  schedule:
+    - cron: "17 5 * * 1" # Mondays 05:17 UTC
+  workflow_dispatch:
+  push:
+    branches: [main, development]
+    paths:
+      - "pkg/harness/**"
+      - "pkg/worker/**"
+      - ".github/workflows/attack-drill.yml"
+  pull_request:
+    paths:
+      - "pkg/harness/**"
+      - "pkg/worker/**"
+      - ".github/workflows/attack-drill.yml"
+permissions:
+  contents: read
+concurrency:
+  group: attack-drill-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  binary-free:
+    name: Binary-free tier (no model, no agent binary)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@7a4e45a543138629540c9a1616d08632b893e492 # v5.0.1
+        with:
+          version: 2026.9.18
+          cache: false
+      - run: mise run setup
+      - name: Profiles neutralise a hostile repository's configuration
+        run: mise exec -- go test -v -count=1 -run TestHostileConfig ./pkg/harness/adapters/acp/
+      - name: The harness environment never holds a real credential
+        run: mise exec -- go test -v -count=1 -run TestAttackDrill ./pkg/worker/
+
+  real-binary:
+    name: Real-binary tier (no model)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      GOOSE_VERSION: 1.52.0
+      GOOSE_SHA256: fdc86653285a89f7dcad6e76736af1688ab2cde44661b089328b2fc40bb79f9f
+      OPENCODE_VERSION: 1.18.30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@7a4e45a543138629540c9a1616d08632b893e492 # v5.0.1
+        with:
+          version: 2026.9.18
+          cache: false
+      - run: mise run setup
+      - name: Install goose
+        run: |
+          curl -fsSL -o goose.tar.gz "https://github.com/aaif-goose/goose/releases/download/v${GOOSE_VERSION}/goose-x86_64-unknown-linux-musl.tar.gz"
+          echo "${GOOSE_SHA256}  goose.tar.gz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/bin"
+          tar -xzf goose.tar.gz -C "$RUNNER_TEMP/bin" ./goose
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - name: Install opencode
+        run: |
+          npm install -g "opencode-ai@${OPENCODE_VERSION}"
+          npm config get prefix >/dev/null
+          echo "$(npm config get prefix)/bin" >> "$GITHUB_PATH"
+      - name: No repository-supplied code starts in any harness
+        run: PLOEG_HOSTILE_REPOSITORY=1 mise exec -- go test -v -count=1 -run TestHostileRepository ./pkg/harness/adapters/acp/
+
+  report:
+    name: Open an issue on a scheduled failure
+    runs-on: ubuntu-24.04
+    needs: [binary-free, real-binary]
+    if: ${{ failure() && github.event_name == 'schedule' }}
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Open or update the attack-drill issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          REPO: ${{ github.repository }}
+        run: |
+          title="Attack drill failed on the schedule"
+          body="The scheduled attack drill failed. A supported harness may run repository-supplied code, or a credential may reach the harness environment. Run: ${RUN_URL}"
+          existing=$(gh issue list --repo "$REPO" --state open --label attack-drill --json number --jq '.[0].number' || true)
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --repo "$REPO" --body "$body"
+          else
+            gh label create attack-drill --repo "$REPO" --color b60205 --description "A scheduled attack drill failed" 2>/dev/null || true
+            gh issue create --repo "$REPO" --title "$title" --label attack-drill --body "$body"
+          fi
