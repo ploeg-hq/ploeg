@@ -536,6 +536,22 @@ executor:
   # Python cold import alone took 2m20s before the agent did anything
   # (measured, silver run 2026-07-27). More than 1 core buys that phase
   # nothing; less throttles every runner-side step.
+  # The harness container's securityContext. The default meets the Kubernetes
+  # `restricted` Pod Security Standard, so the worker namespace can enforce it:
+  # a fixed non-root uid (1000, the group fsGroup already gives the shared work
+  # directory), no privilege escalation, no capabilities and the runtime's
+  # seccomp profile. A harness image that must run as root sets this to {} or
+  # to its own context and loses `restricted`. The DinD sidecar stays
+  # privileged whatever this says.
+  workerSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: [ALL]
+    seccompProfile:
+      type: RuntimeDefault
   workerBinResources:
     requests: {cpu: 50m, memory: 64Mi}
     limits: {cpu: 50m, memory: 64Mi}

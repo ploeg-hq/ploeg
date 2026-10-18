@@ -318,7 +318,6 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `executor.workerAuth.signingKeySecret.key` | string | `key` |  | values.yaml, values.schema.json |
 | `executor.workerAuth.signingKeySecret.name` | string | `ploeg-worker-signing` |  | values.yaml, values.schema.json |
 | `executor.workerAuth.staticInferenceSecret` | object or object | `{}` | Legacy mode only. Secret reference for the static inference key. | values.yaml, values.schema.json |
-| `executor.workerBinResources` |  |  | Guaranteed QoS (requests == limits on EVERY container): factory pods leave the /kubepods/burstable/ cgroup tree, which Talos's OOMController SIGKILLs wholesale under PSI memory pressure (killed runs 9+10 on 2026-07-25; ADR-0049 P1, VIK-595 S1). Under scarcity the scheduler now queues runs honestly (Pending holds no lease, burns no attempt, spends no money) instead of starting them into a death zone. Sized from run 8's measured peaks (worker 438Mi, dind 108Mi) with headroom for gate builds inside dind; a build exceeding dind's limit fails THAT build visibly, never the pod. Changing any of these away from requests==limits silently re-enters the burstable tree — don't. Worker CPU is 1 full core: at 500m the OpenHands CLI's single-threaded Python cold import alone took 2m20s before the agent did anything (measured, silver run 2026-07-27). More than 1 core buys that phase nothing; less throttles every runner-side step. | values.yaml |
 | `executor.workerBinResources.limits.cpu` |  | `50m` |  | values.yaml |
 | `executor.workerBinResources.limits.memory` |  | `64Mi` |  | values.yaml |
 | `executor.workerBinResources.requests.cpu` |  | `50m` |  | values.yaml |
@@ -328,6 +327,13 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `executor.workerResources.limits.memory` |  | `1Gi` |  | values.yaml |
 | `executor.workerResources.requests.cpu` |  | `1` |  | values.yaml |
 | `executor.workerResources.requests.memory` |  | `1Gi` |  | values.yaml |
+| `executor.workerSecurityContext` | object |  | The harness container's securityContext. The default meets the restricted Pod Security Standard; {} drops it for a harness image that must run as root. | values.yaml, values.schema.json |
+| `executor.workerSecurityContext.allowPrivilegeEscalation` |  | `false` |  | values.yaml |
+| `executor.workerSecurityContext.capabilities.drop` |  | `["ALL"]` |  | values.yaml |
+| `executor.workerSecurityContext.runAsGroup` |  | `1000` |  | values.yaml |
+| `executor.workerSecurityContext.runAsNonRoot` |  | `true` |  | values.yaml |
+| `executor.workerSecurityContext.runAsUser` |  | `1000` |  | values.yaml |
+| `executor.workerSecurityContext.seccompProfile.type` |  | `RuntimeDefault` |  | values.yaml |
 | `image.repository` |  | `ghcr.io/ploeg-hq/ploegd` | The public release image. Point repository at a copy of the same digest, with imagePullSecrets, when the cluster pulls from a private registry. | values.yaml |
 | `image.tag` |  | `""` | empty = .Chart.AppVersion (kept in lockstep with the chart by the release train) | values.yaml |
 | `imagePullSecrets` |  | `[]` | e.g. [{name: harbor-pull}] for a private registry | values.yaml |
