@@ -27,7 +27,7 @@ jobs:
       (github.event_name != 'workflow_run' ||
         (github.event.workflow_run.conclusion == 'success' && startsWith(github.event.workflow_run.head_branch, 'v0.')))
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 25
     permissions:
       contents: read
       packages: write
@@ -46,6 +46,8 @@ jobs:
         with:
           version: 2026.9.18
           cache: false
+      - name: Wait until the Go module proxy and checksum database serve the tag
+        run: bash scripts/go-module-published.sh "$RELEASE_TAG"
       - name: Publish the contract bundle
         env:
           GH_TOKEN: ${{ github.token }}
