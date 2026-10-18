@@ -707,3 +707,5 @@ config: {}
 #         repairFailedChecks: true    # a failed check queues a repair Follow-Up
 #         maxRepairs: 2               # repair Follow-Ups per pull request; 0 = 2
 #         reworkOnChangesRequested: true  # a person's "request changes" sends it back
+#       premiseCheck:                 # ADR-0123; omit = no premise check (the default)
+#         model: hetzner-qwen3-8-27b  # a gateway model priced at zero; ploegd refuses any other

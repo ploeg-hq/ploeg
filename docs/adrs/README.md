@@ -196,6 +196,7 @@ fails otherwise.
 | [0119](0119-a-pull-request-is-ready-for-review-only-when-the-forges-ci-passed-on-its-head.md) | A pull request is ready for review only when the forge's CI passed on its head | accepted | 2026-10-18 |
 | [0120](0120-a-worker-container-meets-the-restricted-pod-security-standard-by-default.md) | A worker container meets the restricted Pod Security Standard by default | accepted | 2026-10-18 |
 | [0121](0121-findings-carry-ids-writers-answer-them-and-a-run-asks-instead-of-guessing.md) | Findings carry ids, writers answer them, and a Run asks instead of guessing | accepted | 2026-10-18 |
+| [0123](0123-dispatch-waits-for-tracker-dependencies-and-an-opt-in-free-premise-check.md) | Dispatch waits for tracker dependencies and an opt-in free premise check, and a briefing names overlapping active work | accepted | 2026-10-18 |
 
 ## Review calendar
 
@@ -218,6 +219,7 @@ triggers.
 | 2027-01-18 | [0115](0115-candidates-are-calculated-from-conventional-commits-and-a-stable-release-stays-a-reviewed-tag.md), [0116](0116-every-releasable-merge-to-development-cuts-a-candidate.md) — or sooner, when the owner automates stable releases from `main`, the shared release configuration changes its analyzer rules, GitHub lets a workflow token's tag push start other workflows, or a candidate's publication fails twice in a month |
 | 2027-01-18 | [0117](0117-every-release-publishes-a-contract-bundle-for-consumers.md) — or sooner, when the codes in the Go files get their own schema, a second consumer needs content the bundle leaves out, or GHCR stops serving anonymous pulls of the package |
 | 2027-01-31 | [0010](0010-shift-owns-the-item-lease-owns-the-branch.md), [0011](0011-the-pull-request-is-the-blackboard.md), [0012](0012-two-level-budgets-authorized-and-settled.md), [0013](0013-push-rights-are-minted-per-run.md), [0017](0017-the-review-loop-is-verdict-driven-and-capped.md), [0018](0018-the-outcome-drop-box-is-every-harnesss-return-path.md), [0019](0019-a-failed-writing-run-reopens-its-round.md), [0021](0021-infra-failures-and-agent-failures-get-separate-retry-budgets.md), [0023](0023-the-forge-dialect-travels-on-the-work-item.md) — after the first real Shifts have run; all nine rest on assumptions only production can test |
+| 2027-01-31 | [0123](0123-dispatch-waits-for-tracker-dependencies-and-an-opt-in-free-premise-check.md) — or sooner, when a Team's premise check bounces over 20 % of what people requeue unchanged, the free endpoint's terms or price change, or typed questions (ADR-0121) land |
 | 2027-01-31 | [0034](0034-the-harness-gets-placeholders-the-worker-keeps-credentials.md) — or sooner, when a qualified harness needs credentials from inside DinD |
 | 2027-01-31 | [0033](0033-board-control-planes-are-mined-for-design-never-depended-on.md) — or sooner, when Paperclip ships bring-your-own ticket system or Multica publishes a stable daemon protocol |
 | 2027-01-31 | [0036](0036-stuck-work-reaches-the-owner-as-a-cited-proposal-not-an-agent-decision.md) — or sooner, after 20 escalation briefs, or when Ploeg writes to the tracker as its own user |

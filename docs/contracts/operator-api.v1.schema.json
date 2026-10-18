@@ -617,6 +617,25 @@
               "type": "null"
             }
           ]
+        },
+        "waitingFor": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "$ref": "#/$defs/dependency"
+          },
+          "description": "The tracker items this Work Item waits for that are not done, as its tracker last reported them (ADR-0123). While it lists any, a queued Work Item gets no Shift; the hold ends when the tracker marks each one done. Optional: absent from older Ploeg releases."
+        },
+        "premiseCheck": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/premiseCheck"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The Work Item's premise check before its first writer (ADR-0123); null when its Team runs none or it has not run yet. Optional: absent from older Ploeg releases."
         }
       }
     },
@@ -5670,6 +5689,118 @@
             "pattern": "^q[1-9][0-9]{0,18}-[1-9][0-9]{0,3}$"
           },
           "description": "the questions of the parked Round still without an answer"
+        }
+      }
+    },
+    "dependency": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "One open tracker dependency of a Work Item (ADR-0123).",
+      "required": [
+        "provider",
+        "externalId",
+        "title",
+        "kind",
+        "workItemId",
+        "firstSeenAt",
+        "checkedAt"
+      ],
+      "properties": {
+        "provider": {
+          "type": "string"
+        },
+        "externalId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "title": {
+          "type": "string",
+          "description": "Tracker text; untrusted."
+        },
+        "kind": {
+          "enum": [
+            "blocked_by",
+            "follows"
+          ],
+          "description": "blocked_by: the tracker says this Work Item is blocked by it. follows: the tracker says this Work Item follows it."
+        },
+        "workItemId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,18}$"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Ploeg's Work Item for the same tracker item, or null when Ploeg has none."
+        },
+        "firstSeenAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "checkedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When Ploeg last read the tracker's dependencies of this Work Item."
+        }
+      }
+    },
+    "premiseCheck": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "A Work Item's premise check (ADR-0123): one classifier call on a gateway model priced at zero, before the first writer. proceed opens the Shift; ask and too_big move the Work Item to needs_human with the question and spend nothing on a writer; skipped means the check gave up and dispatch went on. A person assigning or requeuing the Work Item again sends it on without a second check.",
+      "required": [
+        "verdict",
+        "question",
+        "reason",
+        "model",
+        "attempts",
+        "checkedAt"
+      ],
+      "properties": {
+        "verdict": {
+          "anyOf": [
+            {
+              "enum": [
+                "proceed",
+                "ask",
+                "too_big",
+                "skipped"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Null while every attempt so far failed without an answer."
+        },
+        "question": {
+          "type": "string",
+          "description": "What a person must answer (ask) or a suggested split (too_big); empty otherwise. Model output about tracker text; untrusted."
+        },
+        "reason": {
+          "type": "string",
+          "description": "One line on why, or the last failure for skipped. Untrusted."
+        },
+        "model": {
+          "type": "string"
+        },
+        "attempts": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "checkedAt": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       }
     }

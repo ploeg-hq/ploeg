@@ -200,7 +200,7 @@ If a pull request exists on the forge but not here, the forge's facts did not re
 
 `max by (team) (ploeg_work_item_oldest_queued_seconds) > waitSeconds`. Default: 3600 s, `for: 10m`, warning.
 
-A claimable Work Item of the team has waited more than an hour for a worker. Items in backoff (`next_eligible_at` in the future) and operator-owned items are not counted. Usually the team's builder slots are all taken (its ScaledJob's `maxReplicaCount`), or the executor is not scaling.
+A claimable Work Item of the team has waited more than an hour for a worker. Items in backoff (`next_eligible_at` in the future), operator-owned items and items held for an open tracker dependency (ADR-0123) are not counted. Usually the team's builder slots are all taken (its ScaledJob's `maxReplicaCount`), or the executor is not scaling.
 
 **Check first:** what the team is running and what waits.
 

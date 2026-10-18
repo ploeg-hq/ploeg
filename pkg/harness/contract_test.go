@@ -178,6 +178,14 @@ func TestPromptStartedCheckpoint_MatchesSchema(t *testing.T) {
 	}
 }
 
+func TestCheckpointWithPlannedPaths_MatchesSchema(t *testing.T) {
+	sch := compileSchema(t, "checkpoint.v1.schema.json")
+	cp := work.Checkpoint{Phase: "changes_made", PlannedPaths: []string{"pkg/store/", "docs/index.md"}}
+	if err := validate(t, sch, cp); err != nil {
+		t.Errorf("checkpoint with planned paths does not validate: %v", err)
+	}
+}
+
 func TestOutcomeReport_MatchesSchema(t *testing.T) {
 	sch := compileSchema(t, "outcomereport.v1.schema.json")
 
