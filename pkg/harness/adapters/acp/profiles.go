@@ -169,13 +169,49 @@ func qwenCodeProfile(configJSON string) Profile {
 					return nil, err
 				}
 			}
+			doc, err := withQwenFolderTrust(doc)
+			if err != nil {
+				return nil, err
+			}
 			path := filepath.Join(env.ScratchDir, "qwen-code-"+safeSuffix(spec.TraceID)+".json")
 			if err := os.WriteFile(path, []byte(doc), 0o600); err != nil {
 				return nil, fmt.Errorf("write qwen-code settings: %w", err)
 			}
-			return []string{"QWEN_HOME=" + home, "QWEN_CODE_SYSTEM_SETTINGS_PATH=" + path}, nil
+			return []string{
+				"QWEN_HOME=" + home,
+				"QWEN_CODE_SYSTEM_SETTINGS_PATH=" + path,
+				"QWEN_CODE_TRUSTED_FOLDERS_PATH=" + filepath.Join(home, "trustedFolders.json"),
+			}, nil
 		},
 	}
+}
+
+// withQwenFolderTrust switches Qwen Code's folder trust on in a settings
+// document, including an operator's override. With folder trust on and no
+// folder trusted, Qwen Code treats the repository as an untrusted workspace:
+// it ignores the repository's .env, settings and hooks, which it otherwise
+// loads by default.
+func withQwenFolderTrust(doc string) (string, error) {
+	var cfg map[string]any
+	if err := json.Unmarshal([]byte(doc), &cfg); err != nil {
+		return "", fmt.Errorf("qwen-code settings are not a JSON object: %w", err)
+	}
+	if cfg == nil {
+		cfg = map[string]any{}
+	}
+	security, _ := cfg["security"].(map[string]any)
+	if security == nil {
+		security = map[string]any{}
+	}
+	trust, _ := security["folderTrust"].(map[string]any)
+	if trust == nil {
+		trust = map[string]any{}
+	}
+	trust["enabled"] = true
+	security["folderTrust"] = trust
+	cfg["security"] = security
+	b, err := json.MarshalIndent(cfg, "", "  ")
+	return string(b), err
 }
 
 func qwenCodeEnv(l harness.LLMEnv) []string {
