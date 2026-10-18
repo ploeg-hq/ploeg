@@ -1,0 +1,58 @@
+name: Release candidate
+on:
+  push:
+    branches: [development]
+permissions:
+  contents: read
+concurrency:
+  group: ploeg-release-candidate
+  cancel-in-progress: false
+jobs:
+  cut:
+    if: github.repository == 'ploeg-hq/ploeg'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.semantic-release.outputs.tag }}
+    env:
+      # renovate: datasource=npm depName=@webgrip/semantic-release-config registryUrl=https://forgejo.webgrip.dev/api/packages/webgrip/npm/
+      RELEASE_CONFIG_VERSION: 1.4.0
+      RELEASE_CONFIG_REPOSITORY: https://forgejo.webgrip.dev/webgrip/semantic-release-config.git
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: development
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: jdx/mise-action@7a4e45a543138629540c9a1616d08632b893e492 # v5.0.1
+        with:
+          version: 2026.9.18
+          install_args: node
+          cache: false
+      - name: Install the shared release configuration from its lockfile
+        run: |
+          toolchain="$RUNNER_TEMP/release-toolchain/node_modules/@webgrip/semantic-release-config"
+          git clone --quiet --depth 1 --branch "v$RELEASE_CONFIG_VERSION" "$RELEASE_CONFIG_REPOSITORY" "$toolchain"
+          mise exec node -- npm ci --prefix "$toolchain" --omit=dev --ignore-scripts --no-audit --no-fund
+          echo "NODE_PATH=$RUNNER_TEMP/release-toolchain/node_modules" >> "$GITHUB_ENV"
+          echo "SEMANTIC_RELEASE_BIN=$toolchain/node_modules/.bin/semantic-release" >> "$GITHUB_ENV"
+      - name: Cut the next candidate
+        id: semantic-release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GIT_AUTHOR_NAME: github-actions[bot]
+          GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+          GIT_COMMITTER_NAME: github-actions[bot]
+          GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+        run: mise exec node -- "$SEMANTIC_RELEASE_BIN"
+  publish:
+    needs: cut
+    if: needs.cut.outputs.tag != ''
+    permissions:
+      contents: write
+      packages: write
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: ${{ needs.cut.outputs.tag }}

@@ -4,7 +4,7 @@ title: Commits and staging
 description: Conventional commits with a VIK trailer; stage only the paths you changed.
 resource: https://github.com/ploeg-hq/ploeg/blob/development/AGENTS.md
 tags: [git, commits]
-timestamp: 2026-10-04T00:00:00Z
+timestamp: 2026-10-18T00:00:00Z
 ---
 
 # Commits and staging
@@ -15,4 +15,4 @@ timestamp: 2026-10-04T00:00:00Z
 - On pushed trunk, correct a mistake with a follow-up commit, never an amend.
 - Before assuming your edits are uncommitted, run `git log --oneline -3 -- <paths>`.
 
-Releases are explicit reviewed `v0.x.y` tags; a commit does not publish anything.
+A releasable commit (`feat`, `fix`, `perf`, `refactor`, `revert`, dependency bumps) merged to `development` cuts a `v0.x.y-rc.N` candidate; a stable `v0.x.y` stays a reviewed tag on `main`.

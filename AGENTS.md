@@ -4,7 +4,7 @@ Ploeg admits, budgets and executes agent work from trackers and from authenticat
 
 ## Commits
 
-Releases are explicit reviewed `v0.x.y` tags; commits do not automatically publish. Work from the board carries a `VIK-<taskID>` trailer. On pushed `main`, correct a mistake with a follow-up commit, never an amend. Before assuming your edits are uncommitted, run `git log --oneline -3 -- <paths>`: another session may already have committed them.
+Every releasable merge to `development` (`feat`, `fix`, `perf`, `refactor`, `revert`, dependency bumps) cuts a `v0.x.y-rc.N` candidate automatically; a stable `v0.x.y` stays a reviewed tag on `main` ([releases](docs/ops/release-versioning.md)). Do not hand-edit the chart version or `CHANGELOG.md` for a candidate. Work from the board carries a `VIK-<taskID>` trailer. On pushed `main`, correct a mistake with a follow-up commit, never an amend. Before assuming your edits are uncommitted, run `git log --oneline -3 -- <paths>`: another session may already have committed them.
 
 ## Facts the tree won't tell you
 
