@@ -8,7 +8,7 @@
     "workItemId": { "type": "string" },
     "phase": {
       "type": "string",
-      "description": "e.g. branch_created, changes_made, pr_opened"
+      "description": "e.g. branch_created, changes_made, pr_opened; prompt_started carries limits (ADR-0114) and briefed carries board (ADR-0124)"
     },
     "branch": { "type": "string" },
     "prUrl": { "type": "string" },
@@ -47,6 +47,92 @@
       "description": "The repository paths the Run plans to change, when it knows them before it pushes (ADR-0123). A path ending in / names a directory. ploegd keeps the newest list per live Shift, at most 100 distinct paths, and names it to other Runs working in the same repository. Optional: absent means unknown, not none.",
       "maxItems": 100,
       "items": { "type": "string", "minLength": 1, "maxLength": 1024 }
+    },
+    "board": {
+      "type": "object",
+      "description": "Sent once with the briefed phase, after the worker composed the Run's prompt (ADR-0124): the versions only the worker knows (the commit its clone stands on, the graph commits it read the knowledge at), the keys of the Work Item Notes and the paths of the concepts the briefing showed, and each section's budget and use. ploegd records the first report on the Run; a value outside its bounds is left out.",
+      "properties": {
+        "forgeCommit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$"
+        },
+        "notesCommit": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "conceptsCommit": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "notes": {
+          "type": "array",
+          "maxItems": 200,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "concepts": {
+          "type": "array",
+          "maxItems": 200,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "sections": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "object",
+            "description": "One section of a Run's briefing (ADR-0124): its fixed budget in bytes, what it used, how many items it showed and left out, and a digest of its text.",
+            "properties": {
+              "name": {
+                "enum": [
+                  "findings",
+                  "work-item",
+                  "repository",
+                  "client",
+                  "tenant",
+                  "review_findings",
+                  "questions",
+                  "active_work"
+                ]
+              },
+              "budget": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "bytes": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "items": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "omitted": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "digest": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{16}$"
+              }
+            },
+            "required": [
+              "name",
+              "budget",
+              "bytes",
+              "items"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
     }
   },
   "required": ["phase"],
