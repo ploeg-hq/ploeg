@@ -802,6 +802,10 @@
           "additionalProperties": false,
           "description": "Worker pods ServiceAccount. create and name are independent: naming an account never suppresses creating it."
         },
+        "workerSecurityContext": {
+          "type": "object",
+          "description": "The harness container's securityContext. The default meets the restricted Pod Security Standard; {} drops it for a harness image that must run as root."
+        },
         "nodeSelector": {
           "type": [
             "object",

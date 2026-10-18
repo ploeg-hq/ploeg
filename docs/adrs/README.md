@@ -194,6 +194,7 @@ fails otherwise.
 | [0117](0117-every-release-publishes-a-contract-bundle-for-consumers.md) | Every release publishes a contract bundle for consumers | accepted | 2026-10-18 |
 | [0118](0118-the-unmaintained-openhands-cli-is-retired-as-a-harness.md) | The unmaintained OpenHands CLI is retired as a Harness, for OpenCode, Qwen Code and Goose | proposed | 2026-10-18 |
 | [0119](0119-a-pull-request-is-ready-for-review-only-when-the-forges-ci-passed-on-its-head.md) | A pull request is ready for review only when the forge's CI passed on its head | accepted | 2026-10-18 |
+| [0120](0120-a-worker-container-meets-the-restricted-pod-security-standard-by-default.md) | A worker container meets the restricted Pod Security Standard by default | accepted | 2026-10-18 |
 
 ## Review calendar
 
@@ -261,5 +262,6 @@ triggers.
 | 2027-01-31 | [0114](0114-each-run-records-the-limits-that-stop-its-prompt.md) — or sooner, when ploegd learns each Role's timeouts itself, a Harness gains a limit of its own or runs more than one prompt turn per Run, or an operator consumer needs the agent's last activity from Ploeg |
 | 2027-01-31 | [0118](0118-the-unmaintained-openhands-cli-is-retired-as-a-harness.md) — or sooner, when the OpenHands CLI is maintained again, the OpenHands SDK ships an ACP agent of its own, or OpenCode, Qwen Code or Goose fails qualification or stops being maintained |
 | 2027-01-31 | [0119](0119-a-pull-request-is-ready-for-review-only-when-the-forges-ci-passed-on-its-head.md) — or sooner, when Forgejo reports cancelled CI as its own state, more than five Work Items a month close as `ci_not_finished` or as `ci_not_passed` on a red base, or a route needs review while its CI cannot run |
+| 2027-01-31 | [0120](0120-a-worker-container-meets-the-restricted-pod-security-standard-by-default.md) — or sooner, when a supported harness image needs root at run time, Kubernetes changes what `restricted` requires, or a Team needs a different uid per Role |
 | 2027-04-30 | [0081](0081-ploeg-serves-its-operator-reads-as-mcp-tools-through-ploeg-mcp.md) — or sooner, when a person asks to propose, approve or cancel work from an AI client, someone needs the tools without a route to ploegd, or the MCP Go SDK ships a major version |
 | 2027-04-01 | [0005](0005-build-a-dedicated-dispatch-plane.md), [0032](0032-keep-the-dispatch-plane-and-compete-on-authorized-spend.md), [0071](0071-ploeg-keeps-its-state-in-postgresql-and-is-not-a-kubernetes-operator.md), [0073](0073-ploeg-stays-in-go-and-admits-rust-only-as-a-separately-deployed-component.md), [0077](0077-ploeg-knows-work-sources-and-change-destinations-never-vendors.md) — the project review gate (`design.md` §10) |

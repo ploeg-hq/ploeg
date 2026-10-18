@@ -312,6 +312,16 @@ spec:
           requests:
             cpu: "1"
             memory: 1Gi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          runAsGroup: 1000
+          runAsNonRoot: true
+          runAsUser: 1000
+          seccompProfile:
+            type: RuntimeDefault
         volumeMounts:
         - mountPath: /mnt/bin
           name: worker-bin
@@ -348,6 +358,8 @@ spec:
       restartPolicy: Never
       securityContext:
         fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       serviceAccountName: ploeg-worker
       terminationGracePeriodSeconds: 90
       volumes:
@@ -434,6 +446,8 @@ spec:
         automountServiceAccountToken: false
         securityContext:
           fsGroup: 1000
+          seccompProfile:
+            type: RuntimeDefault
         initContainers:
           # Extracts ploeg-worker from the distroless ploegd image via
           # self-copy (no shell in distroless).
@@ -524,6 +538,16 @@ spec:
                 readOnly: true
               - name: ci-shared
                 mountPath: /mnt/ci-shared
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop:
+                - ALL
+              runAsGroup: 1000
+              runAsNonRoot: true
+              runAsUser: 1000
+              seccompProfile:
+                type: RuntimeDefault
             resources:
               limits:
                 cpu: "1"

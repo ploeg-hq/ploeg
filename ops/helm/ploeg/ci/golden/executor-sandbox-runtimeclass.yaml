@@ -323,6 +323,16 @@ spec:
           requests:
             cpu: "1"
             memory: 1Gi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          runAsGroup: 1000
+          runAsNonRoot: true
+          runAsUser: 1000
+          seccompProfile:
+            type: RuntimeDefault
         volumeMounts:
         - mountPath: /mnt/bin
           name: worker-bin
@@ -391,6 +401,8 @@ spec:
       runtimeClassName: kata
       securityContext:
         fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       serviceAccountName: ploeg-worker
       terminationGracePeriodSeconds: 90
       volumes:
@@ -534,6 +546,16 @@ spec:
           requests:
             cpu: "1"
             memory: 1Gi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          runAsGroup: 1000
+          runAsNonRoot: true
+          runAsUser: 1000
+          seccompProfile:
+            type: RuntimeDefault
         volumeMounts:
         - mountPath: /mnt/bin
           name: worker-bin
@@ -602,6 +624,8 @@ spec:
       runtimeClassName: gvisor
       securityContext:
         fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       serviceAccountName: ploeg-worker
       terminationGracePeriodSeconds: 90
       volumes:
@@ -740,6 +764,16 @@ spec:
           requests:
             cpu: "1"
             memory: 1Gi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          runAsGroup: 1000
+          runAsNonRoot: true
+          runAsUser: 1000
+          seccompProfile:
+            type: RuntimeDefault
         volumeMounts:
         - mountPath: /mnt/bin
           name: worker-bin
@@ -777,6 +811,8 @@ spec:
       runtimeClassName: gvisor-systrap
       securityContext:
         fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       serviceAccountName: ploeg-worker
       terminationGracePeriodSeconds: 90
       volumes:
