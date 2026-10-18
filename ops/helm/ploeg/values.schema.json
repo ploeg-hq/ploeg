@@ -1295,7 +1295,8 @@
           "additionalProperties": { "type": "string", "pattern": "^[^=,]*$" }
         },
         "logPrompts": { "type": "boolean" },
-        "logToolDetails": { "type": "boolean" }
+        "logToolDetails": { "type": "boolean" },
+        "allowHarnesses": { "type": "array", "uniqueItems": true, "items": { "enum": ["openhands"] } }
       },
       "additionalProperties": false,
       "if": { "minProperties": 1 },
