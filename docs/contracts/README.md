@@ -16,6 +16,22 @@ change either side and the test tells you.
 | [acp-profiles.md](acp-profiles.md) | The `acp` harness profiles: launch command, gateway wiring, instruction files and approval mapping per agent, and what an image needs to run them. |
 | [executor.md](executor.md) | The executor SPI: what any launcher (KEDA, CronJob, agent-sandbox, a human with curl) must and must not do. |
 
+## The contract bundle
+
+Every release also publishes these contracts as one OCI artifact, so a consumer pins a released Ploeg by version and digest instead of checking out its source ([homelab ADR-0069](https://forgejo.webgrip.dev/webgrip/homelab-cluster/src/branch/main/docs/techdocs/docs/adr/adr-0069-one-delivery-contract.md), layer 4). A consumer reads it for its contract tests, its glossary, its decision records and the Ploeg pages it republishes in its own documentation.
+
+| | |
+| --- | --- |
+| Reference | `ghcr.io/ploeg-hq/ploeg-contract:<version>`, the release tag without its `v` |
+| Artifact type | `application/vnd.ploeg.contract.v1+json` |
+| Layer | one `application/vnd.ploeg.contract.layer.v1.tar+gzip`, `ploeg-contract-<version>.tar.gz` |
+| `ploeg-contract.json` | `schemaVersion` 1, `name`, `version`, `commit` (the tagged commit) and `source` |
+| `docs/` | every tracked file under `docs/`: these schemas, the domain model, the ADR ledger and the guides |
+| `pkg/`, `cmd/` | the non-test Go files, which define the codes no schema lists yet (Shift close reasons, `needs_human` reasons, audit actions) |
+| `files.txt` | every tracked path at the tag, one per line, so a consumer can check a link into a file the bundle leaves out |
+
+[scripts/contract-bundle.sh](../../scripts/contract-bundle.sh) builds the bundle from a checkout of the tag with `git archive` and `gzip -n`, so two builds of one tag are byte for byte equal. [The contract bundle workflow](../../.github/workflows/contract-bundle.yml) publishes it after a successful release run, or for an existing tag when dispatched by hand. It never overwrites a tag that carries a different bundle, and a re-run that finds the same layer digest succeeds without pushing. `bash scripts/contract-bundle.sh build v0.x.y <checkout>` writes the archive to `dist/contract-bundle/` without publishing it. [scripts/test-contract-bundle.sh](../../scripts/test-contract-bundle.sh), part of `mise run verify`, checks its contents, that two builds are equal and that it refuses a checkout that is not at the tag or has local changes.
+
 ## Versioning policy
 
 - **v1 is frozen.** Additive *optional* fields are allowed (with a schema
