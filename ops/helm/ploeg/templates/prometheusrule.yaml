@@ -226,4 +226,19 @@ spec:
             {{- end }}
         {{- end }}
         {{- end }}
+        {{- with $a.awaitingReviewWithUnsuccessfulCI }}
+        {{- if .enabled }}
+        - alert: PloegAwaitingReviewWithUnsuccessfulCI
+          expr: max(ploeg_awaiting_review_with_unsuccessful_ci{ {{- $sel -}} }) > 0
+          for: {{ .for }}
+          labels:
+            severity: {{ .severity }}
+          annotations:
+            summary: "Work Items await review while their pull request's CI is not green"
+            description: "{{ "{{" }} $value {{ "}}" }} Work Item(s) in awaiting_review have a pull request whose head CI, as last read from the forge, is not success. The forge CI gate (ADR-0119) should have moved them out of review."
+            {{- if $runbook }}
+            runbook_url: {{ printf "%s#ploegawaitingreviewwithunsuccessfulci" $runbook }}
+            {{- end }}
+        {{- end }}
+        {{- end }}
 {{- end }}

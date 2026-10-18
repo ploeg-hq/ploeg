@@ -60,8 +60,11 @@ func TestReviewWatch_ReconcileRecordsAnOpenPullRequestsDiffAndCI(t *testing.T) {
 		ciState != "failure" || ciHead != "h72" || string(checks) != `[{"state": "failure", "context": "verify"}]` {
 		t.Errorf("recorded %s %s %d/%d/%d %s %s %s", state, head, additions, deletions, changed, ciState, ciHead, checks)
 	}
-	if got := itemState(t, item); got != "awaiting_review" {
-		t.Errorf("item state = %q; an open pull request settles nothing", got)
+	if got := itemState(t, item); got != "needs_human" {
+		t.Errorf("item state = %q; an item in review whose head CI failed leaves review (ADR-0119)", got)
+	}
+	if got := closeReason(t, item); got != reasonCINotPassed {
+		t.Errorf("close reason = %q, want %q", got, reasonCINotPassed)
 	}
 }
 

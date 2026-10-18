@@ -295,6 +295,15 @@ spec:
             summary: "Pending Runs of {{ $labels.team }}/{{ $labels.role }} store a Harness no workload claims"
             description: "{{ $value }} pending Run(s) store Harness {{ $labels.harness }}, which the current allowlist of the Role no longer contains. Ploeg leaves them as they are: restore the allowlist entry, or cancel or requeue the Work Item."
             runbook_url: https://docs.example/ploeg/ops/alerts/#ploegharnessoutsideallowlist
+        - alert: PloegAwaitingReviewWithUnsuccessfulCI
+          expr: max(ploeg_awaiting_review_with_unsuccessful_ci{job="ploeg",namespace="default"}) > 0
+          for: 90m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Work Items await review while their pull request's CI is not green"
+            description: "{{ $value }} Work Item(s) in awaiting_review have a pull request whose head CI, as last read from the forge, is not success. The forge CI gate (ADR-0119) should have moved them out of review."
+            runbook_url: https://docs.example/ploeg/ops/alerts/#ploegawaitingreviewwithunsuccessfulci
 ---
 # Source: ploeg/templates/servicemonitor.yaml
 apiVersion: monitoring.coreos.com/v1

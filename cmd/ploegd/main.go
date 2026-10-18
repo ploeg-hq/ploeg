@@ -293,6 +293,7 @@ func run(log *slog.Logger) error {
 			Trackers:     trackers,
 			Uniform:      uniform,
 			UsageReport:  usageReport,
+			CIWaits:      ciWaits(cfg),
 			ReportLinks: shiftengine.ReportLinks{
 				WorkItem:       os.Getenv("PLOEG_REPORT_WORK_ITEM_URL"),
 				TeamDashboard:  os.Getenv("PLOEG_REPORT_TEAM_DASHBOARD_URL"),
@@ -422,6 +423,7 @@ func run(log *slog.Logger) error {
 			Trackers:        trackers,
 			MarkTrackerDone: envOr("PLOEG_TRACKER_DONE_ON_MERGE", "false") == "true",
 			OutcomeNotes:    srv.Notes != nil,
+			CIWaits:         ciWaits(cfg),
 			Log:             log,
 		}
 		srv.Reviews = reviews
@@ -612,4 +614,12 @@ func dispatchGate(engine *shiftengine.Engine, cfg *config.File, log *slog.Logger
 	}
 	log.Info("dispatch gate", "dependency_hold", hold, "dependency_recheck", engine.DependencyRecheck.String(), "premise_check_teams", len(engine.PremiseModels))
 	return nil
+}
+
+func ciWaits(cfg *config.File) shiftengine.CIWaits {
+	out := shiftengine.CIWaits{}
+	for _, w := range cfg.CIWaits() {
+		out[shiftengine.CIRoute(w.Forge, w.Repo)] = w.Timeout
+	}
+	return out
 }

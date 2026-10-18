@@ -251,6 +251,7 @@ func (p *Provider) PullRequestMergeability(ctx context.Context, repo string, pr 
 		Mergeable *bool  `json:"mergeable"`
 		Base      struct {
 			Ref string `json:"ref"`
+			Sha string `json:"sha"`
 		} `json:"base"`
 		MergeCommitSHA string `json:"merge_commit_sha"`
 		MergedAt       string `json:"merged_at"`
@@ -273,7 +274,7 @@ func (p *Provider) PullRequestMergeability(ctx context.Context, repo string, pr 
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&body); err != nil {
 		return provider.PullRequestMergeability{}, fmt.Errorf("forgejo: read %s#%d: %w", repo, pr, err)
 	}
-	facts := provider.PullRequestFacts{HeadSHA: body.Head.Sha,
+	facts := provider.PullRequestFacts{HeadSHA: body.Head.Sha, BaseSHA: body.Base.Sha,
 		Additions: nonNegative(body.Additions), Deletions: nonNegative(body.Deletions), ChangedFiles: nonNegative(body.ChangedFiles),
 		OpenedAt: forgeTime(body.CreatedAt), Author: body.User.Login, Draft: body.Draft}
 	switch {
@@ -313,8 +314,11 @@ func (p *Provider) CommitStatus(ctx context.Context, repo, sha string) (provider
 		SHA        string `json:"sha"`
 		TotalCount int    `json:"total_count"`
 		Statuses   []struct {
-			Context string `json:"context"`
-			Status  string `json:"status"`
+			Context     string `json:"context"`
+			Status      string `json:"status"`
+			Description string `json:"description"`
+			TargetURL   string `json:"target_url"`
+			UpdatedAt   string `json:"updated_at"`
 		} `json:"statuses"`
 	}
 	status, err := p.get(ctx, target, &body)
@@ -331,7 +335,12 @@ func (p *Provider) CommitStatus(ctx context.Context, repo, sha string) (provider
 		if !known {
 			continue
 		}
-		out.Checks = append(out.Checks, provider.CommitCheck{Context: s.Context, State: state})
+		check := provider.CommitCheck{Context: s.Context, State: state, Description: s.Description, TargetURL: s.TargetURL,
+			Cancelled: cancelledStatus(state, s.Description)}
+		if at := provider.ParseForgeTime(s.UpdatedAt); at != nil {
+			check.UpdatedAt = *at
+		}
+		out.Checks = append(out.Checks, check)
 		states = append(states, state)
 	}
 	combined, known := commitState(body.State)
@@ -346,6 +355,15 @@ func (p *Provider) CommitStatus(ctx context.Context, repo, sha string) (provider
 }
 
 const commitStatusLimit = 50
+
+// cancelledDescription is the description Forgejo Actions gives the commit
+// status of a job that was cancelled. Forgejo has no cancelled state, so this
+// text is the only signal (ADR-0119).
+const cancelledDescription = "Has been cancelled"
+
+func cancelledStatus(state provider.CommitState, description string) bool {
+	return state == provider.CommitFailure && strings.EqualFold(strings.TrimSpace(description), cancelledDescription)
+}
 
 func commitState(s string) (provider.CommitState, bool) {
 	switch provider.CommitState(s) {

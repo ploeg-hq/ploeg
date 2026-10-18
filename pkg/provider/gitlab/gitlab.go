@@ -243,8 +243,11 @@ func (p *Provider) PullRequestFacts(ctx context.Context, repo string, mr int) (p
 		return provider.PullRequestFacts{}, fmt.Errorf("gitlab: read %s!%d: HTTP %d: %s", repo, mr, resp.StatusCode, bytes.TrimSpace(snippet))
 	}
 	var body struct {
-		State          string `json:"state"`
-		SHA            string `json:"sha"`
+		State    string `json:"state"`
+		SHA      string `json:"sha"`
+		DiffRefs struct {
+			BaseSHA string `json:"base_sha"`
+		} `json:"diff_refs"`
 		MergeCommitSHA string `json:"merge_commit_sha"`
 		SquashSHA      string `json:"squash_commit_sha"`
 		MergedAt       string `json:"merged_at"`
@@ -266,7 +269,7 @@ func (p *Provider) PullRequestFacts(ctx context.Context, repo string, mr int) (p
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&body); err != nil {
 		return provider.PullRequestFacts{}, fmt.Errorf("gitlab: read %s!%d: %w", repo, mr, err)
 	}
-	facts := provider.PullRequestFacts{HeadSHA: body.SHA, ChangedFiles: changesCount(body.ChangesCount),
+	facts := provider.PullRequestFacts{HeadSHA: body.SHA, BaseSHA: body.DiffRefs.BaseSHA, ChangedFiles: changesCount(body.ChangesCount),
 		OpenedAt: provider.ParseForgeTime(body.CreatedAt), Draft: body.Draft}
 	if facts.Draft == nil {
 		facts.Draft = body.WorkInProgress
@@ -334,7 +337,8 @@ func (p *Provider) CommitStatus(ctx context.Context, repo, sha string) (provider
 		if !known {
 			continue
 		}
-		out.Checks = append(out.Checks, provider.CommitCheck{Context: st.Name, State: state})
+		out.Checks = append(out.Checks, provider.CommitCheck{Context: st.Name, State: state, Description: st.Description,
+			TargetURL: st.TargetURL, Cancelled: st.Status == "canceled"})
 		states = append(states, state)
 	}
 	combined, known := provider.CombineCommitStates(states)
@@ -348,9 +352,11 @@ func (p *Provider) CommitStatus(ctx context.Context, repo, sha string) (provider
 const commitStatusMaxPages = 50
 
 type commitStatus struct {
-	ID     int64  `json:"id"`
-	Name   string `json:"name"`
-	Status string `json:"status"`
+	ID          int64  `json:"id"`
+	Name        string `json:"name"`
+	Status      string `json:"status"`
+	Description string `json:"description"`
+	TargetURL   string `json:"target_url"`
 }
 
 func (p *Provider) commitStatuses(ctx context.Context, repo, sha string) ([]commitStatus, error) {
