@@ -43,13 +43,14 @@ func (s *Server) askBudget(team string) (LLMPolicy, float64, bool) {
 
 type allowanceView struct {
 	store.Allowance
+	AskCount     int64   `json:"askCount"`
 	AskBudgetUSD float64 `json:"askBudgetUsd"`
 	AsksEnabled  bool    `json:"asksEnabled"`
 }
 
 func (s *Server) allowanceView(a store.Allowance) allowanceView {
 	_, budget, enabled := s.askBudget(a.ScopeID)
-	return allowanceView{Allowance: a, AskBudgetUSD: budget, AsksEnabled: enabled}
+	return allowanceView{Allowance: a, AskCount: a.Count, AskBudgetUSD: budget, AsksEnabled: enabled}
 }
 
 func (s *Server) handleOperatorAllowance(w http.ResponseWriter, r *http.Request) {
@@ -58,14 +59,18 @@ func (s *Server) handleOperatorAllowance(w http.ResponseWriter, r *http.Request)
 	}
 	q := r.URL.Query()
 	for key, values := range q {
-		if key != "team" || len(values) != 1 {
-			operatorError(w, 400, "invalid_request", "Allowances take exactly one team.")
+		if (key != "team" && key != "purpose") || len(values) != 1 {
+			operatorError(w, 400, "invalid_request", "Allowances take exactly one team and at most one purpose, ask or chat.")
 			return
 		}
 	}
 	team := q.Get("team")
-	if !operatorName.MatchString(team) {
-		operatorError(w, 400, "invalid_request", "Allowances take exactly one team.")
+	purpose := store.AllowancePurposeAsk
+	if q.Has("purpose") {
+		purpose = q.Get("purpose")
+	}
+	if !operatorName.MatchString(team) || (purpose != store.AllowancePurposeAsk && purpose != store.AllowancePurposeChat) {
+		operatorError(w, 400, "invalid_request", "Allowances take exactly one team and at most one purpose, ask or chat.")
 		return
 	}
 	principal, _ := OperatorPrincipalFromContext(r.Context())
@@ -73,9 +78,17 @@ func (s *Server) handleOperatorAllowance(w http.ResponseWriter, r *http.Request)
 		operatorError(w, 403, "forbidden", "The consumer cannot read this team.")
 		return
 	}
-	a, err := s.Store.Allowance(r.Context(), store.AllowancePurposeAsk, store.AllowanceScopeTeam, team, time.Now(), s.askAllowanceUSD())
+	limit := s.askAllowanceUSD()
+	if purpose == store.AllowancePurposeChat {
+		limit = s.chatAllowanceUSD()
+	}
+	a, err := s.Store.Allowance(r.Context(), purpose, store.AllowanceScopeTeam, team, time.Now(), limit)
 	if err != nil {
 		operatorReadError(w, err)
+		return
+	}
+	if purpose == store.AllowancePurposeChat {
+		operatorJSON(w, 200, map[string]any{"schemaVersion": "1.0", "allowance": s.chatAllowanceView(a)})
 		return
 	}
 	operatorJSON(w, 200, map[string]any{"schemaVersion": "1.0", "allowance": s.allowanceView(a)})

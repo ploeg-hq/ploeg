@@ -145,3 +145,22 @@ func reviewBriefing(notes []store.ReviewNote) []harness.Finding {
 	}
 	return out
 }
+
+// forgeCIBriefing tells a fix round's writer which of the forge's checks
+// failed on the pull request's head (ADR-0119). The forge serves no log
+// through Ploeg, so each check names where its log is.
+func forgeCIBriefing(failures []store.CIFailure, round int) harness.Finding {
+	var b strings.Builder
+	b.WriteString("The forge's CI failed on the pull request's head, so the pull request is not ready for review. Fix what these checks report and push to the same branch:\n\n")
+	for _, f := range failures {
+		fmt.Fprintf(&b, "- `%s`: %s", f.Context, f.State)
+		if d := strings.TrimSpace(f.Description); d != "" {
+			fmt.Fprintf(&b, " (%s)", d)
+		}
+		if f.TargetURL != "" {
+			fmt.Fprintf(&b, ", log: %s", f.TargetURL)
+		}
+		b.WriteString("\n")
+	}
+	return harness.Finding{Role: "forge CI", Round: round - 1, Findings: b.String()}
+}

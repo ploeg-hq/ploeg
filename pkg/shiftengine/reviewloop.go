@@ -28,6 +28,8 @@ const (
 	reasonReviewFailed    = "review_failed"
 	reasonPoolHeld        = "budget held by unsettled runs"
 	reasonChecksNotPassed = "checks_not_passed"
+	reasonCINotFinished   = "ci_not_finished"
+	reasonCINotPassed     = "ci_not_passed"
 )
 
 func closeMessage(reason string) string {
@@ -98,29 +100,38 @@ func (e *Engine) nextFixRound(ctx context.Context, si store.ShiftInfo, tp plan.T
 		return plan.Round{}, reasonPlanExhausted, false
 	}
 
+	if reason, ok := e.fixRoundBounds(ctx, si, tp); !ok {
+		return plan.Round{}, reason, false
+	}
+
+	e.Log.Info("fix round opening", "shift", si.ID, "from_round", si.Round,
+		"writer_round", writerIdx+1, "fix_rounds_run", fixRoundsRun(si.Round, tp))
+	return tp.Rounds[writerIdx], "", true
+}
+
+// fixRoundBounds reports whether the pool and the cap allow one more fix
+// round, and otherwise the reason the Shift closes with.
+func (e *Engine) fixRoundBounds(ctx context.Context, si store.ShiftInfo, tp plan.TeamPlan) (reason string, ok bool) {
 	// Bound 1 — money. Checked before the cap so a Shift never spawns a Run it
 	// cannot pay for, and never burns an attempt discovering that.
 	ledger, err := e.Store.Ledger(ctx, si.ID)
 	if err != nil {
 		e.Log.Error("fix round: ledger read failed", "shift", si.ID, "err", err)
-		return plan.Round{}, reasonPlanExhausted, false
+		return reasonPlanExhausted, false
 	}
 	if ledger.Budget > 0 && ledger.Remaining() < minViableFixRound {
 		e.Log.Info("fix round refused: budget", "shift", si.ID,
 			"remaining", ledger.Remaining(), "spent", ledger.Spent)
-		return plan.Round{}, reasonLoopBudget, false
+		return reasonLoopBudget, false
 	}
 
 	// Bound 2 — the cap.
 	if run := fixRoundsRun(si.Round, tp); run >= tp.MaxFixRounds {
 		e.Log.Info("fix round refused: cap", "shift", si.ID,
 			"fix_rounds", run, "max", tp.MaxFixRounds)
-		return plan.Round{}, reasonFixCap, false
+		return reasonFixCap, false
 	}
-
-	e.Log.Info("fix round opening", "shift", si.ID, "from_round", si.Round,
-		"writer_round", writerIdx+1, "fix_rounds_run", fixRoundsRun(si.Round, tp))
-	return tp.Rounds[writerIdx], "", true
+	return "", true
 }
 
 // checksHoldBackReview reports whether the pull request's current commit

@@ -114,6 +114,11 @@ type Server struct {
 	// DefaultAskAllowanceUSD and DefaultAskBudgetUSD.
 	AskAllowanceUSD float64
 	AskBudgetUSD    float64
+	// ChatAllowanceUSD is the limit a Team's monthly Chat Allowance opens
+	// with and ChatBudgetUSD the per-chat Budget (ADR-0128). Zero means
+	// DefaultChatAllowanceUSD and DefaultChatBudgetUSD.
+	ChatAllowanceUSD float64
+	ChatBudgetUSD    float64
 	// DisableRunTranscripts refuses Run transcripts (ADR-0090): the
 	// ingestion route answers 404 and workers stop sending. Transcripts
 	// already stored stay readable.
@@ -739,7 +744,15 @@ func (s *Server) runBriefing(ctx context.Context, run *store.ClaimedRun) ([]harn
 	} else {
 		in.CatchUps = catchUps
 	}
-	return shiftBriefing(in, run.Round), findings, questions
+	briefing := shiftBriefing(in, run.Round)
+	if run.Writes {
+		if failures, err := s.Store.CIFixBriefing(ctx, run.ShiftID, run.Round); err != nil {
+			s.Log.Error("forge CI briefing read failed; run proceeds without it", "shift", run.ShiftID, "err", err)
+		} else if len(failures) > 0 {
+			briefing = append(briefing, forgeCIBriefing(failures, run.Round))
+		}
+	}
+	return briefing, findings, questions
 }
 
 func (s *Server) stopUnreadyTarget(ctx context.Context, team, runToken string, item work.WorkItem) bool {

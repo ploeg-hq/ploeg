@@ -126,6 +126,7 @@ func (s *Server) handleClientClaim(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.recordRunConfig(r.Context(), claim.RunToken, claim.Team, claim.Role, true, runHarness{Name: claudeenv.Name, Model: claim.Model})
+	s.recordBoardClaim(r.Context(), claim.RunToken)
 	briefing, findings, questions := s.runBriefing(r.Context(), &claim.ClaimedRun)
 	if claim.Role != "ask" {
 		briefing = append(briefing, s.consumeOperatorNotes(r.Context(), claim.Item.ID, claim.RunToken, claim.Round)...)
@@ -135,6 +136,7 @@ func (s *Server) handleClientClaim(w http.ResponseWriter, r *http.Request) {
 		WorkItem: claim.Item, Role: claim.Role, Branch: claim.Branch, TraceID: litellm.Alias(claim.RunToken),
 		Repo:     harness.RepoRef{Forge: target.Forge, Owner: target.Owner, Name: target.Repo, BaseBranch: target.BaseBranch},
 		Briefing: briefing, ReviewFindings: findings, Questions: questions,
+		ActiveWork: s.activeWork(r.Context(), claim.Item.ID),
 	}
 	if s.ClaudeSessions != nil {
 		spec.Repo.ForgeURL = s.ClaudeSessions.ForgeURL
