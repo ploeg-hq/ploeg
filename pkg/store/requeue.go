@@ -45,12 +45,15 @@ var (
 
 // requeueTx is the fresh-mandate transition a tracker re-assignment and an
 // operator requeue share: an item in one of the from states becomes queued
-// with attempts and infra_failures reset. Operator-owned items never move.
+// with attempts and infra_failures reset. Operator-owned items never move,
+// and neither does one whose client-carried Run waits for its person
+// (ADR-0112): that needs_human is a live Shift waiting, not a stop.
 // It reports whether the item moved.
 func requeueTx(ctx context.Context, tx pgx.Tx, workItemID int64, from []string) (bool, error) {
 	tag, err := tx.Exec(ctx, `UPDATE work_items SET state = 'queued', attempts = 0, infra_failures = 0,
 			next_eligible_at = NULL, updated_at = now()
-		WHERE id = $1 AND NOT operator_owned AND state = ANY($2)`, workItemID, from)
+		WHERE id = $1 AND NOT operator_owned AND state = ANY($2)
+		  AND NOT EXISTS (SELECT 1 FROM agent_runs r WHERE r.work_item_id = work_items.id AND r.carrier = 'client' AND r.state = 'pending')`, workItemID, from)
 	if err != nil {
 		return false, err
 	}

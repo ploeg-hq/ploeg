@@ -59,6 +59,19 @@ executor:
         claudeEnvironment:
           environmentId: ccpool_example
           loginVolume: pewter-claude-login
+    # ADR-0112: the person's own Claude Code carries this team's Runs. The
+    # chart renders no worker for it and needs no login; ploegd learns the
+    # carrier and the environment from PLOEG_TEAM_HARNESSES.
+    - name: brass
+      model: litellm_proxy/claude-sonnet-5
+      budget: "1"
+      harness:
+        name: claude-environment
+        image: harbor.webgrip.dev/webgrip/claude-dispatch:0.1.0
+        dind: false
+        claudeEnvironment:
+          environmentId: ccpool_brass
+          carrier: client
     # A team with NO repo: the target comes from the work item (R11), so this
     # renders no REPO_OWNER/REPO_NAME at all. Proves the decoupled path on
     # every PR — the whole point is that a capability tier needs no repository.

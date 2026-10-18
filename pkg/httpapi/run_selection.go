@@ -18,6 +18,9 @@ func (r RunSelections) RoleSelection(team, role string) store.RoleSelection {
 	var sel store.RoleSelection
 	if h, ok := r.Harnesses[team][role]; ok {
 		sel.DefaultHarness = h.DefaultKey()
+		if h.ClientCarried() {
+			sel.ClientCarried = []string{h.DefaultKey()}
+		}
 		for _, a := range h.Allowlist() {
 			if key := harnessKeyOf(a.OperatorRoleHarness); h.Admits(key) {
 				sel.Harnesses = append(sel.Harnesses, key)

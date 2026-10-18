@@ -377,6 +377,7 @@ func run(log *slog.Logger) error {
 		Targets:        targets,
 		Readiness:      readiness,
 		ScopeTeams:     cfg.ScopeTeams(),
+		TrackerPeople:  cfg.TrackerPeople(),
 		LeaseTTL:       leaseTTL,
 		Log:            log,
 		Version:        version,

@@ -310,6 +310,13 @@ executor:
     # Claude plan. The agent image needs the claude CLI and git.
     claudeEnvironment:
       environmentId: "" # ccpool_… (PLOEG_CLAUDE_ENVIRONMENT_ID)
+      # client: the person's own Claude Code carries the Runs (ADR-0112). No
+      # worker is rendered or claims them, and no login is needed: each Work
+      # Item waits as needs_human until the person it acts for claims its Run
+      # through the operator API and dispatches it with their own login.
+      # ploegd reads the carrier and environmentId from PLOEG_TEAM_HARNESSES.
+      # "" = a worker dispatches with loginVolume or loginSecret.
+      carrier: ""
       # The Team member login that dispatches, one of two ways. loginVolume
       # names a PersistentVolumeClaim holding a Claude config directory a
       # person signed in to with `claude auth login`; the CLI refreshes it in

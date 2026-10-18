@@ -12,6 +12,7 @@ import (
 	"html"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -131,6 +132,11 @@ type Server struct {
 	// Version is this ploegd's version, recorded on each Run it claims or
 	// admits (ADR-0091). Empty records it as unknown.
 	Version string
+	// TrackerPeople maps each tracker's lowercased usernames to Ploeg's
+	// person ids (config trackers.<kind>.people). The client-carried Runs of
+	// a Work Item a mapped user handed to Ploeg act for that person
+	// (ADR-0112); an unmapped user's wait until configuration maps them.
+	TrackerPeople map[string]map[string]string
 
 	pipelineWork  sync.WaitGroup
 	pipelineOnce  sync.Once
@@ -317,6 +323,11 @@ func (s *Server) handleTrackerWebhook(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.observeEpics(r.Context(), name, tp, ev.ExternalID)
+		if ev.Actor != "" {
+			if err := s.Store.RecordHandedBy(r.Context(), id, ev.Actor, s.TrackerPeople[name][strings.ToLower(ev.Actor)]); err != nil {
+				s.Log.Error("recording who handed the work item failed", "provider", name, "external_id", ev.ExternalID, "err", err)
+			}
+		}
 		// Log the actual post-upsert state: a re-assignment of a live
 		// (queued/active) item refreshes the mirror without re-queuing (VIK-588).
 		if state == work.StateQueued {
@@ -656,33 +667,8 @@ func (s *Server) respondClaimedRun(w http.ResponseWriter, r *http.Request, req c
 	if planners, ok := s.RoleCaps.(PlannerRoles); ok && !run.Writes {
 		resp.Planner = planners.IsPlanner(req.Team, run.Role)
 	}
-	// Prior Rounds only: this Round's siblings are still running, and Runs in
-	// one Round never observe each other (ADR-0010).
-	reports, err := s.Store.RoundReports(r.Context(), run.ShiftID)
-	if err != nil {
-		s.Log.Error("briefing read failed; run proceeds without it", "shift", run.ShiftID, "err", err)
-	}
-	for _, rep := range reports {
-		if rep.Round < run.Round && rep.Findings != "" && !rep.Shadow {
-			resp.Briefing = append(resp.Briefing, harness.Finding{
-				Role: rep.Role, Round: rep.Round, Findings: rep.Findings,
-			})
-		}
-	}
+	resp.Briefing, resp.ReviewFindings, resp.Questions = s.runBriefing(r.Context(), run)
 	resp.Context = s.claimContext(r.Context(), run.RunToken)
-	if resp.ReviewFindings, resp.Questions, err = s.Store.FindingsBrief(r.Context(), run.ShiftID, run.Round, run.Writes); err != nil {
-		s.Log.Error("findings briefing read failed; run proceeds without it", "shift", run.ShiftID, "err", err)
-	}
-	if notes, err := s.Store.ShiftReviews(r.Context(), run.ShiftID, run.Round); err != nil {
-		s.Log.Error("review briefing read failed; run proceeds without it", "shift", run.ShiftID, "err", err)
-	} else {
-		resp.Briefing = append(resp.Briefing, reviewBriefing(notes)...)
-	}
-	if brief, restarted, err := s.Store.ShiftRestartBrief(r.Context(), run.ShiftID); err != nil {
-		s.Log.Error("restart briefing read failed; run proceeds without it", "shift", run.ShiftID, "err", err)
-	} else if restarted {
-		resp.Briefing = append([]harness.Finding{restartBriefing(brief)}, resp.Briefing...)
-	}
 	// Push rights are minted per writing Run, so holding the Lease and being
 	// able to push are one fact rather than two that can disagree. A reader
 	// gets nothing here — it has no Lease and no business pushing.
@@ -711,6 +697,42 @@ func (s *Server) respondClaimedRun(w http.ResponseWriter, r *http.Request, req c
 		"briefing", len(resp.Briefing), "review_findings", len(resp.ReviewFindings), "questions", len(resp.Questions),
 		"context", len(resp.Context), "deadline", run.Deadline)
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// runBriefing is what a claimed Run is briefed with: the findings of earlier
+// Rounds, the last review's findings by id with the questions that reach the
+// Run, the reviews people left and a restarted Shift's brief. A read that
+// fails is logged and the Run proceeds without it.
+func (s *Server) runBriefing(ctx context.Context, run *store.ClaimedRun) ([]harness.Finding, []harness.BriefedFinding, []harness.BriefedQuestion) {
+	var briefing []harness.Finding
+	// Prior Rounds only: this Round's siblings are still running, and Runs in
+	// one Round never observe each other (ADR-0010).
+	reports, err := s.Store.RoundReports(ctx, run.ShiftID)
+	if err != nil {
+		s.Log.Error("briefing read failed; run proceeds without it", "shift", run.ShiftID, "err", err)
+	}
+	for _, rep := range reports {
+		if rep.Round < run.Round && rep.Findings != "" && !rep.Shadow {
+			briefing = append(briefing, harness.Finding{
+				Role: rep.Role, Round: rep.Round, Findings: rep.Findings,
+			})
+		}
+	}
+	findings, questions, err := s.Store.FindingsBrief(ctx, run.ShiftID, run.Round, run.Writes)
+	if err != nil {
+		s.Log.Error("findings briefing read failed; run proceeds without it", "shift", run.ShiftID, "err", err)
+	}
+	if notes, err := s.Store.ShiftReviews(ctx, run.ShiftID, run.Round); err != nil {
+		s.Log.Error("review briefing read failed; run proceeds without it", "shift", run.ShiftID, "err", err)
+	} else {
+		briefing = append(briefing, reviewBriefing(notes)...)
+	}
+	if brief, restarted, err := s.Store.ShiftRestartBrief(ctx, run.ShiftID); err != nil {
+		s.Log.Error("restart briefing read failed; run proceeds without it", "shift", run.ShiftID, "err", err)
+	} else if restarted {
+		briefing = append([]harness.Finding{restartBriefing(brief)}, briefing...)
+	}
+	return briefing, findings, questions
 }
 
 func (s *Server) stopUnreadyTarget(ctx context.Context, team, runToken string, item work.WorkItem) bool {
