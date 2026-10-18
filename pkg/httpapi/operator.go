@@ -211,6 +211,7 @@ func (s *Server) operatorHandler() http.Handler {
 	s.registerOperatorProposed(mux)
 	s.registerContext(mux)
 	s.registerFacts(mux)
+	s.registerOperatorKnowledge(mux)
 	return s.operatorAuth(mux)
 }
 

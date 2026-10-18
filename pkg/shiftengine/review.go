@@ -26,7 +26,11 @@ type ReviewWatch struct {
 	// MarkTrackerDone lets a merge set the tracker item to done, for providers
 	// that map done to a status.
 	MarkTrackerDone bool
-	Log             *slog.Logger
+	// OutcomeNotes records each settled review as a repository-level note,
+	// and a merge as evidence for the Work Item's repository promotions
+	// (ADR-0122). Set when the deployment writes notes.
+	OutcomeNotes bool
+	Log          *slog.Logger
 }
 
 type reviewTarget struct {
@@ -182,6 +186,11 @@ func (w *ReviewWatch) settle(ctx context.Context, t reviewTarget, next work.Stat
 	}
 	w.log().Info("review settled", "work_item", t.item.WorkItemID, "state", string(next),
 		"repo", t.repo, "pr", t.pr, "reason", reason)
+	if w.OutcomeNotes {
+		if err := w.Store.ReviewOutcomeNote(ctx, t.item.WorkItemID, t.pr, next == work.StateDone, time.Now()); err != nil {
+			w.log().Error("review outcome note not recorded; later Runs miss it", "work_item", t.item.WorkItemID, "pr", t.pr, "err", err)
+		}
+	}
 	w.notify(ctx, t, next)
 	return nil
 }

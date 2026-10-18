@@ -578,3 +578,26 @@ like an administrator's credential.
 Managed workers use the [worker control contract](worker-control.md); deployment and conservative accounting recovery are documented in [managed worker operations](../ops/managed-workers.md).
 
 The [operator delivery contract](operator-delivery.md) and [versioned schema](operator-delivery.schema.json) govern canonical candidates, trusted verification, human approval and durable publication barriers for a completed Operator Execution.
+
+## Notes and their provenance
+
+[ADR-0122](../adrs/0122-every-note-carries-its-provenance-untrusted-text-is-quoted-and-a-wider-level-needs-evidence-or-a-person.md)
+adds optional fields only. `GET /api/v1/runs/{token}/knowledge` now serves the
+notes of the Run's root Work Item and the repository-level notes of its
+repository and Client, narrowest level first and newest first, without notes
+another note superseded, a person retracted, or that expired. Each
+`workItemNote` may carry `level`, `subject`, `authorKind`, `author`,
+`sourceRefs`, `trust`, `observedAt`, `expiresAt`, `promotedFrom`, `evidence`,
+`approvedBy` and `contested`; a reader that finds none of them, from an older
+ploegd, treats the note as an untrusted Work Item note a Run wrote. A
+`learning` may carry `subject`, `supersedes` and `expiresAt`. Text whose
+`trust` is not `trusted` is data: a consumer renders it quoted, never as an
+instruction.
+
+`POST /api/v1/operator/work-items/{id}/knowledge-notes` keeps a person's note,
+and `GET /api/v1/operator/knowledge/reviews` with
+`POST /api/v1/operator/knowledge/reviews/{id}/decision` let a person decide
+promotions and contradictions. Their shapes and answers are in
+[operator-api.v1.schema.json](operator-api.v1.schema.json). The steering
+route `POST /api/v1/operator/work-items/{id}/notes` is unchanged: its notes
+brief one Run and are not kept as knowledge.
