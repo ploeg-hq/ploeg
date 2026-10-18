@@ -144,7 +144,7 @@
     "checkpointRequest": { "$ref": "checkpoint.v1.schema.json" },
     "outcomeRequest": { "$ref": "outcomereport.v1.schema.json" },
     "claudeSessionRequest": {
-      "description": "Body of POST /api/v1/runs/{token}/claude-session: the self-hosted Claude session the worker dispatched for this Run (ADR-0084). HTTP 204 = recorded, also when the same binding is recorded again; 409 = the Run or the session is already bound to another.",
+      "description": "Body of POST /api/v1/runs/{token}/claude-session: the self-hosted Claude session the worker dispatched for this Run (ADR-0084). HTTP 204 = recorded, also when the same binding is recorded again; 409 = the Run or the session is already bound to another. When the Run is client-carried (ADR-0112), recording its session also holds the Run and its Lease alive until PLOEG_CLAUDE_SESSION_TIMEOUT (default 100m) from now, so the client need not renew; a renew never shortens that deadline.",
       "type": "object",
       "properties": {
         "environmentId": { "type": "string", "pattern": "^ccpool_.+" },
@@ -172,7 +172,7 @@
       "additionalProperties": false
     },
     "claudeSessionReportRequest": {
-      "description": "Body of POST /api/v1/claude-sessions/report, authenticated like the forge-credential exchange: what a runner's post-session hook reports once the session ended. HTTP 204 = recorded; the first report wins and a repeat is a no-op. 404 = no running Run recorded the session.",
+      "description": "Body of POST /api/v1/claude-sessions/report, authenticated like the forge-credential exchange: what a runner's post-session hook reports once the session ended. HTTP 204 = recorded; the first report wins and a repeat is a no-op. 404 = no running Run recorded the session. For a client-carried Run (ADR-0112) ploegd then settles the Run itself, as a worker settles a claude-environment Run from the same report: a pull request the runner opened is pr_opened, one an earlier Run linked is pr_updated (a reader's is no_change_needed), a session that ended mid-turn without a final message is failed with agent_error, and otherwise Claude's final message carries the outcome. A client that reports the outcome first finishes the Run instead, and the runner's later report answers 404.",
       "type": "object",
       "properties": {
         "exitReason": { "type": "string", "minLength": 1, "maxLength": 512, "description": "The runner's CLAUDE_RUNNER_EXIT_REASON: completed, failed or interrupted." },

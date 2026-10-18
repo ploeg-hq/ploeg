@@ -855,6 +855,28 @@ func (s *Server) handleOutcome(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	err := s.applyOutcome(r.Context(), r.PathValue("token"), req)
+	switch {
+	case err == nil:
+		w.WriteHeader(http.StatusNoContent)
+	case errors.Is(err, store.ErrUnknownRun):
+		runError(w, err)
+	case errors.Is(err, errOutcomeStore):
+		runError(w, errors.Unwrap(err))
+	default:
+		http.Error(w, err.Error(), http.StatusBadRequest)
+	}
+}
+
+// errOutcomeStore wraps a store failure applyOutcome hit before the outcome,
+// which the route answers as a server error rather than a refusal.
+var errOutcomeStore = errors.New("outcome store failure")
+
+// applyOutcome records a validated Outcome Report for the Run: its inline
+// checkpoint, the outcome, the push credential's revocation, the created
+// Work Items and the Shift's fast path. A worker's outcome route and the
+// settlement of a client-carried Run from its runner's report share it.
+func (s *Server) applyOutcome(ctx context.Context, token string, req harness.OutcomeReport) error {
 	var usage json.RawMessage
 	if req.Usage != nil {
 		usage, _ = json.Marshal(req.Usage)
@@ -873,51 +895,49 @@ func (s *Server) handleOutcome(w http.ResponseWriter, r *http.Request) {
 		report = report.WithNotes(keptLearnings(req.Learnings))
 	}
 	if req.Checkpoint != nil && req.Checkpoint.Phase != "" {
-		replay, err := s.Store.IsOutcomeReplay(r.Context(), r.PathValue("token"), report)
+		replay, err := s.Store.IsOutcomeReplay(ctx, token, report)
 		if err != nil {
-			runError(w, err)
-			return
+			if errors.Is(err, store.ErrUnknownRun) {
+				return err
+			}
+			return fmt.Errorf("%w: %w", errOutcomeStore, err)
 		}
 		if !replay {
-			err := s.Store.Checkpoint(r.Context(), r.PathValue("token"), *req.Checkpoint)
+			err := s.Store.Checkpoint(ctx, token, *req.Checkpoint)
 			switch {
 			case errors.Is(err, store.ErrCheckpointRefused):
 				s.Log.Warn("inline checkpoint refused; the outcome is still recorded", "err", err)
+			case errors.Is(err, store.ErrUnknownRun):
+				return err
 			case err != nil:
-				runError(w, err)
-				return
+				return fmt.Errorf("%w: %w", errOutcomeStore, err)
 			}
 		}
 	}
-	res, err := s.Store.ReportOutcome(r.Context(), r.PathValue("token"), report)
+	res, err := s.Store.ReportOutcome(ctx, token, report)
 	if err != nil {
-		if errors.Is(err, store.ErrUnknownRun) {
-			runError(w, err)
-			return
-		}
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+		return err
 	}
 	if s.ForgeCreds != nil && res.ForgeTokenID != "" {
-		revokeCtx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), forgeCleanupTimeout)
+		revokeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), forgeCleanupTimeout)
 		if err := s.ForgeCreds.Revoke(revokeCtx, forgebroker.Credential{ID: res.ForgeTokenID}); err != nil {
 			s.Log.Error("forge credential revoke failed; the forge sweep will retry", "err", err)
 		}
 		cancel()
 	}
-	s.recordReportedHarness(r.Context(), r.PathValue("token"), req.Harness)
+	s.recordReportedHarness(ctx, token, req.Harness)
 	s.Log.Info("outcome reported", "outcome", req.Outcome, "summary", req.Summary,
 		"created_proposed", len(req.CreatedWorkItems), "created_accepted", len(res.Created))
-	s.openCreatedShifts(r.Context(), res.Created)
+	s.openCreatedShifts(ctx, res.Created)
 	// The Shift fast path: this report may have completed a Round. Errors are
 	// logged, never surfaced — the worker's report succeeded, and the sweeper
 	// repairs a lost evaluation (R2).
 	if s.Engine != nil && res.ShiftID != nil {
-		if err := s.Engine.EvaluateItem(r.Context(), res.WorkItemID); err != nil {
+		if err := s.Engine.EvaluateItem(ctx, res.WorkItemID); err != nil {
 			s.Log.Error("shift evaluate failed; sweeper will repair", "shift", *res.ShiftID, "err", err)
 		}
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return nil
 }
 
 func (s *Server) openCreatedShifts(ctx context.Context, created []store.CreatedWorkItem) {
