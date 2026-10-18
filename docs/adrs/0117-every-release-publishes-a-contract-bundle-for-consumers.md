@@ -65,3 +65,4 @@ The codes in the Go files get their own schema, a second consumer needs content 
 
 * [Homelab ADR-0069](https://forgejo.webgrip.dev/webgrip/homelab-cluster/src/branch/main/docs/techdocs/docs/adr/adr-0069-one-delivery-contract.md), phase P3 of its RFC, 2026-10-17.
 * Builds on [ADR 0116](0116-every-releasable-merge-to-development-cuts-a-candidate.md), whose candidate workflow calls the bundle workflow.
+* 2026-10-18 — Renovate in Unfold proposed bundle `0.2.0-rc.36` with Go module `v0.2.0-rc.35`, because `proxy.golang.org` did not list `v0.2.0-rc.36` yet. The bundle workflow now waits, for up to 10 minutes, until the proxy lists the tag and serves its `.info` and `.mod` and `sum.golang.org` records it, and fails before publishing otherwise, so the bundle and the consumer update that follows it never get ahead of the Go module. Confirmation: `bash scripts/test-go-module-published.sh`, run by `mise run verify`.
