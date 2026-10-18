@@ -666,6 +666,13 @@ func (s *Server) respondClaimedRun(w http.ResponseWriter, r *http.Request, req c
 	} else {
 		resp.Briefing = append(resp.Briefing, reviewBriefing(notes)...)
 	}
+	if run.Writes {
+		if failures, err := s.Store.CIFixBriefing(r.Context(), run.ShiftID, run.Round); err != nil {
+			s.Log.Error("forge CI briefing read failed; run proceeds without it", "shift", run.ShiftID, "err", err)
+		} else if len(failures) > 0 {
+			resp.Briefing = append(resp.Briefing, forgeCIBriefing(failures, run.Round))
+		}
+	}
 	if brief, restarted, err := s.Store.ShiftRestartBrief(r.Context(), run.ShiftID); err != nil {
 		s.Log.Error("restart briefing read failed; run proceeds without it", "shift", run.ShiftID, "err", err)
 	} else if restarted {

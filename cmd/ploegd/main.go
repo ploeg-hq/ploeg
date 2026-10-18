@@ -292,6 +292,7 @@ func run(log *slog.Logger) error {
 			Trackers:     trackers,
 			Uniform:      uniform,
 			UsageReport:  usageReport,
+			CIWaits:      ciWaits(cfg),
 			ReportLinks: shiftengine.ReportLinks{
 				WorkItem:       os.Getenv("PLOEG_REPORT_WORK_ITEM_URL"),
 				TeamDashboard:  os.Getenv("PLOEG_REPORT_TEAM_DASHBOARD_URL"),
@@ -414,6 +415,7 @@ func run(log *slog.Logger) error {
 			DefaultForge:    forgeID,
 			Trackers:        trackers,
 			MarkTrackerDone: envOr("PLOEG_TRACKER_DONE_ON_MERGE", "false") == "true",
+			CIWaits:         ciWaits(cfg),
 			Log:             log,
 		}
 		srv.Reviews = reviews
@@ -578,4 +580,12 @@ func durationOr(key string, def time.Duration) time.Duration {
 		}
 	}
 	return def
+}
+
+func ciWaits(cfg *config.File) shiftengine.CIWaits {
+	out := shiftengine.CIWaits{}
+	for _, w := range cfg.CIWaits() {
+		out[shiftengine.CIRoute(w.Forge, w.Repo)] = w.Timeout
+	}
+	return out
 }

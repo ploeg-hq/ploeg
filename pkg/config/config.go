@@ -80,6 +80,9 @@ type Target struct {
 	// the pull request (ADR-0109). Each route names its authors, its Team and
 	// what the reader delivers. Omitted = nothing is read.
 	ReadPullRequests []work.PullRequestReads `yaml:"readPullRequests"`
+	// CI sets how long a Shift on this repository waits for the forge's CI
+	// (ADR-0119). Omitted = 60 minutes.
+	CI *CI `yaml:"ci"`
 }
 
 // Project routes one tracker container to one repository, or to the
@@ -113,6 +116,9 @@ type Project struct {
 	// (ADR-0051), and Ploeg records every status move of a board with gates.
 	// Omitted = Ploeg records neither for this board's work.
 	Gates *gate.Statuses `yaml:"gates"`
+	// CI sets how long a Shift on Repo waits for the forge's CI (ADR-0119).
+	// Omitted = 60 minutes.
+	CI *CI `yaml:"ci"`
 }
 
 // Team is a roster entry: who works, at what cost, in what order.
@@ -275,6 +281,9 @@ func (f *File) Validate() error {
 		if _, err := f.createdWorkPolicy(name); err != nil {
 			return fmt.Errorf("teams.%s.createdWork: %w", name, err)
 		}
+	}
+	if err := f.validateCI(); err != nil {
+		return err
 	}
 	return f.validateGates()
 }

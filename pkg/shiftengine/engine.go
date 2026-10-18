@@ -66,6 +66,10 @@ type Engine struct {
 	// stopped Work Item (needs_human, awaiting_review) to settle it when the
 	// task was closed. Zero means DefaultTrackerRecheck.
 	TrackerRecheck time.Duration
+	// CIWaits is how long a Shift waits for the forge's CI on its pull
+	// request's head, per route (ADR-0119). A route without an entry waits
+	// DefaultCIWaitTimeout.
+	CIWaits CIWaits
 	// Selections resolves the Harness and model each Role's Runs store
 	// (ADR-0098, ADR-0103). Nil stores neither.
 	Selections RoleSelections
@@ -245,14 +249,22 @@ func (e *Engine) evaluate(ctx context.Context, si store.ShiftInfo) error {
 		return err
 	}
 	reports = append(inherited, reports...)
-	// Findings reach the pull request as soon as their Round finishes, not at
-	// close: a human watching the thread sees the review while the writer is
-	// still working on it (ADR-0011).
-	e.publishRound(ctx, si, reports, si.Round)
-	// The usage report rides behind the findings: a Round just completed, so
-	// its numbers and evidence moved. It publishes even when this Round
-	// produced no findings.
-	e.publishUsageReport(ctx, si)
+	// A Shift the forge CI gate holds open is evaluated again on every sweep;
+	// its last Round was published the first time (ADR-0119).
+	held, err := e.Store.CIHeldAt(ctx, si.ID, si.Round)
+	if err != nil {
+		return err
+	}
+	if !held {
+		// Findings reach the pull request as soon as their Round finishes, not at
+		// close: a human watching the thread sees the review while the writer is
+		// still working on it (ADR-0011).
+		e.publishRound(ctx, si, reports, si.Round)
+		// The usage report rides behind the findings: a Round just completed, so
+		// its numbers and evidence moved. It publishes even when this Round
+		// produced no findings.
+		e.publishUsageReport(ctx, si)
+	}
 
 	if park, found := parkingRun(reports, si.Round); found {
 		return e.parkForHuman(ctx, si, park, reports)
@@ -304,6 +316,11 @@ func (e *Engine) evaluate(ctx context.Context, si store.ShiftInfo) error {
 			if checksHoldBackReview(reports) {
 				reason, message = checksCloseReason(reason, message, reports)
 			}
+			if settleState(si, reason, synthesized, reports) == work.StateAwaitingReview && si.Origin != work.OriginPullRequest {
+				if handled, err := e.gateOnForgeCI(ctx, si, tp, reports); err != nil || handled {
+					return err
+				}
+			}
 			return e.close(ctx, si, reason, message, synthesized, reports)
 		}
 		next = loopRound
@@ -343,20 +360,11 @@ func (e *Engine) storeRoles(team string, r plan.Round) []store.Role {
 // ReportOutcome writes for the same outcome.
 //
 // Neither reaches awaiting_review while the pull request's checks did not
-// pass on its pushed commit (ADR-0070).
+// pass on its pushed commit (ADR-0070); evaluate holds back the close until
+// the forge's CI passed on its head (ADR-0119).
 func (e *Engine) close(ctx context.Context, si store.ShiftInfo, closeReason, humanReason string,
 	synthesized bool, reports []store.RunReport) error {
-	next := work.StateNeedsHuman
-	if synthesized {
-		if outcome, ok := terminalOutcome(reports); ok {
-			next = work.StateForOutcome(outcome)
-		}
-	} else if readyForReview(closeReason, reports) || (si.Origin == work.OriginPullRequest && readingPublished(closeReason, reports)) {
-		next = work.StateAwaitingReview
-	}
-	if next == work.StateAwaitingReview && checksHoldBackReview(reports) {
-		next = work.StateNeedsHuman
-	}
+	next := settleState(si, closeReason, synthesized, reports)
 	closed, settled, err := e.Store.CloseShiftAndSettle(ctx, si.ID, closeReason, next, humanReason)
 	if err != nil {
 		return err
@@ -409,6 +417,22 @@ func (e *Engine) close(ctx context.Context, si store.ShiftInfo, closeReason, hum
 		e.publishUsageReport(ctx, si)
 	}
 	return nil
+}
+
+// settleState is the state close moves the Work Item to.
+func settleState(si store.ShiftInfo, closeReason string, synthesized bool, reports []store.RunReport) work.State {
+	next := work.StateNeedsHuman
+	if synthesized {
+		if outcome, ok := terminalOutcome(reports); ok {
+			next = work.StateForOutcome(outcome)
+		}
+	} else if readyForReview(closeReason, reports) || (si.Origin == work.OriginPullRequest && readingPublished(closeReason, reports)) {
+		next = work.StateAwaitingReview
+	}
+	if next == work.StateAwaitingReview && checksHoldBackReview(reports) {
+		next = work.StateNeedsHuman
+	}
+	return next
 }
 
 func (e *Engine) remandForReview(ctx context.Context, workItemID int64) bool {

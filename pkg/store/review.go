@@ -30,6 +30,9 @@ type ReviewItem struct {
 	// watch when no writer of its own opened one.
 	Origin   work.Origin
 	SourcePR int
+	// ShiftID is the Work Item's last Shift, the one that handed it to
+	// review; zero when it has none.
+	ShiftID int64
 }
 
 // AwaitingReview lists every Work Item in awaiting_review that Ploeg owns,
@@ -38,7 +41,8 @@ func (s *Store) AwaitingReview(ctx context.Context) ([]ReviewItem, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT w.id, w.provider, w.external_id,
 		       w.target_forge, w.target_owner, w.target_repo, w.target_base_branch,
-		       COALESCE(last.links, '{}'), last.delivery, w.origin, w.source_pr
+		       COALESCE(last.links, '{}'), last.delivery, w.origin, w.source_pr,
+		       COALESCE((SELECT sh.id FROM shifts sh WHERE sh.work_item_id = w.id ORDER BY sh.id DESC LIMIT 1), 0)
 		FROM work_items w
 		LEFT JOIN LATERAL (SELECT r.links, r.delivery FROM agent_runs r
 		                   WHERE r.work_item_id = w.id AND r.writes AND r.state = 'finished'
@@ -57,7 +61,7 @@ func (s *Store) AwaitingReview(ctx context.Context) ([]ReviewItem, error) {
 		var t work.Target
 		var delivery []byte
 		if err := rows.Scan(&it.WorkItemID, &it.Provider, &it.ExternalID,
-			&t.Forge, &t.Owner, &t.Repo, &t.BaseBranch, &it.Links, &delivery, &it.Origin, &it.SourcePR); err != nil {
+			&t.Forge, &t.Owner, &t.Repo, &t.BaseBranch, &it.Links, &delivery, &it.Origin, &it.SourcePR, &it.ShiftID); err != nil {
 			return nil, err
 		}
 		if delivery != nil {

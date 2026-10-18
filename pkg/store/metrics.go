@@ -70,6 +70,11 @@ type OperationalMetrics struct {
 	// shadow Role, the verdict the Round's acting readers gave and the
 	// shadow's own verdict. Like FinishedRuns it only grows.
 	ShadowReviews map[ShadowReviewKey]int
+	// AwaitingReviewWithUnsuccessfulCI counts the Work Items in
+	// awaiting_review whose pull request's last recorded head CI is not
+	// success (ADR-0119). A pull request whose forge reported no checks does
+	// not count.
+	AwaitingReviewWithUnsuccessfulCI int
 	// PendingRunsByHarness counts pending Runs per team, Role and stored
 	// Harness key (ADR-0099). ploegd compares it with the current allowlist.
 	PendingRunsByHarness []PendingHarnessRuns
@@ -358,6 +363,9 @@ func (s *Store) OperationalMetrics(ctx context.Context) (OperationalMetrics, err
 		FROM work_item_note_outbox WHERE written_at IS NULL`).Scan(&m.UnwrittenNotes, &m.OldestUnwrittenNoteSeconds); err != nil {
 		return m, err
 	}
+	if err := tx.QueryRow(ctx, AwaitingReviewWithUnsuccessfulCIQuery).Scan(&m.AwaitingReviewWithUnsuccessfulCI); err != nil {
+		return m, err
+	}
 	if err := shadowReviews(ctx, tx, m.ShadowReviews); err != nil {
 		return m, err
 	}
@@ -366,6 +374,13 @@ func (s *Store) OperationalMetrics(ctx context.Context) (OperationalMetrics, err
 	}
 	return m, tx.Commit(ctx)
 }
+
+// AwaitingReviewWithUnsuccessfulCIQuery counts the Work Items in
+// awaiting_review whose own pull request's recorded head CI is not success.
+const AwaitingReviewWithUnsuccessfulCIQuery = `SELECT count(DISTINCT w.id) FROM work_items w
+	JOIN pull_requests p ON p.work_item_id = w.id
+	WHERE w.state = 'awaiting_review' AND NOT w.operator_owned AND w.origin <> 'pull_request'
+	  AND COALESCE(p.state, 'open') = 'open' AND p.ci_state IS NOT NULL AND p.ci_state <> 'success'`
 
 // ShadowReviewsQuery pairs every finished shadow Run with the verdict the
 // acting readers of the same Shift and Round gave, the way the review loop
