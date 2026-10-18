@@ -27,6 +27,7 @@ The exposition is written by hand in the Prometheus text format (`version=0.0.4`
 | `ploeg_runs_briefed_total` | `team`, `role`, `notes` | Finished Runs that recorded their briefing ([ADR-0124](../adrs/0124-agents-communicate-through-a-blackboard-of-four-owned-sources-that-ploeg-reads-at-a-version-vector.md)), by Team, Role and whether it held any Work Item Note (`with` or `without`). A counter. See [briefings](briefings.md) |
 | `ploeg_run_briefed_notes_total` | `team`, `role` | Work Item Notes those Runs were briefed with. A counter |
 | `ploeg_runs_pending_outside_allowlist` | `team`, `role`, `harness` | Pending Runs that store a Harness the current allowlist of their Role no longer contains, so no workload claims them ([ADR-0099](../adrs/0099-each-allowed-harness-runs-in-its-own-workload-and-the-claim-selects-on-it.md)). Absent when there are none. The Teams read shows the same counts as `pendingByHarness` |
+| `ploeg_awaiting_review_with_unsuccessful_ci` | | Work Items in `awaiting_review` whose open pull request's head CI, as last read from the forge, is not `success` ([ADR-0119](../adrs/0119-a-pull-request-is-ready-for-review-only-when-the-forges-ci-passed-on-its-head.md)). A pull request whose forge reported no checks does not count. Should stay at `0` |
 | `ploeg_tracker_webhooks_missing` | | Configured Vikunja projects with no assignment webhook to Ploeg |
 | `ploeg_tracker_webhooks_unchecked` | | Configured Vikunja projects the webhook check could not read |
 | `ploeg_tracker_webhook_check_timestamp_seconds` | | Unix time of the last webhook check |
@@ -262,6 +263,22 @@ WHERE r.state = 'pending' AND r.harness_requested = '<harness>' AND r.team = '<t
 ```
 
 Then either restore the allowlist entry, so its workload renders again and claims them, or cancel the Work Item with `POST /api/v1/operator/work-items/{id}/cancel`. A Work Item requeued later resolves each new Run against the allowlist in force then, so its Runs fall back to the Role's default.
+
+## PloegAwaitingReviewWithUnsuccessfulCI
+
+`max(ploeg_awaiting_review_with_unsuccessful_ci) > 0`. Default: `for: 90m`, warning.
+
+A Work Item waits for review while its pull request's CI on the forge is not green. The forge CI gate ([ADR-0119](../adrs/0119-a-pull-request-is-ready-for-review-only-when-the-forges-ci-passed-on-its-head.md)) keeps a Shift open until the head's CI passed, and the review reconcile moves an item out of `awaiting_review` when its head CI stops being `success`: it waits up to the route's `ci.waitTimeout` (default `60m`) for pending CI and re-runs cancelled CI once first. The `for:` is longer than that wait, so the alert means the gate did not act: the item's pull request was not read in that time, the forge cannot be read, or the item has no Shift to key its wait on.
+
+**Check first:** ploegd's logs for `forge CI gate` and `review reconcile`, then the items:
+
+```sql
+SELECT w.id, w.external_id, p.repo_owner || '/' || p.repo_name AS repo, p.number, p.head_sha, p.ci_state, p.ci_checks, p.ci_captured_at
+FROM work_items w JOIN pull_requests p ON p.work_item_id = w.id
+WHERE w.state = 'awaiting_review' AND p.ci_state IS NOT NULL AND p.ci_state <> 'success';
+```
+
+A `ci_captured_at` that does not move means ploegd no longer reads the pull request; fix the forge connection. A Shift's wait shows in `forge_ci_gates`. A `ci.waitTimeout` longer than the `stuckShift` alert's `idleHours` makes a Shift that waits for CI fire [PloegShiftStuck](#ploegshiftstuck).
 
 ## Reading shadow reviews
 

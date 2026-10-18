@@ -95,6 +95,10 @@ monitoring:
         enabled: true
         for: 15m
         severity: warning
+      awaitingReviewWithUnsuccessfulCI:
+        enabled: true
+        for: 90m
+        severity: warning
 
 operator:
   consumers: []

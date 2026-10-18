@@ -674,7 +674,7 @@ entities:
         description: Id of the Routing Rule that decided team and target; recorded for audit.
       - name: state
         type: "enum(ingested, proposed, queued, active, needs_human, awaiting_review, stale, done, withdrawn)"
-        description: Dispatch lifecycle position. active means a Team is working the item through a live Shift. proposed means a Run created the item and it waits for a person to approve or reject it; no Team can claim it. awaiting_review means Ploeg's work succeeded and its pull request is ready for human review. withdrawn means a person took the mandate back by unassigning the Tracker Item or cancelling it through the operator API.
+        description: Dispatch lifecycle position. active means a Team is working the item through a live Shift. proposed means a Run created the item and it waits for a person to approve or reject it; no Team can claim it. awaiting_review means Ploeg's work succeeded and its pull request, with the forge's CI passed on its head, is ready for human review. withdrawn means a person took the mandate back by unassigning the Tracker Item or cancelling it through the operator API.
         required: true
       - name: origin
         type: "enum(assignment, follow_up, operator, pull_request)"
@@ -726,6 +726,9 @@ entities:
       - from: awaiting_review
         to: queued
         trigger: Re-assignment in the tracker is a fresh mandate
+      - from: awaiting_review
+        to: needs_human
+        trigger: The forge's CI on the pull request's head stopped being success and the wait and one re-run did not bring it back (ADR-0119)
       - from: needs_human
         to: queued
         trigger: Human re-queues after resolving the blocker

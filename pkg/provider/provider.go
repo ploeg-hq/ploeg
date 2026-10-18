@@ -168,8 +168,11 @@ type ForgeEvent struct {
 // PullRequestFacts is what a forge reports about one pull request. A zero
 // field is a fact the forge did not report.
 type PullRequestFacts struct {
-	State          PullRequestState
-	HeadSHA        string
+	State   PullRequestState
+	HeadSHA string
+	// BaseSHA is the commit the forge compares the pull request against,
+	// where it reports one (ADR-0119).
+	BaseSHA        string
 	MergeCommitSHA string
 	MergedAt       *time.Time
 	MergedBy       string
@@ -198,9 +201,22 @@ const (
 )
 
 // CommitCheck is one named check on a commit, in the CommitState vocabulary.
+// Description and TargetURL are what the forge says about the check and where
+// its run is. Cancelled is the provider's reading that the check did not fail
+// on its own but was stopped (ADR-0119). UpdatedAt is when the forge last
+// changed the check, zero when it did not say.
 type CommitCheck struct {
-	Context string
-	State   CommitState
+	Context     string
+	State       CommitState
+	Description string
+	TargetURL   string
+	Cancelled   bool
+	UpdatedAt   time.Time
+}
+
+// Failed reports whether the check ended in failure or error.
+func (c CommitCheck) Failed() bool {
+	return c.State == CommitFailure || c.State == CommitError
 }
 
 // CommitStatus is the combined state of every check a forge reports on one
@@ -228,6 +244,29 @@ func ReadCommitStatus(ctx context.Context, fp ForgeProvider, repo, sha string) (
 		return CommitStatus{}, false, nil
 	}
 	return reader.CommitStatus(ctx, repo, sha)
+}
+
+// CIReRunner is implemented by a ForgeProvider that can ask the forge to run
+// a commit's failed or cancelled CI again (ADR-0119).
+type CIReRunner interface {
+	// ReRunCI asks the forge to run the CI of sha in repo again.
+	ReRunCI(ctx context.Context, repo, sha string) error
+}
+
+// ErrNoReRun is returned by ReRunCI when the forge cannot re-run CI.
+var ErrNoReRun = errors.New("forge cannot re-run CI")
+
+// ReRunCI asks fp to run the CI of sha again, or returns ErrNoReRun when it
+// cannot.
+func ReRunCI(ctx context.Context, fp ForgeProvider, repo, sha string) error {
+	runner, can := fp.(CIReRunner)
+	if !can {
+		return ErrNoReRun
+	}
+	if repo == "" || sha == "" {
+		return errors.New("a CI re-run needs a repository and a commit")
+	}
+	return runner.ReRunCI(ctx, repo, sha)
 }
 
 // AncestryReader is implemented by a ForgeProvider that can tell, through

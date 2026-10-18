@@ -2,15 +2,15 @@
 type: how-to
 audience: [operator]
 owner: ploeg
-last_verified: 2026-10-04
-verified_by: "Read ops/helm/ploeg/{values.yaml,values.schema.json,templates/_helpers.tpl}, pkg/worker/{toolchain,verify,worker}.go, pkg/shiftengine/{engine,reviewloop}.go, pkg/harness/skills and cmd/ploeg-worker/main.go"
+last_verified: 2026-10-18
+verified_by: "Read ops/helm/ploeg/{values.yaml,values.schema.json,templates/_helpers.tpl}, pkg/worker/{toolchain,verify,worker}.go, pkg/shiftengine/{engine,reviewloop,forge_ci_gate,review}.go, pkg/config/ci.go, pkg/provider/{forgejo,github,gitlab}, pkg/harness/skills and cmd/ploeg-worker/main.go"
 ---
 
 # Give Runs a toolchain and checks
 
 **Symptom:** agents open pull requests that fail formatting, linting or tests in CI, and the pull request says the checks were "left to CI" because the Run had no toolchain.
 
-**Goal:** mount the target repository's toolchain into every Run, tell the agent which checks to run, and have the worker run them again on the pushed commit after a writing Run and post the result on the pull request. A Work Item reaches `awaiting_review` only when those checks passed. [ADR-0035](../adrs/0035-runs-get-ploeg-owned-skills-mounted-toolchains-and-worker-verification.md) records the design, and [ADR-0070](../adrs/0070-a-pull-request-is-ready-for-review-only-when-its-checks-passed-on-the-pushed-commit.md) the rule for review.
+**Goal:** mount the target repository's toolchain into every Run, tell the agent which checks to run, and have the worker run them again on the pushed commit after a writing Run and post the result on the pull request. A Work Item reaches `awaiting_review` only when those checks passed and the forge's own CI passed on the pull request's head. [ADR-0035](../adrs/0035-runs-get-ploeg-owned-skills-mounted-toolchains-and-worker-verification.md) records the design, [ADR-0070](../adrs/0070-a-pull-request-is-ready-for-review-only-when-its-checks-passed-on-the-pushed-commit.md) the rule for the worker's checks, and [ADR-0119](../adrs/0119-a-pull-request-is-ready-for-review-only-when-the-forges-ci-passed-on-its-head.md), which supersedes it, adds the forge's CI.
 
 Read [Before you start](index.md#before-you-start) for names. Make the change in the GitOps repository's HelmRelease values, not with `kubectl`.
 
@@ -61,6 +61,26 @@ After Flux applies the release:
 
 The worker runs the checks in a fresh clone of the Run's branch, not in the agent's checkout, and only when that clone is at the pull request's head. If the branch moves while the checks run, the result is `incomplete`. The worker also sends the result as a structured `verification` record on the Run's outcome: the full commit, and each check with its exit status and times. Ploeg stores it with the Run, and the usage report on the pull request takes the result and commit from it. The summary and findings text is for people to read; an agent cannot change the reported result by writing a marker of its own.
 
+## The forge's CI
+
+After the worker's checks pass, the Shift does not settle until the forge reports the combined status at the pull request's head. A forge that reports no status for the commit counts as passed, so a repository without CI keeps working.
+
+- **Pending.** The Shift stays open and the sweeper reads the CI again on every pass, up to the route's `ci.waitTimeout`, then the Work Item goes to `needs_human` with close reason `ci_not_finished`. Set it on a target or a project in ploegd's config file:
+
+  ```yaml
+  targets:
+    ploeg:
+      repo: webgrip/ploeg
+      ci:
+        waitTimeout: 90m
+  ```
+
+- **Failed because of the change.** A failing check the forge does not mark cancelled, and that does not fail on the pull request's base commit too, re-opens the writing Round like a failed verification, within the same fix-round cap and budget. The writer's briefing names each failing check and its link; Ploeg does not fetch the log. A reviewer's approval does not override it.
+- **Cancelled, or failing on the base too.** Ploeg asks the forge to re-run CI on the head once, without a fix round. If it still does not pass, the Work Item goes to `needs_human` with close reason `ci_not_passed`. GitHub re-runs the failed and cancelled jobs of the commit's workflow runs. Ploeg's Forgejo and GitLab providers cannot re-run CI: Forgejo's API has no re-run call for Actions, and the GitLab provider does not call GitLab's pipeline retry yet. On them the Work Item goes to `needs_human` straight away.
+- **After the hand-off.** When the head CI of an item already in `awaiting_review` stops being green, the review reconcile applies the same wait and re-run, then moves it to `needs_human`. The Shift that wrote the pull request has closed, so no fix round runs and no new Shift starts by itself.
+
+Forgejo has no cancelled state: a cancelled job reports `failure` with the description `Has been cancelled`, and that text is how Ploeg recognizes it.
+
 ## What the agent gets
 
 Every writing and reading Run gets Ploeg's own skills under its `HOME`: `ploeg-verify-before-handoff`, and for readers `ploeg-review-against-work-item`. The environment variable `PLOEG_SKILLS_DIR` names their directory, `PLOEG_VERIFY_SCRIPT` names a script that runs the `verify` lines, and the prompt lists the skills, the toolchains and the checks. Planners get none of them.
@@ -70,5 +90,7 @@ Every writing and reading Run gets Ploeg's own skills under its `HOME`: `ploeg-v
 | The pod exits with `toolchain "<name>": ... no such file or directory` | The image volume did not mount, or `path` names a directory the image lacks | Check the image reference and the path inside the image, and that the nodes run Kubernetes 1.35 or later |
 | `go test` fails with `dial tcp ... i/o timeout` | Module downloads are blocked | Follow [step 3](#3-check-dependency-downloads) |
 | The pull request is open but the Work Item went back to its writer or to `needs_human` | The checks failed or were incomplete on the pushed commit; a configured plan re-opens the writing Round while fix rounds remain, otherwise the Shift closes as `checks_not_passed` | Read the "Ploeg verification" comment, fix the code or the check, and re-assign the Work Item |
+| The Work Item went to `needs_human` with `ci_not_finished` | The forge's CI on the pull request's head was still running when the route's `ci.waitTimeout` ran out | Wait for CI and re-assign, or raise `ci.waitTimeout` for the repository |
+| The Work Item went to `needs_human` with `ci_not_passed` | The forge's CI failed on checks the writer cannot fix: cancelled, or failing on the base branch too, and one re-run did not help | Read the message: it names each check and why it was not sent to the writer. Fix the base branch or the CI, then re-assign |
 | The summary has no `Ploeg verification` part | The Run did not open or update a pull request, or it read rather than wrote | Only writing Runs with a pull request are verified by the worker |
 | `go: downloading go1.x` then a timeout | `go.mod` asks for a newer toolchain | Set `GOTOOLCHAIN: local` and use an image at least as new as `go.mod` asks |
