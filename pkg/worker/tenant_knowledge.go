@@ -142,7 +142,11 @@ func (n tenantKnowledge) graphSource(repoPaths map[string]bool) *knowledge.Sourc
 	if len(concepts) == 0 {
 		return nil
 	}
-	return &knowledge.Source{Name: graphSource, Bundle: okf.Bundle{Name: graphSource, Concepts: concepts}}
+	cite := ""
+	if n.conceptsProvenance != nil && n.conceptsProvenance.Commit != "" {
+		cite = "graph commit " + n.conceptsProvenance.Commit
+	}
+	return &knowledge.Source{Name: graphSource, Bundle: okf.Bundle{Name: graphSource, Concepts: concepts}, LevelFromPath: true, Cite: cite}
 }
 
 // noteConcepts turns notes into OKF concepts under their own slugs. Each

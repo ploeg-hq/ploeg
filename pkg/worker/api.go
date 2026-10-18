@@ -56,6 +56,9 @@ type ClaimResponse struct {
 	// an older ploegd.
 	ReviewFindings []harness.BriefedFinding  `json:"reviewFindings,omitempty"`
 	Questions      []harness.BriefedQuestion `json:"questions,omitempty"`
+	// ActiveWork is the other active work in the Run's repository, rendered
+	// by ploegd within its section's budget (ADR-0123, ADR-0124).
+	ActiveWork string `json:"activeWork,omitempty"`
 	// ForgeToken is a push credential minted for this run alone and revoked
 	// when it settles (ADR-0013 tier 2). Empty = use the env credential.
 	ForgeToken string `json:"forgeToken,omitempty"`
@@ -79,6 +82,10 @@ type ClaimResponse struct {
 	// Model is the model resolved for the Run (ADR-0103). The worker calls it
 	// instead of LLM_MODEL; empty keeps LLM_MODEL.
 	Model string `json:"model,omitempty"`
+	// Board is the half of the Run's version vector ploegd recorded at the
+	// claim (ADR-0124). Nil from an older ploegd: the Run then neither
+	// reports its briefing nor catches up.
+	Board *work.BoardVersions `json:"board,omitempty"`
 }
 
 // Claim returns nil when the queue is empty (HTTP 204) — the empty-handed
@@ -394,4 +401,32 @@ func (a *APIClient) Notes(ctx context.Context, runToken string, notes []harness.
 		return fmt.Errorf("notes: HTTP %d", resp.StatusCode)
 	}
 	return nil
+}
+
+// errBoardOff is a ploegd that serves no board changes for the Run.
+var errBoardOff = errors.New("ploegd serves no board changes")
+
+// BoardChanges asks ploegd what changed on the board since the Run's
+// briefing (ADR-0124).
+func (a *APIClient) BoardChanges(ctx context.Context, runToken string, req work.BoardChangesRequest) (work.BoardChangesResponse, error) {
+	var out work.BoardChangesResponse
+	body, err := json.Marshal(req)
+	if err != nil {
+		return out, err
+	}
+	resp, err := a.request(ctx, http.MethodPost, "/api/v1/runs/"+runToken+"/board", body, a.runCredential(runToken))
+	if err != nil {
+		return out, err
+	}
+	defer resp.Body.Close()
+	switch {
+	case resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusConflict:
+		return out, errBoardOff
+	case resp.StatusCode != http.StatusOK:
+		return out, fmt.Errorf("board: HTTP %d", resp.StatusCode)
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&out); err != nil {
+		return out, fmt.Errorf("board: %w", err)
+	}
+	return out, nil
 }

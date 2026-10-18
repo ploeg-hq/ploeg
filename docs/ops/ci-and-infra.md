@@ -34,7 +34,17 @@ On 2026-09-27, homelab-cluster's `kubernetes/apps/forgejo/networkpolicy.yaml` al
 
 ## Credentials and signing
 
-GitHub publication uses the workflow's short-lived repository token. Pull requests receive no publishing secrets. Independent release signing is not configured yet; do not describe BuildKit SBOM/provenance as a cryptographic project signature.
+GitHub publication uses the workflow's short-lived repository token. Pull requests receive no publishing secrets.
+
+Every release signs the `ploegd` and `claude-runner` images and the OCI chart by digest with keyless cosign: the release job requests a GitHub Actions OIDC token (`id-token: write`), Fulcio issues a short-lived certificate for the workflow identity, and the signature is recorded in the public Rekor log. No signing key exists to store or rotate. `scripts/release.sh` verifies each signature before it publishes the release and lists the signed digests in `signed-artifacts.txt`. Verify a release with:
+
+```sh
+cosign verify ghcr.io/ploeg-hq/ploegd:<version> \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity-regexp '^https://github\.com/ploeg-hq/ploeg/\.github/workflows/release\.yml@refs/(heads/development|heads/main|tags/v0\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?)$'
+```
+
+The certificate names `release.yml` at the ref that started the run: `refs/heads/development` for a candidate cut by the release-candidate workflow, `refs/tags/v0.x.y` for a stable tag push, and the dispatching branch for a manual re-publication. BuildKit SBOM and provenance attestations remain unsigned in-index attestations; the cosign signature is the project signature.
 
 Historical WebGrip releases used estate OpenBao credentials and signing infrastructure. Their runbooks remain relevant to those deployments, not authority for the new independent publisher. A local check cannot prove live registry visibility or cluster signature enforcement.
 

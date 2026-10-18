@@ -225,6 +225,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/v1/runs/{token}/context/{id}", s.handleRunContext)
 	mux.HandleFunc("GET /api/v1/runs/{token}/knowledge", s.handleRunKnowledge)
 	mux.HandleFunc("POST /api/v1/runs/{token}/notes", s.handleRunNotes)
+	mux.HandleFunc("POST /api/v1/runs/{token}/board", s.handleRunBoard)
 	mux.HandleFunc("POST /api/v1/runs/{token}/claude-session", s.handleRecordClaudeSession)
 	mux.HandleFunc("GET /api/v1/runs/{token}/claude-session", s.handleClaudeSessionState)
 	mux.HandleFunc("POST /api/v1/runs/{token}/transcript", s.handleRunTranscript)
@@ -539,6 +540,9 @@ type claimResponse struct {
 	// reach this Run (ADR-0121). Both absent when there are none.
 	ReviewFindings []harness.BriefedFinding  `json:"reviewFindings,omitempty"`
 	Questions      []harness.BriefedQuestion `json:"questions,omitempty"`
+	// ActiveWork is the other active work in the Run's repository, within
+	// the active work section's budget (ADR-0123, ADR-0124).
+	ActiveWork string `json:"activeWork,omitempty"`
 	// ForgeToken is a push credential minted for THIS run and revoked when it
 	// settles (ADR-0013 tier 2). Empty = use the env credential. Never logged,
 	// never audited, never in a Task Spec (R8).
@@ -565,6 +569,9 @@ type claimResponse struct {
 	// Model is the model resolved for the Run (ADR-0103); the worker calls it
 	// instead of its configured one. Absent when the Run stores none.
 	Model string `json:"model,omitempty"`
+	// Board is the half of the Run's version vector ploegd recorded at the
+	// claim (ADR-0124); absent when it could not be recorded.
+	Board *work.BoardVersions `json:"board,omitempty"`
 }
 
 // handleClaim leases the next unit of work for a team. 204 = empty-handed
@@ -618,7 +625,8 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 	s.recordRunConfig(r.Context(), claimed.RunToken, req.Team, "", true, runHarness{Name: req.Harness, Profile: req.HarnessProfile, Version: req.HarnessVersion})
 	s.Log.Info("lease acquired", "team", req.Team, "work_item", claimed.Item.ID, "deadline", claimed.Deadline)
 	writeJSON(w, http.StatusOK, claimResponse{RunToken: claimed.RunToken, Deadline: claimed.Deadline, WorkItem: claimed.Item,
-		Context: s.claimContext(r.Context(), claimed.RunToken), Briefing: s.consumeOperatorNotes(r.Context(), claimed.Item.ID, claimed.RunToken, 0)})
+		Context: s.claimContext(r.Context(), claimed.RunToken), Board: s.recordBoardClaim(r.Context(), claimed.RunToken),
+		Briefing: s.consumeOperatorNotes(r.Context(), claimed.Item.ID, claimed.RunToken, 0)})
 }
 
 // claimRole serves a Shift-scoped claim, carrying everything the Run needs
@@ -667,8 +675,10 @@ func (s *Server) respondClaimedRun(w http.ResponseWriter, r *http.Request, req c
 	if planners, ok := s.RoleCaps.(PlannerRoles); ok && !run.Writes {
 		resp.Planner = planners.IsPlanner(req.Team, run.Role)
 	}
+	resp.Board = s.recordBoardClaim(r.Context(), run.RunToken)
 	resp.Briefing, resp.ReviewFindings, resp.Questions = s.runBriefing(r.Context(), run)
 	resp.Context = s.claimContext(r.Context(), run.RunToken)
+	resp.ActiveWork = s.activeWork(r.Context(), run.Item.ID)
 	// Push rights are minted per writing Run, so holding the Lease and being
 	// able to push are one fact rather than two that can disagree. A reader
 	// gets nothing here — it has no Lease and no business pushing.
@@ -699,25 +709,17 @@ func (s *Server) respondClaimedRun(w http.ResponseWriter, r *http.Request, req c
 	writeJSON(w, http.StatusOK, resp)
 }
 
-// runBriefing is what a claimed Run is briefed with: the findings of earlier
-// Rounds, the last review's findings by id with the questions that reach the
-// Run, the reviews people left and a restarted Shift's brief. A read that
-// fails is logged and the Run proceeds without it.
+// runBriefing is what a claimed Run is briefed with: the board briefing of
+// earlier Rounds, reviews, a restart and catch-ups, and the last review's
+// findings by id with the questions that reach the Run. A read that fails is
+// logged and the Run proceeds without it.
 func (s *Server) runBriefing(ctx context.Context, run *store.ClaimedRun) ([]harness.Finding, []harness.BriefedFinding, []harness.BriefedQuestion) {
-	var briefing []harness.Finding
-	// Prior Rounds only: this Round's siblings are still running, and Runs in
-	// one Round never observe each other (ADR-0010).
+	var in store.ReplayInputs
 	reports, err := s.Store.RoundReports(ctx, run.ShiftID)
 	if err != nil {
 		s.Log.Error("briefing read failed; run proceeds without it", "shift", run.ShiftID, "err", err)
 	}
-	for _, rep := range reports {
-		if rep.Round < run.Round && rep.Findings != "" && !rep.Shadow {
-			briefing = append(briefing, harness.Finding{
-				Role: rep.Role, Round: rep.Round, Findings: rep.Findings,
-			})
-		}
-	}
+	in.Reports = reports
 	findings, questions, err := s.Store.FindingsBrief(ctx, run.ShiftID, run.Round, run.Writes)
 	if err != nil {
 		s.Log.Error("findings briefing read failed; run proceeds without it", "shift", run.ShiftID, "err", err)
@@ -725,14 +727,19 @@ func (s *Server) runBriefing(ctx context.Context, run *store.ClaimedRun) ([]harn
 	if notes, err := s.Store.ShiftReviews(ctx, run.ShiftID, run.Round); err != nil {
 		s.Log.Error("review briefing read failed; run proceeds without it", "shift", run.ShiftID, "err", err)
 	} else {
-		briefing = append(briefing, reviewBriefing(notes)...)
+		in.Reviews = notes
 	}
 	if brief, restarted, err := s.Store.ShiftRestartBrief(ctx, run.ShiftID); err != nil {
 		s.Log.Error("restart briefing read failed; run proceeds without it", "shift", run.ShiftID, "err", err)
 	} else if restarted {
-		briefing = append([]harness.Finding{restartBriefing(brief)}, briefing...)
+		in.Restart = &brief
 	}
-	return briefing, findings, questions
+	if catchUps, err := s.Store.PriorRoundCatchUps(ctx, run.ShiftID, run.Round, time.Time{}); err != nil {
+		s.Log.Error("board catch-up briefing read failed; run proceeds without it", "shift", run.ShiftID, "err", err)
+	} else {
+		in.CatchUps = catchUps
+	}
+	return shiftBriefing(in, run.Round), findings, questions
 }
 
 func (s *Server) stopUnreadyTarget(ctx context.Context, team, runToken string, item work.WorkItem) bool {

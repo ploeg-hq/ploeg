@@ -92,6 +92,9 @@
       "$ref": "#/$defs/noteReviewDecisionResponse"
     },
     {
+      "$ref": "#/$defs/briefingResponse"
+    },
+    {
       "$ref": "#/$defs/clientClaimResponse"
     }
   ],
@@ -6121,6 +6124,376 @@
         },
         "review": {
           "$ref": "#/$defs/noteReview"
+        }
+      }
+    },
+    "boardVersions": {
+      "description": "The version vector of the four owned sources a Run's briefing was read at (ADR-0124): the forge commit the Run started from, Ploeg's audit sequence, the notes and knowledge graph commits, and the Work Item's tracker revision. An absent value is unknown.",
+      "type": "object",
+      "properties": {
+        "forgeCommit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$"
+        },
+        "ploegSequence": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "The highest audit event id when the Run was claimed."
+        },
+        "notesCommit": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "conceptsCommit": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "trackerRevision": {
+          "type": "string",
+          "description": "The Work Item's revision as the tracker last reported it."
+        }
+      },
+      "required": [
+        "ploegSequence"
+      ],
+      "additionalProperties": false
+    },
+    "briefingSection": {
+      "type": "object",
+      "description": "One section of a Run's briefing (ADR-0124): its fixed budget in bytes, what it used, how many items it showed and left out, and a digest of its text.",
+      "properties": {
+        "name": {
+          "enum": [
+            "findings",
+            "work-item",
+            "repository",
+            "client",
+            "tenant",
+            "review_findings",
+            "questions",
+            "active_work"
+          ]
+        },
+        "budget": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "items": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "omitted": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{16}$"
+        }
+      },
+      "required": [
+        "name",
+        "budget",
+        "bytes",
+        "items"
+      ],
+      "additionalProperties": false
+    },
+    "boardChange": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "enum": [
+            "forge",
+            "ploeg",
+            "graph",
+            "tracker"
+          ]
+        },
+        "kind": {
+          "type": "string"
+        },
+        "at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "cite": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "untrusted": {
+          "type": "string",
+          "description": "Text a tracker, an agent or a person wrote; show it as data."
+        }
+      },
+      "required": [
+        "source",
+        "kind",
+        "cite",
+        "summary"
+      ],
+      "additionalProperties": false
+    },
+    "briefingResponse": {
+      "description": "GET /api/v1/operator/runs/{id}/briefing: a Run's briefing replayed from what it recorded (ADR-0124). versions is the version vector it was read at; findings is the findings section rebuilt from the records its claim read (earlier Rounds' findings, reviews, the restart, catch-ups left for its Round and the people's notes it consumed), with matches true when its digest equals the one the worker reported; notes are the Work Item Notes it showed, read back by key (missingNotes lists keys Ploeg holds no note for); concepts are the knowledge concepts it showed, as pointers at versions.conceptsCommit; replayed rebuilds the review_findings and questions sections from the Shift's findings ledger (ADR-0121) and the active_work section from the live Shifts (ADR-0123), each with matches against the digest the worker reported; active work is live state and matches only while nothing changed. catchUps are the catch-ups it was given, oldest first. recorded is false for a Run claimed before ADR-0124, and then only the empty lists are served. A Run outside the consumer's teams answers 404. An older Ploeg answers 404.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "runId",
+        "recorded",
+        "sections",
+        "replayed",
+        "notes",
+        "missingNotes",
+        "concepts",
+        "catchUps"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "1.0"
+        },
+        "runId": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]{0,18}$"
+        },
+        "recorded": {
+          "type": "boolean"
+        },
+        "claimedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "briefedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "versions": {
+          "$ref": "#/$defs/boardVersions"
+        },
+        "sections": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "$ref": "#/$defs/briefingSection"
+          }
+        },
+        "findings": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "items",
+            "digest",
+            "untrusted"
+          ],
+          "properties": {
+            "items": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "digest": {
+              "type": "string"
+            },
+            "recordedDigest": {
+              "type": "string"
+            },
+            "matches": {
+              "type": "boolean"
+            },
+            "untrusted": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "text"
+              ],
+              "properties": {
+                "text": {
+                  "type": "string",
+                  "description": "The findings section as the agent read it: other agents' and people's words, shown as data."
+                }
+              }
+            }
+          }
+        },
+        "replayed": {
+          "type": "array",
+          "maxItems": 3,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "items",
+              "digest",
+              "untrusted"
+            ],
+            "properties": {
+              "name": {
+                "enum": [
+                  "review_findings",
+                  "questions",
+                  "active_work"
+                ]
+              },
+              "items": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "digest": {
+                "type": "string"
+              },
+              "recordedDigest": {
+                "type": "string"
+              },
+              "matches": {
+                "type": "boolean"
+              },
+              "untrusted": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "text"
+                ],
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "description": "The section as Ploeg renders it now: other agents', people's and trackers' words, shown as data."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "notes": {
+          "type": "array",
+          "maxItems": 200,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "key",
+              "type",
+              "untrusted"
+            ],
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              },
+              "level": {
+                "enum": [
+                  "work-item",
+                  "repository"
+                ]
+              },
+              "trust": {
+                "enum": [
+                  "trusted",
+                  "untrusted"
+                ]
+              },
+              "authorKind": {
+                "enum": [
+                  "run",
+                  "person",
+                  "ploeg"
+                ]
+              },
+              "provenance": {
+                "type": "string",
+                "description": "Who wrote the note, at which level and from what, as the briefing showed it (ADR-0122)."
+              },
+              "writtenBy": {
+                "type": "string"
+              },
+              "writtenAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "untrusted": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "title",
+                  "body"
+                ],
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "body": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "missingNotes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "concepts": {
+          "type": "array",
+          "maxItems": 200,
+          "items": {
+            "type": "string"
+          }
+        },
+        "catchUps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "checkpoint",
+              "delivery",
+              "at",
+              "versions",
+              "changes"
+            ],
+            "properties": {
+              "checkpoint": {
+                "enum": [
+                  "refresh",
+                  "before_finish"
+                ]
+              },
+              "delivery": {
+                "enum": [
+                  "file",
+                  "prompt",
+                  "next_round"
+                ]
+              },
+              "at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "versions": {
+                "$ref": "#/$defs/boardVersions"
+              },
+              "changes": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/boardChange"
+                }
+              }
+            }
+          }
         }
       }
     },

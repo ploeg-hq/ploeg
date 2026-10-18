@@ -36,6 +36,7 @@
     "briefing": { "$ref": "#/$defs/briefing" },
     "reviewFindings": { "$ref": "#/$defs/reviewFindings" },
     "questions": { "$ref": "#/$defs/briefedQuestions" },
+    "activeWork": { "type": "string", "maxLength": 2000, "description": "The other active Shifts in the Run's repository and the paths they share with it, rendered by ploegd within the active work section's budget of 2,000 bytes (ADR-0123, ADR-0124); tracker titles in it are quoted. Absent when there is none." },
     "openSpec": { "$ref": "#/$defs/openSpec" },
     "knowledge": { "$ref": "#/$defs/knowledge" },
     "context": {
