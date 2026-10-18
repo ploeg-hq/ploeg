@@ -66,16 +66,6 @@ func TestTelemetryEnvironmentPerHarness(t *testing.T) {
 			harness: "claude-code",
 			want:    []string{"CLAUDE_CODE_ENABLE_TELEMETRY=1", "CLAUDE_CODE_ENHANCED_TELEMETRY_BETA=1", "OTEL_LOG_TOOL_DETAILS=1", "OTEL_LOG_USER_PROMPTS=0", "OTEL_TRACES_EXPORTER=otlp"},
 		},
-		{
-			harness: "openhands",
-			want:    []string{"OTEL_EXPORTER_OTLP_ENDPOINT=http://alloy:4318", "OTEL_TRACES_EXPORTER=otlp"},
-			absent:  []string{"CLAUDE_CODE_ENABLE_TELEMETRY", "OTEL_LOG_USER_PROMPTS"},
-		},
-		{
-			harness: "acp", profile: "opencode",
-			want:   []string{"OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf"},
-			absent: []string{"CLAUDE_CODE_ENABLE_TELEMETRY"},
-		},
 	} {
 		env := telemetryEnvironment(setting, tc.harness, tc.profile, "bronze", "builder", testRunAlias)
 		for _, kv := range tc.want {
@@ -124,8 +114,8 @@ func TestTelemetrySupportNamesWhatEachHarnessExports(t *testing.T) {
 		want             []string
 	}{
 		{"claude-code", "", []string{"metrics", "logs", "traces"}},
-		{"openhands", "", []string{"traces"}},
-		{"acp", "openhands", []string{"traces"}},
+		{"openhands", "", nil},
+		{"acp", "openhands", nil},
 		{"acp", "opencode", nil},
 		{"exec", "", nil},
 		{"claude-environment", "", nil},
@@ -136,9 +126,17 @@ func TestTelemetrySupportNamesWhatEachHarnessExports(t *testing.T) {
 	}
 }
 
-func TestWorkerHandsTheTelemetrySettingToTheHarness(t *testing.T) {
+type namedRecorder struct {
+	contextAdapter
+	name string
+}
+
+func (a *namedRecorder) Name() string { return a.name }
+
+func runRecordingTelemetry(t *testing.T, harnessName string) *namedRecorder {
+	t.Helper()
 	forgeURL := gitForge(t, map[string]string{"main.go": "package main\n"})
-	adapter := &contextAdapter{}
+	adapter := &namedRecorder{name: harnessName}
 	w := New(Config{APIURL: contextAPI(t, nil), ForgeURL: forgeURL, DefaultForge: harness.ForgeForgejo, BuilderToken: "tok",
 		ForgeTokenAccess: ForgeTokenReadOnly, RepoOwner: "webgrip", RepoName: "example", BaseBranch: "development",
 		WorkDir: t.TempDir(), RepoKnowledgeDir: "-", Team: "bronze",
@@ -149,14 +147,29 @@ func TestWorkerHandsTheTelemetrySettingToTheHarness(t *testing.T) {
 	if !adapter.ran {
 		t.Fatal("the harness never ran")
 	}
+	return adapter
+}
+
+func TestWorkerHandsTheTelemetrySettingToTheHarness(t *testing.T) {
+	adapter := runRecordingTelemetry(t, "claude-code")
 	for key, want := range map[string]string{
-		"OTEL_EXPORTER_OTLP_ENDPOINT": "http://alloy:4318",
-		"OTEL_TRACES_EXPORTER":        "otlp",
-		"OTEL_LOGS_EXPORTER":          "none",
-		"OTEL_RESOURCE_ATTRIBUTES":    "ploeg.role=reviewer,ploeg.run.alias=" + testRunAlias + ",ploeg.team=bronze",
+		"OTEL_EXPORTER_OTLP_ENDPOINT":  "http://alloy:4318",
+		"OTEL_TRACES_EXPORTER":         "otlp",
+		"OTEL_LOGS_EXPORTER":           "none",
+		"CLAUDE_CODE_ENABLE_TELEMETRY": "1",
+		"OTEL_RESOURCE_ATTRIBUTES":     "ploeg.role=reviewer,ploeg.run.alias=" + testRunAlias + ",ploeg.team=bronze",
 	} {
 		if got := envValue(adapter.env, key); got != want {
 			t.Errorf("harness %s = %q, want %q", key, got, want)
+		}
+	}
+}
+
+func TestWorkerWithholdsTelemetryFromOpenHands(t *testing.T) {
+	adapter := runRecordingTelemetry(t, "openhands")
+	for _, kv := range adapter.env {
+		if strings.HasPrefix(kv, "OTEL_") {
+			t.Fatalf("OpenHands got %s; with an OTLP endpoint set every prompt fails", kv)
 		}
 	}
 }
@@ -166,6 +179,24 @@ func TestWorkerWithoutTelemetryHandsTheHarnessNoCollector(t *testing.T) {
 	for _, kv := range adapter.env {
 		if strings.HasPrefix(kv, "OTEL_") || strings.HasPrefix(kv, "CLAUDE_CODE_ENABLE_TELEMETRY=") {
 			t.Fatalf("harness got %s with no telemetry configured", kv)
+		}
+	}
+}
+
+func TestHarnessesWithoutSafeTelemetryGetNoOTELVariables(t *testing.T) {
+	setting := &Telemetry{Endpoint: "http://alloy:4318", Protocol: "http/protobuf", Signals: telemetrySignals}
+	for _, tc := range []struct{ harness, profile string }{
+		{"openhands", ""},
+		{"acp", "openhands"},
+		{"acp", "opencode"},
+		{"exec", ""},
+		{"claude-environment", ""},
+	} {
+		if env := telemetryEnvironment(setting, tc.harness, tc.profile, "bronze", "builder", testRunAlias); env != nil {
+			t.Errorf("%s/%s got %v; an OTLP endpoint made every OpenHands prompt fail", tc.harness, tc.profile, env)
+		}
+		if TelemetryWithheldReason(tc.harness, tc.profile) == "" {
+			t.Errorf("%s/%s withholds telemetry without saying why", tc.harness, tc.profile)
 		}
 	}
 }

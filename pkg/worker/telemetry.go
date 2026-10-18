@@ -85,25 +85,36 @@ func (t *Telemetry) exports(signal string) bool {
 	return t != nil && slices.Contains(t.Signals, signal)
 }
 
-// TelemetrySupport names the signals a harness exports natively, so the
-// worker can say at startup what a telemetry setting will and will not reach.
+// TelemetrySupport names the signals a harness exports natively and can be
+// given OpenTelemetry variables without harm. A harness outside it gets none
+// of them: setting OTEL_* is not inert for every agent (see
+// TelemetryWithheldReason).
 func TelemetrySupport(harnessName, acpProfile string) []string {
-	switch {
-	case harnessName == "claude-code":
+	if harnessName == "claude-code" {
 		return telemetrySignals
+	}
+	return nil
+}
+
+// TelemetryWithheldReason says why a harness gets no telemetry variables, for
+// the worker's startup log.
+func TelemetryWithheldReason(harnessName, acpProfile string) string {
+	switch {
 	case harnessName == "openhands", harnessName == "acp" && acpProfile == "openhands":
-		return []string{"traces"}
+		return "OpenHands CLI 1.16.0 pins openhands-sdk 1.21.0, whose Laminar observe() passes rollout_entrypoint, which no lmnr release accepts; any OTEL_EXPORTER_OTLP endpoint makes every prompt fail"
+	case harnessName == "claude-environment":
+		return "claude-environment sessions run on the self-hosted runner, whose own environment carries telemetry"
 	default:
-		return nil
+		return "the harness exports no OpenTelemetry signals natively"
 	}
 }
 
 // telemetryEnvironment is the harness environment that points a Run's agent
-// at the configured collector. The standard OTEL_* variables are set for
-// every harness, since an agent that does not read them ignores them; the
-// variables a runtime needs on top are added for that runtime only.
+// at the configured collector. Only a harness in TelemetrySupport gets it:
+// OpenHands turned an OTLP endpoint into a failed prompt, so "an agent that
+// does not read the variables ignores them" does not hold.
 func telemetryEnvironment(t *Telemetry, harnessName, acpProfile, team, role, alias string) []string {
-	if t == nil {
+	if t == nil || len(TelemetrySupport(harnessName, acpProfile)) == 0 {
 		return nil
 	}
 	env := []string{

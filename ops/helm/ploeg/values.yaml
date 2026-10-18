@@ -275,10 +275,11 @@ executor:
     # OpenTelemetry collector the harness exports to (PLOEG_TELEMETRY). Set
     # at executor, team or Role level; the most specific block wins whole.
     # The worker adds ploeg.team, ploeg.role and ploeg.run.alias to the
-    # resource attributes. What each harness exports natively: claude-code
-    # metrics, logs and traces; openhands and acp/openhands traces; acp/opencode,
-    # exec and claude-environment none (claude-environment sessions export from
-    # the self-hosted runner's own environment). {} exports nothing.
+    # resource attributes. Only claude-code receives it (metrics, logs and
+    # traces); every other harness gets no OTEL variables and the worker logs
+    # why: OpenHands fails every prompt with an OTLP endpoint set (ADR-0113),
+    # acp/opencode and exec export nothing, and claude-environment sessions
+    # export from the self-hosted runner's own environment. {} exports nothing.
     # endpoint: http://otel-collector.observability.svc:4318
     # protocol: http/protobuf   # or http/json, grpc
     # signals: [metrics, logs, traces]
