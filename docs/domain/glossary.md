@@ -53,6 +53,22 @@ The one party entitled to approve a Run, set its budget and grant or revoke its 
 
 **See also:** [Admission](#admission), [Inference Account](#inference-account), [Push Credential](#push-credential), [Run](#run)  
 
+## Chat
+*Context: Integration*
+
+One chat message: a read-only Run with the Role chat about no Work Item, admitted for an Operator Consumer outside any Shift, Round or Lease. Ploeg authorizes it against the Team's Chat Allowance under the Team's ask inference policy and returns a key capped at the per-chat Budget; the consumer makes the model calls. Chat spend is the Team's and never appears in a Work Item's facts.
+
+**Not to be confused with** [Ask](#ask): An Ask is about one Work Item and is paid from the Ask Allowance; a chat message is about none and is paid from the Chat Allowance.  
+**See also:** [Chat Allowance](#chat-allowance), [Ask](#ask), [Run](#run), [Inference Account](#inference-account)  
+
+## Chat Allowance
+*Context: Integration*
+
+The amount of chat spend a Team may authorize in one UTC calendar month, kept apart from its Ask Allowance. A chat message is admitted only when the limit less settled and held chat spend covers the per-chat Budget.
+
+**Not to be confused with** [Ask Allowance](#ask-allowance): Asks and chat messages are capped apart; spending one never refuses the other.  
+**See also:** [Chat](#chat), [Ask Allowance](#ask-allowance), [Team](#team)  
+
 ## Checkpoint
 *Context: Dispatch*
 
@@ -135,11 +151,11 @@ The thin wrapper that makes one Harness satisfy the harness contract: accept a T
 ## Hold
 *Context: Dispatch*
 
-Budget kept back against a Shift pool or an Ask Allowance for work that started and has not settled. A Run's Hold starts at what it was authorized and ends when its spend settles. A Hold is derived from the Runs, never stored as a counter. The verb and adjective are "held". Authorized names only the ceiling a budget allows a Run to spend; the Hold is how much of it is still kept back.
+Budget kept back against a Shift pool, an Ask Allowance or a Chat Allowance for work that started and has not settled. A Run's Hold starts at what it was authorized and ends when its spend settles. A Hold is derived from the Runs, never stored as a counter. The verb and adjective are "held". Authorized names only the ceiling a budget allows a Run to spend; the Hold is how much of it is still kept back.
 
 **Also known as:** held budget  
 **Do not use:** reservation, reserved (for money), authorization (for money kept back)  
-**See also:** [Shift](#shift), [Run](#run), [Ask Allowance](#ask-allowance), [Inference Account](#inference-account), [Cost Status](#cost-status)  
+**See also:** [Shift](#shift), [Run](#run), [Ask Allowance](#ask-allowance), [Chat Allowance](#chat-allowance), [Inference Account](#inference-account), [Cost Status](#cost-status)  
 
 ## Inference Account
 *Context: Execution*

@@ -148,6 +148,24 @@ change either side and the test tells you.
   fields; `harness` and `model` (ADR-0098, ADR-0103) extend it, and the
   changes that add `attended` and `autoApprove` will. The operator event feed's `detail` gains the optional
   `requestId` on `operator.work_item.admitted`. An older Ploeg answers 405.
+- Since [ADR-0115](../adrs/0115-a-chat-message-is-a-read-only-run-about-no-work-item-paid-from-a-teams-chat-allowance.md)
+  an operator consumer with execute permission admits a chat message for a
+  team in its scope with `POST /api/v1/operator/teams/{team}/chats`
+  (`chatAdmitRequest`, answered by `chatAdmitResponse`), reads it with `GET
+  .../chats/{chatId}` (`chatResponse`) and finishes it with `POST
+  .../chats/{chatId}/finish` (`chatResponse`). A chat message is a read-only
+  Run with the Role `chat`, no Work Item and no Shift, metered under the
+  team's `(team, ask)` inference policy and paid from the team's monthly Chat
+  Allowance. Admission returns a LiteLLM key capped at the per-chat Budget
+  once, with the same replay rules as an Ask. `GET
+  /api/v1/operator/allowances?team=&purpose=chat` and the 402
+  `allowanceRefusalResponse` of a chat admission carry `chatAllowance`;
+  without `purpose`, or with `purpose=ask`, the allowance read is unchanged.
+  A chat Run is absent from every Work Item's detail and facts and from the
+  Run list; its spend and Hold count in the team summary. In
+  `unsettledAccountsResponse`, `workItemId` is null for a chat Run, so a
+  consumer that assumed a string must accept null. Ploeg keeps only the
+  message's SHA-256. An older Ploeg answers 404.
 - `deploy-api.v1` is the body of a pipeline's deploy report. It refuses
   unknown fields, unlike the response contracts, so a misspelled field fails
   the pipeline step instead of being dropped.

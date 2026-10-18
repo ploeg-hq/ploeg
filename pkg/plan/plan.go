@@ -177,6 +177,9 @@ func Validate(tp TeamPlan) error {
 			if r.Name == work.AskRole {
 				return fmt.Errorf("round %d: role name %q is reserved for Asks (ADR-0082)", i+1, r.Name)
 			}
+			if r.Name == work.ChatRole {
+				return fmt.Errorf("round %d: role name %q is reserved for chat messages (ADR-0115)", i+1, r.Name)
+			}
 			if len(r.Name) > 30 {
 				return fmt.Errorf("round %d: role name %q exceeds 30 characters (it becomes a workload name suffix)", i+1, r.Name)
 			}

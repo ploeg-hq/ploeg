@@ -38,8 +38,9 @@ func (s *Store) PendingLLMBlocks(ctx context.Context, after int64, limit int) ([
 // not been able to block, so its budget hold cannot be released yet. Since is
 // when the account last changed state.
 type UnsettledAccount struct {
-	RunID        int64     `json:"runId,string"`
-	WorkItemID   int64     `json:"workItemId,string"`
+	RunID int64 `json:"runId,string"`
+	// WorkItemID is nil for a chat Run, which has no Work Item (ADR-0115).
+	WorkItemID   *string   `json:"workItemId"`
 	Team         string    `json:"team"`
 	AccountState string    `json:"accountState"`
 	HeldUSD      float64   `json:"heldUsd"`
@@ -67,7 +68,7 @@ func (s *Store) UnsettledFinishedAccounts(ctx context.Context, teams []string, l
 	if limit < 1 || limit > 200 {
 		return page, errors.New("invalid unsettled account page")
 	}
-	rows, err := s.pool.Query(ctx, `SELECT r.id,r.work_item_id,r.team,a.state,h.reserved::float8,a.updated_at,
+	rows, err := s.pool.Query(ctx, `SELECT r.id,r.work_item_id::text,r.team,a.state,h.reserved::float8,a.updated_at,
 		count(*) OVER (),(sum(h.reserved) OVER ())::float8
 		FROM run_llm_accounts a JOIN agent_runs r USING(run_token) JOIN run_budget_holds h USING(run_token)
 		WHERE ((`+pendingBlockSelection+`) OR (r.state='finished' AND a.state='blocked' AND r.finished_at<now()-make_interval(secs=>$3)))

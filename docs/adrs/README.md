@@ -189,6 +189,7 @@ fails otherwise.
 | [0112](0112-a-claude-environment-run-uses-the-claude-login-of-the-person-it-acts-for.md) | A claude-environment Run uses the Claude login of the person it acts for, and a person's own Claude Code may carry it | proposed | 2026-10-17 |
 | [0113](0113-a-runs-harness-exports-opentelemetry-to-a-collector-set-per-team-and-role.md) | A Run's Harness exports OpenTelemetry to a collector set per Team and Role | proposed | 2026-10-17 |
 | [0114](0114-each-run-records-the-limits-that-stop-its-prompt.md) | Each Run records the limits that stop its prompt | proposed | 2026-10-18 |
+| [0115](0115-a-chat-message-is-a-read-only-run-about-no-work-item-paid-from-a-teams-chat-allowance.md) | A chat message is a read-only Run about no Work Item, paid from a Team's Chat Allowance | proposed | 2026-10-18 |
 
 ## Review calendar
 
@@ -253,5 +254,6 @@ triggers.
 | 2027-01-31 | [0112](0112-a-claude-environment-run-uses-the-claude-login-of-the-person-it-acts-for.md) — or sooner, when Anthropic offers delegated or session-only authorization, the copied-credential spike fails, or a person's Runs must dispatch while their seat is suspended |
 | 2027-01-31 | [0113](0113-a-runs-harness-exports-opentelemetry-to-a-collector-set-per-team-and-role.md) — or sooner, when a Harness Ploeg runs gains native OTLP export, ploegd emits a trace per Run, or a collector needs authentication headers from a Secret |
 | 2027-01-31 | [0114](0114-each-run-records-the-limits-that-stop-its-prompt.md) — or sooner, when ploegd learns each Role's timeouts itself, a Harness gains a limit of its own or runs more than one prompt turn per Run, or an operator consumer needs the agent's last activity from Ploeg |
+| 2027-01-31 | [0115](0115-a-chat-message-is-a-read-only-run-about-no-work-item-paid-from-a-teams-chat-allowance.md) — or sooner, when a Team wants chats on another model or cap than its Asks, a consumer needs a chat scope other than a Team, a chat message regularly needs more than its budget, or a consumer needs Ploeg to keep the conversation |
 | 2027-04-30 | [0081](0081-ploeg-serves-its-operator-reads-as-mcp-tools-through-ploeg-mcp.md) — or sooner, when a person asks to propose, approve or cancel work from an AI client, someone needs the tools without a route to ploegd, or the MCP Go SDK ships a major version |
 | 2027-04-01 | [0005](0005-build-a-dedicated-dispatch-plane.md), [0032](0032-keep-the-dispatch-plane-and-compete-on-authorized-spend.md), [0071](0071-ploeg-keeps-its-state-in-postgresql-and-is-not-a-kubernetes-operator.md), [0073](0073-ploeg-stays-in-go-and-admits-rust-only-as-a-separately-deployed-component.md), [0077](0077-ploeg-knows-work-sources-and-change-destinations-never-vendors.md) — the project review gate (`design.md` §10) |

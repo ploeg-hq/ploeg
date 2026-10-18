@@ -356,6 +356,14 @@ func run(log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	chatAllowance, err := usdFromEnv("PLOEG_CHAT_ALLOWANCE_USD", httpapi.DefaultChatAllowanceUSD)
+	if err != nil {
+		return err
+	}
+	chatBudget, err := usdFromEnv("PLOEG_CHAT_BUDGET_USD", httpapi.DefaultChatBudgetUSD)
+	if err != nil {
+		return err
+	}
 	runTranscripts, err := switchEnv("PLOEG_RUN_TRANSCRIPTS", true)
 	if err != nil {
 		return err
@@ -383,13 +391,15 @@ func run(log *slog.Logger) error {
 		ClaudeSessions: claudeSessions(log),
 		CreatedWork:    createdWork,
 
-		MetricsCacheTTL: durationOr("PLOEG_METRICS_CACHE_TTL", httpapi.DefaultMetricsCacheTTL),
-		AskAllowanceUSD: askAllowance,
-		AskBudgetUSD:    askBudget,
-		FollowUps:       cfg.ForgeFollowUps(),
-		ForgeBots:       forgeBots(),
-		Deploys:         deploys,
-		Gates:           gates,
+		MetricsCacheTTL:  durationOr("PLOEG_METRICS_CACHE_TTL", httpapi.DefaultMetricsCacheTTL),
+		AskAllowanceUSD:  askAllowance,
+		AskBudgetUSD:     askBudget,
+		ChatAllowanceUSD: chatAllowance,
+		ChatBudgetUSD:    chatBudget,
+		FollowUps:        cfg.ForgeFollowUps(),
+		ForgeBots:        forgeBots(),
+		Deploys:          deploys,
+		Gates:            gates,
 
 		ContextMaxBytes:      contextMax,
 		ContextMaxTotalBytes: contextMaxTotal,

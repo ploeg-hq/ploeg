@@ -367,3 +367,9 @@ type InstructionFile struct {
 // Shift, no Round and no Lease, paid from an allowance (ADR-0082). No crew
 // Role may take this name.
 const AskRole = "ask"
+
+// ChatRole is the Role of a chat message: a read-only Run about no Work Item,
+// with no Shift, no Round and no Lease, paid from a Team's Chat Allowance and
+// metered under the Team's ask inference policy (ADR-0115). No crew Role may
+// take this name.
+const ChatRole = "chat"

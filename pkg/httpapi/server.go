@@ -113,6 +113,11 @@ type Server struct {
 	// DefaultAskAllowanceUSD and DefaultAskBudgetUSD.
 	AskAllowanceUSD float64
 	AskBudgetUSD    float64
+	// ChatAllowanceUSD is the limit a Team's monthly Chat Allowance opens
+	// with and ChatBudgetUSD the per-chat Budget (ADR-0115). Zero means
+	// DefaultChatAllowanceUSD and DefaultChatBudgetUSD.
+	ChatAllowanceUSD float64
+	ChatBudgetUSD    float64
 	// DisableRunTranscripts refuses Run transcripts (ADR-0090): the
 	// ingestion route answers 404 and workers stop sending. Transcripts
 	// already stored stay readable.
