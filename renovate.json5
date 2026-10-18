@@ -1,0 +1,61 @@
+{
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  extends: [
+    'github>webgrip/renovate-config#v1.13.0',
+    'github>webgrip/renovate-config:golang#v1.13.0',
+    'github>webgrip/renovate-config:automerge-non-major#v1.13.0',
+  ],
+  vulnerabilityAlerts: {
+    description: 'Security fixes merge themselves once verify is green, with no soak and no dashboard tick, whatever the update type. The shared overlay already sets automerge here; this repository states it so the guarantee does not depend on the overlay staying as it is.',
+    automerge: true,
+    automergeType: 'pr',
+    platformAutomerge: false,
+    dependencyDashboardApproval: false,
+    minimumReleaseAge: '0 days',
+  },
+  customManagers: [
+    {
+      description: 'Versions pinned in workflow env with a `# renovate:` line above them, such as RELEASE_CONFIG_VERSION.',
+      customType: 'regex',
+      managerFilePatterns: ['/^\\.github/workflows/[^/]+\\.ya?ml$/'],
+      matchStrings: [
+        '# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)(?: registryUrl=(?<registryUrl>\\S+))?\\s*\\n\\s*[A-Z0-9_]+:\\s*["\']?(?<currentValue>[^"\'\\s]+)',
+      ],
+    },
+  ],
+  packageRules: [
+    {
+      description: 'The default preset filters releases strictly by constraints. For Go modules Renovate compares the repository\'s `go` directive with each release\'s as exact versions, though both are minimums, so every release that declares a different Go version is dropped. On 2026-10-18 that hid every golang.org/x/time release from v0.4.0 to v0.15.0 and offered rollbacks to v0.3.0 and lib/pq v1.5.2. Go\'s minimal version selection already resolves the toolchain floor, and `go mod tidy` in the branch fails if a release needs a newer one.',
+      matchManagers: ['gomod'],
+      constraintsFiltering: 'none',
+    },
+    {
+      description: 'The release train owns Ploeg\'s own images and chart: semantic-release writes Chart.yaml version and appVersion, and image.tag follows appVersion. Renovate never proposes them.',
+      matchPackageNames: ['ghcr.io/ploeg-hq/**'],
+      enabled: false,
+    },
+    {
+      description: 'The npm manifest under .mise/locks is mise\'s own install lock for the openspec CLI, not a project dependency. The tool is bumped through mise.toml.',
+      matchFileNames: ['.mise/**'],
+      enabled: false,
+    },
+    {
+      description: 'An image in the chart\'s values.yaml (the privileged DinD sidecar) changes the golden renders and the generated configuration reference, so verify fails until `scripts/helm-golden.sh update` is run and its diff reviewed. It gets its own branch behind a dashboard tick instead of holding the non-major group red.',
+      matchManagers: ['helm-values'],
+      groupName: null,
+      groupSlug: null,
+      automerge: false,
+      dependencyDashboardApproval: true,
+    },
+    {
+      description: 'The semantic-release configuration only runs after a merge to development, so verify on the pull request never exercises it. A bump waits for a dashboard tick and lands as ci(release), which cuts no candidate.',
+      matchPackageNames: ['@webgrip/semantic-release-config'],
+      groupName: null,
+      groupSlug: null,
+      automerge: false,
+      dependencyDashboardApproval: true,
+      semanticCommitType: 'ci',
+      semanticCommitScope: 'release',
+    },
+  ],
+}

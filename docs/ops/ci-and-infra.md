@@ -21,6 +21,17 @@ A pull mirror copies Git refs and objects, not the complete issues, reviews, rel
 
 Existing WebGrip desired state remains in [homelab-cluster](https://forgejo.webgrip.dev/webgrip/homelab-cluster). This repository cut does not change production pins, network policies or secrets.
 
+## Dependency updates
+
+Renovate proposes updates from [`renovate.json5`](../../renovate.json5). It runs in homelab-cluster as the RenovateJob `ploeg-hq`, authenticated as a GitHub App of its own (`ploeg-hq-renovate`), separate from the App that manages rulesets and settings. The shared [Webgrip presets](https://forgejo.webgrip.dev/webgrip/renovate-config) set the policy:
+
+- Security fixes, from OSV and from GitHub's Dependabot alerts when they are on, open at once and merge themselves when `verify` is green.
+- Minor, patch, digest and pin updates share the branch `renovate/all-non-major` and merge themselves when `verify` is green, after a soak of three days for a minor and one day for a patch. Indirect Go modules are included.
+- Majors, Go toolchain minors, the DinD image in `values.yaml` and the semantic-release configuration wait for a tick on the Dependency Dashboard issue. A `values.yaml` image changes the golden renders, so run `scripts/helm-golden.sh update` on its branch.
+- Ploeg's own images and the chart version belong to the release train and are never proposed. Paired version and checksum pins (`CLAUDE_CODE_VERSION`, `GOOSE_VERSION`) are not managed: Renovate cannot update the checksum with them.
+
+Dependency bumps are releasable commits and cut a candidate. Actions and the release configuration land as `ci(...)`, which do not. Setup and the App's permissions: homelab-cluster `docs/techdocs/docs/runbooks/github-app-ploeg-hq.md`.
+
 ## Forge webhooks
 
 `POST /webhooks/forge/forgejo` and `POST /webhooks/forge/gitlab` act only when two things are in place:
