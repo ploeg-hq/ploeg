@@ -7,6 +7,8 @@ env:
   PLOEG_FORGE_TOKEN_ISOLATION: "`proxy` keeps a writer's forge token in ploeg-worker behind a loopback proxy limited to the Run's repository (ADR-0034). The chart sets it only for a qualified harness without DinD."
   PLOEG_CREDENTIAL_ISOLATION_OFF_REASON: "Why the chart left a credential proxy off for this workload: `unqualified`, `dind` or `disabled`. ploeg-worker logs it in one boot WARN with the harness name."
   PLOEG_DEFAULT_TEAM: Team that receives work from an assignee no Team lists.
+  PLOEG_DEPENDENCY_HOLD: "Holds a queued Work Item's first Shift while its tracker says it waits for an item that is not done (ADR-0123). `false` switches the hold off."
+  PLOEG_DEPENDENCY_RECHECK: How often ploegd reads a held Work Item's tracker dependencies again, as a Go duration.
   PLOEG_TEAM_MAP: Legacy assignee roster, replaced by `teams.<name>.assignees` in the `PLOEG_CONFIG` file.
   PLOEG_TEAM_HARNESSES: "Each Role's Harness configuration as JSON, team to Role to `{name, profile, allowed, allowUnqualified}`: the default Harness, the allowlist an operator admission may choose from, each entry with its `qualification`, and the team's opt-in to unqualified Harnesses (ADR-0097, ADR-0098). A plan-less team's workload is the Role `\"\"`. The chart renders it from the same values as each worker's `PLOEG_HARNESS` and `PLOEG_ACP_PROFILE`, and the Teams read shows it. Unset reads every Role's Harness as null and stores no Harness on a Run; a malformed value, or a default outside its allowlist, stops ploegd at boot."
   PLOEG_TEAM_PLANS: Legacy Shift plans, replaced by `teams.<name>.plan` in the `PLOEG_CONFIG` file. A malformed plan stops ploegd at boot.

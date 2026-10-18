@@ -340,6 +340,11 @@ type Checkpoint struct {
 	// Limits are the limits that stop the Run's prompt, sent with the
 	// prompt_started checkpoint (ADR-0114).
 	Limits *RunLimits `json:"limits,omitempty"`
+
+	// PlannedPaths are the repository paths the Run plans to change, when
+	// it knows them before it pushes. Ploeg keeps the newest list per Shift
+	// and names it to other Runs in the same repository (ADR-0123).
+	PlannedPaths []string `json:"plannedPaths,omitempty"`
 }
 
 // PhasePromptStarted is the checkpoint phase a worker writes when the

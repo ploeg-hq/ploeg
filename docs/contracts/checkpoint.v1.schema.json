@@ -41,6 +41,12 @@
       },
       "required": ["promptStartedAt"],
       "additionalProperties": false
+    },
+    "plannedPaths": {
+      "type": "array",
+      "description": "The repository paths the Run plans to change, when it knows them before it pushes (ADR-0123). A path ending in / names a directory. ploegd keeps the newest list per live Shift, at most 100 distinct paths, and names it to other Runs working in the same repository. Optional: absent means unknown, not none.",
+      "maxItems": 100,
+      "items": { "type": "string", "minLength": 1, "maxLength": 1024 }
     }
   },
   "required": ["phase"],

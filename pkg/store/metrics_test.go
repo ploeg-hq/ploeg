@@ -386,3 +386,20 @@ func TestOperationalMetricsCountUnsettledAccountsOfFinishedRuns(t *testing.T) {
 		}
 	}
 }
+
+func TestAWorkItemHeldForADependencyIsNotAStalledQueue(t *testing.T) {
+	ctx := context.Background()
+	resetTables(t)
+	itemID, _ := ingestItem(t)
+	mustExec(t, `UPDATE work_items SET updated_at = now() - interval '2 hours' WHERE id = $1`, itemID)
+	if _, err := testStore.RecordDependencies(ctx, itemID, "vikunja", []Dependency{{ExternalID: "1", Kind: "blocked_by"}}); err != nil {
+		t.Fatal(err)
+	}
+	m, err := testStore.OperationalMetrics(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := m.OldestQueuedSeconds["silver"]; ok {
+		t.Fatalf("an item waiting for a dependency counted as a stalled queue: %+v", m.OldestQueuedSeconds)
+	}
+}

@@ -201,6 +201,7 @@ func (s *Store) OperationalMetrics(ctx context.Context) (OperationalMetrics, err
 		max(EXTRACT(EPOCH FROM now() - GREATEST(updated_at, next_eligible_at)))::float8
 		FROM work_items
 		WHERE state = 'queued' AND NOT operator_owned AND (next_eligible_at IS NULL OR next_eligible_at <= now())
+		  AND NOT EXISTS (SELECT 1 FROM work_item_dependencies d WHERE d.work_item_id = work_items.id AND NOT d.done)
 		GROUP BY team`)
 	if err != nil {
 		return m, err

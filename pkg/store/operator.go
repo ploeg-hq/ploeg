@@ -185,6 +185,34 @@ type OperatorItem struct {
 	LatestShift    *OperatorShift       `json:"latestShift"`
 	Lease          *OperatorLease       `json:"lease"`
 	PullRequest    *OperatorPullRequest `json:"pullRequest"`
+	// WaitingFor lists the tracker items this Work Item waits for that are
+	// not done; a queued Work Item with any gets no Shift (ADR-0123).
+	WaitingFor []OperatorDependency `json:"waitingFor"`
+	// PremiseCheck is the Work Item's premise check, nil when none ran.
+	PremiseCheck *OperatorPremiseCheck `json:"premiseCheck"`
+}
+
+// OperatorDependency is one open tracker dependency of a Work Item.
+// WorkItemID is Ploeg's Work Item for it, nil when Ploeg has none.
+type OperatorDependency struct {
+	Provider    string    `json:"provider"`
+	ExternalID  string    `json:"externalId"`
+	Title       string    `json:"title"`
+	Kind        string    `json:"kind"`
+	WorkItemID  *string   `json:"workItemId"`
+	FirstSeenAt time.Time `json:"firstSeenAt"`
+	CheckedAt   time.Time `json:"checkedAt"`
+}
+
+// OperatorPremiseCheck is a Work Item's premise check (ADR-0123). Verdict
+// is null while attempts failed without an answer.
+type OperatorPremiseCheck struct {
+	Verdict   *string    `json:"verdict"`
+	Question  string     `json:"question"`
+	Reason    string     `json:"reason"`
+	Model     string     `json:"model"`
+	Attempts  int        `json:"attempts"`
+	CheckedAt *time.Time `json:"checkedAt"`
 }
 
 type OperatorShift struct {
@@ -383,7 +411,19 @@ const operatorItemJSON = `jsonb_build_object(
 		|| COALESCE(` + operatorPullRequestMergeJSON + `, jsonb_build_object(
 			'number', substring((` + operatorPullRequestURL + `) from '/(?:pulls?|merge_requests)/([0-9]{1,9})/?$')::int,
 			'mergeState', 'unknown', 'baseBranch', NULLIF(left(i.target_base_branch, 1024), ''), 'checkedAt', NULL))
-		ELSE NULL END)`
+		ELSE NULL END) || ` + operatorDispatchHoldJSON
+
+// operatorDispatchHoldJSON is what holds a Work Item before its first Shift
+// (ADR-0123): its open tracker dependencies and its premise check.
+const operatorDispatchHoldJSON = `jsonb_build_object(
+	'waitingFor', (SELECT COALESCE(jsonb_agg(jsonb_build_object('provider', d.provider, 'externalId', d.external_id,
+			'title', left(d.title, 4096), 'kind', d.kind, 'workItemId', dw.id::text, 'firstSeenAt', d.first_seen_at,
+			'checkedAt', i.dependencies_checked_at) ORDER BY d.first_seen_at, d.external_id), '[]'::jsonb)
+		FROM (SELECT * FROM work_item_dependencies WHERE work_item_id = i.id AND NOT done ORDER BY first_seen_at, external_id LIMIT 50) d
+		LEFT JOIN work_items dw ON dw.provider = d.provider AND dw.external_id = d.external_id),
+	'premiseCheck', (SELECT jsonb_build_object('verdict', p.verdict, 'question', left(p.question, 1024), 'reason', left(p.reason, 512),
+			'model', p.model, 'attempts', p.attempts, 'checkedAt', p.checked_at)
+		FROM work_item_premise_checks p WHERE p.work_item_id = i.id))`
 
 const operatorPullRequestMergeJSON = `(SELECT jsonb_build_object(
 	'number', p.number, 'mergeState', COALESCE(p.merge_state, 'unknown'),
