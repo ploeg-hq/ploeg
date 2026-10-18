@@ -28,6 +28,7 @@ On 2026-10-18 every OpenHands Run on a live cluster failed within 40 seconds onc
 * Replace OpenHands with one agent only
 * Keep the OpenHands CLI 1.16.0 under its release lockfile
 * Run the CLI against the current SDK by overriding its pin
+* Keep OpenHands through a new `openhands-agent-server` Harness that drives the OpenHands Agent Server API
 * Fork the OpenHands CLI, or build a Ploeg-owned ACP agent on the OpenHands SDK
 
 ## Decision Outcome
@@ -40,11 +41,13 @@ Chosen option: "**Support three maintained ACP agents, OpenCode, Qwen Code and G
 * **Qualification.** `mise run harness-conformance` for the profile in the Team's image, then the isolation qualification Runs under `PLOEG_LLM_KEY_ISOLATION=proxy` and `PLOEG_FORGE_TOKEN_ISOLATION=proxy`. The operator approves the model spend first.
 * **Switch.** One Team at a time, by changing its Role defaults; a Team may list several qualified agents and choose per Role ([ADR-0098](0098-an-operator-admission-may-choose-each-runs-harness-from-its-teams-allowlist.md)). `openhands` and `acp/openhands` stay in the allowlist until no Team defaults to them for a month, then leave `ploeg.qualifiedHarnesses`.
 * **Until then.** The OpenHands CLI stays at 1.16.0 under its release lockfile. Telemetry may reach it again: with the locked `lmnr` its tracing starts.
-* **Fallback.** If none qualifies, a fork is allowed: the CLI and the SDK are MIT-licensed, so a fork keeps their copyright and license notices and does not present itself under the OpenHands name. It is a last resort, because Ploeg would then maintain an agent.
+* **OpenHands stays, through its supported interface.** OpenHands names the Python SDK and the Agent Server API as the supported way for an orchestrator to run a task without a person ([OpenHands#18000](https://github.com/OpenHands/OpenHands/issues/18000), [OpenHands#18046](https://github.com/OpenHands/OpenHands/pull/18046)). Ploeg adds an `openhands-agent-server` Harness: the worker starts `openhands-agent-server` (MIT, maintained) inside the Run's sandbox, creates one conversation with the Run's prompt, gateway model and key placeholder, waits for it within the Run's limits, maps its events into the transcript and its end into the outcome drop-box, and stops the server. Ploeg is the glue between agents; it maintains the adapter, never the agent. The Harness is qualified like the ACP agents before a Team uses it, and it replaces both OpenHands CLI Harnesses.
+* **Fallback.** A fork of the MIT-licensed CLI stays allowed only if the Agent Server cannot carry a Run; it keeps the copyright and licence notices and does not present itself under the OpenHands name.
 
 ### Consequences
 
 * Good, because every default Harness has a maintained upstream again, and no Team is tied to one.
+* Good, because OpenHands remains a choice, on its maintained SDK rather than a frozen CLI.
 * Good, because the switch changes configuration, not code: the ACP adapter, transcript ([ADR-0090](0090-a-runs-agent-session-is-kept-as-a-bounded-redacted-transcript.md)), permission relay ([ADR-0100](0100-an-attended-run-relays-its-harnesss-requests-through-ploegd-and-falls-back-to-its-teams-policy.md)) and limits ([ADR-0114](0114-each-run-records-the-limits-that-stop-its-prompt.md)) stay as they are.
 * Bad, because qualification costs model calls, three times, and Runs before and after are not directly comparable: a different agent may need different prompts or skills to deliver the same work.
 * Bad, because the Qwen Code and Goose profiles need changes and hostile-repository tests before they qualify.
@@ -56,7 +59,9 @@ Chosen option: "**Support three maintained ACP agents, OpenCode, Qwen Code and G
 * `mise run harness-conformance` passes for `acp` (OpenCode), `acp-qwen-code` and `acp-goose` in the Team's image, each with a dated row in the isolation qualification record.
 * The Qwen Code and Goose conformance runs include a hostile repository (`.env`, `.qwen/settings.json`, `.agents/plugins/`) and show none of it took effect.
 * A Team that switched shows the new Harness in the Teams read ([ADR-0097](0097-a-run-records-its-harness-version-and-the-teams-read-shows-each-roles-harness-and-model.md)), and its next ten Runs reach their normal outcome at least as often as its last ten OpenHands Runs.
-* `ploeg.qualifiedHarnesses` lists no OpenHands Harness once no Team has defaulted to one for a month.
+* `go test ./pkg/harness/adapters/agentserver/` drives a recorded Agent Server through a Run: conversation created, events mapped to transcript entries, end mapped to an outcome, server stopped on cancel and on the Run's limits.
+* `mise run harness-conformance` passes for `openhands-agent-server` in the Team's image before any Team uses it.
+* `ploeg.qualifiedHarnesses` lists neither OpenHands CLI Harness once no Team has defaulted to one for a month.
 
 ## Pros and Cons of the Options
 
@@ -81,6 +86,13 @@ Chosen option: "**Support three maintained ACP agents, OpenCode, Qwen Code and G
 * Good, because it picks up the SDK's fixes.
 * Bad, because the CLI was written against SDK 1.21.0 and nobody tests it against 1.55; an override trades one untested combination for another.
 
+### Keep OpenHands through an `openhands-agent-server` Harness
+
+* Good, because it is the interface OpenHands supports for orchestrators, on the maintained SDK (1.55.1 on 2026-10-16), so OpenHands' fixes reach Ploeg again.
+* Good, because Ploeg maintains only an adapter, as it does for every other Harness.
+* Bad, because it is a new adapter, not a configuration change: a server lifecycle inside the sandbox, an HTTP event stream to map into the transcript, and its own conformance cases.
+* Bad, because the Agent Server's result contract for one-shot tasks is still being documented upstream.
+
 ### Fork the OpenHands CLI, or build a Ploeg-owned ACP agent on the OpenHands SDK
 
 * Good, because it keeps the OpenHands agent loop, and the MIT licence allows it.
@@ -91,6 +103,7 @@ Chosen option: "**Support three maintained ACP agents, OpenCode, Qwen Code and G
 * The OpenHands CLI is maintained again: a release after 1.16.0, or the "no longer actively maintained" notice is removed.
 * The OpenHands SDK ships an ACP agent of its own.
 * OpenCode, Qwen Code or Goose fails qualification, or one of them stops being maintained.
+* OpenHands publishes a one-shot task contract for the Agent Server, or deprecates it for orchestrators.
 
 ## More Information
 
