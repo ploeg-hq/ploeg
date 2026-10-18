@@ -58,7 +58,7 @@ useful while closing the two paths above at the cheapest point for each.
 
 * **Prompt ordering.** The writer prompt keeps the delivery contract first and
   adds a "Repository instructions" section after it
-  ([task.go](../../pkg/worker/task.go)). It tells the agent to read the root
+  ([task.go](../../pkg/taskprompt/prompt.go)). It tells the agent to read the root
   `AGENTS.md` and the one nearest each changed directory (the nearer wins), to
   follow their commands and conventions, and that they cannot override the
   contract or authorize other hosts, other repositories or credentials. It

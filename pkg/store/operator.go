@@ -190,6 +190,24 @@ type OperatorItem struct {
 	WaitingFor []OperatorDependency `json:"waitingFor"`
 	// PremiseCheck is the Work Item's premise check, nil when none ran.
 	PremiseCheck *OperatorPremiseCheck `json:"premiseCheck"`
+	// WaitingForClient is the Run that waits for its person to start it from
+	// their own Claude Code (ADR-0112), nil when none waits.
+	WaitingForClient *OperatorClientWait `json:"waitingForClient"`
+}
+
+// OperatorClientWait is a client-carried Run that waits for the person it
+// acts for (ADR-0112). Reason is NeedsHumanStartFromClient. ActsFor is nil
+// while Ploeg knows no person; HandedBy is the tracker user who handed the
+// Work Item, nil for admitted work.
+type OperatorClientWait struct {
+	Reason   string  `json:"reason"`
+	Message  string  `json:"message"`
+	ActsFor  *string `json:"actsFor"`
+	HandedBy *string `json:"handedBy"`
+	RunID    string  `json:"runId"`
+	Role     string  `json:"role"`
+	Round    int     `json:"round"`
+	Writes   bool    `json:"writes"`
 }
 
 // OperatorDependency is one open tracker dependency of a Work Item.
@@ -423,7 +441,20 @@ const operatorDispatchHoldJSON = `jsonb_build_object(
 		LEFT JOIN work_items dw ON dw.provider = d.provider AND dw.external_id = d.external_id),
 	'premiseCheck', (SELECT jsonb_build_object('verdict', p.verdict, 'question', left(p.question, 1024), 'reason', left(p.reason, 512),
 			'model', p.model, 'attempts', p.attempts, 'checkedAt', p.checked_at)
-		FROM work_item_premise_checks p WHERE p.work_item_id = i.id))`
+		FROM work_item_premise_checks p WHERE p.work_item_id = i.id),
+	'waitingForClient', ` + operatorClientWaitJSON + `)`
+
+// operatorClientWaitJSON is the oldest pending Run of a Work Item that a
+// client carries, with the person it waits for (ADR-0112). Its message is
+// ClientWaitMessage's.
+const operatorClientWaitJSON = `(SELECT jsonb_build_object('reason', 'start_from_claude_code',
+		'message', CASE WHEN i.acts_for <> '' THEN format('` + clientWaitForPerson + `', left(i.acts_for, 256))
+			WHEN i.handed_by <> '' THEN format('` + clientWaitForTrackerUser + `', left(i.handed_by, 256))
+			ELSE '` + clientWaitForNobody + `' END,
+		'actsFor', NULLIF(left(i.acts_for, 256), ''), 'handedBy', NULLIF(left(i.handed_by, 256), ''),
+		'runId', r.id::text, 'role', r.role, 'round', r.round, 'writes', r.writes)
+	FROM agent_runs r WHERE r.work_item_id = i.id AND r.carrier = 'client' AND r.state = 'pending'
+	ORDER BY r.id LIMIT 1)`
 
 const operatorPullRequestMergeJSON = `(SELECT jsonb_build_object(
 	'number', p.number, 'mergeState', COALESCE(p.merge_state, 'unknown'),

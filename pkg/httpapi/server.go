@@ -12,6 +12,7 @@ import (
 	"html"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -136,6 +137,11 @@ type Server struct {
 	// Version is this ploegd's version, recorded on each Run it claims or
 	// admits (ADR-0091). Empty records it as unknown.
 	Version string
+	// TrackerPeople maps each tracker's lowercased usernames to Ploeg's
+	// person ids (config trackers.<kind>.people). The client-carried Runs of
+	// a Work Item a mapped user handed to Ploeg act for that person
+	// (ADR-0112); an unmapped user's wait until configuration maps them.
+	TrackerPeople map[string]map[string]string
 
 	pipelineWork  sync.WaitGroup
 	pipelineOnce  sync.Once
@@ -323,6 +329,11 @@ func (s *Server) handleTrackerWebhook(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.observeEpics(r.Context(), name, tp, ev.ExternalID)
+		if ev.Actor != "" {
+			if err := s.Store.RecordHandedBy(r.Context(), id, ev.Actor, s.TrackerPeople[name][strings.ToLower(ev.Actor)]); err != nil {
+				s.Log.Error("recording who handed the work item failed", "provider", name, "external_id", ev.ExternalID, "err", err)
+			}
+		}
 		// Log the actual post-upsert state: a re-assignment of a live
 		// (queued/active) item refreshes the mirror without re-queuing (VIK-588).
 		if state == work.StateQueued {
@@ -670,40 +681,9 @@ func (s *Server) respondClaimedRun(w http.ResponseWriter, r *http.Request, req c
 		resp.Planner = planners.IsPlanner(req.Team, run.Role)
 	}
 	resp.Board = s.recordBoardClaim(r.Context(), run.RunToken)
-	var in store.ReplayInputs
-	reports, err := s.Store.RoundReports(r.Context(), run.ShiftID)
-	if err != nil {
-		s.Log.Error("briefing read failed; run proceeds without it", "shift", run.ShiftID, "err", err)
-	}
-	in.Reports = reports
+	resp.Briefing, resp.ReviewFindings, resp.Questions = s.runBriefing(r.Context(), run)
 	resp.Context = s.claimContext(r.Context(), run.RunToken)
-	if resp.ReviewFindings, resp.Questions, err = s.Store.FindingsBrief(r.Context(), run.ShiftID, run.Round, run.Writes); err != nil {
-		s.Log.Error("findings briefing read failed; run proceeds without it", "shift", run.ShiftID, "err", err)
-	}
 	resp.ActiveWork = s.activeWork(r.Context(), run.Item.ID)
-	if notes, err := s.Store.ShiftReviews(r.Context(), run.ShiftID, run.Round); err != nil {
-		s.Log.Error("review briefing read failed; run proceeds without it", "shift", run.ShiftID, "err", err)
-	} else {
-		in.Reviews = notes
-	}
-	if run.Writes {
-		if failures, err := s.Store.CIFixBriefing(r.Context(), run.ShiftID, run.Round); err != nil {
-			s.Log.Error("forge CI briefing read failed; run proceeds without it", "shift", run.ShiftID, "err", err)
-		} else if len(failures) > 0 {
-			resp.Briefing = append(resp.Briefing, forgeCIBriefing(failures, run.Round))
-		}
-	}
-	if brief, restarted, err := s.Store.ShiftRestartBrief(r.Context(), run.ShiftID); err != nil {
-		s.Log.Error("restart briefing read failed; run proceeds without it", "shift", run.ShiftID, "err", err)
-	} else if restarted {
-		in.Restart = &brief
-	}
-	if catchUps, err := s.Store.PriorRoundCatchUps(r.Context(), run.ShiftID, run.Round, time.Time{}); err != nil {
-		s.Log.Error("board catch-up briefing read failed; run proceeds without it", "shift", run.ShiftID, "err", err)
-	} else {
-		in.CatchUps = catchUps
-	}
-	resp.Briefing = shiftBriefing(in, run.Round)
 	// Push rights are minted per writing Run, so holding the Lease and being
 	// able to push are one fact rather than two that can disagree. A reader
 	// gets nothing here — it has no Lease and no business pushing.
@@ -732,6 +712,47 @@ func (s *Server) respondClaimedRun(w http.ResponseWriter, r *http.Request, req c
 		"briefing", len(resp.Briefing), "review_findings", len(resp.ReviewFindings), "questions", len(resp.Questions),
 		"context", len(resp.Context), "deadline", run.Deadline)
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// runBriefing is what a claimed Run is briefed with: the board briefing of
+// earlier Rounds, reviews, a restart and catch-ups, and the last review's
+// findings by id with the questions that reach the Run. A read that fails is
+// logged and the Run proceeds without it.
+func (s *Server) runBriefing(ctx context.Context, run *store.ClaimedRun) ([]harness.Finding, []harness.BriefedFinding, []harness.BriefedQuestion) {
+	var in store.ReplayInputs
+	reports, err := s.Store.RoundReports(ctx, run.ShiftID)
+	if err != nil {
+		s.Log.Error("briefing read failed; run proceeds without it", "shift", run.ShiftID, "err", err)
+	}
+	in.Reports = reports
+	findings, questions, err := s.Store.FindingsBrief(ctx, run.ShiftID, run.Round, run.Writes)
+	if err != nil {
+		s.Log.Error("findings briefing read failed; run proceeds without it", "shift", run.ShiftID, "err", err)
+	}
+	if notes, err := s.Store.ShiftReviews(ctx, run.ShiftID, run.Round); err != nil {
+		s.Log.Error("review briefing read failed; run proceeds without it", "shift", run.ShiftID, "err", err)
+	} else {
+		in.Reviews = notes
+	}
+	if brief, restarted, err := s.Store.ShiftRestartBrief(ctx, run.ShiftID); err != nil {
+		s.Log.Error("restart briefing read failed; run proceeds without it", "shift", run.ShiftID, "err", err)
+	} else if restarted {
+		in.Restart = &brief
+	}
+	if catchUps, err := s.Store.PriorRoundCatchUps(ctx, run.ShiftID, run.Round, time.Time{}); err != nil {
+		s.Log.Error("board catch-up briefing read failed; run proceeds without it", "shift", run.ShiftID, "err", err)
+	} else {
+		in.CatchUps = catchUps
+	}
+	briefing := shiftBriefing(in, run.Round)
+	if run.Writes {
+		if failures, err := s.Store.CIFixBriefing(ctx, run.ShiftID, run.Round); err != nil {
+			s.Log.Error("forge CI briefing read failed; run proceeds without it", "shift", run.ShiftID, "err", err)
+		} else if len(failures) > 0 {
+			briefing = append(briefing, forgeCIBriefing(failures, run.Round))
+		}
+	}
+	return briefing, findings, questions
 }
 
 func (s *Server) stopUnreadyTarget(ctx context.Context, team, runToken string, item work.WorkItem) bool {
@@ -847,6 +868,28 @@ func (s *Server) handleOutcome(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	err := s.applyOutcome(r.Context(), r.PathValue("token"), req)
+	switch {
+	case err == nil:
+		w.WriteHeader(http.StatusNoContent)
+	case errors.Is(err, store.ErrUnknownRun):
+		runError(w, err)
+	case errors.Is(err, errOutcomeStore):
+		runError(w, errors.Unwrap(err))
+	default:
+		http.Error(w, err.Error(), http.StatusBadRequest)
+	}
+}
+
+// errOutcomeStore wraps a store failure applyOutcome hit before the outcome,
+// which the route answers as a server error rather than a refusal.
+var errOutcomeStore = errors.New("outcome store failure")
+
+// applyOutcome records a validated Outcome Report for the Run: its inline
+// checkpoint, the outcome, the push credential's revocation, the created
+// Work Items and the Shift's fast path. A worker's outcome route and the
+// settlement of a client-carried Run from its runner's report share it.
+func (s *Server) applyOutcome(ctx context.Context, token string, req harness.OutcomeReport) error {
 	var usage json.RawMessage
 	if req.Usage != nil {
 		usage, _ = json.Marshal(req.Usage)
@@ -865,51 +908,49 @@ func (s *Server) handleOutcome(w http.ResponseWriter, r *http.Request) {
 		report = report.WithNotes(keptLearnings(req.Learnings))
 	}
 	if req.Checkpoint != nil && req.Checkpoint.Phase != "" {
-		replay, err := s.Store.IsOutcomeReplay(r.Context(), r.PathValue("token"), report)
+		replay, err := s.Store.IsOutcomeReplay(ctx, token, report)
 		if err != nil {
-			runError(w, err)
-			return
+			if errors.Is(err, store.ErrUnknownRun) {
+				return err
+			}
+			return fmt.Errorf("%w: %w", errOutcomeStore, err)
 		}
 		if !replay {
-			err := s.Store.Checkpoint(r.Context(), r.PathValue("token"), *req.Checkpoint)
+			err := s.Store.Checkpoint(ctx, token, *req.Checkpoint)
 			switch {
 			case errors.Is(err, store.ErrCheckpointRefused):
 				s.Log.Warn("inline checkpoint refused; the outcome is still recorded", "err", err)
+			case errors.Is(err, store.ErrUnknownRun):
+				return err
 			case err != nil:
-				runError(w, err)
-				return
+				return fmt.Errorf("%w: %w", errOutcomeStore, err)
 			}
 		}
 	}
-	res, err := s.Store.ReportOutcome(r.Context(), r.PathValue("token"), report)
+	res, err := s.Store.ReportOutcome(ctx, token, report)
 	if err != nil {
-		if errors.Is(err, store.ErrUnknownRun) {
-			runError(w, err)
-			return
-		}
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+		return err
 	}
 	if s.ForgeCreds != nil && res.ForgeTokenID != "" {
-		revokeCtx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), forgeCleanupTimeout)
+		revokeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), forgeCleanupTimeout)
 		if err := s.ForgeCreds.Revoke(revokeCtx, forgebroker.Credential{ID: res.ForgeTokenID}); err != nil {
 			s.Log.Error("forge credential revoke failed; the forge sweep will retry", "err", err)
 		}
 		cancel()
 	}
-	s.recordReportedHarness(r.Context(), r.PathValue("token"), req.Harness)
+	s.recordReportedHarness(ctx, token, req.Harness)
 	s.Log.Info("outcome reported", "outcome", req.Outcome, "summary", req.Summary,
 		"created_proposed", len(req.CreatedWorkItems), "created_accepted", len(res.Created))
-	s.openCreatedShifts(r.Context(), res.Created)
+	s.openCreatedShifts(ctx, res.Created)
 	// The Shift fast path: this report may have completed a Round. Errors are
 	// logged, never surfaced — the worker's report succeeded, and the sweeper
 	// repairs a lost evaluation (R2).
 	if s.Engine != nil && res.ShiftID != nil {
-		if err := s.Engine.EvaluateItem(r.Context(), res.WorkItemID); err != nil {
+		if err := s.Engine.EvaluateItem(ctx, res.WorkItemID); err != nil {
 			s.Log.Error("shift evaluate failed; sweeper will repair", "shift", *res.ShiftID, "err", err)
 		}
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return nil
 }
 
 func (s *Server) openCreatedShifts(ctx context.Context, created []store.CreatedWorkItem) {

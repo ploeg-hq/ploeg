@@ -23,6 +23,9 @@ type ClaudeSessions struct {
 	// ForgeURL is the forge's HTTPS base URL; the response names the push
 	// remote under it so a runner never takes it from a checkout's config.
 	ForgeURL string
+	// SessionTimeout is how long ploegd holds a client-carried Run alive once
+	// its session is recorded (ADR-0112). Zero is DefaultClaudeSessionTimeout.
+	SessionTimeout time.Duration
 }
 
 // SessionVerifier is implemented by *claudesession.Verifier.
@@ -104,6 +107,12 @@ func (s *Server) handleRecordClaudeSession(w http.ResponseWriter, r *http.Reques
 	case err != nil:
 		runError(w, err)
 	default:
+		token := r.PathValue("token")
+		if held, err := s.Store.HoldClientCarriedRun(r.Context(), token, time.Now().Add(s.ClaudeSessions.sessionTimeout())); err != nil {
+			s.Log.Error("holding a client-carried run for its session failed; its client must renew", "run", prefix12(token), "err", err)
+		} else if held {
+			s.Log.Info("client-carried run held for its runner session", "run", prefix12(token), "timeout", s.ClaudeSessions.sessionTimeout())
+		}
 		w.WriteHeader(http.StatusNoContent)
 	}
 }
@@ -232,6 +241,7 @@ func (s *Server) handleClaudeSessionReport(w http.ResponseWriter, r *http.Reques
 		runError(w, err)
 		return
 	}
+	s.settleFromRunner(r.Context(), claims.EnvironmentID, claims.SessionID)
 	w.WriteHeader(http.StatusNoContent)
 }
 

@@ -159,7 +159,13 @@ Context: (dict "root" $ "team" <team> "role" <Role entry or empty dict>).
 {{- end }}
 {{- $id := include "ploeg.roleHarness" (dict "root" $root "team" $team "role" $role) | fromJson }}
 {{- $key := include "ploeg.qualificationHarnessName" (dict "name" $id.name "acpProfile" $id.acpProfile) }}
-{{- $out = append $out (dict "role" $role "key" $key "suffix" "" "default" true "qualified" (has $key $qualified)) }}
+{{- $ce := include "ploeg.claudeEnvironment" (dict "root" $root "team" $team "role" $role) | fromJson }}
+{{- $carrier := "" }}
+{{- if eq $id.name "claude-environment" }}{{- $carrier = $ce.carrier }}{{- end }}
+{{- if and $carrier (not $ce.environmentId) }}
+{{- fail (printf "team %s: harness.claudeEnvironment.carrier client requires harness.claudeEnvironment.environmentId" ($role.name | default $team.name)) }}
+{{- end }}
+{{- $out = append $out (dict "role" $role "key" $key "suffix" "" "default" true "qualified" (has $key $qualified) "carrier" $carrier "environmentId" $ce.environmentId) }}
 {{- else }}
 {{- if not $role.name }}
 {{- fail (printf "team %s: harnesses needs a plan; a team without one runs its single harness" $team.name) }}
@@ -211,6 +217,34 @@ Context: (dict "root" $ "team" <team> "role" <Role entry or empty dict>).
 {{- end }}
 {{- end }}
 {{- toJson $out }}
+{{- end -}}
+
+{{/*
+ploeg.workerWorkloads is ploeg.roleWorkloads without the workloads whose
+Runs the person's own Claude Code carries (ADR-0112): no worker claims such
+a Run, so the chart renders no ScaledJob, CronJob or sandbox for it. Same
+context as ploeg.roleWorkloads.
+*/}}
+{{- define "ploeg.workerWorkloads" -}}
+{{- $out := list }}
+{{- range $w := (include "ploeg.roleWorkloads" . | fromJsonArray) }}
+{{- if ne ($w.carrier | default "") "client" }}
+{{- $out = append $out $w }}
+{{- end }}
+{{- end }}
+{{- toJson $out }}
+{{- end -}}
+
+{{/*
+ploeg.claudeEnvironment resolves a (team, Role) workload's claude-environment
+environmentId and carrier through the role -> team -> global chain, as JSON.
+Context: (dict "root" $ "team" <team entry> "role" <Role entry or empty dict>).
+*/}}
+{{- define "ploeg.claudeEnvironment" -}}
+{{- $gce := (.root.Values.executor.harness | default dict).claudeEnvironment | default dict }}
+{{- $tce := (.team.harness | default dict).claudeEnvironment | default dict }}
+{{- $rce := ((.role | default dict).harness | default dict).claudeEnvironment | default dict }}
+{{- dict "environmentId" ($rce.environmentId | default ($tce.environmentId | default ($gce.environmentId | default ""))) "carrier" ($rce.carrier | default ($tce.carrier | default ($gce.carrier | default ""))) | toJson }}
 {{- end -}}
 
 {{- define "ploeg.qualificationHarnessName" -}}

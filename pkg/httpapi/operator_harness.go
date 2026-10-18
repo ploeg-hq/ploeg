@@ -30,7 +30,16 @@ type RoleHarnesses struct {
 	store.OperatorRoleHarness
 	Allowed          []AllowedHarness
 	AllowUnqualified bool
+	// Carrier is CarrierClient when the person's own client carries the
+	// Role's claude-environment Runs (ADR-0112), and EnvironmentID the
+	// Team's self-hosted environment those Runs dispatch to.
+	Carrier       string
+	EnvironmentID string
 }
+
+// ClientCarried reports whether the person's own client carries this Role's
+// Runs of its default Harness (ADR-0112).
+func (r RoleHarnesses) ClientCarried() bool { return r.Carrier == store.CarrierClient }
 
 // AllowedHarness is one allowlist entry. Qualification is HarnessQualified,
 // HarnessUnqualified or empty when the chart did not say.
@@ -100,9 +109,11 @@ func (h rawHarness) parse(team, role string) (store.OperatorRoleHarness, error) 
 }
 
 // ParseTeamHarnesses reads PLOEG_TEAM_HARNESSES: a JSON object team -> Role
-// -> {name, profile, allowed, allowUnqualified}, where allowed lists
-// {name, profile, qualification} and must contain the default. Empty is no
-// configuration.
+// -> {name, profile, allowed, allowUnqualified, carrier, environmentId},
+// where allowed lists {name, profile, qualification} and must contain the
+// default, and carrier client with a ccpool_ environmentId marks a
+// claude-environment Role whose Runs the person's own client carries
+// (ADR-0112). Empty is no configuration.
 func ParseTeamHarnesses(raw string) (TeamHarnesses, error) {
 	if strings.TrimSpace(raw) == "" {
 		return nil, nil
@@ -114,6 +125,8 @@ func ParseTeamHarnesses(raw string) (TeamHarnesses, error) {
 		rawHarness
 		Allowed          []rawHarness `json:"allowed"`
 		AllowUnqualified bool         `json:"allowUnqualified"`
+		Carrier          string       `json:"carrier"`
+		EnvironmentID    string       `json:"environmentId"`
 	}
 	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
 		return nil, fmt.Errorf("want a JSON object of team to Role to {name, profile}: %w", err)
@@ -126,7 +139,15 @@ func ParseTeamHarnesses(raw string) (TeamHarnesses, error) {
 			if err != nil {
 				return nil, err
 			}
-			entry := RoleHarnesses{OperatorRoleHarness: def, AllowUnqualified: h.AllowUnqualified}
+			entry := RoleHarnesses{OperatorRoleHarness: def, AllowUnqualified: h.AllowUnqualified, Carrier: h.Carrier, EnvironmentID: h.EnvironmentID}
+			switch {
+			case h.Carrier != "" && h.Carrier != store.CarrierClient:
+				return nil, fmt.Errorf("team %q Role %q: carrier %q is not client", team, role, h.Carrier)
+			case h.Carrier != "" && h.Name != "claude-environment":
+				return nil, fmt.Errorf("team %q Role %q: only a claude-environment Harness is carried by a client, not %q", team, role, h.Name)
+			case h.Carrier != "" && !strings.HasPrefix(h.EnvironmentID, "ccpool_"):
+				return nil, fmt.Errorf("team %q Role %q: a client-carried Harness needs a ccpool_ environmentId", team, role)
+			}
 			seen := map[string]bool{}
 			for _, a := range h.Allowed {
 				allowed, err := a.parse(team, role)

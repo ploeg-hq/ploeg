@@ -102,17 +102,17 @@ func (a *Adapter) Run(ctx context.Context, spec harness.TaskSpec, env harness.Ru
 	if err != nil && env.Log != nil {
 		env.Log.Warn("the session's final message carried no outcome", "err", err)
 	}
-	if !finished(state) {
+	if !Finished(state) {
 		return report, fmt.Errorf("the session ended %s without a final message", state.ExitReason)
 	}
 	return report, nil
 }
 
-// finished reports whether the session ended after Claude's last turn. A
+// Finished reports whether the session ended after Claude's last turn. A
 // dispatched session stays attached after its turn until the runner
 // releases it as idle, which the runner reports as interrupted; only a
 // final message tells that release apart from a session stopped mid-turn.
-func finished(state harness.RemoteSessionState) bool {
+func Finished(state harness.RemoteSessionState) bool {
 	switch state.ExitReason {
 	case "completed":
 		return true
@@ -249,6 +249,21 @@ func outcomeFrom(message, scratchDir, traceID string) (harness.OutcomeReport, er
 	}
 	box, err := harness.ReadDropBox(path)
 	if err != nil {
+		return harness.OutcomeReport{}, err
+	}
+	return harness.MergeDropBox(harness.OutcomeReport{}, box), nil
+}
+
+// FinalMessageReport reads the outcome Claude's final message carries, as
+// outcomeFrom does for a worker, without a drop box on disk: the JSON object
+// the message ends with, merged as a drop box is (harness.MergeDropBox).
+func FinalMessageReport(message string) (harness.OutcomeReport, error) {
+	obj := lastJSONObject(message)
+	if obj == "" {
+		return harness.OutcomeReport{}, errors.New("no JSON object in the final message")
+	}
+	var box harness.OutcomeReport
+	if err := json.Unmarshal([]byte(obj), &box); err != nil {
 		return harness.OutcomeReport{}, err
 	}
 	return harness.MergeDropBox(harness.OutcomeReport{}, box), nil

@@ -64,6 +64,11 @@ type Trackers struct {
 
 type TrackerConfig struct {
 	Projects []Project `yaml:"projects"`
+	// People maps a tracker username to Ploeg's person id (the oidc- form
+	// operator consumers send as X-Ploeg-Actor). A Work Item that user hands
+	// to Ploeg runs its client-carried Runs for that person (ADR-0112);
+	// work an unmapped user hands waits until one is added.
+	People map[string]string `yaml:"people"`
 }
 
 // Target is one registered repository, selected by the label
@@ -300,10 +305,55 @@ func (f *File) Validate() error {
 			return fmt.Errorf("teams.%s.createdWork: %w", name, err)
 		}
 	}
+	if err := f.validatePeople(); err != nil {
+		return err
+	}
 	if err := f.validateCI(); err != nil {
 		return err
 	}
 	return f.validateGates()
+}
+
+var personID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:@-]{0,127}$`)
+
+func (f *File) validatePeople() error {
+	for _, tr := range []struct {
+		provider string
+		people   map[string]string
+	}{{"vikunja", f.Trackers.Vikunja.People}, {"clickup", f.Trackers.Clickup.People}, {"github", f.Trackers.Github.People}} {
+		seen := map[string]string{}
+		for _, user := range sortedKeys(tr.people) {
+			key := strings.ToLower(strings.TrimSpace(user))
+			if key == "" {
+				return fmt.Errorf("trackers.%s.people: a username must not be empty", tr.provider)
+			}
+			if !personID.MatchString(tr.people[user]) {
+				return fmt.Errorf("trackers.%s.people.%s: %q is not a person id", tr.provider, user, tr.people[user])
+			}
+			if prev, dup := seen[key]; dup {
+				return fmt.Errorf("trackers.%s.people: %q and %q are one username", tr.provider, prev, user)
+			}
+			seen[key] = user
+		}
+	}
+	return nil
+}
+
+// TrackerPeople maps each tracker's lowercased usernames to Ploeg's person
+// ids, keyed by the tracker's provider name (ADR-0112).
+func (f *File) TrackerPeople() map[string]map[string]string {
+	out := map[string]map[string]string{}
+	for provider, people := range map[string]map[string]string{
+		"vikunja": f.Trackers.Vikunja.People, "clickup": f.Trackers.Clickup.People, "github": f.Trackers.Github.People} {
+		if len(people) == 0 {
+			continue
+		}
+		out[provider] = map[string]string{}
+		for user, person := range people {
+			out[provider][strings.ToLower(strings.TrimSpace(user))] = person
+		}
+	}
+	return out
 }
 
 func (f *File) validateGates() error {

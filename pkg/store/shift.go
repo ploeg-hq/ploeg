@@ -368,24 +368,43 @@ func (s *Store) ClaimRoleFor(ctx context.Context, team, role, harness string, tt
 		return nil, ErrNoWork
 	}
 
-	var runID, shiftID, workItemID int64
-	var token string
-	var round int
-	var writes bool
-	var model string
+	var p pendingRun
 	err = tx.QueryRow(ctx, `
 		SELECT id, shift_id, work_item_id, run_token, round, writes, COALESCE(model_selected, '') FROM agent_runs
 		WHERE team = $1 AND role = $2 AND state = 'pending' AND `+harnessPredicate+`
 		ORDER BY id
 		FOR UPDATE SKIP LOCKED
-		LIMIT 1`, team, role, harness).Scan(&runID, &shiftID, &workItemID, &token, &round, &writes, &model)
+		LIMIT 1`, team, role, harness).Scan(&p.runID, &p.shiftID, &p.workItemID, &p.token, &p.round, &p.writes, &p.model)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNoWork
 	}
 	if err != nil {
 		return nil, err
 	}
+	p.team, p.role = team, role
+	claimed, err := startPendingRun(ctx, tx, p, ttl, cap, "team:"+team, nil)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return claimed, nil
+}
 
+// pendingRun is a pending Run a claim locked.
+type pendingRun struct {
+	runID, shiftID, workItemID int64
+	team, role, token, model   string
+	round                      int
+	writes                     bool
+}
+
+// startPendingRun moves a locked pending Run to running inside tx: it
+// authorizes its budget, takes the Lease for a writer, activates the Work
+// Item and audits the claim as actor with the extra detail.
+func startPendingRun(ctx context.Context, tx pgx.Tx, p pendingRun, ttl time.Duration, cap float64, actor string, detail map[string]any) (*ClaimedRun, error) {
+	runID, shiftID, workItemID, token, round, writes, model, team, role := p.runID, p.shiftID, p.workItemID, p.token, p.round, p.writes, p.model, p.team, p.role
 	var preAuthor bool
 	if !writes {
 		if err := tx.QueryRow(ctx,
@@ -471,13 +490,14 @@ func (s *Store) ClaimRoleFor(ctx context.Context, team, role, harness string, tt
 		preAuthor = false
 	}
 
-	if err := audit(ctx, tx, "team:"+team, "run.claimed", &workItemID, map[string]any{
+	claimDetail := map[string]any{
 		"shift": shiftID, "role": role, "round": round,
 		"writes": writes, "authorized": authorized,
-	}); err != nil {
-		return nil, err
 	}
-	if err := tx.Commit(ctx); err != nil {
+	for k, v := range detail {
+		claimDetail[k] = v
+	}
+	if err := audit(ctx, tx, actor, "run.claimed", &workItemID, claimDetail); err != nil {
 		return nil, err
 	}
 	return &ClaimedRun{
@@ -549,7 +569,9 @@ func (s *Store) PendingRunsFor(ctx context.Context, team, role, harness string) 
 	return n, err
 }
 
-const harnessPredicate = `($3 = '' OR harness_requested IS NULL OR harness_requested = $3)`
+// harnessPredicate also leaves out every Run a client carries (ADR-0112): a
+// worker never claims one, whatever Harness it names.
+const harnessPredicate = `($3 = '' OR harness_requested IS NULL OR harness_requested = $3) AND carrier IS NULL`
 
 // ExpiredRun is a Run the sweeper reclaimed.
 type ExpiredRun struct {
