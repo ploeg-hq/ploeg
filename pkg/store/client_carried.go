@@ -107,3 +107,60 @@ func (s *Store) RecordHandedBy(ctx context.Context, workItemID int64, trackerUse
 		WHERE id = $1 AND NOT operator_owned AND origin <> 'operator'`, workItemID, trackerUser, person)
 	return err
 }
+
+// HoldClientCarriedRun keeps a running client-carried Run and its Lease
+// alive until until once its session is recorded, so the Run no longer needs
+// its client to renew (ADR-0112). It never shortens a deadline and reports
+// whether the Run is one it holds.
+func (s *Store) HoldClientCarriedRun(ctx context.Context, runToken string, until time.Time) (bool, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	tag, err := tx.Exec(ctx, `UPDATE agent_runs r SET expires_at = GREATEST(r.expires_at, $2)
+		WHERE r.run_token = $1 AND r.state = 'running' AND r.carrier = 'client'
+		  AND EXISTS (SELECT 1 FROM claude_sessions c WHERE c.run_id = r.id)`, runToken, until)
+	if err != nil || tag.RowsAffected() == 0 {
+		return false, err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE leases SET expires_at = GREATEST(expires_at, $2), renewed_at = now()
+		WHERE run_token = $1`, runToken, until); err != nil {
+		return false, err
+	}
+	return true, tx.Commit(ctx)
+}
+
+// ClientSessionRun is the running client-carried Run a runner's session
+// was recorded for, as ploegd needs it to settle the Run from the runner's
+// report (ADR-0112).
+type ClientSessionRun struct {
+	RunToken string
+	Writes   bool
+	Title    string
+	Branch   string
+	// PriorLinks are the links earlier finished Runs of the Work Item
+	// reported, so a pull request the runner names can be told apart as new.
+	PriorLinks []string
+}
+
+// ClientCarriedSessionRun returns the running client-carried Run a session
+// was recorded for. A session of a Run a worker carries, of a finished Run or
+// that nothing recorded reports found false.
+func (s *Store) ClientCarriedSessionRun(ctx context.Context, environmentID, sessionID string) (ClientSessionRun, bool, error) {
+	var r ClientSessionRun
+	err := s.pool.QueryRow(ctx, `
+		SELECT a.run_token, a.writes, w.title, COALESCE(sh.branch, ''),
+		       COALESCE((SELECT array_agg(DISTINCT l) FROM agent_runs p CROSS JOIN LATERAL unnest(p.links) AS l
+		                 WHERE p.work_item_id = a.work_item_id AND p.state = 'finished'), '{}')
+		FROM claude_sessions c
+		JOIN agent_runs a ON a.id = c.run_id
+		JOIN work_items w ON w.id = a.work_item_id
+		LEFT JOIN shifts sh ON sh.id = a.shift_id
+		WHERE c.environment_id = $1 AND c.session_id = $2 AND a.state = 'running' AND a.carrier = 'client'`,
+		environmentID, sessionID).Scan(&r.RunToken, &r.Writes, &r.Title, &r.Branch, &r.PriorLinks)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ClientSessionRun{}, false, nil
+	}
+	return r, err == nil, err
+}

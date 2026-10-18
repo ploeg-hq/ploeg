@@ -1,8 +1,11 @@
 package httpapi
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"time"
 
@@ -191,4 +194,86 @@ func (s *Server) claimLimits(team, role string) (float64, int) {
 		cap = s.RoleCaps.RoleCap(team, role)
 	}
 	return cap, s.maxRunning(team)
+}
+
+// DefaultClaudeSessionTimeout bounds how long ploegd holds a client-carried
+// Run once its runner session is recorded, as PLOEG_HARNESS_TIMEOUT bounds a
+// worker's harness.
+const DefaultClaudeSessionTimeout = 100 * time.Minute
+
+func (c *ClaudeSessions) sessionTimeout() time.Duration {
+	if c.SessionTimeout > 0 {
+		return c.SessionTimeout
+	}
+	return DefaultClaudeSessionTimeout
+}
+
+// settleFromRunner finishes the client-carried Run a runner reported its
+// session for, as a worker finishes a claude-environment Run from the same
+// report, so the Run no longer needs its client (ADR-0112). A session of a
+// Run a worker carries is left to that worker.
+func (s *Server) settleFromRunner(ctx context.Context, environmentID, sessionID string) {
+	run, found, err := s.Store.ClientCarriedSessionRun(ctx, environmentID, sessionID)
+	if err != nil {
+		s.Log.Error("reading the client-carried run of a session failed; the run ends at its deadline", "err", err)
+		return
+	}
+	if !found {
+		return
+	}
+	state, err := s.Store.ClaudeSessionFor(ctx, run.RunToken)
+	if err != nil {
+		s.Log.Error("reading the session report failed; the run ends at its deadline", "run", prefix12(run.RunToken), "err", err)
+		return
+	}
+	report := runnerOutcome(run, harness.RemoteSessionState{Reported: state.ReportedAt != nil, ExitReason: state.ExitReason,
+		PushedCommit: state.PushedCommit, PullRequest: state.PullRequest, FinalMessage: state.FinalMessage})
+	if err := validateOutcomeReport(report); err != nil {
+		report = harness.OutcomeReport{Outcome: work.OutcomeStuck, Summary: "the session's final message carried an outcome Ploeg refuses",
+			StuckReason: err.Error(), Links: report.Links}
+	}
+	if err := s.applyOutcome(ctx, run.RunToken, report); err != nil {
+		s.Log.Error("settling a client-carried run from its runner failed; the run ends at its deadline", "run", prefix12(run.RunToken), "err", err)
+		return
+	}
+	s.Log.Info("client-carried run settled from its runner's report", "run", prefix12(run.RunToken), "outcome", report.Outcome)
+}
+
+// runnerOutcome is the Outcome Report of a client-carried Run from what its
+// runner reported, following the worker's resolution of a claude-environment
+// Run: the pull request the runner names decides delivery, Claude's final
+// message carries the rest, and a session that ended mid-turn failed.
+func runnerOutcome(run store.ClientSessionRun, state harness.RemoteSessionState) harness.OutcomeReport {
+	box, _ := claudeenv.FinalMessageReport(state.FinalMessage)
+	resolved := func(r harness.OutcomeReport) harness.OutcomeReport {
+		return harness.MergeDropBox(r, box)
+	}
+	pr := state.PullRequest
+	prExisted := pr != "" && slices.Contains(run.PriorLinks, pr)
+	var links []string
+	if pr != "" {
+		links = []string{pr}
+	}
+	switch {
+	case run.Writes && pr != "" && !prExisted:
+		return resolved(harness.OutcomeReport{Outcome: work.OutcomePROpened, Summary: claudeenv.Name + " run opened a PR for " + run.Title,
+			Links: links, Checkpoint: &work.Checkpoint{Phase: "pr_opened", Branch: run.Branch, PRURL: pr}})
+	case !claudeenv.Finished(state):
+		return resolved(harness.OutcomeReport{Outcome: work.OutcomeFailed, Links: links, FailureReason: string(work.FailureAgentError),
+			Summary: fmt.Sprintf("%s run failed: the session ended %s without a final message", claudeenv.Name, state.ExitReason)})
+	case box.Outcome.Valid():
+		box.Links = links
+		if box.Outcome == work.OutcomeStuck && box.StuckReason == "" {
+			box.StuckReason = "the session reported stuck without a reason"
+		}
+		return box
+	case !run.Writes && pr != "":
+		return resolved(harness.OutcomeReport{Outcome: work.OutcomeNoChangeNeeded, Summary: claudeenv.Name + " review finished for " + run.Title,
+			Links: links, Checkpoint: &work.Checkpoint{Phase: "reviewed", Branch: run.Branch, PRURL: pr}})
+	case pr != "":
+		return resolved(harness.OutcomeReport{Outcome: work.OutcomePRUpdated, Summary: claudeenv.Name + " run updated the open PR for " + run.Title,
+			Links: links, Checkpoint: &work.Checkpoint{Phase: "pr_updated", Branch: run.Branch, PRURL: pr}})
+	default:
+		return resolved(harness.OutcomeReport{Outcome: work.OutcomeNoChangeNeeded, Summary: claudeenv.Name + " run finished without opening a PR"})
+	}
 }
