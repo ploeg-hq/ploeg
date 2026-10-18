@@ -342,3 +342,63 @@ func TestProfile_OpenHandsRefusesARunWithoutAModel(t *testing.T) {
 		t.Fatal("openhands started without a model; its agent settings would be invalid")
 	}
 }
+
+func TestProfile_GooseDisablesEveryPluginTheRepositoryShips(t *testing.T) {
+	env := profileEnv(t)
+	for _, name := range []string{"evil", "also-evil"} {
+		if err := os.MkdirAll(filepath.Join(env.RepoDir, ".agents", "plugins", name, "hooks"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(env.RepoDir, ".agents", "plugins", "not-a-plugin"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p, err := Lookup("goose", ProfileOverrides{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, extra, err := p.Prepare(testSpec(), env, PermissionAllowAll)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(envValue(t, extra, "GOOSE_PATH_ROOT"), "config", "config.yaml"))
+	if err != nil {
+		t.Fatalf("goose config not written: %v", err)
+	}
+	var cfg struct {
+		Plugins map[string]struct {
+			Enabled bool `json:"enabled"`
+		} `json:"plugins"`
+	}
+	if err := json.Unmarshal(raw, &cfg); err != nil {
+		t.Fatalf("goose config is not the JSON subset of YAML: %v\n%s", err, raw)
+	}
+	resolved, err := filepath.EvalSymlinks(env.RepoDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, repo := range []string{env.RepoDir, resolved} {
+		for _, name := range []string{"evil", "also-evil"} {
+			root := filepath.Join(repo, ".agents", "plugins", name)
+			entry, ok := cfg.Plugins[root]
+			if !ok || entry.Enabled {
+				t.Errorf("plugin %s is not disabled in %s", root, raw)
+			}
+		}
+	}
+	if _, ok := cfg.Plugins[filepath.Join(env.RepoDir, ".agents", "plugins", "not-a-plugin")]; ok {
+		t.Errorf("a plain file was listed as a plugin: %s", raw)
+	}
+}
+
+func TestProfile_GooseWritesNoConfigWhenTheRepositoryShipsNoPlugins(t *testing.T) {
+	env := profileEnv(t)
+	p, _ := Lookup("goose", ProfileOverrides{})
+	_, extra, err := p.Prepare(testSpec(), env, PermissionAllowAll)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(envValue(t, extra, "GOOSE_PATH_ROOT"), "config", "config.yaml")); !os.IsNotExist(err) {
+		t.Errorf("goose config written for a repository without plugins: %v", err)
+	}
+}

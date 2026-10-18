@@ -219,6 +219,9 @@ func gooseProfile() Profile {
 			if err := os.MkdirAll(root, 0o700); err != nil {
 				return nil, fmt.Errorf("create goose root: %w", err)
 			}
+			if err := disableRepositoryGoosePlugins(root, env.RepoDir); err != nil {
+				return nil, err
+			}
 			gooseMode := "approve"
 			if mode == PermissionAllowAll {
 				gooseMode = "auto"
@@ -242,6 +245,54 @@ func gooseProfile() Profile {
 			return out, nil
 		},
 	}
+}
+
+// disableRepositoryGoosePlugins marks every plugin the repository ships under
+// .agents/plugins as disabled in the Run's own Goose config. Goose enables a
+// plugin it has not seen before, so without this a target repository could
+// start MCP servers and hook commands inside the Run. Goose matches a plugin
+// by the path it was found at: the session's working directory for MCP
+// servers, the process's resolved working directory for hooks, so both
+// spellings are listed.
+func disableRepositoryGoosePlugins(root, repoDir string) error {
+	if repoDir == "" {
+		return nil
+	}
+	dirs := []string{repoDir}
+	if resolved, err := filepath.EvalSymlinks(repoDir); err == nil && resolved != repoDir {
+		dirs = append(dirs, resolved)
+	}
+	entries, err := os.ReadDir(filepath.Join(repoDir, ".agents", "plugins"))
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("read the repository's goose plugins: %w", err)
+	}
+	disabled := map[string]map[string]bool{}
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		for _, dir := range dirs {
+			disabled[filepath.Join(dir, ".agents", "plugins", e.Name())] = map[string]bool{"enabled": false}
+		}
+	}
+	if len(disabled) == 0 {
+		return nil
+	}
+	b, err := json.MarshalIndent(map[string]any{"plugins": disabled}, "", "  ")
+	if err != nil {
+		return err
+	}
+	configDir := filepath.Join(root, "config")
+	if err := os.MkdirAll(configDir, 0o700); err != nil {
+		return fmt.Errorf("create goose config dir: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "config.yaml"), b, 0o600); err != nil {
+		return fmt.Errorf("write goose config: %w", err)
+	}
+	return nil
 }
 
 // openhandsProfile runs the OpenHands CLI (MIT) as an ACP agent.
