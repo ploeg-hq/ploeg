@@ -156,6 +156,19 @@ func TestCheckpointWithInstructionFileEvidence_MatchesSchema(t *testing.T) {
 	}
 }
 
+func TestPromptStartedCheckpoint_MatchesSchema(t *testing.T) {
+	sch := compileSchema(t, "checkpoint.v1.schema.json")
+	at := time.Date(2026, 10, 17, 8, 34, 5, 0, time.UTC)
+	cp := work.Checkpoint{Phase: work.PhasePromptStarted, Branch: "agent/vik-596", At: at,
+		Limits: &work.RunLimits{PromptSeconds: 5400, IdleSeconds: 600, PromptStartedAt: at}}
+	if err := validate(t, sch, cp); err != nil {
+		t.Errorf("prompt_started checkpoint does not validate: %v", err)
+	}
+	if err := validate(t, sch, work.Checkpoint{Phase: work.PhasePromptStarted, Limits: &work.RunLimits{PromptStartedAt: at}}); err != nil {
+		t.Errorf("a prompt start without limits does not validate: %v", err)
+	}
+}
+
 func TestOutcomeReport_MatchesSchema(t *testing.T) {
 	sch := compileSchema(t, "outcomereport.v1.schema.json")
 

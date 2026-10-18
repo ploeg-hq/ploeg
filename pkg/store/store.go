@@ -467,6 +467,12 @@ func (s *Store) Checkpoint(ctx context.Context, runToken string, cp work.Checkpo
 	if len(cp.InstructionFiles) > 0 {
 		detail["instruction_files"] = cp.InstructionFiles
 	}
+	if cp.Limits != nil {
+		if err := recordRunLimits(ctx, tx, runToken, cp.Limits); err != nil {
+			return err
+		}
+		detail["limits"] = cp.Limits
+	}
 	if err := audit(ctx, tx, "team:"+team, "checkpoint.written", &id, detail); err != nil {
 		return err
 	}

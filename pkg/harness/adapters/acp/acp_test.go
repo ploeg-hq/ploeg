@@ -434,3 +434,21 @@ func TestRun_ReportsTheAgentInfoFromInitialize(t *testing.T) {
 		t.Fatalf("an agent without agentInfo reported %+v", seen)
 	}
 }
+
+func TestRun_ReportsThePromptStartWithItsPromptAndIdleTimeouts(t *testing.T) {
+	a, err := New("custom", ProfileOverrides{Argv: []string{writeScript(t, fakeAgentScript(`"end_turn"`, ""))}}, Options{
+		PromptTimeout: 90 * time.Minute, IdleTimeout: 10 * time.Minute, CancelGrace: time.Second, TermGrace: time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var seen []harness.PromptStart
+	env := testEnv(t)
+	env.PromptStarted = func(p harness.PromptStart) { seen = append(seen, p) }
+	if _, err := a.Run(context.Background(), testSpec(), env); err != nil {
+		t.Fatalf("run error: %v", err)
+	}
+	if len(seen) != 1 || seen[0].Prompt != 90*time.Minute || seen[0].Idle != 10*time.Minute {
+		t.Fatalf("prompt starts = %+v, want one with 90m and 10m", seen)
+	}
+}

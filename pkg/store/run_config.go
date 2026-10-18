@@ -121,6 +121,9 @@ type OperatorRunConfig struct {
 	// Shadow is true for a reading Run whose verdict and findings were
 	// recorded and never acted (ADR-0096).
 	Shadow bool `json:"shadow"`
+	// Limits are the limits that stop the Run's prompt, recorded when it
+	// started (ADR-0114); nil, and absent from the JSON, when unknown.
+	Limits *OperatorRunLimits `json:"limits,omitempty"`
 }
 
 const operatorRunConfigJSON = `'configuredModel', r.configured_model, 'harness', r.harness,
@@ -129,7 +132,8 @@ const operatorRunConfigJSON = `'configuredModel', r.configured_model, 'harness',
 	'modelMismatch', CASE WHEN r.configured_model IS NOT NULL AND jsonb_typeof(r.usage->'modelGroups') = 'array'
 		AND jsonb_array_length(r.usage->'modelGroups') > 0
 		THEN EXISTS (SELECT 1 FROM jsonb_array_elements(r.usage->'modelGroups') g WHERE g.value <> to_jsonb(r.configured_model)) END,
-	'shadow', r.shadow`
+	'shadow', r.shadow,
+	` + operatorRunLimitsJSON
 
 // OperatorHarnessAgent is the agent's own name and version as a Run recorded
 // them (ADR-0097). A nil Version is unknown.

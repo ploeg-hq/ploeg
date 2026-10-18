@@ -249,6 +249,7 @@ func (a *Adapter) Run(ctx context.Context, spec harness.TaskSpec, env harness.Ru
 	promptCtx, cancelPrompt := context.WithCancel(ctx)
 	defer cancelPrompt()
 
+	harness.ReportPromptStart(ctx, env, a.opts.PromptTimeout, a.opts.IdleTimeout)
 	done := make(chan promptOutcome, 1)
 	go func() {
 		resp, err := conn.Prompt(promptCtx, sdk.PromptRequest{

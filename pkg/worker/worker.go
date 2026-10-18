@@ -531,6 +531,11 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 		Activity:      harness.NewActivity(),
 		RemoteSession: remoteSession{api: w.API, token: claimed.RunToken},
 		AgentInfo:     w.agent.observe,
+		PromptStarted: func(p harness.PromptStart) {
+			if err := w.API.Checkpoint(claimed.RunToken, promptStartedCheckpoint(branch, p)); err != nil {
+				w.Log.Warn("prompt start not recorded; the Run's limits stay unknown", "err", err)
+			}
+		},
 	}
 
 	env.BaseEnv = append(env.BaseEnv, gitEnv...)

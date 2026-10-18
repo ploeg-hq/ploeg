@@ -30,6 +30,17 @@
         "required": ["path", "sha256"],
         "additionalProperties": false
       }
+    },
+    "limits": {
+      "type": "object",
+      "description": "Sent with the prompt_started phase when the agent's prompt starts (ADR-0114): the limits that stop the prompt. promptSeconds counts from promptStartedAt and idleSeconds from the agent's last activity; an absent or zero limit is no limit. ploegd records the first report once and records nothing when promptStartedAt is more than a few minutes before the Run started or after ploegd's clock.",
+      "properties": {
+        "promptSeconds": { "type": "integer", "minimum": 0 },
+        "idleSeconds": { "type": "integer", "minimum": 0 },
+        "promptStartedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["promptStartedAt"],
+      "additionalProperties": false
     }
   },
   "required": ["phase"],

@@ -1009,6 +1009,10 @@
         "shadow": {
           "type": "boolean",
           "description": "True for a Run of a shadow Role (ADR-0096): a reading Run beside the Round's reviewer whose verdict and findings are recorded here and never act. Its verdict opens no fix Round, sets no close reason and is not the pull request's agentVerdict; its findings are not posted and brief no later Run; its cost counts in the Shift like any Run. Absent from a ploegd older than ADR-0096; false for every other Run."
+        },
+        "limits": {
+          "$ref": "#/$defs/runLimits",
+          "description": "The limits that stop the Run's prompt, as its worker reported them when the prompt started (ADR-0114, proposed), written once. Absent, never null or zero, when unknown: the prompt has not started, the worker is older than ADR-0114, the Run is an Ask or an operator execution, or it was recorded before ploegd kept limits."
         }
       }
     },
@@ -2419,6 +2423,10 @@
         "shadow": {
           "type": "boolean",
           "description": "True for a Run of a shadow Role (ADR-0096): a reading Run beside the Round's reviewer whose verdict and findings are recorded here and never act. Its verdict opens no fix Round, sets no close reason and is not the pull request's agentVerdict; its findings are not posted and brief no later Run; its cost counts in the Shift like any Run. Absent from a ploegd older than ADR-0096; false for every other Run."
+        },
+        "limits": {
+          "$ref": "#/$defs/runLimits",
+          "description": "The limits that stop the Run's prompt, as its worker reported them when the prompt started (ADR-0114, proposed), written once. Absent, never null or zero, when unknown: the prompt has not started, the worker is older than ADR-0114, the Run is an Ask or an operator execution, or it was recorded before ploegd kept limits."
         }
       }
     },
@@ -4917,6 +4925,33 @@
         "unknown"
       ],
       "description": "Cost Status, the one value set for every cost Ploeg reports (ADR-0093). observed: spend seen so far that can still move, because the Run or Ask is live or its account has not settled. provisional: settled once and still inside the correction window, so a late gateway charge may raise it. settled: final. unknown: Ploeg has no trustworthy figure, which is never zero. A place that cannot reach a value says which subset it uses."
+    },
+    "runLimits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "promptStartedAt"
+      ],
+      "description": "What stops a Run's prompt (ADR-0114, proposed): promptSeconds counts from promptStartedAt, idleSeconds from the agent's last activity. An absent limit is no limit. A consumer can show how close a Run is to a stop: the prompt stops at promptStartedAt + promptSeconds, and after idleSeconds without agent activity.",
+      "properties": {
+        "promptSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 604800,
+          "description": "The most the prompt may run: for acp the earlier of the profile's prompt timeout (PLOEG_ACP_PROMPT_TIMEOUT, default 45m) and what is left of the worker's harness timeout (PLOEG_HARNESS_TIMEOUT, default 100m); for every other Harness what is left of the harness timeout when the prompt started."
+        },
+        "idleSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 604800,
+          "description": "How long the agent may show no activity before a watchdog stops the Run: for acp the profile's idle timeout over protocol activity (PLOEG_ACP_IDLE_TIMEOUT, default 10m, checked every half of it); for openhands, claude-code and exec the worker's idle watchdog over output and model traffic (PLOEG_HARNESS_IDLE_TIMEOUT, default 15m). Absent for claude-environment, whose session no idle watchdog watches."
+        },
+        "promptStartedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the worker started the prompt: the acp session/prompt request, the claude-environment session dispatch, or the spawn of every other Harness, to the second."
+        }
+      }
     },
     "harnessAgent": {
       "type": "object",

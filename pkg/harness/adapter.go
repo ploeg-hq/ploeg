@@ -69,6 +69,35 @@ type RunEnv struct {
 	// identifies itself, such as in an ACP initialize response (ADR-0097).
 	// Nil = the worker records none.
 	AgentInfo func(HarnessAgent)
+	// PromptStarted receives the moment the agent's prompt starts and the
+	// limits that stop it (ADR-0114). Nil = the worker records none.
+	PromptStarted func(PromptStart)
+}
+
+// PromptStart is when a Run's prompt started and the limits that stop it.
+// Prompt is the most the prompt may run from At and Idle how long the agent
+// may show no activity before a watchdog stops it. Zero is no limit.
+type PromptStart struct {
+	At     time.Time
+	Prompt time.Duration
+	Idle   time.Duration
+}
+
+// ReportPromptStart tells env.PromptStarted that the prompt starts now. The
+// prompt limit is the earlier of prompt and the deadline of ctx, because
+// whichever comes first stops the Run.
+func ReportPromptStart(ctx context.Context, env RunEnv, prompt, idle time.Duration) {
+	if env.PromptStarted == nil {
+		return
+	}
+	now := time.Now()
+	if deadline, ok := ctx.Deadline(); ok {
+		left := max(deadline.Sub(now), 0)
+		if prompt <= 0 || left < prompt {
+			prompt = left
+		}
+	}
+	env.PromptStarted(PromptStart{At: now, Prompt: max(prompt, 0), Idle: max(idle, 0)})
 }
 
 // RemoteSessionAPI is the worker's view of ploegd's record of a remote
@@ -202,7 +231,11 @@ func (r commandRunner) Run(ctx context.Context, spec TaskSpec, env RunEnv) (Outc
 	if env.IdleTimeout > 0 {
 		go watchIdle(runCtx, stop, activity, env.IdleTimeout)
 	}
-	runErr := cmd.Run()
+	runErr := cmd.Start()
+	if runErr == nil {
+		ReportPromptStart(runCtx, env, 0, env.IdleTimeout)
+		runErr = cmd.Wait()
+	}
 	if errors.Is(context.Cause(runCtx), ErrIdle) {
 		runErr = fmt.Errorf("%w after %s: %v", ErrIdle, env.IdleTimeout, runErr)
 	}
