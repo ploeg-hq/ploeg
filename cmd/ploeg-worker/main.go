@@ -22,7 +22,6 @@ import (
 	"time"
 
 	"github.com/ploeg-hq/ploeg/pkg/harness"
-	"github.com/ploeg-hq/ploeg/pkg/harness/adapters/claudeenv"
 	"github.com/ploeg-hq/ploeg/pkg/llmbroker"
 	"github.com/ploeg-hq/ploeg/pkg/worker"
 )
@@ -283,18 +282,15 @@ func logTelemetryReach(log *slog.Logger, cfg worker.Config, hc worker.HarnessCon
 		profile = cmp.Or(hc.ACP.Profile, "opencode")
 	}
 	native := worker.TelemetrySupport(hc.Name, profile)
-	switch {
-	case hc.Name == claudeenv.Name:
-		log.Warn("telemetry is not exported by this worker: claude-environment sessions run on the self-hosted runner, which needs its own telemetry environment",
-			"endpoint", cfg.Telemetry.Endpoint)
-	case len(native) == 0:
-		log.Warn("telemetry is configured but this harness exports no OpenTelemetry signals natively",
-			"harness", hc.Name, "profile", profile, "endpoint", cfg.Telemetry.Endpoint)
-	default:
-		log.Info("telemetry exported by the harness",
+	if len(native) == 0 {
+		log.Warn("telemetry is configured but withheld from this harness",
 			"harness", hc.Name, "profile", profile, "endpoint", cfg.Telemetry.Endpoint,
-			"requested", strings.Join(cfg.Telemetry.Signals, ","), "native", strings.Join(native, ","))
+			"reason", worker.TelemetryWithheldReason(hc.Name, profile))
+		return
 	}
+	log.Info("telemetry exported by the harness",
+		"harness", hc.Name, "profile", profile, "endpoint", cfg.Telemetry.Endpoint,
+		"requested", strings.Join(cfg.Telemetry.Signals, ","), "native", strings.Join(native, ","))
 }
 
 func rejectAdministrativeEnvironment() error {
