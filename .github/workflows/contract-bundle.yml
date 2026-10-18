@@ -17,11 +17,11 @@ on:
         type: string
 permissions:
   contents: read
-concurrency:
-  group: ploeg-contract-bundle-${{ inputs.tag || github.event.workflow_run.head_branch }}
-  cancel-in-progress: false
 jobs:
   publish:
+    concurrency:
+      group: ploeg-contract-bundle-${{ inputs.tag || github.event.workflow_run.head_branch }}
+      cancel-in-progress: false
     if: >-
       github.repository == 'ploeg-hq/ploeg' &&
       (github.event_name != 'workflow_run' ||
