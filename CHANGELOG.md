@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.2.0-rc.26
+
+### Breaking changes
+
+- None. `limits` is a new optional field; a Run recorded before this release, by an older worker, or whose prompt has not started has none.
+
+### Changes
+
+- Each Run records and serves the limits that stop its prompt: `limits` on every operator Run shape (`promptSeconds`, `idleSeconds`, `promptStartedAt`), reported once by the worker through a new `prompt_started` checkpoint phase. ACP Runs report the shorter of the prompt timeout and what is left of the harness timeout plus the ACP idle timeout; other Harnesses report what is left of the harness timeout plus the harness idle watchdog; claude-environment reports no idle limit (#160, ADR-0114, proposed).
+- A Run's stop note says how long a short Run worked to the second instead of "stopped after 0s" (#161).
+
+### Upgrade notes
+
+- Migration 0059 adds three nullable columns to `agent_runs`; nothing is backfilled.
+
 ## 0.2.0-rc.25
 
 ### Breaking changes
