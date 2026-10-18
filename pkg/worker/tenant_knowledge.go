@@ -9,6 +9,7 @@ import (
 
 	"github.com/ploeg-hq/ploeg/pkg/harness"
 	"github.com/ploeg-hq/ploeg/pkg/knowledge"
+	"github.com/ploeg-hq/ploeg/pkg/notes"
 	"github.com/ploeg-hq/ploeg/pkg/okf"
 )
 
@@ -144,12 +145,15 @@ func (n tenantKnowledge) graphSource(repoPaths map[string]bool) *knowledge.Sourc
 	return &knowledge.Source{Name: graphSource, Bundle: okf.Bundle{Name: graphSource, Concepts: concepts}}
 }
 
-// noteConcepts turns notes into OKF concepts under their own slugs, marked as
-// unreviewed and naming the Run that wrote each.
-func noteConcepts(notes []harness.WorkItemNote) []okf.Concept {
-	out := make([]okf.Concept, 0, len(notes))
+// noteConcepts turns notes into OKF concepts under their own slugs. Each
+// carries its provenance; an untrusted note's title is reduced to one
+// escaped line and its body is quoted as data, so text an agent or another
+// outside source wrote never reads as an instruction (ADR-0122).
+func noteConcepts(items []harness.WorkItemNote) []okf.Concept {
+	out := make([]okf.Concept, 0, len(items))
 	used := map[string]bool{}
-	for _, n := range notes {
+	for _, item := range items {
+		n := notes.FromWire(item)
 		if strings.TrimSpace(n.Title) == "" || strings.TrimSpace(n.Body) == "" {
 			continue
 		}
@@ -164,22 +168,31 @@ func noteConcepts(notes []harness.WorkItemNote) []okf.Concept {
 			slug = fmt.Sprintf("%s-%d", base, i)
 		}
 		used[slug] = true
-		extra := map[string]any{"status": "unreviewed", "note": n.Key}
-		if n.WrittenBy != "" {
-			extra["written-by"] = n.WrittenBy
+		status := "unreviewed"
+		if n.PromotedFrom != "" && n.ApprovedBy != "" {
+			status = "approved"
 		}
+		extra := map[string]any{"status": status, "note": n.Key, "level": string(n.Level),
+			"trust": string(n.Trust), "author-kind": string(n.AuthorKind), "written-by": n.WrittenBy()}
 		if n.WorkItem != "" {
 			extra["work-item"] = n.WorkItem
 		}
+		if n.Contested {
+			extra["contested"] = true
+		}
+		description := n.Description
+		if n.Trust != notes.Trusted {
+			description = notes.Inline(description, 300)
+		}
 		out = append(out, okf.Concept{
 			Path:        slug + ".md",
-			Type:        n.Type,
-			Title:       n.Title,
-			Description: n.Description,
-			Resource:    n.Resource,
+			Type:        notes.Inline(n.Type, 60),
+			Title:       notes.Title(n),
+			Description: description,
+			Resource:    notes.Inline(n.Resource, 500),
 			Tags:        n.Tags,
 			Timestamp:   n.WrittenAt,
-			Body:        n.Body,
+			Body:        notes.Body(n),
 			Extra:       extra,
 		})
 	}

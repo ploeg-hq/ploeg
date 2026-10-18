@@ -124,6 +124,10 @@ type Server struct {
 	// Knowledge is the Tenant's reviewed knowledge graph (ADR-0087,
 	// proposed). Nil serves Runs no graph concepts.
 	Knowledge ConceptGraph
+	// Concepts writes accepted Client and Tenant promotions to the reviewed
+	// knowledge graph as the Tenant's review actor (ADR-0122). Nil leaves
+	// them accepted and waiting.
+	Concepts ConceptWriter
 	// Version is this ploegd's version, recorded on each Run it claims or
 	// admits (ADR-0091). Empty records it as unknown.
 	Version string

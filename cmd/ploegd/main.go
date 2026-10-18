@@ -405,6 +405,9 @@ func run(log *slog.Logger) error {
 	}
 	if concepts != nil {
 		srv.Knowledge = concepts
+		if concepts.Review != nil {
+			srv.Concepts = concepts
+		}
 	}
 	log.Info("forge follow-ups loaded", "teams", len(srv.FollowUps))
 	if engine != nil {
@@ -418,6 +421,7 @@ func run(log *slog.Logger) error {
 			DefaultForge:    forgeID,
 			Trackers:        trackers,
 			MarkTrackerDone: envOr("PLOEG_TRACKER_DONE_ON_MERGE", "false") == "true",
+			OutcomeNotes:    srv.Notes != nil,
 			Log:             log,
 		}
 		srv.Reviews = reviews

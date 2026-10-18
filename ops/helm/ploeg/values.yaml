@@ -124,6 +124,11 @@ knowledgeGraph: {}
 #   runTokenSecret:
 #     name: ploeg-omnigraph-run
 #     key: token
+#   # ADR-0122: the review actor that writes Client and Tenant promotions a
+#   # person accepted to conceptsGraph. Unset leaves them accepted and waiting.
+#   reviewTokenSecret:
+#     name: ploeg-omnigraph-review
+#     key: token
 
 # Plain PLOEG_* env rendered onto the deployment.
 env:

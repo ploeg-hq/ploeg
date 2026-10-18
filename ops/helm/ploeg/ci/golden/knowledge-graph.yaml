@@ -131,6 +131,11 @@ spec:
                 secretKeyRef:
                   name: ploeg-omnigraph-run
                   key: token
+            - name: PLOEG_OMNIGRAPH_REVIEW_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: acme-omnigraph-review
+                  key: token
             - name: PLOEG_WORKER_AUTH_MODE
               value: "managed"
             - name: PLOEG_WORKER_SIGNING_KEY

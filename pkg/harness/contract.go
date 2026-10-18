@@ -174,6 +174,22 @@ type WorkItemNote struct {
 	SuggestedScope string    `json:"suggestedScope,omitempty"`
 	WrittenBy      string    `json:"writtenBy,omitempty"`
 	WrittenAt      time.Time `json:"writtenAt,omitzero"`
+	// Provenance (ADR-0122). An older ploegd sends none of these; a reader
+	// then treats the note as an untrusted Work Item note a Run wrote.
+	Level        string    `json:"level,omitempty"`
+	Subject      string    `json:"subject,omitempty"`
+	AuthorKind   string    `json:"authorKind,omitempty"`
+	Author       string    `json:"author,omitempty"`
+	SourceRefs   []string  `json:"sourceRefs,omitempty"`
+	Trust        string    `json:"trust,omitempty"`
+	ObservedAt   time.Time `json:"observedAt,omitzero"`
+	ExpiresAt    time.Time `json:"expiresAt,omitzero"`
+	PromotedFrom string    `json:"promotedFrom,omitempty"`
+	Evidence     []string  `json:"evidence,omitempty"`
+	ApprovedBy   string    `json:"approvedBy,omitempty"`
+	// Contested is set while a person has not yet decided between this note
+	// and another current note on the same subject that disagrees with it.
+	Contested bool `json:"contested,omitempty"`
 }
 
 // KnowledgeSource is one bundle a pack drew from and its content digest.
@@ -204,6 +220,16 @@ type Learning struct {
 	// work-item (the default), repository, client or tenant. A wider scope
 	// is only a suggestion; a Tenant admin decides it as a Promotion.
 	Scope string `json:"scope,omitempty"`
+	// Subject names what the learning is about, so a later note on the same
+	// subject replaces it or is flagged as disagreeing (ADR-0122). Absent,
+	// it is the type and title.
+	Subject string `json:"subject,omitempty"`
+	// Supersedes is the key of a note the Run was briefed with that this
+	// learning replaces.
+	Supersedes string `json:"supersedes,omitempty"`
+	// ExpiresAt is when a volatile fact stops being true, at most a year
+	// ahead; no Run reads the note after it.
+	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
 }
 
 // Finding is one earlier Run's contribution to the blackboard, attributed to

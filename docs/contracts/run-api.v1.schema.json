@@ -281,7 +281,7 @@
       "additionalProperties": false
     },
     "knowledgeNotes": {
-      "description": "The Work Item Notes of the Run's root Work Item, newest first. Written without review (ADR-0088, proposed).",
+      "description": "The notes the Run may read: those of its root Work Item and the repository-level notes of its repository and Client, narrowest level first and newest first, without superseded, retracted or expired notes (ADR-0088, ADR-0122).",
       "type": "object",
       "properties": {
         "status": { "type": "string", "enum": ["ok", "unavailable", "off"], "description": "off: this deployment writes no notes. unavailable: the graph did not answer; the Run goes ahead without notes." },
@@ -326,7 +326,19 @@
         "body": { "type": "string", "minLength": 1 },
         "suggestedScope": { "type": "string", "enum": ["work-item", "repository", "client", "tenant"] },
         "writtenBy": { "type": "string" },
-        "writtenAt": { "type": "string", "format": "date-time" }
+        "writtenAt": { "type": "string", "format": "date-time" },
+        "level": { "type": "string", "enum": ["work-item", "repository"], "description": "Which Runs read the note: those of its root Work Item, or of its repository (ADR-0122). Absent from an older ploegd: work-item." },
+        "subject": { "type": "string", "description": "What the note is about." },
+        "authorKind": { "type": "string", "enum": ["run", "person", "ploeg"], "description": "What wrote the note. Absent from an older ploegd: run." },
+        "author": { "type": "string", "description": "The Run's trace alias, the person's id, or ploegd." },
+        "sourceRefs": { "type": "array", "items": { "type": "string" }, "description": "What the note was drawn from: run:, work-item:, pull-request:, note:, person: references." },
+        "trust": { "type": "string", "enum": ["trusted", "untrusted"], "description": "Untrusted text is shown to an agent only as quoted data, never as instructions. Absent from an older ploegd: untrusted." },
+        "observedAt": { "type": "string", "format": "date-time" },
+        "expiresAt": { "type": "string", "format": "date-time", "description": "ploegd serves no note past it." },
+        "promotedFrom": { "type": "string", "description": "The key of the Work Item note this repository note promotes." },
+        "evidence": { "type": "array", "items": { "type": "string" }, "description": "What allowed the promotion: merged-pull-request:<repo>#<n> or passing-check:<ref>." },
+        "approvedBy": { "type": "string", "description": "The person who approved the promotion." },
+        "contested": { "type": "boolean", "description": "Another current note on the same subject disagrees and a person has not decided yet." }
       },
       "required": ["key", "type", "title", "body"],
       "additionalProperties": false

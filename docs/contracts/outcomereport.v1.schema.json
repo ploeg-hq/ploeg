@@ -551,6 +551,21 @@
           "type": "string",
           "enum": ["work-item", "repository", "client", "tenant"],
           "description": "How widely the agent suggests the learning applies; absent means work-item. Wider than work-item is a suggestion a Tenant admin decides as a Promotion (ADR-0088, proposed)."
+        },
+        "subject": {
+          "type": "string",
+          "maxLength": 120,
+          "description": "What the learning is about; absent means its type and title. A later note on the same subject replaces it or is flagged for a person when it disagrees (ADR-0122)."
+        },
+        "supersedes": {
+          "type": "string",
+          "maxLength": 300,
+          "description": "The key of a note the Run was briefed with that this learning replaces (ADR-0122)."
+        },
+        "expiresAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When a volatile fact stops holding, at most a year ahead; no Run reads the note after it (ADR-0122)."
         }
       },
       "required": [
