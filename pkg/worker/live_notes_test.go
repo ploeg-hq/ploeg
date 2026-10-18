@@ -165,6 +165,19 @@ func TestStopNote_SaysWhereTheStoppedRunGot(t *testing.T) {
 	}
 }
 
+func TestStopNote_SaysHowLongAShortRunWorked(t *testing.T) {
+	final := harness.OutcomeReport{Outcome: work.OutcomeStuck, Summary: "stopped on purpose"}
+	for elapsed, want := range map[time.Duration]string{
+		21*time.Second + 400*time.Millisecond: "stopped after 21s:",
+		90 * time.Second:                      "stopped after 2m0s:",
+		45*time.Minute + 20*time.Second:       "stopped after 45m0s:",
+	} {
+		if note := stopNote(final, transcript.Progress{}, elapsed, "agent/x", false); !strings.Contains(note.Body, want) {
+			t.Errorf("after %s the stop note should say %q:\n%s", elapsed, want, note.Body)
+		}
+	}
+}
+
 // A stop note that would carry a credential is never sent.
 func TestStopNote_WithheldWhenItCarriesACredential(t *testing.T) {
 	api := &fakeNoteSender{}

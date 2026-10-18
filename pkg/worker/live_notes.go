@@ -199,7 +199,7 @@ func stopNote(final harness.OutcomeReport, progress transcript.Progress, elapsed
 		summary = string(final.Outcome)
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "An earlier Run of this work stopped after %s: %s.\n\n", elapsed.Round(time.Minute), summary)
+	fmt.Fprintf(&b, "An earlier Run of this work stopped after %s: %s.\n\n", roundElapsed(elapsed), summary)
 	if reason := firstLine(final.StuckReason); reason != "" {
 		fmt.Fprintf(&b, "Reason: %s\n\n", reason)
 	}
@@ -240,6 +240,13 @@ func stopNote(final harness.OutcomeReport, progress transcript.Progress, elapsed
 		Tags:        []string{"run-stopped"},
 		Body:        clip(b.String(), 4000),
 	}
+}
+
+func roundElapsed(d time.Duration) time.Duration {
+	if d < time.Minute {
+		return d.Round(time.Second)
+	}
+	return d.Round(time.Minute)
 }
 
 func firstLine(s string) string {
