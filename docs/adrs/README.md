@@ -196,7 +196,7 @@ fails otherwise.
 | [0119](0119-a-pull-request-is-ready-for-review-only-when-the-forges-ci-passed-on-its-head.md) | A pull request is ready for review only when the forge's CI passed on its head | accepted | 2026-10-18 |
 | [0120](0120-a-worker-container-meets-the-restricted-pod-security-standard-by-default.md) | A worker container meets the restricted Pod Security Standard by default | accepted | 2026-10-18 |
 | [0121](0121-findings-carry-ids-writers-answer-them-and-a-run-asks-instead-of-guessing.md) | Findings carry ids, writers answer them, and a Run asks instead of guessing | accepted | 2026-10-18 |
-| [0125](0125-a-recurring-attack-drill-runs-every-harness-against-a-hostile-repository.md) | A recurring attack drill runs every harness against a hostile repository | accepted | 2026-10-18 |
+| [0126](0126-a-recurring-attack-drill-runs-every-harness-against-a-hostile-repository.md) | A recurring attack drill runs every harness against a hostile repository | accepted | 2026-10-18 |
 
 ## Review calendar
 
@@ -206,7 +206,7 @@ triggers.
 | Due | ADRs |
 | --- | --- |
 | 2027-04-30 | [0108](0108-every-operator-action-names-its-person-and-channel-and-an-mcp-action-needs-the-persons-confirmation.md) — or sooner, when MCP standardizes proof of a person's confirmation, a deployment needs per-person authorization finer than groups, or a consumer needs Ploeg to verify the person itself |
-| 2027-04-30 | [0125](0125-a-recurring-attack-drill-runs-every-harness-against-a-hostile-repository.md) — or sooner, when a new harness or ACP profile is added, a supported agent's major version changes how it loads repository config, plugins or instructions, `OPENCODE_DISABLE_PROJECT_CONFIG` changes meaning, or the credential-isolation mechanism changes shape |
+| 2027-04-30 | [0126](0126-a-recurring-attack-drill-runs-every-harness-against-a-hostile-repository.md) — or sooner, when a new harness or ACP profile is added, a supported agent's major version changes how it loads repository config, plugins or instructions, `OPENCODE_DISABLE_PROJECT_CONFIG` changes meaning, or the credential-isolation mechanism changes shape |
 | 2026-10-22 | [0030](0030-target-repository-instructions-rank-below-the-delivery-contract.md) — after the first `claude-code` and reviewing Runs against a repository with its own AGENTS.md |
 | 2026-10-31 | [0006](0006-ahp-is-the-wrong-layer.md), [0007](0007-a2a-adopt-nothing-watchlist-a-facade.md), [0008](0008-litellm-is-the-credential-and-metering-seam.md), [0009](0009-paperclip-mine-for-design-never-integrate.md), [0024](0024-operator-work-uses-one-execution-authority.md), [0025](0025-management-authority-stays-in-the-control-plane.md), [0041](0041-the-openai-agents-api-stays-outside-the-run-until-it-takes-an-authorized-budget.md) — the quarterly market re-scan (`design.md` §10) |
 | 2026-11-30 | [0031](0031-runs-create-work-items-held-for-approval-within-limits.md) — or sooner, when the owner answers whether created Work Items are written back to the tracker and whether a person approves them |

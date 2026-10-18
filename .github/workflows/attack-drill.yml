@@ -1,5 +1,5 @@
 name: Attack drill
-# A recurring drill (ADR-0125) that exercises every supported harness against a
+# A recurring drill (ADR-0126) that exercises every supported harness against a
 # hostile repository: prompt-injection instruction files, repository plugins and
 # config that try to auto-start code, and the credential-isolation proxies. It
 # makes no model call — agents stop at session/new and the gateway is

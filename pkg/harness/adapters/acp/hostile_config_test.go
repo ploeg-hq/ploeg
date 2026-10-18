@@ -186,7 +186,7 @@ func TestHostileConfig_OpenCodeConfigIsSelfContainedAndOutsideTheRepository(t *t
 		t.Errorf("OPENCODE_CONFIG=%q is inside the repository, which could rewrite it", cfgPath)
 	}
 	// The repository's own opencode.json and .opencode/ plugins must not load,
-	// or they start the repository's code at session/new (ADR-0125).
+	// or they start the repository's code at session/new (ADR-0126).
 	if v, _ := envLookup(extra, "OPENCODE_DISABLE_PROJECT_CONFIG"); v != "true" {
 		t.Errorf("opencode profile did not disable the repository's project config (OPENCODE_DISABLE_PROJECT_CONFIG=%q); its plugins and MCP servers would run inside the Run", v)
 	}

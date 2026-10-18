@@ -132,7 +132,7 @@ func opencodeProfile(configJSON string) Profile {
 			// without this and neither ran with it, and session/new still
 			// succeeds. The gateway wiring comes from OPENCODE_CONFIG above, not
 			// the project config, so it is unaffected; the root AGENTS.md still
-			// resolves. ADR-0125.
+			// resolves. ADR-0126.
 			return []string{"OPENCODE_CONFIG=" + path, "OPENCODE_DISABLE_PROJECT_CONFIG=true"}, nil
 		},
 	}

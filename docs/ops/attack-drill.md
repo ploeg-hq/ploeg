@@ -1,6 +1,6 @@
 # The attack drill
 
-Every Run executes a harness on a repository Ploeg does not control, so the repository is attacker input. The attack drill keeps proving, across every supported harness and over time, that a hostile repository cannot start its own code inside a Run or reach a real credential. The decision and what a failure blocks are in [ADR-0125](../adrs/0125-a-recurring-attack-drill-runs-every-harness-against-a-hostile-repository.md).
+Every Run executes a harness on a repository Ploeg does not control, so the repository is attacker input. The attack drill keeps proving, across every supported harness and over time, that a hostile repository cannot start its own code inside a Run or reach a real credential. The decision and what a failure blocks are in [ADR-0126](../adrs/0126-a-recurring-attack-drill-runs-every-harness-against-a-hostile-repository.md).
 
 The drill makes **no model call**: agents are stopped at `session/new`, and the model gateway in the fixtures is an unroutable address. It costs no model spend, so it can run often.
 

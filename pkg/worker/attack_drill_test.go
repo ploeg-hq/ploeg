@@ -12,7 +12,7 @@ import (
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
-// This file is the worker half of the attack drill (ADR-0125): with both
+// This file is the worker half of the attack drill (ADR-0126): with both
 // credential-isolation proxies on, the real per-Run model key and the real
 // forge token must never enter the harness process environment, where a hostile
 // repository that talked the agent into dumping its environment would reach
