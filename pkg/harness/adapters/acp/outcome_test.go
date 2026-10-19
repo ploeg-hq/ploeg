@@ -177,6 +177,13 @@ func TestBuild_StopReasonMatrix(t *testing.T) {
 			wantFailure: work.FailureInfraNode,
 		},
 		{
+			name:        "an error answer to the prompt stays agent_error here; the worker judges it by model traffic",
+			state:       answeredWithError(),
+			res:         result{phase: phasePrompt, err: fmt.Errorf("session/prompt: %w", &sdk.RequestError{Code: -32603, Message: "Internal error", Data: map[string]any{"reason": "Failed to process prompt"}})},
+			wantOutcome: work.OutcomeFailed,
+			wantFailure: work.FailureAgentError,
+		},
+		{
 			name:        "a session/new timeout stays infra_node",
 			state:       newSessionState(),
 			res:         result{phase: phaseNewSess, err: fmt.Errorf("session/new: %w", context.DeadlineExceeded)},

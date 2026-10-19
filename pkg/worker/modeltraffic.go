@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"net/http"
+	"strings"
 	"sync/atomic"
 
 	"github.com/ploeg-hq/ploeg/pkg/litellm"
@@ -13,7 +14,7 @@ const refusalBodyWindow = 64 << 10
 
 type modelTraffic struct {
 	isolated         bool
-	calls            atomic.Int64
+	modelCalls       atomic.Int64
 	keyBudgetRefused atomic.Bool
 }
 
@@ -35,4 +36,16 @@ func (t *modelTraffic) observe(resp *http.Response) {
 type readCloser struct {
 	io.Reader
 	io.Closer
+}
+
+var modelCallSuffixes = []string{"/chat/completions", "/completions", "/responses", "/messages", ":generateContent", ":streamGenerateContent"}
+
+func isModelCall(path string) bool {
+	path = strings.TrimRight(path, "/")
+	for _, suffix := range modelCallSuffixes {
+		if strings.HasSuffix(path, suffix) {
+			return true
+		}
+	}
+	return false
 }

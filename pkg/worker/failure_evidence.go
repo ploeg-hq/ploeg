@@ -28,7 +28,7 @@ func (e runEvidence) capSpent() bool {
 }
 
 func (e runEvidence) neverCalledModel() bool {
-	if e.traffic == nil || e.traffic.calls.Load() > 0 {
+	if e.traffic == nil || e.traffic.modelCalls.Load() > 0 {
 		return false
 	}
 	return e.traffic.isolated || (e.spendKnown && e.spent == 0)

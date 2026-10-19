@@ -63,7 +63,9 @@ func startLLMProxy(upstream, key, placeholder string, activity *harness.Activity
 			if key != "" {
 				swapModelKey(r.Out.Header, key)
 			}
-			traffic.calls.Add(1)
+			if isModelCall(r.In.URL.Path) {
+				traffic.modelCalls.Add(1)
+			}
 			activity.Touch()
 		},
 		ModifyResponse: func(resp *http.Response) error {
