@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/ploeg-hq/ploeg/pkg/harness"
+	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
 var ErrOperatorNotFound = errors.New("operator resource not found")
@@ -245,6 +246,9 @@ type OperatorShift struct {
 	OpenedAt    time.Time  `json:"openedAt"`
 	ClosedAt    *time.Time `json:"closedAt"`
 	CloseReason string     `json:"closeReason"`
+	// CloseFailure explains a close reason that stopped the Shift because its
+	// Runs failed, and is nil for every other close (ADR-0130).
+	CloseFailure *work.FailureExplanation `json:"closeFailure"`
 }
 
 // OperatorUsage is a Run's usage as the harness reported it, with the cost
@@ -277,30 +281,34 @@ type OperatorModelUsage struct {
 }
 
 type OperatorRun struct {
-	ID            string         `json:"id"`
-	WorkItemID    string         `json:"workItemId"`
-	ShiftID       *string        `json:"shiftId"`
-	Team          string         `json:"team"`
-	Role          string         `json:"role"`
-	Round         int            `json:"round"`
-	Writes        bool           `json:"writes"`
-	State         string         `json:"state"`
-	StartedAt     *time.Time     `json:"startedAt"`
-	FinishedAt    *time.Time     `json:"finishedAt"`
-	ExpiresAt     *time.Time     `json:"expiresAt"`
-	Outcome       *string        `json:"outcome"`
-	Summary       string         `json:"summary"`
-	StuckReason   string         `json:"stuckReason"`
-	Links         []string       `json:"links"`
-	Findings      string         `json:"findings"`
-	Verdict       string         `json:"verdict"`
-	Problem       string         `json:"problem"`
-	Solution      string         `json:"solution"`
-	FailureReason *string        `json:"failureReason"`
-	AuthorizedUSD float64        `json:"authorizedUsd"`
-	Usage         *OperatorUsage `json:"usage"`
-	CostStatus    string         `json:"costStatus"`
-	KeyAlias      *string        `json:"keyAlias"`
+	ID            string     `json:"id"`
+	WorkItemID    string     `json:"workItemId"`
+	ShiftID       *string    `json:"shiftId"`
+	Team          string     `json:"team"`
+	Role          string     `json:"role"`
+	Round         int        `json:"round"`
+	Writes        bool       `json:"writes"`
+	State         string     `json:"state"`
+	StartedAt     *time.Time `json:"startedAt"`
+	FinishedAt    *time.Time `json:"finishedAt"`
+	ExpiresAt     *time.Time `json:"expiresAt"`
+	Outcome       *string    `json:"outcome"`
+	Summary       string     `json:"summary"`
+	StuckReason   string     `json:"stuckReason"`
+	Links         []string   `json:"links"`
+	Findings      string     `json:"findings"`
+	Verdict       string     `json:"verdict"`
+	Problem       string     `json:"problem"`
+	Solution      string     `json:"solution"`
+	FailureReason *string    `json:"failureReason"`
+	// Failure explains FailureReason for a person: its cause, a short title
+	// and a suggested action (ADR-0130). Nil when the Run did not fail or its
+	// reason is unknown.
+	Failure       *work.FailureExplanation `json:"failure"`
+	AuthorizedUSD float64                  `json:"authorizedUsd"`
+	Usage         *OperatorUsage           `json:"usage"`
+	CostStatus    string                   `json:"costStatus"`
+	KeyAlias      *string                  `json:"keyAlias"`
 	// SettledAt is when the Run's gateway account was first settled.
 	SettledAt *time.Time `json:"settledAt,omitempty"`
 	// CostFinalAt is when the settled cost stops being corrected: the end of

@@ -68,26 +68,28 @@ type OperatorRunUsage struct {
 
 // OperatorRunListItem is one Run in the operator Run list.
 type OperatorRunListItem struct {
-	ID              string            `json:"id"`
-	WorkItemID      string            `json:"workItemId"`
-	WorkItemTitle   string            `json:"workItemTitle"`
-	ExternalRef     string            `json:"externalRef"`
-	Team            string            `json:"team"`
-	Role            string            `json:"role"`
-	Round           int               `json:"round"`
-	Writes          bool              `json:"writes"`
-	State           string            `json:"state"`
-	Outcome         string            `json:"outcome"`
-	Verdict         string            `json:"verdict"`
-	FailureReason   string            `json:"failureReason"`
-	StartedAt       *time.Time        `json:"startedAt"`
-	FinishedAt      *time.Time        `json:"finishedAt"`
-	DurationSeconds *int64            `json:"durationSeconds"`
-	AuthorizedUSD   *float64          `json:"authorizedUsd"`
-	SettledUSD      *float64          `json:"settledUsd"`
-	Usage           *OperatorRunUsage `json:"usage"`
-	ObservedUSD     *float64          `json:"observedUsd"`
-	ReservedModels  []string          `json:"reservedModels"`
+	ID            string `json:"id"`
+	WorkItemID    string `json:"workItemId"`
+	WorkItemTitle string `json:"workItemTitle"`
+	ExternalRef   string `json:"externalRef"`
+	Team          string `json:"team"`
+	Role          string `json:"role"`
+	Round         int    `json:"round"`
+	Writes        bool   `json:"writes"`
+	State         string `json:"state"`
+	Outcome       string `json:"outcome"`
+	Verdict       string `json:"verdict"`
+	FailureReason string `json:"failureReason"`
+	// Failure explains FailureReason (ADR-0130); nil when there is none.
+	Failure         *work.FailureExplanation `json:"failure"`
+	StartedAt       *time.Time               `json:"startedAt"`
+	FinishedAt      *time.Time               `json:"finishedAt"`
+	DurationSeconds *int64                   `json:"durationSeconds"`
+	AuthorizedUSD   *float64                 `json:"authorizedUsd"`
+	SettledUSD      *float64                 `json:"settledUsd"`
+	Usage           *OperatorRunUsage        `json:"usage"`
+	ObservedUSD     *float64                 `json:"observedUsd"`
+	ReservedModels  []string                 `json:"reservedModels"`
 	// SettledAt is when the Run's gateway account was first settled.
 	SettledAt *time.Time `json:"settledAt,omitempty"`
 	// CostFinalAt is when the settled cost stops being corrected: the end of

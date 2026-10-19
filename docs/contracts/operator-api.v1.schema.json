@@ -502,6 +502,17 @@
         },
         "closeReason": {
           "type": "string"
+        },
+        "closeFailure": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/failureExplanation"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "ADR-0130: closeReason explained when the Shift stopped because its Runs failed (writing_run_failed_repeatedly, writing_run_killed_repeatedly, run_cap_reached, harness_config, credential_leak, shared_budget_spent); null for every other close, including an open Shift. The Work Item's needs_human event carries the full sentence with the Run's own numbers. Absent from a Ploeg older than ADR-0130."
         }
       }
     },
@@ -1095,6 +1106,17 @@
           "items": {
             "$ref": "#/$defs/runQuestionAnswer"
           }
+        },
+        "failure": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/failureExplanation"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "ADR-0130: failureReason explained, with its cause. Null when the Run did not fail or its reason is not one Ploeg knows. Absent from a Ploeg older than ADR-0130."
         }
       }
     },
@@ -2549,6 +2571,17 @@
         "limits": {
           "$ref": "#/$defs/runLimits",
           "description": "The limits that stop the Run's prompt, as its worker reported them when the prompt started (ADR-0114, proposed), written once. Absent, never null or zero, when unknown: the prompt has not started, the worker is older than ADR-0114, the Run is an Ask or an operator execution, or it was recorded before ploegd kept limits."
+        },
+        "failure": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/failureExplanation"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "ADR-0130: failureReason explained, as on the Run detail."
         }
       }
     },
@@ -6981,6 +7014,43 @@
               "description": "When the Lease lapses unless the client renews it."
             }
           }
+        }
+      }
+    },
+    "failureCause": {
+      "enum": [
+        "ticket",
+        "system"
+      ],
+      "description": "ADR-0130: the coarse group a failure belongs to. ticket: the work or the limits set for it (agent_error, budget, token_ceiling, timeout, idle, credential_leak; close reasons writing_run_failed_repeatedly, run_cap_reached, credential_leak). system: the cluster, the model gateway or the harness's own configuration, which no change to the ticket fixes (infra_node, infra_llm, lease_lost, shared_budget_spent, harness_config; close reasons writing_run_killed_repeatedly, shared_budget_spent, harness_config)."
+    },
+    "failureExplanation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reason",
+        "cause",
+        "title",
+        "action"
+      ],
+      "description": "ADR-0130: a failure reason or failure close reason explained for a person, from a fixed table in pkg/work (failure_cause.go). The text is Ploeg's own and never comes from an agent, tracker or forge.",
+      "properties": {
+        "reason": {
+          "type": "string",
+          "description": "The failureReason or closeReason this explains, unchanged."
+        },
+        "cause": {
+          "$ref": "#/$defs/failureCause"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "description": "One sentence naming what went wrong."
+        },
+        "action": {
+          "type": "string",
+          "minLength": 1,
+          "description": "One or two sentences naming what a person can do."
         }
       }
     }

@@ -86,17 +86,22 @@ func connect(t *testing.T, handler http.Handler, token string) *mcp.ClientSessio
 
 func ploegd(t *testing.T) (http.Handler, string) {
 	t.Helper()
+	return ploegdFor(t, "silver")
+}
+
+func ploegdFor(t *testing.T, team string) (http.Handler, string) {
+	t.Helper()
 	secret := make([]byte, 32)
 	if _, err := rand.Read(secret); err != nil {
 		t.Fatal(err)
 	}
 	token := hex.EncodeToString(secret)
-	raw, _ := json.Marshal([]map[string]any{{"name": "reader", "tokenEnv": "READER_TOKEN", "teams": []string{"silver"}, "execute": false}})
+	raw, _ := json.Marshal([]map[string]any{{"name": "reader", "tokenEnv": "READER_TOKEN", "teams": []string{team}, "execute": false}})
 	consumers, err := httpapi.ParseOperatorConsumers(string(raw), func(name string) (string, bool) { return token, name == "READER_TOKEN" })
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := &httpapi.Server{Store: testStore, OperatorConfig: httpapi.OperatorConfig{Consumers: consumers, Teams: map[string][]string{"silver": {"writer"}}}}
+	s := &httpapi.Server{Store: testStore, OperatorConfig: httpapi.OperatorConfig{Consumers: consumers, Teams: map[string][]string{team: {"writer"}}}}
 	return s.Handler(), token
 }
 

@@ -1,6 +1,10 @@
 package store
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"github.com/ploeg-hq/ploeg/pkg/work"
+)
 
 // The operator API renamed three fields in ADR-0093 and keeps emitting the
 // old names beside the new ones for one release, so a consumer pinned to an
@@ -61,6 +65,11 @@ func (s *OperatorSpend) UnmarshalJSON(data []byte) error {
 // MarshalJSON adds the deprecated reservedUsd, equal to HeldUSD.
 func (s OperatorShift) MarshalJSON() ([]byte, error) {
 	type plain OperatorShift
+	if s.CloseFailure == nil {
+		if e, ok := work.ExplainClose(s.CloseReason); ok {
+			s.CloseFailure = &e
+		}
+	}
 	return json.Marshal(struct {
 		plain
 		ReservedUSD float64 `json:"reservedUsd"`
