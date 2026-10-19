@@ -110,6 +110,8 @@ env:
   PLOEG_ACP_PROFILE: "`acp` harness only: `opencode`, `qwen-code`, `goose`, `openhands` or `custom` (chart `executor.harness.acp.profile`). See [ACP profiles](../contracts/acp-profiles.md)."
   PLOEG_ACP_ARGV: "`acp` harness only: the whole launch command as a JSON array; required when the profile is `custom`."
   PLOEG_ACP_PERMISSION_MODE: "`acp` harness only: `allow_always` (default), `allow_read_only` or `deny_all`."
+  PLOEG_ACP_INIT_TIMEOUT: "`acp` harness only: how long the adapter waits for the agent's answer to `initialize`, as a Go duration (chart `executor.harness.acp.initTimeout`). An agent answers only once its own startup is done, and a cold OpenHands start under a 500m CPU limit has taken over two minutes ([evidence](../research/2026-10-20-acp-initialize-cold-start.md)). Empty means the adapter default (5m)."
+  PLOEG_ACP_SESSION_TIMEOUT: "`acp` harness only: how long the adapter waits for the agent's answer to `session/new`, as a Go duration (chart `executor.harness.acp.sessionTimeout`). Empty means the adapter default (60s)."
   PLOEG_ACP_PROMPT_TIMEOUT: "`acp` harness only: prompt timeout as a Go duration. Empty means the adapter default (45m)."
   PLOEG_ACP_IDLE_TIMEOUT: "`acp` harness only: timeout without protocol traffic. Empty means the adapter default (10m)."
   PLOEG_ACP_CONFIG_JSON: "`acp` harness only: replaces the generated agent configuration of the `opencode` or `qwen-code` profile wholesale. The `goose` and `openhands` profiles refuse it at startup."
@@ -173,6 +175,8 @@ helm:
   acp.profile: "`opencode`, `qwen-code`, `goose` or `custom`."
   acp.argv: Whole launch command; required when the profile is `custom`.
   acp.permissionMode: "`allow_always` (default), `allow_read_only` or `deny_all`."
+  acp.initTimeout: Go duration the adapter waits for the agent's answer to `initialize` (PLOEG_ACP_INIT_TIMEOUT). Empty means the adapter default (5m).
+  acp.sessionTimeout: Go duration the adapter waits for the agent's answer to `session/new` (PLOEG_ACP_SESSION_TIMEOUT). Empty means the adapter default (60s).
   acp.promptTimeout: Go duration. Empty means the adapter default (45m).
   acp.idleTimeout: Go duration without protocol traffic. Empty means the adapter default (10m).
   acp.configJson: Replaces the generated agent configuration of the `opencode` or `qwen-code` profile wholesale; `goose` refuses it.

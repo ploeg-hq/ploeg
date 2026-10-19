@@ -395,6 +395,8 @@ global executor.harness defaults field-by-field (explicit hasKey checks, so
 {{- $acpProfile := $identity.acpProfile }}
 {{- $acpArgv := $ra.argv | default ($ta.argv | default $ga.argv) }}
 {{- $acpPerm := $ra.permissionMode | default ($ta.permissionMode | default $ga.permissionMode) }}
+{{- $acpInit := $ra.initTimeout | default ($ta.initTimeout | default $ga.initTimeout) }}
+{{- $acpSession := $ra.sessionTimeout | default ($ta.sessionTimeout | default $ga.sessionTimeout) }}
 {{- $acpPrompt := $ra.promptTimeout | default ($ta.promptTimeout | default $ga.promptTimeout) }}
 {{- $acpIdle := $ra.idleTimeout | default ($ta.idleTimeout | default $ga.idleTimeout) }}
 {{- $acpConfig := $ra.configJson | default ($ta.configJson | default $ga.configJson) }}
@@ -563,6 +565,14 @@ spec:
         {{- if $acpPerm }}
         - name: PLOEG_ACP_PERMISSION_MODE
           value: {{ $acpPerm | quote }}
+        {{- end }}
+        {{- if $acpInit }}
+        - name: PLOEG_ACP_INIT_TIMEOUT
+          value: {{ $acpInit | quote }}
+        {{- end }}
+        {{- if $acpSession }}
+        - name: PLOEG_ACP_SESSION_TIMEOUT
+          value: {{ $acpSession | quote }}
         {{- end }}
         {{- if $acpPrompt }}
         - name: PLOEG_ACP_PROMPT_TIMEOUT

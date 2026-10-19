@@ -74,6 +74,10 @@ func Build(s *sessionState, r result) harness.OutcomeReport {
 	case phaseLaunch, phaseInit:
 		rep.Outcome = work.OutcomeFailed
 		rep.Summary = "acp agent did not start"
+		var slow *handshakeTimeout
+		if errors.As(r.err, &slow) {
+			rep.Summary = "acp agent was still starting after " + slow.limit.String()
+		}
 		rep.FailureReason = string(work.FailureInfraNode)
 		rep.StuckReason = detail(r, s)
 		if r.phase == phaseInit && harnessRefused(r.err, s) {

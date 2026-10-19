@@ -171,6 +171,12 @@ func run(log *slog.Logger) error {
 			return fmt.Errorf("PLOEG_ACP_ARGV must be a JSON string array: %w", err)
 		}
 	}
+	if hc.ACP.InitTimeout, err = durationEnv("PLOEG_ACP_INIT_TIMEOUT"); err != nil {
+		return err
+	}
+	if hc.ACP.SessionTimeout, err = durationEnv("PLOEG_ACP_SESSION_TIMEOUT"); err != nil {
+		return err
+	}
 	if hc.ACP.PromptTimeout, err = durationEnv("PLOEG_ACP_PROMPT_TIMEOUT"); err != nil {
 		return err
 	}

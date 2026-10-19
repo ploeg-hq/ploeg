@@ -51,6 +51,8 @@ type ACPConfig struct {
 	Argv           []string      // PLOEG_ACP_ARGV (JSON array): whole command; required for profile=custom
 	ConfigJSON     string        // PLOEG_ACP_CONFIG_JSON: replaces a profile's generated agent config
 	PermissionMode string        // PLOEG_ACP_PERMISSION_MODE: allow_always (default) | allow_read_only | deny_all
+	InitTimeout    time.Duration // PLOEG_ACP_INIT_TIMEOUT: 0 = adapter default (5m)
+	SessionTimeout time.Duration // PLOEG_ACP_SESSION_TIMEOUT: 0 = adapter default (60s)
 	PromptTimeout  time.Duration // PLOEG_ACP_PROMPT_TIMEOUT: 0 = adapter default (45m)
 	IdleTimeout    time.Duration // PLOEG_ACP_IDLE_TIMEOUT: 0 = adapter default (10m)
 }
@@ -153,6 +155,8 @@ func NewAdapter(hc HarnessConfig) (harness.Adapter, error) {
 			ConfigJSON: hc.ACP.ConfigJSON,
 		}, acp.Options{
 			PermissionMode: mode,
+			InitTimeout:    hc.ACP.InitTimeout,
+			SessionTimeout: hc.ACP.SessionTimeout,
 			PromptTimeout:  hc.ACP.PromptTimeout,
 			IdleTimeout:    hc.ACP.IdleTimeout,
 		})
