@@ -542,6 +542,8 @@ name becomes the workload suffix (ploeg-worker-<team>-<role>); writes marks the 
 | `planner` | boolean | ADR-0031: the Role splits or clarifies its Work Item and returns createdWorkItems instead of code. A planner never writes. |
 | `shadow` | boolean | ADR-0096: a reading Role whose verdict and findings are recorded and never act. It runs beside a reading Role that is not a shadow, needs its own cap, never writes or plans, and its cost counts against the pool like any Run. Use it to compare a reviewer model on real work. |
 | `cap` | string |  |
+| `onCapReached` | one of `"stop"`, `"retry"`, `"escalate"` | ADR-0130: what a writing Role does after one of its Runs used its whole cap. stop (the default when unset) parks the Work Item for a person; retry runs it again at the same cap; escalate runs it again at the previous Run's cap times capEscalation, bounded by what the Shift's pool has left. retry and escalate count against the Round's three attempts. ploegd refuses it on a reading Role. |
+| `capEscalation` |  | ADR-0130: with onCapReached: escalate, the factor each next attempt's cap is multiplied by; unset means 2. It must be greater than 1, and ploegd refuses it without escalate. |
 | `model` | string |  |
 | `maxReplicaCount` | integer |  |
 | `harness` | [harness](#harness) |  |

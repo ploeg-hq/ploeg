@@ -43,6 +43,10 @@ type Role struct {
 	// Selection resolves the Harness and model a Run of this Role stores
 	// (ADR-0098, ADR-0103). Zero stores neither.
 	Selection RoleSelection
+	// EscalatedCap is the cap a retried writing Run is authorized at in place
+	// of the Role's cap, under onCapReached: escalate (ADR-0130). Zero keeps
+	// the Role's cap.
+	EscalatedCap float64
 }
 
 // OpenShift begins a Shift on a queued Work Item. The unique partial index
@@ -187,6 +191,16 @@ type FailedRun struct {
 	Shadow        bool
 	Attempts      int
 	InfraAttempts int
+	// Last is the Role's newest failed Run in the Round: why it failed, what
+	// it was authorized and what it spent, as far as Ploeg knows.
+	Last LastFailure
+}
+
+// LastFailure is one failed Run's reason, authorization and spend.
+type LastFailure struct {
+	Reason        work.FailureReason
+	AuthorizedUSD float64
+	SpentUSD      float64
 }
 
 // AgentAttempts is the number of attempts this Role actually spent on the
@@ -206,7 +220,11 @@ func (f FailedRun) AgentAttempts() int { return f.Attempts - f.InfraAttempts }
 func (s *Store) FailedRunsInRound(ctx context.Context, shiftID int64, round int) ([]FailedRun, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT role, bool_or(writes), bool_or(shadow), count(*),
-		       count(*) FILTER (WHERE failure_reason = ANY($3))
+		       count(*) FILTER (WHERE failure_reason = ANY($3)),
+		       (array_agg(COALESCE(failure_reason, '') ORDER BY id DESC) FILTER (WHERE outcome = 'failed'))[1],
+		       (array_agg(authorized::float8 ORDER BY id DESC) FILTER (WHERE outcome = 'failed'))[1],
+		       (array_agg(CASE WHEN jsonb_typeof(usage->'costUsd') = 'number' THEN (usage->>'costUsd')::float8 ELSE 0 END
+		                  ORDER BY id DESC) FILTER (WHERE outcome = 'failed'))[1]
 		FROM agent_runs
 		WHERE shift_id = $1 AND round = $2
 		GROUP BY role
@@ -220,9 +238,12 @@ func (s *Store) FailedRunsInRound(ctx context.Context, shiftID int64, round int)
 	var out []FailedRun
 	for rows.Next() {
 		var f FailedRun
-		if err := rows.Scan(&f.Role, &f.Writes, &f.Shadow, &f.Attempts, &f.InfraAttempts); err != nil {
+		var reason string
+		if err := rows.Scan(&f.Role, &f.Writes, &f.Shadow, &f.Attempts, &f.InfraAttempts,
+			&reason, &f.Last.AuthorizedUSD, &f.Last.SpentUSD); err != nil {
 			return nil, err
 		}
+		f.Last.Reason = work.FailureReason(reason)
 		out = append(out, f)
 	}
 	return out, rows.Err()
@@ -429,6 +450,14 @@ func startPendingRun(ctx context.Context, tx pgx.Tx, p pendingRun, ttl time.Dura
 		`SELECT COALESCE(SUM(reserved), 0) FROM run_budget_holds WHERE shift_id = $1`,
 		shiftID).Scan(&reserved); err != nil {
 		return nil, err
+	}
+
+	var escalated *float64
+	if err := tx.QueryRow(ctx, `SELECT escalated_cap::float8 FROM agent_runs WHERE id = $1`, runID).Scan(&escalated); err != nil {
+		return nil, err
+	}
+	if escalated != nil {
+		cap = *escalated
 	}
 
 	authorized := budget - spent - reserved

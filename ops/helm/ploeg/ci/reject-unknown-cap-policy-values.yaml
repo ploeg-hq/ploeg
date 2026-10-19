@@ -1,0 +1,12 @@
+# CI-only values: onCapReached is stop, retry or escalate (ADR-0130).
+executor:
+  enabled: true
+  teams:
+    - name: bronze
+      model: litellm_proxy/deepseek-chat
+      budget: "6"
+      harness:
+        image: harbor.webgrip.dev/webgrip/agent:0.1.0
+      plan:
+        - roles:
+            - {name: builder, writes: true, cap: "2", onCapReached: double}

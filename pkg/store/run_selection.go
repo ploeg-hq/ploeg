@@ -67,9 +67,9 @@ func insertPendingRun(ctx context.Context, tx pgx.Tx, workItemID, shiftID int64,
 		carrier = CarrierClient
 	}
 	_, err = tx.Exec(ctx, `
-		INSERT INTO agent_runs (work_item_id, shift_id, team, role, round, writes, shadow, state, run_token, started_at, harness_requested, model_selected, carrier)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8, NULL, NULLIF($9, ''), NULLIF($10, ''), NULLIF($11, ''))`,
-		workItemID, shiftID, team, r.Name, round, r.Writes, r.Shadow, token, harness, model, carrier)
+		INSERT INTO agent_runs (work_item_id, shift_id, team, role, round, writes, shadow, state, run_token, started_at, harness_requested, model_selected, carrier, escalated_cap)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8, NULL, NULLIF($9, ''), NULLIF($10, ''), NULLIF($11, ''), NULLIF($12::numeric, 0))`,
+		workItemID, shiftID, team, r.Name, round, r.Writes, r.Shadow, token, harness, model, carrier, r.EscalatedCap)
 	if err != nil || carrier == "" {
 		return err
 	}

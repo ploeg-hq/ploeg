@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/ploeg-hq/ploeg/pkg/plan"
 	"github.com/ploeg-hq/ploeg/pkg/store"
+	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
 // A failed writing Run re-opens its own Round, capped (ADR-0019). A failed
@@ -24,12 +26,15 @@ import (
 const (
 	// reasonWriterFailed is the close reason when a writing Role has used up
 	// its attempts inside one Round.
-	reasonWriterFailed = "writing_run_failed_repeatedly"
+	reasonWriterFailed = work.CloseWriterFailed
 	// reasonInfraFailed is the close reason when the writing Role never got a
 	// real attempt because the pods kept dying under it. A different reason
 	// from reasonWriterFailed on purpose: it sends a person to the cluster,
 	// not to the ticket.
-	reasonInfraFailed = "writing_run_killed_repeatedly"
+	reasonInfraFailed = work.CloseWriterKilled
+	// reasonCapReached is the close reason when a writing Run used its whole
+	// cap and its Role's onCapReached is stop (ADR-0130).
+	reasonCapReached = work.CloseRunCapReached
 )
 
 func (e *Engine) retryFailedRuns(ctx context.Context, si store.ShiftInfo, reports []store.RunReport) (bool, error) {
@@ -67,6 +72,20 @@ func (e *Engine) retryFailedWriter(ctx context.Context, si store.ShiftInfo, writ
 			false, reports)
 	}
 
+	escalated := 0.0
+	if writer.Last.Reason == work.FailureBudget {
+		role, _ := e.planRole(si.Team, writer.Role)
+		switch role.CapPolicy() {
+		case plan.CapStop:
+			e.Log.Warn("writing Run used its whole cap; its Role stops there",
+				"shift", si.ID, "round", si.Round, "role", writer.Role,
+				"authorized_usd", writer.Last.AuthorizedUSD, "spent_usd", writer.Last.SpentUSD)
+			return true, e.close(ctx, si, reasonCapReached, capReachedMessage(writer, si.Round), false, reports)
+		case plan.CapEscalate:
+			escalated = escalatedCap(writer.Last.AuthorizedUSD, role)
+		}
+	}
+
 	if writer.AgentAttempts() >= store.MaxRunAttempts {
 		e.Log.Warn("writing Run failed too many times; parking the shift",
 			"shift", si.ID, "round", si.Round, "role", writer.Role,
@@ -78,7 +97,7 @@ func (e *Engine) retryFailedWriter(ctx context.Context, si store.ShiftInfo, writ
 	}
 
 	attempt, err := e.Store.ReopenRound(ctx, si.ID, si.Round,
-		[]store.Role{{Name: writer.Role, Writes: true, Cap: e.capFor(si.Team, writer.Role), Selection: e.selection(si.Team, writer.Role)}})
+		[]store.Role{{Name: writer.Role, Writes: true, Cap: e.capFor(si.Team, writer.Role), Selection: e.selection(si.Team, writer.Role), EscalatedCap: escalated}})
 	if err != nil {
 		// Losing the race to the other evaluator is not an error: the Round
 		// has been reopened, which is the outcome we wanted.
@@ -88,8 +107,33 @@ func (e *Engine) retryFailedWriter(ctx context.Context, si store.ShiftInfo, writ
 	}
 	e.Log.Info("reopened the round after its writing Run failed",
 		"shift", si.ID, "round", si.Round, "role", writer.Role, "attempt", attempt,
-		"max", store.MaxRunAttempts)
+		"max", store.MaxRunAttempts, "escalated_cap_usd", escalated)
 	return true, nil
+}
+
+func capReachedMessage(writer *store.FailedRun, round int) string {
+	spent := ""
+	if writer.Last.SpentUSD > 0 {
+		spent = fmt.Sprintf(" ($%.2f spent)", writer.Last.SpentUSD)
+	}
+	return fmt.Sprintf("shift stopped: the %s used its whole $%.2f cap%s in round %d before it finished, so Ploeg did not retry it at the same cap. "+
+		"Raise the cap for this role or split the ticket, then restart the item",
+		writer.Role, writer.Last.AuthorizedUSD, spent, round)
+}
+
+func escalatedCap(previous float64, role plan.Role) float64 {
+	if previous <= 0 {
+		previous = role.CapUSD()
+	}
+	return previous * role.Escalation()
+}
+
+func (e *Engine) planRole(team, role string) (plan.Role, bool) {
+	tp, ok, _ := e.planFor(team)
+	if !ok {
+		return plan.Role{}, false
+	}
+	return plan.Plans{team: tp}.Role(team, role)
 }
 
 // capFor recovers a Role's per-Run spending cap from the Team's plan, so a

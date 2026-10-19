@@ -777,7 +777,9 @@ executor:
   #     - roles:
   #         # ADR-0103: `models` lists the aliases an admission may choose for
   #         # this Role; `model` stays its default and must be listed.
-  #         - {name: builder, writes: true, cap: "3.00", model: litellm_proxy/claude-sonnet-5, models: [claude-sonnet-5, deepseek-v4]}
+  #         # ADR-0130: after a Run uses its whole cap the builder stops (the
+  #         # default), or retries at the same cap, or escalates it 2x per attempt.
+  #         - {name: builder, writes: true, cap: "3.00", model: litellm_proxy/claude-sonnet-5, models: [claude-sonnet-5, deepseek-v4], onCapReached: escalate, capEscalation: "2"}
   #     - roles:
   #         - {name: reviewer, writes: false, cap: "0.75", model: litellm_proxy/claude-sonnet-5, harness: {dind: false}}
   #         # ADR-0096: a second reviewer whose verdict is recorded and never acts.

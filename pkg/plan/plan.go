@@ -43,6 +43,44 @@ type Role struct {
 	// without acting on them: no fix round, no close reason, no pull request
 	// comment, no briefing for later Rounds (ADR-0096).
 	Shadow bool `json:"shadow,omitempty" yaml:"shadow"`
+	// OnCapReached says what a writing Role's failed Run does after it used
+	// its whole cap (ADR-0130): stop parks the Work Item for a person, retry
+	// runs it again at the same cap, escalate runs it again at the previous
+	// Run's cap times CapEscalation. Unset means stop.
+	OnCapReached CapPolicy `json:"onCapReached,omitempty" yaml:"onCapReached"`
+	// CapEscalation multiplies the cap of each next attempt under escalate.
+	// Unset means DefaultCapEscalation.
+	CapEscalation factor `json:"capEscalation,omitempty" yaml:"capEscalation"`
+}
+
+// CapPolicy is a writing Role's onCapReached setting (ADR-0130).
+type CapPolicy string
+
+// The onCapReached values.
+const (
+	CapStop     CapPolicy = "stop"
+	CapRetry    CapPolicy = "retry"
+	CapEscalate CapPolicy = "escalate"
+)
+
+// DefaultCapEscalation is the factor escalate multiplies a cap by when the
+// Role sets none.
+const DefaultCapEscalation = 2.0
+
+// CapPolicy returns the Role's onCapReached policy, stop when unset.
+func (r Role) CapPolicy() CapPolicy {
+	if r.OnCapReached == "" {
+		return CapStop
+	}
+	return r.OnCapReached
+}
+
+// Escalation returns the factor escalate multiplies the cap by.
+func (r Role) Escalation() float64 {
+	if r.CapEscalation == 0 {
+		return DefaultCapEscalation
+	}
+	return float64(r.CapEscalation)
 }
 
 // Round is a set of Runs that start together: a fan-out of readers or a
@@ -116,6 +154,16 @@ func (m *money) UnmarshalJSON(b []byte) error {
 	return m.parse(string(b))
 }
 
+type factor float64
+
+func (f *factor) UnmarshalYAML(value *yaml.Node) error {
+	return (*money)(f).parse(value.Value)
+}
+
+func (f *factor) UnmarshalJSON(b []byte) error {
+	return (*money)(f).parse(string(b))
+}
+
 // roleName mirrors the chart's team-name pattern: these become workload name
 // suffixes (ploeg-worker-<team>-<role>), so they must be DNS-label-safe.
 var roleName = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`)
@@ -164,6 +212,7 @@ func Validate(tp TeamPlan) error {
 	// rounds, or the same pod shape would need to be both reader and writer.
 	writesByRole := map[string]bool{}
 	shadowByRole := map[string]bool{}
+	capPolicyByRole := map[string]Role{}
 	for i, round := range tp.Rounds {
 		if len(round.Roles) == 0 {
 			return fmt.Errorf("round %d has no roles", i+1)
@@ -198,6 +247,13 @@ func Validate(tp TeamPlan) error {
 					return err
 				}
 			}
+			if err := validateCapPolicy(i+1, r); err != nil {
+				return err
+			}
+			if prev, ok := capPolicyByRole[r.Name]; ok && (prev.OnCapReached != r.OnCapReached || prev.CapEscalation != r.CapEscalation) {
+				return fmt.Errorf("role %q sets a different onCapReached or capEscalation in another round — one role, one cap policy (ADR-0130)", r.Name)
+			}
+			capPolicyByRole[r.Name] = r
 			if prev, ok := shadowByRole[r.Name]; ok && prev != r.Shadow {
 				return fmt.Errorf("role %q is a shadow in one round and not in another — one role, one shadow flag (ADR-0096)", r.Name)
 			}
@@ -237,6 +293,29 @@ func Validate(tp TeamPlan) error {
 	return nil
 }
 
+func validateCapPolicy(round int, r Role) error {
+	switch r.OnCapReached {
+	case "", CapStop, CapRetry, CapEscalate:
+	default:
+		return fmt.Errorf("round %d: role %q onCapReached %q must be stop, retry or escalate (ADR-0130)", round, r.Name, r.OnCapReached)
+	}
+	if r.OnCapReached != "" && !r.Writes {
+		return fmt.Errorf("round %d: role %q sets onCapReached, which applies to a writing Role only (ADR-0130)", round, r.Name)
+	}
+	if r.CapEscalation != 0 && r.OnCapReached != CapEscalate {
+		return fmt.Errorf("round %d: role %q sets capEscalation without onCapReached: escalate (ADR-0130)", round, r.Name)
+	}
+	if r.OnCapReached == CapEscalate {
+		if r.Cap <= 0 {
+			return fmt.Errorf("round %d: role %q escalates its cap but has none; an uncapped Run already gets what the pool has left (ADR-0130)", round, r.Name)
+		}
+		if r.CapEscalation != 0 && r.CapEscalation <= 1 {
+			return fmt.Errorf("round %d: role %q capEscalation must be greater than 1, got %v (ADR-0130)", round, r.Name, float64(r.CapEscalation))
+		}
+	}
+	return nil
+}
+
 // validateShadow checks one shadow Role against its Round (ADR-0096).
 func validateShadow(round int, r Role, in Round) error {
 	if r.Writes {
@@ -271,6 +350,18 @@ func (p Plans) IsShadow(team, role string) bool {
 		}
 	}
 	return false
+}
+
+// Role returns a team's Role by name.
+func (p Plans) Role(team, role string) (Role, bool) {
+	for _, round := range p[team].Rounds {
+		for _, r := range round.Roles {
+			if r.Name == role {
+				return r, true
+			}
+		}
+	}
+	return Role{}, false
 }
 
 // Cap returns a role's cap as a plain float for callers converting to other

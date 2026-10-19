@@ -1397,6 +1397,17 @@
           "type": "string",
           "pattern": "^[0-9]+(\\.[0-9]+)?$"
         },
+        "onCapReached": {
+          "enum": ["stop", "retry", "escalate"],
+          "description": "ADR-0130: what a writing Role does after one of its Runs used its whole cap. stop (the default when unset) parks the Work Item for a person; retry runs it again at the same cap; escalate runs it again at the previous Run's cap times capEscalation, bounded by what the Shift's pool has left. retry and escalate count against the Round's three attempts. ploegd refuses it on a reading Role."
+        },
+        "capEscalation": {
+          "anyOf": [
+            {"type": "string", "pattern": "^[0-9]+(\\.[0-9]+)?$"},
+            {"type": "number", "exclusiveMinimum": 1}
+          ],
+          "description": "ADR-0130: with onCapReached: escalate, the factor each next attempt's cap is multiplied by; unset means 2. It must be greater than 1, and ploegd refuses it without escalate."
+        },
         "model": {
           "type": "string",
           "minLength": 1
