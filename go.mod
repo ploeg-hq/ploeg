@@ -2,7 +2,7 @@ module github.com/ploeg-hq/ploeg
 
 go 1.26.0
 
-toolchain go1.27.1
+toolchain go1.27.2
 
 require (
 	github.com/coder/acp-go-sdk v0.13.5
