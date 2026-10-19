@@ -40,7 +40,7 @@ RELEASE_CONSUMERS_DRY_RUN=true python3 scripts/release-consumers.py v0.2.0-rc.28
 
 A failed `consumers` job is retried by dispatching the release consumers workflow with the release tag. It runs the script from `development`, so a fix to the script reaches a release that already failed, which rerunning the old job cannot do. The retry updates the same branch and pull request.
 
-The script sends its own `User-Agent`. A forge behind Cloudflare's Browser Integrity Check refuses Python's default one with error 1010, which stopped the first delivery to Unfold at `GET /user`.
+The script sends its own `User-Agent`. A forge behind Cloudflare's Browser Integrity Check refuses Python's default one with error 1010, which stopped the first delivery at `GET /user`.
 
 A maintainer can dispatch the release workflow with an existing tag whose publication is missing; publication refuses a published release, a draft that already carries assets, and existing artifacts.
 
