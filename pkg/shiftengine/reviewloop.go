@@ -56,6 +56,38 @@ func closeMessage(reason string) string {
 	}
 }
 
+// undeliveredMessage says why a Shift that ran out of plan without a
+// delivered pull request leaves a person nothing to review, from the last
+// writing Run's own report.
+func undeliveredMessage(reports []store.RunReport) string {
+	for i := len(reports) - 1; i >= 0; i-- {
+		r := reports[i]
+		if !r.Writes || r.Outcome == "" {
+			continue
+		}
+		run := "the writing Run"
+		if r.Role != "" {
+			run = "the " + r.Role + " Run"
+		}
+		switch {
+		case r.Outcome == string(work.OutcomeFailed):
+			reason := r.FailureReason
+			if reason == "" {
+				reason = "no failure reason recorded"
+			}
+			return fmt.Sprintf("no pull request: %s failed (%s: %s) and delivered nothing; there is nothing to review",
+				run, reason, r.Summary)
+		case work.Outcome(r.Outcome).AssertsDelivery():
+			return fmt.Sprintf("no pull request: %s reported %s, but its delivery was not observed on the forge; there is nothing to review",
+				run, r.Outcome)
+		default:
+			return fmt.Sprintf("no pull request: %s finished with %s (%s) and delivered nothing; there is nothing to review",
+				run, r.Outcome, r.Summary)
+		}
+	}
+	return "no pull request: no writing Run finished; there is nothing to review"
+}
+
 // fixRoundsRun derives how many fix rounds this Shift has already had.
 //
 // Derived, never counted (ADR-0017, and ADR-0012's reserved-is-a-sum
