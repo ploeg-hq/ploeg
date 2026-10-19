@@ -45,7 +45,9 @@
         "timeout",
         "idle",
         "credential_leak",
-        "shared_budget_spent"
+        "shared_budget_spent",
+        "token_ceiling",
+        "harness_config"
       ]
     },
     "findings": {

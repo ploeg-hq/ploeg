@@ -27,6 +27,7 @@ type llmKeyProxy struct {
 	server      *http.Server
 	baseURL     string
 	placeholder string
+	traffic     *modelTraffic
 }
 
 func startLLMKeyProxy(upstream, key string, activity *harness.Activity) (*llmKeyProxy, error) {
@@ -53,6 +54,7 @@ func startLLMProxy(upstream, key, placeholder string, activity *harness.Activity
 	if err != nil {
 		return nil, fmt.Errorf("listen for the model key proxy: %w", err)
 	}
+	traffic := &modelTraffic{isolated: key != ""}
 	proxy := &httputil.ReverseProxy{
 		Rewrite: func(r *httputil.ProxyRequest) {
 			r.Out.URL.Scheme = target.Scheme
@@ -61,10 +63,12 @@ func startLLMProxy(upstream, key, placeholder string, activity *harness.Activity
 			if key != "" {
 				swapModelKey(r.Out.Header, key)
 			}
+			traffic.calls.Add(1)
 			activity.Touch()
 		},
 		ModifyResponse: func(resp *http.Response) error {
 			activity.Touch()
+			traffic.observe(resp)
 			resp.Body = activityBody{ReadCloser: resp.Body, activity: activity}
 			return nil
 		},
@@ -81,6 +85,7 @@ func startLLMProxy(upstream, key, placeholder string, activity *harness.Activity
 		},
 		baseURL:     "http://" + ln.Addr().String() + strings.TrimRight(target.Path, "/"),
 		placeholder: placeholder,
+		traffic:     traffic,
 	}
 	go func() { _ = p.server.Serve(ln) }()
 	return p, nil

@@ -1,10 +1,13 @@
 package acp
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
 	"time"
+
+	sdk "github.com/coder/acp-go-sdk"
 
 	"github.com/ploeg-hq/ploeg/pkg/harness"
 	"github.com/ploeg-hq/ploeg/pkg/litellm"
@@ -65,13 +68,18 @@ func Build(s *sessionState, r result) harness.OutcomeReport {
 		return rep
 	}
 
-	// Failures before the prompt are infrastructure, not the ticket.
+	// Failures before the prompt are infrastructure or the harness's own
+	// configuration, never the ticket.
 	switch r.phase {
 	case phaseLaunch, phaseInit:
 		rep.Outcome = work.OutcomeFailed
 		rep.Summary = "acp agent did not start"
 		rep.FailureReason = string(work.FailureInfraNode)
 		rep.StuckReason = detail(r, s)
+		if r.phase == phaseInit && harnessRefused(r.err, s) {
+			rep.Summary = "acp agent rejected its configuration: " + harness.ErrorLine(rep.StuckReason)
+			rep.FailureReason = string(work.FailureHarnessConfig)
+		}
 		return rep
 	case phaseNewSess:
 		rep.Outcome = work.OutcomeFailed
@@ -82,6 +90,10 @@ func Build(s *sessionState, r result) harness.OutcomeReport {
 		}
 		rep.FailureReason = reason
 		rep.StuckReason = detail(r, s)
+		if reason == string(work.FailureInfraNode) && harnessRefused(r.err, s) {
+			rep.Summary = "acp agent rejected its configuration: " + harness.ErrorLine(rep.StuckReason)
+			rep.FailureReason = string(work.FailureHarnessConfig)
+		}
 		return rep
 	}
 
@@ -111,10 +123,18 @@ func Build(s *sessionState, r result) harness.OutcomeReport {
 	// spent, every retry would be refused too, so the Run says so instead of
 	// spending an agent attempt.
 	if r.phase == phasePrompt {
-		if gw := gatewayFailure(r); gw.SharedBudgetSpent() {
+		gw := gatewayFailure(r)
+		if gw.SharedBudgetSpent() {
 			rep.Outcome = work.OutcomeFailed
 			rep.Summary = "acp agent stopped mid-prompt: " + gw.BudgetSpent()
 			rep.FailureReason = string(work.FailureSharedBudgetSpent)
+			rep.StuckReason = detail(r, s)
+			return rep
+		}
+		if gw.Kind == litellm.ErrorBudgetExceeded && gw.BudgetOwner == litellm.BudgetOfKey && s.calledModel() {
+			rep.Outcome = work.OutcomeFailed
+			rep.Summary = "acp agent stopped mid-prompt: the Run's own key used its whole budget"
+			rep.FailureReason = string(work.FailureBudget)
 			rep.StuckReason = detail(r, s)
 			return rep
 		}
@@ -149,7 +169,7 @@ func Build(s *sessionState, r result) harness.OutcomeReport {
 		// the protection against looping.
 		rep.Outcome = work.OutcomeFailed
 		rep.Summary = "the agent hit its token ceiling"
-		rep.FailureReason = string(work.FailureBudget)
+		rep.FailureReason = string(work.FailureTokenCeiling)
 		rep.StuckReason = tokenCeilingReason(s)
 		return rep
 
@@ -246,6 +266,11 @@ func classifyStartFailure(r result) (string, litellm.GatewayError) {
 		}
 	}
 	return string(work.FailureInfraNode), gw
+}
+
+func harnessRefused(err error, s *sessionState) bool {
+	var answered *sdk.RequestError
+	return errors.Is(err, errProtocolVersion) || (errors.As(err, &answered) && s.answeredWithError())
 }
 
 // gatewayFailure classifies what the agent's stderr and the transport error

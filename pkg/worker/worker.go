@@ -717,6 +717,7 @@ func runWatchedAgent(ctx context.Context, log *slog.Logger, broker llmbroker.Bro
 	}()
 
 	harnessKey := cred.APIKey
+	var traffic *modelTraffic
 	switch {
 	case isolation == KeyIsolationProxy && cred.APIKey != "":
 		proxy, err := startLLMKeyProxy(env.LLM.BaseURL, cred.APIKey, env.Activity)
@@ -724,6 +725,7 @@ func runWatchedAgent(ctx context.Context, log *slog.Logger, broker llmbroker.Bro
 			return harness.OutcomeReport{}, fmt.Errorf("isolate the per-run key: %w", err), nil
 		}
 		defer proxy.close()
+		traffic = proxy.traffic
 		harnessKey = proxy.placeholder
 		env.LLM.BaseURL = proxy.baseURL
 		env.BaseEnv = withEnv(env.BaseEnv, "LLM_BASE_URL", proxy.baseURL)
@@ -735,6 +737,7 @@ func runWatchedAgent(ctx context.Context, log *slog.Logger, broker llmbroker.Bro
 			break
 		}
 		defer proxy.close()
+		traffic = proxy.traffic
 		env.LLM.BaseURL = proxy.baseURL
 		env.BaseEnv = withEnv(env.BaseEnv, "LLM_BASE_URL", proxy.baseURL)
 	}
@@ -748,8 +751,15 @@ func runWatchedAgent(ctx context.Context, log *slog.Logger, broker llmbroker.Bro
 		env.BaseEnv = append(env.BaseEnv, "LLM_API_KEY="+harnessKey)
 	}
 
+	var stderrTail harness.TailBuffer
+	if env.Stderr != nil {
+		env.Stderr = io.MultiWriter(env.Stderr, &stderrTail)
+	} else {
+		env.Stderr = &stderrTail
+	}
 	report, runErr = runBounded(ctx, adapter, spec, env, limit)
 
+	evidence := runEvidence{authorized: req.BudgetUSD, traffic: traffic, stderr: &stderrTail}
 	if m, ok := broker.(llmbroker.Metered); ok && cred.APIKey != "" {
 		observeCtx, observeCancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 		defer observeCancel()
@@ -760,10 +770,11 @@ func runWatchedAgent(ctx context.Context, log *slog.Logger, broker llmbroker.Bro
 				report.Usage = &harness.Usage{}
 			}
 			report.Usage.CostUSD = spend
+			evidence.spent, evidence.spendKnown = spend, true
 			log.Info("observed provisional run cost", "trace", cred.Alias, "cost_usd", spend)
 		}
 	}
-	return report, nil, runErr
+	return classifyByEvidence(adapter.Name(), adapter.ExpectsLLM(), report, runErr, ctx.Err(), evidence), nil, runErr
 }
 
 // gatewayMCPURL is the model gateway's MCP endpoint: its root, the

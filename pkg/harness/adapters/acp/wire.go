@@ -189,6 +189,8 @@ func normalise(s string) string {
 type rpcLine struct {
 	Method string          `json:"method"`
 	Params json.RawMessage `json:"params"`
+	ID     json.RawMessage `json:"id"`
+	Error  json.RawMessage `json:"error"`
 }
 
 // sessionUpdateParams is the params object of a session/update notification.

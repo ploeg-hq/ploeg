@@ -153,8 +153,22 @@ const (
 	FailureInfraLLM FailureReason = "infra_llm"
 	// FailureAgentError is written when the harness exited with an error.
 	FailureAgentError FailureReason = "agent_error"
-	// FailureBudget is written when an ACP harness hit its token ceiling.
+	// FailureBudget is written when the Run used its own spending cap: the
+	// worker observed the Run's key spend at least what it was authorized, or
+	// the model gateway refused the Run's own key for its budget after the
+	// Run had called the model (ADR-0130). What happens next is the Role's
+	// onCapReached policy.
 	FailureBudget FailureReason = "budget"
+	// FailureTokenCeiling is written when an ACP harness hit its token
+	// ceiling (stop reason max_tokens): its context window or response
+	// limit, not its money.
+	FailureTokenCeiling FailureReason = "token_ceiling"
+	// FailureHarnessConfig is written when the harness rejected its
+	// configuration or crashed before it did any work: it answered the
+	// protocol's initialize or session/new with an error, or it failed
+	// before calling the model at all (ADR-0130). It is deterministic, so
+	// the Work Item parks for a person instead of being retried.
+	FailureHarnessConfig FailureReason = "harness_config"
 	// FailureLeaseLost is written by the worker when lease renewal failed and
 	// by the sweeper for every Run whose lease or deadline expired.
 	FailureLeaseLost FailureReason = "lease_lost"
@@ -179,13 +193,13 @@ const (
 // FailureReasons lists every known failure reason, for metrics and SQL that
 // must cover the whole enum.
 func FailureReasons() []FailureReason {
-	return []FailureReason{FailureInfraNode, FailureInfraLLM, FailureAgentError, FailureBudget, FailureLeaseLost, FailureTimeout, FailureIdle, FailureCredentialLeak, FailureSharedBudgetSpent}
+	return []FailureReason{FailureInfraNode, FailureInfraLLM, FailureAgentError, FailureBudget, FailureLeaseLost, FailureTimeout, FailureIdle, FailureCredentialLeak, FailureSharedBudgetSpent, FailureTokenCeiling, FailureHarnessConfig}
 }
 
 // Valid reports whether f is a known failure reason enum value.
 func (f FailureReason) Valid() bool {
 	switch f {
-	case FailureInfraNode, FailureInfraLLM, FailureAgentError, FailureBudget, FailureLeaseLost, FailureTimeout, FailureIdle, FailureCredentialLeak, FailureSharedBudgetSpent:
+	case FailureInfraNode, FailureInfraLLM, FailureAgentError, FailureBudget, FailureLeaseLost, FailureTimeout, FailureIdle, FailureCredentialLeak, FailureSharedBudgetSpent, FailureTokenCeiling, FailureHarnessConfig:
 		return true
 	}
 	return false
@@ -211,10 +225,11 @@ func (f FailureReason) IsInfra() bool {
 // for a person instead of being retried by either retry budget. A retry after
 // a credential leak would give fresh credentials to the same agent on the
 // same branch (ADR-0105), and a retry after a shared LiteLLM budget is spent
-// would be refused by the gateway again (ADR-0111), so only a person may
-// decide to try again.
+// would be refused by the gateway again (ADR-0111), and a harness that
+// rejected its configuration rejects it again on every retry (ADR-0130), so
+// only a person may decide to try again.
 func (f FailureReason) ParksForHuman() bool {
-	return f == FailureCredentialLeak || f == FailureSharedBudgetSpent
+	return f == FailureCredentialLeak || f == FailureSharedBudgetSpent || f == FailureHarnessConfig
 }
 
 // InfraFailureReasons lists the IsInfra reasons for SQL that must partition

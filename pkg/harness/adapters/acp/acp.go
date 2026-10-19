@@ -221,8 +221,8 @@ func (a *Adapter) Run(ctx context.Context, spec harness.TaskSpec, env harness.Ru
 	if got := int(initResp.ProtocolVersion); got != sdk.ProtocolVersionNumber {
 		// Never soldier on across a version we cannot decode: that
 		// manufactures garbage outcomes, which is the opposite of the point.
-		res.err = fmt.Errorf("agent negotiated protocol version %d, this client speaks %d",
-			got, sdk.ProtocolVersionNumber)
+		res.err = fmt.Errorf("%w: agent negotiated protocol version %d, this client speaks %d",
+			errProtocolVersion, got, sdk.ProtocolVersionNumber)
 		return finish()
 	}
 	if info := initResp.AgentInfo; info != nil && info.Name != "" && env.AgentInfo != nil {
@@ -320,6 +320,8 @@ func (a *Adapter) Run(ctx context.Context, spec harness.TaskSpec, env harness.Ru
 	}
 	return finish()
 }
+
+var errProtocolVersion = errors.New("unsupported ACP protocol version")
 
 type stopWhy int
 
@@ -516,7 +518,14 @@ func (c *checkpointer) stop() {
 // folds it into state. Returns false for any other method.
 func decodeSessionUpdate(line []byte, s *sessionState) (UpdateKind, bool) {
 	var rpc rpcLine
-	if err := json.Unmarshal(line, &rpc); err != nil || rpc.Method != "session/update" {
+	if err := json.Unmarshal(line, &rpc); err != nil {
+		return UpdateUnknown, false
+	}
+	if rpc.Method == "" && len(rpc.ID) > 0 && len(rpc.Error) > 0 && string(rpc.Error) != "null" {
+		s.noteErrorResponse()
+		return UpdateUnknown, false
+	}
+	if rpc.Method != "session/update" {
 		return UpdateUnknown, false
 	}
 	var params sessionUpdateParams

@@ -1,11 +1,15 @@
 package acp
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
+
+	sdk "github.com/coder/acp-go-sdk"
 
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
@@ -28,6 +32,12 @@ const (
 	editDone = `{"sessionUpdate":"tool_call","toolCallId":"t1","title":"edit main.go","kind":"edit","status":"completed","locations":[{"path":"main.go"}]}`
 	readDone = `{"sessionUpdate":"tool_call","toolCallId":"t2","title":"read","kind":"read","status":"completed"}`
 )
+
+func answeredWithError() *sessionState {
+	s := newSessionState()
+	s.noteErrorResponse()
+	return s
+}
 
 func TestBuild_StopReasonMatrix(t *testing.T) {
 	tests := []struct {
@@ -116,11 +126,62 @@ func TestBuild_StopReasonMatrix(t *testing.T) {
 			summaryHas:  "the LiteLLM team budget for bronze is spent",
 		},
 		{
-			name:        "spent key budget mid-prompt is still an agent_error",
+			name:        "the Run's own key over its budget mid-prompt is budget",
 			state:       feed(t, readDone),
 			res:         result{phase: phasePrompt, err: errors.New(`session/prompt: API Error: 422 {"error":{"message":"Budget has been exceeded! Key=ploeg-0123456789ab Current cost: 1.0, Max budget: 0.5","type":"budget_exceeded"}}`)},
 			wantOutcome: work.OutcomeFailed,
+			wantFailure: work.FailureBudget,
+			summaryHas:  "own key used its whole budget",
+		},
+		{
+			name:        "an own-key budget refusal before the model worked is not the Run's spend",
+			state:       newSessionState(),
+			res:         result{phase: phasePrompt, err: errors.New(`session/prompt: API Error: 422 {"error":{"message":"Budget has been exceeded! Key=ploeg-0123456789ab Current cost: 1.0, Max budget: 0.5","type":"budget_exceeded"}}`)},
+			wantOutcome: work.OutcomeFailed,
 			wantFailure: work.FailureAgentError,
+		},
+		{
+			name:        "the harness rejecting its MCP configuration on session/new is harness_config",
+			state:       answeredWithError(),
+			res:         result{phase: phaseNewSess, err: fmt.Errorf("session/new: %w", &sdk.RequestError{Code: -32603, Message: "Internal error", Data: map[string]any{"details": "6 validation errors for MCPConfig"}})},
+			wantOutcome: work.OutcomeFailed,
+			wantFailure: work.FailureHarnessConfig,
+			summaryHas:  "rejected its configuration",
+		},
+		{
+			name:        "the harness answering initialize with an error is harness_config",
+			state:       answeredWithError(),
+			res:         result{phase: phaseInit, err: fmt.Errorf("initialize: %w", &sdk.RequestError{Code: -32603, Message: "Internal error"})},
+			wantOutcome: work.OutcomeFailed,
+			wantFailure: work.FailureHarnessConfig,
+		},
+		{
+			name:        "a protocol version the client cannot speak is harness_config",
+			state:       newSessionState(),
+			res:         result{phase: phaseInit, err: fmt.Errorf("%w: agent negotiated protocol version 2", errProtocolVersion)},
+			wantOutcome: work.OutcomeFailed,
+			wantFailure: work.FailureHarnessConfig,
+		},
+		{
+			name:        "a gateway refusal the harness relays on session/new stays the gateway's",
+			state:       answeredWithError(),
+			res:         result{phase: phaseNewSess, err: fmt.Errorf("session/new: %w", &sdk.RequestError{Code: -32603, Message: "Internal error", Data: map[string]any{"details": "litellm.RateLimitError: rate limit"}})},
+			wantOutcome: work.OutcomeFailed,
+			wantFailure: work.FailureInfraLLM,
+		},
+		{
+			name:        "a request error the SDK made up for a closed transport stays infra_node",
+			state:       newSessionState(),
+			res:         result{phase: phaseNewSess, err: fmt.Errorf("session/new: %w", &sdk.RequestError{Code: -32603, Message: "Internal error", Data: map[string]any{"error": "peer disconnected before response"}})},
+			wantOutcome: work.OutcomeFailed,
+			wantFailure: work.FailureInfraNode,
+		},
+		{
+			name:        "a session/new timeout stays infra_node",
+			state:       newSessionState(),
+			res:         result{phase: phaseNewSess, err: fmt.Errorf("session/new: %w", context.DeadlineExceeded)},
+			wantOutcome: work.OutcomeFailed,
+			wantFailure: work.FailureInfraNode,
 		},
 		{
 			name:        "a team budget quoted in the agent's own message is not the gateway's answer",
@@ -206,11 +267,11 @@ func TestBuild_StopReasonMatrix(t *testing.T) {
 			reasonHas:   "wire the store method",
 		},
 		{
-			name:        "token ceiling is budget and retryable",
+			name:        "token ceiling is token_ceiling and retryable",
 			state:       feed(t, editDone),
 			res:         result{phase: phaseCompleted, stop: StopMaxTokens},
 			wantOutcome: work.OutcomeFailed,
-			wantFailure: work.FailureBudget,
+			wantFailure: work.FailureTokenCeiling,
 		},
 		{
 			name: "context exhaustion explains the token ceiling",
@@ -218,7 +279,7 @@ func TestBuild_StopReasonMatrix(t *testing.T) {
 				`{"sessionUpdate":"usage_update","used":199000,"size":200000}`),
 			res:         result{phase: phaseCompleted, stop: StopMaxTokens},
 			wantOutcome: work.OutcomeFailed,
-			wantFailure: work.FailureBudget,
+			wantFailure: work.FailureTokenCeiling,
 			reasonHas:   "context window",
 		},
 		{

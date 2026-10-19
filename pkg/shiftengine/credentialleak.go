@@ -29,8 +29,11 @@ func parkingRun(reports []store.RunReport, round int) (store.RunReport, bool) {
 }
 
 func (e *Engine) parkForHuman(ctx context.Context, si store.ShiftInfo, park store.RunReport, reports []store.RunReport) error {
-	if work.FailureReason(park.FailureReason) == work.FailureSharedBudgetSpent {
+	switch work.FailureReason(park.FailureReason) {
+	case work.FailureSharedBudgetSpent:
 		return e.parkForSpentBudget(ctx, si, park, reports)
+	case work.FailureHarnessConfig:
+		return e.parkForHarnessConfig(ctx, si, park, reports)
 	}
 	return e.parkForLeak(ctx, si, park, reports)
 }

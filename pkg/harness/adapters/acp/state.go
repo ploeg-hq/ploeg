@@ -65,6 +65,8 @@ type sessionState struct {
 	unknownKinds map[string]bool
 
 	events int
+
+	errorResponses int
 }
 
 func newSessionState() *sessionState {
@@ -242,6 +244,32 @@ func (s *sessionState) incompletePlan() []string {
 		}
 	}
 	return out
+}
+
+func (s *sessionState) noteErrorResponse() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.errorResponses++
+}
+
+func (s *sessionState) answeredWithError() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.errorResponses > 0
+}
+
+func (s *sessionState) calledModel() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.tools) > 0 || s.untrackedTools > 0 || s.thoughts.Len() > 0 {
+		return true
+	}
+	for _, n := range []*int64{s.usedTokens, s.inTokens, s.outTokens} {
+		if n != nil && *n > 0 {
+			return true
+		}
+	}
+	return s.costUSD != nil && *s.costUSD > 0
 }
 
 func (s *sessionState) lastMessage() string {

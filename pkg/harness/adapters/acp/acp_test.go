@@ -60,6 +60,28 @@ func TestRun_NonACPBinaryIsRetryableInfra(t *testing.T) {
 	}
 }
 
+func TestRun_AgentRejectingItsSessionConfigurationIsHarnessConfig(t *testing.T) {
+	bin := writeScript(t, `
+emit() { printf '%s\n' "$1"; }
+while IFS= read -r line; do
+  id=$(printf '%s' "$line" | sed -n 's/.*"id":\([0-9]*\).*/\1/p')
+  case "$line" in
+    *'"method":"initialize"'*)
+      emit '{"jsonrpc":"2.0","id":'"$id"',"result":{"protocolVersion":1,"agentCapabilities":{},"authMethods":[]}}' ;;
+    *'"method":"session/new"'*)
+      emit '{"jsonrpc":"2.0","id":'"$id"',"error":{"code":-32603,"message":"Internal error","data":{"details":"6 validation errors for MCPConfig"}}}' ;;
+  esac
+done
+`)
+	rep, _ := runAdapter(t, bin, 5*time.Second)
+	if rep.Outcome != work.OutcomeFailed || rep.FailureReason != string(work.FailureHarnessConfig) {
+		t.Fatalf("report = %s/%s, want failed/harness_config", rep.Outcome, rep.FailureReason)
+	}
+	if !strings.Contains(rep.Summary, "validation errors for MCPConfig") {
+		t.Errorf("summary %q does not quote the harness's error", rep.Summary)
+	}
+}
+
 // A hung agent must be reclaimed by the watchdog rather than holding the lease
 // until the sweeper notices, and must be classified retryable — a wedged
 // process says nothing about the ticket.
