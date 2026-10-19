@@ -47,6 +47,8 @@ class Forge(BaseHTTPRequestHandler):
             return self.reply(200, {'pulls': pulls, 'merges': merges, 'comments': comments})
         with open(log_path, 'a') as log:
             log.write(json.dumps({'method': method, 'path': path, 'body': body}) + '\n')
+        if self.headers.get('User-Agent', '').startswith('Python-urllib'):
+            return self.reply(403, {'message': 'error code: 1010'})
         if self.headers.get('Authorization') != TOKEN:
             return self.reply(401, {'message': 'unauthorized'})
         parts = path.removeprefix('/api/v1/').split('/')
