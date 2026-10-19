@@ -14,8 +14,9 @@ import (
 )
 
 // ReviewWatch moves Work Items out of awaiting_review when a human merges or
-// closes their pull request. Forge webhooks drive it; Reconcile asks the forge
-// directly and covers deliveries that never arrived.
+// closes their pull request, and closes a live Shift whose pull request a
+// human merged or closed before the Shift ended. Forge webhooks drive it;
+// Reconcile asks the forge directly and covers deliveries that never arrived.
 type ReviewWatch struct {
 	Store *store.Store
 	// Forges is keyed like Engine.Forges: by forge instance id, and by dialect
@@ -42,7 +43,13 @@ type reviewTarget struct {
 	repo  string
 	pr    int
 	link  string
+	live  bool
 }
+
+const (
+	reasonPullRequestMerged = "pull_request_merged"
+	reasonPullRequestClosed = "pull_request_closed_unmerged"
+)
 
 // HandleForgeEvent settles the Work Item whose pull request a merged or closed
 // event names. forge is the provider key the webhook arrived on. Other event
@@ -60,7 +67,11 @@ func (w *ReviewWatch) HandleForgeEvent(ctx context.Context, forge string, ev pro
 	if err != nil {
 		return err
 	}
-	for _, t := range targets {
+	live, err := w.liveTargets(ctx, 0)
+	if err != nil {
+		return err
+	}
+	for _, t := range append(targets, live...) {
 		if t.forge != fp || t.pr != ev.PR || !strings.EqualFold(t.repo, ev.Repo) {
 			continue
 		}
@@ -113,6 +124,59 @@ func (w *ReviewWatch) Reconcile(ctx context.Context) {
 			w.log().Error("review reconcile: settle failed", "work_item", t.item.WorkItemID, "err", err)
 		}
 	}
+	live, err := w.liveTargets(ctx, 0)
+	if err != nil {
+		w.log().Error("review reconcile: live shift pull requests read failed", "err", err)
+		return
+	}
+	for _, t := range live {
+		if ctx.Err() != nil {
+			return
+		}
+		w.settleFinished(ctx, t)
+	}
+}
+
+// SettleLiveShift reads the pull request of the Work Item's live Shift and,
+// when a person merged or closed it, closes the Shift and settles the Work
+// Item as a merge or close in review does. It reports whether the Shift is
+// over for that reason. A forge it cannot read leaves the Shift alone.
+func (w *ReviewWatch) SettleLiveShift(ctx context.Context, workItemID int64) bool {
+	live, err := w.liveTargets(ctx, workItemID)
+	if err != nil {
+		w.log().Error("live shift pull request read failed", "work_item", workItemID, "err", err)
+		return false
+	}
+	settled := false
+	for _, t := range live {
+		settled = w.settleFinished(ctx, t) || settled
+	}
+	return settled
+}
+
+func (w *ReviewWatch) settleFinished(ctx context.Context, t reviewTarget) bool {
+	read, _, err := provider.ReadPullRequest(ctx, t.forge, t.repo, t.pr)
+	if err != nil {
+		w.log().Warn("live shift: pull request state unavailable",
+			"work_item", t.item.WorkItemID, "shift", t.item.ShiftID, "repo", t.repo, "pr", t.pr, "err", err)
+		return false
+	}
+	var kind provider.ForgeEventKind
+	switch read.Facts.State {
+	case provider.PullRequestMerged:
+		kind = provider.ForgePRMerged
+	case provider.PullRequestClosed:
+		kind = provider.ForgePRClosed
+	default:
+		return false
+	}
+	_, _ = w.recordFacts(ctx, t, read.Facts)
+	next, reason, _ := reviewTransition(kind)
+	if err := w.settle(ctx, t, next, reason); err != nil {
+		w.log().Error("live shift: settle failed", "work_item", t.item.WorkItemID, "shift", t.item.ShiftID, "err", err)
+		return false
+	}
+	return true
 }
 
 func reviewTransition(kind provider.ForgeEventKind) (work.State, string, bool) {
@@ -130,6 +194,18 @@ func (w *ReviewWatch) targets(ctx context.Context) ([]reviewTarget, error) {
 	if err != nil {
 		return nil, err
 	}
+	return w.reviewTargets(items, false), nil
+}
+
+func (w *ReviewWatch) liveTargets(ctx context.Context, workItemID int64) ([]reviewTarget, error) {
+	items, err := w.Store.LiveShiftPullRequests(ctx, workItemID)
+	if err != nil {
+		return nil, err
+	}
+	return w.reviewTargets(items, true), nil
+}
+
+func (w *ReviewWatch) reviewTargets(items []store.ReviewItem, live bool) []reviewTarget {
 	var out []reviewTarget
 	for _, it := range items {
 		if it.Target == nil {
@@ -153,9 +229,9 @@ func (w *ReviewWatch) targets(ctx context.Context) ([]reviewTarget, error) {
 		if fp == nil {
 			continue
 		}
-		out = append(out, reviewTarget{item: it, forge: fp, repo: repo, pr: pr, link: link})
+		out = append(out, reviewTarget{item: it, forge: fp, repo: repo, pr: pr, link: link, live: live})
 	}
-	return out, nil
+	return out
 }
 
 func (w *ReviewWatch) recordFacts(ctx context.Context, t reviewTarget, facts provider.PullRequestFacts) (*provider.CommitStatus, error) {
@@ -249,12 +325,22 @@ func (w *ReviewWatch) recordMergeCheck(ctx context.Context, t reviewTarget, read
 }
 
 func (w *ReviewWatch) settle(ctx context.Context, t reviewTarget, next work.State, reason string) error {
-	moved, err := w.Store.SettleReview(ctx, t.item.WorkItemID, next, reason)
+	var moved bool
+	var err error
+	if t.live {
+		closeReason := reasonPullRequestClosed
+		if next == work.StateDone {
+			closeReason = reasonPullRequestMerged
+		}
+		moved, err = w.Store.SettleShiftPullRequest(ctx, t.item.ShiftID, t.item.WorkItemID, next, closeReason, reason)
+	} else {
+		moved, err = w.Store.SettleReview(ctx, t.item.WorkItemID, next, reason)
+	}
 	if err != nil || !moved {
 		return err
 	}
 	w.log().Info("review settled", "work_item", t.item.WorkItemID, "state", string(next),
-		"repo", t.repo, "pr", t.pr, "reason", reason)
+		"repo", t.repo, "pr", t.pr, "reason", reason, "shift_closed", t.live)
 	if w.OutcomeNotes {
 		if err := w.Store.ReviewOutcomeNote(ctx, t.item.WorkItemID, t.pr, next == work.StateDone, time.Now()); err != nil {
 			w.log().Error("review outcome note not recorded; later Runs miss it", "work_item", t.item.WorkItemID, "pr", t.pr, "err", err)

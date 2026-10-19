@@ -438,6 +438,9 @@ func run(log *slog.Logger) error {
 			Log:             log,
 		}
 		srv.Reviews = reviews
+		if engine != nil {
+			engine.PullRequests = reviews
+		}
 		log.Info("pull request merge detection enabled", "reconcile_every", reviewEvery,
 			"tracker_done_on_merge", reviews.MarkTrackerDone)
 	}
