@@ -22,6 +22,7 @@ SUPPORTED_FORGES = {'forgejo'}
 DEFAULT_MESSAGE = 'chore(deps): update ' + PRODUCER + ' to {version}'
 LOOPBACK_HOSTS = {'127.0.0.1', 'localhost', '::1'}
 MERGE_ATTEMPTS = 6
+USER_AGENT = f'{PRODUCER}-release-consumers (+https://github.com/ploeg-hq/ploeg)'
 
 
 class ConsumerError(Exception):
@@ -94,7 +95,7 @@ class Forgejo:
 
     def call(self, method, path, body=None):
         data = None if body is None else json.dumps(body).encode()
-        request = urllib.request.Request(f'{self.api}{path}', data=data, method=method, headers={'Accept': 'application/json', 'Authorization': f'token {self.token}'})
+        request = urllib.request.Request(f'{self.api}{path}', data=data, method=method, headers={'Accept': 'application/json', 'Authorization': f'token {self.token}', 'User-Agent': USER_AGENT})
         if data is not None:
             request.add_header('Content-Type', 'application/json')
         try:
