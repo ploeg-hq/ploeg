@@ -291,8 +291,8 @@ bound audit event. Teams appear when they have a Work Item or are registered.
 `/runs` lists Runs newest first by id. It filters on `team`, `state`,
 `outcome` and `role`, takes `limit` (1 to 200, default 50) and pages with
 `before=<runId>`, returning `nextBefore`. Without `role` it leaves Asks out, so
-an Unfold page that asks about a running Work Item every few minutes does not
-fill the list; `role=ask` lists only the Asks. `externalRef` is the tracker
+an operator consumer that asks about a running Work Item every few minutes
+does not fill the list; `role=ask` lists only the Asks. `externalRef` is the tracker
 reference agents put in commit trailers, empty for manual Operator Executions.
 `settledUsd` is the reconciled gateway spend, or the reported cost of a
 finished Run without a gateway account, and null otherwise. It is also null
