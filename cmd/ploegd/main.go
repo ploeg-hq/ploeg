@@ -456,12 +456,15 @@ func run(log *slog.Logger) error {
 				"reconcile_every", reviewEvery)
 		}
 	}
+	srv.Connections = connections(cfg, forges, forgeID)
+	go refreshConnections(ctx, srv.Connections)
 	webhookCheck, err := newVikunjaWebhookCheck(vik, cfg.Trackers.Vikunja.Projects, log)
 	if err != nil {
 		return err
 	}
 	if webhookCheck != nil {
 		srv.TrackerWebhooks = webhookCheck.coverage
+		webhookCheck.connections = srv.Connections
 		go webhookCheck.loop(ctx)
 	}
 

@@ -82,6 +82,9 @@ type Server struct {
 	// TrackerWebhooks is the latest Vikunja webhook coverage check, reported
 	// by /readyz. Nil = no check configured.
 	TrackerWebhooks *WebhookCoverage
+	// Connections answers GET /api/v1/operator/connections. Nil answers an
+	// empty view.
+	Connections *Connections
 	// CreatedWork holds each Team's limits on the Work Items its Runs create
 	// (ADR-0031). A Team absent here gets followup.Default.
 	CreatedWork map[string]followup.Policy

@@ -76,6 +76,12 @@ The workflow publishes the bundle only once `proxy.golang.org` lists the tag and
   `code`, the `reason` sentence and the board's `allowedLabels`. A row
   recorded before codes existed answers `unclassified`. An older Ploeg
   answers 404.
+- `GET /api/v1/operator/connections` is a new response,
+  `connectionsResponse` ([ADR-0129](../adrs/0129-ploeg-reports-how-each-board-and-repository-it-routes-to-is-wired.md)):
+  every configured board with its rule, its tracker webhook state and
+  whether each in-scope Team's tracker users can see it, and every
+  repository a board or label can reach with its readiness and when its
+  forge last sent an event. An older Ploeg answers 404.
 - Since VIK-1698 Ploeg keeps the paths a pull request changes at a head
   (`path`, `status` `added`, `modified`, `deleted`, `renamed` or `copied`,
   and `previousPath` for a rename or copy), at most 300 in the forge's

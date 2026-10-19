@@ -71,3 +71,23 @@ func (p *Provider) RegisterAssignmentWebhook(ctx context.Context, projectID, tar
 	}
 	return nil
 }
+
+// ProjectUsernames lists the users a project is shared with directly, through
+// GET /projects/{id}/users. A user who reaches the project only through a
+// Vikunja team or as its owner is not listed.
+func (p *Provider) ProjectUsernames(ctx context.Context, projectID string) ([]string, error) {
+	if !p.configured() {
+		return nil, errors.New("vikunja: no API credentials configured; cannot list project users")
+	}
+	var users []struct {
+		Username string `json:"username"`
+	}
+	if err := p.do(ctx, http.MethodGet, "/projects/"+url.PathEscape(projectID)+"/users?per_page=250", nil, &users); err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(users))
+	for _, u := range users {
+		out = append(out, u.Username)
+	}
+	return out, nil
+}
