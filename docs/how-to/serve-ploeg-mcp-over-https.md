@@ -42,7 +42,7 @@ Follow [Ask Ploeg from an AI client, step 1](ask-ploeg-from-an-ai-client.md#1-gi
 
 ## 3. Run `ploeg-mcp http`
 
-The Ploeg image ships the binary at `/usr/local/bin/ploeg-mcp`. Run it as its own Deployment next to ploegd with the argument `http` and these settings:
+The Ploeg image ships the binary at `/usr/local/bin/ploeg-mcp`. The Ploeg chart runs it as its own Deployment next to ploegd with `mcp.enabled: true`, sets `PLOEG_URL` and `PLOEG_MCP_LISTEN`, and takes the other settings from `mcp.env`, `mcp.extraEnv` and `mcp.envFrom` ([chart README](../../ops/helm/ploeg/README.md#ploeg-mcp-and-claude-runner)). Outside the chart, run it with the argument `http` and these settings:
 
 | Variable | Required | Meaning |
 | --- | --- | --- |
@@ -58,7 +58,27 @@ The Ploeg image ships the binary at `/usr/local/bin/ploeg-mcp`. Run it as its ow
 | `PLOEG_MCP_MAX_TOKEN_LIFETIME` | no | Longest accepted `exp` minus `iat`; default `10m` |
 | `PLOEG_MCP_LISTEN` | no | Listen address; default `:8090` |
 
-For example:
+In the chart's values:
+
+```yaml
+mcp:
+  enabled: true
+  env:
+    PLOEG_MCP_RESOURCE: https://ploeg-mcp.example.com/mcp
+    PLOEG_MCP_ISSUER: https://id.example.com/application/o/ploeg-mcp/
+    PLOEG_MCP_CLIENT_IDS: ploeg-mcp
+    PLOEG_MCP_REQUEST_SCOPES: openid ploeg:read offline_access
+    PLOEG_MCP_GROUPS: '[{"group":"ploeg-readers","tokenEnv":"PLOEG_MCP_TOKEN_READERS"}]'
+  extraEnv:
+    - name: PLOEG_MCP_TOKEN_READERS
+      valueFrom: {secretKeyRef: {name: ploeg-mcp-reader, key: token}}
+  httpRoute:
+    enabled: true
+    hostnames: [ploeg-mcp.example.com]
+    parentRefs: [{name: internal-gateway, namespace: gateway, sectionName: https}]
+```
+
+The same as a container spec of your own:
 
 ```yaml
 args: [http]

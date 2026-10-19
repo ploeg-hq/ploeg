@@ -1,0 +1,34 @@
+# CI-only values: the self-hosted Claude runner with a login volume, and a
+# claude-environment team that sets no harness image, so it renders the
+# release's claude-runner image (ADR-0084).
+claudeRunner:
+  enabled: true
+  name: claude-runner
+  runtimeClassName: kata
+  environmentSecret:
+    name: claude-runner-environment
+  extraArgs:
+    - --git-host-rewrite
+    - forgejo-http.forgejo.svc.cluster.local:3000=forgejo.example.com
+  env:
+    DISABLE_ERROR_REPORTING: "1"
+    OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector.observability.svc.cluster.local:4318
+  loginVolumes:
+    - name: pewter-claude-login
+      size: 1Gi
+      storageClassName: standard
+executor:
+  enabled: true
+  teams:
+    - name: pewter
+      model: litellm_proxy/claude-sonnet-5
+      budget: "0.10"
+      repoOwner: webgrip
+      repoName: example
+      maxReplicaCount: 1
+      harness:
+        name: claude-environment
+        dind: false
+        claudeEnvironment:
+          environmentId: ccpool_example
+          loginVolume: pewter-claude-login

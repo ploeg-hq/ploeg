@@ -1,0 +1,7 @@
+# CI-only values: a cluster that moves Ploeg into another Helm release keeps
+# the old release's object names and instance label, so the new release
+# adopts its objects instead of creating new ones beside them.
+fullnameOverride: ploeg-core
+instanceOverride: ploeg-core
+mcp:
+  enabled: true

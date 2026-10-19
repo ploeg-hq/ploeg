@@ -22,7 +22,9 @@ How a Run travels:
 | `--git-host-rewrite <ssh host>=<https host>` | When the forge's SSH and HTTPS hosts differ; the runner clones over HTTPS. |
 | Never `--use-anthropic-git-proxy` | It serves github.com only. |
 
-Each release publishes `ghcr.io/ploeg-hq/claude-runner:<version>` from [Dockerfile](Dockerfile): Claude Code pinned by version and checksum, `git`, `curl`, `jq`, `checkout` and `post-session` in `/opt/ploeg/claude-runner/hooks` (root-owned, so a session cannot change them) and `claude-home/` as the `runner` user's `~/.claude`. Run the runner with `--hooks-dir /opt/ploeg/claude-runner/hooks`. The same image serves as the dispatching worker's `harness.image`. ploegd needs `PLOEG_CLAUDE_ENVIRONMENTS=true`, per-run push credentials (`PLOEG_FORGEJO_BOT_PASSWORD`) and `PLOEG_FORGEJO_URL`; see [the configuration reference](../../docs/reference/configuration.md).
+The Ploeg chart runs the runner with these settings when `claudeRunner.enabled` is true ([chart README](../helm/ploeg/README.md#ploeg-mcp-and-claude-runner)).
+
+Each release publishes `ghcr.io/ploeg-hq/claude-runner:<version>` from [Dockerfile](Dockerfile): Claude Code pinned by version and checksum, `git`, `curl`, `jq`, `checkout` and `post-session` in `/opt/ploeg/claude-runner/hooks` (root-owned, so a session cannot change them) and `claude-home/` as the `runner` user's `~/.claude`. Run the runner with `--hooks-dir /opt/ploeg/claude-runner/hooks`. The same image serves as the dispatching worker's `harness.image`, and the chart uses it, by the release's digest, for a `claude-environment` team or Role that names no image. ploegd needs `PLOEG_CLAUDE_ENVIRONMENTS=true`, per-run push credentials (`PLOEG_FORGEJO_BOT_PASSWORD`) and `PLOEG_FORGEJO_URL`; see [the configuration reference](../../docs/reference/configuration.md).
 
 The worker needs `claude` and `git` in its agent image, and a Team member's login. `claude setup-token` does not grant session control, and Anthropic caps the login that does at 30 days, so a person renews it. Two ways to give it to the worker:
 
