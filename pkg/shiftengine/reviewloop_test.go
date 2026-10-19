@@ -155,7 +155,7 @@ func TestLoop_ApprovedPullRequestAwaitsReviewAndFailuresNeedAHuman(t *testing.T)
 	}{
 		{"builder, reviewer, approve", work.OutcomePROpened, true, "awaiting_review"},
 		{"builder stuck", work.OutcomeStuck, false, "needs_human"},
-		{"plan ends without a pull request", work.OutcomeNoChangeNeeded, true, "needs_human"},
+		{"writer changes nothing, so no review runs", work.OutcomeNoChangeNeeded, false, "needs_human"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e := loopEngine(t, 10, 2)

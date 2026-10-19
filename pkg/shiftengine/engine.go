@@ -337,6 +337,9 @@ func (e *Engine) evaluate(ctx context.Context, si store.ShiftInfo) error {
 		if err != nil || handled {
 			return err
 		}
+		if writer, found := writerChangedNothing(reports, si.Round); found {
+			return e.close(ctx, si, reasonWriterNoChange, writerNoChangeMessage(writer), false, reports)
+		}
 	}
 
 	// The plan's next Round, or the end of the plan. si.Round counts opened
