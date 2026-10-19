@@ -908,7 +908,10 @@ type RunReport struct {
 	// Shadow is a reading Run whose verdict and findings are recorded and
 	// never act (ADR-0096). Every rule that reads a report for what to do
 	// next skips it.
-	Shadow   bool
+	Shadow bool
+	// Canary is a Run of a canary Team (ADR-0131): a stuck outcome from it
+	// is a deliberate stop, not a request for a person.
+	Canary   bool
 	Outcome  string // empty for a cancelled Run that never ran
 	Summary  string
 	Findings string
@@ -957,7 +960,7 @@ func (s *Store) RoundReports(ctx context.Context, shiftID int64) ([]RunReport, e
 	return collectRunReports(rows)
 }
 
-const runReportColumns = `role, round, writes, shadow, COALESCE(outcome, ''), summary, findings, links, verdict, verification,
+const runReportColumns = `role, round, writes, shadow, canary, COALESCE(outcome, ''), summary, findings, links, verdict, verification,
 		       COALESCE(failure_reason, ''), COALESCE(evidence_version, 0), delivery, finding_items, finding_answers`
 
 func collectRunReports(rows pgx.Rows) ([]RunReport, error) {
@@ -966,7 +969,7 @@ func collectRunReports(rows pgx.Rows) ([]RunReport, error) {
 	for rows.Next() {
 		var r RunReport
 		var verification, delivery, items, answers []byte
-		if err := rows.Scan(&r.Role, &r.Round, &r.Writes, &r.Shadow, &r.Outcome, &r.Summary, &r.Findings, &r.Links, &r.Verdict, &verification,
+		if err := rows.Scan(&r.Role, &r.Round, &r.Writes, &r.Shadow, &r.Canary, &r.Outcome, &r.Summary, &r.Findings, &r.Links, &r.Verdict, &verification,
 			&r.FailureReason, &r.EvidenceVersion, &delivery, &items, &answers); err != nil {
 			return nil, err
 		}

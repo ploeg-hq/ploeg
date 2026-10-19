@@ -99,6 +99,7 @@ type teamLine struct {
 	RunsFailed     int64   `json:"runsFailed"`
 	RunsStuck      int64   `json:"runsStuck"`
 	Asks           int64   `json:"asks" jsonschema:"Asks answered in the window; they are not counted as Runs"`
+	CanaryStops    int64   `json:"canaryStops" jsonschema:"Runs of a canary Team that stopped on purpose in the window; not counted as finished or stuck"`
 	SettledUSD     float64 `json:"settledUsd"`
 	HeldUSD        float64 `json:"heldUsd" jsonschema:"budget held for started work whose cost has not settled"`
 	LastActivityAt string  `json:"lastActivityAt,omitempty"`
@@ -118,7 +119,7 @@ type overviewOut struct {
 
 func line(team string, w store.OperatorWorkItemCounts, r store.OperatorRunCounts, s store.OperatorSpend) teamLine {
 	return teamLine{Team: team, Queued: w.Queued, Active: w.Active, NeedsHuman: w.NeedsHuman, AwaitingReview: w.AwaitingReview,
-		Proposed: w.Proposed, RunsFinished: r.Finished, RunsFailed: r.Failed, RunsStuck: r.Stuck, Asks: r.Asks,
+		Proposed: w.Proposed, RunsFinished: r.Finished, RunsFailed: r.Failed, RunsStuck: r.Stuck, Asks: r.Asks, CanaryStops: r.CanaryStops,
 		SettledUSD: cents(s.SettledUSD), HeldUSD: cents(s.HeldUSD)}
 }
 
@@ -201,6 +202,7 @@ type runLine struct {
 	Round         int                      `json:"round"`
 	Writes        bool                     `json:"writes"`
 	Shadow        bool                     `json:"shadow,omitempty" jsonschema:"a shadow Run's verdict and findings are recorded and never act (ADR-0096)"`
+	Canary        bool                     `json:"canary,omitempty" jsonschema:"a canary Team's probe; a stuck outcome is a deliberate stop (ADR-0131)"`
 	State         string                   `json:"state"`
 	Outcome       string                   `json:"outcome,omitempty"`
 	Verdict       string                   `json:"verdict,omitempty"`
@@ -398,7 +400,7 @@ func closeFailure(sh store.OperatorShift) *work.FailureExplanation {
 }
 
 func run(r store.OperatorRun, full bool) runLine {
-	l := runLine{ID: r.ID, Role: r.Role, Round: r.Round, Writes: r.Writes, Shadow: r.Shadow, State: r.State, Verdict: r.Verdict,
+	l := runLine{ID: r.ID, Role: r.Role, Round: r.Round, Writes: r.Writes, Shadow: r.Shadow, Canary: r.Canary, State: r.State, Verdict: r.Verdict,
 		StuckReason: clip(r.StuckReason, 500), StartedAt: stamp(r.StartedAt), FinishedAt: stamp(r.FinishedAt),
 		AuthorizedUSD: cents(r.AuthorizedUSD), CostStatus: r.CostStatus, CostFinal: r.CostFinal, Links: nonNil(r.Links),
 		Untrusted: untrustedRun{Summary: clip(r.Summary, 600)}}
@@ -471,6 +473,7 @@ type runRow struct {
 	Role            string                   `json:"role"`
 	Round           int                      `json:"round"`
 	Shadow          bool                     `json:"shadow,omitempty" jsonschema:"a shadow Run's verdict is recorded and never acts (ADR-0096)"`
+	Canary          bool                     `json:"canary,omitempty" jsonschema:"a canary Team's probe; a stuck outcome is a deliberate stop (ADR-0131)"`
 	State           string                   `json:"state"`
 	Outcome         string                   `json:"outcome,omitempty"`
 	Verdict         string                   `json:"verdict,omitempty"`
@@ -500,7 +503,7 @@ func (s *server) recentRuns(ctx context.Context, _ *mcp.CallToolRequest, in runs
 	}
 	out.Runs = make([]runRow, 0, len(page.Runs))
 	for _, r := range page.Runs {
-		row := runRow{ID: r.ID, WorkItemID: r.WorkItemID, Tracker: r.ExternalRef, Team: r.Team, Role: r.Role, Round: r.Round, Shadow: r.Shadow,
+		row := runRow{ID: r.ID, WorkItemID: r.WorkItemID, Tracker: r.ExternalRef, Team: r.Team, Role: r.Role, Round: r.Round, Shadow: r.Shadow, Canary: r.Canary,
 			State: r.State, Outcome: r.Outcome, Verdict: r.Verdict, FailureReason: clip(r.FailureReason, 300),
 			StartedAt: stamp(r.StartedAt), FinishedAt: stamp(r.FinishedAt), CostFinal: r.CostFinal, Models: []string{},
 			Failure:   failure(r.FailureReason, r.Failure),

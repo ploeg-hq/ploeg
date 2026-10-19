@@ -283,7 +283,10 @@ total, current Work Item counts by state, current pending and running Runs and
 the budget held for them (`heldUsd`, the Hold), and the Runs finished and spend
 settled inside the window. Asks are not Runs of the work: they are left out of
 `pending`, `running`, `finished`, `failed` and `stuck`, and `asks` counts the
-Asks finished inside the window. Their spend stays in `settledUsd`.
+Asks finished inside the window. Their spend stays in `settledUsd`. A canary
+Team's Run that reports stuck stopped on purpose ([ADR-0131](../adrs/0131-a-canary-teams-stuck-run-is-a-deliberate-stop-not-stuck-work.md)):
+it is left out of `finished` and `stuck` and counted in `canaryStops`, and
+every Run shape carries `canary`.
 Settled spend is the sum of gateway reconciliation deltas plus the reported
 cost of Runs without a gateway account. `lastActivityAt` is the team's latest
 bound audit event. Teams appear when they have a Work Item or are registered.

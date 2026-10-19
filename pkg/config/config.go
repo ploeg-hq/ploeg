@@ -146,6 +146,10 @@ type Team struct {
 	// PremiseCheck opts this Team in to the premise check before its
 	// writer (ADR-0123). Omitted = no check.
 	PremiseCheck *PremiseCheck `yaml:"premiseCheck"`
+	// Canary marks a Team whose Runs are probes (ADR-0131). A stuck outcome
+	// from one of its Runs is a deliberate stop: it is counted apart from
+	// stuck work and its needs_human says nothing needs a person.
+	Canary bool `yaml:"canary"`
 }
 
 // PremiseCheck names the gateway model a Team's premise check calls. ploegd
@@ -626,6 +630,17 @@ func (f *File) ForgeFollowUps() map[string]work.ForgeFollowUps {
 	for name, t := range f.Teams {
 		if t.ForgeFollowUps.Enabled() {
 			out[name] = t.ForgeFollowUps
+		}
+	}
+	return out
+}
+
+// CanaryTeams is the set of Teams marked canary (ADR-0131).
+func (f *File) CanaryTeams() map[string]bool {
+	out := map[string]bool{}
+	for name, t := range f.Teams {
+		if t.Canary {
+			out[name] = true
 		}
 	}
 	return out

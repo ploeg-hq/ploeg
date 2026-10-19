@@ -239,6 +239,48 @@ func TestOperatorSummaryAndRunListKeepAsksApartFromRuns(t *testing.T) {
 	}
 }
 
+func TestOperatorSummaryCountsACanaryStopApartFromStuckWork(t *testing.T) {
+	f := seedActivity(t)
+	ctx := context.Background()
+	for i, outcome := range []string{"stuck", "stuck", "failed"} {
+		token := fmt.Sprintf("token-canary-%d", i)
+		if _, err := testStore.pool.Exec(ctx, `INSERT INTO agent_runs(work_item_id, team, run_token, role, round, writes, state, started_at, finished_at, outcome, authorized)
+			VALUES ($1, 'silver', $2, '', 1, true, 'finished', now() - interval '11 minutes', now() - interval '10 minutes', $3, 1)`,
+			f.silver, token, outcome); err != nil {
+			t.Fatal(err)
+		}
+		if err := testStore.RecordRunConfig(ctx, token, RunConfig{Canary: true}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	week, err := testStore.OperatorSummary(ctx, []string{"silver"}, nil, time.Now().Add(-7*24*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if week[0].Runs != (OperatorRunCounts{Pending: 1, Running: 1, Finished: 3, Failed: 1, Stuck: 1, CanaryStops: 2}) {
+		t.Fatalf("a canary stop counted as stuck work, or a canary failure was hidden: %+v", week[0].Runs)
+	}
+	if total := OperatorSummaryTotal(week); total.Runs.CanaryStops != 2 {
+		t.Fatalf("totals lost the canary stops: %+v", total.Runs)
+	}
+	if err := testStore.RecordRunConfig(ctx, "token-canary-0", RunConfig{}); err != nil {
+		t.Fatal(err)
+	}
+	runs, _, err := testStore.OperatorRuns(ctx, OperatorRunFilter{Teams: []string{"silver"}, State: "finished", Outcome: "stuck", Limit: 50})
+	if err != nil {
+		t.Fatal(err)
+	}
+	canaries := 0
+	for _, r := range runs {
+		if r.Canary {
+			canaries++
+		}
+	}
+	if len(runs) != 3 || canaries != 2 {
+		t.Fatalf("stuck Runs %d, canaries %d; want 3 and 2, a recorded canary flag never cleared", len(runs), canaries)
+	}
+}
+
 func TestOperatorEventsPageNewestFirst(t *testing.T) {
 	f := seedActivity(t)
 	ctx := context.Background()

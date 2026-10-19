@@ -34,6 +34,10 @@ type OperatorRunCounts struct {
 	Stuck    int64 `json:"stuck"`
 	// Asks counts the Asks that finished inside the summary window.
 	Asks int64 `json:"asks"`
+	// CanaryStops counts the Runs of a canary Team that stopped on purpose
+	// (ADR-0131) inside the summary window. They are not in Finished or
+	// Stuck.
+	CanaryStops int64 `json:"canaryStops"`
 }
 
 // OperatorSpend is spend settled inside the summary window and the Holds of
@@ -303,18 +307,20 @@ func (s *Store) OperatorSummary(ctx context.Context, teams []string, registered 
 	}); err != nil {
 		return nil, err
 	}
-	if err := scan(`SELECT `+operatorRunTeam+`, count(*) FILTER (WHERE r.role <> 'ask'),
-		count(*) FILTER (WHERE r.role <> 'ask' AND r.outcome = 'failed'), count(*) FILTER (WHERE r.role <> 'ask' AND r.outcome = 'stuck'),
-		count(*) FILTER (WHERE r.role = 'ask')
-		FROM agent_runs r LEFT JOIN work_items i ON i.id = r.work_item_id
-		WHERE r.finished_at IS NOT NULL AND r.finished_at >= $2 AND `+operatorRunScope+` GROUP BY 1`, []any{teams, since}, func(rows pgx.Rows) error {
+	if err := scan(`SELECT team, count(*) FILTER (WHERE kind = 'run'), count(*) FILTER (WHERE kind = 'run' AND outcome = 'failed'),
+		count(*) FILTER (WHERE kind = 'run' AND outcome = 'stuck'), count(*) FILTER (WHERE kind = 'ask'), count(*) FILTER (WHERE kind = 'canary_stop')
+		FROM (SELECT `+operatorRunTeam+` AS team, r.outcome,
+			CASE WHEN r.role = 'ask' THEN 'ask' WHEN r.canary AND r.outcome = 'stuck' THEN 'canary_stop' ELSE 'run' END AS kind
+			FROM agent_runs r LEFT JOIN work_items i ON i.id = r.work_item_id
+			WHERE r.finished_at IS NOT NULL AND r.finished_at >= $2 AND `+operatorRunScope+`) finished
+		GROUP BY team`, []any{teams, since}, func(rows pgx.Rows) error {
 		var team string
-		var finished, failed, stuck, asks int64
-		if err := rows.Scan(&team, &finished, &failed, &stuck, &asks); err != nil {
+		var finished, failed, stuck, asks, canaryStops int64
+		if err := rows.Scan(&team, &finished, &failed, &stuck, &asks, &canaryStops); err != nil {
 			return err
 		}
 		runs := &ensure(team).Runs
-		runs.Finished, runs.Failed, runs.Stuck, runs.Asks = finished, failed, stuck, asks
+		runs.Finished, runs.Failed, runs.Stuck, runs.Asks, runs.CanaryStops = finished, failed, stuck, asks, canaryStops
 		return nil
 	}); err != nil {
 		return nil, err
@@ -389,6 +395,7 @@ func OperatorSummaryTotal(teams []OperatorTeamSummary) OperatorSummaryTotals {
 		t.Runs.Failed += s.Runs.Failed
 		t.Runs.Stuck += s.Runs.Stuck
 		t.Runs.Asks += s.Runs.Asks
+		t.Runs.CanaryStops += s.Runs.CanaryStops
 		t.Spend.SettledUSD += s.Spend.SettledUSD
 		t.Spend.HeldUSD += s.Spend.HeldUSD
 	}

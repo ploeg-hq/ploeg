@@ -313,10 +313,8 @@ func (e *Engine) evaluate(ctx context.Context, si store.ShiftInfo) error {
 		if r.Outcome == string(work.OutcomeStuck) && !r.Shadow {
 			// A stuck Outcome parks the item under BOTH dispatch shapes: R4
 			// says so, and it is what ReportOutcome would have done anyway.
-			return e.close(ctx, si,
-				fmt.Sprintf("run stuck: %s round %d", r.Role, r.Round),
-				fmt.Sprintf("shift stopped: %s reported stuck in round %d — %s", r.Role, r.Round, r.Summary),
-				false, reports)
+			closeReason, humanReason := stuckReasons(r)
+			return e.close(ctx, si, closeReason, humanReason, false, reports)
 		}
 	}
 
@@ -462,6 +460,33 @@ func (e *Engine) close(ctx context.Context, si store.ShiftInfo, closeReason, hum
 		e.publishUsageReport(ctx, si)
 	}
 	return nil
+}
+
+// stuckReasons are the Shift close reason and the needs_human reason of a
+// stuck Run. A canary Run's stop is deliberate (ADR-0131): the item still
+// waits at needs_human, so the probe can requeue it, but the reason says that
+// nothing needs a person.
+func stuckReasons(r store.RunReport) (closeReason, humanReason string) {
+	name := runName(r)
+	if r.Canary {
+		return fmt.Sprintf("canary stopped: %s round %d", name, r.Round),
+			fmt.Sprintf("a canary Run (%s, round %d) stopped on purpose; nothing needs a person — %s", name, r.Round, r.Summary)
+	}
+	return fmt.Sprintf("run stuck: %s round %d", name, r.Round),
+		fmt.Sprintf("shift stopped: %s reported stuck in round %d — %s", name, r.Round, r.Summary)
+}
+
+// runName names a Run's Role in a reason, and a Run without one, as the
+// single writer of a Team without a plan has, by what it does.
+func runName(r store.RunReport) string {
+	switch {
+	case r.Role != "":
+		return r.Role
+	case r.Writes:
+		return "writer"
+	default:
+		return "reader"
+	}
 }
 
 // settleState is the state close moves the Work Item to.

@@ -20,6 +20,7 @@ type runConfigView struct {
 	PlanHash        *string `json:"planHash"`
 	PloegdVersion   *string `json:"ploegdVersion"`
 	ModelMismatch   *bool   `json:"modelMismatch"`
+	Canary          *bool   `json:"canary"`
 }
 
 func runConfigViews(t *testing.T, raw []byte) []runConfigView {
@@ -103,6 +104,32 @@ func TestClaimRecordsTheRunsConfigurationAndOperatorReadsReturnIt(t *testing.T) 
 				v.ModelMismatch == nil || !*v.ModelMismatch {
 				t.Fatalf("%s: run configuration = %+v (model %s, harness %s, profile %s, plan %s, version %s)", endpoint, v,
 					strOf(v.ConfiguredModel), strOf(v.Harness), strOf(v.HarnessProfile), strOf(v.PlanHash), strOf(v.PloegdVersion))
+			}
+		}
+	}
+}
+
+// ADR-0131: a claimed Run of a canary Team is recorded as a canary, and
+// every operator read with a Run shape says so; another Team's Run is not.
+func TestAClaimedRunOfACanaryTeamIsRecordedAsACanary(t *testing.T) {
+	for _, canary := range []bool{true, false} {
+		s, bootstrap := secureWorkerFixture(t, &managedBrokerFixture{})
+		s.CanaryTeams = map[string]bool{"bronze": canary, "silver": true}
+		consumers, operator := operatorTestConsumers(t, []string{"bronze"}, false)
+		s.OperatorConfig = OperatorConfig{Consumers: consumers}
+		w := workerRequest(s, "POST", "/api/v1/claim", bootstrap, "pod", `{"team":"bronze","role":"reviewer","harness":"exec"}`)
+		var claim struct {
+			RunToken string `json:"runToken"`
+		}
+		if w.Code != 200 || json.NewDecoder(w.Body).Decode(&claim) != nil {
+			t.Fatalf("claim=%d %s", w.Code, w.Body.String())
+		}
+		_, endpoints := runConfigEndpoints(t, runIDOf(t, claim.RunToken))
+		for _, endpoint := range endpoints {
+			for _, v := range runConfigViews(t, operatorSchemaGET(t, s, operator, endpoint)) {
+				if v.Canary == nil || *v.Canary != canary {
+					t.Fatalf("%s with bronze canary=%v: canary = %v", endpoint, canary, v.Canary)
+				}
 			}
 		}
 	}

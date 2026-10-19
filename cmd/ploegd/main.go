@@ -392,6 +392,7 @@ func run(log *slog.Logger) error {
 		Version:        version,
 		RoleCaps:       plans,
 		TeamCaps:       runCaps,
+		CanaryTeams:    cfg.CanaryTeams(),
 		Forges:         forges,
 		ForgeCreds:     forgeCreds,
 		ClaudeSessions: claudeSessions(log),

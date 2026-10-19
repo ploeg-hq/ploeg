@@ -25,6 +25,9 @@ type RunConfig struct {
 	HarnessVersion string
 	AgentName      string
 	AgentVersion   string
+	// Canary marks a Run of a canary Team (ADR-0131). Once recorded it
+	// stays.
+	Canary bool
 }
 
 var (
@@ -59,11 +62,12 @@ func (s *Store) RecordRunConfigVersion(ctx context.Context, runToken string, c R
 		harness_version = COALESCE(harness_version, NULLIF($7, '')),
 		harness_recorded_at = COALESCE(harness_recorded_at, CASE WHEN harness_version IS NULL AND NULLIF($7, '') IS NOT NULL THEN now() END),
 		harness_agent = COALESCE(harness_agent, CASE WHEN NULLIF($8::text, '') IS NOT NULL
-			THEN jsonb_build_object('name', $8::text, 'version', NULLIF($9::text, '')) END)
+			THEN jsonb_build_object('name', $8::text, 'version', NULLIF($9::text, '')) END),
+		canary = canary OR $10
 		WHERE run_token = $1 RETURNING harness_version`, runToken,
 		boundedText(c.ConfiguredModel, 256), matching(runConfigName, c.Harness), matching(runConfigName, c.HarnessProfile),
 		matching(runConfigHash, c.PlanHash), boundedText(c.PloegdVersion, 128),
-		printableText(c.HarnessVersion, 128), agentName, agentVersion).Scan(&recorded)
+		printableText(c.HarnessVersion, 128), agentName, agentVersion, c.Canary).Scan(&recorded)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", nil
 	}
@@ -121,6 +125,9 @@ type OperatorRunConfig struct {
 	// Shadow is true for a reading Run whose verdict and findings were
 	// recorded and never acted (ADR-0096).
 	Shadow bool `json:"shadow"`
+	// Canary is true for a Run of a canary Team (ADR-0131): a probe whose
+	// stuck outcome is a deliberate stop, not stuck work.
+	Canary bool `json:"canary"`
 	// Limits are the limits that stop the Run's prompt, recorded when it
 	// started (ADR-0114); nil, and absent from the JSON, when unknown.
 	Limits *OperatorRunLimits `json:"limits,omitempty"`
@@ -132,7 +139,7 @@ const operatorRunConfigJSON = `'configuredModel', r.configured_model, 'harness',
 	'modelMismatch', CASE WHEN r.configured_model IS NOT NULL AND jsonb_typeof(r.usage->'modelGroups') = 'array'
 		AND jsonb_array_length(r.usage->'modelGroups') > 0
 		THEN EXISTS (SELECT 1 FROM jsonb_array_elements(r.usage->'modelGroups') g WHERE g.value <> to_jsonb(r.configured_model)) END,
-	'shadow', r.shadow,
+	'shadow', r.shadow, 'canary', r.canary,
 	` + operatorRunLimitsJSON
 
 // OperatorHarnessAgent is the agent's own name and version as a Run recorded

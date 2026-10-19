@@ -79,6 +79,9 @@ type Server struct {
 	// TeamCaps bounds how many Runs a team may have running at once. A claim
 	// over the cap answers 204 exactly like an empty queue. Nil = unlimited.
 	TeamCaps TeamCaps
+	// CanaryTeams are the Teams whose Runs are probes (ADR-0131); a claimed
+	// Run of one is recorded as a canary.
+	CanaryTeams map[string]bool
 	// TrackerWebhooks is the latest Vikunja webhook coverage check, reported
 	// by /readyz. Nil = no check configured.
 	TrackerWebhooks *WebhookCoverage

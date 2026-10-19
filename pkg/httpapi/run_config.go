@@ -28,7 +28,8 @@ type runHarness struct {
 // plan hash comes from the team's plan, and the harness from the worker's
 // claim. A failure leaves the fields unknown; it never stops the Run.
 func (s *Server) recordRunConfig(ctx context.Context, runToken, team, role string, withPlan bool, h runHarness) {
-	c := store.RunConfig{Harness: h.Name, HarnessProfile: h.Profile, HarnessVersion: h.Version, PloegdVersion: s.Version, ConfiguredModel: h.Model}
+	c := store.RunConfig{Harness: h.Name, HarnessProfile: h.Profile, HarnessVersion: h.Version, PloegdVersion: s.Version, ConfiguredModel: h.Model,
+		Canary: s.CanaryTeams[team]}
 	if s.LLMControl != nil && c.ConfiguredModel == "" {
 		if p, ok := s.LLMControl.Policy(team, role); ok && len(p.Models) == 1 {
 			c.ConfiguredModel = p.Models[0]
