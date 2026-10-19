@@ -179,6 +179,34 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 
 | Key | Type | Default | Description | Source |
 | --- | --- | --- | --- | --- |
+| `claudeRunner` | object |  | claude-runner: the self-hosted Claude environment runner that executes claude-environment Runs as Claude Code sessions (ADR-0084), from the release's claude-runner image. Off by default. ops/claude-runner/README.md explains the runner settings. The pod reaches Anthropic, the forge's HTTPS host and ploegd; write that egress policy for your CNI, because it names hosts a NetworkPolicy cannot. | values.yaml, values.schema.json |
+| `claudeRunner.annotations` | object | `{}` |  | values.yaml, values.schema.json |
+| `claudeRunner.args` | array | `["--capacity", "1", "--release-idle-session-min", "1", "--kill-session-after-min", "90", "--drain-grace-sec", "600", "--remove-session-state"]` | Runner flags after self-hosted-runner --base-dir and --hooks-dir. One session per pod, so nothing a session leaves behind is seen by the next. | values.yaml, values.schema.json |
+| `claudeRunner.enabled` | boolean | `false` |  | values.yaml, values.schema.json |
+| `claudeRunner.env` | object | `{}` | name: value, e.g. OTEL_EXPORTER_OTLP_ENDPOINT for the sessions' telemetry | values.yaml, values.schema.json |
+| `claudeRunner.environmentSecret` | object |  | REQUIRED when enabled: the Secret with SELF_HOSTED_RUNNER_ENVIRONMENT_SECRET, the environment key from the claude.ai admin page. Loaded with envFrom. | values.yaml, values.schema.json |
+| `claudeRunner.environmentSecret.name` | string | `""` |  | values.yaml, values.schema.json |
+| `claudeRunner.extraArgs` | array | `[]` | Appended to args, e.g. [--git-host-rewrite, "forgejo-http.forgejo.svc.cluster.local:3000=forgejo.example.com"] | values.yaml, values.schema.json |
+| `claudeRunner.extraEnv` | array | `[]` |  | values.yaml, values.schema.json |
+| `claudeRunner.image` | object |  | Also the default harness image of a claude-environment team or Role that sets none. Digest and tag follow the same rules as image. | values.yaml, values.schema.json |
+| `claudeRunner.image.digest` | string | `""` | Digest of the appVersion image; the release writes it into the published chart | values.yaml, values.schema.json |
+| `claudeRunner.image.repository` | string | `ghcr.io/ploeg-hq/claude-runner` |  | values.yaml, values.schema.json |
+| `claudeRunner.image.tag` | string | `""` |  | values.yaml, values.schema.json |
+| `claudeRunner.loginVolumes` | array | `[]` | PersistentVolumeClaims for harness.claudeEnvironment.loginVolume, one per Team login. Rendered even with the runner off, and kept on uninstall (helm.sh/resource-policy: keep): a person signs in to each one. e.g. [{name: team-claude-login, size: 1Gi, storageClassName: standard}] | values.yaml, values.schema.json |
+| `claudeRunner.loginVolumes[].name` | string |  |  | values.schema.json |
+| `claudeRunner.loginVolumes[].size` | string |  |  | values.schema.json |
+| `claudeRunner.loginVolumes[].storageClassName` | string |  |  | values.schema.json |
+| `claudeRunner.name` | string | `""` | empty = <fullname>-claude-runner; Deployment and the pods' app.kubernetes.io/name | values.yaml, values.schema.json |
+| `claudeRunner.nodeSelector` | object | `{}` | empty = nodeSelector | values.yaml, values.schema.json |
+| `claudeRunner.ploegUrl` | string | `""` | empty = this release's ploegd Service (executor.apiUrl when set) | values.yaml, values.schema.json |
+| `claudeRunner.podAnnotations` | object | `{}` |  | values.yaml, values.schema.json |
+| `claudeRunner.replicas` | integer | `1` |  | values.yaml, values.schema.json |
+| `claudeRunner.resources.limits.memory` |  | `4Gi` |  | values.yaml |
+| `claudeRunner.resources.requests.cpu` |  | `50m` |  | values.yaml |
+| `claudeRunner.resources.requests.memory` |  | `1Gi` |  | values.yaml |
+| `claudeRunner.runtimeClassName` | string | `""` | e.g. kata: session code is model-directed | values.yaml, values.schema.json |
+| `claudeRunner.terminationGracePeriodSeconds` | integer | `90` |  | values.yaml, values.schema.json |
+| `claudeRunner.workSizeLimit` | string | `10Gi` |  | values.yaml, values.schema.json |
 | `config` | object | `{}` | ploegd's routing and roster as a file (mounted at /etc/ploeg/ploeg.yaml). Projects are NAMED and resolved to tracker ids at boot, so no magic numbers live in cluster config. `targets:` registers repositories a `repo/<key>` label may select, and a project's `default:`/`allow:` name them (ADR-0038). A project's `gates:` maps its statuses or bucket titles to the delivery gates development, test, acceptance and done (ADR-0051), and Ploeg records every tracker status move of a project with `gates:` (ADR-0080). A target's or project's `ci.waitTimeout:` is how long a Shift on that repository waits for the forge's CI on its pull request's head before a person is asked, default `60m` (ADR-0119). A target's `readPullRequests:` lists routes: the `authors` whose open pull requests a `team` reads and reports on, on the pull request, with the operator's `instructions` and `maxOpen` and `maxReviewsPerPullRequest` caps (ADR-0109). A team's `premiseCheck: {model: <gateway model>}` runs one classifier call on that model before its first writer, and ploegd refuses a model the gateway does not price at zero (ADR-0123). The Run card keys `cards`, a target's or project's `cardStyle`, `release`, `rarity` and `cardShape`, a project's `statusKinds` and a team's `cards` and `workingHours` are unknown keys that fail the boot (ADR-0080). Empty = the legacy PLOEG_TARGET_MAP/PLOEG_TEAM_MAP/PLOEG_TEAM_PLANS env vars still apply. | values.yaml, values.schema.json |
 | `database.existingSecret` |  |  | REQUIRED: the Secret holding ploegd's PostgreSQL connection URI. The render fails without a name. CNPG creates <cluster>-app with a `uri` key; ploegd consumes it whole. | values.yaml |
 | `database.existingSecret.key` |  | `uri` |  | values.yaml |
@@ -248,7 +276,7 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `executor.harness.dind` |  | `true` | privileged DinD sidecar + DOCKER_* wiring (OpenHands + gates need it) | values.yaml |
 | `executor.harness.entrypoint` |  | `""` | binary override (PLOEG_HARNESS_ENTRYPOINT); "" = adapter default | values.yaml |
 | `executor.harness.idleTimeout` |  | `15m` | Stops a harness that prints nothing and makes no model call for this long (`PLOEG_HARNESS_IDLE_TIMEOUT`). | values.yaml |
-| `executor.harness.image` |  | `""` | Agent image. REQUIRED with the executor enabled, here, in runnerImage or per team: Ploeg publishes no agent image, so the render fails without one. | values.yaml |
+| `executor.harness.image` |  | `""` | Agent image. REQUIRED with the executor enabled, here, in runnerImage or per team: Ploeg publishes no agent image, so the render fails without one. A claude-environment harness that sets none uses claudeRunner.image. | values.yaml |
 | `executor.harness.name` |  | `openhands` | openhands \| exec \| claude-code \| acp \| claude-environment (PLOEG_HARNESS) | values.yaml |
 | `executor.harness.outcomeFile` |  | `""` | exec harness only: OutcomeReport JSON path override | values.yaml |
 | `executor.harness.telemetry` |  | `{}` | OpenTelemetry collector the harness exports to (PLOEG_TELEMETRY). Set at executor, team or Role level; the most specific block wins whole. The worker adds ploeg.team, ploeg.role and ploeg.run.alias to the resource attributes. claude-code receives it (metrics, logs and traces). openhands and acp/openhands receive it (traces) only when listed in allowHarnesses: their tracing fails every prompt on an agent image whose lmnr rejects the SDK's call (agent-runner 1.3.0; 1.4.0 is fine, ADR-0113). acp/opencode and exec export nothing, and claude-environment sessions export from the self-hosted runner's own environment; the worker logs why it withholds the variables. {} exports nothing. | values.yaml |
@@ -341,9 +369,12 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `executor.workerSecurityContext.runAsNonRoot` |  | `true` |  | values.yaml |
 | `executor.workerSecurityContext.runAsUser` |  | `1000` |  | values.yaml |
 | `executor.workerSecurityContext.seccompProfile.type` |  | `RuntimeDefault` |  | values.yaml |
-| `image.repository` |  | `ghcr.io/ploeg-hq/ploegd` | The public release image. Point repository at a copy of the same digest, with imagePullSecrets, when the cluster pulls from a private registry. | values.yaml |
-| `image.tag` |  | `""` | empty = .Chart.AppVersion (kept in lockstep with the chart by the release train) | values.yaml |
+| `fullnameOverride` | string | `""` | Object name prefix; empty = the Helm release name | values.yaml, values.schema.json |
+| `image.digest` | string | `""` | Digest of the appVersion image; the release writes it into the published chart | values.yaml, values.schema.json |
+| `image.repository` | string | `ghcr.io/ploeg-hq/ploegd` | The public release image. Point repository at a copy of the same digest, with imagePullSecrets, when the cluster pulls from a private registry. | values.yaml, values.schema.json |
+| `image.tag` | string | `""` | empty = .Chart.AppVersion (kept in lockstep with the chart by the release train) | values.yaml, values.schema.json |
 | `imagePullSecrets` |  | `[]` | e.g. [{name: harbor-pull}] for a private registry | values.yaml |
+| `instanceOverride` | string | `""` | app.kubernetes.io/instance label; empty = the Helm release name | values.yaml, values.schema.json |
 | `knowledgeGraph` | object | `{}` | ADR-0087/0088 (proposed): the Tenant's graphs on an Omnigraph server. With notesGraph, ploegd writes each learning a Run keeps as a Work Item Note and serves later Runs of the same root Work Item their notes. With conceptsGraph, ploegd serves each Run the reviewed concepts of its Tenant, Client and repository. Either or both; url needs at least one. Only ploegd gets the run actor's token; worker pods never do. The ploegd pod carries the label ploeg.webgrip.dev/component=daemon, which network policies can select to let ploegd, and no Run's pod, reach the graph. Unset = no notes. | values.yaml, values.schema.json |
 | `knowledgeGraph.conceptsGraph` | string |  |  | values.schema.json |
 | `knowledgeGraph.notesGraph` | string |  |  | values.schema.json |
@@ -353,6 +384,34 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `knowledgeGraph.runTokenSecret.key` | string |  |  | values.schema.json |
 | `knowledgeGraph.runTokenSecret.name` | string |  |  | values.schema.json |
 | `knowledgeGraph.url` | string |  |  | values.schema.json |
+| `mcp` | object |  | ploeg-mcp: Ploeg's MCP tools over Streamable HTTP for people's AI clients (ADR-0081), run from the ploegd image as `ploeg-mcp http`. Off by default. Its settings are in docs/how-to/serve-ploeg-mcp-over-https.md; the chart sets PLOEG_URL and PLOEG_MCP_LISTEN, and env carries the rest. | values.yaml, values.schema.json |
+| `mcp.annotations` | object | `{}` | on the Deployment, e.g. {reloader.stakater.com/auto: "true"} | values.yaml, values.schema.json |
+| `mcp.enabled` | boolean | `false` |  | values.yaml, values.schema.json |
+| `mcp.env` | object | `{}` | PLOEG_MCP_* settings as name: value, for example | values.yaml, values.schema.json |
+| `mcp.envFrom` | array | `[]` | e.g. [{secretRef: {name: ploeg-mcp-consumers}}] | values.yaml, values.schema.json |
+| `mcp.extraEnv` | array | `[]` | Further env entries, for a token from a Secret: | values.yaml, values.schema.json |
+| `mcp.httpRoute` | object |  | A Gateway API HTTPRoute to the Service. Route the host without authentication at the gateway: ploeg-mcp answers the 401 that starts a client's sign-in. | values.yaml, values.schema.json |
+| `mcp.httpRoute.annotations` | object | `{}` |  | values.yaml, values.schema.json |
+| `mcp.httpRoute.enabled` | boolean | `false` |  | values.yaml, values.schema.json |
+| `mcp.httpRoute.hostnames` | array | `[]` | e.g. [ploeg-mcp.example.com] | values.yaml, values.schema.json |
+| `mcp.httpRoute.name` | string | `""` | empty = the mcp name | values.yaml, values.schema.json |
+| `mcp.httpRoute.parentRefs` | array | `[]` | e.g. [{name: internal-gateway, namespace: gateway, sectionName: https}] | values.yaml, values.schema.json |
+| `mcp.name` | string | `""` | empty = <fullname>-mcp; Deployment, Service and the pods' app.kubernetes.io/name | values.yaml, values.schema.json |
+| `mcp.networkPolicy` | object |  | NetworkPolicies selecting the ploeg-mcp pods. The peers are your cluster's: ingress from the gateway, egress to the identity provider. | values.yaml, values.schema.json |
+| `mcp.networkPolicy.egress.enabled` | boolean | `false` |  | values.yaml, values.schema.json |
+| `mcp.networkPolicy.egress.name` | string | `""` | empty = <mcp name>-egress | values.yaml, values.schema.json |
+| `mcp.networkPolicy.egress.to` | array | `[]` | NetworkPolicyPeer list | values.yaml, values.schema.json |
+| `mcp.networkPolicy.ingress.enabled` | boolean | `false` |  | values.yaml, values.schema.json |
+| `mcp.networkPolicy.ingress.from` | array | `[]` | NetworkPolicyPeer list, e.g. [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: gateway}}}] | values.yaml, values.schema.json |
+| `mcp.networkPolicy.ingress.name` | string | `""` | empty = <mcp name>-ingress | values.yaml, values.schema.json |
+| `mcp.nodeSelector` | object | `{}` | empty = nodeSelector | values.yaml, values.schema.json |
+| `mcp.ploegUrl` | string | `""` | empty = this release's ploegd Service (executor.apiUrl when set) | values.yaml, values.schema.json |
+| `mcp.podAnnotations` | object | `{}` |  | values.yaml, values.schema.json |
+| `mcp.port` | integer | `8090` |  | values.yaml, values.schema.json |
+| `mcp.replicas` | integer | `1` |  | values.yaml, values.schema.json |
+| `mcp.resources.limits.memory` |  | `128Mi` |  | values.yaml |
+| `mcp.resources.requests.cpu` |  | `10m` |  | values.yaml |
+| `mcp.resources.requests.memory` |  | `32Mi` |  | values.yaml |
 | `monitoring` | object |  | Prometheus Operator objects for ploegd's GET /metrics. Both are off by default: they need the monitoring.coreos.com CRDs. The alerts and what to do about each are in docs/ops/alerts.md. | values.yaml, values.schema.json |
 | `monitoring.prometheusRule.alerts.awaitingReviewWithUnsuccessfulCI.enabled` | boolean | `true` |  | values.yaml, values.schema.json |
 | `monitoring.prometheusRule.alerts.awaitingReviewWithUnsuccessfulCI.for` | string | `90m` |  | values.yaml, values.schema.json |

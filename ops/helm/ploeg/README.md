@@ -1,6 +1,6 @@
 # Ploeg Helm chart
 
-This chart installs `ploegd`, Ploeg's controller: a Deployment and a Service on port 8080. With `executor.enabled: true` it also installs the worker workloads that run agent Runs (a KEDA ScaledJob, a CronJob or the experimental agent-sandbox launcher).
+This chart installs `ploegd`, Ploeg's controller: a Deployment and a Service on port 8080. With `executor.enabled: true` it also installs the worker workloads that run agent Runs (a KEDA ScaledJob, a CronJob or the experimental agent-sandbox launcher). `mcp.enabled` adds `ploeg-mcp`, the MCP server for people's AI clients, and `claudeRunner.enabled` adds the self-hosted Claude environment runner, so one release of this chart deploys everything a Ploeg release runs.
 
 The chart's defaults point at nothing outside your cluster except the public images. It names no database, model gateway, forge or tracker, and it sets no node selector. You supply each of those. Missing required values make the render fail with a message that names the value.
 
@@ -10,9 +10,12 @@ The [configuration reference](../../../docs/reference/configuration.md) lists ev
 
 | Image | Default | Notes |
 | --- | --- | --- |
-| `ploegd` (also runs the worker's `ploeg-worker` binary) | `ghcr.io/ploeg-hq/ploegd:<appVersion>` | The release image; see [release versioning](../../../docs/ops/release-versioning.md). Set `image.repository` and `imagePullSecrets` to pull from a private copy of the same digest. |
+| `ploegd` (also runs `ploeg-worker` and `ploeg-mcp`) | `ghcr.io/ploeg-hq/ploegd:<appVersion>@<digest>` | The release image; see [release versioning](../../../docs/ops/release-versioning.md#the-published-chart-pins-its-images). Set `image.repository` and `imagePullSecrets` to pull from a private copy of the same digest. |
+| `claude-runner` | `ghcr.io/ploeg-hq/claude-runner:<appVersion>@<digest>` | The `claudeRunner` Deployment, and the harness image of a `claude-environment` team or Role that names none. `claudeRunner.image.repository` points it at a private copy. |
 | DinD sidecar | `docker.io/library/docker:29.8.2-dind@sha256:…` | Only for teams with `harness.dind: true`. Behind a pull-through proxy, set `executor.dindImage` to your copy of the same digest. |
 | Agent image | none | Ploeg publishes no agent image. Set `executor.harness.image`, or `harness.image` on a team or Role, before you enable the executor. |
+
+The published chart carries the digests of the images its release pushed, so a cluster sets no tag or digest to run that release. Setting `image.tag` (or `claudeRunner.image.tag`) to another version drops the chart's digest for that image; a tag of the form `<version>@sha256:<digest>` is used as written.
 
 ## Required values
 
@@ -39,6 +42,15 @@ The chart references these Secrets by name and creates none of them. The names a
 | `ploeg-scaler` (`password`) | the `keda` or `sandbox` executor |
 
 [Managed workers](../../../docs/ops/managed-workers.md) describes the bootstrap registry and the signing key.
+
+## ploeg-mcp and claude-runner
+
+Both are off by default and create no Secret, route host or CNI-specific policy of their own: the cluster names those.
+
+- **`mcp.enabled`** runs `ploeg-mcp http` from the ploegd image, with a Service on `mcp.port` (8090). `mcp.env` carries the `PLOEG_MCP_*` settings of [Serve Ploeg's MCP tools over HTTPS](../../../docs/how-to/serve-ploeg-mcp-over-https.md), `mcp.extraEnv` and `mcp.envFrom` the consumer tokens from your Secrets. `mcp.httpRoute` adds a Gateway API route, and `mcp.networkPolicy.ingress` and `.egress` add NetworkPolicies with peers you name.
+- **`claudeRunner.enabled`** runs the runner of [ADR-0084](../../../docs/adrs/0084-a-claude-code-run-can-execute-in-a-teams-self-hosted-claude-environment.md) ([runner settings](../claude-runner/README.md)). It requires `claudeRunner.environmentSecret.name`, a Secret with `SELF_HOSTED_RUNNER_ENVIRONMENT_SECRET`. `claudeRunner.extraArgs` adds flags such as `--git-host-rewrite`. Its egress (Anthropic, the forge's HTTPS host, ploegd) names hosts, so write it in your CNI's policy. `claudeRunner.loginVolumes` creates the PersistentVolumeClaims that `harness.claudeEnvironment.loginVolume` names; Helm keeps them on uninstall.
+
+`mcp.name` and `claudeRunner.name` set the Deployment name and the pods' `app.kubernetes.io/name`, which is also each Deployment's selector. They default to `<fullname>-mcp` and `<fullname>-claude-runner`. To take over objects that exist under other names, set these to the existing names, and set `fullnameOverride` and `instanceOverride` to the old release name when Ploeg moves into another Helm release, because a Deployment's selector cannot change.
 
 ## Optional integrations
 

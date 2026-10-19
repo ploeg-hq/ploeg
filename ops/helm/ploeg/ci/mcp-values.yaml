@@ -1,0 +1,48 @@
+# CI-only values: ploeg-mcp with every optional object (NetworkPolicies,
+# HTTPRoute), shaped like a cluster that serves it over HTTPS behind a
+# gateway and an OpenID Connect provider.
+mcp:
+  enabled: true
+  name: ploeg-mcp
+  annotations:
+    reloader.stakater.com/auto: "true"
+  env:
+    PLOEG_MCP_RESOURCE: https://ploeg-mcp.example.com/mcp
+    PLOEG_MCP_ISSUER: https://id.example.com/application/o/ploeg-mcp/
+    PLOEG_MCP_CLIENT_IDS: ploeg-mcp
+    PLOEG_MCP_SCOPE: ploeg:read
+    PLOEG_MCP_REQUEST_SCOPES: openid ploeg:read offline_access
+    PLOEG_MCP_GROUPS: '[{"group":"ploeg-operators","tokenEnv":"PLOEG_MCP_TOKEN_OPERATORS","execute":true},{"group":"ploeg-readers","tokenEnv":"PLOEG_MCP_TOKEN_READERS"}]'
+  extraEnv:
+    - name: PLOEG_MCP_TOKEN_OPERATORS
+      valueFrom:
+        secretKeyRef:
+          name: ploeg-mcp-operator
+          key: token
+  envFrom:
+    - secretRef:
+        name: ploeg-mcp-consumers
+  networkPolicy:
+    ingress:
+      enabled: true
+      from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: gateway
+    egress:
+      enabled: true
+      name: ploeg-mcp-gateway-egress
+      to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: gateway
+  httpRoute:
+    enabled: true
+    annotations:
+      external-dns.alpha.kubernetes.io/exclude: "true"
+    hostnames:
+      - ploeg-mcp.example.com
+    parentRefs:
+      - name: internal-gateway
+        namespace: gateway
+        sectionName: https

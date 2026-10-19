@@ -1,10 +1,14 @@
 {{- define "ploeg.fullname" -}}
-{{- .Release.Name | trunc 63 | trimSuffix "-" -}}
+{{- .Values.fullnameOverride | default .Release.Name | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+{{- define "ploeg.instance" -}}
+{{- .Values.instanceOverride | default .Release.Name -}}
 {{- end -}}
 
 {{- define "ploeg.labels" -}}
 app.kubernetes.io/name: ploeg
-app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/instance: {{ include "ploeg.instance" . }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
@@ -12,11 +16,47 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 
 {{- define "ploeg.selectorLabels" -}}
 app.kubernetes.io/name: ploeg
-app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/instance: {{ include "ploeg.instance" . }}
+{{- end -}}
+
+{{/*
+ploeg.imageRef renders one image reference from a {repository, tag, digest}
+block. The digest belongs to the appVersion build, so it is appended only
+while the tag is the appVersion; a tag a cluster sets wins, and a tag that
+carries its own @sha256 is used as written.
+*/}}
+{{- define "ploeg.imageRef" -}}
+{{- $image := .image | default dict -}}
+{{- $tag := $image.tag | default .appVersion -}}
+{{- if and $image.digest (eq $tag .appVersion) -}}
+{{ $image.repository }}:{{ $tag }}@{{ $image.digest }}
+{{- else -}}
+{{ $image.repository }}:{{ $tag }}
+{{- end -}}
 {{- end -}}
 
 {{- define "ploeg.image" -}}
-{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}
+{{ include "ploeg.imageRef" (dict "image" .Values.image "appVersion" .Chart.AppVersion) }}
+{{- end -}}
+
+{{- define "ploeg.claudeRunnerImage" -}}
+{{ include "ploeg.imageRef" (dict "image" .Values.claudeRunner.image "appVersion" .Chart.AppVersion) }}
+{{- end -}}
+
+{{- define "ploeg.mcpName" -}}
+{{- .Values.mcp.name | default (printf "%s-mcp" (include "ploeg.fullname" .)) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+{{- define "ploeg.claudeRunnerName" -}}
+{{- .Values.claudeRunner.name | default (printf "%s-claude-runner" (include "ploeg.fullname" .)) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+{{- define "ploeg.componentLabels" -}}
+app.kubernetes.io/part-of: ploeg
+app.kubernetes.io/instance: {{ include "ploeg.instance" .root }}
+app.kubernetes.io/version: {{ .root.Chart.AppVersion | quote }}
+helm.sh/chart: {{ printf "%s-%s" .root.Chart.Name .root.Chart.Version }}
+app.kubernetes.io/managed-by: {{ .root.Release.Service }}
 {{- end -}}
 
 {{/*
@@ -315,6 +355,11 @@ global executor.harness defaults field-by-field (explicit hasKey checks, so
 {{- $identity := include "ploeg.roleHarness" (dict "root" $root "team" $team "role" $role) | fromJson }}
 {{- $hName := $identity.name }}
 {{- $hImage := $rh.image | default ($th.image | default ($gh.image | default $root.Values.executor.runnerImage)) }}
+{{- if eq $hName "claude-environment" }}
+{{- $globalImage := "" }}
+{{- if eq ($gh.name | default "") "claude-environment" }}{{- $globalImage = $gh.image }}{{- end }}
+{{- $hImage = $rh.image | default ($th.image | default ($globalImage | default (include "ploeg.claudeRunnerImage" $root))) }}
+{{- end }}
 {{- if not $hImage }}
 {{- fail (printf "team %s: no agent image; set executor.harness.image, or harness.image on the team or Role. Ploeg publishes no agent image" $team.name) }}
 {{- end }}

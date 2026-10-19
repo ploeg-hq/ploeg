@@ -1,0 +1,516 @@
+---
+# Source: ploeg/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ploeg
+  labels:
+    app.kubernetes.io/name: ploeg
+    app.kubernetes.io/instance: ploeg
+    app.kubernetes.io/version: "CHART-VERSION"
+    helm.sh/chart: ploeg-CHART-VERSION
+    app.kubernetes.io/managed-by: Helm
+automountServiceAccountToken: false
+---
+# Source: ploeg/templates/serviceaccount.yaml
+# The workers' own identity, separate from ploegd's.
+#
+# Worker pods used to name no ServiceAccount at all, so the API server gave
+# them `default` — which is what `require-non-default-serviceaccount` fires on,
+# and it means every workload in the namespace shares one identity in audit
+# logs. They already run with automountServiceAccountToken: false and take zero
+# Kubernetes API authority, so this is an identity and audit fix rather than a
+# privilege one: the LLM-driven process still gets no token.
+#
+# Deliberately NOT ploegd's account. ploegd holds the LiteLLM master key and
+# (when configured) the forge admin credential; giving the agent pods the same
+# name would make a future RoleBinding on it apply to both.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ploeg-worker
+  labels:
+    app.kubernetes.io/name: ploeg
+    app.kubernetes.io/instance: ploeg
+    app.kubernetes.io/version: "CHART-VERSION"
+    helm.sh/chart: ploeg-CHART-VERSION
+    app.kubernetes.io/managed-by: Helm
+automountServiceAccountToken: false
+---
+# Source: ploeg/templates/claude-runner.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pewter-claude-login
+  labels:
+    app.kubernetes.io/part-of: ploeg
+    app.kubernetes.io/instance: ploeg
+    app.kubernetes.io/version: "CHART-VERSION"
+    helm.sh/chart: ploeg-CHART-VERSION
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: standard
+  resources:
+    requests:
+      storage: 1Gi
+---
+# Source: ploeg/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: ploeg
+  labels:
+    app.kubernetes.io/name: ploeg
+    app.kubernetes.io/instance: ploeg
+    app.kubernetes.io/version: "CHART-VERSION"
+    helm.sh/chart: ploeg-CHART-VERSION
+    app.kubernetes.io/managed-by: Helm
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: ploeg
+    app.kubernetes.io/instance: ploeg
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+# Source: ploeg/templates/claude-runner.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: claude-runner
+  labels:
+    app.kubernetes.io/name: claude-runner
+    app.kubernetes.io/part-of: ploeg
+    app.kubernetes.io/instance: ploeg
+    app.kubernetes.io/version: "CHART-VERSION"
+    helm.sh/chart: ploeg-CHART-VERSION
+    app.kubernetes.io/managed-by: Helm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: claude-runner
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: claude-runner
+        app.kubernetes.io/part-of: ploeg
+        ploeg.webgrip.dev/component: claude-runner
+    spec:
+      runtimeClassName: kata
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 90
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: runner
+          image: ghcr.io/ploeg-hq/claude-runner:CHART-VERSION
+          args:
+            - self-hosted-runner
+            - --base-dir
+            - /home/runner/work
+            - --hooks-dir
+            - /opt/ploeg/claude-runner/hooks
+            - "--capacity"
+            - "1"
+            - "--release-idle-session-min"
+            - "1"
+            - "--kill-session-after-min"
+            - "90"
+            - "--drain-grace-sec"
+            - "600"
+            - "--remove-session-state"
+            - "--git-host-rewrite"
+            - "forgejo-http.forgejo.svc.cluster.local:3000=forgejo.example.com"
+          env:
+            - name: PLOEG_URL
+              value: "http://ploeg:8080"
+            - name: DISABLE_ERROR_REPORTING
+              value: "1"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://otel-collector.observability.svc.cluster.local:4318"
+          envFrom:
+            - secretRef:
+                name: claude-runner-environment
+          ports:
+            - name: health
+              containerPort: 8080
+          readinessProbe:
+            httpGet: {path: /healthz, port: health}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /healthz, port: health}
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          resources:
+            limits:
+              memory: 4Gi
+            requests:
+              cpu: 50m
+              memory: 1Gi
+          volumeMounts:
+            - name: work
+              mountPath: /home/runner/work
+      volumes:
+        - name: work
+          emptyDir:
+            sizeLimit: 10Gi
+---
+# Source: ploeg/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ploeg
+  labels:
+    app.kubernetes.io/name: ploeg
+    app.kubernetes.io/instance: ploeg
+    app.kubernetes.io/version: "CHART-VERSION"
+    helm.sh/chart: ploeg-CHART-VERSION
+    app.kubernetes.io/managed-by: Helm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ploeg
+      app.kubernetes.io/instance: ploeg
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ploeg
+        app.kubernetes.io/instance: ploeg
+        ploeg.webgrip.dev/component: daemon
+    spec:
+      serviceAccountName: ploeg
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: ploegd
+          image: ghcr.io/ploeg-hq/ploegd:CHART-VERSION
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: PLOEG_LISTEN
+              value: ":8080"
+            - name: PLOEG_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: ploeg-db-app
+                  key: uri
+            - name: PLOEG_TEAM_HARNESSES
+              value: "{\"pewter\":{\"\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"claude-environment\",\"qualification\":\"unqualified\"}],\"name\":\"claude-environment\"}}}"
+            - name: PLOEG_FORGEJO_URL
+              value: "http://forgejo-http.forgejo.svc.cluster.local:3000"
+            - name: PLOEG_FORGEJO_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: agent-builder-token
+                  key: FORGEJO_TOKEN
+            - name: PLOEG_FORGEJO_BOT
+              value: "agent-builder"
+            - name: PLOEG_TARGET_FORGE
+              value: "forgejo"
+            - name: PLOEG_DEFAULT_TEAM
+              value: "default"
+            - name: PLOEG_LEASE_TTL
+              value: "5m"
+            - name: PLOEG_REPORT_RUN_DASHBOARD_URL
+              value: ""
+            - name: PLOEG_REPORT_SPEND_DASHBOARD_URL
+              value: ""
+            - name: PLOEG_REPORT_TEAM_DASHBOARD_URL
+              value: ""
+            - name: PLOEG_REPORT_WORK_ITEM_URL
+              value: ""
+            - name: PLOEG_SWEEP_INTERVAL
+              value: "15s"
+            - name: PLOEG_TEAM_MAP
+              value: ""
+            - name: PLOEG_USAGE_REPORT
+              value: "true"
+            - name: LITELLM_ADMIN_URL
+              value: "http://litellm.ai.svc.cluster.local:4000"
+            - name: LITELLM_MASTER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: agent-litellm-master
+                  key: LITELLM_MASTER_KEY
+            - name: PLOEG_WORKER_AUTH_MODE
+              value: "managed"
+            - name: PLOEG_WORKER_SIGNING_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ploeg-worker-signing
+                  key: key
+            - name: PLOEG_WORKER_BOOTSTRAPS
+              valueFrom:
+                secretKeyRef:
+                  name: ploeg-worker-bootstrap
+                  key: registry.json
+            - name: PLOEG_WORKER_LLM_POLICIES
+              value: "[{\"budgetUsd\":0.1,\"defaultModel\":\"claude-sonnet-5\",\"models\":[\"claude-sonnet-5\"],\"role\":\"\",\"team\":\"pewter\",\"ttl\":\"4h\"}]"
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 20
+          resources:
+            limits:
+              cpu: 100m
+              memory: 256Mi
+            requests:
+              cpu: 100m
+              memory: 256Mi
+---
+# Source: ploeg/templates/scaledjob.yaml
+# One ScaledJob per (team, Role) — the flagship executor. A team without a
+# plan has exactly one Role-less workload, byte-identical to the pre-Shift
+# shape; a team with a plan gets one per Role, which is what makes "different
+# agents, different harnesses, different images" literally true: pod shape is
+# fixed at render time. The shape lives in the shared ploeg.workerPodTemplate
+# helper (also used by the CronJob executor): privileged DinD sidecar when the
+# harness needs Docker, a shared disk-backed workspace mounted at the SAME
+# path in both containers, and zero Kubernetes API authority for the
+# LLM-driven process.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledJob
+metadata:
+  name: ploeg-worker-pewter
+  labels:
+    app.kubernetes.io/name: ploeg
+    app.kubernetes.io/instance: ploeg
+    app.kubernetes.io/version: "CHART-VERSION"
+    helm.sh/chart: ploeg-CHART-VERSION
+    app.kubernetes.io/managed-by: Helm
+spec:
+  pollingInterval: 30
+  minReplicaCount: 0
+  maxReplicaCount: 1
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  rollout:
+    strategy: gradual # spec updates never kill in-flight runs (backlog #50)
+  scalingStrategy:
+    strategy: accurate # never eager: open over-scaling bug kedacore/keda#6416 (backlog #47)
+  jobTargetRef:
+    parallelism: 1
+    completions: 1
+    backoffLimit: 0 # ploeg owns retries; every pod is one auditable run (backlog #51)
+    ttlSecondsAfterFinished: 86400
+    activeDeadlineSeconds: 7200
+    template:
+      
+      
+      metadata:
+        labels:
+          app.kubernetes.io/name: ploeg-worker
+          ploeg.webgrip.dev/team: pewter
+      spec:
+        restartPolicy: Never
+        # The shutdown budget for ploeg-worker's SIGTERM path: abort the harness,
+        # revoke the per-run credential, settle its spend, report the outcome. The
+        # 30s default SIGKILLed the pod mid-report, which is the silence that made a
+        # killed run indistinguishable from a hung one and cost the Round an attempt.
+        terminationGracePeriodSeconds: 90
+        # An identity of the workers' own. Naming none left them on `default`, which
+        # both trips require-non-default-serviceaccount and makes every workload in
+        # the namespace indistinguishable in an audit log. The token stays unmounted
+        # either way — a worker needs no Kubernetes API authority at all.
+        serviceAccountName: ploeg-worker
+        automountServiceAccountToken: false
+        securityContext:
+          fsGroup: 1000
+          seccompProfile:
+            type: RuntimeDefault
+        initContainers:
+          # Extracts ploeg-worker from the distroless ploegd image via
+          # self-copy (no shell in distroless).
+          - name: worker-bin
+            image: ghcr.io/ploeg-hq/ploegd:CHART-VERSION
+            command: ["/usr/local/bin/ploeg-worker", "install", "/mnt/bin/ploeg-worker"]
+            securityContext:
+              runAsNonRoot: true
+              runAsUser: 65532
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop: [ALL]
+              seccompProfile:
+                type: RuntimeDefault
+            volumeMounts:
+              - name: worker-bin
+                mountPath: /mnt/bin
+            resources:
+              limits:
+                cpu: 50m
+                memory: 64Mi
+              requests:
+                cpu: 50m
+                memory: 64Mi
+        containers:
+          - name: worker
+            image: ghcr.io/ploeg-hq/claude-runner:CHART-VERSION
+            command: ["/mnt/bin/ploeg-worker"]
+            env:
+              - name: PLOEG_API_URL
+                value: "http://ploeg:8080"
+              - name: PLOEG_TEAM
+                value: "pewter"
+              - name: PLOEG_HARNESS
+                value: "claude-environment"
+              - name: PLOEG_HARNESS_TIMEOUT
+                value: "100m"
+              - name: PLOEG_HARNESS_IDLE_TIMEOUT
+                value: "15m"
+              - name: PLOEG_CLAUDE_ENVIRONMENT_ID
+                value: "ccpool_example"
+              - name: PLOEG_CLAUDE_CONFIG_DIR
+                value: /var/lib/ploeg/claude-login
+              - name: LLM_MODEL
+                value: "litellm_proxy/claude-sonnet-5"
+              - name: LITELLM_KEY_BUDGET
+                value: "0.10"
+              - name: LITELLM_KEY_DURATION
+                value: "4h"
+              - name: LLM_BASE_URL
+                value: "http://litellm.ai.svc.cluster.local:4000/v1"
+              - name: PLOEG_CREDENTIAL_ISOLATION_OFF_REASON
+                value: "unqualified"
+              - name: PLOEG_LLM_CREDENTIAL_MODE
+                value: "managed"
+              - name: PLOEG_WORKER_BOOTSTRAP_TOKEN
+                valueFrom:
+                  secretKeyRef:
+                    name: ploeg-worker-bootstrap
+                    key: "pewter--default"
+              - name: PLOEG_TARGET_FORGE
+                value: "forgejo"
+              - name: FORGE_URL
+                value: "http://forgejo-http.forgejo.svc.cluster.local:3000"
+              - name: AGENT_BUILDER_TOKEN
+                valueFrom:
+                  secretKeyRef:
+                    name: agent-builder-token
+                    key: FORGEJO_TOKEN
+              # FALLBACK target only. The repository belongs to the work item,
+              # resolved at ingest from its tracker scope and delivered on the claim
+              # (R11, ADR-0001); these render only while a team still pins a repo,
+              # and a team that declares none renders no repo env at all.
+              - name: REPO_OWNER
+                value: "webgrip"
+              - name: REPO_NAME
+                value: "example"
+              # Downward API: node+pod identity survives pod/job cleanup for
+              # run forensics (VIK-597). Logged at worker start and embedded in
+              # every checkpoint.
+              - name: NODE_NAME
+                valueFrom:
+                  fieldRef:
+                    fieldPath: spec.nodeName
+              - name: POD_UID
+                valueFrom:
+                  fieldRef:
+                    fieldPath: metadata.uid
+              - name: WORK_DIR
+                value: /mnt/ci-shared
+            volumeMounts:
+              - name: worker-bin
+                mountPath: /mnt/bin
+                readOnly: true
+              - name: ci-shared
+                mountPath: /mnt/ci-shared
+              - name: claude-login
+                mountPath: /var/lib/ploeg/claude-login
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop:
+                - ALL
+              runAsGroup: 1000
+              runAsNonRoot: true
+              runAsUser: 1000
+              seccompProfile:
+                type: RuntimeDefault
+            resources:
+              limits:
+                cpu: "1"
+                memory: 1Gi
+              requests:
+                cpu: "1"
+                memory: 1Gi
+        volumes:
+          - name: worker-bin
+            emptyDir: {}
+          # Disk-backed (not tmpfs): repo checkout + gate builds are large.
+          # Same absolute path in worker AND dind so `docker run -v`
+          # bind-mounts resolve on the daemon's filesystem.
+          - name: ci-shared
+            emptyDir:
+              sizeLimit: 8Gi
+          - name: claude-login
+            persistentVolumeClaim:
+              claimName: "pewter-claude-login"
+  triggers:
+    - type: postgresql
+      metadata:
+        # Resolved by the KEDA operator from ITS namespace, not this one —
+        # a bare in-namespace service name never resolves there.
+        host: "ploeg-db-rw.default.svc.cluster.local"
+        port: "5432"
+        userName: "ploeg_scaler"
+        dbName: "app"
+        sslmode: "require"
+        # The one poll-query shape: served index-only by work_items_claimable
+        # (backlog #24/#47). Must stay in sync with store.Claim.
+        query: "SELECT COUNT(*) FROM work_items WHERE team = 'pewter' AND state = 'queued' AND NOT operator_owned AND (next_eligible_at IS NULL OR next_eligible_at <= now())"
+        targetQueryValue: "1"
+        activationTargetQueryValue: "0"
+      authenticationRef:
+        name: ploeg-scaler
+---
+# Source: ploeg/templates/triggerauthentication.yaml
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: ploeg-scaler
+  labels:
+    app.kubernetes.io/name: ploeg
+    app.kubernetes.io/instance: ploeg
+    app.kubernetes.io/version: "CHART-VERSION"
+    helm.sh/chart: ploeg-CHART-VERSION
+    app.kubernetes.io/managed-by: Helm
+spec:
+  secretTargetRef:
+    - parameter: password
+      name: ploeg-scaler
+      key: password

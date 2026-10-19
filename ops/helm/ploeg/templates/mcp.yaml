@@ -1,0 +1,173 @@
+{{- if .Values.mcp.enabled }}
+{{- $m := .Values.mcp }}
+{{- $name := include "ploeg.mcpName" . }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    app.kubernetes.io/name: {{ $name }}
+    {{- include "ploeg.componentLabels" (dict "root" .) | nindent 4 }}
+  {{- with $m.annotations }}
+  annotations: {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  replicas: {{ $m.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ $name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ $name }}
+        app.kubernetes.io/part-of: ploeg
+        ploeg.webgrip.dev/component: mcp
+      {{- with $m.podAnnotations }}
+      annotations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      automountServiceAccountToken: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with ($m.nodeSelector | default .Values.nodeSelector) }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: ploeg-mcp
+          image: {{ include "ploeg.image" . }}
+          command: ["/usr/local/bin/ploeg-mcp"]
+          args: ["http"]
+          env:
+            - name: PLOEG_URL
+              value: {{ $m.ploegUrl | default (include "ploeg.apiUrl" .) | quote }}
+            - name: PLOEG_MCP_LISTEN
+              value: {{ printf ":%v" $m.port | quote }}
+            {{- range $key, $value := $m.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+            {{- with $m.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with $m.envFrom }}
+          envFrom: {{- toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ $m.port }}
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            initialDelaySeconds: 2
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          {{- with $m.resources }}
+          resources: {{- toYaml . | nindent 12 }}
+          {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    app.kubernetes.io/name: {{ $name }}
+    {{- include "ploeg.componentLabels" (dict "root" .) | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: {{ $name }}
+  ports:
+    - name: http
+      port: {{ $m.port }}
+      targetPort: http
+      protocol: TCP
+{{- with $m.networkPolicy.ingress }}
+{{- if .enabled }}
+{{- if not .from }}
+{{- fail "mcp.networkPolicy.ingress.from is required when it is enabled: the peers allowed to reach ploeg-mcp, such as your gateway's namespace" }}
+{{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .name | default (printf "%s-ingress" $name) }}
+  labels:
+    app.kubernetes.io/name: {{ $name }}
+    {{- include "ploeg.componentLabels" (dict "root" $) | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ $name }}
+  policyTypes: [Ingress]
+  ingress:
+    - from: {{- toYaml .from | nindent 8 }}
+      ports:
+        - protocol: TCP
+          port: {{ $m.port }}
+{{- end }}
+{{- end }}
+{{- with $m.networkPolicy.egress }}
+{{- if .enabled }}
+{{- if not .to }}
+{{- fail "mcp.networkPolicy.egress.to is required when it is enabled: the peers ploeg-mcp may reach, such as the identity provider" }}
+{{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .name | default (printf "%s-egress" $name) }}
+  labels:
+    app.kubernetes.io/name: {{ $name }}
+    {{- include "ploeg.componentLabels" (dict "root" $) | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ $name }}
+  policyTypes: [Egress]
+  egress:
+    - to: {{- toYaml .to | nindent 8 }}
+{{- end }}
+{{- end }}
+{{- with $m.httpRoute }}
+{{- if .enabled }}
+{{- if not .hostnames }}
+{{- fail "mcp.httpRoute.hostnames is required when mcp.httpRoute.enabled is true: the public host clients connect to" }}
+{{- end }}
+{{- if not .parentRefs }}
+{{- fail "mcp.httpRoute.parentRefs is required when mcp.httpRoute.enabled is true: the Gateway listener that serves the host" }}
+{{- end }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ .name | default $name }}
+  labels:
+    app.kubernetes.io/name: {{ $name }}
+    {{- include "ploeg.componentLabels" (dict "root" $) | nindent 4 }}
+  {{- with .annotations }}
+  annotations: {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  hostnames: {{- toYaml .hostnames | nindent 4 }}
+  parentRefs: {{- toYaml .parentRefs | nindent 4 }}
+  rules:
+    - backendRefs:
+        - name: {{ $name }}
+          port: {{ $m.port }}
+{{- end }}
+{{- end }}
+{{- end }}

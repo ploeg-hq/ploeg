@@ -66,7 +66,10 @@ for case in ":default" \
 	"ops/helm/ploeg/ci/executor-isolation-disabled-values.yaml:executor-isolation-disabled" \
 	"ops/helm/ploeg/ci/executor-harness-selection-values.yaml:executor-harness-selection" \
 	"ops/helm/ploeg/ci/monitoring-values.yaml:monitoring" \
-	"ops/helm/ploeg/ci/knowledge-graph-values.yaml:knowledge-graph"; do
+	"ops/helm/ploeg/ci/knowledge-graph-values.yaml:knowledge-graph" \
+	"ops/helm/ploeg/ci/mcp-values.yaml:mcp" \
+	"ops/helm/ploeg/ci/claude-runner-values.yaml:claude-runner" \
+	"ops/helm/ploeg/ci/name-overrides-values.yaml:name-overrides"; do
 	values=${case%%:*}
 	name=${case##*:}
 	if [ "$mode" = "update" ]; then
@@ -102,7 +105,8 @@ for case in "ops/helm/ploeg/ci/reject-reader-without-read-token-values.yaml:read
 	"ops/helm/ploeg/ci/reject-harnesses-without-plan-values.yaml:harnesses needs a plan" \
 	"ops/helm/ploeg/ci/reject-models-without-default-values.yaml:lists models without its default model" \
 	"ops/helm/ploeg/ci/reject-claude-environment-without-login-values.yaml:requires harness.claudeEnvironment.environmentId and loginSecret or loginVolume" \
-	"ops/helm/ploeg/ci/reject-client-carrier-without-environment-values.yaml:carrier client requires harness.claudeEnvironment.environmentId"; do
+	"ops/helm/ploeg/ci/reject-client-carrier-without-environment-values.yaml:carrier client requires harness.claudeEnvironment.environmentId" \
+	"ops/helm/ploeg/ci/reject-claude-runner-without-environment-secret-values.yaml:claudeRunner.environmentSecret.name is required"; do
 	values=${case%%:*}
 	expected=${case#*:}
 	if out=$(helm template ploeg ops/helm/ploeg -f "$REQUIRED" -f "$values" 2>&1); then
