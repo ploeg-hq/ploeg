@@ -604,6 +604,93 @@ Managed workers use the [worker control contract](worker-control.md); deployment
 
 The [operator delivery contract](operator-delivery.md) and [versioned schema](operator-delivery.schema.json) govern canonical candidates, trusted verification, human approval and durable publication barriers for a completed Operator Execution.
 
+## Failure explanations
+
+Since [ADR-0130](../adrs/0130-a-run-that-uses-its-cap-stops-by-its-roles-policy-and-a-harness-that-rejects-its-configuration-parks-at-once.md)
+every operator read that carries a failure reason also carries Ploeg's own
+explanation of it, `failureExplanation` in
+[operator-api.v1.schema.json](operator-api.v1.schema.json):
+
+- `failure` on a Run (`GET runs/{id}`, the `runs` of `GET work-items/{id}`)
+  and on each row of `GET runs` explains its `failureReason`. It is null when
+  the Run did not fail or its reason is not one Ploeg knows.
+- `closeFailure` on a Shift explains its `closeReason` when the Shift stopped
+  because its Runs failed, and is null for every other close and for an open
+  Shift.
+- `ploeg-mcp`'s `ploeg_get_work` (`runs[].failure`,
+  `latestShift.closeFailure`, `shifts[].closeFailure`) and
+  `ploeg_recent_runs` (`runs[].failure`) carry the same object, and the
+  `ploeg_get_work` summary ends with the cause and the action.
+
+An older Ploeg leaves both fields out; treat absent as unknown, never as "no
+failure". The object is:
+
+| Field | Meaning |
+| --- | --- |
+| `reason` | The `failureReason` or `closeReason` it explains, unchanged |
+| `cause` | `ticket`: the work or the limits set for it. `system`: the cluster, the model gateway or the harness's own configuration, which no change to the ticket fixes |
+| `title` | One sentence naming what went wrong |
+| `action` | One or two sentences naming what a person can do |
+
+The text comes from a fixed table in `pkg/work/failure_cause.go`, never from
+an agent, tracker or forge, so a consumer may show it as Ploeg's words. The
+Work Item's `needs_human` event still carries the full sentence with the
+Run's own numbers (for example "the builder used its whole $2.00 cap ($2.06
+spent) in round 2 …") and stays the place to quote the specific case.
+
+| `failureReason` | `cause` | Retried? |
+| --- | --- | --- |
+| `agent_error` | ticket | yes, up to three agent attempts per Round |
+| `budget` | ticket | by the writing Role's `onCapReached`: `stop` (default) parks, `retry` and `escalate` count as agent attempts |
+| `token_ceiling` | ticket | yes, as an agent attempt |
+| `timeout`, `idle` | ticket | yes, as an agent attempt |
+| `credential_leak` | ticket | no, parks for a person |
+| `infra_node`, `infra_llm`, `lease_lost` | system | yes, from the separate infrastructure budget |
+| `shared_budget_spent` | system | no, parks for a person |
+| `harness_config` | system | no, parks at the first occurrence and spends no attempt |
+
+| `closeReason` | `cause` |
+| --- | --- |
+| `writing_run_failed_repeatedly` | ticket |
+| `run_cap_reached` | ticket |
+| `credential_leak` | ticket |
+| `writing_run_killed_repeatedly` | system |
+| `shared_budget_spent` | system |
+| `harness_config` | system |
+
+`budget` means the Run used its own spending cap; before ADR-0130 it meant an
+ACP token ceiling, which is now `token_ceiling`. `harness_config` means the
+harness rejected its configuration or crashed before calling the model, so the
+fault is the agent image or what it was configured with.
+
+A failed Run in `GET runs/{id}`:
+
+```json
+{
+  "failureReason": "harness_config",
+  "failure": {
+    "reason": "harness_config",
+    "cause": "system",
+    "title": "The harness rejected its configuration or crashed before doing any work",
+    "action": "This is a system configuration problem, not the ticket: fix the harness image or its configuration, then restart the Work Item."
+  }
+}
+```
+
+A Shift that stopped on a spent cap:
+
+```json
+{
+  "closeReason": "run_cap_reached",
+  "closeFailure": {
+    "reason": "run_cap_reached",
+    "cause": "ticket",
+    "title": "The writing Run used its whole spending cap",
+    "action": "Raise the cap for this Role, or set its onCapReached to escalate, or split the ticket; then restart it."
+  }
+}
+```
+
 ## Notes and their provenance
 
 [ADR-0122](../adrs/0122-every-note-carries-its-provenance-untrusted-text-is-quoted-and-a-wider-level-needs-evidence-or-a-person.md)
