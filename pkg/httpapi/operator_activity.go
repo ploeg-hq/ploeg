@@ -83,7 +83,7 @@ func (s *Server) handleOperatorRuns(w http.ResponseWriter, r *http.Request) {
 		operatorError(w, 400, "invalid_request", "Malformed query parameters.")
 		return
 	}
-	allowed := map[string]bool{"team": true, "state": true, "outcome": true, "limit": true, "before": true}
+	allowed := map[string]bool{"team": true, "state": true, "outcome": true, "role": true, "limit": true, "before": true}
 	for key, values := range q {
 		if !allowed[key] || len(values) != 1 || values[0] == "" {
 			operatorError(w, 400, "invalid_request", "Unknown, empty or repeated query parameter.")
@@ -113,6 +113,11 @@ func (s *Server) handleOperatorRuns(w http.ResponseWriter, r *http.Request) {
 	}
 	if f.Outcome != "" && f.State != "" && f.State != "finished" {
 		operatorError(w, 400, "invalid_request", "Only finished Runs have an outcome.")
+		return
+	}
+	f.Role = q.Get("role")
+	if f.Role != "" && !operatorName.MatchString(f.Role) {
+		operatorError(w, 400, "invalid_request", "Invalid role.")
 		return
 	}
 	if limit := q.Get("limit"); limit != "" {

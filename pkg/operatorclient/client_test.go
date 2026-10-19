@@ -202,3 +202,27 @@ func TestClientRejectsUnsafeConfiguration(t *testing.T) {
 		t.Fatal("path injection accepted")
 	}
 }
+
+func TestRunsReadsTheNextPageCursorAndSendsTheRole(t *testing.T) {
+	var query string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		query = r.URL.RawQuery
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"schemaVersion":"1.0","runs":[],"nextBefore":"41"}`))
+	}))
+	t.Cleanup(srv.Close)
+	c, err := operatorclient.New(srv.URL, strings.Repeat("t", 40))
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, err := c.Runs(context.Background(), operatorclient.RunFilter{Role: "ask", Limit: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.NextCursor == nil || *page.NextCursor != "41" {
+		t.Fatalf("next cursor = %v, want 41", page.NextCursor)
+	}
+	if query != "limit=1&role=ask" {
+		t.Fatalf("query = %q", query)
+	}
+}

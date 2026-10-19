@@ -24,13 +24,16 @@ type OperatorWorkItemCounts struct {
 }
 
 // OperatorRunCounts counts current pending and running Runs, and Runs that
-// finished inside the summary window by outcome.
+// finished inside the summary window by outcome. Asks are counted apart: an
+// Ask answers a person's question about a Work Item and does no work on it.
 type OperatorRunCounts struct {
 	Pending  int64 `json:"pending"`
 	Running  int64 `json:"running"`
 	Finished int64 `json:"finished"`
 	Failed   int64 `json:"failed"`
 	Stuck    int64 `json:"stuck"`
+	// Asks counts the Asks that finished inside the summary window.
+	Asks int64 `json:"asks"`
 }
 
 // OperatorSpend is spend settled inside the summary window and the Holds of
@@ -102,12 +105,14 @@ type OperatorRunListItem struct {
 }
 
 // OperatorRunFilter selects Runs newest first. Before is an exclusive Run id
-// cursor; zero means the newest Run.
+// cursor; zero means the newest Run. Role keeps only Runs of that Role; an
+// empty Role keeps every Role but the Ask.
 type OperatorRunFilter struct {
 	Teams   []string
 	Team    string
 	State   string
 	Outcome string
+	Role    string
 	Before  int64
 	Limit   int
 }
@@ -170,7 +175,8 @@ func (s *Store) OperatorRuns(ctx context.Context, f OperatorRunFilter) ([]Operat
 		LEFT JOIN run_llm_accounts a ON a.run_token = r.run_token
 		WHERE `+operatorScope+` AND ($2 = '' OR i.team = $2) AND ($3 = '' OR r.state = $3)
 		AND ($4 = '' OR r.outcome = $4) AND ($5::bigint = 0 OR r.id < $5)
-		ORDER BY r.id DESC LIMIT $6`, f.Teams, f.Team, f.State, f.Outcome, f.Before, f.Limit+1)
+		AND (CASE WHEN $7 = '' THEN r.role <> 'ask' ELSE r.role = $7 END)
+		ORDER BY r.id DESC LIMIT $6`, f.Teams, f.Team, f.State, f.Outcome, f.Before, f.Limit+1, f.Role)
 	if err != nil {
 		return nil, false, err
 	}
@@ -282,7 +288,7 @@ func (s *Store) OperatorSummary(ctx context.Context, teams []string, registered 
 		return nil, err
 	}
 	if err := scan(`SELECT `+operatorRunTeam+`, r.state, count(*) FROM agent_runs r LEFT JOIN work_items i ON i.id = r.work_item_id
-		WHERE r.state IN ('pending', 'running') AND `+operatorRunScope+` GROUP BY 1, r.state`, []any{teams}, func(rows pgx.Rows) error {
+		WHERE r.state IN ('pending', 'running') AND r.role <> 'ask' AND `+operatorRunScope+` GROUP BY 1, r.state`, []any{teams}, func(rows pgx.Rows) error {
 		var team, state string
 		var n int64
 		if err := rows.Scan(&team, &state, &n); err != nil {
@@ -297,16 +303,18 @@ func (s *Store) OperatorSummary(ctx context.Context, teams []string, registered 
 	}); err != nil {
 		return nil, err
 	}
-	if err := scan(`SELECT `+operatorRunTeam+`, count(*), count(*) FILTER (WHERE r.outcome = 'failed'), count(*) FILTER (WHERE r.outcome = 'stuck')
+	if err := scan(`SELECT `+operatorRunTeam+`, count(*) FILTER (WHERE r.role <> 'ask'),
+		count(*) FILTER (WHERE r.role <> 'ask' AND r.outcome = 'failed'), count(*) FILTER (WHERE r.role <> 'ask' AND r.outcome = 'stuck'),
+		count(*) FILTER (WHERE r.role = 'ask')
 		FROM agent_runs r LEFT JOIN work_items i ON i.id = r.work_item_id
 		WHERE r.finished_at IS NOT NULL AND r.finished_at >= $2 AND `+operatorRunScope+` GROUP BY 1`, []any{teams, since}, func(rows pgx.Rows) error {
 		var team string
-		var finished, failed, stuck int64
-		if err := rows.Scan(&team, &finished, &failed, &stuck); err != nil {
+		var finished, failed, stuck, asks int64
+		if err := rows.Scan(&team, &finished, &failed, &stuck, &asks); err != nil {
 			return err
 		}
 		runs := &ensure(team).Runs
-		runs.Finished, runs.Failed, runs.Stuck = finished, failed, stuck
+		runs.Finished, runs.Failed, runs.Stuck, runs.Asks = finished, failed, stuck, asks
 		return nil
 	}); err != nil {
 		return nil, err
@@ -380,6 +388,7 @@ func OperatorSummaryTotal(teams []OperatorTeamSummary) OperatorSummaryTotals {
 		t.Runs.Finished += s.Runs.Finished
 		t.Runs.Failed += s.Runs.Failed
 		t.Runs.Stuck += s.Runs.Stuck
+		t.Runs.Asks += s.Runs.Asks
 		t.Spend.SettledUSD += s.Spend.SettledUSD
 		t.Spend.HeldUSD += s.Spend.HeldUSD
 	}

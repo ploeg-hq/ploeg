@@ -36,6 +36,7 @@ func TestOperatorActivityRejectsInvalidQueriesBeforeStore(t *testing.T) {
 		{"GET", "/api/v1/operator/runs?before=0", 400},
 		{"GET", "/api/v1/operator/runs?before=-1", 400},
 		{"GET", "/api/v1/operator/runs?after=1", 400},
+		{"GET", "/api/v1/operator/runs?role=%20ask", 400},
 		{"GET", "/api/v1/operator/runs?state=done", 400},
 		{"GET", "/api/v1/operator/runs?state=running&outcome=failed", 400},
 		{"GET", "/api/v1/operator/runs?outcome=Failed", 400},
@@ -156,6 +157,9 @@ func TestOperatorActivityMatchesPublishedSchemaAndScope(t *testing.T) {
 	}
 	if stuck := get("runs?state=finished&outcome=stuck")["runs"].([]any); len(stuck) != 1 {
 		t.Fatalf("outcome filter: %v", stuck)
+	}
+	if asks := get("runs?role=ask")["runs"].([]any); len(asks) != 0 {
+		t.Fatalf("role filter: %v", asks)
 	}
 	ascending := get("events?limit=200")
 	events := ascending["events"].([]any)

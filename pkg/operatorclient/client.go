@@ -167,6 +167,7 @@ type RunFilter struct {
 	Team    string
 	State   string
 	Outcome string
+	Role    string
 	Before  string
 	Limit   int
 }
@@ -174,7 +175,7 @@ type RunFilter struct {
 // RunPage is one page of Runs.
 type RunPage struct {
 	Runs       []store.OperatorRunListItem `json:"runs"`
-	NextCursor *string                     `json:"nextCursor"`
+	NextCursor *string                     `json:"nextBefore"`
 }
 
 // Runs answers GET /runs.
@@ -183,6 +184,7 @@ func (c *Client) Runs(ctx context.Context, f RunFilter) (RunPage, error) {
 	set(q, "team", f.Team)
 	set(q, "state", f.State)
 	set(q, "outcome", f.Outcome)
+	set(q, "role", f.Role)
 	set(q, "before", f.Before)
 	if f.Limit > 0 {
 		q.Set("limit", strconv.Itoa(f.Limit))

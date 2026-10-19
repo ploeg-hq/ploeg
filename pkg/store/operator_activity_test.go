@@ -192,6 +192,53 @@ func TestOperatorRunsAreNewestFirstScopedAndPaged(t *testing.T) {
 	}
 }
 
+func TestOperatorSummaryAndRunListKeepAsksApartFromRuns(t *testing.T) {
+	f := seedActivity(t)
+	ctx := context.Background()
+	var askID int64
+	for i, state := range []string{"finished", "finished", "running"} {
+		finished := "now() - interval '10 minutes'"
+		if state == "running" {
+			finished = "NULL"
+		}
+		if err := testStore.pool.QueryRow(ctx, fmt.Sprintf(`INSERT INTO agent_runs(work_item_id, team, run_token, role, round, writes, state, started_at, finished_at, outcome, authorized)
+			VALUES ($1, 'silver', $2, 'ask', 0, false, $3, now() - interval '11 minutes', %s, CASE WHEN $3 = 'finished' THEN 'stuck' END, 0.02) RETURNING id`, finished),
+			f.silver, fmt.Sprintf("token-ask-%d", i), state).Scan(&askID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	week, err := testStore.OperatorSummary(ctx, []string{"silver"}, nil, time.Now().Add(-7*24*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if week[0].Runs != (OperatorRunCounts{Pending: 1, Running: 1, Finished: 2, Stuck: 1, Asks: 2}) {
+		t.Fatalf("asks counted as Runs: %+v", week[0].Runs)
+	}
+	if total := OperatorSummaryTotal(week); total.Runs.Asks != 2 {
+		t.Fatalf("totals lost the asks: %+v", total.Runs)
+	}
+	runs, _, err := testStore.OperatorRuns(ctx, OperatorRunFilter{Teams: []string{"silver"}, Limit: 50})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range runs {
+		if r.Role == work.AskRole {
+			t.Fatalf("the default Run list shows an Ask: %+v", r)
+		}
+	}
+	if len(runs) != 5 {
+		t.Fatalf("default list: %d runs", len(runs))
+	}
+	asks, _, err := testStore.OperatorRuns(ctx, OperatorRunFilter{Teams: []string{"silver"}, Role: work.AskRole, Limit: 50})
+	if err != nil || len(asks) != 3 || asks[0].ID != fmt.Sprint(askID) {
+		t.Fatalf("role=ask: %+v %v", asks, err)
+	}
+	builders, _, err := testStore.OperatorRuns(ctx, OperatorRunFilter{Teams: []string{"silver"}, Role: "builder", Limit: 50})
+	if err != nil || len(builders) != 5 {
+		t.Fatalf("role=builder: %+v %v", builders, err)
+	}
+}
+
 func TestOperatorEventsPageNewestFirst(t *testing.T) {
 	f := seedActivity(t)
 	ctx := context.Background()

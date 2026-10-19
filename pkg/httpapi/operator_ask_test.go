@@ -177,11 +177,17 @@ func TestOperatorAskAdmitsMintsOnceAndBlocksOnFinish(t *testing.T) {
 	if w, _ := askCall(t, s, "POST", path, token, "alice", question); w.Code != 200 || len(g.mints) != 1 {
 		t.Fatalf("replay after finish: %d %s", w.Code, w.Body)
 	}
-	for _, endpoint := range []string{"work-items/" + itoa(id), "runs/" + admitted.Ask.RunID, "runs?team=silver"} {
+	for _, endpoint := range []string{"work-items/" + itoa(id), "runs/" + admitted.Ask.RunID, "runs?team=silver&role=ask"} {
 		body := operatorSchemaGET(t, s, token, endpoint)
 		if !strings.Contains(string(body), `"role":"ask"`) {
 			t.Fatalf("%s does not show the Ask Run: %s", endpoint, body)
 		}
+	}
+	if body := operatorSchemaGET(t, s, token, "runs?team=silver"); strings.Contains(string(body), `"role":"ask"`) {
+		t.Fatalf("the default Run list must leave the Ask out: %s", body)
+	}
+	if body := operatorSchemaGET(t, s, token, "summary"); !strings.Contains(string(body), `"asks":1`) || !strings.Contains(string(body), `"finished":0`) {
+		t.Fatalf("the summary must count the Ask apart from the Runs: %s", body)
 	}
 	facts := string(operatorSchemaGET(t, s, token, "work-items/"+itoa(id)+"/facts"))
 	if strings.Contains(facts, `"role":"ask"`) || !strings.Contains(facts, `"asks":[{`) || !strings.Contains(facts, `"runId":"`+admitted.Ask.RunID+`","state":"finished"`) {

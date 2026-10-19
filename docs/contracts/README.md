@@ -281,14 +281,18 @@ it, returns 400.
 `/summary?window=24h|7d|30d` (default `7d`) reports, per team in scope and in
 total, current Work Item counts by state, current pending and running Runs and
 the budget held for them (`heldUsd`, the Hold), and the Runs finished and spend
-settled inside the window.
+settled inside the window. Asks are not Runs of the work: they are left out of
+`pending`, `running`, `finished`, `failed` and `stuck`, and `asks` counts the
+Asks finished inside the window. Their spend stays in `settledUsd`.
 Settled spend is the sum of gateway reconciliation deltas plus the reported
 cost of Runs without a gateway account. `lastActivityAt` is the team's latest
 bound audit event. Teams appear when they have a Work Item or are registered.
 
-`/runs` lists Runs newest first by id. It filters on `team`, `state` and
-`outcome`, takes `limit` (1 to 200, default 50) and pages with
-`before=<runId>`, returning `nextBefore`. `externalRef` is the tracker
+`/runs` lists Runs newest first by id. It filters on `team`, `state`,
+`outcome` and `role`, takes `limit` (1 to 200, default 50) and pages with
+`before=<runId>`, returning `nextBefore`. Without `role` it leaves Asks out, so
+an Unfold page that asks about a running Work Item every few minutes does not
+fill the list; `role=ask` lists only the Asks. `externalRef` is the tracker
 reference agents put in commit trailers, empty for manual Operator Executions.
 `settledUsd` is the reconciled gateway spend, or the reported cost of a
 finished Run without a gateway account, and null otherwise. It is also null

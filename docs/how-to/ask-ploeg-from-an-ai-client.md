@@ -91,7 +91,7 @@ Any other client takes the same command, arguments and two environment variables
 | `ploeg_overview` | Counts, Runs and spend per Team for 24h, 7d or 30d, plus the Work Items that are `needs_human`, `awaiting_review` or `proposed` |
 | `ploeg_find_work` | Work Items by state or Team, paged |
 | `ploeg_get_work` | One Work Item by Ploeg id, `provider:externalId` or tracker task URL: why it waits, its latest Shift's budget and spend, its Runs, pull request and recent events. `detail: full` adds descriptions, findings and event details |
-| `ploeg_recent_runs` | Runs newest first with outcome, verdict, failure reason and cost |
+| `ploeg_recent_runs` | Runs newest first with outcome, verdict, failure reason and cost; Asks only with `role: ask` |
 | `ploeg_changes_since` | Audit events since a cursor the previous call returned |
 
 Every tool above is read-only and returns its full answer as structured content and as text. Amounts are USD rounded to cents. Text that came from a tracker, a forge or an agent sits under an `untrusted` key, and the server tells the client to treat it as data.

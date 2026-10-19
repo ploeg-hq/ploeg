@@ -41,7 +41,7 @@ func newServer(c *operatorclient.Client, actions bool) *mcp.Server {
 	mcp.AddTool(srv, &mcp.Tool{Name: "ploeg_get_work", Title: "Get a Work Item", Annotations: readOnly("Get a Work Item"),
 		Description: "One Work Item with why it waits, its latest Shift's budget, spend and held budget, its Runs, its pull request, recent events and its attended executions (yours are marked, to steer with ploeg_steer_execution). ref is a Ploeg id (184), provider:externalId (vikunja:1897) or a tracker task URL. detail=full adds descriptions, findings and event details."}, s.getWork)
 	mcp.AddTool(srv, &mcp.Tool{Name: "ploeg_recent_runs", Title: "Recent Runs", Annotations: readOnly("Recent Runs"),
-		Description: "Runs newest first with role, outcome, verdict, failure reason and cost. Pass nextCursor back as before for older Runs."}, s.recentRuns)
+		Description: "Runs newest first with role, outcome, verdict, failure reason and cost. Asks are left out unless role is ask. Pass nextCursor back as before for older Runs."}, s.recentRuns)
 	mcp.AddTool(srv, &mcp.Tool{Name: "ploeg_changes_since", Title: "Changes since", Annotations: readOnly("Changes since"),
 		Description: "Audit events in the order they happened. Without a cursor it returns the newest events; pass the returned cursor next time to get only what happened since."}, s.changesSince)
 	if actions {
@@ -98,6 +98,7 @@ type teamLine struct {
 	RunsFinished   int64   `json:"runsFinished"`
 	RunsFailed     int64   `json:"runsFailed"`
 	RunsStuck      int64   `json:"runsStuck"`
+	Asks           int64   `json:"asks" jsonschema:"Asks answered in the window; they are not counted as Runs"`
 	SettledUSD     float64 `json:"settledUsd"`
 	HeldUSD        float64 `json:"heldUsd" jsonschema:"budget held for started work whose cost has not settled"`
 	LastActivityAt string  `json:"lastActivityAt,omitempty"`
@@ -117,7 +118,7 @@ type overviewOut struct {
 
 func line(team string, w store.OperatorWorkItemCounts, r store.OperatorRunCounts, s store.OperatorSpend) teamLine {
 	return teamLine{Team: team, Queued: w.Queued, Active: w.Active, NeedsHuman: w.NeedsHuman, AwaitingReview: w.AwaitingReview,
-		Proposed: w.Proposed, RunsFinished: r.Finished, RunsFailed: r.Failed, RunsStuck: r.Stuck,
+		Proposed: w.Proposed, RunsFinished: r.Finished, RunsFailed: r.Failed, RunsStuck: r.Stuck, Asks: r.Asks,
 		SettledUSD: cents(s.SettledUSD), HeldUSD: cents(s.HeldUSD)}
 }
 
@@ -457,6 +458,7 @@ type runsIn struct {
 	Team    string `json:"team,omitempty"`
 	State   string `json:"state,omitempty" jsonschema:"pending, running or finished"`
 	Outcome string `json:"outcome,omitempty" jsonschema:"a finished Run's outcome, such as pr_opened or failed"`
+	Role    string `json:"role,omitempty" jsonschema:"only Runs of this Role, such as builder or reviewer; ask lists the Asks, which are otherwise left out"`
 	Before  string `json:"before,omitempty" jsonschema:"nextCursor from the previous page"`
 	Limit   int    `json:"limit,omitempty" jsonschema:"1 to 100; default 20"`
 }
@@ -492,7 +494,7 @@ type runsOut struct {
 
 func (s *server) recentRuns(ctx context.Context, _ *mcp.CallToolRequest, in runsIn) (*mcp.CallToolResult, runsOut, error) {
 	var out runsOut
-	page, err := s.c.Runs(ctx, operatorclient.RunFilter{Team: in.Team, State: in.State, Outcome: in.Outcome, Before: in.Before, Limit: bounded(in.Limit, 20, 100)})
+	page, err := s.c.Runs(ctx, operatorclient.RunFilter{Team: in.Team, State: in.State, Outcome: in.Outcome, Role: in.Role, Before: in.Before, Limit: bounded(in.Limit, 20, 100)})
 	if err != nil {
 		return nil, out, explain(err)
 	}
