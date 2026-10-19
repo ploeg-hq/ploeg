@@ -138,3 +138,25 @@ func TestFindOpenChangeRequestHTTPError(t *testing.T) {
 		t.Fatal("want an error for HTTP 401, got nil")
 	}
 }
+
+func TestFindOpenChangeRequestKeepsTheTitleAndDescription(t *testing.T) {
+	forgejo, _, _ := forgeStub(t, `[{"html_url":"https://forge/x/y/pulls/7","title":"docs: a link","body":"Adds it.",
+	           "head":{"ref":"ploeg/VIK-1"},"base":{"ref":"main"}}]`)
+	gitlab, _, _ := forgeStub(t, `[{"web_url":"https://gl/g/p/-/merge_requests/3","title":"fix: a bug","description":"Fixes it.",
+	           "source_branch":"ploeg/VIK-1","target_branch":"main"}]`)
+	for _, c := range []struct {
+		ref         harness.RepoRef
+		title, body string
+	}{
+		{harness.RepoRef{ForgeURL: forgejo, Owner: "x", Name: "y", BaseBranch: "main"}, "docs: a link", "Adds it."},
+		{harness.RepoRef{Forge: harness.ForgeGitLab, ForgeURL: gitlab, Owner: "g", Name: "p", BaseBranch: "main"}, "fix: a bug", "Fixes it."},
+	} {
+		got, err := findOpenChangeRequest(c.ref, "tok", "ploeg/VIK-1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Title != c.title || got.Body != c.body {
+			t.Errorf("%s: title %q body %q, want %q %q", c.ref.ForgeURL, got.Title, got.Body, c.title, c.body)
+		}
+	}
+}

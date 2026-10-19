@@ -25,6 +25,7 @@ import (
 	"github.com/ploeg-hq/ploeg/pkg/knowledge"
 	"github.com/ploeg-hq/ploeg/pkg/litellm"
 	"github.com/ploeg-hq/ploeg/pkg/llmbroker"
+	"github.com/ploeg-hq/ploeg/pkg/taskprompt"
 	"github.com/ploeg-hq/ploeg/pkg/transcript"
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
@@ -543,7 +544,7 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	env := harness.RunEnv{
 		RepoDir:    cloneDir,
 		ScratchDir: scratchDir,
-		Prompt:     taskPrompt(harnessSpec, planner, writes, priorPR, onReviewBranch) + support,
+		Prompt:     taskPrompt(harnessSpec, planner, writes, taskprompt.PullRequest{URL: priorPR, Title: prior.Title, Body: prior.Body}, onReviewBranch) + support,
 		BaseEnv:    append(append(withToolchains(harnessEnvironment(os.Environ(), home, scratchDir, writes, harnessForgeToken, w.Cfg.LLMBaseURL, harnessModelName(w.Cfg)), w.Cfg.Toolchains), runEnv...), w.runTelemetryEnvironment(claimed.Role, trace)...),
 		LLM:        harness.LLMEnv{BaseURL: w.Cfg.LLMBaseURL, Model: model, TraceID: trace},
 		Stdout:     io.MultiWriter(os.Stdout, &logTail),

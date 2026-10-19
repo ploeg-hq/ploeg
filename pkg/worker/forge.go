@@ -19,6 +19,8 @@ var errUnsupportedForge = errors.New("unsupported forge dialect")
 type changeRequest struct {
 	URL        string
 	Number     int
+	Title      string
+	Body       string
 	HeadBranch string
 	BaseBranch string
 	HeadSHA    string
@@ -133,6 +135,8 @@ func listGitHubPullRequestsPage(ref harness.RepoRef, token, target string) ([]ch
 	var raw []struct {
 		HTMLURL string    `json:"html_url"`
 		Number  int       `json:"number"`
+		Title   string    `json:"title"`
+		Body    string    `json:"body"`
 		Head    branchRef `json:"head"`
 		Base    branchRef `json:"base"`
 	}
@@ -152,7 +156,7 @@ func listGitHubPullRequestsPage(ref harness.RepoRef, token, target string) ([]ch
 			baseRepo = ref.ProjectPath()
 		}
 		headRepo := repoName(p.Head)
-		pulls = append(pulls, changeRequest{URL: p.HTMLURL, Number: p.Number, HeadBranch: p.Head.Ref, BaseBranch: p.Base.Ref,
+		pulls = append(pulls, changeRequest{URL: p.HTMLURL, Number: p.Number, Title: p.Title, Body: p.Body, HeadBranch: p.Head.Ref, BaseBranch: p.Base.Ref,
 			HeadSHA: p.Head.SHA, fromFork: headRepo == "" || differentRepository(headRepo, baseRepo)})
 	}
 	return pulls, githubapi.NextLink(resp.Header), nil
@@ -198,6 +202,8 @@ func listForgejoPullRequestsPage(ref harness.RepoRef, token string, page int) (p
 	var raw []struct {
 		HTMLURL string    `json:"html_url"`
 		Number  int       `json:"number"`
+		Title   string    `json:"title"`
+		Body    string    `json:"body"`
 		Head    branchRef `json:"head"`
 		Base    branchRef `json:"base"`
 	}
@@ -221,7 +227,7 @@ func listForgejoPullRequestsPage(ref harness.RepoRef, token string, page int) (p
 		if baseRepo == "" {
 			baseRepo = ref.ProjectPath()
 		}
-		pulls = append(pulls, changeRequest{URL: p.HTMLURL, Number: p.Number, HeadBranch: p.Head.Ref, BaseBranch: p.Base.Ref,
+		pulls = append(pulls, changeRequest{URL: p.HTMLURL, Number: p.Number, Title: p.Title, Body: p.Body, HeadBranch: p.Head.Ref, BaseBranch: p.Base.Ref,
 			HeadSHA: p.Head.SHA, fromFork: differentRepository(repoName(p.Head), baseRepo)})
 	}
 	return pulls, total, nil
@@ -239,6 +245,8 @@ func listGitLabMergeRequests(ref harness.RepoRef, token, sourceBranch string) ([
 	var merges []struct {
 		WebURL          string `json:"web_url"`
 		IID             int    `json:"iid"`
+		Title           string `json:"title"`
+		Description     string `json:"description"`
 		SourceBranch    string `json:"source_branch"`
 		TargetBranch    string `json:"target_branch"`
 		SHA             string `json:"sha"`
@@ -251,7 +259,7 @@ func listGitLabMergeRequests(ref harness.RepoRef, token, sourceBranch string) ([
 	open := make([]changeRequest, 0, len(merges))
 	for _, m := range merges {
 		fork := m.SourceProjectID != 0 && m.TargetProjectID != 0 && m.SourceProjectID != m.TargetProjectID
-		open = append(open, changeRequest{URL: m.WebURL, Number: m.IID, HeadBranch: m.SourceBranch, BaseBranch: m.TargetBranch,
+		open = append(open, changeRequest{URL: m.WebURL, Number: m.IID, Title: m.Title, Body: m.Description, HeadBranch: m.SourceBranch, BaseBranch: m.TargetBranch,
 			HeadSHA: m.SHA, fromFork: fork})
 	}
 	return open, nil

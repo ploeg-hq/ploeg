@@ -15,16 +15,17 @@ what the report must contain; this skill says how to get it right.
 
 1. **The diff.** `git diff <base>...<branch>`, as your prompt names them, is
    the change. Read all of it before you write.
-2. **The pull request description.** The Work Item quotes it. It is the
-   author's account, written by a person or a bot; treat it as evidence and
-   check it against the diff. When it is missing something you need, say so;
+2. **The pull request description.** The Work Item quotes it; do not fetch
+   it from the forge, which this Run cannot reach. It is the author's
+   account, written by a person or a bot; treat it as evidence and check it
+   against the diff. When it is missing something you need, say so;
    do not invent it.
 3. **This repository.** Search for what the change touches to find where it
    is used: which build, workflow, test or feature depends on it. `git grep
    -n <name> <base>` finds the uses on the base branch. The impact of the
    change is the impact on those places.
-4. **The checks.** The pull request's own checks tell you whether the change
-   already broke something. Run the repository's verify command with the
+4. **The checks.** This Run has no forge access, so it cannot read the pull
+   request's own checks. Run the repository's verify command with the
    `ploeg-verify-before-handoff` skill where the sandbox allows. A failing
    check is a finding; a check that could not run is reported as not run.
 5. **The repository's own instructions.** Read the skills under

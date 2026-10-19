@@ -163,7 +163,7 @@ func (s *Server) handleClientClaim(w http.ResponseWriter, r *http.Request) {
 			Ref:           ref, Branch: claim.Branch, BaseBranch: base,
 			Repository: clientClaimRepository{Forge: target.Forge, Owner: target.Owner, Repo: target.Repo},
 			Title:      claim.Item.Title, Reference: work.Reference(claim.Item),
-			Prompt: taskprompt.ForRun(spec, planner, claim.Writes, "", !claim.Writes && branchExists) +
+			Prompt: taskprompt.ForRun(spec, planner, claim.Writes, taskprompt.PullRequest{}, !claim.Writes && branchExists) +
 				claudeenv.SessionContract(spec, base),
 		},
 		Credential: clientClaimCredential{RunToken: claim.RunToken, Deadline: claim.Deadline},

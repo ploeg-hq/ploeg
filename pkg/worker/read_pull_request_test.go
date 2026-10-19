@@ -30,7 +30,10 @@ func TestComposePrompt_ReadsAPullRequestWithoutAReviewLoop(t *testing.T) {
 			t.Errorf("prompt lacks %q", want)
 		}
 	}
-	for _, absent := range []string{"Delivery contract (review only)", "sends the work back to the writer"} {
+	if !strings.Contains(prompt, "This Run has no forge access, so do not try to fetch the pull request.") {
+		t.Error("the pull request reader is not told the description is quoted and the forge is out of reach")
+	}
+	for _, absent := range []string{"Delivery contract (review only)", "sends the work back to the writer", "read the\n  pull request itself"} {
 		if strings.Contains(prompt, absent) {
 			t.Errorf("prompt carries the ordinary review contract: %q", absent)
 		}

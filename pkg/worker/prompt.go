@@ -22,8 +22,8 @@ func ComposePlannerPrompt(spec harness.TaskSpec) string {
 	return taskprompt.ComposePlanner(spec)
 }
 
-func taskPrompt(spec harness.TaskSpec, planner, writes bool, priorPR string, onReviewBranch bool) string {
-	return taskprompt.ForRun(spec, planner, writes, priorPR, onReviewBranch)
+func taskPrompt(spec harness.TaskSpec, planner, writes bool, prior taskprompt.PullRequest, onReviewBranch bool) string {
+	return taskprompt.ForRun(spec, planner, writes, prior, onReviewBranch)
 }
 
 func openSpecValidateCommand(id string) string { return taskprompt.OpenSpecValidateCommand(id) }

@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/ploeg-hq/ploeg/pkg/harness"
+	"github.com/ploeg-hq/ploeg/pkg/taskprompt"
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
@@ -84,10 +85,10 @@ func TestComposePlannerPrompt_ExampleIsAValidOutcome(t *testing.T) {
 
 func TestTaskPrompt_PlannerOnlyForReaders(t *testing.T) {
 	spec := roleSpec("planner", nil)
-	if got := taskPrompt(spec, true, false, "", false); got != ComposePlannerPrompt(spec) {
+	if got := taskPrompt(spec, true, false, taskprompt.PullRequest{}, false); got != ComposePlannerPrompt(spec) {
 		t.Error("a planner reader did not get the planner prompt")
 	}
-	if got := taskPrompt(spec, false, false, "", false); got != ComposePrompt(spec, false, "", false) {
+	if got := taskPrompt(spec, false, false, taskprompt.PullRequest{}, false); got != ComposePrompt(spec, false, "", false) {
 		t.Error("a reader that is not a planner lost its review prompt")
 	}
 }

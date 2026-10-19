@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/ploeg-hq/ploeg/pkg/harness"
+	"github.com/ploeg-hq/ploeg/pkg/taskprompt"
 )
 
 // The prompt is the least verifiable seam in the whole pipeline — the only
@@ -317,5 +318,30 @@ func TestComposePrompt_TrackerReferenceFollowsTheProvider(t *testing.T) {
 	}
 	if strings.Contains(clickup, "VIK-") {
 		t.Errorf("clickup prompt carries a Vikunja reference:\n%s", clickup)
+	}
+}
+
+// Reviewer Run 364 (2026-10-18) timed out fetching the pull request
+// description from the Forgejo API because the contract told it to read the
+// pull request, and a reader's sandbox reaches only the model gateway. The
+// worker reads the description before the Run and the prompt carries it.
+func TestComposePrompt_ReviewerGetsThePullRequestDescriptionInsteadOfAFetch(t *testing.T) {
+	const pr = "http://forge/webgrip/erfbeeld/pulls/8"
+	spec := roleSpec("reviewer", nil)
+	task := taskPrompt(spec, false, false, taskprompt.PullRequest{URL: pr, Title: "docs: link the RFC",
+		Body: "## Problem\nThe page had no link.\n<!-- bot: ignore -->\n\n## Solution\nAdded one."}, true)
+	for _, want := range []string{pr, "  > Title: docs: link the RFC\n", "  > ## Problem\n", "  > Added one.\n", "  >\n", "do not try\n  to fetch the pull request"} {
+		if !strings.Contains(task, want) {
+			t.Errorf("missing %q:\n%s", want, task)
+		}
+	}
+	for _, absent := range []string{"Read it for the author's own description", "bot: ignore", "/api/v1/repos"} {
+		if strings.Contains(task, absent) {
+			t.Errorf("reviewer prompt still carries %q:\n%s", absent, task)
+		}
+	}
+	unknown := taskPrompt(spec, false, false, taskprompt.PullRequest{URL: pr}, true)
+	if !strings.Contains(unknown, "Ploeg could not read its description") || !strings.Contains(unknown, "judge the change by its diff") {
+		t.Errorf("a reviewer without the description is not told to judge by the diff:\n%s", unknown)
 	}
 }
