@@ -65,7 +65,7 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-func resetTables(t *testing.T) {
+func resetTables(t testing.TB) {
 	t.Helper()
 	// Order matters: leases and agent_runs reference shifts; shifts references
 	// work_items.
@@ -76,7 +76,7 @@ func resetTables(t *testing.T) {
 	}
 }
 
-func ingestItem(t *testing.T) (int64, work.State) {
+func ingestItem(t testing.TB) (int64, work.State) {
 	t.Helper()
 	id, state, err := testStore.IngestAssigned(context.Background(), work.WorkItem{
 		Provider: "vikunja", ExternalID: "585", Team: "silver", Title: "t",
