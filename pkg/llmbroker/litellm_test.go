@@ -5,9 +5,13 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -28,8 +32,45 @@ type fakeAdmin struct {
 	entries  map[string][]map[string]any
 	// aliasLogs are spend log rows by the alias they carry, served by
 	// /spend/logs/ui; aliasFail makes that endpoint answer 500.
-	aliasLogs map[string][]map[string]any
-	aliasFail bool
+	aliasLogs   map[string][]map[string]any
+	aliasFail   bool
+	listQueries []url.Values
+}
+
+func (f *fakeAdmin) serveKeyList(w http.ResponseWriter, q url.Values) {
+	size, sizeErr := strconv.Atoi(q.Get("size"))
+	page, pageErr := strconv.Atoi(q.Get("page"))
+	if sizeErr != nil || pageErr != nil || size < 1 || size > 100 || page < 1 {
+		http.Error(w, "invalid paging", http.StatusUnprocessableEntity)
+		return
+	}
+	status := q.Get("status")
+	if status != "" && status != "active" && status != "revoked" {
+		http.Error(w, "invalid status", http.StatusBadRequest)
+		return
+	}
+	alias := q.Get("key_alias")
+	substring := q.Get("substring_matching") == "true"
+	matching := make([]litellm.KeyInfo, 0, len(f.keys))
+	for tok, keyAlias := range f.keys {
+		switch {
+		case alias != "" && substring && !strings.Contains(strings.ToLower(keyAlias), strings.ToLower(alias)):
+			continue
+		case alias != "" && !substring && keyAlias != alias:
+			continue
+		case status == "active" && f.blocked[tok]:
+			continue
+		case status == "revoked" && !f.blocked[tok]:
+			continue
+		}
+		matching = append(matching, litellm.KeyInfo{Token: tok, KeyAlias: keyAlias, Blocked: f.blocked[tok]})
+	}
+	sort.Slice(matching, func(i, j int) bool { return matching[i].Token < matching[j].Token })
+	start := min((page-1)*size, len(matching))
+	end := min(start+size, len(matching))
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"keys": matching[start:end], "total_count": len(matching), "total_pages": (len(matching) + size - 1) / size, "current_page": page,
+	})
 }
 
 func newFakeAdmin() *fakeAdmin {
@@ -112,13 +153,8 @@ func (f *fakeAdmin) server(t *testing.T) *httptest.Server {
 				"info": map[string]any{"spend": f.spend, "max_budget": 2},
 			})
 		case "/key/list":
-			keys := make([]litellm.KeyInfo, 0, len(f.keys))
-			for tok, alias := range f.keys {
-				keys = append(keys, litellm.KeyInfo{Token: tok, KeyAlias: alias, Blocked: f.blocked[tok]})
-			}
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"keys": keys, "total_count": len(keys), "total_pages": 1, "current_page": 1,
-			})
+			f.listQueries = append(f.listQueries, r.URL.Query())
+			f.serveKeyList(w, r.URL.Query())
 		case "/spend/logs":
 			token := r.URL.Query().Get("api_key")
 			entries := []map[string]any{}
@@ -484,5 +520,77 @@ func TestMint_RefusesMCPAccessGroupsWithoutATeam(t *testing.T) {
 	}
 	if len(f.minted) != 0 {
 		t.Fatalf("nothing should have been minted, got %+v", f.minted)
+	}
+}
+
+func (f *fakeAdmin) seedBlockedHistory(n int) {
+	for i := range n {
+		token := fmt.Sprintf("history-%06d", i)
+		f.keys[token] = fmt.Sprintf("ploeg-%012x", i)
+		f.blocked[token] = true
+	}
+}
+
+func TestRunKeyLookups_AskTheGatewayForOneAliasInOnePage(t *testing.T) {
+	ctx := context.Background()
+	alias := litellm.Alias(runToken)
+	lookups := map[string]func(*LiteLLM) error{
+		"RevokeForRun": func(b *LiteLLM) error { return b.RevokeForRun(ctx, runToken) },
+		"SettledSpendForRun": func(b *LiteLLM) error {
+			_, err := b.SettledSpendForRun(ctx, runToken, nil)
+			return err
+		},
+		"RunKeysGone": func(b *LiteLLM) error {
+			_, err := b.RunKeysGone(ctx, runToken, nil)
+			return err
+		},
+		"SpendForRun": func(b *LiteLLM) error {
+			_, err := b.SpendForRun(ctx, runToken)
+			return err
+		},
+	}
+	for name, lookup := range lookups {
+		t.Run(name, func(t *testing.T) {
+			f := newFakeAdmin()
+			f.seedBlockedHistory(1000)
+			b := f.broker(t)
+			if _, err := b.Mint(ctx, MintRequest{RunToken: runToken, BudgetUSD: 1, TTL: time.Hour}); err != nil {
+				t.Fatal(err)
+			}
+			if err := lookup(b); err != nil {
+				t.Fatal(err)
+			}
+			if len(f.listQueries) != 1 {
+				t.Fatalf("/key/list calls = %d with 1001 keys on the gateway, want 1", len(f.listQueries))
+			}
+			q := f.listQueries[0]
+			if q.Get("key_alias") != alias || q.Has("substring_matching") || q.Get("return_full_object") != "true" {
+				t.Fatalf("/key/list query = %v, want an exact key_alias=%s lookup", q, alias)
+			}
+		})
+	}
+}
+
+func TestSweepOrphans_ListsOnlyActivePloegKeysFromTheGateway(t *testing.T) {
+	f := newFakeAdmin()
+	f.seedBlockedHistory(1000)
+	f.keys["foreign"] = "someone-elses-key"
+	b := f.broker(t)
+	if _, err := b.Mint(context.Background(), MintRequest{RunToken: runToken, BudgetUSD: 1, TTL: time.Hour}); err != nil {
+		t.Fatal(err)
+	}
+	n, err := b.SweepOrphans(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 || !f.blocked[fixtureKeyID("sk-"+litellm.Alias(runToken))] || f.blocked["foreign"] {
+		t.Fatalf("swept %d keys, want only the orphaned Ploeg key", n)
+	}
+	if len(f.listQueries) != 1 {
+		t.Fatalf("/key/list calls = %d with 1000 blocked keys on the gateway, want 1", len(f.listQueries))
+	}
+	q := f.listQueries[0]
+	if q.Get("key_alias") != litellm.AliasPrefix || q.Get("substring_matching") != "true" || q.Get("status") != "active" {
+		t.Fatalf("/key/list query = %v, want the active ploeg- keys", q)
 	}
 }
