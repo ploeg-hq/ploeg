@@ -49,7 +49,7 @@ func TestMain(m *testing.M) {
 		defer func() { _ = epg.Stop(); _ = os.RemoveAll(dir) }()
 		ctx := context.Background()
 		dsn := fmt.Sprintf("postgresql://postgres:postgres@localhost:%d/postgres?sslmode=disable", testPort)
-		s, err := New(ctx, dsn)
+		s, err := New(ctx, dsn, PoolConfig{})
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			return 1

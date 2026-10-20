@@ -106,6 +106,28 @@ spec:
                 secretKeyRef:
                   name: ploeg-db-app
                   key: uri
+            - name: PLOEG_DB_APPLICATION_NAME
+              value: "ploegd"
+            - name: PLOEG_DB_HEALTH_CHECK_PERIOD
+              value: "30s"
+            - name: PLOEG_DB_IDLE_IN_TRANSACTION_TIMEOUT
+              value: "60s"
+            - name: PLOEG_DB_MAX_CONN_IDLE_TIME
+              value: "5m"
+            - name: PLOEG_DB_MAX_CONN_LIFETIME
+              value: "30m"
+            - name: PLOEG_DB_MAX_CONN_LIFETIME_JITTER
+              value: "5m"
+            - name: PLOEG_DB_MAX_CONNS
+              value: "8"
+            - name: PLOEG_DB_MIN_IDLE_CONNS
+              value: "2"
+            - name: PLOEG_DB_PING_TIMEOUT
+              value: "5s"
+            - name: PLOEG_DB_STATEMENT_TIMEOUT
+              value: "30s"
+            - name: GOMEMLIMIT
+              value: "230MiB"
             - name: PLOEG_FORGEJO_URL
               value: "http://forgejo-http.forgejo.svc.cluster.local:3000"
             - name: PLOEG_FORGEJO_TOKEN
@@ -216,6 +238,8 @@ spec:
               value: "http://ploeg-core:8080"
             - name: PLOEG_MCP_LISTEN
               value: ":8090"
+            - name: GOMEMLIMIT
+              value: "115MiB"
           ports:
             - name: http
               containerPort: 8090

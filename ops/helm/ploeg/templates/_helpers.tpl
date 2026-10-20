@@ -815,3 +815,29 @@ admission while the PolicyException looked correct.
 {{- if hasKey $rh "dind" }}{{- $d = $rh.dind }}{{- else if hasKey $th "dind" }}{{- $d = $th.dind }}{{- else if hasKey $gh "dind" }}{{- $d = $gh.dind }}{{- end }}
 {{- if $d }}true{{- end }}
 {{- end -}}
+
+{{- define "ploeg.goMemLimitEnv" -}}
+{{- $set := toString (.goMemLimit | default "") -}}
+{{- if and (ne $set "off") (not (hasKey (.env | default dict) "GOMEMLIMIT")) -}}
+{{- if $set }}
+- name: GOMEMLIMIT
+  value: {{ $set | quote }}
+{{- else -}}
+{{- with ((.resources | default dict).limits | default dict).memory }}
+- name: GOMEMLIMIT
+  value: {{ include "ploeg.ninetyPercentMiB" . | quote }}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "ploeg.ninetyPercentMiB" -}}
+{{- $quantity := toString . -}}
+{{- $units := dict "" 1.0 "k" 1000.0 "M" 1000000.0 "G" 1000000000.0 "T" 1000000000000.0 "Ki" 1024.0 "Mi" 1048576.0 "Gi" 1073741824.0 "Ti" 1099511627776.0 -}}
+{{- $number := regexFind "^[0-9]+(\\.[0-9]+)?" $quantity -}}
+{{- $suffix := trimPrefix $number $quantity -}}
+{{- if or (not $number) (not (hasKey $units $suffix)) -}}
+{{- fail (printf "cannot derive GOMEMLIMIT from the memory limit %q: set the goMemLimit value next to it" $quantity) -}}
+{{- end -}}
+{{- printf "%dMiB" (int64 (floor (divf (mulf (float64 $number) (get $units $suffix) 0.9) 1048576.0))) -}}
+{{- end -}}
