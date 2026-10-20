@@ -55,7 +55,7 @@ func (s *Server) handleRunTranscript(w http.ResponseWriter, r *http.Request) {
 		if e.At.IsZero() || e.At.After(now.Add(transcriptClockSkew)) {
 			e.At = now
 		}
-		req.Entries[i] = transcript.Clamp(redact.Entry(e))
+		req.Entries[i] = redact.Seal(e)
 	}
 	res, err := s.Store.AppendTranscript(r.Context(), token, req.Entries)
 	if err != nil {

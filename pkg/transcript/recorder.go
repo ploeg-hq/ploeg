@@ -299,7 +299,7 @@ func (r *Recorder) appendLocked(e Entry) {
 	if r.opts.Secrets != nil {
 		secrets = r.opts.Secrets()
 	}
-	e = Clamp(NewRedactor(secrets...).Entry(e))
+	e = NewRedactor(secrets...).Seal(e)
 	r.noteProgressLocked(e)
 	if r.truncated || r.disabled {
 		return
