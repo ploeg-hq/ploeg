@@ -88,7 +88,9 @@ func schemaStrictHandler() http.Handler {
 
 		// Schema-strict: reject unknown params.
 		for param := range q {
-			if param != "return_full_object" && param != "size" && param != "page" {
+			switch param {
+			case "return_full_object", "size", "page", "key_alias", "substring_matching", "status":
+			default:
 				http.Error(w, fmt.Sprintf("unknown query param: %s", param), http.StatusBadRequest)
 				return
 			}
@@ -113,7 +115,15 @@ func schemaStrictHandler() http.Handler {
 
 		// With return_full_object=true, keys are objects with token/key_alias.
 		keys := []fakeKey{} // real proxy emits [], never null
+		alias := q.Get("key_alias")
+		substring := q.Get("substring_matching") == "true"
 		for _, k := range keyStore {
+			if alias != "" && substring && !strings.Contains(strings.ToLower(k.KeyAlias), strings.ToLower(alias)) {
+				continue
+			}
+			if alias != "" && !substring && k.KeyAlias != alias {
+				continue
+			}
 			keys = append(keys, k)
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
@@ -168,7 +178,7 @@ func TestListKeys_MissingFullObjectReturnsStrings(t *testing.T) {
 	// Without return_full_object=true, the fake returns string tokens.
 	// The client always sets return_full_object=true, so this just tests
 	// that we handle the case gracefully (no panic on decode mismatch).
-	keys, err := cli.ListKeys(context.Background(), "ploeg-")
+	keys, err := cli.ListKeys(context.Background(), KeyQuery{AliasPrefix: "ploeg-"})
 	if err != nil {
 		t.Fatalf("ListKeys: %v", err)
 	}
@@ -199,7 +209,7 @@ func TestListKeys_PrefixFilter(t *testing.T) {
 	}
 	resp.Body.Close()
 
-	keys, err := cli.ListKeys(ctx, "ploeg-")
+	keys, err := cli.ListKeys(ctx, KeyQuery{AliasPrefix: "ploeg-"})
 	if err != nil {
 		t.Fatalf("ListKeys(ploeg-): %v", err)
 	}
@@ -419,7 +429,7 @@ func TestGatewayErrorsNeverEchoCredentialOrResponseBody(t *testing.T) {
 	ctx := context.Background()
 	_, mintErr := cli.Mint(ctx, MintRequest{KeyAlias: "fixture", MaxBudget: 1})
 	_, spendErr := cli.KeySpend(ctx, canary)
-	_, listErr := cli.ListKeys(ctx, "fixture")
+	_, listErr := cli.ListKeys(ctx, KeyQuery{Alias: "fixture"})
 	for _, err := range []error{mintErr, spendErr, listErr, cli.BlockKey(ctx, canary), cli.DeleteKeys(ctx, []string{canary})} {
 		if err == nil || strings.Contains(err.Error(), canary) {
 			t.Fatalf("unsafe gateway error: %v", err)
@@ -596,5 +606,82 @@ func TestSpendLogsByAlias_PagesMatchesTheExactAliasAndRefusesWhatItCannotTrust(t
 	}
 	if _, _, err := cli.SpendLogsByAlias(ctx, "", time.Now()); err == nil {
 		t.Fatal("an empty alias was read")
+	}
+}
+
+func TestListKeys_SendsTheQueryToTheGateway(t *testing.T) {
+	cases := map[string]struct {
+		query KeyQuery
+		want  url.Values
+	}{
+		"exact alias": {
+			query: KeyQuery{Alias: "ploeg-aabbccddee00"},
+			want:  url.Values{"return_full_object": {"true"}, "size": {"100"}, "page": {"1"}, "key_alias": {"ploeg-aabbccddee00"}},
+		},
+		"active by prefix": {
+			query: KeyQuery{AliasPrefix: "ploeg-", ActiveOnly: true},
+			want:  url.Values{"return_full_object": {"true"}, "size": {"100"}, "page": {"1"}, "key_alias": {"ploeg-"}, "substring_matching": {"true"}, "status": {"active"}},
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			var got []url.Values
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				got = append(got, r.URL.Query())
+				_, _ = w.Write([]byte(`{"keys":[],"total_count":0,"total_pages":0,"current_page":1}`))
+			}))
+			defer srv.Close()
+			if _, err := NewClient(srv.URL, "fixture-master").ListKeys(context.Background(), tc.query); err != nil {
+				t.Fatal(err)
+			}
+			if len(got) != 1 || got[0].Encode() != tc.want.Encode() {
+				t.Fatalf("queries = %v, want one %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestListKeys_KeepsOnlyMatchingKeysWhenTheGatewayIgnoresAFilter(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"keys":[
+			{"token":"a","key_alias":"ploeg-aabbccddee00"},
+			{"token":"b","key_alias":"ploeg-aabbccddee00","blocked":true},
+			{"token":"c","key_alias":"ploeg-aabbccddee001"},
+			{"token":"d","key_alias":"x-ploeg-aabbccddee00"}
+		],"total_count":4,"total_pages":1,"current_page":1}`))
+	}))
+	defer srv.Close()
+	cli := NewClient(srv.URL, "fixture-master")
+	exact, err := cli.ListKeys(context.Background(), KeyQuery{Alias: "ploeg-aabbccddee00"})
+	if err != nil || len(exact) != 2 {
+		t.Fatalf("exact alias lookup = %v, %v; want tokens a and b", exact, err)
+	}
+	active, err := cli.ListKeys(context.Background(), KeyQuery{AliasPrefix: "ploeg-", ActiveOnly: true})
+	if err != nil || len(active) != 2 || active[0].Token != "a" || active[1].Token != "c" {
+		t.Fatalf("active prefix lookup = %v, %v; want tokens a and c", active, err)
+	}
+}
+
+func TestListKeys_ReadsAFullObjectPageLargerThanOneMebibyte(t *testing.T) {
+	padding := strings.Repeat("x", 20<<10)
+	var page strings.Builder
+	page.WriteString(`{"keys":[`)
+	for i := range 100 {
+		if i > 0 {
+			page.WriteString(",")
+		}
+		fmt.Fprintf(&page, `{"token":"t%d","key_alias":"ploeg-%012d","metadata":{"padding":%q}}`, i, i, padding)
+	}
+	page.WriteString(`],"total_count":100,"total_pages":1,"current_page":1}`)
+	if page.Len() <= 1<<20 {
+		t.Fatalf("fixture page is %d bytes, want more than 1 MiB", page.Len())
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(page.String()))
+	}))
+	defer srv.Close()
+	keys, err := NewClient(srv.URL, "fixture-master").ListKeys(context.Background(), KeyQuery{AliasPrefix: "ploeg-"})
+	if err != nil || len(keys) != 100 {
+		t.Fatalf("ListKeys = %d keys, %v; want all 100", len(keys), err)
 	}
 }

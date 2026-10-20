@@ -472,15 +472,59 @@ type listKeysResponse struct {
 	CurrentPage int       `json:"current_page"`
 }
 
-// ListKeys lists all keys from the LiteLLM proxy. When prefix is non-empty,
-// results are filtered client-side to keys whose key_alias starts with the
-// given prefix. The method paginates through all pages.
-func (c *Client) ListKeys(ctx context.Context, prefix string) ([]KeyInfo, error) {
+const (
+	keyListPageSize     = 100
+	maxKeyListPageBytes = 16 << 20
+)
+
+// KeyQuery narrows /key/list on the gateway, so a lookup pages through the
+// matching keys only instead of every key the gateway has ever held.
+// Alias matches one key alias exactly. AliasPrefix matches aliases that
+// start with it. ActiveOnly leaves out blocked and expired keys. The
+// gateway filters need LiteLLM 1.103.0 or later; the client applies the
+// same alias and blocked filters to every page it receives.
+type KeyQuery struct {
+	Alias       string
+	AliasPrefix string
+	ActiveOnly  bool
+}
+
+func (q KeyQuery) values(page int) url.Values {
+	v := url.Values{}
+	v.Set("return_full_object", "true")
+	v.Set("size", strconv.Itoa(keyListPageSize))
+	v.Set("page", strconv.Itoa(page))
+	switch {
+	case q.Alias != "":
+		v.Set("key_alias", q.Alias)
+	case q.AliasPrefix != "":
+		v.Set("key_alias", q.AliasPrefix)
+		v.Set("substring_matching", "true")
+	}
+	if q.ActiveOnly {
+		v.Set("status", "active")
+	}
+	return v
+}
+
+func (q KeyQuery) matches(k KeyInfo) bool {
+	if q.Alias != "" && k.KeyAlias != q.Alias {
+		return false
+	}
+	if q.AliasPrefix != "" && !strings.HasPrefix(k.KeyAlias, q.AliasPrefix) {
+		return false
+	}
+	return !q.ActiveOnly || !k.Blocked
+}
+
+// ListKeys lists the gateway's keys that match q, through every page of
+// the filtered result.
+func (c *Client) ListKeys(ctx context.Context, q KeyQuery) ([]KeyInfo, error) {
 	var all []KeyInfo
 	page := 1
 	for {
-		url := fmt.Sprintf("%s/key/list?return_full_object=true&size=100&page=%d", c.baseURL, page)
-		httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		endpoint := c.baseURL + "/key/list?" + q.values(page).Encode()
+		httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 		if err != nil {
 			return nil, fmt.Errorf("litellm: invalid list endpoint")
 		}
@@ -492,7 +536,7 @@ func (c *Client) ListKeys(ctx context.Context, prefix string) ([]KeyInfo, error)
 		}
 
 		var lr listKeysResponse
-		if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&lr); err != nil {
+		if err := json.NewDecoder(io.LimitReader(resp.Body, maxKeyListPageBytes)).Decode(&lr); err != nil {
 			resp.Body.Close()
 			return nil, fmt.Errorf("litellm: invalid list response")
 		}
@@ -503,7 +547,7 @@ func (c *Client) ListKeys(ctx context.Context, prefix string) ([]KeyInfo, error)
 		}
 
 		for _, k := range lr.Keys {
-			if prefix == "" || strings.HasPrefix(k.KeyAlias, prefix) {
+			if q.matches(k) {
 				all = append(all, k)
 			}
 		}
