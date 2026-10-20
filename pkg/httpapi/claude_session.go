@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -84,7 +83,10 @@ func (s *Server) handleRecordClaudeSession(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	var req claudeSessionRequest
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&req); err != nil {
+	if err := decodeBounded(w, r, 4<<10, &req); err != nil {
+		if refuseOversizedBody(w, err) {
+			return
+		}
 		http.Error(w, "claude session requires environmentId and sessionId", http.StatusBadRequest)
 		return
 	}
@@ -221,7 +223,11 @@ func (s *Server) handleClaudeSessionReport(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	var req claudeSessionReportRequest
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxFinalMessageBytes+8<<10)).Decode(&req); err != nil || req.ExitReason == "" {
+	err := decodeBounded(w, r, maxFinalMessageBytes+8<<10, &req)
+	if refuseOversizedBody(w, err) {
+		return
+	}
+	if err != nil || req.ExitReason == "" {
 		http.Error(w, "a session report requires exitReason", http.StatusBadRequest)
 		return
 	}
@@ -230,7 +236,7 @@ func (s *Server) handleClaudeSessionReport(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "session report fields are too long", http.StatusBadRequest)
 		return
 	}
-	err := s.Store.ReportClaudeSession(r.Context(), claims.EnvironmentID, claims.SessionID, store.ClaudeSessionReport{
+	err = s.Store.ReportClaudeSession(r.Context(), claims.EnvironmentID, claims.SessionID, store.ClaudeSessionReport{
 		ExitReason: req.ExitReason, PushedCommit: req.PushedCommit, PullRequest: req.PullRequest, FinalMessage: req.FinalMessage,
 	})
 	if err != nil {

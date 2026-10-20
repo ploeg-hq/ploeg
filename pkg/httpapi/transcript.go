@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 	"net/url"
@@ -40,7 +39,10 @@ func (s *Server) handleRunTranscript(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req transcriptRequest
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxTranscriptRequestBytes)).Decode(&req); err != nil {
+	if err := decodeBounded(w, r, maxTranscriptRequestBytes, &req); err != nil {
+		if refuseOversizedBody(w, err) {
+			return
+		}
 		http.Error(w, "transcript requires an entries array", http.StatusBadRequest)
 		return
 	}
