@@ -50,6 +50,10 @@ type Adapter struct {
 func (a *Adapter) Name() string     { return Name }
 func (a *Adapter) ExpectsLLM() bool { return true }
 
+// PromptLimits returns none: a self-hosted session has no idle watchdog, and
+// only the worker's harness timeout bounds it (harness.PromptLimiter).
+func (a *Adapter) PromptLimits() (prompt, idle time.Duration) { return 0, 0 }
+
 // Run dispatches the session, records it, waits for the runner's report and
 // returns the outcome Claude's final message carries.
 func (a *Adapter) Run(ctx context.Context, spec harness.TaskSpec, env harness.RunEnv) (harness.OutcomeReport, error) {
