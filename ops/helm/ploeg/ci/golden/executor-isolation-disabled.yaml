@@ -364,9 +364,10 @@ spec:
         userName: "ploeg_scaler"
         dbName: "app"
         sslmode: "require"
-        # The one poll-query shape: served index-only by work_items_claimable
-        # (backlog #24/#47). Must stay in sync with store.Claim.
-        query: "SELECT COUNT(*) FROM work_items WHERE team = 'qualified' AND state = 'queued' AND NOT operator_owned AND (next_eligible_at IS NULL OR next_eligible_at <= now())"
+        # The one poll-query shape, served by work_items_claimable (backlog
+        # #24/#47). Must stay identical in predicate to store.Claim's
+        # nextClaimableQuery, live-Shift clause included.
+        query: "SELECT COUNT(*) FROM work_items WHERE team = 'qualified' AND state = 'queued' AND NOT operator_owned AND (next_eligible_at IS NULL OR next_eligible_at <= now()) AND NOT EXISTS (SELECT 1 FROM shifts sh WHERE sh.work_item_id = work_items.id AND sh.closed_at IS NULL)"
         targetQueryValue: "1"
         activationTargetQueryValue: "0"
       authenticationRef:

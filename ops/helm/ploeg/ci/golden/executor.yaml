@@ -442,9 +442,10 @@ spec:
         userName: "ploeg_scaler"
         dbName: "app"
         sslmode: "require"
-        # The one poll-query shape: served index-only by work_items_claimable
-        # (backlog #24/#47). Must stay in sync with store.Claim.
-        query: "SELECT COUNT(*) FROM work_items WHERE team = 'bronze' AND state = 'queued' AND NOT operator_owned AND (next_eligible_at IS NULL OR next_eligible_at <= now())"
+        # The one poll-query shape, served by work_items_claimable (backlog
+        # #24/#47). Must stay identical in predicate to store.Claim's
+        # nextClaimableQuery, live-Shift clause included.
+        query: "SELECT COUNT(*) FROM work_items WHERE team = 'bronze' AND state = 'queued' AND NOT operator_owned AND (next_eligible_at IS NULL OR next_eligible_at <= now()) AND NOT EXISTS (SELECT 1 FROM shifts sh WHERE sh.work_item_id = work_items.id AND sh.closed_at IS NULL)"
         targetQueryValue: "1"
         activationTargetQueryValue: "0"
       authenticationRef:
@@ -648,9 +649,10 @@ spec:
         userName: "ploeg_scaler"
         dbName: "app"
         sslmode: "require"
-        # The one poll-query shape: served index-only by work_items_claimable
-        # (backlog #24/#47). Must stay in sync with store.Claim.
-        query: "SELECT COUNT(*) FROM work_items WHERE team = 'copper' AND state = 'queued' AND NOT operator_owned AND (next_eligible_at IS NULL OR next_eligible_at <= now())"
+        # The one poll-query shape, served by work_items_claimable (backlog
+        # #24/#47). Must stay identical in predicate to store.Claim's
+        # nextClaimableQuery, live-Shift clause included.
+        query: "SELECT COUNT(*) FROM work_items WHERE team = 'copper' AND state = 'queued' AND NOT operator_owned AND (next_eligible_at IS NULL OR next_eligible_at <= now()) AND NOT EXISTS (SELECT 1 FROM shifts sh WHERE sh.work_item_id = work_items.id AND sh.closed_at IS NULL)"
         targetQueryValue: "1"
         activationTargetQueryValue: "0"
       authenticationRef:
@@ -857,9 +859,10 @@ spec:
         userName: "ploeg_scaler"
         dbName: "app"
         sslmode: "require"
-        # The one poll-query shape: served index-only by work_items_claimable
-        # (backlog #24/#47). Must stay in sync with store.Claim.
-        query: "SELECT COUNT(*) FROM work_items WHERE team = 'pewter' AND state = 'queued' AND NOT operator_owned AND (next_eligible_at IS NULL OR next_eligible_at <= now())"
+        # The one poll-query shape, served by work_items_claimable (backlog
+        # #24/#47). Must stay identical in predicate to store.Claim's
+        # nextClaimableQuery, live-Shift clause included.
+        query: "SELECT COUNT(*) FROM work_items WHERE team = 'pewter' AND state = 'queued' AND NOT operator_owned AND (next_eligible_at IS NULL OR next_eligible_at <= now()) AND NOT EXISTS (SELECT 1 FROM shifts sh WHERE sh.work_item_id = work_items.id AND sh.closed_at IS NULL)"
         targetQueryValue: "1"
         activationTargetQueryValue: "0"
       authenticationRef:
@@ -1118,9 +1121,10 @@ spec:
         userName: "ploeg_scaler"
         dbName: "app"
         sslmode: "require"
-        # The one poll-query shape: served index-only by work_items_claimable
-        # (backlog #24/#47). Must stay in sync with store.Claim.
-        query: "SELECT COUNT(*) FROM work_items WHERE team = 'tin' AND state = 'queued' AND NOT operator_owned AND (next_eligible_at IS NULL OR next_eligible_at <= now())"
+        # The one poll-query shape, served by work_items_claimable (backlog
+        # #24/#47). Must stay identical in predicate to store.Claim's
+        # nextClaimableQuery, live-Shift clause included.
+        query: "SELECT COUNT(*) FROM work_items WHERE team = 'tin' AND state = 'queued' AND NOT operator_owned AND (next_eligible_at IS NULL OR next_eligible_at <= now()) AND NOT EXISTS (SELECT 1 FROM shifts sh WHERE sh.work_item_id = work_items.id AND sh.closed_at IS NULL)"
         targetQueryValue: "1"
         activationTargetQueryValue: "0"
       authenticationRef:
@@ -1374,9 +1378,10 @@ spec:
         userName: "ploeg_scaler"
         dbName: "app"
         sslmode: "require"
-        # The one poll-query shape: served index-only by work_items_claimable
-        # (backlog #24/#47). Must stay in sync with store.Claim.
-        query: "SELECT COUNT(*) FROM work_items WHERE team = 'zinc' AND state = 'queued' AND NOT operator_owned AND (next_eligible_at IS NULL OR next_eligible_at <= now())"
+        # The one poll-query shape, served by work_items_claimable (backlog
+        # #24/#47). Must stay identical in predicate to store.Claim's
+        # nextClaimableQuery, live-Shift clause included.
+        query: "SELECT COUNT(*) FROM work_items WHERE team = 'zinc' AND state = 'queued' AND NOT operator_owned AND (next_eligible_at IS NULL OR next_eligible_at <= now()) AND NOT EXISTS (SELECT 1 FROM shifts sh WHERE sh.work_item_id = work_items.id AND sh.closed_at IS NULL)"
         targetQueryValue: "1"
         activationTargetQueryValue: "0"
       authenticationRef:
@@ -1630,9 +1635,10 @@ spec:
         userName: "ploeg_scaler"
         dbName: "app"
         sslmode: "require"
-        # The one poll-query shape: served index-only by work_items_claimable
-        # (backlog #24/#47). Must stay in sync with store.Claim.
-        query: "SELECT COUNT(*) FROM work_items WHERE team = 'lead' AND state = 'queued' AND NOT operator_owned AND (next_eligible_at IS NULL OR next_eligible_at <= now())"
+        # The one poll-query shape, served by work_items_claimable (backlog
+        # #24/#47). Must stay identical in predicate to store.Claim's
+        # nextClaimableQuery, live-Shift clause included.
+        query: "SELECT COUNT(*) FROM work_items WHERE team = 'lead' AND state = 'queued' AND NOT operator_owned AND (next_eligible_at IS NULL OR next_eligible_at <= now()) AND NOT EXISTS (SELECT 1 FROM shifts sh WHERE sh.work_item_id = work_items.id AND sh.closed_at IS NULL)"
         targetQueryValue: "1"
         activationTargetQueryValue: "0"
       authenticationRef:
@@ -1832,15 +1838,17 @@ spec:
         # THE claim predicate for a Role, and it must stay byte-identical to
         # store.ClaimRoleFor and store.PendingRunsFor: pending runs for this
         # team and role that store this workload's Harness key or none
-        # (ADR-0099). Served by agent_runs_claimable_harness, which migration
-        # 0056 created for this query:
+        # (ADR-0099), leaving out every Run a client carries (ADR-0112).
+        # Served by agent_runs_claimable_harness, which migration 0057
+        # created for this query:
         #   CREATE INDEX agent_runs_claimable_harness
         #       ON agent_runs (team, role, harness_requested, id) WHERE state = 'pending';
         # Overshoot merely wastes a pod that exits 0 empty-handed; undershoot
         # stalls Work Items with no error anywhere, which is the worst failure
         # this system can have. TestClaimRoleAgreesWithPendingRuns keeps the
-        # two Go callers honest; this comment is the third copy's leash.
-        query: "SELECT COUNT(*) FROM agent_runs WHERE team = 'gold' AND role = 'analyst' AND state = 'pending' AND (harness_requested IS NULL OR harness_requested = 'openhands')"
+        # two Go callers honest; TestTheChartsScalerQueryCountsWhatItsWorkerClaims
+        # runs this rendered query against them.
+        query: "SELECT COUNT(*) FROM agent_runs WHERE team = 'gold' AND role = 'analyst' AND state = 'pending' AND (harness_requested IS NULL OR harness_requested = 'openhands') AND carrier IS NULL"
         targetQueryValue: "1"
         activationTargetQueryValue: "0"
       authenticationRef:
@@ -2042,15 +2050,17 @@ spec:
         # THE claim predicate for a Role, and it must stay byte-identical to
         # store.ClaimRoleFor and store.PendingRunsFor: pending runs for this
         # team and role that store this workload's Harness key or none
-        # (ADR-0099). Served by agent_runs_claimable_harness, which migration
-        # 0056 created for this query:
+        # (ADR-0099), leaving out every Run a client carries (ADR-0112).
+        # Served by agent_runs_claimable_harness, which migration 0057
+        # created for this query:
         #   CREATE INDEX agent_runs_claimable_harness
         #       ON agent_runs (team, role, harness_requested, id) WHERE state = 'pending';
         # Overshoot merely wastes a pod that exits 0 empty-handed; undershoot
         # stalls Work Items with no error anywhere, which is the worst failure
         # this system can have. TestClaimRoleAgreesWithPendingRuns keeps the
-        # two Go callers honest; this comment is the third copy's leash.
-        query: "SELECT COUNT(*) FROM agent_runs WHERE team = 'gold' AND role = 'tests' AND state = 'pending' AND (harness_requested IS NULL OR harness_requested = 'acp/openhands')"
+        # two Go callers honest; TestTheChartsScalerQueryCountsWhatItsWorkerClaims
+        # runs this rendered query against them.
+        query: "SELECT COUNT(*) FROM agent_runs WHERE team = 'gold' AND role = 'tests' AND state = 'pending' AND (harness_requested IS NULL OR harness_requested = 'acp/openhands') AND carrier IS NULL"
         targetQueryValue: "1"
         activationTargetQueryValue: "0"
       authenticationRef:
@@ -2304,15 +2314,17 @@ spec:
         # THE claim predicate for a Role, and it must stay byte-identical to
         # store.ClaimRoleFor and store.PendingRunsFor: pending runs for this
         # team and role that store this workload's Harness key or none
-        # (ADR-0099). Served by agent_runs_claimable_harness, which migration
-        # 0056 created for this query:
+        # (ADR-0099), leaving out every Run a client carries (ADR-0112).
+        # Served by agent_runs_claimable_harness, which migration 0057
+        # created for this query:
         #   CREATE INDEX agent_runs_claimable_harness
         #       ON agent_runs (team, role, harness_requested, id) WHERE state = 'pending';
         # Overshoot merely wastes a pod that exits 0 empty-handed; undershoot
         # stalls Work Items with no error anywhere, which is the worst failure
         # this system can have. TestClaimRoleAgreesWithPendingRuns keeps the
-        # two Go callers honest; this comment is the third copy's leash.
-        query: "SELECT COUNT(*) FROM agent_runs WHERE team = 'gold' AND role = 'builder' AND state = 'pending' AND (harness_requested IS NULL OR harness_requested = 'openhands')"
+        # two Go callers honest; TestTheChartsScalerQueryCountsWhatItsWorkerClaims
+        # runs this rendered query against them.
+        query: "SELECT COUNT(*) FROM agent_runs WHERE team = 'gold' AND role = 'builder' AND state = 'pending' AND (harness_requested IS NULL OR harness_requested = 'openhands') AND carrier IS NULL"
         targetQueryValue: "1"
         activationTargetQueryValue: "0"
       authenticationRef:
@@ -2512,15 +2524,17 @@ spec:
         # THE claim predicate for a Role, and it must stay byte-identical to
         # store.ClaimRoleFor and store.PendingRunsFor: pending runs for this
         # team and role that store this workload's Harness key or none
-        # (ADR-0099). Served by agent_runs_claimable_harness, which migration
-        # 0056 created for this query:
+        # (ADR-0099), leaving out every Run a client carries (ADR-0112).
+        # Served by agent_runs_claimable_harness, which migration 0057
+        # created for this query:
         #   CREATE INDEX agent_runs_claimable_harness
         #       ON agent_runs (team, role, harness_requested, id) WHERE state = 'pending';
         # Overshoot merely wastes a pod that exits 0 empty-handed; undershoot
         # stalls Work Items with no error anywhere, which is the worst failure
         # this system can have. TestClaimRoleAgreesWithPendingRuns keeps the
-        # two Go callers honest; this comment is the third copy's leash.
-        query: "SELECT COUNT(*) FROM agent_runs WHERE team = 'gold' AND role = 'reviewer' AND state = 'pending' AND (harness_requested IS NULL OR harness_requested = 'openhands')"
+        # two Go callers honest; TestTheChartsScalerQueryCountsWhatItsWorkerClaims
+        # runs this rendered query against them.
+        query: "SELECT COUNT(*) FROM agent_runs WHERE team = 'gold' AND role = 'reviewer' AND state = 'pending' AND (harness_requested IS NULL OR harness_requested = 'openhands') AND carrier IS NULL"
         targetQueryValue: "1"
         activationTargetQueryValue: "0"
       authenticationRef:

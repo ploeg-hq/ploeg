@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -252,7 +253,7 @@ func TestHarnessKeyMatchesTheChart(t *testing.T) {
 	}
 }
 
-var scalerQuery = regexp.MustCompile(`query: "(SELECT COUNT\(\*\) FROM agent_runs WHERE team = '([^']+)' AND role = '([^']+)' AND state = 'pending' AND \(harness_requested IS NULL OR harness_requested = '([^']+)'\))"`)
+var scalerQuery = regexp.MustCompile(`query: "(SELECT COUNT\(\*\) FROM agent_runs WHERE team = '([^']+)' AND role = '([^']+)' AND state = 'pending' AND \(harness_requested IS NULL OR harness_requested = '([^']+)'\)[^"]*)"`)
 
 func TestTheChartsScalerQueryCountsWhatItsWorkerClaims(t *testing.T) {
 	ctx := context.Background()
@@ -277,6 +278,13 @@ func TestTheChartsScalerQueryCountsWhatItsWorkerClaims(t *testing.T) {
 	if _, err := testStore.OpenRound(ctx, unconfigured, 0, []Role{{Name: "builder", Writes: true, Cap: 1}}); err != nil {
 		t.Fatal(err)
 	}
+	for _, harness := range []string{"openhands", "acp/opencode"} {
+		_, clientCarried := teamSelectionItem(t, "gold", "97"+harness, harness, "")
+		if _, err := testStore.OpenRound(ctx, clientCarried, 0, []Role{{Name: "builder", Writes: true, Cap: 1, Selection: RoleSelection{
+			Harnesses: []string{harness}, DefaultHarness: harness, ClientCarried: []string{harness}}}}); err != nil {
+			t.Fatal(err)
+		}
+	}
 	for _, q := range queries {
 		var scaled int
 		if err := testStore.pool.QueryRow(ctx, q[1]).Scan(&scaled); err != nil {
@@ -290,4 +298,110 @@ func TestTheChartsScalerQueryCountsWhatItsWorkerClaims(t *testing.T) {
 			t.Errorf("%s/%s/%s: the KEDA query counts %d, PendingRunsFor %d", q[2], q[3], q[4], scaled, pending)
 		}
 	}
+}
+
+var roleLessScalerQuery = regexp.MustCompile(`query: "(SELECT COUNT\(\*\) FROM work_items WHERE team = '([^']+)'[^"]*)"`)
+
+func TestTheChartsRoleLessScalerQueryCountsWhatItsWorkerClaims(t *testing.T) {
+	ctx := context.Background()
+	golden, err := os.ReadFile("../../ops/helm/ploeg/ci/golden/executor.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var query string
+	for _, q := range roleLessScalerQuery.FindAllStringSubmatch(string(golden), -1) {
+		if q[2] == "bronze" {
+			query = q[1]
+		}
+	}
+	if query == "" {
+		t.Fatal("the executor golden has no Role-less scaler query for team bronze")
+	}
+	resetTables(t)
+	for _, id := range []string{"980", "981"} {
+		if _, _, err := testStore.IngestAssigned(ctx, work.WorkItem{Provider: "vikunja", ExternalID: id, Team: "bronze", Title: "t"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	teamSelectionItem(t, "bronze", "982", "", "")
+	deferred, _, err := testStore.IngestAssigned(ctx, work.WorkItem{Provider: "vikunja", ExternalID: "983", Team: "bronze", Title: "t"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := testStore.pool.Exec(ctx, `UPDATE work_items SET next_eligible_at = now() + interval '1 hour' WHERE id = $1`, deferred); err != nil {
+		t.Fatal(err)
+	}
+	var scaled int
+	if err := testStore.pool.QueryRow(ctx, query).Scan(&scaled); err != nil {
+		t.Fatalf("%s: %v", query, err)
+	}
+	claimed := 0
+	for {
+		if _, err := testStore.Claim(ctx, "bronze", time.Minute); err != nil {
+			if errors.Is(err, ErrNoWork) {
+				break
+			}
+			t.Fatal(err)
+		}
+		claimed++
+	}
+	if scaled != claimed {
+		t.Errorf("the Role-less KEDA query counts %d, Claim yields %d", scaled, claimed)
+	}
+}
+
+func TestTheChartsScalerQueriesUseTheClaimableIndexes(t *testing.T) {
+	cases := []struct {
+		golden string
+		query  *regexp.Regexp
+		index  string
+	}{
+		{"executor-harness-selection.yaml", scalerQuery, "agent_runs_claimable_harness"},
+		{"executor.yaml", roleLessScalerQuery, "work_items_claimable"},
+	}
+	for _, tc := range cases {
+		golden, err := os.ReadFile("../../ops/helm/ploeg/ci/golden/" + tc.golden)
+		if err != nil {
+			t.Fatal(err)
+		}
+		queries := tc.query.FindAllStringSubmatch(string(golden), -1)
+		if len(queries) == 0 {
+			t.Fatalf("%s has no scaler query", tc.golden)
+		}
+		for _, q := range queries {
+			if plan := explainWithoutSeqScan(t, q[1]); !strings.Contains(plan, tc.index) {
+				t.Errorf("%s no longer uses %s:\n%s", q[1], tc.index, plan)
+			}
+		}
+	}
+}
+
+func explainWithoutSeqScan(t *testing.T, query string) string {
+	t.Helper()
+	ctx := context.Background()
+	tx, err := testStore.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	if _, err := tx.Exec(ctx, "SET LOCAL enable_seqscan = off"); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := tx.Query(ctx, "EXPLAIN "+query)
+	if err != nil {
+		t.Fatalf("EXPLAIN %s: %v", query, err)
+	}
+	defer rows.Close()
+	var plan strings.Builder
+	for rows.Next() {
+		var line string
+		if err := rows.Scan(&line); err != nil {
+			t.Fatal(err)
+		}
+		plan.WriteString(line + "\n")
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	return plan.String()
 }

@@ -386,15 +386,17 @@ spec:
         # THE claim predicate for a Role, and it must stay byte-identical to
         # store.ClaimRoleFor and store.PendingRunsFor: pending runs for this
         # team and role that store this workload's Harness key or none
-        # (ADR-0099). Served by agent_runs_claimable_harness, which migration
-        # 0056 created for this query:
+        # (ADR-0099), leaving out every Run a client carries (ADR-0112).
+        # Served by agent_runs_claimable_harness, which migration 0057
+        # created for this query:
         #   CREATE INDEX agent_runs_claimable_harness
         #       ON agent_runs (team, role, harness_requested, id) WHERE state = 'pending';
         # Overshoot merely wastes a pod that exits 0 empty-handed; undershoot
         # stalls Work Items with no error anywhere, which is the worst failure
         # this system can have. TestClaimRoleAgreesWithPendingRuns keeps the
-        # two Go callers honest; this comment is the third copy's leash.
-        query: "SELECT COUNT(*) FROM agent_runs WHERE team = 'silver' AND role = 'builder' AND state = 'pending' AND (harness_requested IS NULL OR harness_requested = 'claude-code')"
+        # two Go callers honest; TestTheChartsScalerQueryCountsWhatItsWorkerClaims
+        # runs this rendered query against them.
+        query: "SELECT COUNT(*) FROM agent_runs WHERE team = 'silver' AND role = 'builder' AND state = 'pending' AND (harness_requested IS NULL OR harness_requested = 'claude-code') AND carrier IS NULL"
         targetQueryValue: "1"
         activationTargetQueryValue: "0"
       authenticationRef:
@@ -592,15 +594,17 @@ spec:
         # THE claim predicate for a Role, and it must stay byte-identical to
         # store.ClaimRoleFor and store.PendingRunsFor: pending runs for this
         # team and role that store this workload's Harness key or none
-        # (ADR-0099). Served by agent_runs_claimable_harness, which migration
-        # 0056 created for this query:
+        # (ADR-0099), leaving out every Run a client carries (ADR-0112).
+        # Served by agent_runs_claimable_harness, which migration 0057
+        # created for this query:
         #   CREATE INDEX agent_runs_claimable_harness
         #       ON agent_runs (team, role, harness_requested, id) WHERE state = 'pending';
         # Overshoot merely wastes a pod that exits 0 empty-handed; undershoot
         # stalls Work Items with no error anywhere, which is the worst failure
         # this system can have. TestClaimRoleAgreesWithPendingRuns keeps the
-        # two Go callers honest; this comment is the third copy's leash.
-        query: "SELECT COUNT(*) FROM agent_runs WHERE team = 'silver' AND role = 'reviewer' AND state = 'pending' AND (harness_requested IS NULL OR harness_requested = 'claude-code')"
+        # two Go callers honest; TestTheChartsScalerQueryCountsWhatItsWorkerClaims
+        # runs this rendered query against them.
+        query: "SELECT COUNT(*) FROM agent_runs WHERE team = 'silver' AND role = 'reviewer' AND state = 'pending' AND (harness_requested IS NULL OR harness_requested = 'claude-code') AND carrier IS NULL"
         targetQueryValue: "1"
         activationTargetQueryValue: "0"
       authenticationRef:
