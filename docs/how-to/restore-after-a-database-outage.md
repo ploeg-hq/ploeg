@@ -21,7 +21,7 @@ All of Ploeg's state is in PostgreSQL. When it is unreachable:
 - `/readyz` returns 503, so the Service stops routing tracker webhooks and worker requests to `ploegd`. `/healthz` stays 200, so Kubernetes does not restart the pod ([server.go](../../pkg/httpapi/server.go)).
 - The sweeper logs errors and does nothing.
 - Each worker fails to renew. After three failed renewals, about one `PLOEG_LEASE_TTL` (5 minutes in the chart), it cancels its Run to avoid a double claim. It cannot report the outcome while the database is down.
-- A starting `ploegd` pings the database for two minutes, then exits. Kubernetes restarts it with backoff until the database answers ([main.go](../../cmd/ploegd/main.go)).
+- A starting `ploegd` listens at once and answers `/healthz`, while `/readyz` answers 503 `not ready: waiting for the database`. It pings the database for two minutes, then exits. Kubernetes restarts it with backoff until the database answers ([main.go](../../cmd/ploegd/main.go)). During a rollout the old pod keeps serving until the new one is ready.
 - The KEDA scaler cannot read the queue, so no new worker pods start.
 
 After the database returns, `ploegd` applies any missing migrations at start (tracked in `schema_migrations`). Its sweeper then finishes every Run whose deadline passed during the outage as `failed` with `lease_lost`, and blocks its key. The Shift engine re-opens a failed writer's Round, within the retry cap.
@@ -89,7 +89,7 @@ GROUP BY a.state;
 
 The restored database is missing everything after the backup point. The gateway and the forge still hold what happened in that gap. Ploeg has no tool to compare the two. **Not implemented yet:** a post-restore reconciliation command. Work through the gap by hand:
 
-1. **Keys minted in the gap.** `ploegd` runs an orphan sweep at start and every 15 minutes. It blocks every `ploeg-*` gateway key that no unfinished Run in the database accounts for, and revokes every per-Run forge push token whose Run holds no Lease. Confirm with `orphan sweep: revoked stale keys` and `forge orphan sweep: revoked stale push credentials` in the log.
+1. **Keys minted in the gap.** `ploegd` runs an orphan sweep once it is ready after a start, and every 15 minutes. It blocks every `ploeg-*` gateway key that no unfinished Run in the database accounts for, and revokes every per-Run forge push token whose Run holds no Lease. Confirm with `orphan sweep: revoked stale keys` and `forge orphan sweep: revoked stale push credentials` in the log.
 2. **Spend in the gap.** Blocking a key does not account for its spend. In the LiteLLM logs, find spend from `ploeg-*` aliases after the backup time whose alias is not in the database:
 
    ```sql
@@ -123,6 +123,7 @@ Unpause the workers and resume the HelmRelease as in [Drain workers, step 6](dra
 | --- | --- | --- |
 | `ploegd` crash-loops with `database unreachable after retries` | Database still down or its Service not resolving | Recover the CloudNativePG cluster; then restart `ploegd` |
 | `ploegd` exits with `migration <name>: …` | The schema on the restored database conflicts with a migration | Investigate that migration against the data; never edit `schema_migrations` |
+| Pod running, not ready, `/readyz` says `not ready: waiting for the database` or `applying migrations` | `ploegd` is still starting against a slow or unreachable database | Wait up to two minutes; then see the first row |
 | Pod running, not ready, `/readyz` says `db unreachable` | Connection string or credentials in `ploeg-db-app` no longer valid | Check the Secret the cluster generated; restart `ploegd` after it changes |
 | Many `run.expired` and `lease.expired` rows after recovery | Runs cancelled themselves during the outage | Expected; the Shift engine retries writers within the cap |
 | Items `stale` with `infra_cap` after recovery | The outage used up the infrastructure-failure budget | Re-assign the tickets in the tracker |

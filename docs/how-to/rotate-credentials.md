@@ -57,7 +57,7 @@ Release signing is separate. CI signs artifacts through an OpenBao signing role 
    kubectl -n ploeg rollout status deployment/ploeg --timeout=180s
    ```
 
-   `ploegd` runs as one replica, so tracker and forge webhooks fail for the few seconds of the restart. Worker pods need no restart: each new pod reads the current Secret.
+   `ploegd` runs as one replica, but a rollout starts the new pod first (`maxSurge: 1`, `maxUnavailable: 0`) and keeps the old one serving until the new one answers `/readyz`. Tracker and forge webhooks and worker renewals keep working through the restart. If the new pod never becomes ready, the old pod keeps serving and `rollout status` times out. Worker pods need no restart: each new pod reads the current Secret.
 
 ## Rotate the LiteLLM master key
 
@@ -75,7 +75,7 @@ The master key lets `ploegd` mint, block and read the spend of every per-Run key
 
 4. Resume the workers.
 
-Verify: the `ploegd` log shows `litellm sweeper configured` and, from the orphan sweep that runs at boot, `orphan sweep: no stale keys found` or `revoked stale keys`. A log line `orphan sweep failed` means the gateway rejects the new key. The next Run's account reaches `issued`.
+Verify: the `ploegd` log shows `litellm sweeper configured` and, from the first orphan sweep after it becomes ready, `orphan sweep: no stale keys found` or `revoked stale keys`. A log line `orphan sweep failed` means the gateway rejects the new key. The next Run's account reaches `issued`.
 
 ## Rotate the forge bot or read-only token
 

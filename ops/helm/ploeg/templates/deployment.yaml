@@ -6,6 +6,11 @@ metadata:
   labels: {{- include "ploeg.labels" . | nindent 4 }}
 spec:
   replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   selector:
     matchLabels: {{- include "ploeg.selectorLabels" . | nindent 6 }}
   template:
@@ -360,6 +365,12 @@ spec:
             {{- if .Values.operator.consumers }}
             {{- include "ploeg.operatorControlEnv" . | nindent 12 }}
             {{- end }}
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+            failureThreshold: 30
           readinessProbe:
             httpGet:
               path: /readyz
@@ -371,6 +382,10 @@ spec:
               path: /healthz
               port: http
             periodSeconds: 20
+          lifecycle:
+            preStop:
+              sleep:
+                seconds: 5
           resources: {{- toYaml .Values.resources | nindent 12 }}
       {{- if .Values.config }}
       volumes:
