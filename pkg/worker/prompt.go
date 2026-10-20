@@ -1,6 +1,8 @@
 package worker
 
 import (
+	"time"
+
 	"github.com/ploeg-hq/ploeg/pkg/harness"
 	"github.com/ploeg-hq/ploeg/pkg/taskprompt"
 )
@@ -27,3 +29,21 @@ func taskPrompt(spec harness.TaskSpec, planner, writes bool, priorPR string, onR
 }
 
 func openSpecValidateCommand(id string) string { return taskprompt.OpenSpecValidateCommand(id) }
+
+func runLimits(cfg Config, adapter harness.Adapter, claimed *ClaimResponse, budget float64) harness.RunLimits {
+	limits := harness.RunLimits{
+		Time:      max(cfg.HarnessTimeout, 0),
+		Idle:      max(cfg.HarnessIdleTimeout, 0),
+		BudgetUSD: max(budget, 0),
+		Round:     claimed.Round,
+		MaxRounds: claimed.MaxRounds,
+	}
+	if limiter, ok := adapter.(harness.PromptLimiter); ok {
+		prompt, idle := limiter.PromptLimits()
+		if prompt > 0 && (limits.Time == 0 || prompt < limits.Time) {
+			limits.Time = prompt
+		}
+		limits.Idle = max(idle, time.Duration(0))
+	}
+	return limits
+}

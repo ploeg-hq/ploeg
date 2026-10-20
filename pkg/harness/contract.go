@@ -55,7 +55,26 @@ type TaskSpec struct {
 	// carries it. The worker composes the prompt; it is not part of the
 	// published Task Spec.
 	ContextIndex string `json:"-"`
+	// Limits are the limits this Run works within, as known before its
+	// prompt starts (ADR-0133). The prompt states them; they are not part of
+	// the published Task Spec.
+	Limits RunLimits `json:"-"`
 	// Credentials are delivered out-of-band (env, mounted secrets), never here (R8).
+}
+
+// RunLimits are the limits a Run's prompt states to its agent (ADR-0133).
+// A zero field is unknown or no limit, and the prompt leaves it out.
+type RunLimits struct {
+	// Time is the most the prompt may run before Ploeg stops the Run.
+	Time time.Duration
+	// Idle is how long the agent may show no activity before Ploeg stops
+	// the Run.
+	Idle time.Duration
+	// BudgetUSD is the model budget the Run's credential is minted at.
+	BudgetUSD float64
+	// Round is the Run's Round in its Shift and MaxRounds the most Rounds
+	// the Shift can run, fix Rounds included.
+	Round, MaxRounds int
 }
 
 // KnowledgeBrief is the provenance of a Run's knowledge pack: which concepts

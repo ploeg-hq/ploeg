@@ -46,6 +46,11 @@
         "shift": { "type": "integer", "description": "the Shift this Run belongs to; absent on a pre-Shift claim" },
         "role": { "type": "string" },
         "round": { "type": "integer", "minimum": 0 },
+        "maxRounds": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The most Rounds the Run's Shift can run from the team's plan: its Rounds plus two for each fix Round maxFixRounds allows (ADR-0133). The worker states it in the prompt as Round N of at most maxRounds. Absent on a pre-Shift claim, for a team without a plan, and from an older ploegd."
+        },
         "writes": {
           "type": "boolean",
           "description": "true = this Run holds the Shift's Lease and may push; false = a reader, which takes no Lease (ADR-0010)"

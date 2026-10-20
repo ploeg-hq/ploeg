@@ -294,3 +294,13 @@ func TestHash_ShadowOnlyChangesPlansThatHaveOne(t *testing.T) {
 		t.Fatal("adding a shadow kept the plan hash")
 	}
 }
+
+func TestMaxRoundsCountsEachFixRoundAsAWriterAndAReview(t *testing.T) {
+	p := Plans{"t": {MaxFixRounds: 3, Rounds: []Round{{Roles: []Role{{Name: "w", Writes: true}}}, {Roles: []Role{{Name: "r"}}}}}}
+	if got := p.MaxRounds("t"); got != 8 {
+		t.Errorf("MaxRounds = %d, want 2 planned + 2×3 fix = 8", got)
+	}
+	if got := p.MaxRounds("unknown"); got != 0 {
+		t.Errorf("MaxRounds of an unknown team = %d, want 0", got)
+	}
+}

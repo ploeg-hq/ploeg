@@ -165,10 +165,23 @@ type RoleCaps interface {
 	RoleCap(team, role string) float64
 }
 
+// RoundLimits is implemented by plan.Plans. A RoleCaps that also implements
+// it tells each claimed Run the most Rounds its Shift can run (ADR-0133).
+type RoundLimits interface {
+	MaxRounds(team string) int
+}
+
 // PlannerRoles is implemented by plan.Plans. A RoleCaps that also
 // implements it marks planner Roles in the claim response (ADR-0031).
 type PlannerRoles interface {
 	IsPlanner(team, role string) bool
+}
+
+func (s *Server) maxRounds(team string) int {
+	if rounds, ok := s.RoleCaps.(RoundLimits); ok {
+		return rounds.MaxRounds(team)
+	}
+	return 0
 }
 
 func (s *Server) createdWorkPolicy(team string) followup.Policy {
@@ -540,6 +553,7 @@ type claimResponse struct {
 	Branch     string            `json:"branch,omitempty"`
 	Authorized float64           `json:"authorized,omitempty"`
 	Briefing   []harness.Finding `json:"briefing,omitempty"`
+	MaxRounds  int               `json:"maxRounds,omitempty"`
 	// ReviewFindings are the findings of the Shift's last review Round by
 	// id, each with the writer's answer, and Questions the questions that
 	// reach this Run (ADR-0121). Both absent when there are none.
@@ -684,6 +698,7 @@ func (s *Server) respondClaimedRun(w http.ResponseWriter, r *http.Request, req c
 	if planners, ok := s.RoleCaps.(PlannerRoles); ok && !run.Writes {
 		resp.Planner = planners.IsPlanner(req.Team, run.Role)
 	}
+	resp.MaxRounds = s.maxRounds(req.Team)
 	resp.Board = s.recordBoardClaim(r.Context(), run.RunToken)
 	resp.Briefing, resp.ReviewFindings, resp.Questions = s.runBriefing(r.Context(), run)
 	resp.Context = s.claimContext(r.Context(), run.RunToken)

@@ -51,6 +51,9 @@ type ClaimResponse struct {
 	// at (ADR-0012). Zero = fall back to the worker's env budget.
 	Authorized float64           `json:"authorized,omitempty"`
 	Briefing   []harness.Finding `json:"briefing,omitempty"`
+	// MaxRounds is the most Rounds the Shift can run, fix Rounds included
+	// (ADR-0133). Zero from an older ploegd or a team without a plan.
+	MaxRounds int `json:"maxRounds,omitempty"`
 	// ReviewFindings and Questions are the Shift's findings by id with their
 	// answers, and the questions that reach this Run (ADR-0121). Absent from
 	// an older ploegd.

@@ -106,6 +106,15 @@ func ReportPromptStart(ctx context.Context, env RunEnv, prompt, idle time.Durati
 	env.PromptStarted(PromptStart{At: now, Prompt: max(prompt, 0), Idle: max(idle, 0)})
 }
 
+// PromptLimiter is implemented by an Adapter that stops its prompt by limits
+// of its own rather than the worker's idle watchdog. Prompt is the adapter's
+// own most the prompt may run and Idle how long the agent may show no
+// activity; zero is none. The worker states them in the Run's prompt
+// (ADR-0133).
+type PromptLimiter interface {
+	PromptLimits() (prompt, idle time.Duration)
+}
+
 // RemoteSessionAPI is the worker's view of ploegd's record of a remote
 // session.
 type RemoteSessionAPI interface {

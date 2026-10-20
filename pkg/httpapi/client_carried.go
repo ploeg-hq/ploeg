@@ -137,9 +137,11 @@ func (s *Server) handleClientClaim(w http.ResponseWriter, r *http.Request) {
 		Repo:     harness.RepoRef{Forge: target.Forge, Owner: target.Owner, Name: target.Repo, BaseBranch: target.BaseBranch},
 		Briefing: briefing, ReviewFindings: findings, Questions: questions,
 		ActiveWork: s.activeWork(r.Context(), claim.Item.ID),
+		Limits:     harness.RunLimits{Round: claim.Round, MaxRounds: s.maxRounds(claim.Team)},
 	}
 	if s.ClaudeSessions != nil {
 		spec.Repo.ForgeURL = s.ClaudeSessions.ForgeURL
+		spec.Limits.Time = s.ClaudeSessions.sessionTimeout()
 	}
 	base := target.BaseBranch
 	if base == "" {

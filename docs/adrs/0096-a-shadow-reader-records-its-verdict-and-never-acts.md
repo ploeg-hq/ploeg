@@ -100,3 +100,4 @@ The one way a shadow can still touch the Shift is money: its Holds and spend com
 * Migration `pkg/store/migrations/0053_run_shadow.sql`.
 * [Metrics and alerts: reading shadow reviews](../ops/alerts.md#reading-shadow-reviews).
 * 2026-10-13: proposed.
+* 2026-10-20 — Amended by [0133](0133-a-run-is-told-its-limits-at-the-start-and-its-own-status-on-every-model-call.md) for one channel: an advisory reading, such as a shadow judge's health verdict, that an authenticated operator consumer posts may reach the running agent's status line as quoted text. It still never acts.
