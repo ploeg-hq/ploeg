@@ -426,6 +426,8 @@ executor:
       profile: opencode  # opencode | qwen-code | goose | openhands | custom (PLOEG_ACP_PROFILE)
       argv: []           # whole launch command; REQUIRED when profile is custom
       permissionMode: "" # allow_always (default) | allow_read_only | deny_all
+      initTimeout: ""    # Go duration; "" = adapter default (5m) for the agent's answer to initialize, sent once it has started
+      sessionTimeout: "" # Go duration; "" = adapter default (60s) for the agent's answer to session/new
       promptTimeout: ""  # Go duration; "" = adapter default (45m)
       idleTimeout: ""    # Go duration; "" = adapter default (10m) with no protocol traffic
       # Replaces the profile's generated agent config (opencode, qwen-code)

@@ -474,3 +474,68 @@ func TestRun_ReportsThePromptStartWithItsPromptAndIdleTimeouts(t *testing.T) {
 		t.Fatalf("prompt starts = %+v, want one with 90m and 10m", seen)
 	}
 }
+
+func TestRun_SlowStartingAgentIsGivenItsInitTimeout(t *testing.T) {
+	slowStart := "sleep 2\n" + fakeAgentScript(`"end_turn"`, "")
+	run := func(init time.Duration) harness.OutcomeReport {
+		a, err := New("custom", ProfileOverrides{Argv: []string{writeScript(t, slowStart)}}, Options{
+			InitTimeout: init, PromptTimeout: time.Minute, IdleTimeout: time.Minute,
+			CancelGrace: time.Second, TermGrace: time.Second,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		rep, _ := a.Run(ctx, testSpec(), testEnv(t))
+		return rep
+	}
+
+	if rep := run(10 * time.Second); rep.Outcome == work.OutcomeFailed {
+		t.Fatalf("an agent that answers initialize inside its limit failed: %q / %q", rep.Summary, rep.StuckReason)
+	}
+
+	rep := run(500 * time.Millisecond)
+	if rep.FailureReason != string(work.FailureInfraNode) {
+		t.Errorf("failureReason = %q, want infra_node", rep.FailureReason)
+	}
+	if rep.Summary != "acp agent was still starting after 500ms" {
+		t.Errorf("summary = %q, want it to name the wait and the slow start", rep.Summary)
+	}
+	for _, want := range []string{"no answer after 500ms", "still starting", "not a protocol error", "PLOEG_ACP_INIT_TIMEOUT"} {
+		if !strings.Contains(rep.StuckReason, want) {
+			t.Errorf("stuck reason %q does not contain %q", rep.StuckReason, want)
+		}
+	}
+}
+
+func TestRun_SlowSessionNamesItsOwnLimit(t *testing.T) {
+	slowSession := strings.Replace(fakeAgentScript(`"end_turn"`, ""),
+		`*'"method":"session/new"'*)
+`, `*'"method":"session/new"'*)
+      sleep 2
+`, 1)
+	a, err := New("custom", ProfileOverrides{Argv: []string{writeScript(t, slowSession)}}, Options{
+		SessionTimeout: 500 * time.Millisecond, PromptTimeout: time.Minute, IdleTimeout: time.Minute,
+		CancelGrace: time.Second, TermGrace: time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rep, _ := a.Run(context.Background(), testSpec(), testEnv(t))
+	if rep.FailureReason != string(work.FailureInfraNode) {
+		t.Errorf("failureReason = %q, want infra_node", rep.FailureReason)
+	}
+	for _, want := range []string{"session/new: no answer after 500ms", "PLOEG_ACP_SESSION_TIMEOUT"} {
+		if !strings.Contains(rep.StuckReason, want) {
+			t.Errorf("stuck reason %q does not contain %q", rep.StuckReason, want)
+		}
+	}
+}
+
+func TestDefaults_InitTimeoutOutlastsAMeasuredColdStart(t *testing.T) {
+	const measuredColdImportAt500m = 2*time.Minute + 20*time.Second
+	if got := withDefaults(Options{}).InitTimeout; got < 2*measuredColdImportAt500m {
+		t.Errorf("default init timeout %v leaves no margin over the %v OpenHands cold import measured in the cluster", got, measuredColdImportAt500m)
+	}
+}

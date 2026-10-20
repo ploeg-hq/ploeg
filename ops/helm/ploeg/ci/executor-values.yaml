@@ -122,6 +122,7 @@ executor:
           profile: custom
           argv: ["opencode", "acp"]
           permissionMode: allow_read_only
+          initTimeout: 4m
           idleTimeout: 5m
     # A PLANNED team: renders one workload per (team, Role) instead of one per
     # team, which is the branch every other fixture leaves uncovered. It also

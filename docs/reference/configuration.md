@@ -40,9 +40,11 @@ The generator follows each binary's imports inside the module and records every 
 | `PLOEG_ACP_ARGV` | ploeg-worker |  | `acp` harness only: the whole launch command as a JSON array; required when the profile is `custom`. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_ACP_CONFIG_JSON` | ploeg-worker |  | `acp` harness only: replaces the generated agent configuration of the `opencode` or `qwen-code` profile wholesale. The `goose` and `openhands` profiles refuse it at startup. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_ACP_IDLE_TIMEOUT` | ploeg-worker |  | `acp` harness only: timeout without protocol traffic. Empty means the adapter default (10m). | [main.go](../../cmd/ploeg-worker/main.go) |
+| `PLOEG_ACP_INIT_TIMEOUT` | ploeg-worker |  | `acp` harness only: how long the adapter waits for the agent's answer to `initialize`, as a Go duration (chart `executor.harness.acp.initTimeout`). An agent answers only once its own startup is done, and a cold OpenHands start under a 500m CPU limit has taken over two minutes ([evidence](../research/2026-10-20-acp-initialize-cold-start.md)). Empty means the adapter default (5m). | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_ACP_PERMISSION_MODE` | ploeg-worker |  | `acp` harness only: `allow_always` (default), `allow_read_only` or `deny_all`. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_ACP_PROFILE` | ploeg-worker |  | `acp` harness only: `opencode`, `qwen-code`, `goose`, `openhands` or `custom` (chart `executor.harness.acp.profile`). See [ACP profiles](../contracts/acp-profiles.md). | [main.go](../../cmd/ploeg-worker/main.go), [sandbox.go](../../cmd/ploeg-worker/sandbox.go) |
 | `PLOEG_ACP_PROMPT_TIMEOUT` | ploeg-worker |  | `acp` harness only: prompt timeout as a Go duration. Empty means the adapter default (45m). | [main.go](../../cmd/ploeg-worker/main.go) |
+| `PLOEG_ACP_SESSION_TIMEOUT` | ploeg-worker |  | `acp` harness only: how long the adapter waits for the agent's answer to `session/new`, as a Go duration (chart `executor.harness.acp.sessionTimeout`). Empty means the adapter default (60s). | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_API_URL` | ploeg-worker | required | ploegd's run API (chart `executor.apiUrl`, default `http://<fullname>:<service.port>`). | [main.go](../../cmd/ploeg-worker/main.go), [sandbox.go](../../cmd/ploeg-worker/sandbox.go) |
 | `PLOEG_ASK_ALLOWANCE_USD` | ploegd | `2.00` | Monthly Ask Allowance, in US dollars, that a Team's period opens with (ADR-0082). A period keeps the limit its first Ask opened it with. At most 10000 with four decimals; anything else refuses to start. | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_ASK_BUDGET_USD` | ploegd | `0.02` | Per-Ask Budget in US dollars, the cap on the key an Ask is given (ADR-0082). A `(team, ask)` policy in `PLOEG_WORKER_LLM_POLICIES` with a smaller `budgetUsd` lowers it. A Team with no such policy has no Asks. | [main.go](../../cmd/ploegd/main.go) |
@@ -263,9 +265,11 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `executor.harness.acp.argv` |  | `[]` | whole launch command; REQUIRED when profile is custom | values.yaml |
 | `executor.harness.acp.configJson` |  | `""` | Replaces the profile's generated agent config (opencode, qwen-code) wholesale, so a wrong provider block is a values edit rather than an agent image rebuild. goose is configured by environment and refuses it. | values.yaml |
 | `executor.harness.acp.idleTimeout` |  | `""` | Go duration; "" = adapter default (10m) with no protocol traffic | values.yaml |
+| `executor.harness.acp.initTimeout` |  | `""` | Go duration; "" = adapter default (5m) for the agent's answer to initialize, sent once it has started | values.yaml |
 | `executor.harness.acp.permissionMode` |  | `""` | allow_always (default) \| allow_read_only \| deny_all | values.yaml |
 | `executor.harness.acp.profile` |  | `opencode` | opencode \| qwen-code \| goose \| openhands \| custom (PLOEG_ACP_PROFILE) | values.yaml |
 | `executor.harness.acp.promptTimeout` |  | `""` | Go duration; "" = adapter default (45m) | values.yaml |
+| `executor.harness.acp.sessionTimeout` |  | `""` | Go duration; "" = adapter default (60s) for the agent's answer to session/new | values.yaml |
 | `executor.harness.args` |  | `[]` | exec harness only: argv template with {taskspec}/{taskfile} | values.yaml |
 | `executor.harness.claudeEnvironment` |  |  | claude-environment harness only (ADR-0084): the Run executes as a Claude Code session in the Team's self-hosted environment, paid by the Team's Claude plan. The agent image needs the claude CLI and git. | values.yaml |
 | `executor.harness.claudeEnvironment.carrier` |  | `""` | client: the person's own Claude Code carries the Runs (ADR-0112). No worker is rendered or claims them, and no login is needed: each Work Item waits as needs_human until the person it acts for claims its Run through the operator API and dispatches it with their own login. ploegd reads the carrier and environmentId from PLOEG_TEAM_HARNESSES. "" = a worker dispatches with loginVolume or loginSecret. | values.yaml |
@@ -637,6 +641,8 @@ claude-environment harness only (ADR-0084): the Team's self-hosted Claude enviro
 | `profile` | one of `"opencode"`, `"qwen-code"`, `"goose"`, `"openhands"`, `"custom"` | `opencode`, `qwen-code`, `goose` or `custom`. |
 | `argv` | array | Whole launch command; required when the profile is `custom`. |
 | `permissionMode` | one of `""`, `"allow_always"`, `"allow_read_only"`, `"deny_all"` | `allow_always` (default), `allow_read_only` or `deny_all`. |
+| `initTimeout` | string | Go duration the adapter waits for the agent's answer to `initialize` (PLOEG_ACP_INIT_TIMEOUT). Empty means the adapter default (5m). |
+| `sessionTimeout` | string | Go duration the adapter waits for the agent's answer to `session/new` (PLOEG_ACP_SESSION_TIMEOUT). Empty means the adapter default (60s). |
 | `promptTimeout` | string | Go duration. Empty means the adapter default (45m). |
 | `idleTimeout` | string | Go duration without protocol traffic. Empty means the adapter default (10m). |
 | `configJson` | string | Replaces the generated agent configuration of the `opencode` or `qwen-code` profile wholesale; `goose` refuses it. |

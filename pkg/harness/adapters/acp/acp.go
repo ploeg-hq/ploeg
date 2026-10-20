@@ -35,7 +35,7 @@ import (
 // would otherwise hold the lease until the sweeper reclaims it — turning a
 // retryable stall into fifteen minutes of nothing.
 const (
-	defaultInitTimeout    = 30 * time.Second
+	defaultInitTimeout    = 5 * time.Minute
 	defaultSessionTimeout = 60 * time.Second
 	defaultPromptTimeout  = 45 * time.Minute
 	defaultIdleTimeout    = 10 * time.Minute
@@ -48,6 +48,8 @@ type Options struct {
 	PermissionMode PermissionMode
 	MaxPermissions int
 	MaxPerMinute   int
+	InitTimeout    time.Duration
+	SessionTimeout time.Duration
 	PromptTimeout  time.Duration
 	IdleTimeout    time.Duration
 	CancelGrace    time.Duration
@@ -75,6 +77,12 @@ func New(profileName string, overrides ProfileOverrides, opts Options) (*Adapter
 func withDefaults(o Options) Options {
 	if o.PermissionMode == "" {
 		o.PermissionMode = PermissionAllowAll
+	}
+	if o.InitTimeout <= 0 {
+		o.InitTimeout = defaultInitTimeout
+	}
+	if o.SessionTimeout <= 0 {
+		o.SessionTimeout = defaultSessionTimeout
 	}
 	if o.PromptTimeout <= 0 {
 		o.PromptTimeout = defaultPromptTimeout
@@ -205,7 +213,7 @@ func (a *Adapter) Run(ctx context.Context, spec harness.TaskSpec, env harness.Ru
 
 	// --- initialize ---
 	res.phase = phaseInit
-	initCtx, cancelInit := context.WithTimeout(ctx, defaultInitTimeout)
+	initCtx, cancelInit := context.WithTimeout(ctx, a.opts.InitTimeout)
 	initResp, err := conn.Initialize(initCtx, sdk.InitializeRequest{
 		ProtocolVersion: sdk.ProtocolVersionNumber,
 		ClientInfo:      &sdk.Implementation{Name: "ploeg", Version: "1"},
@@ -213,9 +221,14 @@ func (a *Adapter) Run(ctx context.Context, spec harness.TaskSpec, env harness.Ru
 		// terminal/* are refused rather than implemented.
 		ClientCapabilities: sdk.ClientCapabilities{Terminal: false},
 	})
+	initExpired := deadlinePassed(ctx, initCtx)
 	cancelInit()
 	if err != nil {
-		res.err = fmt.Errorf("initialize: %w", err)
+		if initExpired {
+			res.err = &handshakeTimeout{method: "initialize", activity: "still starting", limit: a.opts.InitTimeout, setting: "PLOEG_ACP_INIT_TIMEOUT", err: err}
+		} else {
+			res.err = fmt.Errorf("initialize: %w", err)
+		}
 		return finish()
 	}
 	if got := int(initResp.ProtocolVersion); got != sdk.ProtocolVersionNumber {
@@ -231,14 +244,19 @@ func (a *Adapter) Run(ctx context.Context, spec harness.TaskSpec, env harness.Ru
 
 	// --- session/new ---
 	res.phase = phaseNewSess
-	sessCtx, cancelSess := context.WithTimeout(ctx, defaultSessionTimeout)
+	sessCtx, cancelSess := context.WithTimeout(ctx, a.opts.SessionTimeout)
 	sess, err := conn.NewSession(sessCtx, sdk.NewSessionRequest{
 		Cwd:        env.RepoDir,
 		McpServers: mcpServers(env.LLM, initResp.AgentCapabilities.McpCapabilities),
 	})
+	sessExpired := deadlinePassed(ctx, sessCtx)
 	cancelSess()
 	if err != nil {
-		res.err = fmt.Errorf("session/new: %w", err)
+		if sessExpired {
+			res.err = &handshakeTimeout{method: "session/new", activity: "still creating its session", limit: a.opts.SessionTimeout, setting: "PLOEG_ACP_SESSION_TIMEOUT", err: err}
+		} else {
+			res.err = fmt.Errorf("session/new: %w", err)
+		}
 		return finish()
 	}
 	cp.mark("agent_started")
@@ -536,6 +554,25 @@ func decodeSessionUpdate(line []byte, s *sessionState) (UpdateKind, bool) {
 }
 
 // --- small helpers ---------------------------------------------------------
+
+func deadlinePassed(run, call context.Context) bool {
+	return run.Err() == nil && errors.Is(call.Err(), context.DeadlineExceeded)
+}
+
+type handshakeTimeout struct {
+	method   string
+	activity string
+	limit    time.Duration
+	setting  string
+	err      error
+}
+
+func (e *handshakeTimeout) Error() string {
+	return fmt.Sprintf("%s: no answer after %s while the agent process was %s; a slow agent, not a protocol error, and %s raises the limit (%v)",
+		e.method, e.limit, e.activity, e.setting, e.err)
+}
+
+func (e *handshakeTimeout) Unwrap() error { return e.err }
 
 func waitDone(p *process) <-chan struct{} {
 	ch := make(chan struct{})

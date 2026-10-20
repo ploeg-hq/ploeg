@@ -1530,6 +1530,8 @@ spec:
                 value: "[\"opencode\",\"acp\"]"
               - name: PLOEG_ACP_PERMISSION_MODE
                 value: "allow_read_only"
+              - name: PLOEG_ACP_INIT_TIMEOUT
+                value: "4m"
               - name: PLOEG_ACP_IDLE_TIMEOUT
                 value: "5m"
               - name: LLM_MODEL
