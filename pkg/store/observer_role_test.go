@@ -49,7 +49,7 @@ var observerRefusals = []string{
 func TestObserverRoleReadsMetadataAndNeverText(t *testing.T) {
 	ctx := context.Background()
 	createObserverRole(t)
-	s, err := New(ctx, scratchDatabase(t, "ploeg_observer_grants"))
+	s, err := New(ctx, scratchDatabase(t, "ploeg_observer_grants"), PoolConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ func TestObserverRoleReadsMetadataAndNeverText(t *testing.T) {
 
 func TestObserverGrantsAreANoOpWithoutTheRoleAndApplyOnceItExists(t *testing.T) {
 	ctx := context.Background()
-	s, err := New(ctx, scratchDatabase(t, "ploeg_observer_absent"))
+	s, err := New(ctx, scratchDatabase(t, "ploeg_observer_absent"), PoolConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
