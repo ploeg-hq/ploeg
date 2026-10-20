@@ -255,6 +255,47 @@ cannot re-run. A Work Item in `awaiting_review` whose head CI stops being
 - **THEN** the Shift closes `ci_not_finished` and the Work Item reaches
   `needs_human`
 
+### Requirement: A pull request merged or closed during a Shift ends the Shift
+
+When the pull request of a live Shift is merged or closed on the forge, ploegd
+SHALL close the Shift, cancel its pending Runs and settle the Work Item as a
+merge or close in review settles it (ADR-0132): a merge closes the Shift
+`pull_request_merged` and the Work Item reaches `done`; a close without merge
+closes it `pull_request_closed_unmerged` and the Work Item reaches
+`needs_human`. ploegd SHALL read the pull request on the forge's webhook, on
+every review reconcile, and when a Round completes before any other rule
+applies. A forge it cannot read SHALL leave the Shift to its other rules.
+
+#### Scenario: Merged while the review Round runs
+
+- **GIVEN** a Shift whose writer opened a pull request and whose review Round
+  is open
+- **WHEN** a person merges the pull request and the readers then report the
+  branch missing
+- **THEN** the Shift closes `pull_request_merged` and the Work Item reaches
+  `done` with the merge recorded
+
+#### Scenario: Merged before the readers start
+
+- **GIVEN** a Shift whose review Round has pending Runs
+- **WHEN** the forge reports the pull request merged
+- **THEN** the pending Runs are cancelled and no reader runs
+
+### Requirement: A writer that changed nothing ends the Shift with its own reason
+
+When the writing Run of the current Round of a configured plan reports
+`no_change_needed`, and no writing Run of the Shift, or of a Shift it was
+restarted past, put a pull request on the forge, ploegd SHALL NOT open a
+reading Round. The Shift SHALL close `writer_found_no_change` and the Work Item
+SHALL reach `needs_human` with the writer's summary in its reason (ADR-0132).
+
+#### Scenario: The writer refuses the task
+
+- **GIVEN** a plan with a writing Round followed by a review Round
+- **WHEN** the writer reports `no_change_needed` and pushed nothing
+- **THEN** no reader Run is queued, the Shift closes `writer_found_no_change`,
+  and the tracker comment quotes the writer's summary
+
 ### Requirement: An exhausted budget pool parks the item rather than failing it
 
 When `ClaimRole` raises `ErrBudgetExhausted`, ploegd SHALL move the Work Item

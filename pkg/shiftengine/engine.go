@@ -85,6 +85,16 @@ type Engine struct {
 	// DependencyRecheck is how often a held Work Item's tracker is read
 	// again. Zero means DefaultDependencyRecheck.
 	DependencyRecheck time.Duration
+	// PullRequests ends a Shift whose pull request a person merged or closed
+	// before a completed Round is acted on. Nil leaves that to the review
+	// watch's own webhook and reconcile.
+	PullRequests PullRequestSettler
+}
+
+// PullRequestSettler closes the live Shift of a Work Item whose pull request
+// is no longer open on the forge, and reports whether it did.
+type PullRequestSettler interface {
+	SettleLiveShift(ctx context.Context, workItemID int64) bool
 }
 
 // RoleSelections is what a Role of a team may run and call.
@@ -256,6 +266,9 @@ func (e *Engine) evaluate(ctx context.Context, si store.ShiftInfo) error {
 	if !complete {
 		return nil
 	}
+	if e.PullRequests != nil && e.PullRequests.SettleLiveShift(ctx, si.WorkItemID) {
+		return nil
+	}
 
 	// A stuck Run anywhere freezes the plan (R4, shift-orchestration spec):
 	// retrying cannot fix what the agent said needs a human.
@@ -323,6 +336,9 @@ func (e *Engine) evaluate(ctx context.Context, si store.ShiftInfo) error {
 		handled, err := e.retryFailedRuns(ctx, si, reports)
 		if err != nil || handled {
 			return err
+		}
+		if writer, found := writerChangedNothing(reports, si.Round); found {
+			return e.close(ctx, si, reasonWriterNoChange, writerNoChangeMessage(writer), false, reports)
 		}
 	}
 

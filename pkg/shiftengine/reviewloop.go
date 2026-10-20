@@ -2,6 +2,8 @@ package shiftengine
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	"github.com/ploeg-hq/ploeg/pkg/harness"
 	"github.com/ploeg-hq/ploeg/pkg/plan"
@@ -30,6 +32,7 @@ const (
 	reasonChecksNotPassed = "checks_not_passed"
 	reasonCINotFinished   = "ci_not_finished"
 	reasonCINotPassed     = "ci_not_passed"
+	reasonWriterNoChange  = "writer_found_no_change"
 )
 
 func closeMessage(reason string) string {
@@ -204,4 +207,44 @@ func approves(reports []store.RunReport, round int) bool {
 		}
 	}
 	return false
+}
+
+// writerChangedNothing finds the writing Run of the given Round that reported
+// no_change_needed when no writing Run of the Shift, or of a Shift it was
+// restarted past, put a pull request on the forge. No branch exists then, so
+// a reader has nothing to review and the plan stops with the writer's own
+// explanation.
+func writerChangedNothing(reports []store.RunReport, round int) (store.RunReport, bool) {
+	var writer store.RunReport
+	found := false
+	for _, r := range reports {
+		if !r.Writes {
+			continue
+		}
+		if work.Outcome(r.Outcome).AssertsDelivery() || (r.Delivery != nil && r.Delivery.Number > 0) {
+			return store.RunReport{}, false
+		}
+		for _, l := range r.Links {
+			if harness.PullRequestNumber(l) > 0 {
+				return store.RunReport{}, false
+			}
+		}
+		if r.Round == round && r.Outcome == string(work.OutcomeNoChangeNeeded) {
+			writer, found = r, true
+		}
+	}
+	return writer, found
+}
+
+func writerNoChangeMessage(writer store.RunReport) string {
+	summary := strings.TrimRight(strings.TrimSpace(writer.Summary), ".")
+	if summary == "" {
+		summary = "it gave no summary"
+	}
+	role := writer.Role
+	if role == "" {
+		role = "the writer"
+	}
+	return fmt.Sprintf("%s found no change to make and pushed nothing, so there is no pull request and no review ran: %s. A person is asked to confirm that nothing is left to do",
+		role, summary)
 }
