@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"sort"
 	"time"
 
@@ -94,12 +95,16 @@ func (s *Store) UnfinishedRunTokens(ctx context.Context) ([]string, error) {
 
 const migrationLockKey = `hashtextextended('ploeg.schema-migrations', 0)`
 
+const migrationLockTimeout = 5 * time.Second
+
 // Migrate applies embedded migrations in filename order, tracked in
 // schema_migrations. Safe to run on every boot and from several processes at
 // once: it holds a session advisory lock on one connection for the whole
 // check-and-apply loop, so concurrent callers apply each migration once.
 // That connection runs without a statement timeout until it is released, so
 // a long migration is never cut off by the pool's statement_timeout.
+// Each migration waits at most migrationLockTimeout for a table lock and
+// fails instead of queueing live traffic behind it; the next boot retries.
 func (s *Store) Migrate(ctx context.Context) (err error) {
 	conn, err := s.pool.Acquire(ctx)
 	if err != nil {
@@ -125,15 +130,23 @@ func (s *Store) Migrate(ctx context.Context) (err error) {
 		}
 		conn.Release()
 	}()
-	return applyMigrations(ctx, conn.Conn())
+	return applyMigrations(ctx, conn.Conn(), embeddedMigrations(), migrationLockTimeout)
 }
 
-func applyMigrations(ctx context.Context, conn *pgx.Conn) error {
+func embeddedMigrations() fs.FS {
+	migrations, err := fs.Sub(migrationsFS, "migrations")
+	if err != nil {
+		panic(err)
+	}
+	return migrations
+}
+
+func applyMigrations(ctx context.Context, conn *pgx.Conn, migrations fs.FS, lockTimeout time.Duration) error {
 	if _, err := conn.Exec(ctx,
 		`CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())`); err != nil {
 		return err
 	}
-	entries, err := migrationsFS.ReadDir("migrations")
+	entries, err := fs.ReadDir(migrations, ".")
 	if err != nil {
 		return err
 	}
@@ -151,27 +164,34 @@ func applyMigrations(ctx context.Context, conn *pgx.Conn) error {
 		if applied {
 			continue
 		}
-		sql, err := migrationsFS.ReadFile("migrations/" + name)
+		sql, err := fs.ReadFile(migrations, name)
 		if err != nil {
 			return err
 		}
-		tx, err := conn.Begin(ctx)
-		if err != nil {
-			return err
-		}
-		if _, err := tx.Exec(ctx, string(sql)); err != nil {
-			_ = tx.Rollback(ctx)
-			return fmt.Errorf("migration %s: %w", name, err)
-		}
-		if _, err := tx.Exec(ctx, `INSERT INTO schema_migrations (name) VALUES ($1)`, name); err != nil {
-			_ = tx.Rollback(ctx)
-			return err
-		}
-		if err := tx.Commit(ctx); err != nil {
+		if err := applyMigration(ctx, conn, name, string(sql), lockTimeout); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func applyMigration(ctx context.Context, conn *pgx.Conn, name, sql string, lockTimeout time.Duration) error {
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	if _, err := tx.Exec(ctx, `SELECT set_config('lock_timeout', $1, true)`,
+		fmt.Sprintf("%dms", lockTimeout.Milliseconds())); err != nil {
+		return fmt.Errorf("migration %s: lock_timeout: %w", name, err)
+	}
+	if _, err := tx.Exec(ctx, sql); err != nil {
+		return fmt.Errorf("migration %s: %w", name, err)
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO schema_migrations (name) VALUES ($1)`, name); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 func audit(ctx context.Context, tx pgx.Tx, actor, action string, workItemID *int64, detail any) error {
