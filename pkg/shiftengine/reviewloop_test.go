@@ -424,3 +424,28 @@ func TestLoop_ApprovalWithAnEmptyPoolIsAnApproval(t *testing.T) {
 		t.Errorf("item state = %q, want awaiting_review", got)
 	}
 }
+
+func TestUndeliveredMessage_NamesWhatTheWriterDid(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		reports []store.RunReport
+		want    string
+	}{
+		{"expired writer", []store.RunReport{{Writes: true, Round: 1, Outcome: string(work.OutcomeFailed),
+			FailureReason: string(work.FailureLeaseLost), Summary: "run deadline expired"}},
+			"no pull request: the writing Run failed (lease_lost: run deadline expired) and delivered nothing; there is nothing to review"},
+		{"no change", []store.RunReport{{Role: "builder", Writes: true, Round: 1, Outcome: string(work.OutcomeNoChangeNeeded), Summary: "already done"},
+			{Role: "reviewer", Round: 2, Outcome: string(work.OutcomeNoChangeNeeded), Verdict: harness.VerdictApprove}},
+			"no pull request: the builder Run finished with no_change_needed (already done) and delivered nothing; there is nothing to review"},
+		{"unobserved delivery", []store.RunReport{{Writes: true, Round: 1, Outcome: string(work.OutcomePROpened),
+			Delivery: &harness.Delivery{Observed: harness.DeliveryNone}}},
+			"no pull request: the writing Run reported pr_opened, but its delivery was not observed on the forge; there is nothing to review"},
+		{"no writer", nil, "no pull request: no writing Run finished; there is nothing to review"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := undeliveredMessage(tc.reports); got != tc.want {
+				t.Errorf("got %q\nwant %q", got, tc.want)
+			}
+		})
+	}
+}

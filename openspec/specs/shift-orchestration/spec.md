@@ -178,6 +178,13 @@ release the item's live-Shift slot so a later re-mandate can open a fresh one.
 - **THEN** the Shift closes with a recorded reason
 - **AND** the Work Item reaches `awaiting_review` when a writer opened or updated a pull request whose checks did not fail, so a person reviews and merges it; otherwise it reaches `needs_human`
 
+#### Scenario: The plan runs out without a pull request
+
+- **GIVEN** no writing Run opened or updated a pull request whose delivery was observed, such as a writer whose Run expired
+- **WHEN** the Shift closes `plan_exhausted`, `review_approved` or `review_failed`
+- **THEN** the settle reason says no pull request was delivered, names the last writing Run's Outcome and failure reason, and says there is nothing to review
+- **AND** it never asks a person to review or merge, whether the Work Item re-queues, goes stale or reaches `needs_human`
+
 #### Scenario: A stuck Outcome freezes the plan
 
 - **GIVEN** any Run reports `stuck` with a reason (R4)

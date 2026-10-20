@@ -2,6 +2,7 @@ package shiftengine
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -157,6 +158,49 @@ func TestUniform_FailedRequeuesAndRespectsTheAttemptCap(t *testing.T) {
 	}
 	if got := itemState(t, id); got != "stale" {
 		t.Errorf("at the attempt cap = %q, want stale", got)
+	}
+}
+
+// An expired synthesized writer delivered nothing, so neither the re-queue
+// nor the stale settle may tell anyone to review and merge (Work Item 228).
+func TestUniform_ExpiredWriterSaysNothingIsReadyToReview(t *testing.T) {
+	ctx := context.Background()
+	for _, tc := range []struct {
+		name      string
+		attempts  int
+		wantState string
+	}{
+		{"requeued", 1, "queued"},
+		{"stale at the attempt cap", store.MaxAttempts, "stale"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			resetTables(t)
+			e := uniformEngine(t)
+			id, _ := openUniform(t, e, "958")
+
+			run, err := testStore.ClaimRole(ctx, "silver", "", time.Minute, 0)
+			if err != nil || run == nil {
+				t.Fatalf("claim: %v", err)
+			}
+			forceItemState(t, id, "active", tc.attempts)
+			expireTheRun(t, run.RunToken)
+			if err := e.EvaluateItem(ctx, id); err != nil {
+				t.Fatal(err)
+			}
+			if got := itemState(t, id); got != tc.wantState {
+				t.Fatalf("state = %q, want %q", got, tc.wantState)
+			}
+			var reason string
+			if err := testPool.QueryRow(ctx, `SELECT detail->>'reason' FROM audit_log
+				WHERE work_item_id = $1 AND action = $2 ORDER BY id DESC LIMIT 1`,
+				id, "work_item."+tc.wantState).Scan(&reason); err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(reason, "review and merge") || !strings.Contains(reason, "lease_lost") ||
+				!strings.Contains(reason, "nothing to review") {
+				t.Errorf("settle reason = %q, want the expired writer named and nothing offered for review", reason)
+			}
+		})
 	}
 }
 

@@ -355,6 +355,9 @@ func (e *Engine) evaluate(ctx context.Context, si store.ShiftInfo) error {
 			if missing, found := missingReview(reports); found && reason == reasonPlanExhausted {
 				reason, message = reasonReviewFailed, missing.message()
 			}
+			if si.Origin != work.OriginPullRequest && closesForReview(reason) && !writerDelivered(reports) {
+				message = undeliveredMessage(reports)
+			}
 			if checksHoldBackReview(reports) {
 				reason, message = checksCloseReason(reason, message, reports)
 			}
@@ -504,12 +507,24 @@ func (e *Engine) remandForReview(ctx context.Context, workItemID int64) bool {
 // writer opened or updated it. A writer whose stored delivery record did not
 // observe that delivery does not count (ADR-0059).
 func readyForReview(closeReason string, reports []store.RunReport) bool {
-	if closeReason != reasonApproved && closeReason != reasonPlanExhausted && closeReason != reasonReviewFailed {
+	if !closesForReview(closeReason) {
 		return false
 	}
 	if closeReason != reasonApproved && lastReviewRequestsChanges(reports) {
 		return false
 	}
+	return writerDelivered(reports)
+}
+
+// closesForReview reports whether a close reason hands a pull request to a
+// person when a writer delivered one.
+func closesForReview(closeReason string) bool {
+	return closeReason == reasonApproved || closeReason == reasonPlanExhausted || closeReason == reasonReviewFailed
+}
+
+// writerDelivered reports whether a writing Run opened or updated the pull
+// request, and its stored delivery record, if any, observed it (ADR-0059).
+func writerDelivered(reports []store.RunReport) bool {
 	for _, r := range reports {
 		if r.Writes && work.Outcome(r.Outcome).AssertsDelivery() && (r.Delivery == nil || r.Delivery.Observed.Delivered()) {
 			return true
@@ -525,7 +540,7 @@ func readyForReview(closeReason string, reports []store.RunReport) bool {
 // is no writer to look for, because nothing of Ploeg's writes to that pull
 // request.
 func readingPublished(closeReason string, reports []store.RunReport) bool {
-	if closeReason != reasonApproved && closeReason != reasonPlanExhausted && closeReason != reasonReviewFailed {
+	if !closesForReview(closeReason) {
 		return false
 	}
 	return !lastReviewRequestsChanges(reports)
