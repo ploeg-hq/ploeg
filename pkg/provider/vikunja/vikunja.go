@@ -25,6 +25,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ploeg-hq/ploeg/pkg/httpclient"
 	"github.com/ploeg-hq/ploeg/pkg/provider"
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
@@ -173,7 +174,7 @@ func (p *Provider) client() *http.Client {
 	if p.HC != nil {
 		return p.HC
 	}
-	return &http.Client{Timeout: 30 * time.Second}
+	return httpclient.New(30 * time.Second)
 }
 
 // do issues one authenticated API call and decodes an optional result.

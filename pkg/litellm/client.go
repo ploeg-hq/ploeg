@@ -16,6 +16,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/ploeg-hq/ploeg/pkg/httpclient"
 )
 
 // AliasPrefix is the fixed prefix for every per-run LiteLLM key alias.
@@ -45,9 +47,7 @@ func NewClient(baseURL, masterKey string) *Client {
 	return &Client{
 		baseURL:   baseURL,
 		masterKey: masterKey,
-		httpCli: &http.Client{
-			Timeout: 10 * time.Second,
-		},
+		httpCli:   httpclient.New(10 * time.Second),
 	}
 }
 

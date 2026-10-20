@@ -12,6 +12,7 @@ import (
 
 	"github.com/ploeg-hq/ploeg/pkg/githubapi"
 	"github.com/ploeg-hq/ploeg/pkg/harness"
+	"github.com/ploeg-hq/ploeg/pkg/httpclient"
 )
 
 var errUnsupportedForge = errors.New("unsupported forge dialect")
@@ -263,7 +264,7 @@ func getJSON(req *http.Request, into any) error {
 }
 
 func getJSONWithHeader(req *http.Request, into any) (http.Header, error) {
-	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
+	resp, err := httpclient.New(30 * time.Second).Do(req)
 	if err != nil {
 		return nil, err
 	}

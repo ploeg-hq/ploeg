@@ -23,6 +23,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/ploeg-hq/ploeg/pkg/httpclient"
 )
 
 // DefaultAPIURL is GitHub.com's REST API root.
@@ -247,7 +249,7 @@ func (m *Minter) client() *http.Client {
 	if m.HC != nil {
 		return m.HC
 	}
-	return &http.Client{Timeout: 30 * time.Second}
+	return httpclient.New(30 * time.Second)
 }
 
 func (m *Minter) now() time.Time {
