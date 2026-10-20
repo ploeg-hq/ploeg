@@ -587,7 +587,11 @@ type claimResponse struct {
 // one, it is the pre-Shift claim over queued Work Items, unchanged.
 func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 	var req claimRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Team == "" {
+	err := decodeBounded(w, r, claimBodyLimit, &req)
+	if refuseOversizedBody(w, err) {
+		return
+	}
+	if err != nil || req.Team == "" {
 		http.Error(w, "body must be {\"team\": \"...\", \"role\": \"...\"}", http.StatusBadRequest)
 		return
 	}
@@ -798,7 +802,11 @@ func (s *Server) handleRenew(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleCheckpoint(w http.ResponseWriter, r *http.Request) {
 	var cp work.Checkpoint
-	if err := json.NewDecoder(r.Body).Decode(&cp); err != nil || cp.Phase == "" {
+	err := decodeBounded(w, r, checkpointBodyLimit, &cp)
+	if refuseOversizedBody(w, err) {
+		return
+	}
+	if err != nil || cp.Phase == "" {
 		http.Error(w, "checkpoint requires a phase", http.StatusBadRequest)
 		return
 	}
@@ -860,7 +868,10 @@ func validateOutcomeReport(req harness.OutcomeReport) error {
 // riding inline is written before the outcome ends the run.
 func (s *Server) handleOutcome(w http.ResponseWriter, r *http.Request) {
 	var req harness.OutcomeReport
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeBounded(w, r, outcomeBodyLimit, &req); err != nil {
+		if refuseOversizedBody(w, err) {
+			return
+		}
 		http.Error(w, "outcome must be a known outcome enum value", http.StatusBadRequest)
 		return
 	}

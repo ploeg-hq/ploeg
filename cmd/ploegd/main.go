@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
-	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
@@ -460,18 +459,13 @@ func run(log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	var loops backgroundLoops
 	if webhookCheck != nil {
 		srv.TrackerWebhooks = webhookCheck.coverage
-		go webhookCheck.loop(ctx)
+		loops.Go(func() { webhookCheck.loop(ctx) })
 	}
 
 	httpSrv := newHTTPServer(listen, srv.Handler(), defaultHTTPTimeouts)
-	go func() {
-		<-ctx.Done()
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		_ = httpSrv.Shutdown(shutdownCtx)
-	}()
 
 	orphanSweep(ctx, log, st, sweeper)
 	forgeOrphanSweep(ctx, log, st, forgeSweeper)
@@ -480,20 +474,23 @@ func run(log *slog.Logger) error {
 	}
 	managedBlockSweep(ctx, log, srv, 0, newAccountRetries(sweepEvery))
 
-	go sweepLoop(ctx, log, st, sweeper, forgeSweeper, engine, srv, sweepEvery, settleAfter)
+	loops.Go(func() { sweepLoop(ctx, log, st, sweeper, forgeSweeper, engine, srv, sweepEvery, settleAfter) })
 	if reviews != nil {
-		go reviewLoop(ctx, reviews, reviewEvery)
+		loops.Go(func() { reviewLoop(ctx, reviews, reviewEvery) })
 	}
 	if readPullRequests != nil {
-		go pullRequestReadLoop(ctx, readPullRequests, reviewEvery)
+		loops.Go(func() { pullRequestReadLoop(ctx, readPullRequests, reviewEvery) })
 	}
-	go deployCheckLoop(ctx, srv, deployCheckEvery)
+	loops.Go(func() { deployCheckLoop(ctx, srv, deployCheckEvery) })
 	if srv.Notes != nil {
-		go noteWriteLoop(ctx, srv, durationOr("PLOEG_NOTES_WRITE_INTERVAL", 15*time.Second))
+		notesEvery := durationOr("PLOEG_NOTES_WRITE_INTERVAL", 15*time.Second)
+		loops.Go(func() { noteWriteLoop(ctx, srv, notesEvery) })
 	}
 
 	log.Info("ploegd listening", "version", version, "addr", listen, "lease_ttl", leaseTTL)
-	if err := httpSrv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+	if err := serveUntilStopped(ctx, log, httpSrv, httpSrv.ListenAndServe, defaultShutdownBudget,
+		drain{name: "background loops", wait: loops.Wait},
+		drain{name: "pull request reads", wait: srv.WaitBackground}); err != nil {
 		return err
 	}
 	log.Info("ploegd stopped")

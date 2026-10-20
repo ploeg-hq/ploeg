@@ -108,6 +108,7 @@ func (s *Server) addContext(w http.ResponseWriter, r *http.Request, p OperatorPr
 		operatorError(w, 413, "too_large", "The file is larger than the "+strconv.FormatInt(limit, 10)+" bytes one upload may hold.")
 		return
 	}
+	extendTransferDeadline(w, contextTransferBudget)
 	data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, limit+1))
 	var tooLarge *http.MaxBytesError
 	if errors.As(err, &tooLarge) || int64(len(data)) > limit {
@@ -197,6 +198,7 @@ func (s *Server) handleRunContext(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Length", strconv.Itoa(len(c.Content)))
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Cache-Control", "no-store")
+	extendTransferDeadline(w, contextTransferBudget)
 	_, _ = w.Write(c.Content)
 }
 

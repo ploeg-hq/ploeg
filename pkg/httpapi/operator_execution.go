@@ -72,7 +72,12 @@ func decodeExecution(w http.ResponseWriter, r *http.Request, out any) bool {
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 128*1024))
 	decoder.DisallowUnknownFields()
 	if err = decoder.Decode(out); err != nil {
-		operatorError(w, 400, "invalid_command", "The execution request is invalid or too large.")
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			operatorError(w, 413, "too_large", "The execution request exceeds 128 KiB.")
+			return false
+		}
+		operatorError(w, 400, "invalid_command", "The execution request is invalid.")
 		return false
 	}
 	if err = decoder.Decode(new(any)); err != io.EOF {

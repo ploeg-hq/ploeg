@@ -2,9 +2,7 @@ package httpapi
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
 	"strconv"
 	"time"
@@ -75,7 +73,10 @@ const boardRequestLimit = 4 << 10
 // the request; 409 answers a Run claimed before its versions were recorded.
 func (s *Server) handleRunBoard(w http.ResponseWriter, r *http.Request) {
 	var req work.BoardChangesRequest
-	if err := json.NewDecoder(io.LimitReader(r.Body, boardRequestLimit)).Decode(&req); err != nil {
+	if err := decodeBounded(w, r, boardRequestLimit, &req); err != nil {
+		if refuseOversizedBody(w, err) {
+			return
+		}
 		http.Error(w, "body must be a JSON boardChangesRequest", http.StatusBadRequest)
 		return
 	}

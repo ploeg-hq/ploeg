@@ -133,8 +133,12 @@ func TestOperatorExecutionHTTPRejectsMalformedAndOversizedInput(t *testing.T) {
 			changed := input
 			alter(&changed)
 			w := operatorExecutionRequest(s, "POST", "/api/v1/operator/executions", token, "alice", changed)
-			if w.Code != 400 {
-				t.Fatalf("invalid input: %d %s", w.Code, w.Body)
+			want := 400
+			if name == "too-large" {
+				want = 413
+			}
+			if w.Code != want {
+				t.Fatalf("invalid input: %d %s, want %d", w.Code, w.Body, want)
 			}
 		})
 	}
