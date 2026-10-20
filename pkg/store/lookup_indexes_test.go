@@ -39,7 +39,7 @@ ANALYZE;
 
 func TestLookupIndexesAreChosenByThePlanner(t *testing.T) {
 	ctx := context.Background()
-	s, err := New(ctx, scratchDatabase(t, "ploeg_lookup_index_plans"))
+	s, err := New(ctx, scratchDatabase(t, "ploeg_lookup_index_plans"), PoolConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
