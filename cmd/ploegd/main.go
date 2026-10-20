@@ -35,13 +35,15 @@ var version = "0.0.0-dev"
 
 func main() {
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	if err := run(log); err != nil {
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	if err := run(ctx, log); err != nil {
 		log.Error("ploegd exiting", "err", err)
 		os.Exit(1)
 	}
 }
 
-func run(log *slog.Logger) error {
+func run(ctx context.Context, log *slog.Logger) error {
 	dbURL := os.Getenv("PLOEG_DATABASE_URL")
 	if dbURL == "" {
 		return errors.New("PLOEG_DATABASE_URL is required")
@@ -56,13 +58,20 @@ func run(log *slog.Logger) error {
 	}
 	reviewEvery := durationOr("PLOEG_REVIEW_RECONCILE_INTERVAL", 10*time.Minute)
 
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-
 	poolCfg, err := poolConfigFromEnv()
 	if err != nil {
 		return err
 	}
+
+	gate := newBootGate()
+	server, err := listenEarly(listen, gate)
+	if err != nil {
+		return fmt.Errorf("PLOEG_LISTEN %s: %w", listen, err)
+	}
+	defer server.abort()
+	log.Info("ploegd listening; not ready until boot completes", "version", version, "addr", listen)
+
+	gate.enter("waiting for the database")
 	st, err := store.New(ctx, dbURL, poolCfg)
 	if err != nil {
 		return err
@@ -84,9 +93,11 @@ func run(log *slog.Logger) error {
 		case <-time.After(3 * time.Second):
 		}
 	}
+	gate.enter("applying migrations")
 	if err := st.Migrate(ctx); err != nil {
 		return err
 	}
+	gate.enter("resolving configuration")
 
 	// File-backed configuration (PLOEG_CONFIG). Replaces three env-var DSLs
 	// with one reviewable YAML file; absent = the env vars still apply, so
@@ -466,17 +477,12 @@ func run(log *slog.Logger) error {
 	var loops backgroundLoops
 	if webhookCheck != nil {
 		srv.TrackerWebhooks = webhookCheck.coverage
+	}
+
+	gate.open(srv.Handler())
+	if webhookCheck != nil {
 		loops.Go(func() { webhookCheck.loop(ctx) })
 	}
-
-	httpSrv := newHTTPServer(listen, srv.Handler(), defaultHTTPTimeouts)
-
-	orphanSweep(ctx, log, st, sweeper)
-	forgeOrphanSweep(ctx, log, st, forgeSweeper)
-	if err := srv.ReconcileOperatorExecutions(ctx); err != nil {
-		log.Error("operator execution reconciliation failed at startup")
-	}
-	managedBlockSweep(ctx, log, srv, 0, newAccountRetries(sweepEvery))
 
 	loops.Go(func() { sweepLoop(ctx, log, st, sweeper, forgeSweeper, engine, srv, sweepEvery, settleAfter) })
 	if reviews != nil {
@@ -491,8 +497,8 @@ func run(log *slog.Logger) error {
 		loops.Go(func() { noteWriteLoop(ctx, srv, notesEvery) })
 	}
 
-	log.Info("ploegd listening", "version", version, "addr", listen, "lease_ttl", leaseTTL)
-	if err := serveUntilStopped(ctx, log, httpSrv, httpSrv.ListenAndServe, defaultShutdownBudget,
+	log.Info("ploegd ready", "version", version, "addr", listen, "lease_ttl", leaseTTL)
+	if err := serveUntilStopped(ctx, log, server.http, server.wait, defaultShutdownBudget,
 		drain{name: "background loops", wait: loops.Wait},
 		drain{name: "pull request reads", wait: srv.WaitBackground}); err != nil {
 		return err

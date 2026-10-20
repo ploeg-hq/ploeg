@@ -71,6 +71,11 @@ metadata:
     app.kubernetes.io/managed-by: Helm
 spec:
   replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: ploeg
@@ -197,6 +202,12 @@ spec:
                   key: registry.json
             - name: PLOEG_WORKER_LLM_POLICIES
               value: "[{\"budgetUsd\":2,\"defaultModel\":\"deepseek-chat\",\"models\":[\"deepseek-chat\"],\"role\":\"\",\"team\":\"bronze\",\"ttl\":\"4h\"},{\"budgetUsd\":3,\"defaultModel\":\"claude-sonnet-5\",\"models\":[\"claude-sonnet-5\"],\"role\":\"\",\"team\":\"copper\",\"ttl\":\"4h\"},{\"budgetUsd\":1,\"defaultModel\":\"claude-sonnet-5\",\"models\":[\"claude-sonnet-5\"],\"role\":\"\",\"team\":\"pewter\",\"ttl\":\"4h\"},{\"budgetUsd\":1,\"defaultModel\":\"claude-sonnet-5\",\"models\":[\"claude-sonnet-5\"],\"role\":\"\",\"team\":\"brass\",\"ttl\":\"4h\"},{\"budgetUsd\":1,\"defaultModel\":\"deepseek-chat\",\"litellmTeamId\":\"agents-orders\",\"mcpAccessGroups\":[\"observability-read-orders\"],\"models\":[\"deepseek-chat\"],\"role\":\"\",\"team\":\"tin\",\"ttl\":\"4h\"},{\"budgetUsd\":1,\"defaultModel\":\"deepseek-chat\",\"models\":[\"deepseek-chat\"],\"role\":\"\",\"team\":\"zinc\",\"ttl\":\"4h\"},{\"budgetUsd\":1,\"defaultModel\":\"claude-sonnet-5\",\"models\":[\"claude-sonnet-5\"],\"role\":\"\",\"team\":\"lead\",\"ttl\":\"4h\"},{\"budgetUsd\":0.5,\"defaultModel\":\"deepseek-chat\",\"models\":[\"deepseek-chat\"],\"role\":\"analyst\",\"team\":\"gold\",\"ttl\":\"4h\"},{\"budgetUsd\":0.5,\"defaultModel\":\"deepseek-chat\",\"models\":[\"deepseek-chat\"],\"role\":\"tests\",\"team\":\"gold\",\"ttl\":\"4h\"},{\"budgetUsd\":3,\"defaultModel\":\"claude-sonnet-5\",\"models\":[\"claude-sonnet-5\"],\"role\":\"builder\",\"team\":\"gold\",\"ttl\":\"4h\"},{\"budgetUsd\":0.75,\"defaultModel\":\"claude-sonnet-5\",\"models\":[\"claude-sonnet-5\"],\"role\":\"reviewer\",\"team\":\"gold\",\"ttl\":\"4h\"}]"
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+            failureThreshold: 30
           readinessProbe:
             httpGet:
               path: /readyz
@@ -208,6 +219,10 @@ spec:
               path: /healthz
               port: http
             periodSeconds: 20
+          lifecycle:
+            preStop:
+              sleep:
+                seconds: 5
           resources:
             limits:
               cpu: 100m
