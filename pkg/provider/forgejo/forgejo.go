@@ -24,6 +24,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ploeg-hq/ploeg/pkg/httpclient"
 	"github.com/ploeg-hq/ploeg/pkg/provider"
 )
 
@@ -51,7 +52,7 @@ func (p *Provider) client() *http.Client {
 	if p.HC != nil {
 		return p.HC
 	}
-	return &http.Client{Timeout: 30 * time.Second}
+	return httpclient.New(30 * time.Second)
 }
 
 func (p *Provider) log() *slog.Logger {
