@@ -35,10 +35,7 @@ type ReviewItem struct {
 	ShiftID int64
 }
 
-// AwaitingReview lists every Work Item in awaiting_review that Ploeg owns,
-// with the links of the writer Run that put it there.
-func (s *Store) AwaitingReview(ctx context.Context) ([]ReviewItem, error) {
-	rows, err := s.pool.Query(ctx, `
+const awaitingReviewQuery = `
 		SELECT w.id, w.provider, w.external_id,
 		       w.target_forge, w.target_owner, w.target_repo, w.target_base_branch,
 		       COALESCE(last.links, '{}'), last.delivery, w.origin, w.source_pr,
@@ -50,7 +47,12 @@ func (s *Store) AwaitingReview(ctx context.Context) ([]ReviewItem, error) {
 		                   ORDER BY r.finished_at DESC NULLS LAST, r.id DESC
 		                   LIMIT 1) last ON true
 		WHERE w.state = 'awaiting_review' AND NOT w.operator_owned
-		ORDER BY w.id`)
+		ORDER BY w.id`
+
+// AwaitingReview lists every Work Item in awaiting_review that Ploeg owns,
+// with the links of the writer Run that put it there.
+func (s *Store) AwaitingReview(ctx context.Context) ([]ReviewItem, error) {
+	rows, err := s.pool.Query(ctx, awaitingReviewQuery)
 	if err != nil {
 		return nil, err
 	}

@@ -17,6 +17,8 @@ This page describes the source reviewed on 12 September 2026. It does not establ
 | [LiteLLM integration](../pkg/httpapi/llm_control.go) | Scoped inference capability lifecycle and accounting observations |
 | [Tracker and forge providers](../pkg/provider/) | Translate configured external systems at the integration boundary |
 
+ploegd applies the store's [migrations](../pkg/store/migrations/) at startup, each in its own transaction under one advisory lock. A migration waits at most five seconds for a table lock (`lock_timeout`). When a long transaction holds one, the migration rolls back, ploegd exits and its next start retries, so a schema change never queues live traffic behind the lock it waits for.
+
 Manual-origin work need not have an external ticket. It still needs authenticated admission and registered authority. An Operator Consumer admits it as a Work Item that `ploeg-worker` executes ([ADR-0102](adrs/0102-an-operator-consumer-admits-work-items-that-ploeg-worker-executes.md)), or, until they are retired, as an Operator Execution it executes itself. Creating a queued session alone does not start paid work.
 
 ## 2. Execution paths
