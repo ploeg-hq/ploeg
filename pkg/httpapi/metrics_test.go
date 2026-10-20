@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -177,4 +178,53 @@ ploeg_runs_finished_total{team="silver",role="reviewer",outcome="no_change_neede
 	if !strings.Contains(body, want) {
 		t.Fatalf("run outcome series out of order or mislabelled:\n%s", body)
 	}
+}
+
+func TestMetricsExposeThePoolFreshPastTheCache(t *testing.T) {
+	reset(t)
+	s := &Server{Store: testStore, Log: slog.New(slog.DiscardHandler), MetricsCacheTTL: time.Hour}
+	h := s.Handler()
+	first := scrape(t, h)
+	requireLines(t, first,
+		"# TYPE ploeg_db_pool_connections gauge",
+		"# TYPE ploeg_db_pool_max_connections gauge",
+		"# TYPE ploeg_db_pool_acquires_total counter",
+		"# TYPE ploeg_db_pool_acquire_seconds_total counter",
+		"# TYPE ploeg_db_pool_empty_acquires_total counter",
+		"# TYPE ploeg_db_pool_empty_acquire_wait_seconds_total counter",
+		"# TYPE ploeg_db_pool_canceled_acquires_total counter",
+		"# TYPE ploeg_db_pool_new_connections_total counter",
+		"# TYPE ploeg_db_pool_destroyed_connections_total counter",
+		fmt.Sprintf("ploeg_db_pool_max_connections %d", testStore.PoolStat().MaxConns()),
+	)
+	for _, prefix := range []string{
+		`ploeg_db_pool_connections{state="acquired"} `,
+		`ploeg_db_pool_connections{state="idle"} `,
+		`ploeg_db_pool_connections{state="constructing"} `,
+		`ploeg_db_pool_destroyed_connections_total{reason="lifetime"} `,
+		`ploeg_db_pool_destroyed_connections_total{reason="idle"} `,
+	} {
+		if !strings.Contains(first, "\n"+prefix) {
+			t.Errorf("missing a sample starting %q", prefix)
+		}
+	}
+
+	if err := testStore.Ping(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	want := fmt.Sprintf("ploeg_db_pool_acquires_total %d", testStore.PoolStat().AcquireCount())
+	second := scrape(t, h)
+	requireLines(t, second, want)
+	if sampleLine(first, "ploeg_db_pool_acquires_total ") == sampleLine(second, "ploeg_db_pool_acquires_total ") {
+		t.Errorf("pool metrics were served from the hour-long cache: %q twice", sampleLine(first, "ploeg_db_pool_acquires_total "))
+	}
+}
+
+func sampleLine(body, prefix string) string {
+	for _, l := range strings.Split(body, "\n") {
+		if strings.HasPrefix(l, prefix) {
+			return l
+		}
+	}
+	return ""
 }

@@ -62,6 +62,18 @@ spec:
                 secretKeyRef:
                   name: {{ required "database.existingSecret.name is required: name the Secret that holds ploegd's PostgreSQL connection URI (CloudNativePG creates <cluster>-app with a uri key)" .Values.database.existingSecret.name }}
                   key: {{ .Values.database.existingSecret.key | default "uri" }}
+            {{- $poolEnv := dict "maxConns" "PLOEG_DB_MAX_CONNS" "minIdleConns" "PLOEG_DB_MIN_IDLE_CONNS" "maxConnLifetime" "PLOEG_DB_MAX_CONN_LIFETIME" "maxConnLifetimeJitter" "PLOEG_DB_MAX_CONN_LIFETIME_JITTER" "maxConnIdleTime" "PLOEG_DB_MAX_CONN_IDLE_TIME" "healthCheckPeriod" "PLOEG_DB_HEALTH_CHECK_PERIOD" "pingTimeout" "PLOEG_DB_PING_TIMEOUT" "applicationName" "PLOEG_DB_APPLICATION_NAME" "statementTimeout" "PLOEG_DB_STATEMENT_TIMEOUT" "idleInTransactionTimeout" "PLOEG_DB_IDLE_IN_TRANSACTION_TIMEOUT" }}
+            {{- $pool := .Values.database.pool | default dict }}
+            {{- range $key, $name := $poolEnv }}
+            {{- $value := get $pool $key }}
+            {{- if ne (toString $value) "" }}
+            {{- if ne (kindOf $value) "invalid" }}
+            - name: {{ $name }}
+              value: {{ toString $value | quote }}
+            {{- end }}
+            {{- end }}
+            {{- end }}
+            {{- with include "ploeg.goMemLimitEnv" (dict "goMemLimit" .Values.goMemLimit "env" .Values.env "resources" .Values.resources) | trim }}{{ . | nindent 12 }}{{- end }}
             {{- with .Values.webhook.existingSecret }}
             {{- if .name }}
             - name: PLOEG_VIKUNJA_SECRET

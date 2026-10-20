@@ -158,6 +158,28 @@ spec:
                 secretKeyRef:
                   name: ploeg-db-app
                   key: uri
+            - name: PLOEG_DB_APPLICATION_NAME
+              value: "ploegd"
+            - name: PLOEG_DB_HEALTH_CHECK_PERIOD
+              value: "30s"
+            - name: PLOEG_DB_IDLE_IN_TRANSACTION_TIMEOUT
+              value: "60s"
+            - name: PLOEG_DB_MAX_CONN_IDLE_TIME
+              value: "5m"
+            - name: PLOEG_DB_MAX_CONN_LIFETIME
+              value: "30m"
+            - name: PLOEG_DB_MAX_CONN_LIFETIME_JITTER
+              value: "5m"
+            - name: PLOEG_DB_MAX_CONNS
+              value: "8"
+            - name: PLOEG_DB_MIN_IDLE_CONNS
+              value: "2"
+            - name: PLOEG_DB_PING_TIMEOUT
+              value: "5s"
+            - name: PLOEG_DB_STATEMENT_TIMEOUT
+              value: "30s"
+            - name: GOMEMLIMIT
+              value: "230MiB"
             - name: PLOEG_TEAM_PLANS
               value: "{\"gvisor\":{\"maxFixRounds\":0,\"pool\":\"4\",\"rounds\":[{\"roles\":[{\"cap\":\"3.00\",\"name\":\"builder\",\"writes\":true}]},{\"roles\":[{\"cap\":\"0.75\",\"harness\":{\"dind\":false},\"name\":\"reviewer\",\"sandbox\":{\"runtimeClassName\":\"gvisor-systrap\"},\"writes\":false}]}]}}"
             - name: PLOEG_TEAM_HARNESSES
@@ -986,6 +1008,8 @@ spec:
                 value: "600s"
               - name: PLOEG_SANDBOX_TTL_SECONDS_AFTER_FINISHED
                 value: "60"
+              - name: GOMEMLIMIT
+                value: "28MiB"
               - name: PLOEG_API_URL
                 value: "http://ploeg:8080"
               - name: PLOEG_TEAM
@@ -1114,6 +1138,8 @@ spec:
                 value: "600s"
               - name: PLOEG_SANDBOX_TTL_SECONDS_AFTER_FINISHED
                 value: "60"
+              - name: GOMEMLIMIT
+                value: "28MiB"
               - name: PLOEG_API_URL
                 value: "http://ploeg:8080"
               - name: PLOEG_TEAM
@@ -1254,6 +1280,8 @@ spec:
                 value: "600s"
               - name: PLOEG_SANDBOX_TTL_SECONDS_AFTER_FINISHED
                 value: "60"
+              - name: GOMEMLIMIT
+                value: "28MiB"
               - name: PLOEG_API_URL
                 value: "http://ploeg:8080"
               - name: PLOEG_TEAM

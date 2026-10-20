@@ -66,6 +66,16 @@ The generator follows each binary's imports inside the module and records every 
 | `PLOEG_CREDENTIAL_ISOLATION_OFF_REASON` | ploeg-worker | `disabled` | Why the chart left a credential proxy off for this workload: `unqualified`, `dind` or `disabled`. ploeg-worker logs it in one boot WARN with the harness name. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_DATABASE_URL` | ploeg-worker |  | Controller-only. The worker refuses to start when it is set. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_DATABASE_URL` | ploegd | required | PostgreSQL connection URI. The chart reads the whole `uri` key of the CNPG app Secret named by `database.existingSecret`. | [main.go](../../cmd/ploegd/main.go) |
+| `PLOEG_DB_APPLICATION_NAME` | ploegd | `ploegd` | `application_name` of every pooled connection, which names ploegd in `pg_stat_activity` and `pg_stat_statements` (chart `database.pool.applicationName`). `application_name` in the URL, or `PGAPPNAME`, wins. | [database.go](../../cmd/ploegd/database.go) |
+| `PLOEG_DB_HEALTH_CHECK_PERIOD` | ploegd | `30s` | How often the pool checks its idle connections (chart `database.pool.healthCheckPeriod`). `pool_health_check_period` in the URL wins. | [database.go](../../cmd/ploegd/database.go) |
+| `PLOEG_DB_IDLE_IN_TRANSACTION_TIMEOUT` | ploegd | `60s` | Server-side `idle_in_transaction_session_timeout` of every pooled connection, so a stuck transaction cannot hold row locks for long; `0` sets none (chart `database.pool.idleInTransactionTimeout`). `idle_in_transaction_session_timeout` in the URL wins. | [database.go](../../cmd/ploegd/database.go) |
+| `PLOEG_DB_MAX_CONNS` | ploegd | `8` | Most connections ploegd's database pool opens (chart `database.pool.maxConns`). `0` leaves the pgx default, the greater of 4 and the node's CPU count. `pool_max_conns` in `PLOEG_DATABASE_URL` wins. A malformed value stops ploegd at boot, as it does for every `PLOEG_DB_*` variable. | [database.go](../../cmd/ploegd/database.go) |
+| `PLOEG_DB_MAX_CONN_IDLE_TIME` | ploegd | `5m` | Idle time after which the pool closes a connection above its idle minimum (chart `database.pool.maxConnIdleTime`). `pool_max_conn_idle_time` in the URL wins. | [database.go](../../cmd/ploegd/database.go) |
+| `PLOEG_DB_MAX_CONN_LIFETIME` | ploegd | `30m` | Age at which a pooled connection is closed and replaced, so connections move to a new primary after a failover (chart `database.pool.maxConnLifetime`). `pool_max_conn_lifetime` in the URL wins. | [database.go](../../cmd/ploegd/database.go) |
+| `PLOEG_DB_MAX_CONN_LIFETIME_JITTER` | ploegd | `5m` | Random extra lifetime per connection, so they are not all replaced at once (chart `database.pool.maxConnLifetimeJitter`). `pool_max_conn_lifetime_jitter` in the URL wins. | [database.go](../../cmd/ploegd/database.go) |
+| `PLOEG_DB_MIN_IDLE_CONNS` | ploegd | `2` | Idle connections the pool keeps open so a claim after a quiet period does not wait for a new connection; capped at the pool's maximum (chart `database.pool.minIdleConns`). `pool_min_idle_conns` in the URL wins. | [database.go](../../cmd/ploegd/database.go) |
+| `PLOEG_DB_PING_TIMEOUT` | ploegd | `5s` | How long a health-check ping may take before the connection counts as broken; `0` waits indefinitely (chart `database.pool.pingTimeout`). `pool_ping_timeout` in the URL wins. | [database.go](../../cmd/ploegd/database.go) |
+| `PLOEG_DB_STATEMENT_TIMEOUT` | ploegd | `30s` | Server-side `statement_timeout` of every pooled connection; `0` sets none (chart `database.pool.statementTimeout`). Migrations lift it on their own connection. `statement_timeout` in the URL wins. | [database.go](../../cmd/ploegd/database.go) |
 | `PLOEG_DEFAULT_TEAM` | ploegd | `default` | Team that receives work from an assignee no Team lists. | [main.go](../../cmd/ploegd/main.go), [operator.go](../../cmd/ploegd/operator.go) |
 | `PLOEG_DEPENDENCY_HOLD` | ploegd | `true` | Holds a queued Work Item's first Shift while its tracker says it waits for an item that is not done (ADR-0123). `false` switches the hold off. | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_DEPENDENCY_RECHECK` | ploegd | `5m` | How often ploegd reads a held Work Item's tracker dependencies again, as a Go duration. | [main.go](../../cmd/ploegd/main.go) |
@@ -208,9 +218,20 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `claudeRunner.terminationGracePeriodSeconds` | integer | `90` |  | values.yaml, values.schema.json |
 | `claudeRunner.workSizeLimit` | string | `10Gi` |  | values.yaml, values.schema.json |
 | `config` | object | `{}` | ploegd's routing and roster as a file (mounted at /etc/ploeg/ploeg.yaml). Projects are NAMED and resolved to tracker ids at boot, so no magic numbers live in cluster config. `targets:` registers repositories a `repo/<key>` label may select, and a project's `default:`/`allow:` name them (ADR-0038). A project's `gates:` maps its statuses or bucket titles to the delivery gates development, test, acceptance and done (ADR-0051), and Ploeg records every tracker status move of a project with `gates:` (ADR-0080). A target's or project's `ci.waitTimeout:` is how long a Shift on that repository waits for the forge's CI on its pull request's head before a person is asked, default `60m` (ADR-0119). A target's `readPullRequests:` lists routes: the `authors` whose open pull requests a `team` reads and reports on, on the pull request, with the operator's `instructions` and `maxOpen` and `maxReviewsPerPullRequest` caps (ADR-0109). A team's `premiseCheck: {model: <gateway model>}` runs one classifier call on that model before its first writer, and ploegd refuses a model the gateway does not price at zero (ADR-0123). The Run card keys `cards`, a target's or project's `cardStyle`, `release`, `rarity` and `cardShape`, a project's `statusKinds` and a team's `cards` and `workingHours` are unknown keys that fail the boot (ADR-0080). Empty = the legacy PLOEG_TARGET_MAP/PLOEG_TEAM_MAP/PLOEG_TEAM_PLANS env vars still apply. | values.yaml, values.schema.json |
-| `database.existingSecret` |  |  | REQUIRED: the Secret holding ploegd's PostgreSQL connection URI. The render fails without a name. CNPG creates <cluster>-app with a `uri` key; ploegd consumes it whole. | values.yaml |
+| `database.existingSecret` | object |  | REQUIRED: the Secret holding ploegd's PostgreSQL connection URI. The render fails without a name. CNPG creates <cluster>-app with a `uri` key; ploegd consumes it whole. | values.yaml, values.schema.json |
 | `database.existingSecret.key` |  | `uri` |  | values.yaml |
 | `database.existingSecret.name` |  | `""` |  | values.yaml |
+| `database.pool` | object |  | ploegd's connection pool as the PLOEG_DB_* variables; a setting the connection URI names wins; null leaves ploegd's default | values.yaml, values.schema.json |
+| `database.pool.applicationName` | string or null | `ploegd` |  | values.yaml, values.schema.json |
+| `database.pool.healthCheckPeriod` | [poolDuration](#poolduration) | `30s` |  | values.yaml, values.schema.json |
+| `database.pool.idleInTransactionTimeout` | [poolDuration](#poolduration) | `60s` |  | values.yaml, values.schema.json |
+| `database.pool.maxConnIdleTime` | [poolDuration](#poolduration) | `5m` |  | values.yaml, values.schema.json |
+| `database.pool.maxConnLifetime` | [poolDuration](#poolduration) | `30m` |  | values.yaml, values.schema.json |
+| `database.pool.maxConnLifetimeJitter` | [poolDuration](#poolduration) | `5m` |  | values.yaml, values.schema.json |
+| `database.pool.maxConns` | integer or null | `8` |  | values.yaml, values.schema.json |
+| `database.pool.minIdleConns` | integer or null | `2` |  | values.yaml, values.schema.json |
+| `database.pool.pingTimeout` | [poolDuration](#poolduration) | `5s` |  | values.yaml, values.schema.json |
+| `database.pool.statementTimeout` | [poolDuration](#poolduration) | `30s` | Server-side limits on every pooled connection. Migrations lift the statement timeout on their own connection. | values.yaml, values.schema.json |
 | `deploys` | object | `{}` | ADR-0047: POST /api/v1/deploys, where a pipeline reports "commit X is live in environment Y". tokenSecret names an existing Secret key holding the bearer token (32+ bytes) and becomes PLOEG_DEPLOY_TOKEN on ploegd only. Unset = the endpoint answers 404. | values.yaml, values.schema.json |
 | `deploys.tokenSecret` | object |  | Secret name and key of the deploy bearer token, forwarded to ploegd only as `PLOEG_DEPLOY_TOKEN`. Unset disables `POST /api/v1/deploys`. | values.schema.json |
 | `deploys.tokenSecret.key` | string |  |  | values.schema.json |
@@ -295,6 +316,7 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `executor.pollingInterval` |  | `30` |  | values.yaml |
 | `executor.runnerImage` | string | `""` | DEPRECATED in favor of harness.image (kept as the fallback so existing value overrides keep working). agent-runner >=1.0.1 only: 1.0.0 mints LiteLLM keys without key_alias (400). | values.yaml, values.schema.json |
 | `executor.sandbox` | object |  | type=sandbox only: runs each Run in a kubernetes-sigs/agent-sandbox v1beta1 Sandbox created by a launcher pod. | values.yaml, values.schema.json |
+| `executor.sandbox.launcherGoMemLimit` | [goMemLimit](#gomemlimit) | `""` | "" = 90% of launcherResources.limits.memory; a Go size sets it; off renders none | values.yaml, values.schema.json |
 | `executor.sandbox.launcherResources.limits.cpu` |  | `50m` |  | values.yaml |
 | `executor.sandbox.launcherResources.limits.memory` |  | `32Mi` |  | values.yaml |
 | `executor.sandbox.launcherResources.requests.cpu` |  | `10m` |  | values.yaml |
@@ -370,6 +392,7 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `executor.workerSecurityContext.runAsUser` |  | `1000` |  | values.yaml |
 | `executor.workerSecurityContext.seccompProfile.type` |  | `RuntimeDefault` |  | values.yaml |
 | `fullnameOverride` | string | `""` | Object name prefix; empty = the Helm release name | values.yaml, values.schema.json |
+| `goMemLimit` | [goMemLimit](#gomemlimit) | `""` | GOMEMLIMIT for ploegd. "" = 90% of resources.limits.memory, so the Go garbage collector works harder before the kernel kills the pod; nothing is rendered without a memory limit. A Go size such as 200MiB sets it; off renders none. env.GOMEMLIMIT, when set, wins. | values.yaml, values.schema.json |
 | `image.digest` | string | `""` | Digest of the appVersion image; the release writes it into the published chart | values.yaml, values.schema.json |
 | `image.repository` | string | `ghcr.io/ploeg-hq/ploegd` | The public release image. Point repository at a copy of the same digest, with imagePullSecrets, when the cluster pulls from a private registry. | values.yaml, values.schema.json |
 | `image.tag` | string | `""` | empty = .Chart.AppVersion (kept in lockstep with the chart by the release train) | values.yaml, values.schema.json |
@@ -390,6 +413,7 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `mcp.env` | object | `{}` | PLOEG_MCP_* settings as name: value, for example | values.yaml, values.schema.json |
 | `mcp.envFrom` | array | `[]` | e.g. [{secretRef: {name: ploeg-mcp-consumers}}] | values.yaml, values.schema.json |
 | `mcp.extraEnv` | array | `[]` | Further env entries, for a token from a Secret: | values.yaml, values.schema.json |
+| `mcp.goMemLimit` | [goMemLimit](#gomemlimit) | `""` | "" = 90% of resources.limits.memory; a Go size (100MiB) sets it; off renders none; env.GOMEMLIMIT wins | values.yaml, values.schema.json |
 | `mcp.httpRoute` | object |  | A Gateway API HTTPRoute to the Service. Route the host without authentication at the gateway: ploeg-mcp answers the 401 that starts a client's sign-in. | values.yaml, values.schema.json |
 | `mcp.httpRoute.annotations` | object | `{}` |  | values.yaml, values.schema.json |
 | `mcp.httpRoute.enabled` | boolean | `false` |  | values.yaml, values.schema.json |
@@ -522,6 +546,18 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 ## Shared value shapes
 
 Several keys above share one schema definition.
+
+### goMemLimit
+
+GOMEMLIMIT for a Go container: empty = 90% of its memory limit, a Go size sets it, off renders none
+
+| Key | Type | Description |
+| --- | --- | --- |
+
+### poolDuration
+
+| Key | Type | Description |
+| --- | --- | --- |
 
 ### sandboxOverride
 

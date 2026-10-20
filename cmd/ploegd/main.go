@@ -60,7 +60,11 @@ func run(log *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	st, err := store.New(ctx, dbURL)
+	poolCfg, err := poolConfigFromEnv()
+	if err != nil {
+		return err
+	}
+	st, err := store.New(ctx, dbURL, poolCfg)
 	if err != nil {
 		return err
 	}

@@ -11,6 +11,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/ploeg-hq/ploeg/pkg/store"
 )
 
@@ -43,6 +45,33 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 	_, _ = w.Write(s.metrics.body)
+	_, _ = w.Write(renderPoolMetrics(s.Store.PoolStat()))
+}
+
+func renderPoolMetrics(st *pgxpool.Stat) []byte {
+	var b metricWriter
+	b.family("ploeg_db_pool_connections", "gauge", "Connections in this process's database pool, by state; their sum is the pool's open connections.")
+	b.sample("ploeg_db_pool_connections", float64(st.AcquiredConns()), "state", "acquired")
+	b.sample("ploeg_db_pool_connections", float64(st.IdleConns()), "state", "idle")
+	b.sample("ploeg_db_pool_connections", float64(st.ConstructingConns()), "state", "constructing")
+	b.family("ploeg_db_pool_max_connections", "gauge", "Most connections this process's database pool may open.")
+	b.sample("ploeg_db_pool_max_connections", float64(st.MaxConns()))
+	b.family("ploeg_db_pool_acquires_total", "counter", "Successful connection acquisitions from the pool.")
+	b.sample("ploeg_db_pool_acquires_total", float64(st.AcquireCount()))
+	b.family("ploeg_db_pool_acquire_seconds_total", "counter", "Time spent in successful acquisitions, including waits for a free connection.")
+	b.sample("ploeg_db_pool_acquire_seconds_total", st.AcquireDuration().Seconds())
+	b.family("ploeg_db_pool_empty_acquires_total", "counter", "Successful acquisitions that had to wait because no idle connection was free.")
+	b.sample("ploeg_db_pool_empty_acquires_total", float64(st.EmptyAcquireCount()))
+	b.family("ploeg_db_pool_empty_acquire_wait_seconds_total", "counter", "Time successful acquisitions spent waiting for a connection to come free.")
+	b.sample("ploeg_db_pool_empty_acquire_wait_seconds_total", st.EmptyAcquireWaitTime().Seconds())
+	b.family("ploeg_db_pool_canceled_acquires_total", "counter", "Acquisitions abandoned because their context ended first.")
+	b.sample("ploeg_db_pool_canceled_acquires_total", float64(st.CanceledAcquireCount()))
+	b.family("ploeg_db_pool_new_connections_total", "counter", "Connections the pool has opened.")
+	b.sample("ploeg_db_pool_new_connections_total", float64(st.NewConnsCount()))
+	b.family("ploeg_db_pool_destroyed_connections_total", "counter", "Connections the pool closed because they reached their maximum lifetime or idle time.")
+	b.sample("ploeg_db_pool_destroyed_connections_total", float64(st.MaxLifetimeDestroyCount()), "reason", "lifetime")
+	b.sample("ploeg_db_pool_destroyed_connections_total", float64(st.MaxIdleDestroyCount()), "reason", "idle")
+	return b.Bytes()
 }
 
 type metricWriter struct{ bytes.Buffer }

@@ -102,6 +102,7 @@ spec:
           value: {{ printf "%vs" $sb.startTimeoutSeconds | quote }}
         - name: PLOEG_SANDBOX_TTL_SECONDS_AFTER_FINISHED
           value: {{ $sb.ttlSecondsAfterFinished | quote }}
+        {{- with include "ploeg.goMemLimitEnv" (dict "goMemLimit" $sb.launcherGoMemLimit "resources" $sb.launcherResources) | trim }}{{ . | nindent 8 }}{{- end }}
         {{- /* A sandbox that never starts fails one Run as infra_node, so
              the launcher claims it as its Team and Role like a worker. */}}
         - name: PLOEG_API_URL

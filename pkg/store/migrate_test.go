@@ -21,7 +21,7 @@ func TestConcurrentMigratorsApplyEachMigrationOnce(t *testing.T) {
 	const migrators = 2
 	stores := make([]*Store, migrators)
 	for i := range stores {
-		s, err := New(ctx, dsn)
+		s, err := New(ctx, dsn, PoolConfig{})
 		if err != nil {
 			t.Fatal(err)
 		}

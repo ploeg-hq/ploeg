@@ -52,6 +52,7 @@ mcp:
       memory: 32Mi
     limits:
       memory: 128Mi
+  goMemLimit: "" # "" = 90% of resources.limits.memory; a Go size (100MiB) sets it; off renders none; env.GOMEMLIMIT wins
   # NetworkPolicies selecting the ploeg-mcp pods. The peers are your
   # cluster's: ingress from the gateway, egress to the identity provider.
   networkPolicy:
@@ -282,6 +283,26 @@ database:
   existingSecret:
     name: ""
     key: uri
+  # ploegd's connection pool, rendered as the PLOEG_DB_* variables. A setting
+  # the connection URI names itself (pool_max_conns, pool_min_idle_conns,
+  # pool_max_conn_lifetime, application_name, statement_timeout, ...) wins
+  # over its value here. null leaves a setting to ploegd's default; 0 turns a
+  # timeout off. Acquiring a connection has no timeout of its own: a caller
+  # waits until its request or loop context ends, which the
+  # ploeg_db_pool_canceled_acquires_total metric counts.
+  pool:
+    maxConns: 8
+    minIdleConns: 2
+    maxConnLifetime: 30m
+    maxConnLifetimeJitter: 5m
+    maxConnIdleTime: 5m
+    healthCheckPeriod: 30s
+    pingTimeout: 5s
+    applicationName: ploegd
+    # Server-side limits on every pooled connection. Migrations lift the
+    # statement timeout on their own connection.
+    statementTimeout: 30s
+    idleInTransactionTimeout: 60s
 
 # The Vikunja webhook secret (PLOEG_VIKUNJA_SECRET). Unset = no env is
 # rendered and every Vikunja webhook is rejected; ploegd still starts.
@@ -301,6 +322,12 @@ resources:
   limits:
     cpu: 100m
     memory: 256Mi
+
+# GOMEMLIMIT for ploegd. "" = 90% of resources.limits.memory, so the Go
+# garbage collector works harder before the kernel kills the pod; nothing is
+# rendered without a memory limit. A Go size such as 200MiB sets it; off
+# renders none. env.GOMEMLIMIT, when set, wins.
+goMemLimit: ""
 
 # Node selector for the ploegd pod. Empty = any schedulable node.
 nodeSelector: {}
@@ -505,6 +532,7 @@ executor:
     launcherResources:
       requests: {cpu: 10m, memory: 32Mi}
       limits: {cpu: 50m, memory: 32Mi}
+    launcherGoMemLimit: "" # "" = 90% of launcherResources.limits.memory; a Go size sets it; off renders none
   # Fallback repository for teams that pin none. The repository belongs to the
   # WORK ITEM — resolved at ingest from its tracker scope via ploegd's
   # PLOEG_TARGET_MAP (rendered from the org.yaml roster manifest) and delivered

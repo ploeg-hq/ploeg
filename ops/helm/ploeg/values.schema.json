@@ -11,6 +11,56 @@
       "type": "string",
       "description": "app.kubernetes.io/instance label; empty = the Helm release name"
     },
+    "goMemLimit": {
+      "$ref": "#/definitions/goMemLimit"
+    },
+    "database": {
+      "type": "object",
+      "properties": {
+        "existingSecret": {
+          "type": "object"
+        },
+        "pool": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "ploegd's connection pool as the PLOEG_DB_* variables; a setting the connection URI names wins; null leaves ploegd's default",
+          "properties": {
+            "maxConns": {
+              "type": ["integer", "null"],
+              "minimum": 0
+            },
+            "minIdleConns": {
+              "type": ["integer", "null"],
+              "minimum": 0
+            },
+            "maxConnLifetime": {
+              "$ref": "#/definitions/poolDuration"
+            },
+            "maxConnLifetimeJitter": {
+              "$ref": "#/definitions/poolDuration"
+            },
+            "maxConnIdleTime": {
+              "$ref": "#/definitions/poolDuration"
+            },
+            "healthCheckPeriod": {
+              "$ref": "#/definitions/poolDuration"
+            },
+            "pingTimeout": {
+              "$ref": "#/definitions/poolDuration"
+            },
+            "applicationName": {
+              "type": ["string", "null"]
+            },
+            "statementTimeout": {
+              "$ref": "#/definitions/poolDuration"
+            },
+            "idleInTransactionTimeout": {
+              "$ref": "#/definitions/poolDuration"
+            }
+          }
+        }
+      }
+    },
     "image": {
       "type": "object",
       "properties": {
@@ -88,6 +138,9 @@
         },
         "resources": {
           "type": "object"
+        },
+        "goMemLimit": {
+          "$ref": "#/definitions/goMemLimit"
         },
         "networkPolicy": {
           "type": "object",
@@ -1282,6 +1335,9 @@
             },
             "launcherResources": {
               "type": "object"
+            },
+            "launcherGoMemLimit": {
+              "$ref": "#/definitions/goMemLimit"
             }
           }
         }
@@ -1362,6 +1418,17 @@
     }
   },
   "definitions": {
+    "goMemLimit": {
+      "type": "string",
+      "pattern": "^(|off|[0-9]+(B|KiB|MiB|GiB|TiB)?)$",
+      "description": "GOMEMLIMIT for a Go container: empty = 90% of its memory limit, a Go size sets it, off renders none"
+    },
+    "poolDuration": {
+      "type": ["string", "integer", "null"],
+      "minimum": 0,
+      "maximum": 0,
+      "pattern": "^(0|([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h))+)$"
+    },
     "sandboxOverride": {
       "type": "object",
       "description": "type=sandbox only: overrides executor.sandbox for one team's or Role's SandboxTemplate, field by field. An unset field falls back to the team, then the global block.",

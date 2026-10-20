@@ -55,8 +55,14 @@ type Store struct {
 	pool *pgxpool.Pool
 }
 
-func New(ctx context.Context, databaseURL string) (*Store, error) {
-	pool, err := pgxpool.New(ctx, databaseURL)
+// New opens a connection pool on databaseURL shaped by poolCfg; a setting
+// the URL names itself wins over poolCfg.
+func New(ctx context.Context, databaseURL string, poolCfg PoolConfig) (*Store, error) {
+	cfg, err := poolConfig(databaseURL, poolCfg)
+	if err != nil {
+		return nil, err
+	}
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("connect: %w", err)
 	}
@@ -92,19 +98,25 @@ const migrationLockKey = `hashtextextended('ploeg.schema-migrations', 0)`
 // schema_migrations. Safe to run on every boot and from several processes at
 // once: it holds a session advisory lock on one connection for the whole
 // check-and-apply loop, so concurrent callers apply each migration once.
+// That connection runs without a statement timeout until it is released, so
+// a long migration is never cut off by the pool's statement_timeout.
 func (s *Store) Migrate(ctx context.Context) (err error) {
 	conn, err := s.pool.Acquire(ctx)
 	if err != nil {
 		return err
 	}
+	if _, err := conn.Exec(ctx, `SET statement_timeout = 0`); err != nil {
+		_ = conn.Hijack().Close(context.WithoutCancel(ctx))
+		return fmt.Errorf("migration statement timeout: %w", err)
+	}
 	if _, err := conn.Exec(ctx, `SELECT pg_advisory_lock(`+migrationLockKey+`)`); err != nil {
-		conn.Release()
+		_ = conn.Hijack().Close(context.WithoutCancel(ctx))
 		return fmt.Errorf("migration lock: %w", err)
 	}
 	defer func() {
 		unlockCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 		defer cancel()
-		if _, unlockErr := conn.Exec(unlockCtx, `SELECT pg_advisory_unlock(`+migrationLockKey+`)`); unlockErr != nil {
+		if _, unlockErr := conn.Exec(unlockCtx, `SELECT pg_advisory_unlock(`+migrationLockKey+`); RESET statement_timeout`); unlockErr != nil {
 			_ = conn.Hijack().Close(unlockCtx)
 			if err == nil {
 				err = fmt.Errorf("migration unlock: %w", unlockErr)

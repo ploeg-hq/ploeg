@@ -49,6 +49,7 @@ spec:
               value: {{ $m.ploegUrl | default (include "ploeg.apiUrl" .) | quote }}
             - name: PLOEG_MCP_LISTEN
               value: {{ printf ":%v" $m.port | quote }}
+            {{- with include "ploeg.goMemLimitEnv" (dict "goMemLimit" $m.goMemLimit "env" $m.env "resources" $m.resources) | trim }}{{ . | nindent 12 }}{{- end }}
             {{- range $key, $value := $m.env }}
             - name: {{ $key }}
               value: {{ $value | quote }}
