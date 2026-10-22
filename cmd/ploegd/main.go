@@ -470,6 +470,8 @@ func run(ctx context.Context, log *slog.Logger) error {
 				"reconcile_every", reviewEvery)
 		}
 	}
+	srv.Connections = connections(cfg, forges, forgeID)
+	go refreshConnections(ctx, srv.Connections)
 	webhookCheck, err := newVikunjaWebhookCheck(vik, cfg.Trackers.Vikunja.Projects, log)
 	if err != nil {
 		return err
@@ -477,6 +479,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 	var loops backgroundLoops
 	if webhookCheck != nil {
 		srv.TrackerWebhooks = webhookCheck.coverage
+		webhookCheck.connections = srv.Connections
 	}
 
 	gate.open(srv.Handler())

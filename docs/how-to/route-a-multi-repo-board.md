@@ -2,8 +2,8 @@
 type: how-to
 audience: [operator, owner]
 owner: ploeg
-last_verified: 2026-10-10
-verified_by: "Read pkg/target/{resolver,readiness}.go, pkg/config/{config,resolve}.go, pkg/httpapi/server.go, pkg/provider/vikunja/vikunja.go, pkg/provider/{forgejo,gitlab}/repository.go and cmd/ploegd/routing.go; go test ./pkg/target ./pkg/config ./pkg/httpapi ./pkg/provider/gitlab ./cmd/ploegd. Not checked against a live deployment."
+last_verified: 2026-10-19
+verified_by: "Read pkg/target/{resolver,readiness}.go, pkg/config/{config,resolve}.go, pkg/httpapi/server.go, pkg/provider/vikunja/vikunja.go, pkg/provider/{forgejo,gitlab}/repository.go, pkg/provider/github/change.go, pkg/httpapi/connections.go and cmd/ploegd/{routing,connections,webhooks}.go; go test ./pkg/target ./pkg/config ./pkg/httpapi ./pkg/provider/gitlab ./cmd/ploegd. Not checked against a live deployment."
 ---
 
 # Route a board that serves several repositories
@@ -87,20 +87,21 @@ When ploegd starts, it asks the forge about every registered target and logs `re
 - **At assignment:** a ticket that resolves to a target not ready is refused with that reason. Ploeg asks the forge again first, so a repository you fixed after startup is accepted without a restart.
 - **At claim:** Ploeg checks again before any Run starts. If the target became unready, the Run ends `stuck` with the reason and the Work Item moves to `needs_human`. If the forge cannot be reached, the Run ends as a retryable infrastructure failure and the Work Item goes back in the queue.
 
-The Forgejo and GitLab forges report readiness. On GitLab, a pull mirror counts as a mirror, and a target's `repo` may name subgroups (`group/subgroup/project`). A target on any other forge is never ready.
+The Forgejo, GitLab and GitHub forges report readiness. On GitLab, a pull mirror counts as a mirror, and a target's `repo` may name subgroups (`group/subgroup/project`). A target on any other forge is never ready.
 
 ## 5. Verify
 
-1. Restart ploegd after the change (the config checksum on the Deployment does this) and read its log: `target map loaded` reports `registered_targets`, followed by one readiness line per target.
-2. Assign a labelled ticket and look for `target resolved` with `hint=repo/<key>` and `registered_target=<key>`.
-3. Check the pinned route on the Work Item:
+1. Read the whole wiring at once from `GET /api/v1/operator/connections` ([ADR-0129](../adrs/0129-ploeg-reports-how-each-board-and-repository-it-routes-to-is-wired.md)). It lists every board with its rule, its tracker webhook (`present`, `missing`, `unreadable`, `unresolved` or `unchecked`) and, per Team, whether each tracker user can see the board; and every repository with its readiness, the boards that reach it and `lastForgeEventAt`, when its forge last sent Ploeg an event. A repository whose forge has never sent an event in 30 days probably has no forge webhook. Board facts are refreshed hourly; `checkedAt` says when.
+2. Restart ploegd after the change (the config checksum on the Deployment does this) and read its log: `target map loaded` reports `registered_targets`, followed by one readiness line per target.
+3. Assign a labelled ticket and look for `target resolved` with `hint=repo/<key>` and `registered_target=<key>`.
+4. Check the pinned route on the Work Item:
 
    ```sql
    SELECT external_id, route_rule, route_hint, target_owner, target_repo, target_base_branch
    FROM work_items WHERE provider = 'vikunja' ORDER BY id DESC LIMIT 10;
    ```
 
-4. List refusals, which have an audit row and no Work Item. An operator consumer reads them from `GET /api/v1/operator/route-refusals`: the newest refusal of each task from the last 14 days, newest first and at most 50, within the consumer's teams. Each row carries a stable `code` (`label_missing`, `label_not_allowed`, `label_unregistered`, `multiple_labels`, `labels_unread`, `no_board_rule`, `target_not_ready`, or `unclassified` for a row recorded before codes existed), the `reason` Ploeg commented on the task and the `allowedLabels` of the board, for example `["repo/homelab-cluster", "repo/app"]`. A task that was queued after its refusal drops out. [The operator API schema](../contracts/operator-api.v1.schema.json) defines the response. Older history is still in the audit log:
+5. List refusals, which have an audit row and no Work Item. An operator consumer reads them from `GET /api/v1/operator/route-refusals`: the newest refusal of each task from the last 14 days, newest first and at most 50, within the consumer's teams. Each row carries a stable `code` (`label_missing`, `label_not_allowed`, `label_unregistered`, `multiple_labels`, `labels_unread`, `no_board_rule`, `target_not_ready`, or `unclassified` for a row recorded before codes existed), the `reason` Ploeg commented on the task and the `allowedLabels` of the board, for example `["repo/homelab-cluster", "repo/app"]`. A task that was queued after its refusal drops out. [The operator API schema](../contracts/operator-api.v1.schema.json) defines the response. Older history is still in the audit log:
 
    ```sql
    SELECT at, detail->>'external_id' AS ticket, detail->>'code' AS code, detail->>'reason' AS reason

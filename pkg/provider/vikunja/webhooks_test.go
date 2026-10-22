@@ -70,3 +70,22 @@ func TestRegisterAssignmentWebhookIsSignedAndOptIn(t *testing.T) {
 		t.Fatal("unsigned webhook registered")
 	}
 }
+
+func TestProjectUsernamesListsTheProjectsDirectShares(t *testing.T) {
+	var path string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path = r.Method + " " + r.URL.Path + "?" + r.URL.RawQuery
+		_, _ = w.Write([]byte(`[{"id":4,"username":"bronze"},{"id":5,"username":"silver"}]`))
+	}))
+	defer srv.Close()
+	users, err := (&Provider{BaseURL: srv.URL, Token: "fixture-token"}).ProjectUsernames(context.Background(), "12")
+	if err != nil || len(users) != 2 || users[0] != "bronze" || users[1] != "silver" {
+		t.Fatalf("users=%v err=%v", users, err)
+	}
+	if path != "GET /projects/12/users?per_page=250" {
+		t.Fatalf("request %q", path)
+	}
+	if _, err := (&Provider{}).ProjectUsernames(context.Background(), "12"); err == nil {
+		t.Fatal("unconfigured provider listed project users")
+	}
+}

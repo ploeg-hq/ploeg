@@ -21,6 +21,7 @@ type vikunjaWebhookCheck struct {
 	expectedURL string
 	register    bool
 	coverage    *httpapi.WebhookCoverage
+	connections *httpapi.Connections
 	log         *slog.Logger
 }
 
@@ -60,26 +61,68 @@ func (c vikunjaWebhookCheck) loop(ctx context.Context) {
 }
 
 func (c vikunjaWebhookCheck) run(ctx context.Context) {
-	projects, unresolved := c.resolve(ctx)
+	projects, unresolved, byName := c.resolve(ctx)
 	var missing []string
 	failed := unresolved
+	found := map[string]httpapi.BoardWiring{}
 	for _, p := range projects {
+		wiring := httpapi.BoardWiring{ProjectID: p.id, Webhook: httpapi.BoardWebhookPresent}
+		if c.connections != nil {
+			wiring.Shared = c.sharedUsers(ctx, p)
+		}
 		hooks, err := c.provider.ProjectWebhooks(ctx, p.id)
-		if err != nil {
+		switch {
+		case err != nil:
 			c.log.Error("tracker webhook check failed; assignments on this project may not dispatch", "project", p.name, "project_id", p.id, "err", err)
 			failed = append(failed, p.id)
-			continue
+			wiring.Webhook = httpapi.BoardWebhookUnreadable
+		case deliversAssignments(hooks, c.expectedURL):
+		case c.register && c.registerWebhook(ctx, p):
+		default:
+			c.log.Warn("tracker project has no webhook delivering assignments to Ploeg; assignments on it will not dispatch", "project", p.name, "project_id", p.id, "event", vikunja.AssignmentEvent)
+			missing = append(missing, p.id)
+			wiring.Webhook = httpapi.BoardWebhookMissing
 		}
-		if deliversAssignments(hooks, c.expectedURL) {
-			continue
-		}
-		if c.register && c.registerWebhook(ctx, p) {
-			continue
-		}
-		c.log.Warn("tracker project has no webhook delivering assignments to Ploeg; assignments on it will not dispatch", "project", p.name, "project_id", p.id, "event", vikunja.AssignmentEvent)
-		missing = append(missing, p.id)
+		found[p.id] = wiring
 	}
-	c.coverage.Record(len(projects), missing, failed, time.Now())
+	now := time.Now()
+	c.coverage.Record(len(projects), missing, failed, now)
+	if c.connections != nil {
+		c.connections.RecordBoards(c.boardWiring(found, byName), now)
+	}
+}
+
+func (c vikunjaWebhookCheck) sharedUsers(ctx context.Context, p checkedProject) []string {
+	users, err := c.provider.ProjectUsernames(ctx, p.id)
+	if err != nil {
+		c.log.Error("tracker project share check failed", "project", p.name, "project_id", p.id, "err", err)
+		return nil
+	}
+	if users == nil {
+		users = []string{}
+	}
+	return users
+}
+
+func (c vikunjaWebhookCheck) boardWiring(found map[string]httpapi.BoardWiring, byName map[string]string) map[string]httpapi.BoardWiring {
+	out := map[string]httpapi.BoardWiring{}
+	for _, p := range c.projects {
+		key, id := p.Name, p.ID
+		if id != "" {
+			key = "#" + id
+		} else {
+			id = byName[p.Name]
+		}
+		wiring, ok := found[id]
+		if !ok {
+			wiring = httpapi.BoardWiring{ProjectID: id, Webhook: httpapi.BoardWebhookUnresolved}
+			if id != "" {
+				wiring.Webhook = httpapi.BoardWebhookUnreadable
+			}
+		}
+		out[key] = wiring
+	}
+	return out
 }
 
 func (c vikunjaWebhookCheck) registerWebhook(ctx context.Context, p checkedProject) bool {
@@ -100,7 +143,7 @@ func deliversAssignments(hooks []vikunja.Webhook, expectedURL string) bool {
 	return false
 }
 
-func (c vikunjaWebhookCheck) resolve(ctx context.Context) ([]checkedProject, []string) {
+func (c vikunjaWebhookCheck) resolve(ctx context.Context) ([]checkedProject, []string, map[string]string) {
 	var byName map[string]string
 	var lookupErr error
 	for _, p := range c.projects {
@@ -129,5 +172,5 @@ func (c vikunjaWebhookCheck) resolve(ctx context.Context) ([]checkedProject, []s
 		seen[id] = true
 		out = append(out, checkedProject{id: id, name: p.Name})
 	}
-	return out, unresolved
+	return out, unresolved, byName
 }

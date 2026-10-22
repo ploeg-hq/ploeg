@@ -19,6 +19,7 @@ import (
 type fakeVikunja struct {
 	mu         sync.Mutex
 	hooks      map[string]string
+	shared     map[string]string
 	registered []string
 }
 
@@ -37,6 +38,13 @@ func (f *fakeVikunja) server(t *testing.T) *httptest.Server {
 				return
 			}
 			_, _ = w.Write([]byte(f.hooks[id]))
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/users"):
+			id := strings.Split(r.URL.Path, "/")[2]
+			if id == "7" {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			_, _ = w.Write([]byte(f.shared[id]))
 		case r.Method == http.MethodPut && strings.HasSuffix(r.URL.Path, "/webhooks"):
 			f.registered = append(f.registered, strings.Split(r.URL.Path, "/")[2])
 			_, _ = w.Write([]byte(`{}`))
@@ -54,7 +62,7 @@ func webhookFixture(t *testing.T, register bool) (*fakeVikunja, vikunjaWebhookCh
 		"3": `[{"id":1,"target_url":"https://ploeg.example/webhooks/tracker/vikunja","events":["task.assignee.created"]}]`,
 		"5": `[]`,
 		"7": `[{"id":2,"target_url":"https://ploeg.example/webhooks/tracker/vikunja","events":["task.updated"]}]`,
-	}}
+	}, shared: map[string]string{"3": `[{"username":"bronze"}]`, "5": `null`}}
 	var logs bytes.Buffer
 	check := vikunjaWebhookCheck{
 		provider: &vikunja.Provider{BaseURL: f.server(t).URL, Token: "fixture-token", Secret: "fixture-secret"},
@@ -102,5 +110,54 @@ func TestWebhookRegistrationRequiresATargetAndASecret(t *testing.T) {
 	}
 	if check, err := newVikunjaWebhookCheck(&vikunja.Provider{}, []config.Project{{Name: "Board A"}}, slog.New(slog.DiscardHandler)); err != nil || check != nil {
 		t.Fatalf("unconfigured provider started a check: %v %v", check, err)
+	}
+}
+
+func TestWebhookCheckRecordsEachBoardsWiringForTheConnectionsView(t *testing.T) {
+	_, check, _ := webhookFixture(t, false)
+	check.projects = append(check.projects, config.Project{Name: "Ghost"})
+	check.connections = &httpapi.Connections{}
+	check.run(context.Background())
+	for _, tc := range []struct {
+		board   httpapi.ConnectionBoard
+		webhook string
+		shared  []string
+	}{
+		{httpapi.ConnectionBoard{Name: "Board A"}, httpapi.BoardWebhookPresent, []string{"bronze"}},
+		{httpapi.ConnectionBoard{Name: "Board B"}, httpapi.BoardWebhookMissing, []string{}},
+		{httpapi.ConnectionBoard{Name: "Board C", ID: "7"}, httpapi.BoardWebhookMissing, nil},
+		{httpapi.ConnectionBoard{Name: "Locked", ID: "9"}, httpapi.BoardWebhookUnreadable, nil},
+		{httpapi.ConnectionBoard{Name: "Ghost"}, httpapi.BoardWebhookUnresolved, nil},
+	} {
+		got, at, ok := check.connections.Wiring(tc.board)
+		if !ok || at.IsZero() || got.Webhook != tc.webhook || !slices.Equal(got.Shared, tc.shared) || (tc.shared == nil) != (got.Shared == nil) {
+			t.Errorf("%s = %+v (checked %v), want webhook %s shared %v", tc.board.Name, got, ok, tc.webhook, tc.shared)
+		}
+	}
+}
+
+func TestConnectionsListEachRepositoryOnceUnderItsTargetKey(t *testing.T) {
+	cfg := &config.File{
+		Targets: map[string]config.Target{"app": {Repo: "webgrip/app", Branch: "development"}},
+		Trackers: config.Trackers{Vikunja: config.TrackerConfig{Projects: []config.Project{
+			{Name: "Product", Default: "app", Allow: []string{"app"}},
+			{Name: "Same repo", Repo: "webgrip/app", Branch: "development"},
+			{Name: "Bench", ID: "49", Team: "bronze", Repo: "webgrip/bench", Branch: "base"},
+			{Name: "Bench copy", Repo: "webgrip/bench", Branch: "base"},
+		}}, Github: config.TrackerConfig{Projects: []config.Project{{Name: "Ploeg-HQ/Ploeg", Repo: "ploeg-hq/ploeg", Forge: "github"}}}},
+	}
+	c := connections(cfg, nil, "forgejo")
+	var keys []string
+	for _, r := range c.Repositories {
+		keys = append(keys, r.Key+"="+r.Target.Forge)
+	}
+	if !slices.Equal(keys, []string{"app=forgejo", "webgrip/bench@base=forgejo", "ploeg-hq/ploeg=github"}) {
+		t.Fatalf("repositories = %v", keys)
+	}
+	if c.Boards[1].Repository != "app" || c.Boards[3].Repository != "webgrip/bench@base" || c.Boards[2].Team != "bronze" {
+		t.Errorf("boards = %+v", c.Boards)
+	}
+	if gh := c.Boards[4]; gh.Tracker != "github" || gh.ID != "ploeg-hq:ploeg" {
+		t.Errorf("github board = %+v, want its id derived from the repository", gh)
 	}
 }
