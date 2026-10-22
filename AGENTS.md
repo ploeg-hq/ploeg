@@ -4,7 +4,7 @@ Ploeg admits, budgets and executes agent work from trackers and from authenticat
 
 ## Commits
 
-Every releasable merge to `development` (`feat`, `fix`, `perf`, `refactor`, `revert`, dependency bumps) cuts a `v0.x.y-rc.N` candidate automatically; a stable `v0.x.y` stays a reviewed tag on `main` ([releases](docs/ops/release-versioning.md)). A candidate is a tag only: the chart is versioned when it is packaged and its notes live on its GitHub release, so do not edit the chart version or `CHANGELOG.md` for one. Work from the board carries a `VIK-<taskID>` trailer. On pushed `main`, correct a mistake with a follow-up commit, never an amend. Before assuming your edits are uncommitted, run `git log --oneline -3 -- <paths>`: another session may already have committed them.
+Every releasable merge to `development` (`feat`, `fix`, `perf`, `refactor`, `revert`, dependency bumps) cuts a `v0.x.y-rc.N` candidate automatically; a stable `v0.x.y` stays a reviewed tag on `main` ([releases](docs/ops/release-versioning.md)). A candidate is a tag only: the chart is versioned when it is packaged and its notes live on its GitHub release, so do not edit the chart version or `CHANGELOG.md` for one. Work from the board carries a `VIK-<taskID>` trailer. Sign off every commit with `git commit -s`: CI refuses a pull request with a commit its author did not sign off ([DCO](CONTRIBUTING.md)). On pushed `main`, correct a mistake with a follow-up commit, never an amend. Before assuming your edits are uncommitted, run `git log --oneline -3 -- <paths>`: another session may already have committed them.
 
 ## Facts the tree won't tell you
 

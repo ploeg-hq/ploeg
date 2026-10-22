@@ -32,6 +32,10 @@ Run `mise run setup`, `mise run verify` and `mise run docs-check`. Run tooling t
 
 GitHub Issues can be a runtime tracker: a `ploeg:<team>` label on an issue in a configured repository dispatches it ([how to connect it](docs/how-to/connect-github-issues.md)). GitHub can also be the forge: a Run pushes and opens its pull request with its own GitHub App installation token ([how to connect it](docs/how-to/connect-github-as-a-forge.md)). Hosting Ploeg's own backlog on GitHub configures nothing; a deployment opts in.
 
+## Project
+
+[Governance](GOVERNANCE.md) · [Maintainers](MAINTAINERS.md) · [Contributing](CONTRIBUTING.md) · [Code of conduct](CODE_OF_CONDUCT.md) · [Security](SECURITY.md) · [Scope and stewardship](docs/cncf/charter.md) · [Provenance](PROVENANCE.md)
+
 ## Releases
 
 See [release instructions](docs/ops/release-versioning.md) and [CI and infrastructure](docs/ops/ci-and-infra.md). Version 0.1.0 remains experimental; it does not claim production qualification or CNCF membership.

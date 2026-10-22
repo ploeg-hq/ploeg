@@ -12,6 +12,7 @@ bash scripts/test-package-chart.sh
 bash scripts/test-contract-bundle.sh
 bash scripts/test-go-module-published.sh
 bash scripts/test-release-consumers.sh
+bash scripts/test-dco-check.sh
 openspec validate --all --strict
 required=ops/helm/ploeg/ci/required-values.yaml
 helm lint ops/helm/ploeg -f "$required"
