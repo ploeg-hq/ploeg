@@ -11,6 +11,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/ploeg-hq/ploeg/pkg/httpclient"
 )
 
 // namePrefix marks every token this package mints, so the boot sweep can tell
@@ -41,7 +43,7 @@ func (f *Forgejo) client() *http.Client {
 	if f.HC != nil {
 		return f.HC
 	}
-	return &http.Client{Timeout: 30 * time.Second}
+	return httpclient.New(30 * time.Second)
 }
 
 func (f *Forgejo) do(ctx context.Context, method, path string, body, out any) error {

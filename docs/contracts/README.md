@@ -355,6 +355,19 @@ after its own clock. `limits` is absent, never null or zero, when unknown:
 before the prompt starts, from an older worker, for an Ask or an operator
 execution, and for every Run recorded before migration 0059.
 
+The agent is told the same limits before its prompt starts
+([ADR-0133](../adrs/0133-a-run-is-told-its-limits-at-the-start-and-its-own-status-on-every-model-call.md)).
+The task prompt's `## Your Run` section states the time limit, the idle
+limit, the budget the Run's gateway key is minted at, and "Round N of at most
+M" from the claim response's `round` and `maxRounds` (the plan's Rounds plus
+two for each fix Round). Each limit the worker does not know is left out. A
+writing Run is also told to orient for at most about 10 minutes or 30 tool
+calls before writing its plan, and to commit and push each completed plan
+step. Readers and planners get the limits only. An adapter with limits of its
+own declares them through `harness.PromptLimiter`; the limits reach
+`pkg/taskprompt` as `TaskSpec.Limits`, which the published Task Spec does not
+carry.
+
 The Teams read's Roles carry `harness` (`{name, profile}` from
 `PLOEG_TEAM_HARNESSES`, which the chart renders from the same values as each
 worker's `PLOEG_HARNESS` and `PLOEG_ACP_PROFILE`), `model` (the Role's

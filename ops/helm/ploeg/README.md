@@ -1,6 +1,6 @@
 # Ploeg Helm chart
 
-This chart installs `ploegd`, Ploeg's controller: a Deployment and a Service on port 8080. With `executor.enabled: true` it also installs the worker workloads that run agent Runs (a KEDA ScaledJob, a CronJob or the experimental agent-sandbox launcher).
+This chart installs `ploegd`, Ploeg's controller: a Deployment and a Service on port 8080. With `executor.enabled: true` it also installs the worker workloads that run agent Runs (a KEDA ScaledJob, a CronJob or the experimental agent-sandbox launcher). `mcp.enabled` adds `ploeg-mcp`, the MCP server for people's AI clients, and `claudeRunner.enabled` adds the self-hosted Claude environment runner, so one release of this chart deploys everything a Ploeg release runs.
 
 The chart's defaults point at nothing outside your cluster except the public images. It names no database, model gateway, forge or tracker, and it sets no node selector. You supply each of those. Missing required values make the render fail with a message that names the value.
 
@@ -10,9 +10,12 @@ The [configuration reference](../../../docs/reference/configuration.md) lists ev
 
 | Image | Default | Notes |
 | --- | --- | --- |
-| `ploegd` (also runs the worker's `ploeg-worker` binary) | `ghcr.io/ploeg-hq/ploegd:<appVersion>` | The release image; see [release versioning](../../../docs/ops/release-versioning.md). Set `image.repository` and `imagePullSecrets` to pull from a private copy of the same digest. |
+| `ploegd` (also runs `ploeg-worker` and `ploeg-mcp`) | `ghcr.io/ploeg-hq/ploegd:<appVersion>@<digest>` | The release image; see [release versioning](../../../docs/ops/release-versioning.md#the-published-chart-pins-its-images). Set `image.repository` and `imagePullSecrets` to pull from a private copy of the same digest. |
+| `claude-runner` | `ghcr.io/ploeg-hq/claude-runner:<appVersion>@<digest>` | The `claudeRunner` Deployment, and the harness image of a `claude-environment` team or Role that names none. `claudeRunner.image.repository` points it at a private copy. |
 | DinD sidecar | `docker.io/library/docker:29.8.2-dind@sha256:…` | Only for teams with `harness.dind: true`. Behind a pull-through proxy, set `executor.dindImage` to your copy of the same digest. |
 | Agent image | none | Ploeg publishes no agent image. Set `executor.harness.image`, or `harness.image` on a team or Role, before you enable the executor. |
+
+The published chart carries the digests of the images its release pushed, so a cluster sets no tag or digest to run that release. Setting `image.tag` (or `claudeRunner.image.tag`) to another version drops the chart's digest for that image; a tag of the form `<version>@sha256:<digest>` is used as written.
 
 ## Required values
 
@@ -40,6 +43,15 @@ The chart references these Secrets by name and creates none of them. The names a
 
 [Managed workers](../../../docs/ops/managed-workers.md) describes the bootstrap registry and the signing key.
 
+## ploeg-mcp and claude-runner
+
+Both are off by default and create no Secret, route host or CNI-specific policy of their own: the cluster names those.
+
+- **`mcp.enabled`** runs `ploeg-mcp http` from the ploegd image, with a Service on `mcp.port` (8090). `mcp.env` carries the `PLOEG_MCP_*` settings of [Serve Ploeg's MCP tools over HTTPS](../../../docs/how-to/serve-ploeg-mcp-over-https.md), `mcp.extraEnv` and `mcp.envFrom` the consumer tokens from your Secrets. `mcp.httpRoute` adds a Gateway API route, and `mcp.networkPolicy.ingress` and `.egress` add NetworkPolicies with peers you name.
+- **`claudeRunner.enabled`** runs the runner of [ADR-0084](../../../docs/adrs/0084-a-claude-code-run-can-execute-in-a-teams-self-hosted-claude-environment.md) ([runner settings](../claude-runner/README.md)). It requires `claudeRunner.environmentSecret.name`, a Secret with `SELF_HOSTED_RUNNER_ENVIRONMENT_SECRET`. `claudeRunner.extraArgs` adds flags such as `--git-host-rewrite`. Its egress (Anthropic, the forge's HTTPS host, ploegd) names hosts, so write it in your CNI's policy. `claudeRunner.loginVolumes` creates the PersistentVolumeClaims that `harness.claudeEnvironment.loginVolume` names; Helm keeps them on uninstall.
+
+`mcp.name` and `claudeRunner.name` set the Deployment name and the pods' `app.kubernetes.io/name`, which is also each Deployment's selector. They default to `<fullname>-mcp` and `<fullname>-claude-runner`. To take over objects that exist under other names, set these to the existing names, and set `fullnameOverride` and `instanceOverride` to the old release name when Ploeg moves into another Helm release, because a Deployment's selector cannot change.
+
 ## Optional integrations
 
 Each of these is off until you set it, and ploegd starts without it:
@@ -49,6 +61,11 @@ Each of these is off until you set it, and ploegd starts without it:
 - **Scheduling.** `nodeSelector` (ploegd) and `executor.nodeSelector` (workers) are empty. Set a label of your own to keep privileged DinD workers off control-plane nodes.
 - **Monitoring.** `monitoring.serviceMonitor` and `monitoring.prometheusRule` need the Prometheus Operator CRDs.
 - **Harnesses and models a person may choose.** A planned team lists `executor.teams[].harnesses`, each entry with the fields of `harness` and one `default: true`; a Role narrows it with `harnesses: [<key>]` and `defaultHarness`, where a key is `acp/<profile>` or the Harness name. Every allowed entry renders its own workload per Role, `ploeg-worker-<team>-<role>-<key>`, and an operator admission may name any of them ([ADR-0098](../../../docs/adrs/0098-an-operator-admission-may-choose-each-runs-harness-from-its-teams-allowlist.md), [ADR-0099](../../../docs/adrs/0099-each-allowed-harness-runs-in-its-own-workload-and-the-claim-selects-on-it.md)). An entry outside `ploeg.qualifiedHarnesses` (`openhands`, `acp/openhands`, `exec`) is admitted only as a Role's default unless the team sets `allowUnqualifiedHarnesses: true`; `claude-environment` cannot be listed. A Role's `models` lists the model aliases an admission may choose, and must contain its `model` ([ADR-0103](../../../docs/adrs/0103-an-operator-admission-may-choose-each-runs-model-from-the-models-its-roles-policy-lists.md)). Before you remove an entry, let its pending Runs finish: a Run that stores a removed Harness waits until `PloegHarnessOutsideAllowlist` sends a person to it. [`ci/executor-harness-selection-values.yaml`](ci/executor-harness-selection-values.yaml) renders an example.
+
+## Database pool and memory
+
+- **`database.pool`** sizes ploegd's PostgreSQL pool and sets two server-side limits on each connection, rendered as the `PLOEG_DB_*` variables of the [configuration reference](../../../docs/reference/configuration.md). The defaults are 8 connections, 2 kept idle, a 30-minute lifetime with 5 minutes of jitter, `application_name=ploegd`, `statement_timeout=30s` and `idle_in_transaction_session_timeout=60s`. A setting the connection URI names itself (`pool_max_conns`, `application_name`, `statement_timeout`, ...) wins over its value here, so a hand-written URI keeps working. Acquiring a connection waits until the request or loop that asked gives up; the `ploeg_db_pool_*` metrics in [metrics and alerts](../../../docs/ops/alerts.md) show when that happens.
+- **`goMemLimit`**, **`mcp.goMemLimit`** and **`executor.sandbox.launcherGoMemLimit`** set `GOMEMLIMIT` for the Go-only containers: ploegd, ploeg-mcp and the sandbox launcher. Empty means 90% of the container's memory limit, rounded down to whole MiB (230MiB for ploegd's 256Mi), so the garbage collector works harder before the kernel kills the container. A Go size such as `200MiB` sets it, `off` renders none, and `GOMEMLIMIT` in the container's `env` wins. The worker container gets none: its memory limit is shared with the harness process, which uses most of it.
 
 ## Minimal install
 

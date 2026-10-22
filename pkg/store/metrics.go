@@ -186,13 +186,7 @@ func (s *Store) OperationalMetrics(ctx context.Context) (OperationalMetrics, err
 		return m, err
 	}
 
-	rows, err = tx.Query(ctx, `SELECT sh.team, COALESCE(max(f.n) FILTER (WHERE NOT EXISTS (
-			SELECT 1 FROM pull_requests p
-			WHERE p.shift_id = sh.id OR (p.work_item_id = sh.work_item_id AND COALESCE(p.state, 'open') = 'open'))), 0)
-		FROM shifts sh
-		CROSS JOIN LATERAL (SELECT count(*) AS n FROM agent_runs r WHERE r.shift_id = sh.id AND r.state = 'finished') f
-		WHERE sh.closed_at IS NULL
-		GROUP BY sh.team`)
+	rows, err = tx.Query(ctx, shiftRunsWithoutPullRequestQuery)
 	if err != nil {
 		return m, err
 	}
@@ -470,3 +464,11 @@ func briefedRuns(ctx context.Context, tx pgx.Tx, runs, notes map[BriefedRunsKey]
 	}
 	return rows.Err()
 }
+
+const shiftRunsWithoutPullRequestQuery = `SELECT sh.team, COALESCE(max(f.n) FILTER (WHERE NOT EXISTS (
+			SELECT 1 FROM pull_requests p
+			WHERE p.shift_id = sh.id OR (p.work_item_id = sh.work_item_id AND COALESCE(p.state, 'open') = 'open'))), 0)
+		FROM shifts sh
+		CROSS JOIN LATERAL (SELECT count(*) AS n FROM agent_runs r WHERE r.shift_id = sh.id AND r.state = 'finished') f
+		WHERE sh.closed_at IS NULL
+		GROUP BY sh.team`

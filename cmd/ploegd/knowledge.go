@@ -3,10 +3,10 @@ package main
 import (
 	"errors"
 	"log/slog"
-	"net/http"
 	"os"
 	"time"
 
+	"github.com/ploeg-hq/ploeg/pkg/httpclient"
 	"github.com/ploeg-hq/ploeg/pkg/knowledgegraph"
 	"github.com/ploeg-hq/ploeg/pkg/omnigraph"
 )
@@ -29,7 +29,7 @@ func tenantGraphs(log *slog.Logger) (*knowledgegraph.Notes, *knowledgegraph.Know
 	if url == "" || token == "" || (notesGraph == "" && knowledgeGraph == "") {
 		return nil, nil, errors.New("tenant knowledge needs PLOEG_OMNIGRAPH_URL, PLOEG_OMNIGRAPH_RUN_TOKEN and PLOEG_NOTES_GRAPH or PLOEG_KNOWLEDGE_GRAPH")
 	}
-	client := &omnigraph.Client{BaseURL: url, Token: token, HTTP: &http.Client{Timeout: 30 * time.Second}}
+	client := &omnigraph.Client{BaseURL: url, Token: token, HTTP: httpclient.New(30 * time.Second)}
 	var notes *knowledgegraph.Notes
 	var knowledge *knowledgegraph.Knowledge
 	if notesGraph != "" {
@@ -38,7 +38,7 @@ func tenantGraphs(log *slog.Logger) (*knowledgegraph.Notes, *knowledgegraph.Know
 	if knowledgeGraph != "" {
 		knowledge = &knowledgegraph.Knowledge{Client: client, Graph: knowledgeGraph}
 		if review := os.Getenv("PLOEG_OMNIGRAPH_REVIEW_TOKEN"); review != "" {
-			knowledge.Review = &omnigraph.Client{BaseURL: url, Token: review, HTTP: &http.Client{Timeout: 30 * time.Second}}
+			knowledge.Review = &omnigraph.Client{BaseURL: url, Token: review, HTTP: httpclient.New(30 * time.Second)}
 		}
 	}
 	log.Info("tenant knowledge", "notes_graph", notesGraph, "knowledge_graph", knowledgeGraph,

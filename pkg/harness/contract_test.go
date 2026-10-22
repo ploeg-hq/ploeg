@@ -124,6 +124,19 @@ func TestClaimResponseContext_MatchesSchema(t *testing.T) {
 	}
 }
 
+func TestClaimResponseMaxRounds_MatchesSchema(t *testing.T) {
+	sch := compileSchema(t, "run-api.v1.schema.json#/$defs/claimResponse")
+	claim := map[string]any{"runToken": strings.Repeat("a1", 24), "deadline": "2026-10-04T10:00:00Z",
+		"workItem": fullTaskSpec().WorkItem, "round": 3, "maxRounds": 6}
+	if err := validate(t, sch, claim); err != nil {
+		t.Errorf("claim with maxRounds does not validate: %v", err)
+	}
+	claim["maxRounds"] = 0
+	if err := validate(t, sch, claim); err == nil {
+		t.Error("a claim with maxRounds 0 validates; the field is absent when unknown")
+	}
+}
+
 func TestClaimResponseForgeTokenExpiry_MatchesSchema(t *testing.T) {
 	sch := compileSchema(t, "run-api.v1.schema.json#/$defs/claimResponse")
 	claim := map[string]any{"runToken": strings.Repeat("a1", 24), "deadline": "2026-10-04T10:00:00Z",

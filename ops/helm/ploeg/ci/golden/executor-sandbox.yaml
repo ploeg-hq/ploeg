@@ -120,6 +120,11 @@ metadata:
     app.kubernetes.io/managed-by: Helm
 spec:
   replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: ploeg
@@ -158,6 +163,28 @@ spec:
                 secretKeyRef:
                   name: ploeg-db-app
                   key: uri
+            - name: PLOEG_DB_APPLICATION_NAME
+              value: "ploegd"
+            - name: PLOEG_DB_HEALTH_CHECK_PERIOD
+              value: "30s"
+            - name: PLOEG_DB_IDLE_IN_TRANSACTION_TIMEOUT
+              value: "60s"
+            - name: PLOEG_DB_MAX_CONN_IDLE_TIME
+              value: "5m"
+            - name: PLOEG_DB_MAX_CONN_LIFETIME
+              value: "30m"
+            - name: PLOEG_DB_MAX_CONN_LIFETIME_JITTER
+              value: "5m"
+            - name: PLOEG_DB_MAX_CONNS
+              value: "8"
+            - name: PLOEG_DB_MIN_IDLE_CONNS
+              value: "2"
+            - name: PLOEG_DB_PING_TIMEOUT
+              value: "5s"
+            - name: PLOEG_DB_STATEMENT_TIMEOUT
+              value: "30s"
+            - name: GOMEMLIMIT
+              value: "230MiB"
             - name: PLOEG_TEAM_PLANS
               value: "{\"gold\":{\"maxFixRounds\":0,\"pool\":\"4\",\"rounds\":[{\"roles\":[{\"cap\":\"3.00\",\"name\":\"builder\",\"writes\":true}]},{\"roles\":[{\"cap\":\"0.75\",\"harness\":{\"dind\":false},\"name\":\"reviewer\",\"writes\":false}]}]}}"
             - name: PLOEG_TEAM_HARNESSES
@@ -212,6 +239,12 @@ spec:
                   key: registry.json
             - name: PLOEG_WORKER_LLM_POLICIES
               value: "[{\"budgetUsd\":2,\"defaultModel\":\"deepseek-chat\",\"models\":[\"deepseek-chat\"],\"role\":\"\",\"team\":\"bronze\",\"ttl\":\"4h\"},{\"budgetUsd\":3,\"defaultModel\":\"deepseek-chat\",\"models\":[\"deepseek-chat\"],\"role\":\"builder\",\"team\":\"gold\",\"ttl\":\"4h\"},{\"budgetUsd\":0.75,\"defaultModel\":\"deepseek-chat\",\"models\":[\"deepseek-chat\"],\"role\":\"reviewer\",\"team\":\"gold\",\"ttl\":\"4h\"}]"
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+            failureThreshold: 30
           readinessProbe:
             httpGet:
               path: /readyz
@@ -223,6 +256,10 @@ spec:
               path: /healthz
               port: http
             periodSeconds: 20
+          lifecycle:
+            preStop:
+              sleep:
+                seconds: 5
           resources:
             limits:
               cpu: 100m
@@ -986,6 +1023,8 @@ spec:
                 value: "600s"
               - name: PLOEG_SANDBOX_TTL_SECONDS_AFTER_FINISHED
                 value: "60"
+              - name: GOMEMLIMIT
+                value: "28MiB"
               - name: PLOEG_API_URL
                 value: "http://ploeg:8080"
               - name: PLOEG_TEAM
@@ -1027,9 +1066,10 @@ spec:
         userName: "ploeg_scaler"
         dbName: "app"
         sslmode: "require"
-        # The one poll-query shape: served index-only by work_items_claimable
-        # (backlog #24/#47). Must stay in sync with store.Claim.
-        query: "SELECT COUNT(*) FROM work_items WHERE team = 'bronze' AND state = 'queued' AND NOT operator_owned AND (next_eligible_at IS NULL OR next_eligible_at <= now())"
+        # The one poll-query shape, served by work_items_claimable (backlog
+        # #24/#47). Must stay identical in predicate to store.Claim's
+        # nextClaimableQuery, live-Shift clause included.
+        query: "SELECT COUNT(*) FROM work_items WHERE team = 'bronze' AND state = 'queued' AND NOT operator_owned AND (next_eligible_at IS NULL OR next_eligible_at <= now()) AND NOT EXISTS (SELECT 1 FROM shifts sh WHERE sh.work_item_id = work_items.id AND sh.closed_at IS NULL)"
         targetQueryValue: "1"
         activationTargetQueryValue: "0"
       authenticationRef:
@@ -1113,6 +1153,8 @@ spec:
                 value: "600s"
               - name: PLOEG_SANDBOX_TTL_SECONDS_AFTER_FINISHED
                 value: "60"
+              - name: GOMEMLIMIT
+                value: "28MiB"
               - name: PLOEG_API_URL
                 value: "http://ploeg:8080"
               - name: PLOEG_TEAM
@@ -1159,15 +1201,17 @@ spec:
         # THE claim predicate for a Role, and it must stay byte-identical to
         # store.ClaimRoleFor and store.PendingRunsFor: pending runs for this
         # team and role that store this workload's Harness key or none
-        # (ADR-0099). Served by agent_runs_claimable_harness, which migration
-        # 0056 created for this query:
+        # (ADR-0099), leaving out every Run a client carries (ADR-0112).
+        # Served by agent_runs_claimable_harness, which migration 0057
+        # created for this query:
         #   CREATE INDEX agent_runs_claimable_harness
         #       ON agent_runs (team, role, harness_requested, id) WHERE state = 'pending';
         # Overshoot merely wastes a pod that exits 0 empty-handed; undershoot
         # stalls Work Items with no error anywhere, which is the worst failure
         # this system can have. TestClaimRoleAgreesWithPendingRuns keeps the
-        # two Go callers honest; this comment is the third copy's leash.
-        query: "SELECT COUNT(*) FROM agent_runs WHERE team = 'gold' AND role = 'builder' AND state = 'pending' AND (harness_requested IS NULL OR harness_requested = 'openhands')"
+        # two Go callers honest; TestTheChartsScalerQueryCountsWhatItsWorkerClaims
+        # runs this rendered query against them.
+        query: "SELECT COUNT(*) FROM agent_runs WHERE team = 'gold' AND role = 'builder' AND state = 'pending' AND (harness_requested IS NULL OR harness_requested = 'openhands') AND carrier IS NULL"
         targetQueryValue: "1"
         activationTargetQueryValue: "0"
       authenticationRef:
@@ -1251,6 +1295,8 @@ spec:
                 value: "600s"
               - name: PLOEG_SANDBOX_TTL_SECONDS_AFTER_FINISHED
                 value: "60"
+              - name: GOMEMLIMIT
+                value: "28MiB"
               - name: PLOEG_API_URL
                 value: "http://ploeg:8080"
               - name: PLOEG_TEAM
@@ -1297,15 +1343,17 @@ spec:
         # THE claim predicate for a Role, and it must stay byte-identical to
         # store.ClaimRoleFor and store.PendingRunsFor: pending runs for this
         # team and role that store this workload's Harness key or none
-        # (ADR-0099). Served by agent_runs_claimable_harness, which migration
-        # 0056 created for this query:
+        # (ADR-0099), leaving out every Run a client carries (ADR-0112).
+        # Served by agent_runs_claimable_harness, which migration 0057
+        # created for this query:
         #   CREATE INDEX agent_runs_claimable_harness
         #       ON agent_runs (team, role, harness_requested, id) WHERE state = 'pending';
         # Overshoot merely wastes a pod that exits 0 empty-handed; undershoot
         # stalls Work Items with no error anywhere, which is the worst failure
         # this system can have. TestClaimRoleAgreesWithPendingRuns keeps the
-        # two Go callers honest; this comment is the third copy's leash.
-        query: "SELECT COUNT(*) FROM agent_runs WHERE team = 'gold' AND role = 'reviewer' AND state = 'pending' AND (harness_requested IS NULL OR harness_requested = 'openhands')"
+        # two Go callers honest; TestTheChartsScalerQueryCountsWhatItsWorkerClaims
+        # runs this rendered query against them.
+        query: "SELECT COUNT(*) FROM agent_runs WHERE team = 'gold' AND role = 'reviewer' AND state = 'pending' AND (harness_requested IS NULL OR harness_requested = 'openhands') AND carrier IS NULL"
         targetQueryValue: "1"
         activationTargetQueryValue: "0"
       authenticationRef:

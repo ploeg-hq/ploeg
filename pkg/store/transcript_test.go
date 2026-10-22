@@ -13,7 +13,7 @@ import (
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
-func claimTranscriptRun(t *testing.T) (string, int64) {
+func claimTranscriptRun(t testing.TB) (string, int64) {
 	t.Helper()
 	resetTables(t)
 	ingestItem(t)
@@ -187,5 +187,80 @@ func TestTranscriptIsScopedToTheConsumersTeams(t *testing.T) {
 	}
 	if _, err := testStore.OperatorTranscript(ctx, id+1000, nil, 0, 10); !errors.Is(err, ErrOperatorNotFound) {
 		t.Fatalf("unknown run: %v", err)
+	}
+}
+
+func storedTranscript(t *testing.T, runID int64) (totals, counted transcriptTotals) {
+	t.Helper()
+	if err := testStore.pool.QueryRow(context.Background(), `SELECT
+			(SELECT entries FROM run_transcript_totals WHERE run_id = $1), (SELECT bytes FROM run_transcript_totals WHERE run_id = $1),
+			(SELECT truncated FROM run_transcript_totals WHERE run_id = $1),
+			count(*), COALESCE(sum(bytes), 0), COALESCE(bool_or(kind = 'truncated'), false)
+		FROM run_transcript_entries WHERE run_id = $1`, runID).Scan(&totals.entries, &totals.bytes, &totals.truncated,
+		&counted.entries, &counted.bytes, &counted.truncated); err != nil {
+		t.Fatal(err)
+	}
+	return totals, counted
+}
+
+func TestTranscriptTotalsFollowEveryInsert(t *testing.T) {
+	token, id := claimTranscriptRun(t)
+	ctx := context.Background()
+	if _, err := testStore.AppendTranscript(ctx, token, stages(1, 5)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := testStore.AppendTranscript(ctx, token, stages(3, 5)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := testStore.pool.Exec(ctx, `INSERT INTO run_transcript_entries (run_id, seq, at, kind, body, bytes)
+		VALUES ($1, 20, now(), 'stage', '{}', 2)`, id); err != nil {
+		t.Fatal(err)
+	}
+	if totals, counted := storedTranscript(t, id); totals != counted || counted.entries != 8 {
+		t.Fatalf("totals %+v, entries %+v", totals, counted)
+	}
+}
+
+func TestTranscriptStoresARepeatedSequenceNumberOnce(t *testing.T) {
+	token, id := claimTranscriptRun(t)
+	ctx := context.Background()
+	first, again := stages(1, 1)[0], stages(1, 1)[0]
+	again.Text = "a second entry numbered 1"
+	got, err := testStore.AppendTranscript(ctx, token, []transcript.Entry{first, again, stages(2, 1)[0]})
+	if err != nil || got.Accepted != 2 || got.Truncated {
+		t.Fatalf("append: %+v %v; want two entries stored", got, err)
+	}
+	page, err := testStore.OperatorTranscript(ctx, id, nil, 0, 10)
+	if err != nil || len(page.Entries) != 2 || page.Entries[0].Text != first.Text {
+		t.Fatalf("page: %+v %v; want the first entry numbered 1 kept", page, err)
+	}
+	if totals, counted := storedTranscript(t, id); totals != counted {
+		t.Fatalf("totals %+v, entries %+v", totals, counted)
+	}
+}
+
+func TestTranscriptResendsTakeNoRoomAtTheEntryLimit(t *testing.T) {
+	token, id := claimTranscriptRun(t)
+	ctx := context.Background()
+	held := transcript.MaxRunEntries - 3
+	if _, err := testStore.pool.Exec(ctx, `INSERT INTO run_transcript_entries (run_id, seq, at, kind, body, bytes)
+		SELECT $1, g, now(), 'stage', '{}', 2 FROM generate_series(1, $2) g`, id, held); err != nil {
+		t.Fatal(err)
+	}
+	got, err := testStore.AppendTranscript(ctx, token, stages(held-7, 11))
+	if err != nil || got.Accepted != 3 || !got.Truncated {
+		t.Fatalf("append: %+v %v; want two entries and the marker stored", got, err)
+	}
+	page, err := testStore.OperatorTranscript(ctx, id, nil, int64(held), 10)
+	if err != nil || len(page.Entries) != 3 || !page.Truncated ||
+		page.Entries[0].Kind != transcript.KindStage || page.Entries[1].Kind != transcript.KindStage ||
+		page.Entries[2].Kind != transcript.KindTruncated || page.Entries[2].Seq != int64(transcript.MaxRunEntries) {
+		t.Fatalf("page: %+v %v", page, err)
+	}
+	if got, err := testStore.AppendTranscript(ctx, token, stages(held-1, 4)); err != nil || got.Accepted != 0 || !got.Truncated {
+		t.Fatalf("resend after the marker: %+v %v", got, err)
+	}
+	if totals, counted := storedTranscript(t, id); totals != counted || counted.entries != transcript.MaxRunEntries {
+		t.Fatalf("totals %+v, entries %+v", totals, counted)
 	}
 }

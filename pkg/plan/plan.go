@@ -289,6 +289,17 @@ func (p TeamPlan) HasRole(role string) bool {
 	return false
 }
 
+// MaxRounds returns the most Rounds a Shift of the team can run: the plan's
+// Rounds and, for each fix Round the loop allows, the re-opened writing Round
+// and the review Round after it (ADR-0017). Zero for an unknown team.
+func (p Plans) MaxRounds(team string) int {
+	tp, ok := p[team]
+	if !ok {
+		return 0
+	}
+	return len(tp.Rounds) + 2*max(tp.MaxFixRounds, 0)
+}
+
 // IsPlanner reports whether a team's role is configured as a planner.
 func (p Plans) IsPlanner(team, role string) bool {
 	tp, ok := p[team]

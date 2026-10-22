@@ -16,6 +16,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/ploeg-hq/ploeg/pkg/httpclient"
 )
 
 // PublicWebURL is github.com's web root.
@@ -61,7 +63,7 @@ func (c *Client) hc() *http.Client {
 	if c != nil && c.HC != nil {
 		return c.HC
 	}
-	return &http.Client{Timeout: 30 * time.Second}
+	return httpclient.New(30 * time.Second)
 }
 
 func (c *Client) maxWait() time.Duration {

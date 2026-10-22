@@ -105,7 +105,7 @@ func (b *LiteLLM) RevokeForRun(ctx context.Context, runToken string) error {
 	if alias == "" {
 		return fmt.Errorf("run token too short for key alias")
 	}
-	keys, err := b.cli.ListKeys(ctx, alias)
+	keys, err := b.cli.ListKeys(ctx, litellm.KeyQuery{Alias: alias})
 	if err != nil {
 		return fmt.Errorf("list keys for %s: %w", alias, err)
 	}
@@ -128,7 +128,7 @@ func (b *LiteLLM) RevokeForRun(ctx context.Context, runToken string) error {
 
 // SweepOrphans blocks every active ploeg-* key without an unfinished run.
 func (b *LiteLLM) SweepOrphans(ctx context.Context, aliveRunTokens []string) (int, error) {
-	keys, err := b.cli.ListKeys(ctx, litellm.AliasPrefix)
+	keys, err := b.cli.ListKeys(ctx, litellm.KeyQuery{AliasPrefix: litellm.AliasPrefix, ActiveOnly: true})
 	if err != nil {
 		return 0, err
 	}
@@ -165,7 +165,7 @@ func (b *LiteLLM) SettledSpendForRun(ctx context.Context, runToken string, keyID
 	if alias == "" {
 		return SettledSpend{}, fmt.Errorf("invalid run identity")
 	}
-	keys, err := b.cli.ListKeys(ctx, alias)
+	keys, err := b.cli.ListKeys(ctx, litellm.KeyQuery{Alias: alias})
 	if err != nil {
 		return SettledSpend{}, err
 	}
@@ -241,7 +241,7 @@ func (b *LiteLLM) RunKeysGone(ctx context.Context, runToken string, keyIDs []str
 	if alias == "" {
 		return false, fmt.Errorf("invalid run identity")
 	}
-	keys, err := b.cli.ListKeys(ctx, alias)
+	keys, err := b.cli.ListKeys(ctx, litellm.KeyQuery{Alias: alias})
 	if err != nil {
 		return false, err
 	}
@@ -267,7 +267,7 @@ func (b *LiteLLM) SpendForRun(ctx context.Context, runToken string) (float64, er
 	if alias == "" {
 		return 0, fmt.Errorf("invalid run identity")
 	}
-	keys, err := b.cli.ListKeys(ctx, alias)
+	keys, err := b.cli.ListKeys(ctx, litellm.KeyQuery{Alias: alias})
 	if err != nil {
 		return 0, err
 	}

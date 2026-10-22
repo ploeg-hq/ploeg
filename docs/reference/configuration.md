@@ -28,7 +28,7 @@ The generator follows each binary's imports inside the module and records every 
 | `LC_ALL` | ploeg-worker |  |  | [git.go](../../pkg/worker/git.go), [openspec.go](../../pkg/worker/openspec.go) |
 | `LITELLM_ADMIN_URL` | ploeg-worker |  | Controller-only. The worker refuses to start when it is set. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `LITELLM_ADMIN_URL` | ploegd |  | LiteLLM management URL (chart `executor.litellm.adminUrl`). Unset disables key revocation, and managed worker mode then refuses to start. | [main.go](../../cmd/ploegd/main.go) |
-| `LITELLM_KEY_BUDGET` | ploeg-worker |  |  | [main.go](../../cmd/ploeg-worker/main.go) |
+| `LITELLM_KEY_BUDGET` | ploeg-worker |  | USD budget the per-run inference key is minted at when no Shift authorized the Run; a Shift's authorization replaces it (ADR-0012). The Run's prompt states the amount (ADR-0133). It must be a number: `0` mints an uncapped key, and the prompt then states no budget. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `LITELLM_KEY_DURATION` | ploeg-worker | `4h` | Lifetime of the per-run inference key (chart `executor.litellm.keyDuration`). | [main.go](../../cmd/ploeg-worker/main.go) |
 | `LITELLM_MASTER_KEY` | ploeg-worker |  | Controller-only. The worker refuses to start when it is set. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `LITELLM_MASTER_KEY` | ploegd |  | LiteLLM management key, held only by the controller (chart `executor.litellm.masterKeySecret`). | [main.go](../../cmd/ploegd/main.go) |
@@ -39,10 +39,10 @@ The generator follows each binary's imports inside the module and records every 
 | `PATH` | ploeg-worker |  | Passed to `git` and `openspec` subprocesses; also on the harness allowlist. | [git.go](../../pkg/worker/git.go), [harness_version.go](../../pkg/worker/harness_version.go), [openspec.go](../../pkg/worker/openspec.go) |
 | `PLOEG_ACP_ARGV` | ploeg-worker |  | `acp` harness only: the whole launch command as a JSON array; required when the profile is `custom`. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_ACP_CONFIG_JSON` | ploeg-worker |  | `acp` harness only: replaces the generated agent configuration of the `opencode` or `qwen-code` profile wholesale. The `goose` and `openhands` profiles refuse it at startup. | [main.go](../../cmd/ploeg-worker/main.go) |
-| `PLOEG_ACP_IDLE_TIMEOUT` | ploeg-worker |  | `acp` harness only: timeout without protocol traffic. Empty means the adapter default (10m). | [main.go](../../cmd/ploeg-worker/main.go) |
+| `PLOEG_ACP_IDLE_TIMEOUT` | ploeg-worker |  | `acp` harness only: timeout without protocol traffic. Empty means the adapter default (10m). The Run's prompt states it (ADR-0133). | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_ACP_PERMISSION_MODE` | ploeg-worker |  | `acp` harness only: `allow_always` (default), `allow_read_only` or `deny_all`. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_ACP_PROFILE` | ploeg-worker |  | `acp` harness only: `opencode`, `qwen-code`, `goose`, `openhands` or `custom` (chart `executor.harness.acp.profile`). See [ACP profiles](../contracts/acp-profiles.md). | [main.go](../../cmd/ploeg-worker/main.go), [sandbox.go](../../cmd/ploeg-worker/sandbox.go) |
-| `PLOEG_ACP_PROMPT_TIMEOUT` | ploeg-worker |  | `acp` harness only: prompt timeout as a Go duration. Empty means the adapter default (45m). | [main.go](../../cmd/ploeg-worker/main.go) |
+| `PLOEG_ACP_PROMPT_TIMEOUT` | ploeg-worker |  | `acp` harness only: prompt timeout as a Go duration. Empty means the adapter default (45m). The Run's prompt states the earlier of it and `PLOEG_HARNESS_TIMEOUT` (ADR-0133). | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_API_URL` | ploeg-worker | required | ploegd's run API (chart `executor.apiUrl`, default `http://<fullname>:<service.port>`). | [main.go](../../cmd/ploeg-worker/main.go), [sandbox.go](../../cmd/ploeg-worker/sandbox.go) |
 | `PLOEG_ASK_ALLOWANCE_USD` | ploegd | `2.00` | Monthly Ask Allowance, in US dollars, that a Team's period opens with (ADR-0082). A period keeps the limit its first Ask opened it with. At most 10000 with four decimals; anything else refuses to start. | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_ASK_BUDGET_USD` | ploegd | `0.02` | Per-Ask Budget in US dollars, the cap on the key an Ask is given (ADR-0082). A `(team, ask)` policy in `PLOEG_WORKER_LLM_POLICIES` with a smaller `budgetUsd` lowers it. A Team with no such policy has no Asks. | [main.go](../../cmd/ploegd/main.go) |
@@ -66,6 +66,16 @@ The generator follows each binary's imports inside the module and records every 
 | `PLOEG_CREDENTIAL_ISOLATION_OFF_REASON` | ploeg-worker | `disabled` | Why the chart left a credential proxy off for this workload: `unqualified`, `dind` or `disabled`. ploeg-worker logs it in one boot WARN with the harness name. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_DATABASE_URL` | ploeg-worker |  | Controller-only. The worker refuses to start when it is set. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_DATABASE_URL` | ploegd | required | PostgreSQL connection URI. The chart reads the whole `uri` key of the CNPG app Secret named by `database.existingSecret`. | [main.go](../../cmd/ploegd/main.go) |
+| `PLOEG_DB_APPLICATION_NAME` | ploegd | `ploegd` | `application_name` of every pooled connection, which names ploegd in `pg_stat_activity` and `pg_stat_statements` (chart `database.pool.applicationName`). `application_name` in the URL, or `PGAPPNAME`, wins. | [database.go](../../cmd/ploegd/database.go) |
+| `PLOEG_DB_HEALTH_CHECK_PERIOD` | ploegd | `30s` | How often the pool checks its idle connections (chart `database.pool.healthCheckPeriod`). `pool_health_check_period` in the URL wins. | [database.go](../../cmd/ploegd/database.go) |
+| `PLOEG_DB_IDLE_IN_TRANSACTION_TIMEOUT` | ploegd | `60s` | Server-side `idle_in_transaction_session_timeout` of every pooled connection, so a stuck transaction cannot hold row locks for long; `0` sets none (chart `database.pool.idleInTransactionTimeout`). `idle_in_transaction_session_timeout` in the URL wins. | [database.go](../../cmd/ploegd/database.go) |
+| `PLOEG_DB_MAX_CONNS` | ploegd | `8` | Most connections ploegd's database pool opens (chart `database.pool.maxConns`). `0` leaves the pgx default, the greater of 4 and the node's CPU count. `pool_max_conns` in `PLOEG_DATABASE_URL` wins. A malformed value stops ploegd at boot, as it does for every `PLOEG_DB_*` variable. | [database.go](../../cmd/ploegd/database.go) |
+| `PLOEG_DB_MAX_CONN_IDLE_TIME` | ploegd | `5m` | Idle time after which the pool closes a connection above its idle minimum (chart `database.pool.maxConnIdleTime`). `pool_max_conn_idle_time` in the URL wins. | [database.go](../../cmd/ploegd/database.go) |
+| `PLOEG_DB_MAX_CONN_LIFETIME` | ploegd | `30m` | Age at which a pooled connection is closed and replaced, so connections move to a new primary after a failover (chart `database.pool.maxConnLifetime`). `pool_max_conn_lifetime` in the URL wins. | [database.go](../../cmd/ploegd/database.go) |
+| `PLOEG_DB_MAX_CONN_LIFETIME_JITTER` | ploegd | `5m` | Random extra lifetime per connection, so they are not all replaced at once (chart `database.pool.maxConnLifetimeJitter`). `pool_max_conn_lifetime_jitter` in the URL wins. | [database.go](../../cmd/ploegd/database.go) |
+| `PLOEG_DB_MIN_IDLE_CONNS` | ploegd | `2` | Idle connections the pool keeps open so a claim after a quiet period does not wait for a new connection; capped at the pool's maximum (chart `database.pool.minIdleConns`). `pool_min_idle_conns` in the URL wins. | [database.go](../../cmd/ploegd/database.go) |
+| `PLOEG_DB_PING_TIMEOUT` | ploegd | `5s` | How long a health-check ping may take before the connection counts as broken; `0` waits indefinitely (chart `database.pool.pingTimeout`). `pool_ping_timeout` in the URL wins. | [database.go](../../cmd/ploegd/database.go) |
+| `PLOEG_DB_STATEMENT_TIMEOUT` | ploegd | `30s` | Server-side `statement_timeout` of every pooled connection; `0` sets none (chart `database.pool.statementTimeout`). Migrations lift it on their own connection. `statement_timeout` in the URL wins. | [database.go](../../cmd/ploegd/database.go) |
 | `PLOEG_DEFAULT_TEAM` | ploegd | `default` | Team that receives work from an assignee no Team lists. | [main.go](../../cmd/ploegd/main.go), [operator.go](../../cmd/ploegd/operator.go) |
 | `PLOEG_DEPENDENCY_HOLD` | ploegd | `true` | Holds a queued Work Item's first Shift while its tracker says it waits for an item that is not done (ADR-0123). `false` switches the hold off. | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_DEPENDENCY_RECHECK` | ploegd | `5m` | How often ploegd reads a held Work Item's tracker dependencies again, as a Go duration. | [main.go](../../cmd/ploegd/main.go) |
@@ -97,8 +107,8 @@ The generator follows each binary's imports inside the module and records every 
 | `PLOEG_HARNESS` | ploeg-worker | `openhands` | Harness adapter: `openhands`, `exec`, `claude-code` or `acp` (chart `executor.harness.name`). | [main.go](../../cmd/ploeg-worker/main.go), [sandbox.go](../../cmd/ploeg-worker/sandbox.go) |
 | `PLOEG_HARNESS_ARGS` | ploeg-worker |  | `exec` harness only: JSON argv template with `{taskspec}` and `{taskfile}` (chart `executor.harness.args`). | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_HARNESS_ENTRYPOINT` | ploeg-worker |  | Harness binary override (chart `executor.harness.entrypoint`). Empty means the adapter default. | [main.go](../../cmd/ploeg-worker/main.go) |
-| `PLOEG_HARNESS_IDLE_TIMEOUT` | ploeg-worker | `15m` | Stops a harness that prints nothing and makes no model call for this long, with failure reason `idle`. | [main.go](../../cmd/ploeg-worker/main.go) |
-| `PLOEG_HARNESS_TIMEOUT` | ploeg-worker | `100m` | Stops a harness that runs longer than this, with failure reason `timeout`. | [main.go](../../cmd/ploeg-worker/main.go) |
+| `PLOEG_HARNESS_IDLE_TIMEOUT` | ploeg-worker | `15m` | Stops a harness that prints nothing and makes no model call for this long, with failure reason `idle`. The Run's prompt states it unless the adapter keeps its own idle limit (ADR-0133). | [main.go](../../cmd/ploeg-worker/main.go) |
+| `PLOEG_HARNESS_TIMEOUT` | ploeg-worker | `100m` | Stops a harness that runs longer than this, with failure reason `timeout`. The Run's prompt states it, or the adapter's own shorter prompt limit (ADR-0133). | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_KNOWLEDGE_BUDGET_BYTES` | ploeg-worker |  |  | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_KNOWLEDGE_DIRS` | ploeg-worker |  |  | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_KNOWLEDGE_GRAPH` | ploegd |  | Id of the Tenant's reviewed knowledge graph on `PLOEG_OMNIGRAPH_URL`, which declares the `tenant-knowledge` stored queries `tenant_concepts`, `client_concepts` and `repository_concepts`. Each Run is served the concepts of its Tenant, Client and repository; a repository's own `knowledge/` file wins over the same graph concept. | [knowledge.go](../../cmd/ploegd/knowledge.go) |
@@ -179,10 +189,49 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 
 | Key | Type | Default | Description | Source |
 | --- | --- | --- | --- | --- |
+| `claudeRunner` | object |  | claude-runner: the self-hosted Claude environment runner that executes claude-environment Runs as Claude Code sessions (ADR-0084), from the release's claude-runner image. Off by default. ops/claude-runner/README.md explains the runner settings. The pod reaches Anthropic, the forge's HTTPS host and ploegd; write that egress policy for your CNI, because it names hosts a NetworkPolicy cannot. | values.yaml, values.schema.json |
+| `claudeRunner.annotations` | object | `{}` |  | values.yaml, values.schema.json |
+| `claudeRunner.args` | array | `["--capacity", "1", "--release-idle-session-min", "1", "--kill-session-after-min", "90", "--drain-grace-sec", "600", "--remove-session-state"]` | Runner flags after self-hosted-runner --base-dir and --hooks-dir. One session per pod, so nothing a session leaves behind is seen by the next. | values.yaml, values.schema.json |
+| `claudeRunner.enabled` | boolean | `false` |  | values.yaml, values.schema.json |
+| `claudeRunner.env` | object | `{}` | name: value, e.g. OTEL_EXPORTER_OTLP_ENDPOINT for the sessions' telemetry | values.yaml, values.schema.json |
+| `claudeRunner.environmentSecret` | object |  | REQUIRED when enabled: the Secret with SELF_HOSTED_RUNNER_ENVIRONMENT_SECRET, the environment key from the claude.ai admin page. Loaded with envFrom. | values.yaml, values.schema.json |
+| `claudeRunner.environmentSecret.name` | string | `""` |  | values.yaml, values.schema.json |
+| `claudeRunner.extraArgs` | array | `[]` | Appended to args, e.g. [--git-host-rewrite, "forgejo-http.forgejo.svc.cluster.local:3000=forgejo.example.com"] | values.yaml, values.schema.json |
+| `claudeRunner.extraEnv` | array | `[]` |  | values.yaml, values.schema.json |
+| `claudeRunner.image` | object |  | Also the default harness image of a claude-environment team or Role that sets none. Digest and tag follow the same rules as image. | values.yaml, values.schema.json |
+| `claudeRunner.image.digest` | string | `""` | Digest of the appVersion image; the release writes it into the published chart | values.yaml, values.schema.json |
+| `claudeRunner.image.repository` | string | `ghcr.io/ploeg-hq/claude-runner` |  | values.yaml, values.schema.json |
+| `claudeRunner.image.tag` | string | `""` |  | values.yaml, values.schema.json |
+| `claudeRunner.loginVolumes` | array | `[]` | PersistentVolumeClaims for harness.claudeEnvironment.loginVolume, one per Team login. Rendered even with the runner off, and kept on uninstall (helm.sh/resource-policy: keep): a person signs in to each one. e.g. [{name: team-claude-login, size: 1Gi, storageClassName: standard}] | values.yaml, values.schema.json |
+| `claudeRunner.loginVolumes[].name` | string |  |  | values.schema.json |
+| `claudeRunner.loginVolumes[].size` | string |  |  | values.schema.json |
+| `claudeRunner.loginVolumes[].storageClassName` | string |  |  | values.schema.json |
+| `claudeRunner.name` | string | `""` | empty = <fullname>-claude-runner; Deployment and the pods' app.kubernetes.io/name | values.yaml, values.schema.json |
+| `claudeRunner.nodeSelector` | object | `{}` | empty = nodeSelector | values.yaml, values.schema.json |
+| `claudeRunner.ploegUrl` | string | `""` | empty = this release's ploegd Service (executor.apiUrl when set) | values.yaml, values.schema.json |
+| `claudeRunner.podAnnotations` | object | `{}` |  | values.yaml, values.schema.json |
+| `claudeRunner.replicas` | integer | `1` |  | values.yaml, values.schema.json |
+| `claudeRunner.resources.limits.memory` |  | `4Gi` |  | values.yaml |
+| `claudeRunner.resources.requests.cpu` |  | `50m` |  | values.yaml |
+| `claudeRunner.resources.requests.memory` |  | `1Gi` |  | values.yaml |
+| `claudeRunner.runtimeClassName` | string | `""` | e.g. kata: session code is model-directed | values.yaml, values.schema.json |
+| `claudeRunner.terminationGracePeriodSeconds` | integer | `90` |  | values.yaml, values.schema.json |
+| `claudeRunner.workSizeLimit` | string | `10Gi` |  | values.yaml, values.schema.json |
 | `config` | object | `{}` | ploegd's routing and roster as a file (mounted at /etc/ploeg/ploeg.yaml). Projects are NAMED and resolved to tracker ids at boot, so no magic numbers live in cluster config. `targets:` registers repositories a `repo/<key>` label may select, and a project's `default:`/`allow:` name them (ADR-0038). A project's `gates:` maps its statuses or bucket titles to the delivery gates development, test, acceptance and done (ADR-0051), and Ploeg records every tracker status move of a project with `gates:` (ADR-0080). A target's or project's `ci.waitTimeout:` is how long a Shift on that repository waits for the forge's CI on its pull request's head before a person is asked, default `60m` (ADR-0119). A target's `readPullRequests:` lists routes: the `authors` whose open pull requests a `team` reads and reports on, on the pull request, with the operator's `instructions` and `maxOpen` and `maxReviewsPerPullRequest` caps (ADR-0109). A team's `premiseCheck: {model: <gateway model>}` runs one classifier call on that model before its first writer, and ploegd refuses a model the gateway does not price at zero (ADR-0123). The Run card keys `cards`, a target's or project's `cardStyle`, `release`, `rarity` and `cardShape`, a project's `statusKinds` and a team's `cards` and `workingHours` are unknown keys that fail the boot (ADR-0080). Empty = the legacy PLOEG_TARGET_MAP/PLOEG_TEAM_MAP/PLOEG_TEAM_PLANS env vars still apply. | values.yaml, values.schema.json |
-| `database.existingSecret` |  |  | REQUIRED: the Secret holding ploegd's PostgreSQL connection URI. The render fails without a name. CNPG creates <cluster>-app with a `uri` key; ploegd consumes it whole. | values.yaml |
+| `database.existingSecret` | object |  | REQUIRED: the Secret holding ploegd's PostgreSQL connection URI. The render fails without a name. CNPG creates <cluster>-app with a `uri` key; ploegd consumes it whole. | values.yaml, values.schema.json |
 | `database.existingSecret.key` |  | `uri` |  | values.yaml |
 | `database.existingSecret.name` |  | `""` |  | values.yaml |
+| `database.pool` | object |  | ploegd's connection pool as the PLOEG_DB_* variables; a setting the connection URI names wins; null leaves ploegd's default | values.yaml, values.schema.json |
+| `database.pool.applicationName` | string or null | `ploegd` |  | values.yaml, values.schema.json |
+| `database.pool.healthCheckPeriod` | [poolDuration](#poolduration) | `30s` |  | values.yaml, values.schema.json |
+| `database.pool.idleInTransactionTimeout` | [poolDuration](#poolduration) | `60s` |  | values.yaml, values.schema.json |
+| `database.pool.maxConnIdleTime` | [poolDuration](#poolduration) | `5m` |  | values.yaml, values.schema.json |
+| `database.pool.maxConnLifetime` | [poolDuration](#poolduration) | `30m` |  | values.yaml, values.schema.json |
+| `database.pool.maxConnLifetimeJitter` | [poolDuration](#poolduration) | `5m` |  | values.yaml, values.schema.json |
+| `database.pool.maxConns` | integer or null | `8` |  | values.yaml, values.schema.json |
+| `database.pool.minIdleConns` | integer or null | `2` |  | values.yaml, values.schema.json |
+| `database.pool.pingTimeout` | [poolDuration](#poolduration) | `5s` |  | values.yaml, values.schema.json |
+| `database.pool.statementTimeout` | [poolDuration](#poolduration) | `30s` | Server-side limits on every pooled connection. Migrations lift the statement timeout on their own connection. | values.yaml, values.schema.json |
 | `deploys` | object | `{}` | ADR-0047: POST /api/v1/deploys, where a pipeline reports "commit X is live in environment Y". tokenSecret names an existing Secret key holding the bearer token (32+ bytes) and becomes PLOEG_DEPLOY_TOKEN on ploegd only. Unset = the endpoint answers 404. | values.yaml, values.schema.json |
 | `deploys.tokenSecret` | object |  | Secret name and key of the deploy bearer token, forwarded to ploegd only as `PLOEG_DEPLOY_TOKEN`. Unset disables `POST /api/v1/deploys`. | values.schema.json |
 | `deploys.tokenSecret.key` | string |  |  | values.schema.json |
@@ -248,7 +297,7 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `executor.harness.dind` |  | `true` | privileged DinD sidecar + DOCKER_* wiring (OpenHands + gates need it) | values.yaml |
 | `executor.harness.entrypoint` |  | `""` | binary override (PLOEG_HARNESS_ENTRYPOINT); "" = adapter default | values.yaml |
 | `executor.harness.idleTimeout` |  | `15m` | Stops a harness that prints nothing and makes no model call for this long (`PLOEG_HARNESS_IDLE_TIMEOUT`). | values.yaml |
-| `executor.harness.image` |  | `""` | Agent image. REQUIRED with the executor enabled, here, in runnerImage or per team: Ploeg publishes no agent image, so the render fails without one. | values.yaml |
+| `executor.harness.image` |  | `""` | Agent image. REQUIRED with the executor enabled, here, in runnerImage or per team: Ploeg publishes no agent image, so the render fails without one. A claude-environment harness that sets none uses claudeRunner.image. | values.yaml |
 | `executor.harness.name` |  | `openhands` | openhands \| exec \| claude-code \| acp \| claude-environment (PLOEG_HARNESS) | values.yaml |
 | `executor.harness.outcomeFile` |  | `""` | exec harness only: OutcomeReport JSON path override | values.yaml |
 | `executor.harness.telemetry` |  | `{}` | OpenTelemetry collector the harness exports to (PLOEG_TELEMETRY). Set at executor, team or Role level; the most specific block wins whole. The worker adds ploeg.team, ploeg.role and ploeg.run.alias to the resource attributes. claude-code receives it (metrics, logs and traces). openhands and acp/openhands receive it (traces) only when listed in allowHarnesses: their tracing fails every prompt on an agent image whose lmnr rejects the SDK's call (agent-runner 1.3.0; 1.4.0 is fine, ADR-0113). acp/opencode and exec export nothing, and claude-environment sessions export from the self-hosted runner's own environment; the worker logs why it withholds the variables. {} exports nothing. | values.yaml |
@@ -267,6 +316,7 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `executor.pollingInterval` |  | `30` |  | values.yaml |
 | `executor.runnerImage` | string | `""` | DEPRECATED in favor of harness.image (kept as the fallback so existing value overrides keep working). agent-runner >=1.0.1 only: 1.0.0 mints LiteLLM keys without key_alias (400). | values.yaml, values.schema.json |
 | `executor.sandbox` | object |  | type=sandbox only: runs each Run in a kubernetes-sigs/agent-sandbox v1beta1 Sandbox created by a launcher pod. | values.yaml, values.schema.json |
+| `executor.sandbox.launcherGoMemLimit` | [goMemLimit](#gomemlimit) | `""` | "" = 90% of launcherResources.limits.memory; a Go size sets it; off renders none | values.yaml, values.schema.json |
 | `executor.sandbox.launcherResources.limits.cpu` |  | `50m` |  | values.yaml |
 | `executor.sandbox.launcherResources.limits.memory` |  | `32Mi` |  | values.yaml |
 | `executor.sandbox.launcherResources.requests.cpu` |  | `10m` |  | values.yaml |
@@ -341,9 +391,13 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `executor.workerSecurityContext.runAsNonRoot` |  | `true` |  | values.yaml |
 | `executor.workerSecurityContext.runAsUser` |  | `1000` |  | values.yaml |
 | `executor.workerSecurityContext.seccompProfile.type` |  | `RuntimeDefault` |  | values.yaml |
-| `image.repository` |  | `ghcr.io/ploeg-hq/ploegd` | The public release image. Point repository at a copy of the same digest, with imagePullSecrets, when the cluster pulls from a private registry. | values.yaml |
-| `image.tag` |  | `""` | empty = .Chart.AppVersion (kept in lockstep with the chart by the release train) | values.yaml |
+| `fullnameOverride` | string | `""` | Object name prefix; empty = the Helm release name | values.yaml, values.schema.json |
+| `goMemLimit` | [goMemLimit](#gomemlimit) | `""` | GOMEMLIMIT for ploegd. "" = 90% of resources.limits.memory, so the Go garbage collector works harder before the kernel kills the pod; nothing is rendered without a memory limit. A Go size such as 200MiB sets it; off renders none. env.GOMEMLIMIT, when set, wins. | values.yaml, values.schema.json |
+| `image.digest` | string | `""` | Digest of the appVersion image; the release writes it into the published chart | values.yaml, values.schema.json |
+| `image.repository` | string | `ghcr.io/ploeg-hq/ploegd` | The public release image. Point repository at a copy of the same digest, with imagePullSecrets, when the cluster pulls from a private registry. | values.yaml, values.schema.json |
+| `image.tag` | string | `""` | empty = .Chart.AppVersion (kept in lockstep with the chart by the release train) | values.yaml, values.schema.json |
 | `imagePullSecrets` |  | `[]` | e.g. [{name: harbor-pull}] for a private registry | values.yaml |
+| `instanceOverride` | string | `""` | app.kubernetes.io/instance label; empty = the Helm release name | values.yaml, values.schema.json |
 | `knowledgeGraph` | object | `{}` | ADR-0087/0088 (proposed): the Tenant's graphs on an Omnigraph server. With notesGraph, ploegd writes each learning a Run keeps as a Work Item Note and serves later Runs of the same root Work Item their notes. With conceptsGraph, ploegd serves each Run the reviewed concepts of its Tenant, Client and repository. Either or both; url needs at least one. Only ploegd gets the run actor's token; worker pods never do. The ploegd pod carries the label ploeg.webgrip.dev/component=daemon, which network policies can select to let ploegd, and no Run's pod, reach the graph. Unset = no notes. | values.yaml, values.schema.json |
 | `knowledgeGraph.conceptsGraph` | string |  |  | values.schema.json |
 | `knowledgeGraph.notesGraph` | string |  |  | values.schema.json |
@@ -353,6 +407,35 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `knowledgeGraph.runTokenSecret.key` | string |  |  | values.schema.json |
 | `knowledgeGraph.runTokenSecret.name` | string |  |  | values.schema.json |
 | `knowledgeGraph.url` | string |  |  | values.schema.json |
+| `mcp` | object |  | ploeg-mcp: Ploeg's MCP tools over Streamable HTTP for people's AI clients (ADR-0081), run from the ploegd image as `ploeg-mcp http`. Off by default. Its settings are in docs/how-to/serve-ploeg-mcp-over-https.md; the chart sets PLOEG_URL and PLOEG_MCP_LISTEN, and env carries the rest. | values.yaml, values.schema.json |
+| `mcp.annotations` | object | `{}` | on the Deployment, e.g. {reloader.stakater.com/auto: "true"} | values.yaml, values.schema.json |
+| `mcp.enabled` | boolean | `false` |  | values.yaml, values.schema.json |
+| `mcp.env` | object | `{}` | PLOEG_MCP_* settings as name: value, for example | values.yaml, values.schema.json |
+| `mcp.envFrom` | array | `[]` | e.g. [{secretRef: {name: ploeg-mcp-consumers}}] | values.yaml, values.schema.json |
+| `mcp.extraEnv` | array | `[]` | Further env entries, for a token from a Secret: | values.yaml, values.schema.json |
+| `mcp.goMemLimit` | [goMemLimit](#gomemlimit) | `""` | "" = 90% of resources.limits.memory; a Go size (100MiB) sets it; off renders none; env.GOMEMLIMIT wins | values.yaml, values.schema.json |
+| `mcp.httpRoute` | object |  | A Gateway API HTTPRoute to the Service. Route the host without authentication at the gateway: ploeg-mcp answers the 401 that starts a client's sign-in. | values.yaml, values.schema.json |
+| `mcp.httpRoute.annotations` | object | `{}` |  | values.yaml, values.schema.json |
+| `mcp.httpRoute.enabled` | boolean | `false` |  | values.yaml, values.schema.json |
+| `mcp.httpRoute.hostnames` | array | `[]` | e.g. [ploeg-mcp.example.com] | values.yaml, values.schema.json |
+| `mcp.httpRoute.name` | string | `""` | empty = the mcp name | values.yaml, values.schema.json |
+| `mcp.httpRoute.parentRefs` | array | `[]` | e.g. [{name: internal-gateway, namespace: gateway, sectionName: https}] | values.yaml, values.schema.json |
+| `mcp.name` | string | `""` | empty = <fullname>-mcp; Deployment, Service and the pods' app.kubernetes.io/name | values.yaml, values.schema.json |
+| `mcp.networkPolicy` | object |  | NetworkPolicies selecting the ploeg-mcp pods. The peers are your cluster's: ingress from the gateway, egress to the identity provider. | values.yaml, values.schema.json |
+| `mcp.networkPolicy.egress.enabled` | boolean | `false` |  | values.yaml, values.schema.json |
+| `mcp.networkPolicy.egress.name` | string | `""` | empty = <mcp name>-egress | values.yaml, values.schema.json |
+| `mcp.networkPolicy.egress.to` | array | `[]` | NetworkPolicyPeer list | values.yaml, values.schema.json |
+| `mcp.networkPolicy.ingress.enabled` | boolean | `false` |  | values.yaml, values.schema.json |
+| `mcp.networkPolicy.ingress.from` | array | `[]` | NetworkPolicyPeer list, e.g. [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: gateway}}}] | values.yaml, values.schema.json |
+| `mcp.networkPolicy.ingress.name` | string | `""` | empty = <mcp name>-ingress | values.yaml, values.schema.json |
+| `mcp.nodeSelector` | object | `{}` | empty = nodeSelector | values.yaml, values.schema.json |
+| `mcp.ploegUrl` | string | `""` | empty = this release's ploegd Service (executor.apiUrl when set) | values.yaml, values.schema.json |
+| `mcp.podAnnotations` | object | `{}` |  | values.yaml, values.schema.json |
+| `mcp.port` | integer | `8090` |  | values.yaml, values.schema.json |
+| `mcp.replicas` | integer | `1` |  | values.yaml, values.schema.json |
+| `mcp.resources.limits.memory` |  | `128Mi` |  | values.yaml |
+| `mcp.resources.requests.cpu` |  | `10m` |  | values.yaml |
+| `mcp.resources.requests.memory` |  | `32Mi` |  | values.yaml |
 | `monitoring` | object |  | Prometheus Operator objects for ploegd's GET /metrics. Both are off by default: they need the monitoring.coreos.com CRDs. The alerts and what to do about each are in docs/ops/alerts.md. | values.yaml, values.schema.json |
 | `monitoring.prometheusRule.alerts.awaitingReviewWithUnsuccessfulCI.enabled` | boolean | `true` |  | values.yaml, values.schema.json |
 | `monitoring.prometheusRule.alerts.awaitingReviewWithUnsuccessfulCI.for` | string | `90m` |  | values.yaml, values.schema.json |
@@ -463,6 +546,18 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 ## Shared value shapes
 
 Several keys above share one schema definition.
+
+### goMemLimit
+
+GOMEMLIMIT for a Go container: empty = 90% of its memory limit, a Go size sets it, off renders none
+
+| Key | Type | Description |
+| --- | --- | --- |
+
+### poolDuration
+
+| Key | Type | Description |
+| --- | --- | --- |
 
 ### sandboxOverride
 

@@ -2,6 +2,16 @@ env:
   PLOEG_DATABASE_URL:
     ploegd: PostgreSQL connection URI. The chart reads the whole `uri` key of the CNPG app Secret named by `database.existingSecret`.
     ploeg-worker: Controller-only. The worker refuses to start when it is set.
+  PLOEG_DB_MAX_CONNS: "Most connections ploegd's database pool opens (chart `database.pool.maxConns`). `0` leaves the pgx default, the greater of 4 and the node's CPU count. `pool_max_conns` in `PLOEG_DATABASE_URL` wins. A malformed value stops ploegd at boot, as it does for every `PLOEG_DB_*` variable."
+  PLOEG_DB_MIN_IDLE_CONNS: "Idle connections the pool keeps open so a claim after a quiet period does not wait for a new connection; capped at the pool's maximum (chart `database.pool.minIdleConns`). `pool_min_idle_conns` in the URL wins."
+  PLOEG_DB_MAX_CONN_LIFETIME: "Age at which a pooled connection is closed and replaced, so connections move to a new primary after a failover (chart `database.pool.maxConnLifetime`). `pool_max_conn_lifetime` in the URL wins."
+  PLOEG_DB_MAX_CONN_LIFETIME_JITTER: "Random extra lifetime per connection, so they are not all replaced at once (chart `database.pool.maxConnLifetimeJitter`). `pool_max_conn_lifetime_jitter` in the URL wins."
+  PLOEG_DB_MAX_CONN_IDLE_TIME: "Idle time after which the pool closes a connection above its idle minimum (chart `database.pool.maxConnIdleTime`). `pool_max_conn_idle_time` in the URL wins."
+  PLOEG_DB_HEALTH_CHECK_PERIOD: "How often the pool checks its idle connections (chart `database.pool.healthCheckPeriod`). `pool_health_check_period` in the URL wins."
+  PLOEG_DB_PING_TIMEOUT: "How long a health-check ping may take before the connection counts as broken; `0` waits indefinitely (chart `database.pool.pingTimeout`). `pool_ping_timeout` in the URL wins."
+  PLOEG_DB_APPLICATION_NAME: "`application_name` of every pooled connection, which names ploegd in `pg_stat_activity` and `pg_stat_statements` (chart `database.pool.applicationName`). `application_name` in the URL, or `PGAPPNAME`, wins."
+  PLOEG_DB_STATEMENT_TIMEOUT: "Server-side `statement_timeout` of every pooled connection; `0` sets none (chart `database.pool.statementTimeout`). Migrations lift it on their own connection. `statement_timeout` in the URL wins."
+  PLOEG_DB_IDLE_IN_TRANSACTION_TIMEOUT: "Server-side `idle_in_transaction_session_timeout` of every pooled connection, so a stuck transaction cannot hold row locks for long; `0` sets none (chart `database.pool.idleInTransactionTimeout`). `idle_in_transaction_session_timeout` in the URL wins."
   PLOEG_CONFIG: Path of the routing and roster file (the chart's `config:` value, mounted at `/etc/ploeg/ploeg.yaml`). Unset means the legacy `PLOEG_TARGET_MAP`, `PLOEG_TEAM_MAP` and `PLOEG_TEAM_PLANS` variables still apply.
   PLOEG_LLM_KEY_ISOLATION: "`proxy` keeps the per-Run model key in ploeg-worker and hands the harness a placeholder and a loopback URL (ADR-0034). The chart sets it only for a qualified harness without DinD."
   PLOEG_FORGE_TOKEN_ISOLATION: "`proxy` keeps a writer's forge token in ploeg-worker behind a loopback proxy limited to the Run's repository (ADR-0034). The chart sets it only for a qualified harness without DinD."
@@ -101,8 +111,9 @@ env:
   PLOEG_HARNESS_ENTRYPOINT: Harness binary override (chart `executor.harness.entrypoint`). Empty means the adapter default.
   PLOEG_HARNESS_ARGS: "`exec` harness only: JSON argv template with `{taskspec}` and `{taskfile}` (chart `executor.harness.args`)."
   PLOEG_OUTCOME_FILE: "`exec` harness only: OutcomeReport JSON path override (chart `executor.harness.outcomeFile`)."
-  PLOEG_HARNESS_TIMEOUT: Stops a harness that runs longer than this, with failure reason `timeout`.
-  PLOEG_HARNESS_IDLE_TIMEOUT: Stops a harness that prints nothing and makes no model call for this long, with failure reason `idle`.
+  LITELLM_KEY_BUDGET: "USD budget the per-run inference key is minted at when no Shift authorized the Run; a Shift's authorization replaces it (ADR-0012). The Run's prompt states the amount (ADR-0133). It must be a number: `0` mints an uncapped key, and the prompt then states no budget."
+  PLOEG_HARNESS_TIMEOUT: Stops a harness that runs longer than this, with failure reason `timeout`. The Run's prompt states it, or the adapter's own shorter prompt limit (ADR-0133).
+  PLOEG_HARNESS_IDLE_TIMEOUT: Stops a harness that prints nothing and makes no model call for this long, with failure reason `idle`. The Run's prompt states it unless the adapter keeps its own idle limit (ADR-0133).
   PLOEG_TOOLCHAINS: "JSON array of mounted toolchains, each `{name, path, env}`: `path` directories go in front of the harness's `PATH` and `env` is added. The worker refuses to claim when a directory is missing (chart `executor.harness.toolchains`)."
   PLOEG_TELEMETRY: "JSON `{endpoint, protocol, signals, resourceAttributes, logPrompts, logToolDetails, allowHarnesses}`: the OpenTelemetry collector the harness exports to. claude-code receives the variables (`OTEL_*` plus `CLAUDE_CODE_*`); openhands and acp/openhands receive the standard `OTEL_*` only when `allowHarnesses` lists `openhands`; every other harness gets none. Resource attributes carry `ploeg.team`, `ploeg.role` and `ploeg.run.alias`, and the worker logs at startup what it exports or why it withholds (chart `executor.harness.telemetry`)."
   PLOEG_VERIFY_COMMANDS: "JSON array of shell command lines. The harness gets them as the script `$PLOEG_VERIFY_SCRIPT`; after a writing Run opens or updates a pull request the worker runs them itself and posts the result (chart `executor.harness.verify`)."
@@ -110,8 +121,8 @@ env:
   PLOEG_ACP_PROFILE: "`acp` harness only: `opencode`, `qwen-code`, `goose`, `openhands` or `custom` (chart `executor.harness.acp.profile`). See [ACP profiles](../contracts/acp-profiles.md)."
   PLOEG_ACP_ARGV: "`acp` harness only: the whole launch command as a JSON array; required when the profile is `custom`."
   PLOEG_ACP_PERMISSION_MODE: "`acp` harness only: `allow_always` (default), `allow_read_only` or `deny_all`."
-  PLOEG_ACP_PROMPT_TIMEOUT: "`acp` harness only: prompt timeout as a Go duration. Empty means the adapter default (45m)."
-  PLOEG_ACP_IDLE_TIMEOUT: "`acp` harness only: timeout without protocol traffic. Empty means the adapter default (10m)."
+  PLOEG_ACP_PROMPT_TIMEOUT: "`acp` harness only: prompt timeout as a Go duration. Empty means the adapter default (45m). The Run's prompt states the earlier of it and `PLOEG_HARNESS_TIMEOUT` (ADR-0133)."
+  PLOEG_ACP_IDLE_TIMEOUT: "`acp` harness only: timeout without protocol traffic. Empty means the adapter default (10m). The Run's prompt states it (ADR-0133)."
   PLOEG_ACP_CONFIG_JSON: "`acp` harness only: replaces the generated agent configuration of the `opencode` or `qwen-code` profile wholesale. The `goose` and `openhands` profiles refuse it at startup."
   KUBECONFIG: Administrative configuration. The worker refuses to start when it is set.
   PATH: Passed to `git` and `openspec` subprocesses; also on the harness allowlist.

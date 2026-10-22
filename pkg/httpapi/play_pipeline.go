@@ -130,3 +130,9 @@ func (s *Server) recordPlayIndentation(ctx context.Context, fp provider.ForgePro
 		s.Log.Error("pull request file indentation not recorded", "provider", fp.Name(), "repo", repo, "pr", number, "err", err)
 	}
 }
+
+// WaitBackground blocks until every pull request read the server started in
+// the background has finished. Each read is bounded by its own timeout.
+func (s *Server) WaitBackground() {
+	s.pipelineWork.Wait()
+}

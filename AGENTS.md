@@ -10,6 +10,7 @@ Every releasable merge to `development` (`feat`, `fix`, `perf`, `refactor`, `rev
 
 - `cmd/*` is only environment-to-config wiring. Run logic lives in `pkg/worker`.
 - `pkg/store/migrations/` is append-only. Add the next migration; never edit an existing one.
+- A migration that adds a table or column dashboards should read extends `ploeg_grant_observer()` and calls it; never grant credentials or people's and agents' text ([read access](docs/how-to/give-dashboards-read-access.md)).
 - Schemas in `docs/contracts/` and their Go types change together.
 - Tests fake external services with `net/http/httptest`. A bug fix lands with a regression test that fails on the old code.
 

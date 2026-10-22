@@ -26,6 +26,7 @@ These runbooks cover the recurring operator tasks for a cluster deployment of Pl
 | [Ask Ploeg from an AI client over MCP](ask-ploeg-from-an-ai-client.md) | A person wants to ask Claude Code, Codex or Cursor what waits for them, why, and what it cost |
 | [Serve Ploeg's MCP tools over HTTPS with a browser sign-in](serve-ploeg-mcp-over-https.md) | People should reach Ploeg's MCP tools from Claude Code, VS Code or Cursor through one URL and their identity provider, without a local binary or token |
 | [Read pull requests others open](read-pull-requests-others-open.md) | A dependency bot, a designer or a client opens pull requests and the people who merge them want a Team's report on each one, on the pull request |
+| [Give dashboards and exporters read access](give-dashboards-read-access.md) | Grafana, a metrics exporter or the KEDA scaler reads the database with `pg_read_all_data`, or a reader gets `permission denied` |
 
 For accounts whose final cost is uncertain, [Reconcile uncertainty](../ops/managed-workers.md#reconcile-uncertainty) sets the rules these runbooks follow.
 

@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -46,14 +47,78 @@ func TestDefaultHTTPTimeoutsBoundEveryRead(t *testing.T) {
 	if srv.ReadTimeout < srv.ReadHeaderTimeout {
 		t.Errorf("ReadTimeout %s is shorter than ReadHeaderTimeout %s", srv.ReadTimeout, srv.ReadHeaderTimeout)
 	}
-	if srv.WriteTimeout != 0 {
-		t.Errorf("WriteTimeout %s also bounds handler time; deploy checks and webhooks call out to forges and trackers", srv.WriteTimeout)
+	if srv.WriteTimeout <= 0 {
+		t.Errorf("WriteTimeout is unset, so a client that never reads its response holds the connection forever")
+	}
+	if srv.WriteTimeout < 2*time.Minute {
+		t.Errorf("WriteTimeout %s is shorter than a handler that waits on several 30s forge or tracker calls", srv.WriteTimeout)
+	}
+	if srv.MaxHeaderBytes <= 0 || srv.MaxHeaderBytes > 64<<10 {
+		t.Errorf("MaxHeaderBytes %d; workers and webhooks send small headers, 64 KiB is the cap", srv.MaxHeaderBytes)
+	}
+}
+
+func TestSlowHeaderClientIsDisconnectedWithinTheHeaderBudget(t *testing.T) {
+	budget := 300 * time.Millisecond
+	addr := serve(t, webhookSink(), httpTimeouts{readHeader: budget, read: 10 * time.Second, write: 10 * time.Second, idle: 10 * time.Second})
+
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	start := time.Now()
+	if _, err := fmt.Fprint(conn, "POST /webhooks/tracker/vikunja HTTP/1.1\r\nHost: ploegd\r\n"); err != nil {
+		t.Fatal(err)
+	}
+	stop := make(chan struct{})
+	defer close(stop)
+	go func() {
+		tick := time.NewTicker(50 * time.Millisecond)
+		defer tick.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-tick.C:
+				if _, err := conn.Write([]byte("X-Slow: a\r\n")); err != nil {
+					return
+				}
+			}
+		}
+	}()
+
+	_ = conn.SetReadDeadline(time.Now().Add(budget + 3*time.Second))
+	_, err = io.Copy(io.Discard, conn)
+	elapsed := time.Since(start)
+	if errors.Is(err, os.ErrDeadlineExceeded) {
+		t.Fatalf("a client trickling its headers still held the connection after %s; the header budget is %s", elapsed, budget)
+	}
+	if elapsed > budget+time.Second {
+		t.Errorf("connection closed after %s; the header budget is %s", elapsed, budget)
+	}
+}
+
+func TestOversizedRequestHeadersAreRefused(t *testing.T) {
+	addr := serve(t, webhookSink(), defaultHTTPTimeouts)
+	req, err := http.NewRequest(http.MethodPost, "http://"+addr+"/webhooks/tracker/vikunja", bytes.NewReader([]byte("{}")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("X-Padding", strings.Repeat("a", 2*maxRequestHeaderBytes))
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusRequestHeaderFieldsTooLarge {
+		t.Fatalf("a %d-byte header answered %d, want 431", 2*maxRequestHeaderBytes, resp.StatusCode)
 	}
 }
 
 func TestSlowBodyClientIsDisconnectedWithinTheReadBudget(t *testing.T) {
 	budget := 500 * time.Millisecond
-	addr := serve(t, webhookSink(), httpTimeouts{readHeader: budget, read: budget, idle: budget})
+	addr := serve(t, webhookSink(), httpTimeouts{readHeader: budget, read: budget, write: budget, idle: budget})
 
 	conn, err := net.Dial("tcp", addr)
 	if err != nil {

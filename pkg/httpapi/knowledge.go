@@ -2,9 +2,7 @@ package httpapi
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -273,7 +271,10 @@ func (s *Server) handleRunNotes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req harness.RunNotesRequest
-	if err := json.NewDecoder(io.LimitReader(r.Body, liveNotesBodyLimit)).Decode(&req); err != nil {
+	if err := decodeBounded(w, r, liveNotesBodyLimit, &req); err != nil {
+		if refuseOversizedBody(w, err) {
+			return
+		}
 		http.Error(w, "notes must be a JSON runNotesRequest", http.StatusBadRequest)
 		return
 	}

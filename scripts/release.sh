@@ -60,11 +60,11 @@ docker buildx build --file ops/claude-runner/Dockerfile --platform linux/amd64 \
   --label "org.opencontainers.image.version=$version" --label "org.opencontainers.image.revision=$commit" \
   --provenance=mode=max --sbom=true --metadata-file dist/claude-runner-image-metadata.json \
   --tag "$runner_image" --push .
-helm package ops/helm/ploeg --version "$version" --app-version "$version" --destination dist
-printf '%s' "$GH_TOKEN" | helm registry login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
-helm push "dist/ploeg-$version.tgz" oci://ghcr.io/ploeg-hq/charts 2>&1 | tee dist/chart-push.txt
 image_digest=$(jq -r '."containerimage.digest"' dist/image-metadata.json)
 runner_digest=$(jq -r '."containerimage.digest"' dist/claude-runner-image-metadata.json)
+bash scripts/package-chart.sh "$version" "$image_digest" "$runner_digest" dist
+printf '%s' "$GH_TOKEN" | helm registry login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+helm push "dist/ploeg-$version.tgz" oci://ghcr.io/ploeg-hq/charts 2>&1 | tee dist/chart-push.txt
 chart_digest=$(sed -n 's/^Digest: *//p' dist/chart-push.txt)
 signed_artifacts=("ghcr.io/ploeg-hq/ploegd@$image_digest" "ghcr.io/ploeg-hq/claude-runner@$runner_digest" "ghcr.io/ploeg-hq/charts/ploeg@$chart_digest")
 signer_identity="^https://github\.com/ploeg-hq/ploeg/\.github/workflows/release\.yml@refs/(heads/development|heads/main|tags/v0\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?)$"

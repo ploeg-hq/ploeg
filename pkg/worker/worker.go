@@ -524,6 +524,15 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 		}
 	}
 	w.Log.Info("prepared the Run's sandbox", "skills", len(skillSet), "toolchains", len(w.Cfg.Toolchains), "verify_commands", len(verifyCommands))
+	// The Shift's authorization is the ceiling the credential must be minted
+	// at: min(roleCap, poolRemaining), computed under the Shift row lock
+	// (ADR-0012). Zero = no Shift authorized this run, so the env budget
+	// stands, exactly as on the pre-Shift path.
+	budget := w.Cfg.KeyBudget
+	if claimed.Authorized > 0 {
+		budget = claimed.Authorized
+	}
+	spec.Limits = runLimits(w.Cfg, w.Adapter, claimed, budget)
 	harnessSpec, harnessForgeToken := spec, forgeToken
 	var gitEnv []string
 	if writes {
@@ -569,15 +578,6 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	env.BaseEnv = append(env.BaseEnv, gitEnv...)
 	env.Transcript = w.startTranscript(claimed, leaks.watch)
 	defer closeTranscript(env.Transcript)
-
-	// The Shift's authorization is the ceiling the credential must be minted
-	// at: min(roleCap, poolRemaining), computed under the Shift row lock
-	// (ADR-0012). Zero = no Shift authorized this run, so the env budget
-	// stands, exactly as on the pre-Shift path.
-	budget := w.Cfg.KeyBudget
-	if claimed.Authorized > 0 {
-		budget = claimed.Authorized
-	}
 
 	started := time.Now()
 	w.Log.Info("starting headless harness run", "harness", w.Adapter.Name(), "cwd", cloneDir,

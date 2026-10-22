@@ -1,0 +1,119 @@
+{{- if .Values.claudeRunner.enabled }}
+{{- $r := .Values.claudeRunner }}
+{{- $name := include "ploeg.claudeRunnerName" . }}
+{{- if not ($r.environmentSecret | default dict).name }}
+{{- fail "claudeRunner.environmentSecret.name is required when claudeRunner.enabled is true: the Secret holding SELF_HOSTED_RUNNER_ENVIRONMENT_SECRET, which registers the runner with its Claude environment" }}
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    app.kubernetes.io/name: {{ $name }}
+    {{- include "ploeg.componentLabels" (dict "root" .) | nindent 4 }}
+  {{- with $r.annotations }}
+  annotations: {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  replicas: {{ $r.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ $name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ $name }}
+        app.kubernetes.io/part-of: ploeg
+        ploeg.webgrip.dev/component: claude-runner
+      {{- with $r.podAnnotations }}
+      annotations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- with $r.runtimeClassName }}
+      runtimeClassName: {{ . }}
+      {{- end }}
+      automountServiceAccountToken: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with ($r.nodeSelector | default .Values.nodeSelector) }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      terminationGracePeriodSeconds: {{ $r.terminationGracePeriodSeconds }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: runner
+          image: {{ include "ploeg.claudeRunnerImage" . }}
+          args:
+            - self-hosted-runner
+            - --base-dir
+            - /home/runner/work
+            - --hooks-dir
+            - /opt/ploeg/claude-runner/hooks
+            {{- range (concat ($r.args | default list) ($r.extraArgs | default list)) }}
+            - {{ . | quote }}
+            {{- end }}
+          env:
+            - name: PLOEG_URL
+              value: {{ $r.ploegUrl | default (include "ploeg.apiUrl" .) | quote }}
+            {{- range $key, $value := $r.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+            {{- with $r.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          envFrom:
+            - secretRef:
+                name: {{ $r.environmentSecret.name }}
+          ports:
+            - name: health
+              containerPort: 8080
+          readinessProbe:
+            httpGet: {path: /healthz, port: health}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /healthz, port: health}
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          {{- with $r.resources }}
+          resources: {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: work
+              mountPath: /home/runner/work
+      volumes:
+        - name: work
+          emptyDir:
+            sizeLimit: {{ $r.workSizeLimit }}
+{{- end }}
+{{- range .Values.claudeRunner.loginVolumes }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ required "claudeRunner.loginVolumes[].name is required" .name }}
+  labels:
+    {{- include "ploeg.componentLabels" (dict "root" $) | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- with .storageClassName }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .size | default "1Gi" }}
+{{- end }}

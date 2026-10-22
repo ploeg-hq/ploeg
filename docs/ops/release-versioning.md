@@ -8,11 +8,15 @@ Every releasable merge to `development`, the trunk, cuts a candidate with no han
 
 1. The pull request title and commits are conventional. `feat`, `fix`, `perf`, `refactor`, `revert` and dependency bumps release; `docs`, `ci`, `test`, `chore` and the rest do not. A breaking change bumps the minor version, never the major.
 2. On the push to `development`, [the release candidate workflow](../../.github/workflows/release-candidate.yml) runs semantic-release with [`.releaserc.cjs`](../../.releaserc.cjs) and the shared `@webgrip/semantic-release-config`. `scripts/release.sh check` refuses anything but a new `v0.x.y-rc.N`. It then tags the merged commit and opens a draft GitHub release with the generated notes. Nothing is written back to `development`: `Chart.yaml` and `CHANGELOG.md` in git keep the last stable values, because the `Protect development` ruleset refuses a push that skips its `verify` check and cannot exempt GitHub Actions.
-3. The same run calls [the release workflow](../../.github/workflows/release.yml), which checks tag ancestry, runs the full standalone gates, pushes the images, packages the chart with the tag's version as `version` and `appVersion`, uploads the assets to the draft and publishes it as a prerelease.
+3. The same run calls [the release workflow](../../.github/workflows/release.yml), which checks tag ancestry, runs the full standalone gates, pushes the images, packages the chart with the tag's version as `version` and `appVersion` and the two pushed image digests as its defaults ([scripts/package-chart.sh](../../scripts/package-chart.sh)), uploads the assets to the draft and publishes it as a prerelease.
 
 ## Stable releases
 
 A stable `v0.x.y` stays a reviewed act. Merge `development` into `main`, set `version` and `appVersion` in `ops/helm/ploeg/Chart.yaml` and the changelog in a release preparation commit on `main`, then push an annotated tag on that commit. The tag push starts the release workflow. Do not use 1.x without a separate maturity decision.
+
+## The published chart pins its images
+
+`release.sh` reads the digests BuildKit reports for `ploegd` and `claude-runner` and hands them to [scripts/package-chart.sh](../../scripts/package-chart.sh), which writes them into a copy of the chart as `image.digest` and `claudeRunner.image.digest` before `helm package`. A cluster that sets no image therefore runs the release's own builds by digest: ploegd, its workers, `ploeg-mcp`, `claude-runner` and a `claude-environment` worker. `values.yaml` in git keeps both digests empty. [scripts/test-package-chart.sh](../../scripts/test-package-chart.sh), run by `mise run verify`, fails when the packaged chart renders an image without a digest or when `release.sh` packages the chart any other way.
 
 ## After publication
 
@@ -21,7 +25,7 @@ A stable `v0.x.y` stays a reviewed act. Merge `development` into `main`, set `ve
 
 ## Consumer pull requests
 
-When the repository variable `RELEASE_CONSUMERS` is set, the `consumers` job of the release candidate workflow opens each consumer's update after the contract bundle is published ([ADR 0127](../adrs/0127-a-release-opens-each-consumers-update-by-running-the-consumers-own-recipe.md)). The variable is a JSON list:
+When the repository variable `RELEASE_CONSUMERS` is set, the `consumers` job of the release candidate workflow calls [the release consumers workflow](../../.github/workflows/release-consumers.yml), which opens each consumer's update after the contract bundle is published ([ADR 0127](../adrs/0127-a-release-opens-each-consumers-update-by-running-the-consumers-own-recipe.md)). The variable is a JSON list:
 
 ```json
 [{"forge": "forgejo", "url": "https://forge.example", "repo": "owner/name", "base": "development", "recipe": "scripts/consume-release.sh", "message": "fix(deps): update ploeg to {version}"}]
@@ -38,7 +42,9 @@ RELEASE_CONSUMER='{"forge":"forgejo","url":"https://forge.example","repo":"owner
 RELEASE_CONSUMERS_DRY_RUN=true python3 scripts/release-consumers.py v0.2.0-rc.28
 ```
 
-A failed `consumers` job is rerun from the workflow run; the rerun updates the same branch and pull request.
+A failed `consumers` job is retried by dispatching the release consumers workflow with the release tag. It runs the script from `development`, so a fix to the script reaches a release that already failed, which rerunning the old job cannot do. The retry updates the same branch and pull request.
+
+The script sends its own `User-Agent`. A forge behind Cloudflare's Browser Integrity Check refuses Python's default one with error 1010, which stopped the first delivery at `GET /user`.
 
 A maintainer can dispatch the release workflow with an existing tag whose publication is missing; publication refuses a published release, a draft that already carries assets, and existing artifacts.
 

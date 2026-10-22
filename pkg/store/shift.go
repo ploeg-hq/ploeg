@@ -743,15 +743,17 @@ func (s *Store) ShiftInfoByID(ctx context.Context, shiftID int64) (ShiftInfo, er
 	return si, err
 }
 
+const liveShiftForItemQuery = `
+		SELECT s.id, s.work_item_id, s.team, s.round, s.branch, w.origin FROM shifts s
+		JOIN work_items w ON w.id = s.work_item_id
+		WHERE s.work_item_id = $1 AND s.closed_at IS NULL AND NOT EXISTS(SELECT 1 FROM operator_executions e WHERE e.shift_id=s.id)`
+
 // LiveShiftForItem returns the live Shift on a Work Item, or nil. This is
 // what makes EnsureShift idempotent: the read answers "already open", and the
 // unique partial index settles the race two openers can still run into.
 func (s *Store) LiveShiftForItem(ctx context.Context, workItemID int64) (*ShiftInfo, error) {
 	var si ShiftInfo
-	err := s.pool.QueryRow(ctx, `
-		SELECT s.id, s.work_item_id, s.team, s.round, s.branch, w.origin FROM shifts s
-		JOIN work_items w ON w.id = s.work_item_id
-		WHERE s.work_item_id = $1 AND s.closed_at IS NULL AND NOT EXISTS(SELECT 1 FROM operator_executions e WHERE e.shift_id=s.id)`, workItemID).
+	err := s.pool.QueryRow(ctx, liveShiftForItemQuery, workItemID).
 		Scan(&si.ID, &si.WorkItemID, &si.Team, &si.Round, &si.Branch, &si.Origin)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil

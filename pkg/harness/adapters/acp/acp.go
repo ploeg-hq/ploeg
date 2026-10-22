@@ -94,6 +94,12 @@ func withDefaults(o Options) Options {
 func (a *Adapter) Name() string     { return "acp" }
 func (a *Adapter) ExpectsLLM() bool { return true }
 
+// PromptLimits returns the prompt wall and the idle watchdog over protocol
+// activity (harness.PromptLimiter).
+func (a *Adapter) PromptLimits() (prompt, idle time.Duration) {
+	return a.opts.PromptTimeout, a.opts.IdleTimeout
+}
+
 // Profile names the agent profile the adapter launches, such as opencode.
 func (a *Adapter) Profile() string { return a.profile.Name }
 

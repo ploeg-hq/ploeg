@@ -1,0 +1,279 @@
+---
+# Source: ploeg/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ploeg-core
+  labels:
+    app.kubernetes.io/name: ploeg
+    app.kubernetes.io/instance: ploeg-core
+    app.kubernetes.io/version: "CHART-VERSION"
+    helm.sh/chart: ploeg-CHART-VERSION
+    app.kubernetes.io/managed-by: Helm
+automountServiceAccountToken: false
+---
+# Source: ploeg/templates/mcp.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: ploeg-core-mcp
+  labels:
+    app.kubernetes.io/name: ploeg-core-mcp
+    app.kubernetes.io/part-of: ploeg
+    app.kubernetes.io/instance: ploeg-core
+    app.kubernetes.io/version: "CHART-VERSION"
+    helm.sh/chart: ploeg-CHART-VERSION
+    app.kubernetes.io/managed-by: Helm
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: ploeg-core-mcp
+  ports:
+    - name: http
+      port: 8090
+      targetPort: http
+      protocol: TCP
+---
+# Source: ploeg/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: ploeg-core
+  labels:
+    app.kubernetes.io/name: ploeg
+    app.kubernetes.io/instance: ploeg-core
+    app.kubernetes.io/version: "CHART-VERSION"
+    helm.sh/chart: ploeg-CHART-VERSION
+    app.kubernetes.io/managed-by: Helm
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: ploeg
+    app.kubernetes.io/instance: ploeg-core
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+# Source: ploeg/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ploeg-core
+  labels:
+    app.kubernetes.io/name: ploeg
+    app.kubernetes.io/instance: ploeg-core
+    app.kubernetes.io/version: "CHART-VERSION"
+    helm.sh/chart: ploeg-CHART-VERSION
+    app.kubernetes.io/managed-by: Helm
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ploeg
+      app.kubernetes.io/instance: ploeg-core
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ploeg
+        app.kubernetes.io/instance: ploeg-core
+        ploeg.webgrip.dev/component: daemon
+    spec:
+      serviceAccountName: ploeg-core
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: ploegd
+          image: ghcr.io/ploeg-hq/ploegd:CHART-VERSION
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: PLOEG_LISTEN
+              value: ":8080"
+            - name: PLOEG_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: ploeg-db-app
+                  key: uri
+            - name: PLOEG_DB_APPLICATION_NAME
+              value: "ploegd"
+            - name: PLOEG_DB_HEALTH_CHECK_PERIOD
+              value: "30s"
+            - name: PLOEG_DB_IDLE_IN_TRANSACTION_TIMEOUT
+              value: "60s"
+            - name: PLOEG_DB_MAX_CONN_IDLE_TIME
+              value: "5m"
+            - name: PLOEG_DB_MAX_CONN_LIFETIME
+              value: "30m"
+            - name: PLOEG_DB_MAX_CONN_LIFETIME_JITTER
+              value: "5m"
+            - name: PLOEG_DB_MAX_CONNS
+              value: "8"
+            - name: PLOEG_DB_MIN_IDLE_CONNS
+              value: "2"
+            - name: PLOEG_DB_PING_TIMEOUT
+              value: "5s"
+            - name: PLOEG_DB_STATEMENT_TIMEOUT
+              value: "30s"
+            - name: GOMEMLIMIT
+              value: "230MiB"
+            - name: PLOEG_FORGEJO_URL
+              value: "http://forgejo-http.forgejo.svc.cluster.local:3000"
+            - name: PLOEG_FORGEJO_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: agent-builder-token
+                  key: FORGEJO_TOKEN
+            - name: PLOEG_FORGEJO_BOT
+              value: "agent-builder"
+            - name: PLOEG_TARGET_FORGE
+              value: "forgejo"
+            - name: PLOEG_DEFAULT_TEAM
+              value: "default"
+            - name: PLOEG_LEASE_TTL
+              value: "5m"
+            - name: PLOEG_REPORT_RUN_DASHBOARD_URL
+              value: ""
+            - name: PLOEG_REPORT_SPEND_DASHBOARD_URL
+              value: ""
+            - name: PLOEG_REPORT_TEAM_DASHBOARD_URL
+              value: ""
+            - name: PLOEG_REPORT_WORK_ITEM_URL
+              value: ""
+            - name: PLOEG_SWEEP_INTERVAL
+              value: "15s"
+            - name: PLOEG_TEAM_MAP
+              value: ""
+            - name: PLOEG_USAGE_REPORT
+              value: "true"
+            - name: LITELLM_ADMIN_URL
+              value: "http://litellm.ai.svc.cluster.local:4000"
+            - name: LITELLM_MASTER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: agent-litellm-master
+                  key: LITELLM_MASTER_KEY
+            - name: PLOEG_WORKER_AUTH_MODE
+              value: "managed"
+            - name: PLOEG_WORKER_SIGNING_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ploeg-worker-signing
+                  key: key
+            - name: PLOEG_WORKER_BOOTSTRAPS
+              valueFrom:
+                secretKeyRef:
+                  name: ploeg-worker-bootstrap
+                  key: registry.json
+            - name: PLOEG_WORKER_LLM_POLICIES
+              value: "[]"
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 20
+          lifecycle:
+            preStop:
+              sleep:
+                seconds: 5
+          resources:
+            limits:
+              cpu: 100m
+              memory: 256Mi
+            requests:
+              cpu: 100m
+              memory: 256Mi
+---
+# Source: ploeg/templates/mcp.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ploeg-core-mcp
+  labels:
+    app.kubernetes.io/name: ploeg-core-mcp
+    app.kubernetes.io/part-of: ploeg
+    app.kubernetes.io/instance: ploeg-core
+    app.kubernetes.io/version: "CHART-VERSION"
+    helm.sh/chart: ploeg-CHART-VERSION
+    app.kubernetes.io/managed-by: Helm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ploeg-core-mcp
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ploeg-core-mcp
+        app.kubernetes.io/part-of: ploeg
+        ploeg.webgrip.dev/component: mcp
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: ploeg-mcp
+          image: ghcr.io/ploeg-hq/ploegd:CHART-VERSION
+          command: ["/usr/local/bin/ploeg-mcp"]
+          args: ["http"]
+          env:
+            - name: PLOEG_URL
+              value: "http://ploeg-core:8080"
+            - name: PLOEG_MCP_LISTEN
+              value: ":8090"
+            - name: GOMEMLIMIT
+              value: "115MiB"
+          ports:
+            - name: http
+              containerPort: 8090
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            initialDelaySeconds: 2
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            limits:
+              memory: 128Mi
+            requests:
+              cpu: 10m
+              memory: 32Mi

@@ -1,12 +1,132 @@
+# Object names and the instance label. Empty = the Helm release name. A
+# cluster that moves Ploeg into another Helm release, such as an operator
+# consumer's chart with Ploeg as a subchart, sets both to the old release
+# name so the new release adopts the same objects: a Deployment's selector
+# cannot change.
+fullnameOverride: ""
+instanceOverride: ""
+
 image:
   # The public release image. Point repository at a copy of the same digest,
   # with imagePullSecrets, when the cluster pulls from a private registry.
   repository: ghcr.io/ploeg-hq/ploegd
   tag: "" # empty = .Chart.AppVersion (kept in lockstep with the chart by the release train)
+  # The sha256 digest of the appVersion image. The release workflow writes
+  # it into the published chart (scripts/package-chart.sh), so a cluster that
+  # sets no image runs this release by digest. Applied only while tag is
+  # empty or the appVersion; a tag of the form <version>@sha256:<digest>
+  # pins another build as written.
+  digest: ""
 imagePullSecrets: [] # e.g. [{name: harbor-pull}] for a private registry
 
 service:
   port: 8080
+
+# ploeg-mcp: Ploeg's MCP tools over Streamable HTTP for people's AI clients
+# (ADR-0081), run from the ploegd image as `ploeg-mcp http`. Off by default.
+# Its settings are in docs/how-to/serve-ploeg-mcp-over-https.md; the chart
+# sets PLOEG_URL and PLOEG_MCP_LISTEN, and env carries the rest.
+mcp:
+  enabled: false
+  name: "" # empty = <fullname>-mcp; Deployment, Service and the pods' app.kubernetes.io/name
+  replicas: 1
+  port: 8090
+  ploegUrl: "" # empty = this release's ploegd Service (executor.apiUrl when set)
+  # PLOEG_MCP_* settings as name: value, for example
+  #   PLOEG_MCP_RESOURCE: https://ploeg-mcp.example.com/mcp
+  #   PLOEG_MCP_ISSUER: https://id.example.com/application/o/ploeg-mcp/
+  #   PLOEG_MCP_CLIENT_IDS: ploeg-mcp
+  #   PLOEG_MCP_GROUPS: '[{"group":"ploeg-readers","tokenEnv":"PLOEG_MCP_TOKEN_READERS"}]'
+  env: {}
+  # Further env entries, for a token from a Secret:
+  #   - name: PLOEG_MCP_TOKEN_READERS
+  #     valueFrom: {secretKeyRef: {name: ploeg-mcp-reader, key: token}}
+  extraEnv: []
+  envFrom: [] # e.g. [{secretRef: {name: ploeg-mcp-consumers}}]
+  annotations: {} # on the Deployment, e.g. {reloader.stakater.com/auto: "true"}
+  podAnnotations: {}
+  nodeSelector: {} # empty = nodeSelector
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 128Mi
+  goMemLimit: "" # "" = 90% of resources.limits.memory; a Go size (100MiB) sets it; off renders none; env.GOMEMLIMIT wins
+  # NetworkPolicies selecting the ploeg-mcp pods. The peers are your
+  # cluster's: ingress from the gateway, egress to the identity provider.
+  networkPolicy:
+    ingress:
+      enabled: false
+      name: "" # empty = <mcp name>-ingress
+      from: [] # NetworkPolicyPeer list, e.g. [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: gateway}}}]
+    egress:
+      enabled: false
+      name: "" # empty = <mcp name>-egress
+      to: [] # NetworkPolicyPeer list
+  # A Gateway API HTTPRoute to the Service. Route the host without
+  # authentication at the gateway: ploeg-mcp answers the 401 that starts a
+  # client's sign-in.
+  httpRoute:
+    enabled: false
+    name: "" # empty = the mcp name
+    annotations: {}
+    hostnames: [] # e.g. [ploeg-mcp.example.com]
+    parentRefs: [] # e.g. [{name: internal-gateway, namespace: gateway, sectionName: https}]
+
+# claude-runner: the self-hosted Claude environment runner that executes
+# claude-environment Runs as Claude Code sessions (ADR-0084), from the
+# release's claude-runner image. Off by default. ops/claude-runner/README.md
+# explains the runner settings. The pod reaches Anthropic, the forge's HTTPS
+# host and ploegd; write that egress policy for your CNI, because it names
+# hosts a NetworkPolicy cannot.
+claudeRunner:
+  enabled: false
+  name: "" # empty = <fullname>-claude-runner; Deployment and the pods' app.kubernetes.io/name
+  # Also the default harness image of a claude-environment team or Role that
+  # sets none. Digest and tag follow the same rules as image.
+  image:
+    repository: ghcr.io/ploeg-hq/claude-runner
+    tag: ""
+    digest: ""
+  replicas: 1
+  # REQUIRED when enabled: the Secret with SELF_HOSTED_RUNNER_ENVIRONMENT_SECRET,
+  # the environment key from the claude.ai admin page. Loaded with envFrom.
+  environmentSecret:
+    name: ""
+  ploegUrl: "" # empty = this release's ploegd Service (executor.apiUrl when set)
+  runtimeClassName: "" # e.g. kata: session code is model-directed
+  # Runner flags after self-hosted-runner --base-dir and --hooks-dir. One
+  # session per pod, so nothing a session leaves behind is seen by the next.
+  args:
+    - --capacity
+    - "1"
+    - --release-idle-session-min
+    - "1"
+    - --kill-session-after-min
+    - "90"
+    - --drain-grace-sec
+    - "600"
+    - --remove-session-state
+  # Appended to args, e.g. [--git-host-rewrite, "forgejo-http.forgejo.svc.cluster.local:3000=forgejo.example.com"]
+  extraArgs: []
+  env: {} # name: value, e.g. OTEL_EXPORTER_OTLP_ENDPOINT for the sessions' telemetry
+  extraEnv: []
+  annotations: {}
+  podAnnotations: {}
+  nodeSelector: {} # empty = nodeSelector
+  terminationGracePeriodSeconds: 90
+  workSizeLimit: 10Gi
+  resources:
+    requests:
+      cpu: 50m
+      memory: 1Gi
+    limits:
+      memory: 4Gi
+  # PersistentVolumeClaims for harness.claudeEnvironment.loginVolume, one per
+  # Team login. Rendered even with the runner off, and kept on uninstall
+  # (helm.sh/resource-policy: keep): a person signs in to each one.
+  loginVolumes: [] # e.g. [{name: team-claude-login, size: 1Gi, storageClassName: standard}]
 
 # Prometheus Operator objects for ploegd's GET /metrics. Both are off by
 # default: they need the monitoring.coreos.com CRDs. The alerts and what to do
@@ -163,6 +283,26 @@ database:
   existingSecret:
     name: ""
     key: uri
+  # ploegd's connection pool, rendered as the PLOEG_DB_* variables. A setting
+  # the connection URI names itself (pool_max_conns, pool_min_idle_conns,
+  # pool_max_conn_lifetime, application_name, statement_timeout, ...) wins
+  # over its value here. null leaves a setting to ploegd's default; 0 turns a
+  # timeout off. Acquiring a connection has no timeout of its own: a caller
+  # waits until its request or loop context ends, which the
+  # ploeg_db_pool_canceled_acquires_total metric counts.
+  pool:
+    maxConns: 8
+    minIdleConns: 2
+    maxConnLifetime: 30m
+    maxConnLifetimeJitter: 5m
+    maxConnIdleTime: 5m
+    healthCheckPeriod: 30s
+    pingTimeout: 5s
+    applicationName: ploegd
+    # Server-side limits on every pooled connection. Migrations lift the
+    # statement timeout on their own connection.
+    statementTimeout: 30s
+    idleInTransactionTimeout: 60s
 
 # The Vikunja webhook secret (PLOEG_VIKUNJA_SECRET). Unset = no env is
 # rendered and every Vikunja webhook is rejected; ploegd still starts.
@@ -182,6 +322,12 @@ resources:
   limits:
     cpu: 100m
     memory: 256Mi
+
+# GOMEMLIMIT for ploegd. "" = 90% of resources.limits.memory, so the Go
+# garbage collector works harder before the kernel kills the pod; nothing is
+# rendered without a memory limit. A Go size such as 200MiB sets it; off
+# renders none. env.GOMEMLIMIT, when set, wins.
+goMemLimit: ""
 
 # Node selector for the ploegd pod. Empty = any schedulable node.
 nodeSelector: {}
@@ -257,6 +403,7 @@ executor:
     name: openhands # openhands | exec | claude-code | acp | claude-environment (PLOEG_HARNESS)
     # Agent image. REQUIRED with the executor enabled, here, in runnerImage or
     # per team: Ploeg publishes no agent image, so the render fails without one.
+    # A claude-environment harness that sets none uses claudeRunner.image.
     image: ""
     entrypoint: ""  # binary override (PLOEG_HARNESS_ENTRYPOINT); "" = adapter default
     args: []        # exec harness only: argv template with {taskspec}/{taskfile}
@@ -385,6 +532,7 @@ executor:
     launcherResources:
       requests: {cpu: 10m, memory: 32Mi}
       limits: {cpu: 50m, memory: 32Mi}
+    launcherGoMemLimit: "" # "" = 90% of launcherResources.limits.memory; a Go size sets it; off renders none
   # Fallback repository for teams that pin none. The repository belongs to the
   # WORK ITEM — resolved at ingest from its tracker scope via ploegd's
   # PLOEG_TARGET_MAP (rendered from the org.yaml roster manifest) and delivered

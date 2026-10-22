@@ -32,7 +32,7 @@ func forgeOrphanSweep(ctx context.Context, log *slog.Logger, st *store.Store, sw
 // orphanSweep revokes gateway credentials that no longer correspond to a
 // live (unfinished) run.
 //
-// It runs at boot AND on orphanSweepEvery, because boot-only left a real
+// It runs once after boot AND on orphanSweepEvery, because boot-only left a real
 // hole: a run that finishes normally but whose deferred Revoke call fails is
 // marked finished, so neither ExpireLeases nor ExpireRuns will ever look at
 // it again — both only see state='running'. Its key then outlived every
@@ -59,6 +59,16 @@ func orphanSweep(ctx context.Context, log *slog.Logger, st *store.Store, sweeper
 	}
 }
 
+func reconcileAfterBoot(ctx context.Context, log *slog.Logger, st *store.Store, sweeper llmbroker.Sweeper,
+	forgeSweeper forgebroker.Sweeper, server *httpapi.Server, every time.Duration) {
+	orphanSweep(ctx, log, st, sweeper)
+	forgeOrphanSweep(ctx, log, st, forgeSweeper)
+	if err := server.ReconcileOperatorExecutions(ctx); err != nil {
+		log.Error("operator execution reconciliation failed after boot")
+	}
+	managedBlockSweep(ctx, log, server, 0, newAccountRetries(every))
+}
+
 // sweepLoop is the crash-safety mechanic: nothing depends on an agent
 // behaving well at death (design §3). Every expired lease releases the item
 // and revokes the run's gateway credentials (when a sweeper is configured).
@@ -71,6 +81,7 @@ func sweepLoop(ctx context.Context, log *slog.Logger, st *store.Store, sweeper l
 	forgeSweeper forgebroker.Sweeper, engine *shiftengine.Engine, server *httpapi.Server, every, settleAfter time.Duration) {
 	var managedCursor, settlementCursor int64
 	blockRetries, settlementRetries := newAccountRetries(every), newAccountRetries(every)
+	reconcileAfterBoot(ctx, log, st, sweeper, forgeSweeper, server, every)
 	t := time.NewTicker(every)
 	defer t.Stop()
 	// A second, much slower ticker: reconciling every credential against the
