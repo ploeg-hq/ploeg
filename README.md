@@ -14,6 +14,7 @@ Ploeg is a self-hosted service for authorizing and coordinating agent work. Trac
 - [Documentation](docs/index.md): current guides, contracts and design history.
 - [Architecture](docs/architecture.md): what runs where and who holds authority.
 - [Managed workers](docs/ops/managed-workers.md): required configuration and recovery.
+- [Network policies](docs/ops/network.md): what every Ploeg pod may reach, and what your CNI must enforce.
 
 ## How it works
 

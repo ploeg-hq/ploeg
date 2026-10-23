@@ -163,6 +163,8 @@ The log shows `registered target ready` for `hello` and then `ploegd ready`. On 
 
 [`values.yaml`](../ops/quickstart/values.yaml) is short. It names the Secrets you created and registers the repository as the Work Target `hello`. It defines the `quickstart` Team with a budget of $0.10 per Run, and an operator consumer that may admit work for that Team. It uses the `cronjob` executor, so you do not need KEDA. The `exec` harness runs any command; here it is the shell script in that file.
 
+The chart also installs a NetworkPolicy for `ploegd` and one for the worker pods (`kubectl get networkpolicy`). They are the same objects a production install gets, and on this cluster they do nothing: kind's default network plugin, kindnet, does not enforce NetworkPolicy. The guide keeps them anyway, so what you render here is what you would render on a cluster that does. [Network policies](ops/network.md) explains what they allow.
+
 ## 7. Hand Ploeg a piece of work
 
 The operator API admits work without a tracker. Forward the `ploegd` port to your machine and send one Work Item. The forward runs in the background until you stop it in the last step.

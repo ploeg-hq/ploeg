@@ -11,6 +11,142 @@
       "type": "string",
       "description": "app.kubernetes.io/instance label; empty = the Helm release name"
     },
+    "networkPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Default-deny NetworkPolicies for every pod the chart renders (ploegd, workers, the sandbox launcher, claude-runner, ploeg-mcp), each with the allowlist that pod needs. Egress to an endpoint is derived from its URL unless `peers` names it: an IP is itself, a bare name is the release namespace, `name.ns.svc` is that namespace, anything else is the internet outside `privateCidrs`, on the URL's port or the scheme's default. The policies are plain `networking.k8s.io/v1` objects and are applied only by a CNI that enforces NetworkPolicy (Cilium, Calico, Antrea); kind's kindnet and Flannel ignore them. An installer's own policies add to these, never subtract (docs/ops/network.md).",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Render the policies. `false` renders none and leaves the network to the installer, which the threat model records as finding F-02."
+        },
+        "dns": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "The cluster DNS every policy allows. The default selects CoreDNS as kubeadm, kind and Talos label it; a cluster with another label names its own peers.",
+          "properties": {
+            "peers": {
+              "$ref": "#/definitions/networkPolicyPeers"
+            },
+            "ports": {
+              "$ref": "#/definitions/networkPolicyPorts"
+            }
+          }
+        },
+        "privateCidrs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "CIDRs an internet rule excludes, so a pod allowed to reach a public host cannot reach the cluster, the nodes or the LAN through the same rule. Add your pod, service and node ranges when they are outside RFC 1918."
+        },
+        "database": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "ploegd's PostgreSQL. The connection URI lives in a Secret the chart cannot read, so there is nothing to derive: empty `peers` allows every pod in the release namespace on `port`.",
+          "properties": {
+            "peers": {
+              "$ref": "#/definitions/networkPolicyPeers"
+            },
+            "port": {
+              "type": ["integer", "string"],
+              "description": "The PostgreSQL port as the pod listens on it."
+            }
+          }
+        },
+        "gateway": {
+          "$ref": "#/definitions/networkPolicyEndpoint",
+          "description": "The model gateway: ploegd reaches `executor.litellm.adminUrl` and workers `executor.litellm.baseUrl`. Empty `peers` derives the destination from each URL."
+        },
+        "forge": {
+          "$ref": "#/definitions/networkPolicyEndpoint",
+          "description": "The forges: workers reach the executor's forge `url`; ploegd and claude-runner reach every configured forge's `publicUrl` or `url`, and api.github.com for github.com. Empty `peers` derives the destination from each URL."
+        },
+        "tracker": {
+          "$ref": "#/definitions/networkPolicyEndpoint",
+          "description": "The trackers ploegd calls: `tracker.url`, ClickUp when a ClickUp Secret is set, the GitHub API when `tracker.github.appId` is set. Empty `peers` derives the destination from each URL."
+        },
+        "knowledgeGraph": {
+          "$ref": "#/definitions/networkPolicyEndpoint",
+          "description": "The Omnigraph server at `knowledgeGraph.url`, reached by ploegd only. Empty `peers` derives the destination from the URL."
+        },
+        "telemetry": {
+          "$ref": "#/definitions/networkPolicyEndpoint",
+          "description": "Every OTLP collector a harness `telemetry.endpoint` or `claudeRunner.env.OTEL_EXPORTER_OTLP_ENDPOINT` names. Empty `peers` derives the destination from each URL."
+        },
+        "kubernetesApi": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "The Kubernetes API the sandbox launcher creates SandboxClaims through. The API server is not a pod, so empty `peers` allows any peer on `ports`; name its endpoint addresses as ipBlocks to narrow it, or add your CNI's API-server entity in a policy of your own.",
+          "properties": {
+            "peers": {
+              "$ref": "#/definitions/networkPolicyPeers"
+            },
+            "ports": {
+              "$ref": "#/definitions/networkPolicyPorts"
+            }
+          }
+        },
+        "ploegd": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "ingressFrom": {
+              "$ref": "#/definitions/networkPolicyPeers",
+              "description": "Peers that may reach ploegd on 8080: the gateway that forwards webhooks, operator consumers, Prometheus. Empty allows any peer on that port, because the chart cannot know your gateway; set, the policy allows these peers plus this release's own worker, launcher, ploeg-mcp and claude-runner pods."
+            },
+            "extraIngress": {
+              "$ref": "#/definitions/networkPolicyIngressRules"
+            },
+            "extraEgress": {
+              "$ref": "#/definitions/networkPolicyEgressRules",
+              "description": "Further egress rules for ploegd, such as a tracker or forge whose URL the derivation cannot place."
+            }
+          }
+        },
+        "worker": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "extraEgress": {
+              "$ref": "#/definitions/networkPolicyEgressRules",
+              "description": "Further egress rules for every worker pod, such as the registry a DinD sidecar pulls from or the allowlist proxy of ADR-0037. Each rule widens what a model-directed harness can reach."
+            }
+          }
+        },
+        "sandboxLauncher": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "extraEgress": {
+              "$ref": "#/definitions/networkPolicyEgressRules"
+            }
+          }
+        },
+        "claudeRunner": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "extraEgress": {
+              "$ref": "#/definitions/networkPolicyEgressRules"
+            }
+          }
+        },
+        "mcp": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "ingressFrom": {
+              "$ref": "#/definitions/networkPolicyPeers",
+              "description": "Peers that may reach ploeg-mcp on `mcp.port`. Empty allows any peer on that port; `mcp.networkPolicy.ingress` is the older per-component form and still renders."
+            },
+            "extraEgress": {
+              "$ref": "#/definitions/networkPolicyEgressRules"
+            }
+          }
+        }
+      }
+    },
     "goMemLimit": {
       "$ref": "#/definitions/goMemLimit"
     },
@@ -1418,6 +1554,47 @@
     }
   },
   "definitions": {
+    "networkPolicyPeers": {
+      "type": "array",
+      "description": "A list of NetworkPolicyPeer objects: `podSelector`, `namespaceSelector` or `ipBlock`, as in `networking.k8s.io/v1`.",
+      "items": {
+        "type": "object"
+      }
+    },
+    "networkPolicyPorts": {
+      "type": "array",
+      "description": "A list of NetworkPolicyPort objects: `protocol` and `port`, as in `networking.k8s.io/v1`.",
+      "items": {
+        "type": "object"
+      }
+    },
+    "networkPolicyIngressRules": {
+      "type": "array",
+      "description": "A list of NetworkPolicyIngressRule objects, appended to the policy as written.",
+      "items": {
+        "type": "object"
+      }
+    },
+    "networkPolicyEgressRules": {
+      "type": "array",
+      "description": "A list of NetworkPolicyEgressRule objects, appended to the policy as written.",
+      "items": {
+        "type": "object"
+      }
+    },
+    "networkPolicyEndpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Where one kind of endpoint lives. Empty `peers` derives the destination from each configured URL; set, they replace it for every URL of the kind. Empty `port` is each URL's port, or 443 for https and 80 for http; set, it replaces it, which a Service whose port differs from its pods' needs.",
+      "properties": {
+        "peers": {
+          "$ref": "#/definitions/networkPolicyPeers"
+        },
+        "port": {
+          "type": ["integer", "string"]
+        }
+      }
+    },
     "goMemLimit": {
       "type": "string",
       "pattern": "^(|off|[0-9]+(B|KiB|MiB|GiB|TiB)?)$",

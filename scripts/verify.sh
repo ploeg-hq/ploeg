@@ -25,3 +25,4 @@ helm template ploeg ops/helm/ploeg -f "$required" >/dev/null
 helm lint ops/helm/ploeg -f ops/quickstart/values.yaml
 helm template ploeg ops/helm/ploeg -n ploeg -f ops/quickstart/values.yaml >/dev/null
 sh scripts/helm-golden.sh check
+bash scripts/test-chart-network-policies.sh
