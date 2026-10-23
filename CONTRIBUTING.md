@@ -2,17 +2,21 @@
 
 ## Licence of what you send
 
-Ploeg is [Apache-2.0](LICENSE). Contributions come in under the same terms — **inbound equals
-outbound** — which is what section 5 of that licence says by default:
+Ploeg's code is [Apache-2.0](LICENSE) and its documentation is
+[CC-BY-4.0](LICENSES/CC-BY-4.0.txt); [REUSE.toml](REUSE.toml) says which covers each file.
+Contributions come in under the licence of the file they change. **Inbound equals outbound.** For
+code, section 5 of the Apache licence says so by default:
 
 > Unless You explicitly state otherwise, any Contribution intentionally submitted for inclusion in
 > the Work by You to the Licensor shall be under the terms and conditions of this License, without
 > any additional terms or conditions.
 
 There is **no CLA to sign** and no copyright assignment. You keep the copyright in what you wrote.
-What you grant, by opening a pull request, is the Apache-2.0 licence over that contribution —
-including its patent grant, which is the clause that lets everyone downstream use your work without
-wondering whether a patent claim is coming.
+What you grant, by opening a pull request, is the Apache-2.0 licence over the code in that
+contribution — including its patent grant, which is the clause that lets everyone downstream use your
+work without wondering whether a patent claim is coming — and the CC-BY-4.0 licence over its
+documentation. A code sample you add to a page also comes in under Apache-2.0, so it can be pasted
+into code. This is the split section 11(b) of the CNCF charter asks for.
 
 Two things this does not cover:
 

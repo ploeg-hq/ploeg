@@ -20,6 +20,7 @@ import (
 const (
 	inventoryPath     = "docs/cncf/license-inventory.yaml"
 	noticesPath       = "THIRD-PARTY-NOTICES"
+	reusePath         = "REUSE.toml"
 	updateVariable    = "PLOEG_UPDATE_LICENSE_INVENTORY"
 	selfModule        = "github.com/ploeg-hq/ploeg"
 	goPatentsID       = "LicenseRef-Google-Patents-Notice-Golang"
@@ -50,12 +51,13 @@ type inventory struct {
 }
 
 type policy struct {
-	Source     string   `yaml:"source"`
-	Revision   string   `yaml:"revision"`
-	Retrieved  string   `yaml:"retrieved"`
-	Exceptions string   `yaml:"exceptions"`
-	Outbound   string   `yaml:"outbound"`
-	Allowlist  []string `yaml:"allowlist"`
+	Source        string   `yaml:"source"`
+	Revision      string   `yaml:"revision"`
+	Retrieved     string   `yaml:"retrieved"`
+	Exceptions    string   `yaml:"exceptions"`
+	Outbound      string   `yaml:"outbound"`
+	Documentation string   `yaml:"documentation"`
+	Allowlist     []string `yaml:"allowlist"`
 }
 
 type goModule struct {
@@ -330,7 +332,7 @@ func checkDisposition(t *testing.T, allowed map[string]bool, name, licence, disp
 	}
 }
 
-func sortedKeys(m map[string]string) []string {
+func sortedKeys[V any](m map[string]V) []string {
 	keys := make([]string, 0, len(m))
 	for key := range m {
 		keys = append(keys, key)
@@ -356,6 +358,65 @@ func TestEveryComponentHasAValidDisposition(t *testing.T) {
 	}
 	for _, c := range inv.Components {
 		checkDisposition(t, allowed, c.Name, c.License, c.Disposition, c.Note, len(c.ShippedIn) > 0)
+	}
+}
+
+var reuseLicenceLine = regexp.MustCompile(`(?m)^SPDX-License-Identifier = "([^"]+)"`)
+
+func reuseLicences(toml string) []string {
+	ids := map[string]bool{}
+	for _, match := range reuseLicenceLine.FindAllStringSubmatch(toml, -1) {
+		ids[match[1]] = true
+	}
+	return sortedKeys(ids)
+}
+
+func outboundLicenceProblems(p policy, declared []string) []string {
+	var problems []string
+	if p.Outbound != "Apache-2.0" {
+		problems = append(problems, fmt.Sprintf("policy.outbound is %q; charter section 11(b)(iii) makes code Apache-2.0", p.Outbound))
+	}
+	if p.Documentation != "CC-BY-4.0" {
+		problems = append(problems, fmt.Sprintf("policy.documentation is %q; charter section 11(b)(iv) makes documentation CC-BY-4.0", p.Documentation))
+	}
+	want := sortedKeys(map[string]bool{p.Outbound: true, p.Documentation: true})
+	if !slices.Equal(declared, want) {
+		problems = append(problems, fmt.Sprintf("%s declares %v but the inventory policy names %v", reusePath, declared, want))
+	}
+	return problems
+}
+
+func TestREUSEDeclaresTheOutboundLicences(t *testing.T) {
+	root := repositoryRoot(t)
+	raw, err := os.ReadFile(filepath.Join(root, reusePath))
+	if err != nil {
+		t.Fatalf("%s: %v", reusePath, err)
+	}
+	for _, problem := range outboundLicenceProblems(readInventory(t, root).Policy, reuseLicences(string(raw))) {
+		t.Error(problem)
+	}
+}
+
+func TestOutboundLicenceRulesFireAndPass(t *testing.T) {
+	split := policy{Outbound: "Apache-2.0", Documentation: "CC-BY-4.0"}
+	cases := []struct {
+		name     string
+		policy   policy
+		declared []string
+		fails    bool
+	}{
+		{"code and docs split passes", split, []string{"Apache-2.0", "CC-BY-4.0"}, false},
+		{"REUSE without the docs licence fails", split, []string{"Apache-2.0"}, true},
+		{"REUSE with a third licence fails", split, []string{"Apache-2.0", "CC-BY-4.0", "MIT"}, true},
+		{"docs left on Apache-2.0 fails", policy{Outbound: "Apache-2.0", Documentation: "Apache-2.0"}, []string{"Apache-2.0"}, true},
+		{"code off Apache-2.0 fails", policy{Outbound: "MIT", Documentation: "CC-BY-4.0"}, []string{"CC-BY-4.0", "MIT"}, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := len(outboundLicenceProblems(c.policy, c.declared)) > 0; got != c.fails {
+				t.Errorf("fails = %v, want %v", got, c.fails)
+			}
+		})
 	}
 }
 
