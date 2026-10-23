@@ -1,7 +1,7 @@
 version = 1
 SPDX-PackageName = "Ploeg"
 SPDX-PackageSupplier = "Ryan Grippeling / WebGrip <ryan@webgrip.nl>"
-SPDX-PackageDownloadLocation = "https://forgejo.webgrip.dev/webgrip/ploeg"
+SPDX-PackageDownloadLocation = "https://github.com/ploeg-hq/ploeg"
 
 [[annotations]]
 path = "**"
