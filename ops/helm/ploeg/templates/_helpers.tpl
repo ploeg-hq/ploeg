@@ -385,8 +385,7 @@ global executor.harness defaults field-by-field (explicit hasKey checks, so
 {{- end }}
 {{- $toolchainEnv = append $toolchainEnv (dict "name" $tc.name "path" $paths "env" ($tc.env | default dict)) }}
 {{- end }}
-{{- $hDind := true }}
-{{- if hasKey $rh "dind" }}{{- $hDind = $rh.dind }}{{- else if hasKey $th "dind" }}{{- $hDind = $th.dind }}{{- else if hasKey $gh "dind" }}{{- $hDind = $gh.dind }}{{- end }}
+{{- $hDind := eq (include "ploeg.roleUsesDind" (dict "root" $root "team" $team "role" $role)) "true" }}
 {{- $dt := $root.Values.executor.defaultTarget | default dict }}
 {{/* acp harness: same field-by-field override, one level deeper. */}}
 {{- $ga := $gh.acp | default dict }}
@@ -811,9 +810,17 @@ admission while the PolicyException looked correct.
 {{- $gh := .root.Values.executor.harness | default dict }}
 {{- $th := .team.harness | default dict }}
 {{- $rh := (.role | default dict).harness | default dict }}
-{{- $d := true }}
+{{- $d := false }}
 {{- if hasKey $rh "dind" }}{{- $d = $rh.dind }}{{- else if hasKey $th "dind" }}{{- $d = $th.dind }}{{- else if hasKey $gh "dind" }}{{- $d = $gh.dind }}{{- end }}
-{{- if $d }}true{{- end }}
+{{- if $d }}
+{{- $acknowledged := false }}
+{{- if hasKey $rh "acknowledgePrivilegedDind" }}{{- $acknowledged = $rh.acknowledgePrivilegedDind }}{{- else if hasKey $th "acknowledgePrivilegedDind" }}{{- $acknowledged = $th.acknowledgePrivilegedDind }}{{- else if hasKey $gh "acknowledgePrivilegedDind" }}{{- $acknowledged = $gh.acknowledgePrivilegedDind }}{{- end }}
+{{- if not $acknowledged }}
+{{- $who := .team.name }}{{- with (.role | default dict).name }}{{- $who = printf "%s/%s" $who . }}{{- end }}
+{{- fail (printf "team %s: harness.dind is true without harness.acknowledgePrivilegedDind: true. With DinD the harness container receives the client certificates of a privileged Docker daemon (DOCKER_HOST, DOCKER_CERT_PATH, /certs), which is root on the node, and the chart turns both credential proxies off for it (PLOEG_CREDENTIAL_ISOLATION_OFF_REASON=dind) unless harness.credentialIsolation is proxy, so the harness also receives the real per-Run model key in LLM_API_KEY and, when it writes, the real forge token in AGENT_BUILDER_TOKEN. Set harness.acknowledgePrivilegedDind: true in the same block to accept this, or keep harness.dind: false (the default) for the strict profile" $who) }}
+{{- end -}}
+true
+{{- end }}
 {{- end -}}
 
 {{- define "ploeg.goMemLimitEnv" -}}

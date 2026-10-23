@@ -207,6 +207,7 @@ fails otherwise.
 | [0133](0133-a-run-is-told-its-limits-at-the-start-and-its-own-status-on-every-model-call.md) | A Run is told its limits at the start and its own status on every model call | proposed | 2026-10-20 |
 | [0134](0134-ploeg-keeps-each-release-compatible-with-the-one-before-and-removes-only-after-a-deprecated-minor.md) | Ploeg keeps each release compatible with the one before and removes only after a deprecated minor | proposed | 2026-10-23 |
 | [0135](0135-a-bake-off-runs-one-work-item-on-several-configurations-and-a-shadow-judge-recommends-while-a-person-picks.md) | A bake-off runs one Work Item on several configurations and a shadow judge recommends while a person picks | proposed | 2026-10-23 |
+| [0136](0136-the-chart-default-is-the-strict-isolation-profile-and-privileged-dind-is-an-acknowledged-opt-in.md) | The chart default is the strict isolation profile, and privileged DinD is an acknowledged opt-in | proposed | 2026-10-23 |
 
 ## Review calendar
 

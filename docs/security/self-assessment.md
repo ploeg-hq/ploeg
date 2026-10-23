@@ -118,7 +118,7 @@ The actors below are separated by an isolation mechanism. The [threat model's tr
 - **Ploeg does not prove an exact monetary ceiling.** Gateway budgets bound spend, but requests already in flight can exceed a key's cap.
 - **Ploeg does not verify the person an operator consumer names.** A consumer is trusted to name its signed-in user truthfully.
 - **Ploeg does not review code.** Agent reviewers are advisory, and a person decides what merges.
-- **Ploeg does not protect a deployment outside the supported profile.** For example, the chart default with privileged Docker-in-Docker gives the agent node-level control ([F-01](threat-model.md#findings)).
+- **Ploeg does not protect a deployment outside the supported profile.** For example, a deployment that opts into privileged Docker-in-Docker (`harness.dind: true` with `harness.acknowledgePrivilegedDind: true`) gives the agent node-level control ([F-01](threat-model.md#findings); the default no longer does since PR #231).
 
 ## Self-assessment use
 
@@ -156,7 +156,7 @@ These are settings and components a deployment configures. The threat model's [s
 
 | Setting or component | Effect |
 | --- | --- |
-| `executor.harness.dind` | `true` (chart default) adds a privileged Docker sidecar and turns both proxies off. P1 requires `false`. |
+| `executor.harness.dind` | `false` (chart default since PR #231, [ADR-0136](../adrs/0136-the-chart-default-is-the-strict-isolation-profile-and-privileged-dind-is-an-acknowledged-opt-in.md)) keeps the strict profile. `true` adds a privileged Docker sidecar and turns both proxies off, and renders only with `harness.acknowledgePrivilegedDind: true`. P1 requires `false`. |
 | `executor.litellm.keyIsolation`, `executor.forgeTokenIsolation`, `harness.credentialIsolation` | Turn the proxies on or off; an override wins over the chart's safety logic |
 | `executor.workerAuth.mode` | `managed` (default) or `legacy`, which leaves worker routes unauthenticated |
 | `executor.workerSecurityContext` | Restricted by default ([ADR-0120](../adrs/0120-a-worker-container-meets-the-restricted-pod-security-standard-by-default.md)); `{}` removes it |
@@ -271,7 +271,7 @@ A project-level procedure for triage, confirmation, notification and patch relea
 
 | ID | Severity | Summary |
 | --- | --- | --- |
-| F-01 | Critical | Chart default privileged DinD hands the harness node-level control and turns both credential proxies off |
+| F-01 | Critical | Chart default privileged DinD hands the harness node-level control and turns both credential proxies off (fixed in PR #231: the default is `dind: false`, and `dind: true` needs an explicit acknowledgement) |
 | F-24 | Critical | The board watch sent the real forge token from inside the harness-writable clone while the harness ran (fixed in PR #230: the `ls-remote` now runs outside any repository) |
 | F-02 | High | No NetworkPolicy for ploegd or worker pods |
 | F-03 | High | Shared builder forge token and bootstrap token sit in every writer container, guarded by one in-process control |

@@ -1540,7 +1540,12 @@
           "type": "string"
         },
         "dind": {
-          "type": "boolean"
+          "type": "boolean",
+          "description": "false (the chart default) renders no privileged sidecar and keeps both credential proxies on for a qualified harness. true adds the privileged docker:dind sidecar, mounts its client certificates into the harness container and turns both credential proxies off for that workload (PLOEG_CREDENTIAL_ISOLATION_OFF_REASON=dind); the render refuses it without acknowledgePrivilegedDind (ADR-0136)."
+        },
+        "acknowledgePrivilegedDind": {
+          "type": "boolean",
+          "description": "Required true for a workload with dind: true, resolved role, then team, then executor.harness. It records that the operator accepts that the harness holds the client certificates of a privileged Docker daemon (root on the node) and, with the proxies off, the real per-Run model key and forge token (ADR-0136)."
         },
         "credentialIsolation": {
           "enum": [
@@ -1616,7 +1621,12 @@
           "type": "string"
         },
         "dind": {
-          "type": "boolean"
+          "type": "boolean",
+          "description": "false (the chart default) renders no privileged sidecar and keeps both credential proxies on for a qualified harness. true adds the privileged docker:dind sidecar, mounts its client certificates into the harness container and turns both credential proxies off for that workload (PLOEG_CREDENTIAL_ISOLATION_OFF_REASON=dind); the render refuses it without acknowledgePrivilegedDind (ADR-0136)."
+        },
+        "acknowledgePrivilegedDind": {
+          "type": "boolean",
+          "description": "Required true for a workload with dind: true, resolved role, then team, then executor.harness. It records that the operator accepts that the harness holds the client certificates of a privileged Docker daemon (root on the node) and, with the proxies off, the real per-Run model key and forge token (ADR-0136)."
         },
         "credentialIsolation": {
           "enum": [

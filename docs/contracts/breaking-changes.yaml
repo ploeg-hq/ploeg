@@ -1,1 +1,5 @@
-exceptions: []
+exceptions:
+  - base: v0.2.0-rc.47
+    surface: ops/helm/ploeg/values.schema.json
+    pointer: /definitions/harness/properties/dind
+    adr: "0136"

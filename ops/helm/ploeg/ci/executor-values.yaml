@@ -142,6 +142,7 @@ executor:
       model: litellm_proxy/deepseek-chat
       budget: "6"
       maxReplicaCount: 1
+      harness: {dind: true, acknowledgePrivilegedDind: true}
       plan:
         - roles:
             - {name: analyst, writes: false, cap: "0.50", harness: {dind: false}}

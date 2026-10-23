@@ -280,6 +280,7 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `executor.gitlab.url` | string | `""` | Base URL, no /api/v4. Empty = ploegd configures no GitLab provider, so findings never reach a merge request. | values.yaml, values.schema.json |
 | `executor.gitlab.webhookSecret` | [secretRef](#secretref) | `{}` | Shared secret GitLab sends as X-Gitlab-Token to POST /webhooks/forge/gitlab. Unset = every forge webhook is rejected. | values.yaml, values.schema.json |
 | `executor.harness` | [harness](#harness) |  | Global harness defaults; a team's optional `harness:` block overrides these field-by-field (see teams below). | values.yaml, values.schema.json |
+| `executor.harness.acknowledgePrivilegedDind` |  | `false` | Required `true` wherever `dind` is `true`, resolved Role, then team, then here. Records that the operator accepts that the harness holds a privileged Docker daemon's client certificates (root on the node) and, with both proxies off, the real per-Run model key and forge token (ADR-0136). | values.yaml |
 | `executor.harness.acp` |  |  | acp harness only. One adapter speaks Zed's Agent CLIENT Protocol (stdio JSON-RPC, wire version 1) to any ACP-capable agent. Unrelated to IBM's former Agent COMMUNICATION Protocol, which merged into A2A — see ADR-0007. | values.yaml |
 | `executor.harness.acp.argv` |  | `[]` | whole launch command; REQUIRED when profile is custom | values.yaml |
 | `executor.harness.acp.configJson` |  | `""` | Replaces the profile's generated agent config (opencode, qwen-code) wholesale, so a wrong provider block is a values edit rather than an agent image rebuild. goose is configured by environment and refuses it. | values.yaml |
@@ -294,7 +295,7 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `executor.harness.claudeEnvironment.loginSecret` |  | `""` |  | values.yaml |
 | `executor.harness.claudeEnvironment.loginVolume` |  | `""` | The Team member login that dispatches, one of two ways. loginVolume names a PersistentVolumeClaim holding a Claude config directory a person signed in to with `claude auth login`; the CLI refreshes it in place. loginSecret names a Secret with keys refreshToken and scopes that each Run exchanges with `claude auth login`. Anthropic caps either login at 30 days, so a person renews it. | values.yaml |
 | `executor.harness.claudeEnvironment.pollInterval` |  | `""` | Go duration; "" = 15s (PLOEG_CLAUDE_POLL_INTERVAL) | values.yaml |
-| `executor.harness.dind` |  | `true` | privileged DinD sidecar + DOCKER_* wiring (OpenHands + gates need it) | values.yaml |
+| `executor.harness.dind` |  | `false` | false (the default) is the strict profile: no privileged sidecar, both credential proxies on for a qualified harness. true adds the privileged docker:dind sidecar and DOCKER_* wiring for gate builds inside a container, mounts the daemon's client certificates into the harness and turns both proxies off for that workload; the render refuses it unless acknowledgePrivilegedDind is true in the same chain (ADR-0136). | values.yaml |
 | `executor.harness.entrypoint` |  | `""` | binary override (PLOEG_HARNESS_ENTRYPOINT); "" = adapter default | values.yaml |
 | `executor.harness.idleTimeout` |  | `15m` | Stops a harness that prints nothing and makes no model call for this long (`PLOEG_HARNESS_IDLE_TIMEOUT`). | values.yaml |
 | `executor.harness.image` |  | `""` | Agent image. REQUIRED with the executor enabled, here, in runnerImage or per team: Ploeg publishes no agent image, so the render fails without one. A claude-environment harness that sets none uses claudeRunner.image. | values.yaml |
@@ -597,7 +598,8 @@ name becomes the workload suffix (ploeg-worker-<team>-<role>); writes marks the 
 | `entrypoint` | string | Harness binary override. Empty means the adapter default. |
 | `args` | array | `exec` harness only: argv template with `{taskspec}` and `{taskfile}`. |
 | `outcomeFile` | string | `exec` harness only: OutcomeReport JSON path override. |
-| `dind` | boolean | Adds the privileged DinD sidecar and Docker wiring. OpenHands and gate builds need it. |
+| `dind` | boolean | false (the chart default) renders no privileged sidecar and keeps both credential proxies on for a qualified harness. true adds the privileged docker:dind sidecar, mounts its client certificates into the harness container and turns both credential proxies off for that workload (PLOEG_CREDENTIAL_ISOLATION_OFF_REASON=dind); the render refuses it without acknowledgePrivilegedDind (ADR-0136). |
+| `acknowledgePrivilegedDind` | boolean | Required true for a workload with dind: true, resolved role, then team, then executor.harness. It records that the operator accepts that the harness holds the client certificates of a privileged Docker daemon (root on the node) and, with the proxies off, the real per-Run model key and forge token (ADR-0136). |
 | `credentialIsolation` | one of `""`, `"proxy"` | Explicit per-workload setting for both credential proxies (ADR-0034). Unset = executor.forgeTokenIsolation and executor.litellm.keyIsolation apply to a qualified harness without DinD, and every other workload runs with both off. |
 | `timeout` | string | Stops a harness that runs longer than this. |
 | `idleTimeout` | string | Stops a harness that is silent for this long. |
@@ -618,7 +620,8 @@ name becomes the workload suffix (ploeg-worker-<team>-<role>); writes marks the 
 | `entrypoint` | string |  |
 | `args` | array |  |
 | `outcomeFile` | string |  |
-| `dind` | boolean |  |
+| `dind` | boolean | false (the chart default) renders no privileged sidecar and keeps both credential proxies on for a qualified harness. true adds the privileged docker:dind sidecar, mounts its client certificates into the harness container and turns both credential proxies off for that workload (PLOEG_CREDENTIAL_ISOLATION_OFF_REASON=dind); the render refuses it without acknowledgePrivilegedDind (ADR-0136). |
+| `acknowledgePrivilegedDind` | boolean | Required true for a workload with dind: true, resolved role, then team, then executor.harness. It records that the operator accepts that the harness holds the client certificates of a privileged Docker daemon (root on the node) and, with the proxies off, the real per-Run model key and forge token (ADR-0136). |
 | `credentialIsolation` | one of `""`, `"proxy"` | Explicit per-workload setting for both credential proxies (ADR-0034). Unset = executor.forgeTokenIsolation and executor.litellm.keyIsolation apply to a qualified harness without DinD, and every other workload runs with both off. |
 | `timeout` | string |  |
 | `idleTimeout` | string |  |

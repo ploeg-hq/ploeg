@@ -1,0 +1,7 @@
+executor:
+  enabled: true
+  teams:
+    - name: unacknowledged
+      model: litellm_proxy/deepseek-chat
+      budget: "1"
+      harness: {name: openhands, dind: true}
