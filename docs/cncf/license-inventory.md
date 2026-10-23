@@ -48,7 +48,7 @@ Before this change, the release tarball and the images shipped MIT and BSD code 
 
 ## How it stays current
 
-`go test ./internal/licenses/` runs in `mise run verify` on every pull request and push. It fails when:
+Renovate runs `scripts/update-license-inventory.sh` in every update branch, so a dependency bump arrives with the inventory and notices already regenerated. `go test ./internal/licenses/` runs in `mise run verify` on every pull request and push. It fails when:
 
 - a Go module enters or leaves the build, changes version, or moves between shipped and test-only;
 - a module's licence files classify differently ([google/licensecheck](https://github.com/google/licensecheck));
