@@ -63,7 +63,7 @@ go:
     detected: MIT
     concluded: MIT
     disposition: exception-needed
-    note: 'MIT is on the allowlist, but allowlist condition 3 fails: on 2026-10-23 github.com/jackc/pgpassfile had 6 stars and 4 forks (the policy asks for at least 10 of either) and is not in the CNCF exceptions database. pgx needs it to read .pgpass files. Options: file an exception request (small and routine for MIT) or ask upstream to fold it into pgx.'
+    note: 'MIT is on the allowlist, but allowlist condition 3 fails: on 2026-10-23 github.com/jackc/pgpassfile had 6 stars and 4 forks (the policy asks for at least 10 of either) and is not in the CNCF exceptions database. pgx needs it to read .pgpass files. The exception request is drafted in docs/cncf/exceptions/jackc-pgpassfile.md for the maintainer to file once Ploeg is a CNCF project; the disposition stays exception-needed until the Governing Board decides.'
   - module: github.com/jackc/pgservicefile
     version: v0.0.0-20240606120523-5a60cdf6a761
     shipped: true
