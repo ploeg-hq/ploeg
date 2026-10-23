@@ -41,6 +41,7 @@ The workflow publishes the bundle only once `proxy.golang.org` lists the tag and
 
 ## Versioning policy
 
+- **The whole policy** for every surface, with deprecation windows, rollback and supported version pairs, is [the compatibility policy](../ops/compatibility.md) ([ADR-0134](../adrs/0134-ploeg-keeps-each-release-compatible-with-the-one-before-and-removes-only-after-a-deprecated-minor.md)). `go test ./internal/compat/` compares these schemas with the newest release tag and fails on a break not recorded in [breaking-changes.yaml](breaking-changes.yaml).
 - **v1 is frozen.** Additive *optional* fields are allowed (with a schema
   update in the same commit); renames, removals, type changes, or new
   required fields are v2 — a new schema file and explicit adapter
