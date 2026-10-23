@@ -48,7 +48,7 @@ Code samples inside the documentation are also available under Apache-2.0. `go t
 | Component | Licence | Why it matters |
 | --- | --- | --- |
 | Claude Code CLI in `claude-runner` | Proprietary, all rights reserved | Ploeg republishes a closed binary, downloaded from a vendor website, in every release. The container image guidance asks for content from the project's source or a standard package manager, and sends binaries without source to Legal Committee and Governing Board review. |
-| `github.com/jackc/pgpassfile` | MIT | Shipped in every binary. MIT is allowlisted, but the repository has 6 stars and 4 forks, under the use threshold, and the exceptions database has no entry. |
+| `github.com/jackc/pgpassfile` | MIT | Shipped in every binary. MIT is allowlisted, but the repository has 6 stars and 4 forks, under the use threshold, and the exceptions database has no entry. The request is drafted in [exceptions/jackc-pgpassfile.md](exceptions/jackc-pgpassfile.md). |
 | Name, mark and artwork | Apache-2.0 plus trademark | The charter requires trademark and logo assets to move to the Linux Foundation on acceptance. |
 | Base-image packages in both images | GPL, LGPL, MPL-2.0 and others | Reviewed under the container image guidance, not the allowlist. Debian keeps every copyright file. `claude-runner` pins its base by tag only, so its GPL source cannot be pinned down later. |
 | `docker:dind` chart default | Apache-2.0 over Alpine | A user-fetched dependency the chart turns on by default. Whether that needs review is a question for CNCF staff. |
