@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-23
+status: accepted
+date: 2026-10-24
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -86,3 +86,4 @@ Chosen option: "**One policy per pod kind, derived from the chart's URLs, overri
 * [Threat model](../security/threat-model.md) F-02, T-HN-5, TB2; [issue #223](https://github.com/ploeg-hq/ploeg/issues/223).
 * Related: [ADR-0034](0034-the-harness-gets-placeholders-the-worker-keeps-credentials.md), [ADR-0037](0037-teams-opt-into-registry-egress-through-a-logged-allowlist-proxy.md), [ADR-0120](0120-a-worker-container-meets-the-restricted-pod-security-standard-by-default.md), [ADR-0134](0134-ploeg-keeps-each-release-compatible-with-the-one-before-and-removes-only-after-a-deprecated-minor.md).
 * 2026-10-23: proposed with the templates, tests, goldens and documentation.
+* 2026-10-24: accepted by the owner.
