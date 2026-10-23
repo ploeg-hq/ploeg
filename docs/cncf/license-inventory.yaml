@@ -234,7 +234,7 @@ components:
       - claude-runner image
     license: GPL-2.0-or-later AND GPL-3.0-or-later AND LGPL-2.1-or-later AND LicenseRef-Debian-mixed
     disposition: container-guidance
-    note: A full Debian 12 userland (124 packages with the five below installed, each with its copyright file, counted on 2026-10-23). The Dockerfile names the tag without a digest (it resolved to sha256:7ff6ba31527b9e336162fa061746c366c4b2032f4d2cff2078bea43f78efe3f8 that day), so the exact package set and the corresponding GPL source cannot be pointed to after the fact. The BuildKit SBOM attached to each release is the authoritative package list. Pinning the digest would make the source offer precise.
+    note: A full Debian 12 userland (124 packages with the five below installed, each with its copyright file, counted on 2026-10-23). The Dockerfile pins the tag to digest sha256:7ff6ba31527b9e336162fa061746c366c4b2032f4d2cff2078bea43f78efe3f8 (resolved 2026-10-23), so the exact package set and the corresponding GPL source of a published image stay traceable; Renovate moves the digest. The BuildKit SBOM attached to each release is the authoritative package list. Pinning the digest would make the source offer precise.
   - name: Debian packages installed into claude-runner
     kind: os packages
     shipped_in:

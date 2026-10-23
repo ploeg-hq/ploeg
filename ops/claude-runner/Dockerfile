@@ -1,7 +1,7 @@
 # Image for ADR-0084: a Team's self-hosted Claude runner, and the worker that
 # dispatches to it (harness claude-environment). Claude Code is pinned by
 # version and checksum; bump both together from the release's manifest.json.
-FROM debian:bookworm-slim
+FROM debian:bookworm-slim@sha256:7ff6ba31527b9e336162fa061746c366c4b2032f4d2cff2078bea43f78efe3f8
 
 ARG CLAUDE_CODE_VERSION=2.1.296
 ARG CLAUDE_CODE_SHA256=24972e3bc859fab2b46ed4c1e51f7d6130f06d3bd550811a114640de3370d0de
