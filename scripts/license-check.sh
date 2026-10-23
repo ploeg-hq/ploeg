@@ -31,6 +31,8 @@ done
 [ -f THIRD-PARTY-NOTICES ] || note "THIRD-PARTY-NOTICES is missing; the binaries link MIT and BSD code whose notices must travel with them"
 grep -q '^COPY LICENSE NOTICE THIRD-PARTY-NOTICES /usr/share/doc/ploeg/' ops/docker/ploegd/Dockerfile \
   || note "the ploegd image no longer carries LICENSE, NOTICE and THIRD-PARTY-NOTICES"
+grep -q '^COPY LICENSE NOTICE THIRD-PARTY-NOTICES /usr/share/doc/ploeg/' ops/docker/ploeg-worker/Dockerfile \
+  || note "the ploeg-worker image no longer carries LICENSE, NOTICE and THIRD-PARTY-NOTICES"
 grep -q '^COPY LICENSE NOTICE /usr/share/doc/ploeg/' ops/claude-runner/Dockerfile \
   || note "the claude-runner image no longer carries LICENSE and NOTICE"
 grep -qiE 'downloads\.claude\.ai|claude-code-releases|@anthropic-ai/claude-code|claude\.ai/install' ops/claude-runner/Dockerfile \
