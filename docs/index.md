@@ -30,6 +30,12 @@ Use these sources for the current implementation. The [architecture](architectur
 - [Executor launch](contracts/executor.md)
 - [ACP harness profiles](contracts/acp-profiles.md)
 
+## Security
+
+- [Threat model](security/threat-model.md): the supported deployment profile, trust boundaries, STRIDE per element and findings
+- [Security self-assessment](security/self-assessment.md), following the CNCF TAG Security and Compliance outline
+- [Reporting a vulnerability](../SECURITY.md)
+
 ## Understand and change
 
 - [Architecture](architecture.md)
