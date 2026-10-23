@@ -70,6 +70,19 @@ func runGit(ctx context.Context, dir, repositoryURL, token string, args ...strin
 	return gitCommand(ctx, dir, repositoryURL, token, args...).CombinedOutput()
 }
 
+const repositoryFreeGitDirPattern = "ploeg-git-"
+
+func runGitOutsideAnyRepository(ctx context.Context, repositoryURL, token string, args ...string) ([]byte, error) {
+	dir, err := os.MkdirTemp("", repositoryFreeGitDirPattern)
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(dir)
+	cmd := gitCommand(ctx, dir, repositoryURL, token, args...)
+	cmd.Env = append(cmd.Env, "GIT_CEILING_DIRECTORIES="+dir)
+	return cmd.CombinedOutput()
+}
+
 func gitCommand(ctx context.Context, dir, repositoryURL, token string, args ...string) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, "git", slices.Concat(testGitConfig, args)...)
 	cmd.Dir = dir

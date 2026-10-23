@@ -272,7 +272,7 @@ A project-level procedure for triage, confirmation, notification and patch relea
 | ID | Severity | Summary |
 | --- | --- | --- |
 | F-01 | Critical | Chart default privileged DinD hands the harness node-level control and turns both credential proxies off |
-| F-24 | Critical | The board watch sends the real forge token from inside the harness-writable clone while the harness runs |
+| F-24 | Critical | The board watch sent the real forge token from inside the harness-writable clone while the harness ran (fixed in PR #230: the `ls-remote` now runs outside any repository) |
 | F-02 | High | No NetworkPolicy for ploegd or worker pods |
 | F-03 | High | Shared builder forge token and bootstrap token sit in every writer container, guarded by one in-process control |
 | F-04 | Medium | Proxy qualification predates the current proxy code; no Run has used it |
