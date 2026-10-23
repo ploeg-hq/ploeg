@@ -18,6 +18,7 @@ Use these sources for the current implementation. The [architecture](architectur
 
 - [Operator runbooks](how-to/index.md): stuck Leases and Runs, credential rotation, draining, spend, database recovery
 - [Managed workers and recovery](ops/managed-workers.md)
+- [Network policies](ops/network.md): what every Ploeg pod may reach, how the chart derives it, and what your CNI must enforce
 - [Metrics and alerts](ops/alerts.md)
 - [Briefings: versions, catch-up, usefulness and replay](ops/briefings.md)
 - [Tracker configuration](ops/board.md)

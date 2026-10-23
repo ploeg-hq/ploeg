@@ -189,7 +189,7 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 
 | Key | Type | Default | Description | Source |
 | --- | --- | --- | --- | --- |
-| `claudeRunner` | object |  | claude-runner: the self-hosted Claude environment runner that executes claude-environment Runs as Claude Code sessions (ADR-0084), from the release's claude-runner image. Off by default. ops/claude-runner/README.md explains the runner settings. The pod reaches Anthropic, the forge's HTTPS host and ploegd; write that egress policy for your CNI, because it names hosts a NetworkPolicy cannot. | values.yaml, values.schema.json |
+| `claudeRunner` | object |  | claude-runner: the self-hosted Claude environment runner that executes claude-environment Runs as Claude Code sessions (ADR-0084), from the release's claude-runner image. Off by default. ops/claude-runner/README.md explains the runner settings. The pod reaches Anthropic, the forge's HTTPS host and ploegd; networkPolicy renders that egress, with Anthropic as the internet on 443 because a NetworkPolicy cannot name a host. | values.yaml, values.schema.json |
 | `claudeRunner.annotations` | object | `{}` |  | values.yaml, values.schema.json |
 | `claudeRunner.args` | array | `["--capacity", "1", "--release-idle-session-min", "1", "--kill-session-after-min", "90", "--drain-grace-sec", "600", "--remove-session-state"]` | Runner flags after self-hosted-runner --base-dir and --hooks-dir. One session per pod, so nothing a session leaves behind is seen by the next. | values.yaml, values.schema.json |
 | `claudeRunner.enabled` | boolean | `false` |  | values.yaml, values.schema.json |
@@ -322,7 +322,7 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `executor.sandbox.launcherResources.limits.memory` |  | `32Mi` |  | values.yaml |
 | `executor.sandbox.launcherResources.requests.cpu` |  | `10m` |  | values.yaml |
 | `executor.sandbox.launcherResources.requests.memory` |  | `32Mi` |  | values.yaml |
-| `executor.sandbox.networkPolicy` | object | `{}` | {} = Unmanaged: the cluster's own policies, selected by the worker's labels, apply. A NetworkPolicy spec here (ingress/egress rules) makes agent-sandbox manage one policy per template with exactly these rules. Allow at least DNS, ploegd, the model gateway and the forge; the controller's secure default is never used, because it blocks all three. | values.yaml, values.schema.json |
+| `executor.sandbox.networkPolicy` | object | `{}` | {} = Unmanaged: the chart's worker policy (networkPolicy) and the cluster's own, selected by the worker's labels, apply. A NetworkPolicy spec here (ingress/egress rules) makes agent-sandbox manage one more policy per template with exactly these rules, added to those; the controller's secure default is never used, because it blocks DNS, ploegd, the model gateway and the forge alike. | values.yaml, values.schema.json |
 | `executor.sandbox.networkPolicy.egress` | array |  |  | values.schema.json |
 | `executor.sandbox.networkPolicy.ingress` | array |  |  | values.schema.json |
 | `executor.sandbox.runtimeClassName` | string | `""` | type=sandbox only. Global fallback RuntimeClass for every team and role; a team's (or a Role's) own `sandbox.runtimeClassName` overrides it field by field. "" = the node's default runtime; set kata or gvisor only after qualifying it with the privileged DinD sidecar on your nodes. Place Kata on bare metal (its own kernel, no nested-virt requirement). Place gVisor systrap on VMs without nested virt, accepting its file-I/O penalty on clone-heavy runs. | values.yaml, values.schema.json |
@@ -503,6 +503,31 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `monitoring.serviceMonitor.interval` | string | `30s` |  | values.yaml, values.schema.json |
 | `monitoring.serviceMonitor.labels` | object | `{}` | e.g. {release: kube-prometheus-stack}, whatever your Prometheus selects on | values.yaml, values.schema.json |
 | `monitoring.serviceMonitor.scrapeTimeout` | string | `10s` |  | values.yaml, values.schema.json |
+| `networkPolicy` | object |  | Default-deny NetworkPolicies for every pod the chart renders (ploegd, workers, the sandbox launcher, claude-runner, ploeg-mcp), each with the allowlist that pod needs. Egress to an endpoint is derived from its URL unless `peers` names it: an IP is itself, a bare name is the release namespace, `name.ns.svc` is that namespace, anything else is the internet outside `privateCidrs`, on the URL's port or the scheme's default. The policies are plain `networking.k8s.io/v1` objects and are applied only by a CNI that enforces NetworkPolicy (Cilium, Calico, Antrea); kind's kindnet and Flannel ignore them. An installer's own policies add to these, never subtract (docs/ops/network.md). | values.yaml, values.schema.json |
+| `networkPolicy.claudeRunner.extraEgress` | [networkPolicyEgressRules](#networkpolicyegressrules) | `[]` |  | values.yaml, values.schema.json |
+| `networkPolicy.database` | object |  | ploegd's PostgreSQL. The connection URI lives in a Secret the chart cannot read, so there is nothing to derive: empty `peers` allows every pod in the release namespace on `port`. | values.yaml, values.schema.json |
+| `networkPolicy.database.peers` | [networkPolicyPeers](#networkpolicypeers) | `[]` |  | values.yaml, values.schema.json |
+| `networkPolicy.database.port` | integer or string | `5432` | The PostgreSQL port as the pod listens on it. | values.yaml, values.schema.json |
+| `networkPolicy.dns` | object |  | The cluster DNS every policy allows. The default selects CoreDNS as kubeadm, kind and Talos label it; a cluster with another label names its own peers. | values.yaml, values.schema.json |
+| `networkPolicy.dns.peers` | [networkPolicyPeers](#networkpolicypeers) | `[{"namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "kube-system"}}, "podSelector": {"matchLabels": {"k8s-app": "kube-dns"}}}]` |  | values.yaml, values.schema.json |
+| `networkPolicy.dns.ports` | [networkPolicyPorts](#networkpolicyports) | `[{"protocol": "UDP", "port": 53}, {"protocol": "TCP", "port": 53}]` |  | values.yaml, values.schema.json |
+| `networkPolicy.enabled` | boolean | `true` | Render the policies. `false` renders none and leaves the network to the installer, which the threat model records as finding F-02. | values.yaml, values.schema.json |
+| `networkPolicy.forge` | [networkPolicyEndpoint](#networkpolicyendpoint) | `{"peers": [], "port": ""}` | The forges: workers reach the executor's forge `url`; ploegd and claude-runner reach every configured forge's `publicUrl` or `url`, and api.github.com for github.com. Empty `peers` derives the destination from each URL. | values.yaml, values.schema.json |
+| `networkPolicy.gateway` | [networkPolicyEndpoint](#networkpolicyendpoint) | `{"peers": [], "port": ""}` | The model gateway: ploegd reaches `executor.litellm.adminUrl` and workers `executor.litellm.baseUrl`. Empty `peers` derives the destination from each URL. | values.yaml, values.schema.json |
+| `networkPolicy.knowledgeGraph` | [networkPolicyEndpoint](#networkpolicyendpoint) | `{"peers": [], "port": ""}` | The Omnigraph server at `knowledgeGraph.url`, reached by ploegd only. Empty `peers` derives the destination from the URL. | values.yaml, values.schema.json |
+| `networkPolicy.kubernetesApi` | object |  | The Kubernetes API the sandbox launcher creates SandboxClaims through. The API server is not a pod, so empty `peers` allows any peer on `ports`; name its endpoint addresses as ipBlocks to narrow it, or add your CNI's API-server entity in a policy of your own. | values.yaml, values.schema.json |
+| `networkPolicy.kubernetesApi.peers` | [networkPolicyPeers](#networkpolicypeers) | `[]` |  | values.yaml, values.schema.json |
+| `networkPolicy.kubernetesApi.ports` | [networkPolicyPorts](#networkpolicyports) | `[{"protocol": "TCP", "port": 6443}, {"protocol": "TCP", "port": 443}]` |  | values.yaml, values.schema.json |
+| `networkPolicy.mcp.extraEgress` | [networkPolicyEgressRules](#networkpolicyegressrules) | `[]` |  | values.yaml, values.schema.json |
+| `networkPolicy.mcp.ingressFrom` | [networkPolicyPeers](#networkpolicypeers) | `[]` | Peers that may reach ploeg-mcp on `mcp.port`. Empty allows any peer on that port; `mcp.networkPolicy.ingress` is the older per-component form and still renders. | values.yaml, values.schema.json |
+| `networkPolicy.ploegd.extraEgress` | [networkPolicyEgressRules](#networkpolicyegressrules) | `[]` | Further egress rules for ploegd, such as a tracker or forge whose URL the derivation cannot place. | values.yaml, values.schema.json |
+| `networkPolicy.ploegd.extraIngress` | [networkPolicyIngressRules](#networkpolicyingressrules) | `[]` |  | values.yaml, values.schema.json |
+| `networkPolicy.ploegd.ingressFrom` | [networkPolicyPeers](#networkpolicypeers) | `[]` | Peers that may reach ploegd on 8080: the gateway that forwards webhooks, operator consumers, Prometheus. Empty allows any peer on that port, because the chart cannot know your gateway; set, the policy allows these peers plus this release's own worker, launcher, ploeg-mcp and claude-runner pods. | values.yaml, values.schema.json |
+| `networkPolicy.privateCidrs` | array | `["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]` | CIDRs an internet rule excludes, so a pod allowed to reach a public host cannot reach the cluster, the nodes or the LAN through the same rule. Add your pod, service and node ranges when they are outside RFC 1918. | values.yaml, values.schema.json |
+| `networkPolicy.sandboxLauncher.extraEgress` | [networkPolicyEgressRules](#networkpolicyegressrules) | `[]` |  | values.yaml, values.schema.json |
+| `networkPolicy.telemetry` | [networkPolicyEndpoint](#networkpolicyendpoint) | `{"peers": [], "port": ""}` | Every OTLP collector a harness `telemetry.endpoint` or `claudeRunner.env.OTEL_EXPORTER_OTLP_ENDPOINT` names. Empty `peers` derives the destination from each URL. | values.yaml, values.schema.json |
+| `networkPolicy.tracker` | [networkPolicyEndpoint](#networkpolicyendpoint) | `{"peers": [], "port": ""}` | The trackers ploegd calls: `tracker.url`, ClickUp when a ClickUp Secret is set, the GitHub API when `tracker.github.appId` is set. Empty `peers` derives the destination from each URL. | values.yaml, values.schema.json |
+| `networkPolicy.worker.extraEgress` | [networkPolicyEgressRules](#networkpolicyegressrules) | `[]` | Further egress rules for every worker pod, such as the registry a DinD sidecar pulls from or the allowlist proxy of ADR-0037. Each rule widens what a model-directed harness can reach. | values.yaml, values.schema.json |
 | `nodeSelector` |  | `{}` | Node selector for the ploegd pod. Empty = any schedulable node. | values.yaml |
 | `operator.consumers` | array | `[]` | Operator read consumers, forwarded as `PLOEG_OPERATOR_CONSUMERS`. | values.yaml, values.schema.json |
 | `operator.consumers[].execute` | boolean |  | Grants execution commands. Defaults to false. | values.schema.json |
@@ -547,6 +572,43 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 ## Shared value shapes
 
 Several keys above share one schema definition.
+
+### networkPolicyPeers
+
+A list of NetworkPolicyPeer objects: `podSelector`, `namespaceSelector` or `ipBlock`, as in `networking.k8s.io/v1`.
+
+| Key | Type | Description |
+| --- | --- | --- |
+
+### networkPolicyPorts
+
+A list of NetworkPolicyPort objects: `protocol` and `port`, as in `networking.k8s.io/v1`.
+
+| Key | Type | Description |
+| --- | --- | --- |
+
+### networkPolicyIngressRules
+
+A list of NetworkPolicyIngressRule objects, appended to the policy as written.
+
+| Key | Type | Description |
+| --- | --- | --- |
+
+### networkPolicyEgressRules
+
+A list of NetworkPolicyEgressRule objects, appended to the policy as written.
+
+| Key | Type | Description |
+| --- | --- | --- |
+
+### networkPolicyEndpoint
+
+Where one kind of endpoint lives. Empty `peers` derives the destination from each configured URL; set, they replace it for every URL of the kind. Empty `port` is each URL's port, or 443 for https and 80 for http; set, it replaces it, which a Service whose port differs from its pods' needs.
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `peers` | [networkPolicyPeers](#networkpolicypeers) |  |
+| `port` | integer or string |  |
 
 ### goMemLimit
 

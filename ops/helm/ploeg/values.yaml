@@ -22,6 +22,60 @@ imagePullSecrets: [] # e.g. [{name: harbor-pull}] for a private registry
 service:
   port: 8080
 
+# Default-deny NetworkPolicies for every Ploeg pod, with the egress each one
+# needs derived from the URLs above and below (docs/ops/network.md). Only a
+# CNI that enforces NetworkPolicy applies them; kind's kindnet does not.
+networkPolicy:
+  enabled: true
+  dns:
+    peers:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: kube-system
+        podSelector:
+          matchLabels:
+            k8s-app: kube-dns
+    ports:
+      - {protocol: UDP, port: 53}
+      - {protocol: TCP, port: 53}
+  privateCidrs: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16]
+  database:
+    peers: []
+    port: 5432
+  gateway:
+    peers: []
+    port: ""
+  forge:
+    peers: []
+    port: ""
+  tracker:
+    peers: []
+    port: ""
+  knowledgeGraph:
+    peers: []
+    port: ""
+  telemetry:
+    peers: []
+    port: ""
+  kubernetesApi:
+    peers: []
+    ports:
+      - {protocol: TCP, port: 6443}
+      - {protocol: TCP, port: 443}
+  ploegd:
+    ingressFrom: []
+    extraIngress: []
+    extraEgress: []
+  worker:
+    extraEgress: []
+  sandboxLauncher:
+    extraEgress: []
+  claudeRunner:
+    extraEgress: []
+  mcp:
+    ingressFrom: []
+    extraEgress: []
+
 # ploeg-mcp: Ploeg's MCP tools over Streamable HTTP for people's AI clients
 # (ADR-0081), run from the ploegd image as `ploeg-mcp http`. Off by default.
 # Its settings are in docs/how-to/serve-ploeg-mcp-over-https.md; the chart
@@ -78,8 +132,8 @@ mcp:
 # claude-environment Runs as Claude Code sessions (ADR-0084), from the
 # release's claude-runner image. Off by default. ops/claude-runner/README.md
 # explains the runner settings. The pod reaches Anthropic, the forge's HTTPS
-# host and ploegd; write that egress policy for your CNI, because it names
-# hosts a NetworkPolicy cannot.
+# host and ploegd; networkPolicy renders that egress, with Anthropic as the
+# internet on 443 because a NetworkPolicy cannot name a host.
 claudeRunner:
   enabled: false
   name: "" # empty = <fullname>-claude-runner; Deployment and the pods' app.kubernetes.io/name
@@ -530,11 +584,12 @@ executor:
     # launcher fails with the controller's reason, instead of holding the
     # Team's slot until the shutdown deadline. Covers a cold image pull.
     startTimeoutSeconds: 600
-    # {} = Unmanaged: the cluster's own policies, selected by the worker's
-    # labels, apply. A NetworkPolicy spec here (ingress/egress rules) makes
-    # agent-sandbox manage one policy per template with exactly these rules.
-    # Allow at least DNS, ploegd, the model gateway and the forge; the
-    # controller's secure default is never used, because it blocks all three.
+    # {} = Unmanaged: the chart's worker policy (networkPolicy) and the
+    # cluster's own, selected by the worker's labels, apply. A NetworkPolicy
+    # spec here (ingress/egress rules) makes agent-sandbox manage one more
+    # policy per template with exactly these rules, added to those; the
+    # controller's secure default is never used, because it blocks DNS,
+    # ploegd, the model gateway and the forge alike.
     networkPolicy: {}
     launcherResources:
       requests: {cpu: 10m, memory: 32Mi}

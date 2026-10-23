@@ -3,3 +3,7 @@ exceptions:
     surface: ops/helm/ploeg/values.schema.json
     pointer: /definitions/harness/properties/dind
     adr: "0136"
+  - base: v0.2.0-rc.47
+    surface: ops/helm/ploeg/values.yaml
+    pointer: networkPolicy.enabled
+    adr: "0137"
