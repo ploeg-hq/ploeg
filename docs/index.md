@@ -10,6 +10,10 @@ verified_by: "mise run docs-check (every link resolves); llms.txt links this pag
 
 Use these sources for the current implementation. The [architecture](architecture.md) distinguishes implemented behavior from remaining limits; the [ADR index](adrs/README.md) distinguishes accepted decisions from proposals.
 
+## Try it
+
+- [Quickstart](quickstart.md): verify a release's signatures, install it on a local kind cluster and complete one Run with a fake model and a local forge
+
 ## Operate
 
 - [Operator runbooks](how-to/index.md): stuck Leases and Runs, credential rotation, draining, spend, database recovery

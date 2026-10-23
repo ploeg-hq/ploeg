@@ -1,0 +1,74 @@
+env:
+  PLOEG_LLM_SETTLE_AFTER: 1m
+database:
+  existingSecret:
+    name: ploeg-database
+    key: uri
+operator:
+  consumers:
+    - name: quickstart
+      teams: [quickstart]
+      execute: true
+      maxBudgetUsd: 1
+      tokenSecret:
+        name: ploeg-operator
+        key: token
+config:
+  targets:
+    hello:
+      repo: quickstart/hello
+      branch: main
+executor:
+  enabled: true
+  type: cronjob
+  cronjob:
+    schedule: "* * * * *"
+  forge: forgejo
+  forgejo:
+    url: http://forgejo.ploeg.svc.cluster.local:3000
+    botUser: quickstart
+    tokenSecret:
+      name: agent-builder-token
+      key: FORGEJO_TOKEN
+  litellm:
+    baseUrl: http://litellm.ploeg.svc.cluster.local:4000/v1
+    adminUrl: http://litellm.ploeg.svc.cluster.local:4000
+    masterKeySecret:
+      name: litellm-master
+      key: LITELLM_MASTER_KEY
+    keyDuration: 1h
+  workerAuth:
+    mode: managed
+    signingKeySecret:
+      name: ploeg-worker-signing
+      key: key
+    bootstrapSecret:
+      name: ploeg-worker-bootstrap
+      registryKey: registry.json
+  workerResources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {cpu: "1", memory: 512Mi}
+  harness:
+    name: exec
+    image: docker.io/alpine/git:v2.52.0@sha256:4a0e72d49596a1f5d3701aeedafdadc5c0da4062be4657c7bdc4017387f591cc
+    dind: false
+    args:
+      - sh
+      - -c
+      - |-
+        set -eu
+        reply=$(wget -q -O - \
+          --header "Authorization: Bearer $LLM_API_KEY" \
+          --header "Content-Type: application/json" \
+          --post-data "{\"model\":\"$LLM_MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"Say hello.\"}]}" \
+          "$LLM_BASE_URL/chat/completions") || reply=""
+        said=$(printf '%s' "$reply" | sed -n 's/.*"content":"\([^"]*\)".*/\1/p')
+        if [ -n "$said" ]; then
+          printf '{"outcome":"no_change_needed","summary":"The model gateway answered: %s"}' "$said" > "$PLOEG_OUTCOME_FILE"
+        else
+          printf '{"outcome":"stuck","stuckReason":"The quickstart harness got no answer from the model gateway."}' > "$PLOEG_OUTCOME_FILE"
+        fi
+  teams:
+    - name: quickstart
+      model: quickstart-model
+      budget: "0.10"
