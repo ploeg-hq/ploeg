@@ -205,10 +205,10 @@ fails otherwise.
 | [0128](0128-a-chat-message-is-a-read-only-run-about-no-work-item-paid-from-a-teams-chat-allowance.md) | A chat message is a read-only Run about no Work Item, paid from a Team's Chat Allowance | proposed | 2026-10-18 |
 | [0129](0129-ploeg-reports-how-each-board-and-repository-it-routes-to-is-wired.md) | Ploeg reports how each board and repository it routes to is wired | proposed | 2026-10-19 |
 | [0133](0133-a-run-is-told-its-limits-at-the-start-and-its-own-status-on-every-model-call.md) | A Run is told its limits at the start and its own status on every model call | proposed | 2026-10-20 |
-| [0134](0134-ploeg-keeps-each-release-compatible-with-the-one-before-and-removes-only-after-a-deprecated-minor.md) | Ploeg keeps each release compatible with the one before and removes only after a deprecated minor | proposed | 2026-10-23 |
+| [0134](0134-ploeg-keeps-each-release-compatible-with-the-one-before-and-removes-only-after-a-deprecated-minor.md) | Ploeg keeps each release compatible with the one before and removes only after a deprecated minor | accepted | 2026-10-24 |
 | [0135](0135-a-bake-off-runs-one-work-item-on-several-configurations-and-a-shadow-judge-recommends-while-a-person-picks.md) | A bake-off runs one Work Item on several configurations and a shadow judge recommends while a person picks | proposed | 2026-10-23 |
-| [0136](0136-the-chart-default-is-the-strict-isolation-profile-and-privileged-dind-is-an-acknowledged-opt-in.md) | The chart default is the strict isolation profile, and privileged DinD is an acknowledged opt-in | proposed | 2026-10-23 |
-| [0137](0137-the-chart-renders-a-default-deny-networkpolicy-for-every-pod-with-an-allowlist-derived-from-its-urls.md) | The chart renders a default-deny NetworkPolicy for every pod, with an allowlist derived from its URLs | proposed | 2026-10-23 |
+| [0136](0136-the-chart-default-is-the-strict-isolation-profile-and-privileged-dind-is-an-acknowledged-opt-in.md) | The chart default is the strict isolation profile, and privileged DinD is an acknowledged opt-in | accepted | 2026-10-24 |
+| [0137](0137-the-chart-renders-a-default-deny-networkpolicy-for-every-pod-with-an-allowlist-derived-from-its-urls.md) | The chart renders a default-deny NetworkPolicy for every pod, with an allowlist derived from its URLs | accepted | 2026-10-24 |
 | [0138](0138-a-harness-runs-in-its-own-container-and-no-credential-enters-it.md) | A harness runs in its own container, and no credential enters it | proposed | 2026-10-23 |
 | [0140](0140-documentation-is-cc-by-4-0-and-code-and-api-specifications-stay-apache-2-0.md) | Documentation is CC-BY-4.0, and code and API specifications stay Apache-2.0 | accepted | 2026-10-24 |
 

@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-23
+status: accepted
+date: 2026-10-24
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-04-01
@@ -80,3 +80,4 @@ Chosen option: "**Default `dind: false`; `dind: true` renders only with an expli
 * Evidence: [credential isolation qualification](../research/2026-10-04-isolation-qualification.md); goldens `ops/helm/ploeg/ci/golden/executor-default-worker.yaml` and `executor-acknowledged-dind.yaml`.
 * Builds on [ADR 0034](0034-the-harness-gets-placeholders-the-worker-keeps-credentials.md), [ADR 0120](0120-a-worker-container-meets-the-restricted-pod-security-standard-by-default.md) and [ADR 0134](0134-ploeg-keeps-each-release-compatible-with-the-one-before-and-removes-only-after-a-deprecated-minor.md); decides the DinD half of [ADR 0106](0106-a-run-declares-an-isolation-floor-and-a-cell-runs-it-at-the-strictest-class-it-can-honour.md) ahead of it.
 * 2026-10-23: proposed with the change.
+* 2026-10-24: accepted by the owner.

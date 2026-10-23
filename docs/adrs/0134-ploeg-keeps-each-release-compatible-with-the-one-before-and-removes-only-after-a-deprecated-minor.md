@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-23
+status: accepted
+date: 2026-10-24
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-04-01
@@ -87,3 +87,4 @@ Chosen option: "**One policy for every surface, with removal after a deprecated 
 * Builds on [ADR 0080](0080-ploeg-keeps-no-run-card-code-and-removes-it-in-one-release.md), [ADR 0093](0093-the-working-state-is-active-and-budget-kept-back-is-a-hold.md) and [ADR 0115](0115-candidates-are-calculated-from-conventional-commits-and-a-stable-release-stays-a-reviewed-tag.md).
 * Code: `internal/compat/`, `docs/contracts/breaking-changes.yaml`.
 * 2026-10-23: proposed. Policy and gate built; the worker handshake decided and unbuilt.
+* 2026-10-24: accepted by the owner.
