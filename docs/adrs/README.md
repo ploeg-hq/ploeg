@@ -210,6 +210,7 @@ fails otherwise.
 | [0136](0136-the-chart-default-is-the-strict-isolation-profile-and-privileged-dind-is-an-acknowledged-opt-in.md) | The chart default is the strict isolation profile, and privileged DinD is an acknowledged opt-in | proposed | 2026-10-23 |
 | [0137](0137-the-chart-renders-a-default-deny-networkpolicy-for-every-pod-with-an-allowlist-derived-from-its-urls.md) | The chart renders a default-deny NetworkPolicy for every pod, with an allowlist derived from its URLs | proposed | 2026-10-23 |
 | [0138](0138-a-harness-runs-in-its-own-container-and-no-credential-enters-it.md) | A harness runs in its own container, and no credential enters it | proposed | 2026-10-23 |
+| [0140](0140-documentation-is-cc-by-4-0-and-code-and-api-specifications-stay-apache-2-0.md) | Documentation is CC-BY-4.0, and code and API specifications stay Apache-2.0 | accepted | 2026-10-24 |
 
 ## Review calendar
 

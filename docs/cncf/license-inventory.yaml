@@ -4,6 +4,7 @@ policy:
   retrieved: "2026-10-23"
   exceptions: https://exceptions.cncf.io/exceptions.json
   outbound: Apache-2.0
+  documentation: CC-BY-4.0
   allowlist:
     - 0BSD
     - BSD-2-Clause
@@ -175,7 +176,7 @@ components:
       - Helm chart
     license: Apache-2.0
     disposition: own-work
-    note: REUSE.toml declares Apache-2.0 for every path. The chart ops/helm/ploeg has no chart dependencies. The JSON Schemas in docs/contracts are API specifications for Ploeg's own software, which charter section 11(a)(iv) allows under Apache-2.0.
+    note: REUSE.toml declares Apache-2.0 for every path except the documentation below. The chart ops/helm/ploeg has no chart dependencies. Everything in docs/contracts, the JSON Schemas, the breaking-changes record and the contract pages, is an API specification for Ploeg's own software, which charter section 11(a)(iv) allows under Apache-2.0, so it stays Apache-2.0 with the code. So do the SKILL.md files under pkg/, which the worker binary embeds, and CHANGELOG.md, which release tooling writes from commit messages.
   - name: Files copied from the parent repository at separation
     kind: copied
     shipped_in:
@@ -187,9 +188,10 @@ components:
     kind: docs
     shipped_in:
       - source
-    license: Apache-2.0
+      - Helm chart
+    license: CC-BY-4.0
     disposition: own-work
-    note: Every Markdown page is Apache-2.0 through REUSE.toml. CNCF charter section 11(b)(iv) makes documentation available under CC-BY-4.0, so a donation needs the rights holder to decide whether to license the docs CC-BY-4.0 (alone or alongside Apache-2.0). Not decided here.
+    note: CC-BY-4.0 through REUSE.toml, as CNCF charter section 11(b)(iv) asks, decided by the sole rights holder in ADR-0140. It covers every Markdown file, llms.txt and images under docs/, minus the Apache-2.0 carve-outs named in the entry above and the brand files under docs/brand (ADR-0022). The Helm chart carries its README.md. Code samples inside the documentation are also available under Apache-2.0, so they can be pasted into code. The contract bundle includes the docs/ tree, so a consumer that republishes those pages owes CC-BY attribution.
   - name: Ploeg name, mark and brand artwork (docs/brand)
     kind: artwork
     shipped_in:
