@@ -156,6 +156,7 @@ helm:
   executor.harness.telemetry: "OpenTelemetry collector the harness exports to (`PLOEG_TELEMETRY`), set at executor, team or Role level; the most specific block wins whole. claude-code always receives it; openhands only with `allowHarnesses: [openhands]`, because its tracing fails every prompt on an agent image whose lmnr rejects the SDK call (agent-runner 1.3.0; 1.4.0 is fine, ADR-0113). acp/opencode, exec and claude-environment export nothing from the worker. Empty exports nothing."
   executor.harness.verify: Checks a Run is told to run and the worker runs after a writing Run (`PLOEG_VERIFY_COMMANDS`). Write a formatter check so output fails it, for example `test -z "$(gofmt -l .)"`.
   executor.harness.verifyTimeout: Bounds the worker's own verification run (`PLOEG_VERIFY_TIMEOUT`).
+  executor.harness.acknowledgePrivilegedDind: "Required `true` wherever `dind` is `true`, resolved Role, then team, then here. Records that the operator accepts that the harness holds a privileged Docker daemon's client certificates (root on the node) and, with both proxies off, the real per-Run model key and forge token (ADR-0136)."
   executor.teams[].name: Team name. Give the routing config's Team the same name.
   executor.teams[].model: Model the Team's workers use unless a Role overrides it.
   executor.teams[].budget: Per-run key budget in USD. For a Team with a plan it is the Shift pool the Roles share.
@@ -177,7 +178,8 @@ helm:
   harness.entrypoint: Harness binary override. Empty means the adapter default.
   harness.args: "`exec` harness only: argv template with `{taskspec}` and `{taskfile}`."
   harness.outcomeFile: "`exec` harness only: OutcomeReport JSON path override."
-  harness.dind: Adds the privileged DinD sidecar and Docker wiring. OpenHands and gate builds need it.
+  harness.dind: "`false` (the default) keeps the strict profile: no privileged sidecar, both credential proxies on for a qualified harness. `true` adds the privileged DinD sidecar and Docker wiring for gate builds inside a container and turns both proxies off for that workload; the render refuses it without `acknowledgePrivilegedDind` (ADR-0136)."
+  harness.acknowledgePrivilegedDind: "Required `true` for a workload with `dind: true`. Records that the operator accepts that the harness holds a privileged Docker daemon's client certificates (root on the node) and, with the proxies off, the real per-Run model key and forge token."
   harness.timeout: Stops a harness that runs longer than this.
   harness.idleTimeout: Stops a harness that is silent for this long.
   harness.acp: "`acp` harness settings."

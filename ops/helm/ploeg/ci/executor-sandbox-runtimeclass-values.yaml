@@ -54,11 +54,13 @@ executor:
       repoName: example
       baseBranch: development
       maxReplicaCount: 1
+      harness: {dind: true, acknowledgePrivilegedDind: true}
     # A team-level override, and a reading Role that overrides again.
     - name: gvisor
       model: litellm_proxy/deepseek-chat
       budget: "4"
       maxReplicaCount: 1
+      harness: {dind: true, acknowledgePrivilegedDind: true}
       sandbox:
         runtimeClassName: gvisor
       plan:

@@ -1,6 +1,6 @@
 # CI-only values: render the agent-sandbox executor (docs/contracts/executor.md)
-# so its SandboxTemplate, launcher and RBAC cannot rot silently. Bronze keeps
-# the default DinD harness, so the privileged-dind label must reach the
+# so its SandboxTemplate, launcher and RBAC cannot rot silently. Bronze opts
+# into the DinD harness, so the privileged-dind label must reach the
 # SandboxTemplate's pod and must NOT reach the launcher's ScaledJob. Gold has a
 # plan with a reading Role, so the per-Role objects and the read-only token
 # branch render too.
@@ -52,10 +52,12 @@ executor:
       repoName: example
       baseBranch: development
       maxReplicaCount: 1
+      harness: {dind: true, acknowledgePrivilegedDind: true}
     - name: gold
       model: litellm_proxy/deepseek-chat
       budget: "4"
       maxReplicaCount: 1
+      harness: {dind: true, acknowledgePrivilegedDind: true}
       plan:
         - roles:
             - {name: builder, writes: true, cap: "3.00"}

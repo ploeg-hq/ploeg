@@ -239,12 +239,6 @@ metadata:
     app.kubernetes.io/version: "CHART-VERSION"
     helm.sh/chart: ploeg-CHART-VERSION
     app.kubernetes.io/managed-by: Helm
-    # KEDA copies these labels onto every Job it creates, which is the only way
-    # the hazard reaches the Job. Kyverno autogens a Job rule for
-    # pod-security-baseline-enforce and a Job selector matches the JOB's own
-    # labels — stamping this on the pod template alone left the PolicyException
-    # unable to admit the Job, and DinD teams were rejected at admission.
-    ploeg.webgrip.dev/privileged-dind: "true"
 spec:
   pollingInterval: 30
   minReplicaCount: 0
@@ -268,12 +262,6 @@ spec:
         labels:
           app.kubernetes.io/name: ploeg-worker
           ploeg.webgrip.dev/team: silver
-          # Names the HAZARD, not the workload: this pod carries a privileged
-          # docker:dind sidecar, and the ploeg-worker PolicyException is keyed on
-          # exactly this label. A pod without dind never carries it and is held to
-          # the full baseline — so adding a Role costs no security-repo change, and
-          # readers are not waived for a privilege they do not take.
-          ploeg.webgrip.dev/privileged-dind: "true"
       spec:
         restartPolicy: Never
         # The shutdown budget for ploeg-worker's SIGTERM path: abort the harness,
@@ -315,37 +303,6 @@ spec:
               requests:
                 cpu: 50m
                 memory: 64Mi
-          # DinD sidecar: the harness sandbox and the repo quality gates need a
-          # Docker daemon. Requires the ploeg-worker PolicyException. Teams whose
-          # harness needs no Docker set harness.dind: false.
-          - name: dind
-            image: docker.io/library/docker:29.8.2-dind@sha256:7dcdfc4a20246236f558175182ccace1eb15a41bd3eb119dd2284f393498b7c1
-            restartPolicy: Always
-            securityContext:
-              privileged: true
-            env:
-              - name: DOCKER_TLS_CERTDIR
-                value: /certs
-            startupProbe:
-              tcpSocket:
-                port: 2376
-              periodSeconds: 2
-              failureThreshold: 60
-              timeoutSeconds: 5
-            volumeMounts:
-              - name: docker-certs
-                mountPath: /certs
-              - name: docker-storage
-                mountPath: /var/lib/docker
-              - name: ci-shared
-                mountPath: /mnt/ci-shared
-            resources:
-              limits:
-                cpu: "1"
-                memory: 1536Mi
-              requests:
-                cpu: "1"
-                memory: 1536Mi
         containers:
           - name: worker
             image: registry.example/agent-runner:1.3.0
@@ -369,8 +326,10 @@ spec:
                 value: "4h"
               - name: LLM_BASE_URL
                 value: "http://litellm.ai.svc.cluster.local:4000/v1"
-              - name: PLOEG_CREDENTIAL_ISOLATION_OFF_REASON
-                value: "dind"
+              - name: PLOEG_LLM_KEY_ISOLATION
+                value: "proxy"
+              - name: PLOEG_FORGE_TOKEN_ISOLATION
+                value: "proxy"
               - name: PLOEG_LLM_CREDENTIAL_MODE
                 value: "managed"
               - name: PLOEG_WORKER_BOOTSTRAP_TOKEN
@@ -404,18 +363,9 @@ spec:
                     fieldPath: metadata.uid
               - name: WORK_DIR
                 value: /mnt/ci-shared
-              - name: DOCKER_HOST
-                value: tcp://localhost:2376
-              - name: DOCKER_CERT_PATH
-                value: /certs/client
-              - name: DOCKER_TLS_VERIFY
-                value: "1"
             volumeMounts:
               - name: worker-bin
                 mountPath: /mnt/bin
-                readOnly: true
-              - name: docker-certs
-                mountPath: /certs
                 readOnly: true
               - name: ci-shared
                 mountPath: /mnt/ci-shared
@@ -438,10 +388,6 @@ spec:
                 memory: 1Gi
         volumes:
           - name: worker-bin
-            emptyDir: {}
-          - name: docker-certs
-            emptyDir: {}
-          - name: docker-storage
             emptyDir: {}
           # Disk-backed (not tmpfs): repo checkout + gate builds are large.
           # Same absolute path in worker AND dind so `docker run -v`

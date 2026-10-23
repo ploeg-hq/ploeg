@@ -408,7 +408,14 @@ executor:
     entrypoint: ""  # binary override (PLOEG_HARNESS_ENTRYPOINT); "" = adapter default
     args: []        # exec harness only: argv template with {taskspec}/{taskfile}
     outcomeFile: "" # exec harness only: OutcomeReport JSON path override
-    dind: true      # privileged DinD sidecar + DOCKER_* wiring (OpenHands + gates need it)
+    # false (the default) is the strict profile: no privileged sidecar, both
+    # credential proxies on for a qualified harness. true adds the privileged
+    # docker:dind sidecar and DOCKER_* wiring for gate builds inside a
+    # container, mounts the daemon's client certificates into the harness and
+    # turns both proxies off for that workload; the render refuses it unless
+    # acknowledgePrivilegedDind is true in the same chain (ADR-0136).
+    dind: false
+    acknowledgePrivilegedDind: false
     timeout: 100m
     idleTimeout: 15m
     # Language toolchains mounted read-only at /opt/ploeg/toolchains/<name>

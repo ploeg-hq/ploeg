@@ -12,7 +12,7 @@ executor:
     - name: dind
       model: litellm_proxy/deepseek-chat
       budget: "1"
-      harness: {name: openhands, dind: true}
+      harness: {name: openhands, dind: true, acknowledgePrivilegedDind: true}
     - name: unqualified
       model: litellm_proxy/claude-sonnet-5
       budget: "1"
