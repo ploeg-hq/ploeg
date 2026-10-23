@@ -14,11 +14,22 @@ Every component Ploeg distributes, with its licence and a disposition against th
 
 | Artifact | Contents |
 | --- | --- |
-| Source repository | Ploeg code, chart, contracts, migrations, docs, brand files |
+| Source repository | Ploeg code, chart, contracts, migrations and brand files (Apache-2.0); docs (CC-BY-4.0) |
 | `ploeg_<version>_linux_amd64.tar.gz` | `ploegd`, `ploeg-worker`, `LICENSE`, `NOTICE`, `THIRD-PARTY-NOTICES` |
 | `ghcr.io/ploeg-hq/ploegd` | distroless static-debian13, `ploegd`, `ploeg-worker`, `ploeg-mcp`, the three notice files in `/usr/share/doc/ploeg/` |
 | `ghcr.io/ploeg-hq/claude-runner` | debian bookworm-slim, five apt packages, the Claude Code CLI, Ploeg's runner hooks, `LICENSE` and `NOTICE` |
 | `oci://ghcr.io/ploeg-hq/charts/ploeg` | the chart; no chart dependencies; defaults that pull `docker:29.8.2-dind` |
+
+## Outbound licences
+
+Code is Apache-2.0, as charter section 11(b)(iii) asks. Documentation is CC-BY-4.0, as section 11(b)(iv) asks ([ADR-0140](../adrs/0140-documentation-is-cc-by-4-0-and-code-and-api-specifications-stay-apache-2-0.md)). [REUSE.toml](../../REUSE.toml) says which applies to each file:
+
+| Licence | Files |
+| --- | --- |
+| CC-BY-4.0 | Every Markdown file, `llms.txt`, and images under `docs/` |
+| Apache-2.0 | Everything else, plus these Markdown files: `docs/contracts/**` (API specifications, which section 11(a)(iv) allows under Apache-2.0), `docs/brand/**` (artwork and trademark policy, [ADR-0022](../adrs/0022-the-name-and-mark-are-trademarks-not-cc-licensed-artwork.md)), the `SKILL.md` files under `pkg/` that the worker embeds, and `CHANGELOG.md`, which is generated from commit messages |
+
+Code samples inside the documentation are also available under Apache-2.0. `go test ./internal/licenses/` fails when REUSE.toml declares a licence the inventory's `policy` doesn't name, or the other way round.
 
 ## Dispositions
 
@@ -38,7 +49,6 @@ Every component Ploeg distributes, with its licence and a disposition against th
 | --- | --- | --- |
 | Claude Code CLI in `claude-runner` | Proprietary, all rights reserved | Ploeg republishes a closed binary, downloaded from a vendor website, in every release. The container image guidance asks for content from the project's source or a standard package manager, and sends binaries without source to Legal Committee and Governing Board review. |
 | `github.com/jackc/pgpassfile` | MIT | Shipped in every binary. MIT is allowlisted, but the repository has 6 stars and 4 forks, under the use threshold, and the exceptions database has no entry. |
-| Documentation | Apache-2.0 | The CNCF charter makes documentation available under CC-BY-4.0. The rights holder decides how the docs are licensed at donation. |
 | Name, mark and artwork | Apache-2.0 plus trademark | The charter requires trademark and logo assets to move to the Linux Foundation on acceptance. |
 | Base-image packages in both images | GPL, LGPL, MPL-2.0 and others | Reviewed under the container image guidance, not the allowlist. Debian keeps every copyright file. `claude-runner` pins its base by tag only, so its GPL source cannot be pinned down later. |
 | `docker:dind` chart default | Apache-2.0 over Alpine | A user-fetched dependency the chart turns on by default. Whether that needs review is a question for CNCF staff. |

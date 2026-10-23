@@ -8,7 +8,7 @@ fail=0
 
 note() { printf '  %s\n' "$1"; fail=1; }
 
-echo "License consistency — Apache-2.0"
+echo "License consistency — Apache-2.0 code, CC-BY-4.0 documentation"
 
 [ -f LICENSE ] || note "LICENSE is missing"
 grep -q 'Apache License' LICENSE 2>/dev/null || note "LICENSE is not Apache-2.0"
@@ -41,6 +41,10 @@ grep -q '^notices=(LICENSE NOTICE THIRD-PARTY-NOTICES)' scripts/release.sh \
 [ -f REUSE.toml ] || note "REUSE.toml is missing; per-file licensing would stop being declared"
 grep -q 'SPDX-License-Identifier = "Apache-2.0"' REUSE.toml 2>/dev/null \
   || note "REUSE.toml does not declare Apache-2.0 for the repository"
+grep -q 'SPDX-License-Identifier = "CC-BY-4.0"' REUSE.toml 2>/dev/null \
+  || note "REUSE.toml does not declare CC-BY-4.0 for the documentation; CNCF charter section 11(b)(iv)"
+grep -q 'LICENSES/CC-BY-4.0.txt' README.md 2>/dev/null \
+  || note "README.md no longer states the documentation licence"
 for id in $(grep -oE 'SPDX-License-Identifier = "[^"]+"' REUSE.toml 2>/dev/null | sed 's/.*"\(.*\)"/\1/' | sort -u); do
   [ -f "LICENSES/$id.txt" ] || note "REUSE.toml declares $id but LICENSES/$id.txt is missing"
 done
