@@ -17,7 +17,7 @@ Every component Ploeg distributes, with its licence and a disposition against th
 | Source repository | Ploeg code, chart, contracts, migrations and brand files (Apache-2.0); docs (CC-BY-4.0) |
 | `ploeg_<version>_linux_amd64.tar.gz` | `ploegd`, `ploeg-worker`, `LICENSE`, `NOTICE`, `THIRD-PARTY-NOTICES` |
 | `ghcr.io/ploeg-hq/ploegd` | distroless static-debian13, `ploegd`, `ploeg-worker`, `ploeg-mcp`, the three notice files in `/usr/share/doc/ploeg/` |
-| `ghcr.io/ploeg-hq/claude-runner` | debian bookworm-slim, five apt packages, the Claude Code CLI, Ploeg's runner hooks, `LICENSE` and `NOTICE` |
+| `ghcr.io/ploeg-hq/claude-runner` | debian bookworm-slim, five apt packages, Ploeg's runner hooks, the Claude Code installer and its pin, `LICENSE` and `NOTICE`. Claude Code itself is installed at start ([ADR-0141](../adrs/0141-the-claude-runner-image-carries-no-claude-code-and-installs-anthropics-signed-release-at-start.md)) |
 | `oci://ghcr.io/ploeg-hq/charts/ploeg` | the chart; no chart dependencies; defaults that pull `docker:29.8.2-dind` |
 
 ## Outbound licences
@@ -47,12 +47,13 @@ Code samples inside the documentation are also available under Apache-2.0. `go t
 
 | Component | Licence | Why it matters |
 | --- | --- | --- |
-| Claude Code CLI in `claude-runner` | Proprietary, all rights reserved | Ploeg republishes a closed binary, downloaded from a vendor website, in every release. The container image guidance asks for content from the project's source or a standard package manager, and sends binaries without source to Legal Committee and Governing Board review. |
 | `github.com/jackc/pgpassfile` | MIT | Shipped in every binary. MIT is allowlisted, but the repository has 6 stars and 4 forks, under the use threshold, and the exceptions database has no entry. |
 | Name, mark and artwork | Apache-2.0 plus trademark | The charter requires trademark and logo assets to move to the Linux Foundation on acceptance. |
 | Base-image packages in both images | GPL, LGPL, MPL-2.0 and others | Reviewed under the container image guidance, not the allowlist. Debian keeps every copyright file. `claude-runner` pins its base by tag only, so its GPL source cannot be pinned down later. |
 | `docker:dind` chart default | Apache-2.0 over Alpine | A user-fetched dependency the chart turns on by default. Whether that needs review is a question for CNCF staff. |
 | `github.com/modelcontextprotocol/go-sdk` | Apache-2.0 AND MIT | Its LICENSE also names CC-BY-4.0 for documentation, which is not linked. Recorded as allowlisted on the reading CNCF applied to `go-openapi/spec`; confirm. |
+
+Until [ADR-0141](../adrs/0141-the-claude-runner-image-carries-no-claude-code-and-installs-anthropics-signed-release-at-start.md), every release republished the closed Claude Code binary inside `claude-runner`, which the container image guidance (B)(1) and (B)(2) send to Legal Committee and Governing Board review. Now the image carries an installer and a pin. The cluster downloads Anthropic's signed release when a pod starts, which makes Claude Code a user-fetched dependency.
 
 Before this change, the release tarball and the images shipped MIT and BSD code without its notices. `THIRD-PARTY-NOTICES` now carries the licence, NOTICE and PATENTS text of every module linked into the binaries and of the Go runtime, and both images and the tarball include it.
 

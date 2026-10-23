@@ -379,6 +379,26 @@
             }
           }
         },
+        "claudeCode": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "install": {
+              "type": "boolean",
+              "description": "Install Claude Code from Anthropic's signed release into the runner pod before it starts; false when the image already carries it"
+            },
+            "version": {
+              "type": "string",
+              "pattern": "^([0-9]+\\.[0-9]+\\.[0-9]+)?$",
+              "description": "Claude Code version to install; empty uses the image's pin"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^([a-f0-9]{64})?$",
+              "description": "Expected sha256 of the version's Linux binary; empty trusts the signed manifest alone"
+            }
+          }
+        },
         "replicas": {
           "type": "integer",
           "minimum": 0

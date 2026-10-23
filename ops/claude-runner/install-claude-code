@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+log() { printf 'ploeg-install-claude-code: %s\n' "$*" >&2; }
+fail() { log "$*"; exit 1; }
+
+pin_file="${PLOEG_CLAUDE_CODE_PIN:-/opt/ploeg/claude-runner/claude-code.env}"
+pinned_version=""
+pinned_sha256=""
+if [ -r "$pin_file" ]; then
+  pinned_version=$(sed -n 's/^CLAUDE_CODE_VERSION=//p' "$pin_file")
+  pinned_sha256=$(sed -n 's/^CLAUDE_CODE_SHA256=//p' "$pin_file")
+fi
+version="${CLAUDE_CODE_VERSION:-$pinned_version}"
+expected="${CLAUDE_CODE_SHA256:-}"
+if [ -z "$expected" ] && [ "$version" = "$pinned_version" ]; then
+  expected="$pinned_sha256"
+fi
+releases="${PLOEG_CLAUDE_CODE_RELEASES_URL:-https://downloads.claude.ai/claude-code-releases}"
+key_url="${PLOEG_CLAUDE_CODE_KEY_URL:-https://downloads.claude.ai/keys/claude-code.asc}"
+fingerprint="${PLOEG_CLAUDE_CODE_KEY_FINGERPRINT:-31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE}"
+if [ -n "${PLOEG_CLAUDE_CODE_DIR:-}" ]; then
+  candidates=("$PLOEG_CLAUDE_CODE_DIR")
+else
+  candidates=(/opt/claude-code "${XDG_CACHE_HOME:-${HOME:-/nonexistent}/.cache}/ploeg-claude-code" "${TMPDIR:-/tmp}/ploeg-claude-code")
+fi
+
+[[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "no Claude Code version to install: set CLAUDE_CODE_VERSION or pin one in $pin_file"
+[ -z "$expected" ] || [[ "$expected" =~ ^[0-9a-f]{64}$ ]] || fail "CLAUDE_CODE_SHA256 is not a sha256 hex digest"
+
+for candidate in "${candidates[@]}"; do
+  if [ -x "$candidate/$version/claude" ]; then
+    printf '%s\n' "$candidate/$version/claude"
+    exit 0
+  fi
+done
+
+case "$(uname -m)" in
+  x86_64 | amd64) platform=linux-x64 ;;
+  aarch64 | arm64) platform=linux-arm64 ;;
+  *) fail "no Claude Code build for $(uname -m)" ;;
+esac
+
+dir=""
+for candidate in "${candidates[@]}"; do
+  if mkdir -p "$candidate" 2>/dev/null && [ -w "$candidate" ]; then
+    dir="$candidate"
+    break
+  fi
+done
+[ -n "$dir" ] || fail "none of ${candidates[*]} is writable; mount a writable volume or set PLOEG_CLAUDE_CODE_DIR"
+target="$dir/$version/claude"
+work=$(mktemp -d "$dir/.install.XXXXXX")
+trap 'rm -rf "$work"' EXIT
+
+fetch() { curl -fsSL --retry 3 --max-time "${2:-60}" -o "$work/$(basename "$1")" "$1" || fail "download of $1 failed"; }
+log "installing Claude Code $version ($platform) from $releases"
+fetch "$key_url"
+fetch "$releases/$version/manifest.json"
+fetch "$releases/$version/manifest.json.sig"
+
+awk '/^-----BEGIN PGP PUBLIC KEY BLOCK-----/ { inside = 1; body = 0; next }
+  /^-----END PGP PUBLIC KEY BLOCK-----/ { inside = 0 }
+  inside && !body { if ($0 ~ /^[[:space:]]*$/) body = 1; next }
+  inside && body && !/^=/ { print }' "$work/$(basename "$key_url")" | base64 -d >"$work/release-key.gpg" 2>/dev/null ||
+  fail "the release signing key from $key_url is not an armored OpenPGP key"
+status=$(gpgv --keyring "$work/release-key.gpg" --status-fd 1 "$work/manifest.json.sig" "$work/manifest.json" 2>/dev/null) ||
+  fail "manifest.json for $version does not carry a good signature from the release signing key"
+signer=$(printf '%s\n' "$status" | awk '$2 == "VALIDSIG" { print $NF }')
+[ "${signer^^}" = "${fingerprint^^}" ] || fail "manifest.json for $version is signed by ${signer:-nobody}, not by $fingerprint"
+
+[ "$(jq -r '.version' "$work/manifest.json")" = "$version" ] || fail "the signed manifest names another version than $version"
+checksum=$(jq -re --arg p "$platform" '.platforms[$p].checksum' "$work/manifest.json") || fail "the signed manifest lists no $platform build"
+[[ "$checksum" =~ ^[0-9a-f]{64}$ ]] || fail "the signed manifest carries no sha256 for $platform"
+[ -z "$expected" ] || [ "$expected" = "$checksum" ] || fail "the pinned sha256 $expected disagrees with the signed manifest's $checksum"
+
+fetch "$releases/$version/$platform/claude" 900
+printf '%s  %s\n' "$checksum" "$work/claude" | sha256sum -c --quiet - >/dev/null 2>&1 || fail "the downloaded $platform binary does not match the signed manifest"
+chmod 0755 "$work/claude"
+mkdir -p "$dir/$version"
+mv -f "$work/claude" "$target"
+log "installed $target"
+printf '%s\n' "$target"

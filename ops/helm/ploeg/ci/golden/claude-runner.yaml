@@ -324,6 +324,28 @@ spec:
         fsGroup: 1000
         seccompProfile:
           type: RuntimeDefault
+      initContainers:
+        - name: claude-code
+          image: ghcr.io/ploeg-hq/claude-runner:CHART-VERSION
+          command: ["ploeg-install-claude-code"]
+          env:
+            - name: PLOEG_CLAUDE_CODE_DIR
+              value: /opt/claude-code
+          securityContext:
+            runAsUser: 65532
+            runAsGroup: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 512Mi
+          volumeMounts:
+            - name: claude-code
+              mountPath: /opt/claude-code
       containers:
         - name: runner
           image: ghcr.io/ploeg-hq/claude-runner:CHART-VERSION
@@ -378,10 +400,16 @@ spec:
           volumeMounts:
             - name: work
               mountPath: /home/runner/work
+            - name: claude-code
+              mountPath: /opt/claude-code
+              readOnly: true
       volumes:
         - name: work
           emptyDir:
             sizeLimit: 10Gi
+        - name: claude-code
+          emptyDir:
+            sizeLimit: 1Gi
 ---
 # Source: ploeg/templates/deployment.yaml
 apiVersion: apps/v1

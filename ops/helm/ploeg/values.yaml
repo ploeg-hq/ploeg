@@ -143,6 +143,10 @@ claudeRunner:
     repository: ghcr.io/ploeg-hq/claude-runner
     tag: ""
     digest: ""
+  claudeCode:
+    install: true
+    version: ""
+    sha256: ""
   replicas: 1
   # REQUIRED when enabled: the Secret with SELF_HOSTED_RUNNER_ENVIRONMENT_SECRET,
   # the environment key from the claude.ai admin page. Loaded with envFrom.

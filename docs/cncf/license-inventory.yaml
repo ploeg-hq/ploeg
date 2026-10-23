@@ -245,12 +245,10 @@ components:
     disposition: container-guidance
     note: ca-certificates, curl 7.88.1, git 2.39.5 (GPL-2.0), jq 1.6 (MIT, CC-BY-3.0 docs) and openssh-client 9.2p1, installed with apt from Debian, a standard package manager as guidance (B)(1)(B) asks.
   - name: Claude Code CLI binary
-    kind: proprietary binary
-    shipped_in:
-      - claude-runner image
+    kind: user-fetched binary
     license: LicenseRef-Anthropic-Commercial-Terms
-    disposition: exception-needed
-    note: ops/claude-runner/Dockerfile downloads the claude binary from downloads.claude.ai and every release publishes it inside ghcr.io/ploeg-hq/claude-runner. Its licence reads "(c) Anthropic PBC. All rights reserved. Use is subject to the Legal Agreements outlined here - https://code.claude.com/docs/en/legal-and-compliance" (LICENSE.md of @anthropic-ai/claude-code 2.1.296). It is not open source, has no source, and is fetched from a vendor website rather than a package manager, which container image guidance (B)(1) and (B)(2) both name. Redistribution needs either written permission that allows free redistribution plus Legal Committee and Governing Board review, or a change so Ploeg stops shipping it (publish the image without the CLI and install it at run time, or let the Team build the image).
+    disposition: user-fetched
+    note: No Ploeg artifact contains it (ADR-0141). Its licence reads "(c) Anthropic PBC. All rights reserved. Use is subject to the Legal Agreements outlined here - https://code.claude.com/docs/en/legal-and-compliance" (LICENSE.md of @anthropic-ai/claude-code 2.1.296). ghcr.io/ploeg-hq/claude-runner carries only ploeg-install-claude-code and a pin (version 2.1.296 and its sha256 in ops/claude-runner/claude-code.env). When a pod starts, the chart's init container, or the image's claude wrapper on first use, downloads the binary from Anthropic's official release bucket (downloads.claude.ai/claude-code-releases). Before running it, the installer checks manifest.json against Anthropic's release signing key, fingerprint 31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE, checks the binary's sha256 against that signed manifest, and checks the pin. The user's cluster fetches it under Anthropic's terms, which the operator accepts by running it, so under the CNCF glossary it is a user-fetched dependency. scripts/license-check.sh fails if the Dockerfile fetches Claude Code at build time again.
   - name: docker dind image (chart default)
     kind: user-fetched image
     refs:
