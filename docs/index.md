@@ -37,6 +37,7 @@ Use these sources for the current implementation. The [architecture](architectur
 - [Decision ledger](adrs/README.md)
 - [Product intent and design history](design.md)
 - [Brand identity](brand/README.md) and [trademark policy](brand/TRADEMARK.md)
+- [Licence inventory](cncf/license-inventory.md): every distributed component against the CNCF licence policy
 
 The [backlog](backlog.md), [OpenSpec changes](../openspec/changes/) and [research dossiers](research/) retain plans and evidence. Their existence does not establish implemented behavior or current priority.
 

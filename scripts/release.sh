@@ -48,8 +48,10 @@ done
 for binary in ploegd ploeg-worker; do
   CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.version=$version" -o "dist/$binary" "./cmd/$binary"
 done
-tar -czf "dist/ploeg_${version}_linux_amd64.tar.gz" -C dist ploegd ploeg-worker
-rm dist/ploegd dist/ploeg-worker
+notices=(LICENSE NOTICE THIRD-PARTY-NOTICES)
+cp "${notices[@]}" dist/
+tar -czf "dist/ploeg_${version}_linux_amd64.tar.gz" -C dist ploegd ploeg-worker "${notices[@]}"
+rm dist/ploegd dist/ploeg-worker "${notices[@]/#/dist/}"
 docker buildx create --name ploeg-release --driver docker-container --use
 docker buildx build --file ops/docker/ploegd/Dockerfile --platform linux/amd64 \
   --build-arg "IMAGE_VERSION=$version" --build-arg "IMAGE_REVISION=$commit" \

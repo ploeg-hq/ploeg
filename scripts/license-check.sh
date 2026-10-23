@@ -28,6 +28,16 @@ for image in $(grep -rl 'org.opencontainers.image.licenses' ops --include='Docke
     || note "$image does not label the image Apache-2.0"
 done
 
+[ -f THIRD-PARTY-NOTICES ] || note "THIRD-PARTY-NOTICES is missing; the binaries link MIT and BSD code whose notices must travel with them"
+grep -q '^COPY LICENSE NOTICE THIRD-PARTY-NOTICES /usr/share/doc/ploeg/' ops/docker/ploegd/Dockerfile \
+  || note "the ploegd image no longer carries LICENSE, NOTICE and THIRD-PARTY-NOTICES"
+grep -q '^COPY LICENSE NOTICE /usr/share/doc/ploeg/' ops/claude-runner/Dockerfile \
+  || note "the claude-runner image no longer carries LICENSE and NOTICE"
+grep -q '^notices=(LICENSE NOTICE THIRD-PARTY-NOTICES)' scripts/release.sh \
+  && grep -q 'ploegd ploeg-worker "${notices\[@\]}"' scripts/release.sh \
+  || note "the release tarball no longer carries LICENSE, NOTICE and THIRD-PARTY-NOTICES"
+[ -f docs/cncf/license-inventory.yaml ] || note "docs/cncf/license-inventory.yaml is missing; go test ./internal/licenses/ keeps it current"
+
 [ -f REUSE.toml ] || note "REUSE.toml is missing; per-file licensing would stop being declared"
 grep -q 'SPDX-License-Identifier = "Apache-2.0"' REUSE.toml 2>/dev/null \
   || note "REUSE.toml does not declare Apache-2.0 for the repository"
