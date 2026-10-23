@@ -36,6 +36,7 @@ LABEL org.opencontainers.image.title="ploegd" \
       org.opencontainers.image.created="${IMAGE_CREATED}" \
       org.opencontainers.image.version="${IMAGE_VERSION}" \
       org.opencontainers.image.revision="${IMAGE_REVISION}"
+COPY LICENSE NOTICE THIRD-PARTY-NOTICES /usr/share/doc/ploeg/
 COPY --from=builder /out/ploegd /usr/local/bin/ploegd
 # ploeg-worker rides along; the executor's initContainer extracts it via
 # `ploeg-worker install <dst>` (self-copy — distroless has no shell).

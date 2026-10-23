@@ -1,0 +1,70 @@
+---
+type: reference
+audience: [owner, contributor, integrator]
+owner: ploeg
+last_verified: 2026-10-23
+verified_by: "go test ./internal/licenses/ against the build; CNCF policy read at cncf/foundation f196b954 on 2026-10-23"
+---
+
+# Licence inventory
+
+Every component Ploeg distributes, with its licence and a disposition against the CNCF allowed third-party licence policy. The record is [license-inventory.yaml](license-inventory.yaml). The evidence behind it, with the policy text as read, is in [the research note](../research/2026-10-23-cncf-licence-inventory.md).
+
+## What is distributed
+
+| Artifact | Contents |
+| --- | --- |
+| Source repository | Ploeg code, chart, contracts, migrations, docs, brand files |
+| `ploeg_<version>_linux_amd64.tar.gz` | `ploegd`, `ploeg-worker`, `LICENSE`, `NOTICE`, `THIRD-PARTY-NOTICES` |
+| `ghcr.io/ploeg-hq/ploegd` | distroless static-debian13, `ploegd`, `ploeg-worker`, `ploeg-mcp`, the three notice files in `/usr/share/doc/ploeg/` |
+| `ghcr.io/ploeg-hq/claude-runner` | debian bookworm-slim, five apt packages, the Claude Code CLI, Ploeg's runner hooks, `LICENSE` and `NOTICE` |
+| `oci://ghcr.io/ploeg-hq/charts/ploeg` | the chart; no chart dependencies; defaults that pull `docker:29.8.2-dind` |
+
+## Dispositions
+
+| Disposition | Meaning |
+| --- | --- |
+| `apache-2.0` | Same licence as Ploeg. The policy needs no review. |
+| `allowlisted` | Every licence is on the allowlist, the component is fetched from its upstream at build time, and it passes the use test (standard library, or a GitHub repository at least 12 months old with at least 10 stars or forks). |
+| `own-work` | Written for Ploeg by its rights holders. |
+| `not-distributed` | Build or test only; never in a release. The CNCF glossary calls this internal project tooling. |
+| `container-guidance` | Operating-system packages in a published image, reviewed under the CNCF container image guidance. |
+| `user-fetched` | Not shipped; the user's cluster or browser fetches it. |
+| `exception-needed` | Not covered. Needs a Governing Board exception or a replacement. The maintainer decides which. |
+
+## Findings
+
+| Component | Licence | Why it matters |
+| --- | --- | --- |
+| Claude Code CLI in `claude-runner` | Proprietary, all rights reserved | Ploeg republishes a closed binary, downloaded from a vendor website, in every release. The container image guidance asks for content from the project's source or a standard package manager, and sends binaries without source to Legal Committee and Governing Board review. |
+| `github.com/jackc/pgpassfile` | MIT | Shipped in every binary. MIT is allowlisted, but the repository has 6 stars and 4 forks, under the use threshold, and the exceptions database has no entry. |
+| Documentation | Apache-2.0 | The CNCF charter makes documentation available under CC-BY-4.0. The rights holder decides how the docs are licensed at donation. |
+| Name, mark and artwork | Apache-2.0 plus trademark | The charter requires trademark and logo assets to move to the Linux Foundation on acceptance. |
+| Base-image packages in both images | GPL, LGPL, MPL-2.0 and others | Reviewed under the container image guidance, not the allowlist. Debian keeps every copyright file. `claude-runner` pins its base by tag only, so its GPL source cannot be pinned down later. |
+| `docker:dind` chart default | Apache-2.0 over Alpine | A user-fetched dependency the chart turns on by default. Whether that needs review is a question for CNCF staff. |
+| `github.com/modelcontextprotocol/go-sdk` | Apache-2.0 AND MIT | Its LICENSE also names CC-BY-4.0 for documentation, which is not linked. Recorded as allowlisted on the reading CNCF applied to `go-openapi/spec`; confirm. |
+
+Before this change, the release tarball and the images shipped MIT and BSD code without its notices. `THIRD-PARTY-NOTICES` now carries the licence, NOTICE and PATENTS text of every module linked into the binaries and of the Go runtime, and both images and the tarball include it.
+
+## How it stays current
+
+`go test ./internal/licenses/` runs in `mise run verify` on every pull request and push. It fails when:
+
+- a Go module enters or leaves the build, changes version, or moves between shipped and test-only;
+- a module's licence files classify differently ([google/licensecheck](https://github.com/google/licensecheck));
+- a disposition is not one of the list above, an `allowlisted` entry names a licence off the allowlist, a shipped module is called `not-distributed`, or an `exception-needed`, `container-guidance` or `user-fetched` entry has no note;
+- a Dockerfile `FROM` image or the chart's `dindImage` is not listed under a component's `refs`;
+- `THIRD-PARTY-NOTICES` differs from what the shipped modules' files produce.
+
+`scripts/license-check.sh` fails when the images or the tarball stop carrying the notice files.
+
+After a dependency change:
+
+```sh
+PLOEG_UPDATE_LICENSE_INVENTORY=1 mise exec -- go test ./internal/licenses/
+mise exec -- go test ./internal/licenses/
+```
+
+The first command rewrites the Go part and the notices and keeps reviewed fields for unchanged modules. A new module has no disposition, so the second command fails until a person sets one. The gate cannot check the use test or the exceptions database offline; check both by hand for a new shipped module.
+
+Licence detection reads the top-level `LICENSE`, `COPYING`, `NOTICE` and `PATENTS` files of each module. A module that carries a differently licensed file deeper in its tree is not caught; the BuildKit SBOM attached to each image is the second source.

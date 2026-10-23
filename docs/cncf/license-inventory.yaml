@@ -1,0 +1,268 @@
+policy:
+  source: https://github.com/cncf/foundation/blob/f196b95408adb03991ab04554a3d2b315924406b/policies-guidance/allowed-third-party-license-policy.md
+  revision: f196b95408adb03991ab04554a3d2b315924406b
+  retrieved: "2026-10-23"
+  exceptions: https://exceptions.cncf.io/exceptions.json
+  outbound: Apache-2.0
+  allowlist:
+    - 0BSD
+    - BSD-2-Clause
+    - BSD-2-Clause-FreeBSD
+    - BSD-3-Clause
+    - MIT
+    - MIT-0
+    - ISC
+    - OpenSSL
+    - OpenSSL-standalone
+    - PSF-2.0
+    - Python-2.0
+    - Python-2.0.1
+    - PostgreSQL
+    - SSLeay-standalone
+    - UPL-1.0
+    - X11
+    - Zlib
+    - LicenseRef-Google-Patents-Notice-Golang
+go:
+  - module: github.com/coder/acp-go-sdk
+    version: v0.13.5
+    shipped: true
+    detected: Apache-2.0
+    concluded: Apache-2.0
+    disposition: apache-2.0
+  - module: github.com/fergusstrange/embedded-postgres
+    version: v1.34.0
+    shipped: false
+    detected: MIT
+    concluded: MIT
+    disposition: not-distributed
+    note: 'Test-only: starts a throwaway PostgreSQL for store tests. It downloads PostgreSQL binaries (PostgreSQL licence) at test time; none reach a release.'
+  - module: github.com/golang-jwt/jwt/v5
+    version: v5.3.1
+    shipped: true
+    detected: MIT
+    concluded: MIT
+    disposition: allowlisted
+  - module: github.com/google/jsonschema-go
+    version: v0.4.3
+    shipped: true
+    detected: MIT
+    concluded: MIT
+    disposition: allowlisted
+  - module: github.com/google/licensecheck
+    version: v0.3.1
+    shipped: false
+    detected: BSD-3-Clause
+    concluded: BSD-3-Clause
+    disposition: not-distributed
+    note: 'Test-only: classifies the licence files for this inventory.'
+  - module: github.com/jackc/pgpassfile
+    version: v1.0.0
+    shipped: true
+    detected: MIT
+    concluded: MIT
+    disposition: exception-needed
+    note: 'MIT is on the allowlist, but allowlist condition 3 fails: on 2026-10-23 github.com/jackc/pgpassfile had 6 stars and 4 forks (the policy asks for at least 10 of either) and is not in the CNCF exceptions database. pgx needs it to read .pgpass files. Options: file an exception request (small and routine for MIT) or ask upstream to fold it into pgx.'
+  - module: github.com/jackc/pgservicefile
+    version: v0.0.0-20240606120523-5a60cdf6a761
+    shipped: true
+    detected: MIT
+    concluded: MIT
+    disposition: allowlisted
+  - module: github.com/jackc/pgx/v5
+    version: v5.11.0
+    shipped: true
+    detected: MIT
+    concluded: MIT
+    disposition: allowlisted
+  - module: github.com/jackc/puddle/v2
+    version: v2.2.2
+    shipped: true
+    detected: MIT
+    concluded: MIT
+    disposition: allowlisted
+  - module: github.com/lib/pq
+    version: v1.12.3
+    shipped: false
+    detected: MIT
+    concluded: MIT
+    disposition: not-distributed
+    note: 'Test-only: a dependency of embedded-postgres.'
+  - module: github.com/modelcontextprotocol/go-sdk
+    version: v1.8.0
+    shipped: true
+    detected: Apache-2.0 AND CC-BY-4.0 AND MIT
+    concluded: Apache-2.0 AND MIT
+    disposition: allowlisted
+    note: The LICENSE file says code is Apache-2.0, with older contributions still MIT, and that documentation contributions are CC-BY-4.0. Only code is linked into the binaries, so the concluded licence drops CC-BY-4.0. CNCF records github.com/go-openapi/spec (CC-BY-4.0 AND Apache-2.0 AND MIT) as allowlisted on the same reading; a maintainer should confirm it applies here.
+  - module: github.com/santhosh-tekuri/jsonschema/v6
+    version: v6.0.3
+    shipped: false
+    detected: Apache-2.0
+    concluded: Apache-2.0
+    disposition: not-distributed
+    note: 'Test-only: validates the published contract schemas.'
+  - module: github.com/segmentio/asm
+    version: v1.1.3
+    shipped: true
+    detected: MIT
+    concluded: MIT
+    disposition: allowlisted
+    note: GitHub's licence badge says MIT-0, but the LICENSE text keeps the notice condition, so it is MIT.
+  - module: github.com/segmentio/encoding
+    version: v0.5.4
+    shipped: true
+    detected: MIT
+    concluded: MIT
+    disposition: allowlisted
+  - module: github.com/xi2/xz
+    version: v0.0.0-20171230120015-48954b6210f8
+    shipped: false
+    detected: NOASSERTION
+    concluded: LicenseRef-Public-Domain
+    disposition: not-distributed
+    note: 'Test-only: embedded-postgres unpacks the PostgreSQL download with it. Its LICENSE puts every file in the public domain, which no licence classifier names. Public domain is not on the allowlist, so it would need an exception if it ever shipped.'
+  - module: github.com/yosida95/uritemplate/v3
+    version: v3.0.2
+    shipped: true
+    detected: BSD-3-Clause
+    concluded: BSD-3-Clause
+    disposition: allowlisted
+  - module: go.yaml.in/yaml/v3
+    version: v3.0.5
+    shipped: true
+    detected: Apache-2.0 AND MIT
+    concluded: Apache-2.0 AND MIT
+    disposition: allowlisted
+    note: Apache-2.0 with a NOTICE file, and MIT for the parts ported from libyaml. The NOTICE travels in THIRD-PARTY-NOTICES.
+  - module: golang.org/x/oauth2
+    version: v0.35.0
+    shipped: true
+    detected: BSD-3-Clause
+    concluded: BSD-3-Clause
+    disposition: allowlisted
+  - module: golang.org/x/sync
+    version: v0.23.0
+    shipped: true
+    detected: BSD-3-Clause AND LicenseRef-Google-Patents-Notice-Golang
+    concluded: BSD-3-Clause AND LicenseRef-Google-Patents-Notice-Golang
+    disposition: allowlisted
+  - module: golang.org/x/sys
+    version: v0.44.0
+    shipped: true
+    detected: BSD-3-Clause AND LicenseRef-Google-Patents-Notice-Golang
+    concluded: BSD-3-Clause AND LicenseRef-Google-Patents-Notice-Golang
+    disposition: allowlisted
+  - module: golang.org/x/text
+    version: v0.42.0
+    shipped: true
+    detected: BSD-3-Clause AND LicenseRef-Google-Patents-Notice-Golang
+    concluded: BSD-3-Clause AND LicenseRef-Google-Patents-Notice-Golang
+    disposition: allowlisted
+  - module: golang.org/x/time
+    version: v0.15.0
+    shipped: true
+    detected: BSD-3-Clause AND LicenseRef-Google-Patents-Notice-Golang
+    concluded: BSD-3-Clause AND LicenseRef-Google-Patents-Notice-Golang
+    disposition: allowlisted
+components:
+  - name: Ploeg source, Helm chart, contracts, migrations and scripts
+    kind: project
+    shipped_in:
+      - source
+      - ploegd image
+      - release tarball
+      - Helm chart
+    license: Apache-2.0
+    disposition: own-work
+    note: REUSE.toml declares Apache-2.0 for every path. The chart ops/helm/ploeg has no chart dependencies. The JSON Schemas in docs/contracts are API specifications for Ploeg's own software, which charter section 11(a)(iv) allows under Apache-2.0.
+  - name: Files copied from the parent repository at separation
+    kind: copied
+    shipped_in:
+      - source
+    license: Apache-2.0
+    disposition: own-work
+    note: scripts/generate-domain.py, scripts/docs-configuration.py and docs/domain/consumer-terms.yaml came from the parent repository at the commit PROVENANCE.md names, by the same rights holder under the same licence. No third-party file is vendored; there is no vendor/ or third_party/ directory.
+  - name: Documentation
+    kind: docs
+    shipped_in:
+      - source
+    license: Apache-2.0
+    disposition: own-work
+    note: Every Markdown page is Apache-2.0 through REUSE.toml. CNCF charter section 11(b)(iv) makes documentation available under CC-BY-4.0, so a donation needs the rights holder to decide whether to license the docs CC-BY-4.0 (alone or alongside Apache-2.0). Not decided here.
+  - name: Ploeg name, mark and brand artwork (docs/brand)
+    kind: artwork
+    shipped_in:
+      - source
+    license: Apache-2.0
+    disposition: own-work
+    note: The SVG and PNG files are Apache-2.0 with the name and mark reserved as trademarks (ADR-0022, docs/brand/TRADEMARK.md). CNCF charter section 11(a)(i) requires a project's trademark and logo assets to move to the Linux Foundation on acceptance; that transfer is a later owner decision.
+  - name: Archivo and JetBrains Mono fonts
+    kind: font
+    license: OFL-1.1
+    disposition: user-fetched
+    note: No font file is in the repository or any artifact. docs/brand/merkgids.html asks Google Fonts for both when a reader opens it. The wordmark SVGs are Archivo outlines, which the OFL FAQ (entries 1.1 and 1.13, https://openfontlicense.org/ofl-faq/) treats as artwork outside the OFL. If a docs site ever bundles the fonts, the OFL text must ship with them and OFL-1.1, not on the allowlist, would need review.
+  - name: Go standard library and runtime
+    kind: language runtime
+    shipped_in:
+      - ploegd image
+      - release tarball
+    license: BSD-3-Clause AND LicenseRef-Google-Patents-Notice-Golang
+    disposition: allowlisted
+    note: Linked into every binary. Allowlist condition 3(i), the language's standard library. Notices are in THIRD-PARTY-NOTICES.
+  - name: golang builder image
+    kind: base image
+    refs:
+      - golang
+    license: BSD-3-Clause AND GPL-2.0-or-later
+    disposition: not-distributed
+    note: Build stage of ops/docker/ploegd/Dockerfile (golang:1.27-trixie, digest-pinned). Only the compiled binaries leave it, so none of its Debian packages reach the image.
+  - name: distroless static-debian13 base image (ploegd)
+    kind: base image
+    refs:
+      - distroless/static-debian13
+    shipped_in:
+      - ploegd image
+    license: GPL-2.0-or-later AND GPL-2.0-only AND MPL-2.0 AND LicenseRef-Public-Domain AND LicenseRef-media-types
+    disposition: container-guidance
+    note: Six Debian 13 packages, read from the pinned digest on 2026-10-23 - base-files 13.8+deb13u7 (GPL-2+), ca-certificates 20250419 (GPL-2+ scripts, MPL-2.0 Mozilla certificate data), media-types 13.0.0 (ad-hoc permissive), netbase 6.5 (GPL-2), tzdata and tzdata-legacy 2026c (public domain). Each keeps its copyright file under /usr/share/doc and its dpkg record, which the container image guidance (A)(2) asks for, and the image's Dockerfile is public (GoogleContainerTools/distroless, Apache-2.0). This is the minimal base the guidance prefers. Base-image content is reviewed under the container image guidance, not the allowlist; confirm with CNCF staff that no exception is expected.
+  - name: debian bookworm-slim base image (claude-runner)
+    kind: base image
+    refs:
+      - debian
+    shipped_in:
+      - claude-runner image
+    license: GPL-2.0-or-later AND GPL-3.0-or-later AND LGPL-2.1-or-later AND LicenseRef-Debian-mixed
+    disposition: container-guidance
+    note: A full Debian 12 userland (124 packages with the five below installed, each with its copyright file, counted on 2026-10-23). The Dockerfile names the tag without a digest (it resolved to sha256:7ff6ba31527b9e336162fa061746c366c4b2032f4d2cff2078bea43f78efe3f8 that day), so the exact package set and the corresponding GPL source cannot be pointed to after the fact. The BuildKit SBOM attached to each release is the authoritative package list. Pinning the digest would make the source offer precise.
+  - name: Debian packages installed into claude-runner
+    kind: os packages
+    shipped_in:
+      - claude-runner image
+    license: GPL-2.0-only AND LGPL-2.1-or-later AND curl AND MIT AND BSD-2-Clause AND BSD-3-Clause AND CC-BY-3.0 AND LicenseRef-OpenSSH
+    disposition: container-guidance
+    note: ca-certificates, curl 7.88.1, git 2.39.5 (GPL-2.0), jq 1.6 (MIT, CC-BY-3.0 docs) and openssh-client 9.2p1, installed with apt from Debian, a standard package manager as guidance (B)(1)(B) asks.
+  - name: Claude Code CLI binary
+    kind: proprietary binary
+    shipped_in:
+      - claude-runner image
+    license: LicenseRef-Anthropic-Commercial-Terms
+    disposition: exception-needed
+    note: ops/claude-runner/Dockerfile downloads the claude binary from downloads.claude.ai and every release publishes it inside ghcr.io/ploeg-hq/claude-runner. Its licence reads "(c) Anthropic PBC. All rights reserved. Use is subject to the Legal Agreements outlined here - https://code.claude.com/docs/en/legal-and-compliance" (LICENSE.md of @anthropic-ai/claude-code 2.1.296). It is not open source, has no source, and is fetched from a vendor website rather than a package manager, which container image guidance (B)(1) and (B)(2) both name. Redistribution needs either written permission that allows free redistribution plus Legal Committee and Governing Board review, or a change so Ploeg stops shipping it (publish the image without the CLI and install it at run time, or let the Team build the image).
+  - name: docker dind image (chart default)
+    kind: user-fetched image
+    refs:
+      - docker
+    license: Apache-2.0 AND LicenseRef-Alpine-mixed
+    disposition: user-fetched
+    note: values.yaml sets executor.dindImage to docker.io/library/docker:29.8.2-dind by digest, and harness.dind defaults to true, so a cluster pulls it from Docker Hub when the executor runs. Ploeg does not publish it. Moby is Apache-2.0; the Alpine userland underneath carries GPL and other licences. Under the CNCF glossary this is a user-fetched dependency; whether a default that pulls it needs review is a question for CNCF staff.
+  - name: Agent harness images and CLIs
+    kind: system component
+    license: NOASSERTION
+    disposition: user-fetched
+    note: Ploeg publishes no agent image (values.yaml harness.image is required and empty). Operators supply the agent image for each harness (Claude Code, OpenHands, or an ACP agent such as OpenCode or goose) themselves, so their licences are the operator's to review.
+  - name: Build, test and release tooling
+    kind: tooling
+    license: Apache-2.0 AND MIT
+    disposition: not-distributed
+    note: Pinned in mise.toml and the workflows - Go toolchain (BSD-3-Clause), Helm, oras, cosign and goose (Apache-2.0), uv (Apache-2.0 OR MIT), Node.js and @fission-ai/openspec (MIT), PyYAML (MIT), actions/checkout and jdx/mise-action (MIT). None is copied into an artifact.
