@@ -10,6 +10,7 @@ Ploeg is a self-hosted service for authorizing and coordinating agent work. Trac
 
 ## Start here
 
+- [Quickstart](docs/quickstart.md): install a signed release on a local kind cluster and complete your first Run, with no outside accounts.
 - [Documentation](docs/index.md): current guides, contracts and design history.
 - [Architecture](docs/architecture.md): what runs where and who holds authority.
 - [Managed workers](docs/ops/managed-workers.md): required configuration and recovery.
