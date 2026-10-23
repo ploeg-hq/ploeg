@@ -507,6 +507,24 @@ executor:
     # logToolDetails: false
     # allowHarnesses: [openhands]  # only once the agent image's lmnr is compatible
     telemetry: {}
+    # claude-code harness only (ADR-0139): Claude Code plugins every Run of the
+    # Team loads, each fetched by the worker from a plugin marketplace at a
+    # pinned commit. Set at executor, team or Role level; the most specific
+    # list wins whole. Each hook runs under ploeg-worker's guard with only the
+    # plugin's declared env and cannot block or stop the Run; MCP and LSP
+    # servers, monitors, bin/ and settings.json are left out. A marketplace
+    # off the forge needs networkPolicy.worker.extraEgress. Empty loads none,
+    # and the Run's Claude Code reads the clone's settings as before.
+    claudeCode:
+      plugins: []
+      # - name: session-link
+      #   marketplace:
+      #     url: https://forgejo.example.com/team/claude-plugins.git
+      #     commit: 0123456789abcdef0123456789abcdef01234567  # a full commit id, never a branch or tag
+      #   env:
+      #     - {name: LINK_URL, value: https://link.example.com}
+      #     - {name: LINK_TOKEN, secret: {name: session-link-plugin, key: token}}
+      #   hookTimeout: 10s  # one hook's bound; at most 60s
     # acp harness only. One adapter speaks Zed's Agent CLIENT Protocol (stdio
     # JSON-RPC, wire version 1) to any ACP-capable agent. Unrelated to IBM's
     # former Agent COMMUNICATION Protocol, which merged into A2A — see ADR-0007.

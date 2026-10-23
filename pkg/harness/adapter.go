@@ -78,6 +78,10 @@ type RunEnv struct {
 	// prompt turn by an adapter that can take one (ADR-0124). Nil, or an
 	// adapter with a single turn, sends nothing.
 	CatchUp func(context.Context) string
+	// PluginDirs are Claude Code plugins the worker installed for this Run
+	// from the Team's declaration (ADR-0139). An adapter that cannot load
+	// Claude Code plugins ignores them.
+	PluginDirs []string
 }
 
 // PromptStart is when a Run's prompt started and the limits that stop it.
