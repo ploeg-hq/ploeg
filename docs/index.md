@@ -20,6 +20,7 @@ Use these sources for the current implementation. The [architecture](architectur
 - [Configuration reference](reference/configuration.md): every environment variable and Helm value, generated from the source
 - [CI and infrastructure](ops/ci-and-infra.md)
 - [Experimental releases](ops/release-versioning.md)
+- [Compatibility policy](ops/compatibility.md): what each release keeps working, deprecation, rollback and version pairs
 
 ## Integrate
 

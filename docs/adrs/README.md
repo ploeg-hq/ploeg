@@ -205,6 +205,7 @@ fails otherwise.
 | [0128](0128-a-chat-message-is-a-read-only-run-about-no-work-item-paid-from-a-teams-chat-allowance.md) | A chat message is a read-only Run about no Work Item, paid from a Team's Chat Allowance | proposed | 2026-10-18 |
 | [0129](0129-ploeg-reports-how-each-board-and-repository-it-routes-to-is-wired.md) | Ploeg reports how each board and repository it routes to is wired | proposed | 2026-10-19 |
 | [0133](0133-a-run-is-told-its-limits-at-the-start-and-its-own-status-on-every-model-call.md) | A Run is told its limits at the start and its own status on every model call | proposed | 2026-10-20 |
+| [0134](0134-ploeg-keeps-each-release-compatible-with-the-one-before-and-removes-only-after-a-deprecated-minor.md) | Ploeg keeps each release compatible with the one before and removes only after a deprecated minor | proposed | 2026-10-23 |
 
 ## Review calendar
 
@@ -284,4 +285,5 @@ triggers.
 | 2027-01-31 | [0129](0129-ploeg-reports-how-each-board-and-repository-it-routes-to-is-wired.md) — or sooner, when Ploeg gains runtime registration of boards or targets, its forge credentials can read repository webhooks, a second tracker carries production work, or the hourly share check costs noticeably |
 | 2027-01-31 | [0133](0133-a-run-is-told-its-limits-at-the-start-and-its-own-status-on-every-model-call.md) — or sooner, when 20 writing Runs have been told their limits, the gateway drops its pre-call hooks or a Harness bypasses it, trailing text breaks a provider's cached prefix, an agent acts on an advisory as an instruction, or a kind of Work Item needs more than 10 minutes of reading |
 | 2027-04-30 | [0081](0081-ploeg-serves-its-operator-reads-as-mcp-tools-through-ploeg-mcp.md) — or sooner, when a person asks to propose, approve or cancel work from an AI client, someone needs the tools without a route to ploegd, or the MCP Go SDK ships a major version |
+| 2027-04-01 | [0134](0134-ploeg-keeps-each-release-compatible-with-the-one-before-and-removes-only-after-a-deprecated-minor.md) — or sooner, when the owner opens the 1.0 decision, a consumer breaks on a release the compatibility check passed, a minor collects five recorded breaks, an adopter asks for a longer window or wider skew, or the worker version handshake ships |
 | 2027-04-01 | [0005](0005-build-a-dedicated-dispatch-plane.md), [0032](0032-keep-the-dispatch-plane-and-compete-on-authorized-spend.md), [0071](0071-ploeg-keeps-its-state-in-postgresql-and-is-not-a-kubernetes-operator.md), [0073](0073-ploeg-stays-in-go-and-admits-rust-only-as-a-separately-deployed-component.md), [0077](0077-ploeg-knows-work-sources-and-change-destinations-never-vendors.md) — the project review gate (`design.md` §10) |
