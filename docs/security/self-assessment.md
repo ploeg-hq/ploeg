@@ -166,7 +166,7 @@ These are settings and components a deployment configures. The threat model's [s
 | `operator.consumers[].teams`, `execute`, `verify`, `maxBudgetUsd` | Operator consumer scope; omitting `teams` means all teams |
 | `executor.harness.timeout`, `idleTimeout`, `executor.activeDeadlineSeconds` | Bound a wedged or silent harness |
 | `executor.teams[].maxRunning`, plan `pool` and Role `cap` | Concurrency and spend ceilings |
-| `forgeFollowUps` | Opt-in rework and repair Runs from forge events ([F-36](threat-model.md#findings)) |
+| `forgeFollowUps` | Opt-in rework and repair Runs from forge events; rework only from listed or writing reviewers, capped per Work Item ([F-36](threat-model.md#findings), fixed) |
 | `executor.sandbox.*` (experimental) | agent-sandbox executor with an optional runtime class (Kata, gVisor) and managed NetworkPolicy |
 | `mcp.*` | ploeg-mcp OAuth settings and optional NetworkPolicies |
 | `monitoring.prometheusRule.alerts` | Alerts such as `PloegCredentialLeak`, `PloegModelKeyPastTTL`, spend spikes and expired Leases ([alerts](../ops/alerts.md)) |
@@ -284,7 +284,7 @@ A project-level procedure for triage, confirmation, notification and patch relea
 | F-03 | High | Shared builder forge token and bootstrap token sat in the harness's container, guarded by one in-process control that did not cover the worker's `git` children (fixed in PR #240, ADR-0138: the harness runs in its own container with no credential, and `shared` is deprecated) |
 | F-04 | Medium | Proxy qualification predates the current proxy code; no Run has used it |
 | F-08 | High | ploeg-mcp action confirmation can be skipped by the client (blocking only if ploeg-mcp `execute` groups join the profile) |
-| F-36 | High | Any reviewer can re-queue paid Shifts without limit when rework is on (blocking only if the profile allows rework where outsiders can review) |
+| F-36 | High | Any reviewer could re-queue paid Shifts without limit when rework was on (fixed in PR #261: rework only from listed or writing reviewers, capped by `maxReworks`) |
 
 Each finding still needs a disposition, an owner and a date (issue #34). They are not filed as issues by this change.
 

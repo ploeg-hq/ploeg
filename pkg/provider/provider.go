@@ -269,6 +269,32 @@ func ReRunCI(ctx context.Context, fp ForgeProvider, repo, sha string) error {
 	return runner.ReRunCI(ctx, repo, sha)
 }
 
+// WriteAccessReader is implemented by a ForgeProvider that can read whether
+// a login may write to a repository: push to it, or more. A request for
+// changes from such a login may send work back (F-36).
+type WriteAccessReader interface {
+	// HasWriteAccess reports whether login has write access or more to repo.
+	// A login the forge does not know has none.
+	HasWriteAccess(ctx context.Context, repo, login string) (bool, error)
+}
+
+// ErrNoWriteAccessRead is returned by HasWriteAccess when the forge cannot
+// read repository permissions.
+var ErrNoWriteAccessRead = errors.New("forge cannot read repository permissions")
+
+// HasWriteAccess asks fp whether login has write access or more to repo, or
+// returns ErrNoWriteAccessRead when it cannot tell.
+func HasWriteAccess(ctx context.Context, fp ForgeProvider, repo, login string) (bool, error) {
+	if repo == "" || strings.TrimSpace(login) == "" {
+		return false, errors.New("a permission read needs a repository and a login")
+	}
+	reader, can := fp.(WriteAccessReader)
+	if !can {
+		return false, ErrNoWriteAccessRead
+	}
+	return reader.HasWriteAccess(ctx, repo, strings.TrimSpace(login))
+}
+
 // AncestryReader is implemented by a ForgeProvider that can tell, through
 // its compare API, whether one commit is in the history of another
 // (ADR-0047). A forge without it never marks a pull request as deployed.
