@@ -176,6 +176,8 @@ func hostileHarness(t *testing.T, workDir, dump string) harness.Adapter {
 	return harness.RunCommand(adapter)
 }
 
+const drillRunLimit = 2 * time.Minute
+
 func harnessViewOfARun(t *testing.T, spawner harness.Spawner, environ []string) string {
 	t.Helper()
 	workDir := t.TempDir()
@@ -193,7 +195,12 @@ func harnessViewOfARun(t *testing.T, spawner harness.Spawner, environ []string) 
 	w.Spawner, w.HarnessEnviron = spawner, environ
 	claimed := &ClaimResponse{RunToken: "rt", Role: "builder", Writes: true, ForgeToken: drillCredentials.perRunForge, ForgeTokenPerRun: true,
 		WorkItem: work.WorkItem{ID: "1", ExternalID: "7", Title: "t"}}
-	_ = w.execute(context.Background(), claimed, writerBranch, "trace", "", "")
+	ctx, cancel := context.WithTimeout(context.Background(), drillRunLimit)
+	defer cancel()
+	_ = w.execute(ctx, claimed, writerBranch, "trace", "", "")
+	if ctx.Err() != nil {
+		t.Fatalf("the drilled Run did not finish within %s, so the harness container never answered", drillRunLimit)
+	}
 	raw, err := os.ReadFile(dump)
 	if err != nil {
 		t.Fatalf("the hostile harness never wrote what it could read, so nothing was drilled: %v", err)
