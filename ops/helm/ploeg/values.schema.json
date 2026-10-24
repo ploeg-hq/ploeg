@@ -1019,6 +1019,18 @@
               },
               "verify": {
                 "type": "boolean"
+              },
+              "clientIds": {
+                "type": "array",
+                "maxItems": 20,
+                "uniqueItems": true,
+                "description": "Client ids whose person tokens (ADR-0150) make this consumer the caller; needs operator.personTokens.",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[!-~]+$"
+                }
               }
             },
             "allOf": [
@@ -1040,6 +1052,35 @@
                 }
               }
             ]
+          }
+        },
+        "personTokens": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "ADR-0150: verify person tokens, JWTs an identity provider issued for Ploeg's audience on a person's behalf. Forwarded as PLOEG_OPERATOR_PERSON_*; issuer and audience are required once any field is set.",
+          "properties": {
+            "issuer": {
+              "type": "string",
+              "pattern": "^https?://[^\\s?#]+$"
+            },
+            "audience": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^\\S+$"
+            },
+            "jwksUrl": {
+              "type": "string",
+              "pattern": "^https?://\\S+$"
+            },
+            "maxLifetime": {
+              "type": "string",
+              "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h))+$"
+            },
+            "subjectNamespace": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            }
           }
         },
         "deliveryPolicies": {

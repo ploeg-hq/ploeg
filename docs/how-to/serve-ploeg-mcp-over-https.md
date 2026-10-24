@@ -57,6 +57,13 @@ The Ploeg image ships the binary at `/usr/local/bin/ploeg-mcp`. The Ploeg chart 
 | `PLOEG_MCP_REQUEST_SCOPES` | no | Space-separated scopes clients are told to request, such as `openid ploeg:read offline_access`; the required scope is always added |
 | `PLOEG_MCP_MAX_TOKEN_LIFETIME` | no | Longest accepted `exp` minus `iat`; default `10m` |
 | `PLOEG_MCP_LISTEN` | no | Listen address; default `:8090` |
+| `PLOEG_MCP_EXCHANGE_TOKEN_URL` | no | The provider's token endpoint. When set, an action exchanges the person's token there for one issued for Ploeg's audience (RFC 8693) after the person confirms, and calls ploegd with it, so ploegd records the person as proven ([ADR-0150](../adrs/0150-an-operator-consumer-proves-the-person-it-acts-for-with-a-token-exchanged-for-ploegs-audience.md)). Reads keep the group's token. Unset keeps actions on the group's token |
+| `PLOEG_MCP_EXCHANGE_CLIENT_ID` | with the token URL | `ploeg-mcp`'s own confidential client id at the provider, allowed to exchange tokens for Ploeg's audience |
+| `PLOEG_MCP_EXCHANGE_CLIENT_SECRET` | with the token URL | That client's secret; put it in a Secret and pass it with `mcp.extraEnv` |
+| `PLOEG_MCP_EXCHANGE_AUDIENCE` | with the token URL | Ploeg's audience, the same value as ploegd's `PLOEG_OPERATOR_PERSON_AUDIENCE` |
+| `PLOEG_MCP_EXCHANGE_SCOPE` | no | Scope to request for the exchanged token |
+
+With the exchange on, the Operator Consumer whose `clientIds` in ploegd's `PLOEG_OPERATOR_CONSUMERS` list the exchanged token's `azp` (ploeg-mcp's client id) is the caller for every action, whichever group the person is in, so give that consumer `execute: true` and the Teams every acting group may act on. Set `PLOEG_MCP_SUBJECT_NAMESPACE` and ploegd's `PLOEG_OPERATOR_PERSON_SUBJECT_NAMESPACE` to the same value, so the person id ploeg-mcp reads with matches the one ploegd proves.
 
 In the chart's values:
 

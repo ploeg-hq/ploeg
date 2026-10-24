@@ -58,7 +58,7 @@ func auditAttribution(t *testing.T, workItemID int64, action string) store.Attri
 
 func wantFullAttribution(t *testing.T, action string, got store.Attribution) {
 	t.Helper()
-	want := store.Attribution{Consumer: "workbench", Actor: "alice", ActingUser: "admin", Via: "mcp:Test Client 1.2.3", Confirmation: testConfirmation}
+	want := store.Attribution{Consumer: "workbench", Actor: "alice", ActingUser: "admin", Via: "mcp:Test Client 1.2.3", Confirmation: testConfirmation, Proof: ProofAsserted}
 	if got != want {
 		t.Fatalf("%s attribution = %+v, want %+v", action, got, want)
 	}
@@ -191,7 +191,7 @@ func TestAnUnattributedActionRecordsTheConsumerAndActorOnly(t *testing.T) {
 	if w := operatorExecutionRequest(f.server, "POST", notesPath(live), f.token, "alice", map[string]any{"commandId": "note-plain", "text": "Plain."}); w.Code != 201 {
 		t.Fatalf("note: %d %s", w.Code, w.Body)
 	}
-	if got := auditAttribution(t, live, store.AuditOperatorNoteAdded); got != (store.Attribution{Consumer: "workbench", Actor: "alice"}) {
+	if got := auditAttribution(t, live, store.AuditOperatorNoteAdded); got != (store.Attribution{Consumer: "workbench", Actor: "alice", Proof: ProofAsserted}) {
 		t.Fatalf("attribution = %+v", got)
 	}
 }

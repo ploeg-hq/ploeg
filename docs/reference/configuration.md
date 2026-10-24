@@ -127,8 +127,13 @@ The generator follows each binary's imports inside the module and records every 
 | `PLOEG_OMNIGRAPH_REVIEW_TOKEN` | ploegd |  | Bearer token of the Tenant's review actor, the only actor that may change the reviewed knowledge graph. With it, ploegd writes the Client and Tenant promotions a person accepted as concepts (ADR-0122). Unset leaves accepted promotions waiting; Runs are unaffected. | [knowledge.go](../../cmd/ploegd/knowledge.go) |
 | `PLOEG_OMNIGRAPH_RUN_TOKEN` | ploegd |  | Bearer token of the Tenant's run actor: read both graphs, write only notes `main`. Only ploegd holds it; worker pods never see it (ADR-0087, proposed). | [knowledge.go](../../cmd/ploegd/knowledge.go) |
 | `PLOEG_OMNIGRAPH_URL` | ploegd |  | Base URL of the Omnigraph server that holds the Tenant's graphs, for example `http://omnigraph.ai.svc.cluster.local:8080` (ADR-0087, ADR-0088, proposed). It needs `PLOEG_OMNIGRAPH_RUN_TOKEN` and at least one of `PLOEG_NOTES_GRAPH` and `PLOEG_KNOWLEDGE_GRAPH`; any other partial setting is a startup error. Unset = no Tenant knowledge. | [knowledge.go](../../cmd/ploegd/knowledge.go) |
-| `PLOEG_OPERATOR_CONSUMERS` | ploegd |  | JSON array of operator read consumers. Each entry names a `tokenEnv`, a further variable that holds that consumer's bearer token (chart `operator.consumers`). No consumers refuses every operator request. | [operator.go](../../cmd/ploegd/operator.go) |
+| `PLOEG_OPERATOR_CONSUMERS` | ploegd |  | JSON array of operator read consumers. Each entry names a `tokenEnv`, a further variable that holds that consumer's bearer token (chart `operator.consumers`), and may list `clientIds`, the identity provider clients whose person tokens make it the caller (ADR-0150). No consumers refuses every operator request. | [operator.go](../../cmd/ploegd/operator.go) |
 | `PLOEG_OPERATOR_DELIVERY_POLICIES` | ploegd |  | JSON array of trusted delivery policies with `repositoryId`, `policySha256`, `verifierId`, `minTests`, optional `publicationEnabled` and optional `publisherLogin`, the forge login a published pull request must be opened by (chart `operator.deliveryPolicies`). | [operator.go](../../cmd/ploegd/operator.go) |
+| `PLOEG_OPERATOR_PERSON_AUDIENCE` | ploegd |  | Ploeg's own audience; a person token's `aud` must name it. Required with the issuer, and no consumer client id may equal it (chart `operator.personTokens.audience`). | [operator.go](../../cmd/ploegd/operator.go) |
+| `PLOEG_OPERATOR_PERSON_ISSUER` | ploegd |  | Issuer of person tokens, matched byte for byte against `iss` (ADR-0150, chart `operator.personTokens.issuer`). Unset accepts no person tokens; a consumer that lists `clientIds` then stops the boot. | [operator.go](../../cmd/ploegd/operator.go) |
+| `PLOEG_OPERATOR_PERSON_JWKS_URL` | ploegd |  | The issuer's signing keys. Unset reads `jwks_uri` from the issuer's discovery document (chart `operator.personTokens.jwksUrl`). | [operator.go](../../cmd/ploegd/operator.go) |
+| `PLOEG_OPERATOR_PERSON_MAX_LIFETIME` | ploegd |  | Longest accepted `exp` minus `iat` of a person token, a Go duration of at most `1h`; default `5m` (chart `operator.personTokens.maxLifetime`). | [operator.go](../../cmd/ploegd/operator.go) |
+| `PLOEG_OPERATOR_PERSON_SUBJECT_NAMESPACE` | ploegd |  | What person ids are derived under in place of the issuer, so a proven person keeps the id consumers send and that earlier records hold; set it to the same value as `PLOEG_MCP_SUBJECT_NAMESPACE` (chart `operator.personTokens.subjectNamespace`). | [operator.go](../../cmd/ploegd/operator.go) |
 | `PLOEG_OUTCOME_FILE` | ploeg-worker |  | `exec` harness only: OutcomeReport JSON path override (chart `executor.harness.outcomeFile`). | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_REPORT_RUN_DASHBOARD_URL` | ploegd |  | Link template for the usage of the Run behind the report; `{run}` is its escaped gateway alias. Unset omits the link. | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_REPORT_SPEND_DASHBOARD_URL` | ploegd |  | Link to spend across Runs. Unset omits the link. | [main.go](../../cmd/ploegd/main.go) |
@@ -550,6 +555,7 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `networkPolicy.worker.extraEgress` | [networkPolicyEgressRules](#networkpolicyegressrules) | `[]` | Further egress rules for every worker pod, such as the registry a DinD sidecar pulls from or the allowlist proxy of ADR-0037. Each rule widens what a model-directed harness can reach. | values.yaml, values.schema.json |
 | `nodeSelector` |  | `{}` | Node selector for the ploegd pod. Empty = any schedulable node. | values.yaml |
 | `operator.consumers` | array | `[]` | Operator read consumers, forwarded as `PLOEG_OPERATOR_CONSUMERS`. | values.yaml, values.schema.json |
+| `operator.consumers[].clientIds` | array |  | Client ids whose person tokens (ADR-0150) make this consumer the caller; needs operator.personTokens. | values.schema.json |
 | `operator.consumers[].execute` | boolean |  | Grants execution commands. Defaults to false. | values.schema.json |
 | `operator.consumers[].maxBudgetUsd` | number |  | Budget ceiling for an executing consumer, 0.01 to 10000. Defaults to 25. | values.schema.json |
 | `operator.consumers[].name` | string |  | Consumer name. | values.schema.json |
@@ -565,6 +571,12 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `operator.deliveryPolicies[].publisherLogin` | string |  |  | values.schema.json |
 | `operator.deliveryPolicies[].repositoryId` | string |  |  | values.schema.json |
 | `operator.deliveryPolicies[].verifierId` | string |  |  | values.schema.json |
+| `operator.personTokens` | object | `{}` | ADR-0150: verify person tokens, JWTs an identity provider issued for Ploeg's audience on a person's behalf. Forwarded as PLOEG_OPERATOR_PERSON_*; issuer and audience are required once any field is set. | values.yaml, values.schema.json |
+| `operator.personTokens.audience` | string |  | Forwarded as `PLOEG_OPERATOR_PERSON_AUDIENCE`. | values.schema.json |
+| `operator.personTokens.issuer` | string |  | Forwarded as `PLOEG_OPERATOR_PERSON_ISSUER`. | values.schema.json |
+| `operator.personTokens.jwksUrl` | string |  | Forwarded as `PLOEG_OPERATOR_PERSON_JWKS_URL`. | values.schema.json |
+| `operator.personTokens.maxLifetime` | string |  | Forwarded as `PLOEG_OPERATOR_PERSON_MAX_LIFETIME`. | values.schema.json |
+| `operator.personTokens.subjectNamespace` | string |  | Forwarded as `PLOEG_OPERATOR_PERSON_SUBJECT_NAMESPACE`. | values.schema.json |
 | `resources` |  |  | Guaranteed QoS: ploegd runs the sweeper — the self-heal backbone (lease expiry, requeue, key revocation). It must survive the node pressure that kills everything else, and only requests==limits keeps it out of the burstable cgroup tree the Talos OOMController sweeps (ADR-0049). | values.yaml |
 | `resources.limits.cpu` |  | `100m` |  | values.yaml |
 | `resources.limits.memory` |  | `256Mi` |  | values.yaml |

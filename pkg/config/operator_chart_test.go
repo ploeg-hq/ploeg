@@ -65,12 +65,24 @@ func TestOperatorChartKeepsConsumerCredentialsInController(t *testing.T) {
 			Execute      bool     `json:"execute"`
 			Verify       bool     `json:"verify"`
 			MaxBudgetUSD float64  `json:"maxBudgetUsd"`
+			ClientIDs    []string `json:"clientIds"`
 		}
 		if err := json.Unmarshal([]byte(env["PLOEG_OPERATOR_CONSUMERS"]["value"].(string)), &policies); err != nil {
 			t.Fatal(err)
 		}
 		if len(policies) != 2 || policies[0].Name != "console" || !policies[0].Execute || policies[0].Verify || policies[0].MaxBudgetUSD != 3 || len(policies[0].Teams) != 1 || policies[0].Teams[0] != "silver" || policies[1].Name != "verifier" || !policies[1].Verify || policies[1].Execute {
 			t.Fatalf("wrong consumer policy: %+v", policies)
+		}
+		if len(policies[0].ClientIDs) != 1 || policies[0].ClientIDs[0] != "console-app" || len(policies[1].ClientIDs) != 0 {
+			t.Fatalf("clientIds not forwarded: %+v", policies)
+		}
+		for name, want := range map[string]any{"PLOEG_OPERATOR_PERSON_ISSUER": "https://id.example.com/application/o/ploeg/", "PLOEG_OPERATOR_PERSON_AUDIENCE": "ploeg", "PLOEG_OPERATOR_PERSON_MAX_LIFETIME": "5m"} {
+			if env[name] == nil || env[name]["value"] != want {
+				t.Fatalf("%s = %v, want %v", name, env[name], want)
+			}
+		}
+		if env["PLOEG_OPERATOR_PERSON_JWKS_URL"] != nil {
+			t.Fatal("an unset jwksUrl rendered")
 		}
 		credential := env[policies[0].TokenEnv]
 		if credential["value"] != nil {
@@ -100,6 +112,10 @@ func TestOperatorChartKeepsConsumerCredentialsInController(t *testing.T) {
 	badArgs := append(append([]string{}, args...), "--set", "operator.consumers[0].maxBudgetUsd=10001")
 	if _, err := exec.Command(helm, badArgs...).CombinedOutput(); err == nil {
 		t.Fatal("chart accepts over-limit operator budget")
+	}
+	noAudience := append(append([]string{}, args...), "--set", "operator.personTokens.audience=")
+	if _, err := exec.Command(helm, noAudience...).CombinedOutput(); err == nil {
+		t.Fatal("chart accepts person tokens without an audience")
 	}
 }
 
