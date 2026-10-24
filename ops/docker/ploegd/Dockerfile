@@ -24,7 +24,7 @@ RUN GOOS=$TARGETOS GOARCH=$TARGETARCH \
     go build -trimpath -ldflags "-s -w -X main.version=${IMAGE_VERSION}" \
     -o /out/ploeg-mcp ./cmd/ploeg-mcp
 
-FROM ${REGISTRY_GCR}/distroless/static-debian13:nonroot@sha256:e2e927ec666bae08560abb3c55d0659eceabb657f56b6782ab500a9fc7f555e3
+FROM ${REGISTRY_GCR}/distroless/static-debian13:nonroot@sha256:18f4cc26c9ffa7f20a359298be7deadac5c607c8e03a02b8119f1a5fc2f82c99
 ARG IMAGE_CREATED=1970-01-01T00:00:00Z
 ARG IMAGE_VERSION=0.0.0-dev
 ARG IMAGE_REVISION=unknown
