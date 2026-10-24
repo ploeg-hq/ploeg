@@ -330,7 +330,7 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	if out, err := runGit(ctx, "", cloneURL, forgeToken, cloneArgs(ref.BaseBranch, cloneURL, cloneDir)...); err != nil {
 		return stuckReport("git clone failed", tail(out, 2000))
 	}
-	for _, kv := range [][2]string{{"user.name", "agent-builder"}, {"user.email", "agent-builder@webgrip.dev"}} {
+	for _, kv := range [][2]string{{"user.name", committerName}, {"user.email", committerEmail}} {
 		if out, err := runGit(ctx, cloneDir, cloneURL, forgeToken, "config", kv[0], kv[1]); err != nil {
 			return stuckReport("git config failed", tail(out, 2000))
 		}
@@ -482,6 +482,17 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 		}
 		runEnv = append(runEnv, verifyScriptEnv+"="+script)
 	}
+	var fastCheck []string
+	if writes {
+		fastCheck = claimed.FastCheck
+	}
+	if len(fastCheck) > 0 {
+		script, err := writeCheckScript(scratchDir, fastCheckScriptName, fastCheck)
+		if err != nil {
+			return stuckReport("could not write the fast check script", err.Error())
+		}
+		runEnv = append(runEnv, fastCheckScriptEnv+"="+script)
+	}
 	runEnv = append(runEnv, skillsDirectoryEnv+"="+filepath.Join(home, skills.CanonicalDir))
 	runEnv = append(runEnv, contextEnv...)
 	leaks := leakScope{run: trace, workItem: item.ExternalID, log: w.Log, watch: newLeakWatch()}
@@ -517,7 +528,7 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	}
 	var support string
 	if !planner {
-		support = runSupportSection(skillPaths, w.Cfg.Toolchains, verifyCommands, writes)
+		support = runSupportSection(skillPaths, w.Cfg.Toolchains, verifyCommands, writes) + fastCheckSection(fastCheck)
 		if w.Cfg.KnowledgeOutbox != "" || graphs.on {
 			mode := learningsReviewed
 			switch {
@@ -651,18 +662,32 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	final = guardUnpublishedWork(context.WithoutCancel(ctx), final, deliveryCheck{
 		writes: writes, dir: cloneDir, cloneURL: cloneURL, token: forgeToken, branch: branch, baseline: baseline, prErr: prErr,
 	})
-	final.Delivery = observedDelivery(ref, branch, prior, after, errors.Join(priorErr, prErr))
 	if openSpec != nil && openSpecGateApplies(final, writes, onReviewBranch) {
 		gate := runOpenSpecGate(ctx, w.side(), *openSpec, cloneURL, forgeToken, branch, home)
 		w.Log.Info("OpenSpec gate", "change", openSpec.ID, "ran", gate.Ran, "passed", gate.Passed)
 		final = applyOpenSpecGate(final, openSpec.ID, gate, writes)
 	}
+	checkEnv := withToolchains(harnessEnvironment(w.side().environ, home, scratchDir, false, "", w.Cfg.LLMBaseURL, harnessModelName(w.Cfg)), w.Cfg.Toolchains)
+	if writes && verifiesOutcome(final.Outcome) && ctx.Err() == nil {
+		synced := syncWithBase(ctx, w.side(), baseCandidate{
+			pushedCandidate: pushedCandidate{dir: filepath.Join(w.Cfg.WorkDir, "rebase-vik-"+item.ExternalID), cloneURL: cloneURL, token: forgeToken,
+				branch: branch, commit: after.HeadSHA},
+			base: pullRequestBase(after, ref),
+		}, checkEnv, fastCheck, w.Cfg.VerifyTimeout)
+		w.Log.Info("brought the pull request up to date with its base", "result", string(synced.result), "base", synced.base,
+			"base_commit", synced.baseCommit, "head", synced.head, "rebased", synced.rebased, "conflicts", synced.conflicts,
+			"fast_check", synced.fastCheck != nil, "reason", synced.reason)
+		final = withBaseSync(final, synced)
+		if synced.result == baseRebased {
+			after = afterRebase(ref, forgeToken, branch, after, synced.rebased)
+		}
+	}
+	final.Delivery = observedDelivery(ref, branch, prior, after, errors.Join(priorErr, prErr))
 	if writes && len(verifyCommands) > 0 && verifiesOutcome(final.Outcome) && ctx.Err() == nil {
-		verifyEnv := withToolchains(harnessEnvironment(w.side().environ, home, scratchDir, false, "", w.Cfg.LLMBaseURL, harnessModelName(w.Cfg)), w.Cfg.Toolchains)
 		v := verifyPushedCommit(ctx, w.side(), pushedCandidate{
 			dir: filepath.Join(w.Cfg.WorkDir, "verify-vik-"+item.ExternalID), cloneURL: cloneURL, token: forgeToken,
 			branch: branch, commit: after.HeadSHA,
-		}, verifyEnv, verifyCommands, w.Cfg.VerifyTimeout)
+		}, checkEnv, verifyCommands, w.Cfg.VerifyTimeout)
 		failedCheck, failed := v.failed()
 		w.Log.Info("verified the pushed commit", "commit", v.Commit, "expected", after.HeadSHA, "fresh", v.Fresh,
 			"failed", failed, "failed_check", failedCheck.Command, "stopped", v.Stopped)

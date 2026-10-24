@@ -2,8 +2,8 @@
 type: how-to
 audience: [operator]
 owner: ploeg
-last_verified: 2026-10-18
-verified_by: "Read ops/helm/ploeg/{values.yaml,values.schema.json,templates/_helpers.tpl}, pkg/worker/{toolchain,verify,worker}.go, pkg/shiftengine/{engine,reviewloop,forge_ci_gate,review}.go, pkg/config/ci.go, pkg/provider/{forgejo,github,gitlab}, pkg/harness/skills and cmd/ploeg-worker/main.go"
+last_verified: 2026-10-24
+verified_by: "Read ops/helm/ploeg/{values.yaml,values.schema.json,templates/_helpers.tpl}, pkg/worker/{toolchain,verify,basesync,worker}.go, pkg/shiftengine/{engine,reviewloop,forge_ci_gate,review}.go, pkg/config/{ci,fast_check}.go, pkg/provider/{forgejo,github,gitlab}, pkg/harness/skills and cmd/ploeg-worker/main.go"
 ---
 
 # Give Runs a toolchain and checks
@@ -81,9 +81,35 @@ After the worker's checks pass, the Shift does not settle until the forge report
 
 Forgejo has no cancelled state: a cancelled job reports `failure` with the description `Has been cancelled`, and that text is how Ploeg recognizes it.
 
+## Keep pull requests on top of their base
+
+A Work Item reaches review only when its pull request contained its base branch at the hand-off ([ADR-0146](../adrs/0146-a-writing-run-rebases-onto-its-base-branch-and-passes-its-repositorys-fast-check-before-review.md)). Every writer is told to rebase onto the base before its last push and to resolve conflicts itself. After it exits, the worker reads the pull request's head and base on the forge:
+
+- The head already contains the base: nothing changes.
+- The base moved and the rebase is clean: the worker rebases, runs the repository's fast check on the rebased tree, and pushes with a lease on the head it read. The summary ends with `[rebased onto <base>]`.
+- The rebase conflicts: the worker pushes nothing, the Run ends `stuck` naming the conflicting paths, and the Work Item goes to `needs_human`.
+- The fast check fails on a clean rebase: the worker pushes nothing, and the Run ends `stuck` naming the failing command.
+
+The result is the "Ploeg base sync" part of the Run's findings. Declare the fast check on a target or a project in ploegd's config file. Keep it to commands that finish in seconds to a few minutes and need no git history: the worker runs it on the rebased files without `.git`. Without one, a clean rebase is pushed and the check is recorded as skipped.
+
+```yaml
+targets:
+  shop:
+    repo: acme/shop
+    fastCheck:
+      - test -z "$(gofmt -l .)"
+      - go vet ./...
+teams:
+  silver:
+    forgeFollowUps:
+      rebaseOnConflict: true
+```
+
+`rebaseOnConflict` covers conflicts that appear after the hand-off. When the review reconcile confirms a conflict on a pull request in review (two polls at one head), it queues a rebase Follow-Up on the same branch for the Team that owns it. The Follow-Up shares `maxRepairs` with failed-check repairs.
+
 ## What the agent gets
 
-Every writing and reading Run gets Ploeg's own skills under its `HOME`: `ploeg-verify-before-handoff`, and for readers `ploeg-review-against-work-item`. The environment variable `PLOEG_SKILLS_DIR` names their directory, `PLOEG_VERIFY_SCRIPT` names a script that runs the `verify` lines, and the prompt lists the skills, the toolchains and the checks. Planners get none of them.
+Every writing and reading Run gets Ploeg's own skills under its `HOME`: `ploeg-verify-before-handoff`, and for readers `ploeg-review-against-work-item`. The environment variable `PLOEG_SKILLS_DIR` names their directory, `PLOEG_VERIFY_SCRIPT` names a script that runs the `verify` lines, `PLOEG_FAST_CHECK_SCRIPT` names one that runs a writer's repository fast check, and the prompt lists the skills, the toolchains and the checks. Planners get none of them.
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
@@ -92,5 +118,6 @@ Every writing and reading Run gets Ploeg's own skills under its `HOME`: `ploeg-v
 | The pull request is open but the Work Item went back to its writer or to `needs_human` | The checks failed or were incomplete on the pushed commit; a configured plan re-opens the writing Round while fix rounds remain, otherwise the Shift closes as `checks_not_passed` | Read the "Ploeg verification" comment, fix the code or the check, and re-assign the Work Item |
 | The Work Item went to `needs_human` with `ci_not_finished` | The forge's CI on the pull request's head was still running when the route's `ci.waitTimeout` ran out | Wait for CI and re-assign, or raise `ci.waitTimeout` for the repository |
 | The Work Item went to `needs_human` with `ci_not_passed` | The forge's CI failed on checks the writer cannot fix: cancelled, or failing on the base branch too, and one re-run did not help | Read the message: it names each check and why it was not sent to the writer. Fix the base branch or the CI, then re-assign |
+| The Work Item went to `needs_human` and the Run says the pull request conflicts with its base | The base branch changed the same lines and the agent could not resolve them without choosing between two behaviours | Read "Ploeg base sync" for the paths, resolve them on the branch or rebase it, and re-assign |
 | The summary has no `Ploeg verification` part | The Run did not open or update a pull request, or it read rather than wrote | Only writing Runs with a pull request are verified by the worker |
 | `go: downloading go1.x` then a timeout | `go.mod` asks for a newer toolchain | Set `GOTOOLCHAIN: local` and use an image at least as new as `go.mod` asks |

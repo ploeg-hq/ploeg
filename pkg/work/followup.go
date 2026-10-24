@@ -22,6 +22,10 @@ type ForgeFollowUps struct {
 	// ReworkOnChangesRequested sends a person's request for changes on this
 	// Team's pull request back to the Team as a fix Round or a new Shift.
 	ReworkOnChangesRequested bool `json:"reworkOnChangesRequested,omitempty" yaml:"reworkOnChangesRequested"`
+	// RebaseOnConflict creates a rebase Follow-Up when the forge confirms that
+	// a pull request this Team owns conflicts with its base branch while it
+	// awaits review (ADR-0146). It shares MaxRepairs with RepairFailedChecks.
+	RebaseOnConflict bool `json:"rebaseOnConflict,omitempty" yaml:"rebaseOnConflict"`
 }
 
 // RepairCap is the effective cap on repair Follow-Ups per pull request.
@@ -34,5 +38,5 @@ func (f ForgeFollowUps) RepairCap() int {
 
 // Enabled reports whether any forge event acts for this Team.
 func (f ForgeFollowUps) Enabled() bool {
-	return f.RepairFailedChecks || f.ReworkOnChangesRequested
+	return f.RepairFailedChecks || f.ReworkOnChangesRequested || f.RebaseOnConflict
 }
