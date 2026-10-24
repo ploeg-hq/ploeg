@@ -204,7 +204,7 @@ A Ploeg record admitted for an authenticated Operator Consumer and linked to its
 ## Outcome
 *Context: Dispatch*
 
-The terminal result of a Run, one of: pr_opened, pr_updated, issue_updated, follow_up_created, stuck, failed, no_change_needed. A stuck Outcome carries a mandatory reason and moves the Work Item to needs_human on the tracker path. A failed Outcome follows the applicable tracker or operator recovery policy; it does not universally authorize retry.
+The terminal result of a Run, one of: pr_opened, pr_updated, issue_updated, follow_up_created, stuck, failed, no_change_needed, yielded. A stuck Outcome carries a mandatory reason and moves the Work Item to needs_human on the tracker path. A yielded Outcome is a Run that stopped at a safe point because a person took it over (ADR-0142, proposed); the Work Item waits at needs_human for that person. A failed Outcome follows the applicable tracker or operator recovery policy; it does not universally authorize retry.
 
 **Not to be confused with** [Verdict](#verdict): A reading Run's opinion of the work; an Outcome classifies how the Run itself ended.  
 **See also:** [Outcome Report](#outcome-report), [Run](#run)  

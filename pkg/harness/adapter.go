@@ -84,7 +84,31 @@ type RunEnv struct {
 	// Spawner starts the harness and every process it needs where the
 	// harness runs (ADR-0138). Nil starts them as the worker's children.
 	Spawner Spawner
+	// Yield is closed when a person asked the Run to yield (ADR-0142). An
+	// adapter that implements Yielder stops the agent at its next safe point
+	// and returns ErrYielded; any other adapter ignores it. Nil never closes.
+	Yield <-chan struct{}
 }
+
+// Yielder is implemented by an Adapter that can stop its agent at a safe
+// point when RunEnv.Yield closes, leaving the checkout as the agent left it
+// between two steps (ADR-0142). The worker tells ploegd at its claim, so a
+// take-over of a Run whose Harness cannot yield is refused before anything
+// changes.
+type Yielder interface {
+	Yields() bool
+}
+
+// AdapterYields reports whether a can stop at a safe point for a person.
+func AdapterYields(a Adapter) bool {
+	y, ok := a.(Yielder)
+	return ok && y.Yields()
+}
+
+// ErrYielded is what an Adapter returns when it stopped its agent because
+// RunEnv.Yield closed. The report it returns with it describes the agent's
+// work up to that point.
+var ErrYielded = errors.New("the Run yielded to a person")
 
 // PromptStart is when a Run's prompt started and the limits that stop it.
 // Prompt is the most the prompt may run from At and Idle how long the agent

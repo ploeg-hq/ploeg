@@ -256,6 +256,21 @@ func (s *sessionState) lastThought() string {
 	return strings.TrimSpace(s.thoughts.String())
 }
 
+// toolsInFlight counts the tool calls the agent announced and has not yet
+// reported completed or failed: while one runs, the agent is mid-step and the
+// checkout may be half written.
+func (s *sessionState) toolsInFlight() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n := 0
+	for _, tc := range s.tools {
+		if tc.Status == ToolPending || tc.Status == ToolInProgress {
+			n++
+		}
+	}
+	return n
+}
+
 // eventCount is the idle watchdog's definition of progress: any protocol
 // event at all. A stuck agent emits nothing; a slow one still streams.
 func (s *sessionState) eventCount() int {

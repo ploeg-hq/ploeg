@@ -112,13 +112,17 @@ const (
 	OutcomeStuck           Outcome = "stuck"
 	OutcomeFailed          Outcome = "failed"
 	OutcomeNoChangeNeeded  Outcome = "no_change_needed"
+	// OutcomeYielded is a Run that stopped at a safe point because a person
+	// took it over (ADR-0142). Only the worker reports it, and only after
+	// ploegd asked the Run to yield.
+	OutcomeYielded Outcome = "yielded"
 )
 
 // Valid reports whether o is a known outcome enum value.
 func (o Outcome) Valid() bool {
 	switch o {
 	case OutcomePROpened, OutcomePRUpdated, OutcomeIssueUpdated,
-		OutcomeFollowUpCreated, OutcomeStuck, OutcomeFailed, OutcomeNoChangeNeeded:
+		OutcomeFollowUpCreated, OutcomeStuck, OutcomeFailed, OutcomeNoChangeNeeded, OutcomeYielded:
 		return true
 	}
 	return false

@@ -174,6 +174,46 @@ func (c *Client) Cancel(ctx context.Context, who Attribution, id, commandID, exp
 	return out.Cancellation, err
 }
 
+// TakenOver is a take-over of a Work Item's running Runs (ADR-0142). State
+// is yielding until they stop at a safe point; the Work Item detail's
+// takeOver follows it from there.
+type TakenOver struct {
+	ID                   string         `json:"id"`
+	WorkItemID           string         `json:"workItemId"`
+	ShiftID              string         `json:"shiftId"`
+	Round                int            `json:"round"`
+	Branch               string         `json:"branch"`
+	State                string         `json:"state"`
+	Runs                 []TakenOverRun `json:"runs"`
+	CancelledPendingRuns int            `json:"cancelledPendingRuns"`
+	CommandID            string         `json:"commandId"`
+	Replayed             bool           `json:"replayed"`
+}
+
+// TakenOverRun is a running Run a take-over asked to yield.
+type TakenOverRun struct {
+	ID   string `json:"id"`
+	Role string `json:"role"`
+}
+
+// TakeOver answers POST /work-items/{id}/take-over: who.Actor takes over the
+// Work Item's running Runs, and hands it back later with Requeue and Resume.
+// expectedShiftID, when not empty, must be the item's open Shift.
+func (c *Client) TakeOver(ctx context.Context, who Attribution, id, commandID, expectedShiftID string) (TakenOver, error) {
+	var out struct {
+		TakeOver TakenOver `json:"takeOver"`
+	}
+	if !numericID(id) {
+		return out.TakeOver, badID()
+	}
+	body := map[string]any{"commandId": commandID}
+	if expectedShiftID != "" {
+		body["expectedShiftId"] = expectedShiftID
+	}
+	err := c.write(ctx, "work-items/"+id+"/take-over", who, body, &out)
+	return out.TakeOver, err
+}
+
 // Note is an instruction stored for the next Run of a Work Item.
 type Note struct {
 	ID         string  `json:"id"`

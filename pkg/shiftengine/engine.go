@@ -292,6 +292,10 @@ func (e *Engine) evaluate(ctx context.Context, si store.ShiftInfo) error {
 		return e.parkForHuman(ctx, si, park, reports)
 	}
 
+	if parked, err := e.parkForTakeOver(ctx, si, reports); parked || err != nil {
+		return err
+	}
+
 	if parked, err := e.parkForQuestions(ctx, si, reports); parked || err != nil {
 		return err
 	}
@@ -448,6 +452,9 @@ func (e *Engine) close(ctx context.Context, si store.ShiftInfo, closeReason, hum
 // settleState is the state close moves the Work Item to.
 func settleState(si store.ShiftInfo, closeReason string, synthesized bool, reports []store.RunReport) work.State {
 	next := work.StateNeedsHuman
+	if closeReason == work.CloseReasonTakenOver {
+		return next
+	}
 	if synthesized {
 		if outcome, ok := terminalOutcome(reports); ok {
 			next = work.StateForOutcome(outcome)

@@ -166,6 +166,47 @@ func TestClientWritesNameThePersonAndChannel(t *testing.T) {
 	}
 }
 
+// ADR-0142: the client takes over a running Run for its person, attributed
+// to them and the administrator acting for them, and a replay of the command
+// changes nothing.
+func TestClientTakesOverARunningRun(t *testing.T) {
+	ctx := context.Background()
+	srv, token := writerServer(t)
+	c, err := operatorclient.New(srv.URL, token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, _, err := testStore.IngestAssigned(ctx, work.WorkItem{Provider: "vikunja", ExternalID: "client-take-over", Team: "copper", Title: "Take over"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	shift, err := testStore.OpenShift(ctx, id, "copper", "ploeg/client-take-over", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := testStore.OpenRound(ctx, shift, 0, []store.Role{{Name: "taker", Writes: true, Cap: 1}}); err != nil {
+		t.Fatal(err)
+	}
+	run, err := testStore.ClaimRole(ctx, "copper", "taker", time.Minute, 0)
+	if err != nil || run == nil || run.Item.ID != fmt.Sprint(id) {
+		t.Fatalf("claim: %+v, %v", run, err)
+	}
+	if err := testStore.RecordRunYields(ctx, run.RunToken); err != nil {
+		t.Fatal(err)
+	}
+	taken, err := c.TakeOver(ctx, person, fmt.Sprint(id), "client-take-1", fmt.Sprint(shift))
+	if err != nil || taken.State != "yielding" || len(taken.Runs) != 1 || taken.Replayed {
+		t.Fatalf("take-over = %+v, %v", taken, err)
+	}
+	if again, err := c.TakeOver(ctx, person, fmt.Sprint(id), "client-take-1", fmt.Sprint(shift)); err != nil || !again.Replayed || again.ID != taken.ID {
+		t.Fatalf("a repeated take-over commandId: %+v, %v", again, err)
+	}
+	wantAttributed(t, c, fmt.Sprint(id), store.AuditWorkItemTakenOver)
+	if _, err := c.TakeOver(ctx, person, "../teams", "x", ""); err == nil {
+		t.Fatal("path injection accepted")
+	}
+}
+
 func TestClientSteersAnExecutionAsItsOwner(t *testing.T) {
 	ctx := context.Background()
 	srv, token := writerServer(t)

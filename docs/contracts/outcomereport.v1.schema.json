@@ -14,8 +14,46 @@
         "follow_up_created",
         "stuck",
         "failed",
-        "no_change_needed"
-      ]
+        "no_change_needed",
+        "yielded"
+      ],
+      "description": "yielded is a Run that stopped at a safe point because a person took it over (ADR-0142); only the worker reports it, and ploegd refuses it from a Run nobody asked to yield."
+    },
+    "yield": {
+      "type": "object",
+      "description": "Where a yielded Run left its work (ADR-0142). Only the worker sets it, on a yielded outcome, from what it read on the forge after it pushed.",
+      "properties": {
+        "branch": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "description": "The Work Item's branch the work is on"
+        },
+        "commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$",
+          "description": "The branch head on the forge after the worker pushed; absent when the branch does not exist"
+        },
+        "workInProgress": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$",
+          "description": "The commit the worker made of the agent's uncommitted changes; absent when there were none"
+        },
+        "pushed": {
+          "type": "boolean",
+          "description": "False when the worker could not put the work on the forge"
+        },
+        "detail": {
+          "type": "string",
+          "maxLength": 2000,
+          "description": "Why the work is not on the forge, when pushed is false"
+        }
+      },
+      "required": [
+        "branch",
+        "pushed"
+      ],
+      "additionalProperties": false
     },
     "summary": {
       "type": "string"
