@@ -39,21 +39,22 @@ func (c *CI) waitTimeout() (time.Duration, bool, error) {
 }
 
 type ciRoute struct {
-	where string
-	forge string
-	repo  string
-	ci    *CI
+	where     string
+	forge     string
+	repo      string
+	ci        *CI
+	fastCheck []string
 }
 
 func (f *File) ciRoutes() []ciRoute {
 	var out []ciRoute
 	for _, key := range sortedTargetKeys(f.Targets) {
 		t := f.Targets[key]
-		out = append(out, ciRoute{where: "targets." + key, forge: t.Forge, repo: t.Repo, ci: t.CI})
+		out = append(out, ciRoute{where: "targets." + key, forge: t.Forge, repo: t.Repo, ci: t.CI, fastCheck: t.FastCheck})
 	}
 	for _, tr := range f.trackerProjects() {
 		for i, p := range tr.projects {
-			out = append(out, ciRoute{where: fmt.Sprintf("trackers.%s.projects[%d]", tr.provider, i), forge: p.Forge, repo: p.Repo, ci: p.CI})
+			out = append(out, ciRoute{where: fmt.Sprintf("trackers.%s.projects[%d]", tr.provider, i), forge: p.Forge, repo: p.Repo, ci: p.CI, fastCheck: p.FastCheck})
 		}
 	}
 	return out

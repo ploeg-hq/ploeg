@@ -33,7 +33,17 @@ type ReviewWatch struct {
 	// CIWaits is how long an item whose head CI went back to pending may
 	// stay in awaiting_review, per route, as Engine.CIWaits (ADR-0119).
 	CIWaits CIWaits
-	Log     *slog.Logger
+	// Conflicts is told once each time an item's pull request becomes
+	// conflicted, so the Team that owns it can rebase it (ADR-0146). Nil
+	// records the merge state and nothing else.
+	Conflicts ConflictFollowUps
+	Log       *slog.Logger
+}
+
+// ConflictFollowUps acts on a pull request the forge confirmed as
+// conflicting with its base branch while its Work Item awaits review.
+type ConflictFollowUps interface {
+	RebaseConflicted(ctx context.Context, forge, repo, branch string, pr int, base string)
 }
 
 type reviewTarget struct {
@@ -240,12 +250,22 @@ func (w *ReviewWatch) notifyCI(ctx context.Context, t reviewTarget, message stri
 
 func (w *ReviewWatch) recordMergeCheck(ctx context.Context, t reviewTarget, read provider.PullRequestMergeability) {
 	key := store.PullRequestKey{Forge: t.forge.Name(), Repo: t.repo, Number: t.pr}
-	if _, _, err := w.Store.RecordMergeCheck(ctx, key, t.item.WorkItemID, store.MergeObservation{
+	check, _, err := w.Store.RecordMergeCheck(ctx, key, t.item.WorkItemID, store.MergeObservation{
 		Mergeable: read.Mergeable, HeadSHA: read.Facts.HeadSHA, BaseBranch: read.BaseBranch,
-	}, time.Now()); err != nil {
+	}, time.Now())
+	if err != nil {
 		w.log().Error("review reconcile: merge state not recorded",
 			"work_item", t.item.WorkItemID, "repo", t.repo, "pr", t.pr, "err", err)
+		return
 	}
+	if !check.Entered || w.Conflicts == nil || t.item.Origin == work.OriginPullRequest || t.item.Branch == "" {
+		return
+	}
+	base := read.BaseBranch
+	if base == "" && t.item.Target != nil {
+		base = t.item.Target.BaseBranch
+	}
+	w.Conflicts.RebaseConflicted(ctx, t.forge.Name(), t.repo, t.item.Branch, t.pr, base)
 }
 
 func (w *ReviewWatch) settle(ctx context.Context, t reviewTarget, next work.State, reason string) error {
