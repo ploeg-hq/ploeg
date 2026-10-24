@@ -26,6 +26,7 @@ Use these sources for the current implementation. The [architecture](architectur
 - [CI and infrastructure](ops/ci-and-infra.md)
 - [Experimental releases](ops/release-versioning.md)
 - [Compatibility policy](ops/compatibility.md): what each release keeps working, deprecation, rollback and version pairs
+- [Stable channel plan](ops/stable-channel-plan.md): proposed gates, promotion, support window and signing for stable releases, with open decisions
 
 ## Integrate
 

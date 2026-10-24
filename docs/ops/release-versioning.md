@@ -16,6 +16,8 @@ Every releasable merge to `development`, the trunk, cuts a candidate with no han
 
 A stable `v0.x.y` stays a reviewed act. Merge `development` into `main`, set `version` and `appVersion` in `ops/helm/ploeg/Chart.yaml` and the changelog in a release preparation commit on `main`, then push an annotated tag on that commit. The tag push starts the release workflow. Do not use 1.x without a separate maturity decision.
 
+A [plan for the stable channel](stable-channel-plan.md) proposes how a candidate becomes a stable release, with the owner's open decisions; it is not in force.
+
 ## The published chart pins its images
 
 `release.sh` reads the digests BuildKit reports for `ploegd`, `claude-runner` and `ploeg-worker` and hands them to [scripts/package-chart.sh](../../scripts/package-chart.sh), which writes them into a copy of the chart as `image.digest`, `claudeRunner.image.digest` and `worker.image.digest` before `helm package`. A cluster that sets no image therefore runs the release's own builds by digest: ploegd, its workers' worker containers, `ploeg-mcp`, `claude-runner` and a `claude-environment` worker. `values.yaml` in git keeps all three digests empty. [scripts/test-package-chart.sh](../../scripts/test-package-chart.sh), run by `mise run verify`, fails when the packaged chart renders an image without a digest or when `release.sh` packages the chart any other way.
