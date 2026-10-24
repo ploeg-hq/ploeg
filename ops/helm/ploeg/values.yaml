@@ -19,6 +19,12 @@ image:
   digest: ""
 imagePullSecrets: [] # e.g. [{name: harbor-pull}] for a private registry
 
+worker:
+  image:
+    repository: ghcr.io/ploeg-hq/ploeg-worker
+    tag: ""
+    digest: ""
+
 service:
   port: 8080
 
@@ -455,6 +461,8 @@ executor:
   # Node selector for worker pods, e.g. {node-role.example/agents: "true"} to
   # keep privileged DinD off control-plane nodes. Empty = any schedulable node.
   nodeSelector: {}
+  # DEPRECATED: shared, which runs the harness in the worker's container; it is removed in the minor after 0.2 (ADR-0138).
+  harnessContainer: separate
   # Global harness defaults; a team's optional `harness:` block overrides
   # these field-by-field (see teams below).
   harness:
@@ -570,7 +578,7 @@ executor:
   # Docker Hub's official image. A cluster behind a pull-through proxy sets
   # its own copy; the digest is the same.
   dindImage: docker.io/library/docker:29.8.2-dind@sha256:7dcdfc4a20246236f558175182ccace1eb15a41bd3eb119dd2284f393498b7c1
-  workerImage: "" # empty = image.repository:tag (carries /usr/local/bin/ploeg-worker)
+  workerImage: "" # empty = worker.image with harnessContainer separate, image.repository:tag with shared
   # ServiceAccount for the WORKER pods (not ploegd). Workers mount no token
   # either way; this is an identity/audit fix, and what
   # require-non-default-serviceaccount wants.
@@ -809,6 +817,10 @@ executor:
   workerResources:
     requests: {cpu: "1", memory: 1Gi}
     limits: {cpu: "1", memory: 1Gi}
+  workerContainerResources:
+    requests: {cpu: 250m, memory: 512Mi}
+    limits: {cpu: 250m, memory: 512Mi}
+  workerContainerSecurityContext: {}
   dindResources:
     requests: {cpu: "1", memory: 1536Mi}
     limits: {cpu: "1", memory: 1536Mi}

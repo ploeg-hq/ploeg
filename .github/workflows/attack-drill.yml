@@ -13,11 +13,13 @@ on:
     paths:
       - "pkg/harness/**"
       - "pkg/worker/**"
+      - "cmd/ploeg-worker/**"
       - ".github/workflows/attack-drill.yml"
   pull_request:
     paths:
       - "pkg/harness/**"
       - "pkg/worker/**"
+      - "cmd/ploeg-worker/**"
       - ".github/workflows/attack-drill.yml"
 permissions:
   contents: read
@@ -42,6 +44,15 @@ jobs:
         run: mise exec -- go test -v -count=1 -run TestHostileConfig ./pkg/harness/adapters/acp/
       - name: The harness environment never holds a real credential
         run: mise exec -- go test -v -count=1 -run TestAttackDrill ./pkg/worker/
+      - name: Allow the unprivileged user and PID namespace the harness container drill runs in
+        run: |
+          if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+      - name: The harness's own container holds no credential and keeps no survivor
+        env:
+          PLOEG_REQUIRE_PID_NAMESPACE: "1"
+        run: mise exec -- go test -v -count=1 -run 'TestHarnessContainerSeesNoCredential|TestLauncherAsFirstProcessEndsAHarnessThatLeftItsGroup|TestSharedContainerHarnessReadsTheWorkersCredentialedChild' ./pkg/worker/
 
   real-binary:
     name: Real-binary tier (no model)

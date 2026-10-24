@@ -213,9 +213,9 @@ The worker looks for `openspec/changes/<change-id>` at the repository root and
 in nested directories (for example `services/api/openspec`), without
 following symbolic links. It fills the Task Spec's `openSpec` field with a
 brief: from `openspec instructions apply --change <id> --json` when an
-`openspec` executable is on the worker's PATH, otherwise from the change's
-`proposal.md`, `design.md` and `tasks.md`. The prompt ranks the brief below the
-delivery contract.
+`openspec` executable is on the PATH of the container the harness runs in
+(ADR-0138), otherwise from the change's `proposal.md`, `design.md` and
+`tasks.md`. The prompt ranks the brief below the delivery contract.
 
 After a writing Run opens or updates a pull request, and after a reading Run
 on the branch under review, the worker checks out the pushed branch and runs

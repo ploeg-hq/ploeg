@@ -6,6 +6,7 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -44,5 +45,16 @@ func TestALauncherThatIsNotItsContainersFirstProcessIsRefused(t *testing.T) {
 	_, err = connectHarnessSide(slog.New(slog.DiscardHandler), worker.HarnessConfig{Name: "exec"})
 	if err == nil || !strings.Contains(err.Error(), "shareProcessNamespace") {
 		t.Fatalf("err = %v, want a refusal naming the shared PID namespace", err)
+	}
+}
+
+func TestASeparateHarnessContainerNeedsGitInTheWorkerImage(t *testing.T) {
+	t.Setenv(launcherSocketEnv, filepath.Join(t.TempDir(), "launcher.sock"))
+	previous := lookGit
+	lookGit = func(string) (string, error) { return "", exec.ErrNotFound }
+	t.Cleanup(func() { lookGit = previous })
+	_, err := connectHarnessSide(slog.New(slog.DiscardHandler), worker.HarnessConfig{Name: "exec"})
+	if err == nil || !strings.Contains(err.Error(), "ploeg-worker image") {
+		t.Fatalf("err = %v", err)
 	}
 }

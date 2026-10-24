@@ -316,6 +316,7 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `executor.harness.toolchains` |  | `[]` | Language toolchains mounted read-only at /opt/ploeg/toolchains/<name> as image volumes (Kubernetes >= 1.35), pulled by the kubelet, so a Run can run the target repository's checks without registry egress. `path` lists directories inside the image to put on PATH (default /bin); `env` is set in the harness environment (PLOEG_TOOLCHAINS). | values.yaml |
 | `executor.harness.verify` |  | `[]` | Shell command lines a Run is told to run before it hands off, and that ploeg-worker runs itself after a writing Run that opened or updated a pull request; the result is posted on the pull request (PLOEG_VERIFY_COMMANDS). Write a formatter check so it fails on output, e.g. test -z "$(gofmt -l .)". | values.yaml |
 | `executor.harness.verifyTimeout` |  | `""` | Go duration for the worker's own run; "" = 15m (PLOEG_VERIFY_TIMEOUT) | values.yaml |
+| `executor.harnessContainer` | one of `"separate"`, `"shared"` | `separate` | separate (the default) runs the harness in its own container of the Run's pod, behind ploeg-worker harness-serve, with no credential in its environment, while the worker container keeps every credential and both proxies (ADR-0138). A workload with DinD, a credential proxy off or harness claude-environment keeps shared. shared runs the harness in the worker's container; deprecated, removed in the minor after 0.2. | values.yaml, values.schema.json |
 | `executor.litellm.adminUrl` |  | `""` | ploegd's LiteLLM management URL (LITELLM_ADMIN_URL), e.g. http://litellm.<namespace>.svc.cluster.local:4000. REQUIRED while workerAuth.mode is managed: ploegd refuses to start without it. | values.yaml |
 | `executor.litellm.baseUrl` |  | `""` | The model gateway workers call (LLM_BASE_URL), e.g. http://litellm.<namespace>.svc.cluster.local:4000/v1. REQUIRED with the executor enabled. | values.yaml |
 | `executor.litellm.keyDuration` |  | `4h` | Per-run key lifetime; a positive Go duration between one second and 24 hours. | values.yaml |
@@ -390,7 +391,13 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `executor.workerBinResources.limits.memory` |  | `64Mi` |  | values.yaml |
 | `executor.workerBinResources.requests.cpu` |  | `50m` |  | values.yaml |
 | `executor.workerBinResources.requests.memory` |  | `64Mi` |  | values.yaml |
-| `executor.workerImage` | string | `""` | empty = image.repository:tag (carries /usr/local/bin/ploeg-worker) | values.yaml, values.schema.json |
+| `executor.workerContainerResources` | object |  | Resources of the worker container when the harness runs in its own container; the harness container keeps workerResources. | values.yaml, values.schema.json |
+| `executor.workerContainerResources.limits.cpu` |  | `250m` |  | values.yaml |
+| `executor.workerContainerResources.limits.memory` |  | `512Mi` |  | values.yaml |
+| `executor.workerContainerResources.requests.cpu` |  | `250m` |  | values.yaml |
+| `executor.workerContainerResources.requests.memory` |  | `512Mi` |  | values.yaml |
+| `executor.workerContainerSecurityContext` | object | `{}` | Merged over the worker container's default context when the harness runs in its own container: restricted, a read-only root filesystem, and the uid and gid of workerSecurityContext (1000 when it names none), because both containers write the shared work directory. | values.yaml, values.schema.json |
+| `executor.workerImage` | string | `""` | empty = worker.image with harnessContainer separate, image.repository:tag with shared | values.yaml, values.schema.json |
 | `executor.workerResources.limits.cpu` |  | `1` |  | values.yaml |
 | `executor.workerResources.limits.memory` |  | `1Gi` |  | values.yaml |
 | `executor.workerResources.requests.cpu` |  | `1` |  | values.yaml |
@@ -578,6 +585,10 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `tracker.url` | string | `""` | e.g. https://vikunja.example/api/v1 | values.yaml, values.schema.json |
 | `webhook` |  |  | The Vikunja webhook secret (PLOEG_VIKUNJA_SECRET). Unset = no env is rendered and every Vikunja webhook is rejected; ploegd still starts. | values.yaml |
 | `webhook.existingSecret` |  | `{}` |  | values.yaml |
+| `worker.image` | object |  | The ploeg-worker image (ADR-0138): ploeg-worker, git and CA certificates on a distroless base. It runs the worker container when the harness runs in its own container and provides the launcher binary the harness container runs; executor.workerImage overrides it. | values.yaml, values.schema.json |
+| `worker.image.digest` | string | `""` | Digest of the appVersion image; the release writes it into the published chart | values.yaml, values.schema.json |
+| `worker.image.repository` | string | `ghcr.io/ploeg-hq/ploeg-worker` |  | values.yaml, values.schema.json |
+| `worker.image.tag` | string | `""` |  | values.yaml, values.schema.json |
 
 ## Shared value shapes
 
@@ -666,6 +677,7 @@ name becomes the workload suffix (ploeg-worker-<team>-<role>); writes marks the 
 | Key | Type | Description |
 | --- | --- | --- |
 | `name` | one of `"openhands"`, `"exec"`, `"claude-code"`, `"acp"`, `"claude-environment"` | `openhands`, `exec`, `claude-code` or `acp`. |
+| `harnessContainer` | one of `"separate"`, `"shared"` | Per team or Role: overrides executor.harnessContainer for this workload. separate on a workload with DinD, a credential proxy off or harness claude-environment fails the render (ADR-0138). |
 | `image` | string | Agent image. Empty means `executor.runnerImage`. |
 | `entrypoint` | string | Harness binary override. Empty means the adapter default. |
 | `args` | array | `exec` harness only: argv template with `{taskspec}` and `{taskfile}`. |

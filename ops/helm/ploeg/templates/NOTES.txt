@@ -1,0 +1,25 @@
+{{- $shared := list }}
+{{- if .Values.executor.enabled }}
+{{- if eq (.Values.executor.harnessContainer | default "separate") "shared" }}
+{{- $shared = append $shared "executor.harnessContainer" }}
+{{- end }}
+{{- range $team := .Values.executor.teams }}
+{{- if eq ((($team.harness | default dict).harnessContainer) | default "") "shared" }}
+{{- $shared = append $shared (printf "team %s" $team.name) }}
+{{- end }}
+{{- range $round := ($team.plan | default list) }}
+{{- range $role := ($round.roles | default list) }}
+{{- if eq ((($role.harness | default dict).harnessContainer) | default "") "shared" }}
+{{- $shared = append $shared (printf "team %s role %s" $team.name $role.name) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if $shared }}
+DEPRECATED: harnessContainer is shared for {{ $shared | uniq | join ", " }}.
+The harness then runs in the worker's container, where the bootstrap token,
+the forge token and the per-Run key are one process boundary away from it
+(threat-model finding F-03). shared is removed in the minor after 0.2; remove
+the setting to run the harness in its own container (ADR-0138).
+{{- end }}

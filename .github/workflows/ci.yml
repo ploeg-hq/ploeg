@@ -36,6 +36,10 @@ jobs:
       - run: mise run docs-check
       - name: Build controller and worker image
         run: docker build --file ops/docker/ploegd/Dockerfile --tag ploeg-ci:${GITHUB_SHA} .
+      - name: Build the ploeg-worker image and run git in it
+        run: |
+          docker build --file ops/docker/ploeg-worker/Dockerfile --tag ploeg-worker-ci:${GITHUB_SHA} .
+          docker run --rm --user 1000:1000 --entrypoint /usr/bin/git ploeg-worker-ci:${GITHUB_SHA} --version
   dco:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04

@@ -166,3 +166,11 @@ Any one of these reopens this record:
   `http.proxy` and `url.*.insteadOf` plus a credential helper and proves
   neither the token nor a request reaches the planted server. PR #230.
   The status and the decision above are unchanged.
+* 2026-10-24 — [ADR 0138](0138-a-harness-runs-in-its-own-container-and-no-credential-enters-it.md)
+  moves the harness into its own container of the Run's pod. The non-dumpable
+  flag above covered the worker process only: `execve` makes every child
+  dumpable again, so a same-user harness read the forge token from the
+  environment of the worker's `git` children (#221). The placeholders and
+  proxies of this record stay; the worker that holds them now runs in a
+  container the harness cannot see into, and the dumpable flag is a second
+  layer. The status and the decision above are unchanged.

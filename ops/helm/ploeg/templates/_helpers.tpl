@@ -295,6 +295,39 @@ Context: (dict "root" $ "team" <team entry> "role" <Role entry or empty dict>).
 {{- end -}}
 {{- end -}}
 
+{{- define "ploeg.harnessContainer" -}}
+{{- $value := .root.Values.executor.harnessContainer | default "separate" -}}
+{{- if hasKey .override "value" -}}{{- $value = .override.value -}}{{- end -}}
+{{- if not (has $value (list "separate" "shared")) -}}
+{{- fail (printf "team %s: harnessContainer must be separate or shared, not %q" .who $value) -}}
+{{- end -}}
+{{- $legacy := "" -}}
+{{- if eq .name "claude-environment" -}}
+{{- $legacy = "harness claude-environment runs its claude CLI in the worker's container" -}}
+{{- else if .dind -}}
+{{- $legacy = "harness.dind is true" -}}
+{{- else if .isolation.offReason -}}
+{{- $legacy = printf "a credential proxy is off (%s)" .isolation.offReason -}}
+{{- end -}}
+{{- if and $legacy (eq $value "separate") -}}
+{{- if hasKey .override "value" -}}
+{{- fail (printf "team %s: harness.harnessContainer is separate, but %s; a separate harness container needs both credential proxies and no DinD (ADR-0138). Set harness.harnessContainer: shared for this workload" .who $legacy) -}}
+{{- end -}}
+{{- $value = "shared" -}}
+{{- end -}}
+{{- $value -}}
+{{- end -}}
+
+{{- define "ploeg.workerImage" -}}
+{{ include "ploeg.imageRef" (dict "image" .Values.worker.image "appVersion" .Chart.AppVersion) }}
+{{- end -}}
+
+{{- define "ploeg.workerContainerSecurityContext" -}}
+{{- $harness := .Values.executor.workerSecurityContext | default dict -}}
+{{- $context := dict "runAsNonRoot" true "runAsUser" ($harness.runAsUser | default 1000) "runAsGroup" ($harness.runAsGroup | default 1000) "allowPrivilegeEscalation" false "readOnlyRootFilesystem" true "capabilities" (dict "drop" (list "ALL")) "seccompProfile" (dict "type" "RuntimeDefault") -}}
+{{- toYaml (mergeOverwrite $context (.Values.executor.workerContainerSecurityContext | default dict)) -}}
+{{- end -}}
+
 {{- define "ploeg.credentialIsolation" -}}
 {{- $llmKey := .root.Values.executor.litellm.keyIsolation | default "" -}}
 {{- $forgeToken := .root.Values.executor.forgeTokenIsolation | default "" -}}
@@ -438,6 +471,10 @@ global executor.harness defaults field-by-field (explicit hasKey checks, so
 {{- $isolationOverride := dict }}
 {{- if hasKey $rh "credentialIsolation" }}{{- $isolationOverride = dict "value" $rh.credentialIsolation }}{{- else if hasKey $th "credentialIsolation" }}{{- $isolationOverride = dict "value" $th.credentialIsolation }}{{- else if hasKey $gh "credentialIsolation" }}{{- $isolationOverride = dict "value" $gh.credentialIsolation }}{{- end }}
 {{- $isolation := include "ploeg.credentialIsolation" (dict "root" $root "harness" (include "ploeg.qualificationHarnessName" (dict "name" $hName "acpProfile" $acpProfile)) "dind" $hDind "override" $isolationOverride) | fromJson }}
+{{- $layoutOverride := dict }}
+{{- if hasKey $rh "harnessContainer" }}{{- $layoutOverride = dict "value" $rh.harnessContainer }}{{- else if hasKey $th "harnessContainer" }}{{- $layoutOverride = dict "value" $th.harnessContainer }}{{- end }}
+{{- $separate := eq (include "ploeg.harnessContainer" (dict "root" $root "name" $hName "dind" $hDind "isolation" $isolation "override" $layoutOverride "who" $who)) "separate" }}
+{{- $workerImage := $root.Values.executor.workerImage | default (include "ploeg.workerImage" $root) }}
 {{- /* claude-environment harness (ADR-0084): same override chain. */}}
 {{- $gce := $gh.claudeEnvironment | default dict }}
 {{- $tce := $th.claudeEnvironment | default dict }}
@@ -494,7 +531,7 @@ spec:
     # Extracts ploeg-worker from the distroless ploegd image via
     # self-copy (no shell in distroless).
     - name: worker-bin
-      image: {{ $root.Values.executor.workerImage | default (include "ploeg.image" $root) }}
+      image: {{ ternary $workerImage ($root.Values.executor.workerImage | default (include "ploeg.image" $root)) $separate }}
       command: ["/usr/local/bin/ploeg-worker", "install", "/mnt/bin/ploeg-worker"]
       securityContext:
         runAsNonRoot: true
@@ -535,10 +572,39 @@ spec:
           mountPath: /mnt/ci-shared
       resources: {{- toYaml (default $root.Values.executor.dindResources $role.dindResources) | nindent 8 }}
     {{- end }}
+    {{- if $separate }}
+    - name: harness
+      image: {{ $hImage }}
+      restartPolicy: Always
+      command: ["/mnt/bin/ploeg-worker", "harness-serve", "/run/ploeg/launcher/launcher.sock"]
+      volumeMounts:
+        - name: worker-bin
+          mountPath: /mnt/bin
+          readOnly: true
+        - name: harness-launcher
+          mountPath: /run/ploeg/launcher
+          readOnly: true
+        - name: ci-shared
+          mountPath: /mnt/ci-shared
+        {{- range $tc := $hToolchains }}
+        - name: toolchain-{{ $tc.name }}
+          mountPath: /opt/ploeg/toolchains/{{ $tc.name }}
+          readOnly: true
+        {{- end }}
+      {{- with $root.Values.executor.workerSecurityContext }}
+      securityContext: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      resources: {{- toYaml (default $root.Values.executor.workerResources $role.workerResources) | nindent 8 }}
+    {{- end }}
   containers:
     - name: worker
+      {{- if $separate }}
+      image: {{ $workerImage }}
+      command: ["/usr/local/bin/ploeg-worker"]
+      {{- else }}
       image: {{ $hImage }}
       command: ["/mnt/bin/ploeg-worker"]
+      {{- end }}
       env:
         - name: PLOEG_API_URL
           value: {{ include "ploeg.apiUrl" $root | quote }}
@@ -761,6 +827,11 @@ spec:
               fieldPath: metadata.uid
         - name: WORK_DIR
           value: /mnt/ci-shared
+        {{- if $separate }}
+        - name: PLOEG_HARNESS_LAUNCHER
+          value: /run/ploeg/launcher/launcher.sock
+        {{- with include "ploeg.goMemLimitEnv" (dict "goMemLimit" "" "resources" $root.Values.executor.workerContainerResources) | trim }}{{ . | nindent 8 }}{{- end }}
+        {{- end }}
         {{- if $hDind }}
         - name: DOCKER_HOST
           value: tcp://localhost:2376
@@ -770,6 +841,16 @@ spec:
           value: "1"
         {{- end }}
       volumeMounts:
+        {{- if $separate }}
+        - name: ci-shared
+          mountPath: /mnt/ci-shared
+        - name: harness-launcher
+          mountPath: /run/ploeg/launcher
+        - name: worker-tmp
+          mountPath: /tmp
+      securityContext: {{- include "ploeg.workerContainerSecurityContext" $root | nindent 8 }}
+      resources: {{- toYaml $root.Values.executor.workerContainerResources | nindent 8 }}
+        {{- else }}
         - name: worker-bin
           mountPath: /mnt/bin
           readOnly: true
@@ -799,9 +880,19 @@ spec:
       securityContext: {{- toYaml . | nindent 8 }}
       {{- end }}
       resources: {{- toYaml (default $root.Values.executor.workerResources $role.workerResources) | nindent 8 }}
+        {{- end }}
   volumes:
     - name: worker-bin
       emptyDir: {}
+    {{- if $separate }}
+    - name: harness-launcher
+      emptyDir:
+        medium: Memory
+        sizeLimit: 1Mi
+    - name: worker-tmp
+      emptyDir:
+        sizeLimit: 1Gi
+    {{- end }}
     {{- if $hDind }}
     - name: docker-certs
       emptyDir: {}

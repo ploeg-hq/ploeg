@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/exec"
 	"os/signal"
 	"syscall"
 	"time"
@@ -20,6 +21,8 @@ const (
 	launcherSocketEnv     = "PLOEG_HARNESS_LAUNCHER"
 	launcherAcceptTimeout = 2 * time.Minute
 )
+
+var lookGit = exec.LookPath
 
 type harnessSide struct {
 	spawner harness.Spawner
@@ -57,6 +60,9 @@ func connectHarnessSide(log *slog.Logger, hc worker.HarnessConfig) (harnessSide,
 	}
 	if hc.Name == claudeenv.Name {
 		return harnessSide{}, fmt.Errorf("%s is set, but harness %s runs its claude CLI in the worker's own container; render it with executor.harnessContainer: shared", launcherSocketEnv, claudeenv.Name)
+	}
+	if _, err := lookGit("git"); err != nil {
+		return harnessSide{}, fmt.Errorf("the worker container has no git, so it cannot clone for a harness in its own container; executor.workerImage must name a ploeg-worker image, not ploegd (ADR-0138): %w", err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), launcherAcceptTimeout)
 	defer cancel()
