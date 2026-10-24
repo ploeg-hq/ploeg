@@ -435,6 +435,7 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `knowledgeGraph.url` | string |  |  | values.schema.json |
 | `mcp` | object |  | ploeg-mcp: Ploeg's MCP tools over Streamable HTTP for people's AI clients (ADR-0081), run from the ploegd image as `ploeg-mcp http`. Off by default. Its settings are in docs/how-to/serve-ploeg-mcp-over-https.md; the chart sets PLOEG_URL and PLOEG_MCP_LISTEN, and env carries the rest. | values.yaml, values.schema.json |
 | `mcp.annotations` | object | `{}` | on the Deployment, e.g. {reloader.stakater.com/auto: "true"} | values.yaml, values.schema.json |
+| `mcp.confirmationKeySecret` | [secretRef](#secretref) | `{}` | The Secret key ploeg-mcp signs each person's confirmation of an action with (ADR-0152), set as PLOEG_MCP_CONFIRMATION_KEY. Required once a group in PLOEG_MCP_GROUPS is marked execute: ploeg-mcp refuses to start without it. At least 32 bytes, such as `openssl rand -base64 48`; every replica reads the same Secret. e.g. {name: ploeg-mcp-confirmation, key: key}; key defaults to key | values.yaml, values.schema.json |
 | `mcp.enabled` | boolean | `false` |  | values.yaml, values.schema.json |
 | `mcp.env` | object | `{}` | PLOEG_MCP_* settings as name: value, for example | values.yaml, values.schema.json |
 | `mcp.envFrom` | array | `[]` | e.g. [{secretRef: {name: ploeg-mcp-consumers}}] | values.yaml, values.schema.json |

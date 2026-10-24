@@ -58,7 +58,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "ploeg-mcp: set PLOEG_URL and PLOEG_MCP_TOKEN:", err)
 		os.Exit(2)
 	}
-	if err := newServer(client, false).Run(ctx, &mcp.StdioTransport{}); err != nil && ctx.Err() == nil {
+	if err := newServer(client).Run(ctx, &mcp.StdioTransport{}); err != nil && ctx.Err() == nil {
 		fmt.Fprintln(os.Stderr, "ploeg-mcp:", err)
 		os.Exit(1)
 	}

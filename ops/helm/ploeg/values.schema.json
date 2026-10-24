@@ -277,6 +277,9 @@
             "type": "object"
           }
         },
+        "confirmationKeySecret": {
+          "$ref": "#/definitions/secretRef"
+        },
         "annotations": {
           "type": "object",
           "additionalProperties": {
