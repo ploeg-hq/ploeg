@@ -38,9 +38,17 @@ type Config struct {
 	// the token has no azp) must be one of, independently of Audiences: a
 	// token exchanged for one audience on behalf of a known client.
 	AuthorizedParties []string
+	// SelfIssuedAudiences are audiences a token may also have been issued to:
+	// azp (or client_id) equal to one of them is accepted when aud names that
+	// same value, the shape an identity provider gives a token it issues on
+	// the exchange target's own client. Such a token must still carry a scope
+	// claim, possibly empty, which an access token has and an ID token lacks.
+	// Each must also be one of Audiences.
+	SelfIssuedAudiences []string
 	// ScopeOptional accepts a token without a scope claim. Set it only with
-	// AuthorizedParties that never equal an audience, so an ID token issued
-	// to the audience's own client is still refused.
+	// AuthorizedParties that never equal an audience, or with
+	// SelfIssuedAudiences, so an ID token issued to the audience's own client
+	// is still refused.
 	ScopeOptional bool
 	// JWKSURL is where the signing keys live. Empty means the jwks_uri of the
 	// issuer's OpenID discovery document.
@@ -84,9 +92,14 @@ func NewVerifier(cfg Config) (*Verifier, error) {
 	if slices.Contains(cfg.AuthorizedParties, "") {
 		return nil, errors.New("authorized parties must be non-empty client ids")
 	}
+	for _, aud := range cfg.SelfIssuedAudiences {
+		if !slices.Contains(cfg.Audiences, aud) {
+			return nil, fmt.Errorf("self-issued audience %q is not one of the audiences", aud)
+		}
+	}
 	if cfg.ScopeOptional {
-		if len(cfg.AuthorizedParties) == 0 {
-			return nil, errors.New("an optional scope needs authorized parties")
+		if len(cfg.AuthorizedParties) == 0 && len(cfg.SelfIssuedAudiences) == 0 {
+			return nil, errors.New("an optional scope needs authorized parties or self-issued audiences")
 		}
 		for _, party := range cfg.AuthorizedParties {
 			if slices.Contains(cfg.Audiences, party) {
@@ -130,7 +143,7 @@ type claims struct {
 	jwt.RegisteredClaims
 	AuthorizedParty string    `json:"azp"`
 	ClientID        string    `json:"client_id"`
-	Scope           string    `json:"scope"`
+	Scope           *string   `json:"scope"`
 	Groups          []string  `json:"groups"`
 	Username        string    `json:"preferred_username"`
 	Act             *actClaim `json:"act"`
@@ -143,8 +156,8 @@ type actClaim struct {
 // Verify is an auth.TokenVerifier. Every rejection wraps auth.ErrInvalidToken
 // except an unreachable key set, which wraps ErrKeysUnavailable. TokenInfo
 // carries the subject as UserID and, in Extra, "groups", "username", "client"
-// (azp, or client_id without azp) and "act" (the RFC 8693 act claim's sub, or
-// empty when the token has no act).
+// (azp, or client_id without azp), "act" (the RFC 8693 act claim's sub, or
+// empty when the token has no act) and "audiences" (the token's aud).
 func (v *Verifier) Verify(ctx context.Context, token string, _ *http.Request) (*auth.TokenInfo, error) {
 	var c claims
 	parser := jwt.NewParser(
@@ -179,18 +192,27 @@ func (v *Verifier) Verify(ctx context.Context, token string, _ *http.Request) (*
 	if c.Subject == "" {
 		return nil, invalid("the token has no sub")
 	}
+	scope := ""
+	if c.Scope != nil {
+		scope = *c.Scope
+	}
+	exchanging := len(v.cfg.AuthorizedParties) > 0 || len(v.cfg.SelfIssuedAudiences) > 0
 	client := c.AuthorizedParty
-	if client == "" && len(v.cfg.AuthorizedParties) > 0 {
+	if client == "" && exchanging {
 		client = c.ClientID
 	}
-	if client == "" || (c.Scope == "" && !v.cfg.ScopeOptional) {
+	if client == "" || (scope == "" && !v.cfg.ScopeOptional) {
 		return nil, invalid("the token has no azp or scope; an ID token is not an access token")
 	}
 	parties := v.cfg.Audiences
-	if len(v.cfg.AuthorizedParties) > 0 {
+	if exchanging {
 		parties = v.cfg.AuthorizedParties
 	}
-	if !slices.Contains(parties, client) {
+	selfIssued := slices.Contains(v.cfg.SelfIssuedAudiences, client) && slices.Contains(c.Audience, client)
+	if selfIssued && c.Scope == nil {
+		return nil, invalid("the token was issued to its own audience and has no scope claim; an ID token is not an access token")
+	}
+	if !selfIssued && !slices.Contains(parties, client) {
 		return nil, invalid("the token was issued to a client this server does not accept")
 	}
 	act := ""
@@ -207,10 +229,10 @@ func (v *Verifier) Verify(ctx context.Context, token string, _ *http.Request) (*
 		}
 	}
 	return &auth.TokenInfo{
-		Scopes:     strings.Fields(c.Scope),
+		Scopes:     strings.Fields(scope),
 		Expiration: c.ExpiresAt.Time,
 		UserID:     c.Subject,
-		Extra:      map[string]any{"groups": groups, "username": c.Username, "client": client, "act": act},
+		Extra:      map[string]any{"groups": groups, "username": c.Username, "client": client, "act": act, "audiences": []string(c.Audience)},
 	}, nil
 }
 

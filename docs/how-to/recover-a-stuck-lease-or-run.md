@@ -115,6 +115,24 @@ kubectl -n ploeg get pods -l app.kubernetes.io/name=ploeg-worker,ploeg.webgrip.d
 kubectl -n ploeg logs <pod> -c worker --tail=100
 ```
 
+A harness that loops on requests its credential proxies refuse shows it in the worker log. Each refusal is one WARN line, `credential proxy refused a request`, with `proxy` (`forge` or `llm`), `run`, `method`, `path` (without the query string, credentials replaced with `[redacted]`) and `reason`:
+
+| `reason` | The proxy refused |
+| --- | --- |
+| `missing_placeholder` | A request with no credential (git's first unauthenticated request is a challenge, not a refusal, and is not logged) |
+| `wrong_placeholder` | A credential that is not the Run's placeholder, including the real token or key |
+| `outside_repository` | A path outside the Run's repository |
+| `forbidden_endpoint` | An endpoint or method in the repository that the Run's Role does not need, such as a merge |
+| `unsafe_path` | Dot segments, encoded separators or control characters in the path |
+| `push_to_other_branch` | A push to any ref other than the Run's branch |
+| `branch_deletion` | A push that deletes the Run's branch |
+| `uninspectable_push` | A push whose ref update list cannot be read |
+| `uninspectable_body` | A forge API body that is compressed or larger than the proxy inspects |
+| `credential_in_request` | A forge API request that carries one of the Run's credentials |
+| `writes_stopped_by_leak` | A forge write after the Run leaked a credential |
+
+A separate WARN line, `the forge refused the Run's credential behind the proxy`, means the forge answered 401 to the token the worker holds, for example because the Run's push credential was revoked. These lines are only in the worker log; ploegd's audit log does not record them.
+
 ## 4. Apply the fix for what you found
 
 ### A live Run that should stop

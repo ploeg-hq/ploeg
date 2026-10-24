@@ -91,7 +91,7 @@ Both tokens support an overlap, so running Runs keep working.
 
 4. Delete the old token in the bot user's Forgejo settings.
 
-Verify: the next writing Run clones, pushes and opens its pull request, and `ploegd` posts review findings on it. A `401` from Forgejo in worker or `ploegd` logs means a process still holds the old token.
+Verify: the next writing Run clones, pushes and opens its pull request, and `ploegd` posts review findings on it. A `401` from Forgejo in worker or `ploegd` logs means a process still holds the old token; behind the forge proxy the worker logs it as `the forge refused the Run's credential behind the proxy`.
 
 ## Rotate the forge admin token
 

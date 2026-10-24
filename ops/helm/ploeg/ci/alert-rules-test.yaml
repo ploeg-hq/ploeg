@@ -1,0 +1,335 @@
+rule_files:
+  - rules.yaml
+
+evaluation_interval: 1m
+
+tests:
+  - name: PloegShiftStuck fires after 15m above 6 hours idle, per team, on ploegd's own series only
+    interval: 1m
+    input_series:
+      - series: 'ploeg_shift_idle_seconds_max{job="ploeg",namespace="ploeg",team="alpha"}'
+        values: '21700+60x30'
+      - series: 'ploeg_shift_idle_seconds_max{job="ploeg",namespace="ploeg",team="beta"}'
+        values: '21600x30'
+      - series: 'ploeg_shift_idle_seconds_max{job="other",namespace="ploeg",team="gamma"}'
+        values: '90000x30'
+    alert_rule_test:
+      - eval_time: 14m
+        alertname: PloegShiftStuck
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: PloegShiftStuck
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              team: alpha
+            exp_annotations:
+              summary: A Shift of team alpha has made no Run progress for over 6 hours
+              description: No Run has started, finished or checkpointed on an open Shift for 6h 16m 40s. Lease and deadline renewals do not count as progress.
+
+  - name: PloegLeaseExpired fires after 5m past 300 seconds overdue and not at 300
+    interval: 1m
+    input_series:
+      - series: 'ploeg_lease_overdue_seconds_max{job="ploeg",namespace="ploeg"}'
+        values: '300x5 301+60x10'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: PloegLeaseExpired
+        exp_alerts: []
+      - eval_time: 9m
+        alertname: PloegLeaseExpired
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: PloegLeaseExpired
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: A Run holds a Lease past its expiry
+              description: The most overdue Lease expired 10m 1s ago and the sweep has not released it.
+
+  - name: PloegModelKeyPastTTL fires per state past the 900 second grace
+    interval: 1m
+    input_series:
+      - series: 'ploeg_llm_key_ttl_overrun_seconds_max{job="ploeg",namespace="ploeg",state="reserved"}'
+        values: '1000x10'
+      - series: 'ploeg_llm_key_ttl_overrun_seconds_max{job="ploeg",namespace="ploeg",state="blocked"}'
+        values: '900x10'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: PloegModelKeyPastTTL
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: PloegModelKeyPastTTL
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              state: reserved
+            exp_annotations:
+              summary: An inference account is still reserved past its key TTL
+              description: An account in state reserved outlived its key TTL by 16m 40s. Its gateway key may still be live.
+
+  - name: PloegSpendSpike fires at once above 20 USD settled in the last hour
+    interval: 1m
+    input_series:
+      - series: 'ploeg_settled_spend_usd_last_hour{job="ploeg",namespace="ploeg"}'
+        values: '20 20 25.5'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: PloegSpendSpike
+        exp_alerts: []
+      - eval_time: 2m
+        alertname: PloegSpendSpike
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: Settled spend in the last hour is above 20 USD
+              description: Ploeg settled 25.50 USD onto Shifts in the last hour.
+
+  - name: PloegTrackerWebhookMissing fires after 15m with a project missing its webhook
+    interval: 1m
+    input_series:
+      - series: 'ploeg_tracker_webhooks_missing{job="ploeg",namespace="ploeg"}'
+        values: '0x5 2x20'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: PloegTrackerWebhookMissing
+        exp_alerts: []
+      - eval_time: 19m
+        alertname: PloegTrackerWebhookMissing
+        exp_alerts: []
+      - eval_time: 21m
+        alertname: PloegTrackerWebhookMissing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: Tracker projects have no assignment webhook to Ploeg
+              description: 2 configured Vikunja project(s) had no assignment webhook at the last check. Assignments there do not reach Ploeg.
+
+  - name: PloegCredentialLeak fires on the first credential_leak failure and clears after 15 minutes
+    interval: 1m
+    input_series:
+      - series: 'ploeg_runs_failed_total{job="ploeg",namespace="ploeg",reason="credential_leak"}'
+        values: '0x10 1x30'
+      - series: 'ploeg_runs_failed_total{job="ploeg",namespace="ploeg",reason="idle"}'
+        values: '0x10 5x30'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: PloegCredentialLeak
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: PloegCredentialLeak
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: A Run carried one of its credentials to the forge
+              description: 1 Run(s) failed with credential_leak in the last 15 minutes. Rotate the Run's model key and forge token, then read the commits the Run left on its branch; ploegd's log names the Run and the route.
+      - eval_time: 27m
+        alertname: PloegCredentialLeak
+        exp_alerts: []
+
+  - name: PloegRunsIdleKilled fires for a team with two idle or timeout kills within 2h
+    interval: 1m
+    input_series:
+      - series: 'ploeg_runs_finished_total{job="ploeg",namespace="ploeg",team="alpha",role="coder",outcome="failed",reason="idle"}'
+        values: '0x10 1x30'
+      - series: 'ploeg_runs_finished_total{job="ploeg",namespace="ploeg",team="alpha",role="reviewer",outcome="failed",reason="timeout"}'
+        values: '0x20 1x20'
+      - series: 'ploeg_runs_finished_total{job="ploeg",namespace="ploeg",team="beta",role="coder",outcome="failed",reason="idle"}'
+        values: '0x10 1x30'
+      - series: 'ploeg_runs_finished_total{job="ploeg",namespace="ploeg",team="beta",role="coder",outcome="failed",reason="infra_node"}'
+        values: '0x10 3x30'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: PloegRunsIdleKilled
+        exp_alerts: []
+      - eval_time: 25m
+        alertname: PloegRunsIdleKilled
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              team: alpha
+            exp_annotations:
+              summary: Team alpha had 2 or more Runs killed by the idle or total timeout within 2h
+              description: 2 Run(s) of team alpha failed with reason idle or timeout. Each kill throws away the Run's work and spend, and the Round retries the Role.
+
+  - name: PloegRunsFailingRepeatedly fires for a team and Role with three failures within 1h
+    interval: 1m
+    input_series:
+      - series: 'ploeg_runs_finished_total{job="ploeg",namespace="ploeg",team="alpha",role="coder",outcome="failed",reason="idle"}'
+        values: '0x5 1x5 2x30'
+      - series: 'ploeg_runs_finished_total{job="ploeg",namespace="ploeg",team="alpha",role="coder",outcome="failed",reason="agent_error"}'
+        values: '0x15 1x30'
+      - series: 'ploeg_runs_finished_total{job="ploeg",namespace="ploeg",team="alpha",role="reviewer",outcome="failed",reason="idle"}'
+        values: '0x5 2x30'
+      - series: 'ploeg_runs_finished_total{job="ploeg",namespace="ploeg",team="alpha",role="reviewer",outcome="succeeded",reason=""}'
+        values: '0x5 9x30'
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: PloegRunsFailingRepeatedly
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: PloegRunsFailingRepeatedly
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              team: alpha
+              role: coder
+            exp_annotations:
+              summary: Role coder of team alpha failed 3 or more Runs within 1h
+              description: 3 Run(s) of Role coder on team alpha ended failed, whatever the reason. ploeg_runs_finished_total{outcome="failed"} by reason says which.
+
+  - name: PloegSandboxStartFailing fires on an infra_node failure and not on other reasons
+    interval: 1m
+    input_series:
+      - series: 'ploeg_runs_finished_total{job="ploeg",namespace="ploeg",team="alpha",role="coder",outcome="failed",reason="infra_node"}'
+        values: '0x10 1x40'
+      - series: 'ploeg_runs_finished_total{job="ploeg",namespace="ploeg",team="beta",role="coder",outcome="failed",reason="idle"}'
+        values: '0x10 4x40'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: PloegSandboxStartFailing
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: PloegSandboxStartFailing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              team: alpha
+            exp_annotations:
+              summary: A Run of team alpha failed on its node within 30m
+              description: "A Run of team alpha failed with infra_node: its sandbox or pod did not start, or its node failed under it. The failure lands on whichever Run of the team was pending, not necessarily the one that waited."
+      - eval_time: 45m
+        alertname: PloegSandboxStartFailing
+        exp_alerts: []
+
+  - name: PloegShiftNoDelivery fires after 15m with three Runs and no pull request
+    interval: 1m
+    input_series:
+      - series: 'ploeg_shift_runs_without_pr_max{job="ploeg",namespace="ploeg",team="alpha"}'
+        values: '3x20'
+      - series: 'ploeg_shift_runs_without_pr_max{job="ploeg",namespace="ploeg",team="beta"}'
+        values: '2x20'
+    alert_rule_test:
+      - eval_time: 14m
+        alertname: PloegShiftNoDelivery
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: PloegShiftNoDelivery
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              team: alpha
+            exp_annotations:
+              summary: An open Shift of team alpha has finished 3 or more Runs without a pull request
+              description: An open Shift of team alpha has 3 finished Runs and no recorded pull request.
+
+  - name: PloegQueueStalled fires after 10m with a Work Item queued over an hour
+    interval: 1m
+    input_series:
+      - series: 'ploeg_work_item_oldest_queued_seconds{job="ploeg",namespace="ploeg",team="alpha"}'
+        values: '3660+60x20'
+      - series: 'ploeg_work_item_oldest_queued_seconds{job="ploeg",namespace="ploeg",team="beta"}'
+        values: '3600x20'
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: PloegQueueStalled
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: PloegQueueStalled
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              team: alpha
+            exp_annotations:
+              summary: A Work Item of team alpha has waited over 3600 seconds for a worker
+              description: The longest-waiting claimable Work Item of team alpha has been queued for 1h 11m 0s.
+
+  - name: PloegWorkItemNotesUnwritten fires after 15m with a Note unwritten for over a day
+    interval: 1m
+    input_series:
+      - series: 'ploeg_work_item_note_oldest_unwritten_seconds{job="ploeg",namespace="ploeg"}'
+        values: '86400x5 86460+60x20'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: PloegWorkItemNotesUnwritten
+        exp_alerts: []
+      - eval_time: 19m
+        alertname: PloegWorkItemNotesUnwritten
+        exp_alerts: []
+      - eval_time: 21m
+        alertname: PloegWorkItemNotesUnwritten
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: A Work Item Note has waited over 86400 seconds for the notes graph
+              description: The oldest unwritten Work Item Note has waited 1d 0h 16m 0s. Later Runs of its work cannot read it until ploegd writes it.
+
+  - name: PloegSettlementBacklog fires per state after an hour of unsettled accounts
+    interval: 5m
+    input_series:
+      - series: 'ploeg_llm_accounts_unsettled{job="ploeg",namespace="ploeg",state="reserved"}'
+        values: '2x20'
+      - series: 'ploeg_llm_accounts_unsettled{job="ploeg",namespace="ploeg",state="blocked"}'
+        values: '0x20'
+    alert_rule_test:
+      - eval_time: 55m
+        alertname: PloegSettlementBacklog
+        exp_alerts: []
+      - eval_time: 60m
+        alertname: PloegSettlementBacklog
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              state: reserved
+            exp_annotations:
+              summary: Inference accounts of finished Runs stay reserved and unsettled
+              description: 2 inference account(s) in state reserved belong to finished Runs and still hold Shift budget. The settlement sweep has not settled them.
+
+  - name: PloegHarnessOutsideAllowlist fires after 15m per team, Role and Harness
+    interval: 1m
+    input_series:
+      - series: 'ploeg_runs_pending_outside_allowlist{job="ploeg",namespace="ploeg",team="alpha",role="coder",harness="opencode"}'
+        values: '1x20'
+      - series: 'ploeg_runs_pending_outside_allowlist{job="ploeg",namespace="ploeg",team="alpha",role="reviewer",harness="openhands"}'
+        values: '0x20'
+    alert_rule_test:
+      - eval_time: 14m
+        alertname: PloegHarnessOutsideAllowlist
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: PloegHarnessOutsideAllowlist
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              team: alpha
+              role: coder
+              harness: opencode
+            exp_annotations:
+              summary: Pending Runs of alpha/coder store a Harness no workload claims
+              description: "1 pending Run(s) store Harness opencode, which the current allowlist of the Role no longer contains. Ploeg leaves them as they are: restore the allowlist entry, or cancel or requeue the Work Item."
+
+  - name: PloegAwaitingReviewWithUnsuccessfulCI fires after 90m with a red pull request in review
+    interval: 5m
+    input_series:
+      - series: 'ploeg_awaiting_review_with_unsuccessful_ci{job="ploeg",namespace="ploeg"}'
+        values: '0x2 1x30'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: PloegAwaitingReviewWithUnsuccessfulCI
+        exp_alerts: []
+      - eval_time: 100m
+        alertname: PloegAwaitingReviewWithUnsuccessfulCI
+        exp_alerts: []
+      - eval_time: 105m
+        alertname: PloegAwaitingReviewWithUnsuccessfulCI
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: Work Items await review while their pull request's CI is not green
+              description: 1 Work Item(s) in awaiting_review have a pull request whose head CI, as last read from the forge, is not success. The forge CI gate (ADR-0119) should have moved them out of review.

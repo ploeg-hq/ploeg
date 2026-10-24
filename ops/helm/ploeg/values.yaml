@@ -294,13 +294,20 @@ operator:
   consumers: []
   deliveryPolicies: []
   # ADR-0150: an Operator Consumer acting for a person may present that
-  # person's token, exchanged at the identity provider (RFC 8693) for Ploeg's
-  # audience, instead of naming the person in X-Ploeg-Actor. Each consumer
-  # that does lists its identity provider client ids as clientIds. Unset =
-  # no person tokens; clientIds then refuse to start.
+  # person's token, exchanged at the identity provider (RFC 8693), instead of
+  # naming the person in X-Ploeg-Actor. Each consumer that does lists either
+  # audiences, the audience its person tokens are exchanged for and that no
+  # other consumer shares (for an identity provider that issues the token on
+  # that target's client, such as authentik), or clientIds, its identity
+  # provider clients when the token names them in azp and carries the shared
+  # audience below. Unset = no person tokens; audiences and clientIds then
+  # refuse to start.
+  #   consumers:
+  #     - name: console
+  #       audiences: [ploeg-console]
   personTokens: {}
-  #   issuer: https://id.example.com/application/o/ploeg/
-  #   audience: ploeg
+  #   issuer: https://id.example.com/  # one issuer for every consumer
+  #   audience: ploeg        # needed only when a consumer names clientIds
   #   jwksUrl: ""            # empty = the issuer's discovery document
   #   maxLifetime: 5m        # exp minus iat, at most 1h
   #   subjectNamespace: ""   # empty = issuer; set it to keep person ids across issuers

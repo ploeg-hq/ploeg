@@ -49,6 +49,7 @@ type OperatorConsumer struct {
 	Principal OperatorPrincipal
 	tokenHash [sha256.Size]byte
 	clientIDs []string
+	audiences []string
 }
 
 type OperatorConfig struct {
@@ -86,11 +87,12 @@ func ParseOperatorConsumers(raw string, lookup func(string) (string, bool)) ([]O
 		Verify       bool     `json:"verify"`
 		MaxBudgetUSD *float64 `json:"maxBudgetUsd"`
 		ClientIDs    []string `json:"clientIds"`
+		Audiences    []string `json:"audiences"`
 	}
 	decoder := json.NewDecoder(strings.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&configs); err != nil {
-		return nil, errors.New("operator consumers must be a JSON array of name, tokenEnv, teams, execute, verify, maxBudgetUsd and clientIds")
+		return nil, errors.New("operator consumers must be a JSON array of name, tokenEnv, teams, execute, verify, maxBudgetUsd, clientIds and audiences")
 	}
 	if err := decoder.Decode(new(any)); err != io.EOF {
 		return nil, errors.New("operator consumers must contain one JSON value")
@@ -130,27 +132,30 @@ func ParseOperatorConsumers(raw string, lookup func(string) (string, bool)) ([]O
 		if hashes[hash] {
 			return nil, errors.New("operator consumers must not share a bearer credential")
 		}
-		if len(cfg.ClientIDs) > 20 {
-			return nil, fmt.Errorf("operator consumer %s has more than 20 clientIds", cfg.Name)
-		}
-		clients := map[string]bool{}
-		for _, id := range cfg.ClientIDs {
-			if id == "" || len(id) > 256 || clients[id] || strings.ContainsFunc(id, func(r rune) bool { return r <= 0x20 || r >= 0x7f }) {
-				return nil, fmt.Errorf("operator consumer %s has an empty, duplicated or non-printable client id", cfg.Name)
+		for field, values := range map[string][]string{"clientIds": cfg.ClientIDs, "audiences": cfg.Audiences} {
+			if len(values) > 20 {
+				return nil, fmt.Errorf("operator consumer %s has more than 20 %s", cfg.Name, field)
 			}
-			clients[id] = true
+			seen := map[string]bool{}
+			for _, id := range values {
+				if id == "" || len(id) > 256 || seen[id] || strings.ContainsFunc(id, func(r rune) bool { return r <= 0x20 || r >= 0x7f }) {
+					return nil, fmt.Errorf("operator consumer %s has an empty, duplicated or non-printable value in %s", cfg.Name, field)
+				}
+				seen[id] = true
+			}
 		}
-		consumers = append(consumers, OperatorConsumer{Principal: OperatorPrincipal{Name: cfg.Name, Teams: cfg.Teams, CanExecute: cfg.Execute, CanVerify: cfg.Verify, BudgetLimitUSD: budgetLimit}, tokenHash: hash, clientIDs: cfg.ClientIDs})
+		consumers = append(consumers, OperatorConsumer{Principal: OperatorPrincipal{Name: cfg.Name, Teams: cfg.Teams, CanExecute: cfg.Execute, CanVerify: cfg.Verify, BudgetLimitUSD: budgetLimit}, tokenHash: hash, clientIDs: cfg.ClientIDs, audiences: cfg.Audiences})
 		names[cfg.Name], hashes[hash] = true, true
 	}
 	return consumers, nil
 }
 
 // OperatorConsumersNameClientIDs reports whether any consumer accepts person
-// tokens, so a deployment that names clientIds without an issuer is refused.
+// tokens through clientIds or audiences, so a deployment that names either
+// without an issuer is refused.
 func OperatorConsumersNameClientIDs(consumers []OperatorConsumer) bool {
 	for _, c := range consumers {
-		if len(c.clientIDs) > 0 {
+		if len(c.clientIDs) > 0 || len(c.audiences) > 0 {
 			return true
 		}
 	}
@@ -226,11 +231,12 @@ type callerRefusal struct {
 }
 
 // operatorCaller authenticates the Operator Consumer of r (ADR-0150). The
-// bearer is the consumer's static credential, or a person token whose azp is
-// one of exactly one consumer's clientIds. A person token may instead ride in
-// X-Ploeg-Person-Token next to the static credential; its azp must then be
-// one of that consumer's clientIds. A presented person token that does not
-// verify refuses the request.
+// bearer is the consumer's static credential, or a person token that belongs
+// to exactly one consumer: the one whose audiences its aud names, or else the
+// one whose clientIds name its azp. A person token may instead ride in
+// X-Ploeg-Person-Token next to the static credential; it must then belong to
+// that consumer. A presented person token that does not verify refuses the
+// request.
 func (s *Server) operatorCaller(r *http.Request) (*OperatorPrincipal, *ProvenPerson, *callerRefusal) {
 	unauthorized := &callerRefusal{http.StatusUnauthorized, "unauthorized", "A configured operator bearer credential is required."}
 	values := r.Header.Values("Authorization")
@@ -281,25 +287,58 @@ func (s *Server) operatorCaller(r *http.Request) (*OperatorPrincipal, *ProvenPer
 		reason := strings.TrimPrefix(err.Error(), auth.ErrInvalidToken.Error()+": ")
 		return nil, nil, &callerRefusal{http.StatusUnauthorized, "invalid_token", "The person token was refused: " + reason + "."}
 	}
-	if consumer != nil {
-		if !slices.Contains(consumer.clientIDs, proven.Client) {
-			return nil, nil, &callerRefusal{http.StatusUnauthorized, "invalid_token", "The person token was issued to a client this consumer does not name."}
-		}
-	} else {
-		for i := range s.OperatorConfig.Consumers {
-			if slices.Contains(s.OperatorConfig.Consumers[i].clientIDs, proven.Client) {
-				if consumer != nil {
-					return nil, nil, &callerRefusal{http.StatusUnauthorized, "invalid_token", "The person token's client is named by more than one consumer; send the consumer's own credential with the person token in " + PersonTokenHeader + "."}
-				}
-				consumer = &s.OperatorConfig.Consumers[i]
-			}
-		}
-		if consumer == nil {
-			return nil, nil, &callerRefusal{http.StatusUnauthorized, "invalid_token", "The person token was issued to a client no consumer names."}
-		}
+	consumer, refusal := s.personTokenOwner(proven, consumer)
+	if refusal != "" {
+		return nil, nil, &callerRefusal{http.StatusUnauthorized, "invalid_token", refusal}
 	}
 	principal := consumer.Principal
 	return &principal, &proven, nil
+}
+
+// personTokenOwner finds the consumer a verified person token belongs to.
+// caller is the consumer whose static credential came with the token, or nil
+// when the token is the bearer.
+func (s *Server) personTokenOwner(proven ProvenPerson, caller *OperatorConsumer) (*OperatorConsumer, string) {
+	var owner *OperatorConsumer
+	for i := range s.OperatorConfig.Consumers {
+		c := &s.OperatorConfig.Consumers[i]
+		if slices.ContainsFunc(c.audiences, func(aud string) bool { return slices.Contains(proven.audiences, aud) }) {
+			if owner != nil {
+				return nil, "The person token's audience names more than one consumer."
+			}
+			owner = c
+		}
+	}
+	if owner != nil {
+		if caller != nil && caller != owner {
+			return nil, "The person token was issued for another consumer than the credential it came with."
+		}
+		if !slices.Contains(owner.audiences, proven.Client) && !slices.Contains(owner.clientIDs, proven.Client) {
+			return nil, "The person token was issued to a client its consumer does not name."
+		}
+		return owner, ""
+	}
+	if s.OperatorConfig.PersonTokens.audience == "" || !slices.Contains(proven.audiences, s.OperatorConfig.PersonTokens.audience) {
+		return nil, "The person token is meant for an audience no consumer names."
+	}
+	if caller != nil {
+		if !slices.Contains(caller.clientIDs, proven.Client) {
+			return nil, "The person token was issued to a client this consumer does not name."
+		}
+		return caller, ""
+	}
+	for i := range s.OperatorConfig.Consumers {
+		if slices.Contains(s.OperatorConfig.Consumers[i].clientIDs, proven.Client) {
+			if owner != nil {
+				return nil, "The person token's client is named by more than one consumer; send the consumer's own credential with the person token in " + PersonTokenHeader + "."
+			}
+			owner = &s.OperatorConfig.Consumers[i]
+		}
+	}
+	if owner == nil {
+		return nil, "The person token was issued to a client no consumer names."
+	}
+	return owner, ""
 }
 
 func (s *Server) operatorHandler() http.Handler {

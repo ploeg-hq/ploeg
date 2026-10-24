@@ -37,12 +37,19 @@ Chosen option: "**the exchanged person token is the bearer**", because it is the
 
 ### How a person token is carried
 
-* **As the bearer (preferred).** `Authorization: Bearer <person token>`. ploegd verifies it and takes the caller from its `azp` (or `client_id` when `azp` is absent): the one Operator Consumer whose `clientIds` list that client. A client listed by more than one consumer is ambiguous and refused.
-* **Next to the consumer's own credential.** `Authorization: Bearer <static token>` plus `X-Ploeg-Person-Token: <person token>`. The static token names the caller, and the person token's `azp` must be one of *that* consumer's `clientIds`, otherwise 401. This serves a consumer that maps people to several Operator Consumers with different scopes behind one identity provider client.
+A person token belongs to one Operator Consumer, found in one of two ways:
+
+* **By its audience (preferred).** Each consumer may declare `audiences`: the audience its person tokens are exchanged for, which no other consumer shares (one identity provider target per consumer). A token whose `aud` names one consumer's audience belongs to that consumer. Its `azp` (or `client_id`) must be present and is either that audience, which is how an identity provider that issues the token on the target's own client fills it, or one of the consumer's `clientIds`. A token whose `aud` names the audiences of two consumers is refused.
+* **By its client.** A token whose `aud` names no consumer's audience must name Ploeg's shared audience, and belongs to the consumer whose `clientIds` list its `azp` (or `client_id`). This serves identity providers that name the requesting client in `azp`.
+
+It is carried in one of two ways:
+
+* **As the bearer.** `Authorization: Bearer <person token>`. ploegd verifies it, and the consumer it belongs to is the caller. A client listed by more than one consumer is ambiguous and refused.
+* **Next to the consumer's own credential.** `Authorization: Bearer <static token>` plus `X-Ploeg-Person-Token: <person token>`. The static token names the caller, and the person token must belong to *that* consumer: its `aud` names one of that consumer's `audiences`, or, without a consumer audience, its `azp` is one of that consumer's `clientIds`; otherwise 401. The client form serves a consumer that maps people to several Operator Consumers with different scopes behind one identity provider client.
 
 ### What ploegd verifies
 
-A person token is a JWT the configured issuer signed with an asymmetric algorithm (RS256 or ES256), checked against the issuer's keys (its discovery document, or `PLOEG_OPERATOR_PERSON_JWKS_URL`). `iss` must equal the issuer byte for byte, `aud` must name Ploeg's audience, `exp` and `iat` must be present and hold within 30 seconds of skew, the lifetime from `iat` to `exp` is at most five minutes (configurable up to an hour), and `sub` is present. A scope is not required: the client in `azp` must be a consumer's client id, and a client id equal to Ploeg's audience is refused at start, so an ID token issued to Ploeg's own client never passes. An `act` claim, when present, must carry a `sub`.
+A person token is a JWT the configured issuer signed with an asymmetric algorithm (RS256 or ES256), checked against the issuer's keys (its discovery document, or `PLOEG_OPERATOR_PERSON_JWKS_URL`). `iss` must equal the issuer byte for byte (one issuer for every consumer; with authentik, the targets use the global issuer mode), `aud` must name a consumer's audience or Ploeg's shared audience, `exp` and `iat` must be present and hold within 30 seconds of skew, the lifetime from `iat` to `exp` is at most five minutes (configurable up to an hour), and `sub` is present. A scope value is not required. An ID token never passes: a client id equal to any audience is refused at start, so a token whose `azp` is a client id was not issued to its own audience, and a token whose `azp` equals its consumer audience must carry a `scope` claim, even an empty one, which access tokens have and ID tokens lack. An `act` claim, when present, must carry a `sub`.
 
 A presented person token that fails any check answers 401 `invalid_token` with an RFC 6750 challenge, and nothing changes. Unreachable keys answer 503.
 
@@ -55,24 +62,25 @@ A presented person token that fails any check answers 401 `invalid_token` with a
 
 ### Configuration
 
-ploegd reads `PLOEG_OPERATOR_PERSON_ISSUER`, `PLOEG_OPERATOR_PERSON_AUDIENCE`, `PLOEG_OPERATOR_PERSON_JWKS_URL`, `PLOEG_OPERATOR_PERSON_MAX_LIFETIME` (default `5m`) and `PLOEG_OPERATOR_PERSON_SUBJECT_NAMESPACE`, and each `PLOEG_OPERATOR_CONSUMERS` entry may list `clientIds`. The chart forwards `operator.personTokens` and each consumer's `clientIds`. `clientIds` without an issuer, or an issuer without any consumer `clientIds`, refuses to start.
+ploegd reads `PLOEG_OPERATOR_PERSON_ISSUER`, `PLOEG_OPERATOR_PERSON_AUDIENCE`, `PLOEG_OPERATOR_PERSON_JWKS_URL`, `PLOEG_OPERATOR_PERSON_MAX_LIFETIME` (default `5m`) and `PLOEG_OPERATOR_PERSON_SUBJECT_NAMESPACE`, and each `PLOEG_OPERATOR_CONSUMERS` entry may list `audiences` and `clientIds`. `PLOEG_OPERATOR_PERSON_AUDIENCE` is needed only when a consumer lists `clientIds`. The chart forwards `operator.personTokens` and each consumer's `audiences` and `clientIds`. ploegd refuses to start on `audiences` or `clientIds` without an issuer, an issuer without any consumer `audiences` or `clientIds`, `clientIds` without Ploeg's audience, an audience listed by two consumers, an audience equal to any consumer's client id, and an audience equal to Ploeg's shared audience.
 
 ### `ploeg-mcp`
 
-In HTTP mode, when `PLOEG_MCP_EXCHANGE_TOKEN_URL` is set, an action exchanges the caller's verified token at the identity provider after the person confirms (RFC 8693, `audience` Ploeg's audience, authenticated as ploeg-mcp's own confidential client) and calls ploegd with the exchanged token as the bearer. Reads keep the group's consumer token. Without the setting nothing changes. The Operator Consumer that lists ploeg-mcp's client id in `clientIds` is then the caller for every action, whatever the person's group; a deployment whose groups map to consumers with different scopes keeps the static tokens or runs one ploeg-mcp per scope.
+In HTTP mode, when `PLOEG_MCP_EXCHANGE_TOKEN_URL` is set, an action exchanges the caller's verified token at the identity provider after the person confirms (RFC 8693, `audience` the acting consumer's own audience, or Ploeg's shared audience for an identity provider that names ploeg-mcp in `azp`, authenticated as ploeg-mcp's own confidential client) and calls ploegd with the exchanged token as the bearer. Reads keep the group's consumer token. Without the setting nothing changes. The Operator Consumer that lists that audience in `audiences`, or ploeg-mcp's client id in `clientIds`, is then the caller for every action, whatever the person's group; a deployment whose groups map to consumers with different scopes keeps the static tokens or runs one ploeg-mcp per scope.
 
 ### Consequences
 
 * Good, because a stolen consumer token alone no longer names a person once its consumer sends person tokens, and the audit record says which records still rest on a consumer's word.
 * Good, because the identity provider's `act` claim reaches the audit record unchanged, ready to be carried further by a later Run token.
 * Good, because one verifier serves `ploeg-mcp` and ploegd.
+* Good, because a person token issued for one consumer's audience cannot be replayed as another consumer: its `aud` names its consumer, so presenting it as the bearer makes that consumer the caller, and presenting it next to another consumer's credential is refused.
 * Bad, because a consumer that still sends headers keeps F-07's exposure until headers are refused; this decision narrows F-07 and does not close it.
 * Bad, because a person token outlives the revocation of the token it came from by up to its lifetime; five minutes bounds that.
 * Bad, because person ids from a consumer and from ploegd agree only when both use the same subject namespace; the configuration reference says so.
 
 ### Confirmation
 
-`go test ./pkg/httpapi/ -run 'Person|Proven|ActClaim|HeadersAlone|Refused'` verifies against an in-test issuer: a valid token as bearer and next to the static token, the `act` claim recorded, header attribution marked `asserted`, and refusals for a wrong audience, an expired token, a lifetime over the bound, an unknown `azp`, a bad signature, another issuer, an `azp` of another consumer than the static token's, and a conflicting `X-Ploeg-Actor`. `TestAProvenNoteRecordsTheProvenPersonInTheAudit` checks the stored audit row and the event list. `go test ./pkg/mcpauth/` covers the exchanged-token verifier and the exchanger against a fake token endpoint, and `go test ./cmd/ploeg-mcp/ -run Exchange` drives an action through the exchange into a real ploegd handler. `go test ./pkg/config/` renders the chart's person token values. Reviewers check that no new Ploeg text names a consumer.
+`go test ./pkg/httpapi/ -run 'Person|Proven|ActClaim|HeadersAlone|Refused|Audience|ClientIDTokens'` verifies against an in-test issuer: a valid token as bearer and next to the static token, the `act` claim recorded, header attribution marked `asserted`, and refusals for a wrong audience, an expired token, a lifetime over the bound, an unknown `azp`, a bad signature, another issuer, an `azp` of another consumer than the static token's, and a conflicting `X-Ploeg-Actor`. With consumer audiences it verifies that a token shaped as authentik issues it (`aud` and `azp` the consumer's audience, the global issuer, an empty `scope`) makes that consumer the caller and records `act`, that the same token next to another consumer's credential is refused, that tokens naming two consumers' audiences, an ID token's shape, or another consumer's audience or client in `azp` are refused, that `clientIds` tokens still work beside audiences, and that an audience listed twice, equal to a client id or to Ploeg's audience refuses to start. `go test ./pkg/mcpauth/ -run OwnAudience` covers the verifier's self-issued audiences. `TestAProvenNoteRecordsTheProvenPersonInTheAudit` checks the stored audit row and the event list. `go test ./pkg/mcpauth/` covers the exchanged-token verifier and the exchanger against a fake token endpoint, and `go test ./cmd/ploeg-mcp/ -run Exchange` drives an action through the exchange into a real ploegd handler. `go test ./pkg/config/` renders the chart's person token values and consumer audiences. Reviewers check that no new Ploeg text names a consumer.
 
 ## Pros and Cons of the Options
 
@@ -95,7 +103,8 @@ In HTTP mode, when `PLOEG_MCP_EXCHANGE_TOKEN_URL` is set, an action exchanges th
 
 * Every known consumer sends person tokens for mutations: decide when asserted attribution is refused.
 * A Run token shaped like an OAuth Transaction Token lands and needs this token's `act` nested inside it.
-* An identity provider in use cannot put `azp` or `client_id` in exchanged tokens, or cannot keep their lifetime at five minutes or less.
+* An identity provider in use cannot put `azp` or `client_id` in exchanged tokens, cannot issue a token for a per-consumer audience, or cannot keep their lifetime at five minutes or less.
+* A deployment needs consumers behind different issuers.
 * A deployment needs one identity provider client to act as several consumers in bearer mode.
 * `ploeg-mcp` confirmations become signed records (F-08), which changes what a proven action from it means.
 
@@ -104,3 +113,4 @@ In HTTP mode, when `PLOEG_MCP_EXCHANGE_TOKEN_URL` is set, an action exchanges th
 * Amends [ADR-0108](0108-every-operator-action-names-its-person-and-channel-and-an-mcp-action-needs-the-persons-confirmation.md): its accepted cost "ploegd trusts the Operator Consumer to name the person truthfully" now holds only for asserted attribution.
 * Narrows [threat model](../security/threat-model.md) F-07.
 * Standards: RFC 8693 (token exchange, `act`), RFC 6750 (bearer tokens), RFC 9068 (JWT access tokens, `client_id`), RFC 7519 (JWT).
+* 2026-10-24 — Amended: consumers may declare `audiences`. authentik 2026.8.5 issues an RFC 8693 exchanged token on the `audience` target's provider, so `aud` and `azp` are both the target's client id and `iss` is the target's issuer, or the global issuer in global issuer mode; the token never names the requesting client (`create_token_exchange_response` in `authentik/providers/oauth2/views/token.py` and `IDToken.new` and `to_access_token` in `id_token.py`, tag `version/2026.8.5`). Choosing the consumer by `azp` in `clientIds` cannot work there, and one shared Ploeg audience would let any consumer replay a person token issued for another. A per-consumer audience names the consumer in `aud`, stops that replay, and needs no change from an identity provider that names the client; the `clientIds` path stays for those.
