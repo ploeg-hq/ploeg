@@ -585,7 +585,7 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `tracker.url` | string | `""` | e.g. https://vikunja.example/api/v1 | values.yaml, values.schema.json |
 | `webhook` |  |  | The Vikunja webhook secret (PLOEG_VIKUNJA_SECRET). Unset = no env is rendered and every Vikunja webhook is rejected; ploegd still starts. | values.yaml |
 | `webhook.existingSecret` |  | `{}` |  | values.yaml |
-| `worker.image` | object |  | The ploeg-worker image (ADR-0138): ploeg-worker, git and CA certificates on a distroless base. It runs the worker container when the harness runs in its own container and provides the launcher binary the harness container runs; executor.workerImage overrides it. | values.yaml, values.schema.json |
+| `worker.image` | object |  | The ploeg-worker image (ADR-0138): ploeg-worker, git and CA certificates from Wolfi on an empty base, with no shell (ADR-0144). It runs the worker container when the harness runs in its own container and provides the launcher binary the harness container runs; executor.workerImage overrides it. | values.yaml, values.schema.json |
 | `worker.image.digest` | string | `""` | Digest of the appVersion image; the release writes it into the published chart | values.yaml, values.schema.json |
 | `worker.image.repository` | string | `ghcr.io/ploeg-hq/ploeg-worker` |  | values.yaml, values.schema.json |
 | `worker.image.tag` | string | `""` |  | values.yaml, values.schema.json |

@@ -1,8 +1,9 @@
 # syntax=docker/dockerfile:1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
 ARG REGISTRY_DOCKERHUB=docker.io
-ARG REGISTRY_GCR=gcr.io
+ARG REGISTRY_CHAINGUARD=cgr.dev
 
-FROM --platform=$BUILDPLATFORM ${REGISTRY_DOCKERHUB}/golang:1.27-trixie@sha256:3b77fc618ec235a1ab412de7737f120dd507c57e8d87de4cbb7994fb94275ed5 AS builder
+FROM --platform=$BUILDPLATFORM ${REGISTRY_DOCKERHUB}/golang:1.27.3-trixie@sha256:fbb7ae40b62ff8afe31662df570d39b4f5052ac32b90dae8e60d7657a20a74f4 AS builder
+ENV GOTOOLCHAIN=auto
 WORKDIR /src
 COPY go.* ./
 RUN go mod download
@@ -14,30 +15,17 @@ RUN GOOS=$TARGETOS GOARCH=$TARGETARCH \
     go build -trimpath -ldflags "-s -w -X main.version=${IMAGE_VERSION}" \
     -o /out/ploeg-worker ./cmd/ploeg-worker
 
-FROM ${REGISTRY_DOCKERHUB}/debian:trixie-slim@sha256:62bd423aeee912639ca8ee681c2b762cb3e25137e0a92b20be455898a9f034ad AS git
-RUN apt-get update \
- && apt-get install -y --no-install-recommends git \
- && rm -rf /var/lib/apt/lists/*
-RUN set -eu; \
-    programs="/usr/bin/git /usr/lib/git-core/git /usr/lib/git-core/git-remote-http /usr/lib/git-core/git-remote-https"; \
-    libraries=$(ldd $programs | awk '$2 == "=>" && $3 ~ /^\// { print $3 }' | sort -u | grep -Ev '/(libc|libm|libpthread|libdl|librt|libresolv)\.so|/ld-linux'); \
-    for file in $programs $libraries; do \
-      directory=$(readlink -f "$(dirname "$file")"); \
-      mkdir -p "/rootfs$directory"; \
-      cp -L "$file" "/rootfs$directory/$(basename "$file")"; \
-    done; \
-    packages=$(for file in $programs $libraries; do dpkg -S "$(readlink -f "$file")" 2>/dev/null || dpkg -S "$file"; done | cut -d: -f1 | sort -u); \
-    mkdir -p /rootfs/var/lib/dpkg/status.d /rootfs/usr/share/doc; \
-    for package in $packages; do \
-      dpkg-query -s "$package" > "/rootfs/var/lib/dpkg/status.d/$package"; \
-      mkdir -p "/rootfs/usr/share/doc/$package"; \
-      cp "/usr/share/doc/$package/copyright" "/rootfs/usr/share/doc/$package/copyright"; \
-    done; \
-    mkdir -p /rootfs/usr/share/git-core/templates; \
-    printf '%s\n' $packages > /rootfs/usr/share/doc/ploeg-worker-git-packages.txt; \
-    /usr/bin/git --version
+FROM ${REGISTRY_CHAINGUARD}/chainguard/wolfi-base:latest@sha256:360896efb0753a5701c48f860e17130c205eae5a264797aa3e7ea126ee2923a7 AS rootfs
+RUN apk add --no-cache --no-scripts --root /rootfs --initdb --keys-dir /etc/apk/keys --repositories-file /etc/apk/repositories \
+      wolfi-baselayout ca-certificates-bundle git \
+ && rm -rf /rootfs/var/cache/apk /rootfs/etc/apk/repositories \
+ && printf 'nonroot:x:65532:65532:nonroot:/home/nonroot:/sbin/nologin\n' >> /rootfs/etc/passwd \
+ && printf 'nonroot:x:65532:\n' >> /rootfs/etc/group \
+ && install -d -o 65532 -g 65532 -m 0750 /rootfs/home/nonroot \
+ && install -d -m 1777 /rootfs/tmp \
+ && chroot /rootfs /usr/bin/git --version
 
-FROM ${REGISTRY_GCR}/distroless/base-debian13:nonroot@sha256:f9518b74815721f537a7458cc693b4406208c04fce23bbffab511516117f34fd
+FROM scratch
 ARG IMAGE_CREATED=1970-01-01T00:00:00Z
 ARG IMAGE_VERSION=0.0.0-dev
 ARG IMAGE_REVISION=unknown
@@ -50,7 +38,8 @@ LABEL org.opencontainers.image.title="ploeg-worker" \
       org.opencontainers.image.created="${IMAGE_CREATED}" \
       org.opencontainers.image.version="${IMAGE_VERSION}" \
       org.opencontainers.image.revision="${IMAGE_REVISION}"
-COPY --from=git /rootfs/ /
+COPY --from=rootfs /rootfs/ /
 COPY LICENSE NOTICE THIRD-PARTY-NOTICES /usr/share/doc/ploeg/
 COPY --from=builder /out/ploeg-worker /usr/local/bin/ploeg-worker
+USER 65532:65532
 ENTRYPOINT ["/usr/local/bin/ploeg-worker"]
