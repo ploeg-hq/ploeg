@@ -284,7 +284,7 @@ A project-level procedure for triage, confirmation, notification and patch relea
 | F-03 | High | Shared builder forge token and bootstrap token sat in the harness's container, guarded by one in-process control that did not cover the worker's `git` children (fixed in PR #240, ADR-0138: the harness runs in its own container with no credential, and `shared` is deprecated) |
 | F-04 | Medium | Proxy qualification predates the current proxy code; no Run has used it |
 | F-08 | High | ploeg-mcp action confirmation can be skipped by the client (blocking only if ploeg-mcp `execute` groups join the profile) |
-| F-36 | High | Any reviewer could re-queue paid Shifts without limit when rework was on (fixed in PR #PRNUM: rework only from listed or writing reviewers, capped by `maxReworks`) |
+| F-36 | High | Any reviewer could re-queue paid Shifts without limit when rework was on (fixed in PR #259: rework only from listed or writing reviewers, capped by `maxReworks`) |
 
 Each finding still needs a disposition, an owner and a date (issue #34). They are not filed as issues by this change.
 
