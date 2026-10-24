@@ -905,6 +905,32 @@
         }
       }
     },
+    "runIdentity": {
+      "type": "object",
+      "description": "ADR-0149: the key ploegd signs Run identities with (PLOEG_RUN_IDENTITY_*). Empty issues none.",
+      "additionalProperties": false,
+      "properties": {
+        "issuer": { "type": "string", "pattern": "^https?://[^\\s?#]+$" },
+        "signingKeySecret": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "key"],
+          "properties": {
+            "name": { "type": "string", "minLength": 1, "maxLength": 253, "pattern": "^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$" },
+            "key": { "type": "string", "minLength": 1, "maxLength": 253, "pattern": "^[A-Za-z0-9._-]+$" }
+          }
+        },
+        "retiredKeysSecret": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "key"],
+          "properties": {
+            "name": { "type": "string", "minLength": 1, "maxLength": 253, "pattern": "^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$" },
+            "key": { "type": "string", "minLength": 1, "maxLength": 253, "pattern": "^[A-Za-z0-9._-]+$" }
+          }
+        }
+      }
+    },
     "deploys": {
       "type": "object",
       "additionalProperties": false,
@@ -2004,7 +2030,16 @@
                   "not": { "required": ["value", "secret"] }
                 }
               },
-              "hookTimeout": { "type": "string", "pattern": "^$|^0$|^[0-9]+(\\.[0-9]+)?(ms|s|m)$" }
+              "hookTimeout": { "type": "string", "pattern": "^$|^0$|^[0-9]+(\\.[0-9]+)?(ms|s|m)$" },
+              "runIdentity": {
+                "type": "object",
+                "description": "ADR-0149: every hook of the plugin receives a Run identity for this audience in AGENT_RUN_IDENTITY_TOKEN. Needs the top-level runIdentity.signingKeySecret.",
+                "additionalProperties": false,
+                "required": ["audience"],
+                "properties": {
+                  "audience": { "type": "string", "maxLength": 256, "pattern": "^(https://[^\\s@?#]+|urn:[^\\s:]+:[^\\s]+)$" }
+                }
+              }
             }
           }
         }

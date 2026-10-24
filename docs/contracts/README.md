@@ -9,7 +9,7 @@ change either side and the test tells you.
 | [taskspec.v1.schema.json](taskspec.v1.schema.json) | Harness input: what a run knows (work item, repo, branch, trace id, and the brief of the OpenSpec change the Work Item names). Credentials never travel here (R8). |
 | [outcomereport.v1.schema.json](outcomereport.v1.schema.json) | Harness output and the body of `POST /api/v1/runs/{token}/outcome`. Stuck requires a reason (R4). The optional `createdWorkItems` carries the Work Items a Run proposes ([ADR-0031](../adrs/0031-runs-create-work-items-held-for-approval-within-limits.md)). The optional `verification` is the worker's own record of the checks it ran on a writing Run; the worker discards any value an agent sent. |
 | [checkpoint.v1.schema.json](checkpoint.v1.schema.json) | The durable progress record (shared by TaskSpec, OutcomeReport, and the checkpoint endpoint). |
-| [run-api.v1.schema.json](run-api.v1.schema.json) | All run-API message bodies (claim/renew/checkpoint/outcome/transcript). |
+| [run-api.v1.schema.json](run-api.v1.schema.json) | All run-API message bodies (claim/renew/checkpoint/outcome/transcript), and the Run identity a declared plugin receives: its claims and the key set that verifies it ([ADR-0149](../adrs/0149-a-declared-plugin-may-receive-a-signed-run-identity-that-names-its-run-and-authorizes-nothing.md)). |
 | [operator-api.v1.schema.json](operator-api.v1.schema.json) | Authenticated, team-scoped read projections of teams, activity summaries, work items, shifts, runs, the Run list, a Run's transcript ([ADR-0090](../adrs/0090-a-runs-agent-session-is-kept-as-a-bounded-redacted-transcript.md)), checkpoints and snapshot audit pages; the delivery facts of a Work Item and the facts list, and the keyed pull request comment ([ADR-0079](../adrs/0079-run-cards-belong-to-the-consumer-and-ploeg-supplies-delivery-facts.md)); Asks and the Ask Allowance ([ADR-0082](../adrs/0082-an-ask-is-a-read-only-run-outside-the-shift-paid-from-a-periodic-allowance.md)); the Admission of a manual-origin Work Item ([ADR-0102](../adrs/0102-an-operator-consumer-admits-work-items-that-ploeg-worker-executes.md)); the claim of a client-carried Run by the person it acts for ([ADR-0112](../adrs/0112-a-claude-environment-run-uses-the-claude-login-of-the-person-it-acts-for.md)). |
 | [deploy-api.v1.schema.json](deploy-api.v1.schema.json) | `POST /api/v1/deploys`: a pipeline reports that a commit is live in an environment, with its own bearer token ([ADR-0047](../adrs/0047-ploeg-learns-where-a-merged-change-is-deployed-from-a-generic-deploy-endpoint.md), [how-to](../how-to/send-deploys-from-a-pipeline.md)). |
 | [tracker-execution.md](tracker-execution.md), [v1 schema](tracker-execution.v1.schema.json) | Scoped source lookup and exclusive operator binding of an existing pristine tracker Work Item. |
@@ -716,3 +716,74 @@ promotions and contradictions. Their shapes and answers are in
 [operator-api.v1.schema.json](operator-api.v1.schema.json). The steering
 route `POST /api/v1/operator/work-items/{id}/notes` is unchanged: its notes
 brief one Run and are not kept as knowledge.
+
+## A Run identity for a declared plugin
+
+[ADR-0149](../adrs/0149-a-declared-plugin-may-receive-a-signed-run-identity-that-names-its-run-and-authorizes-nothing.md)
+(proposed) lets a Claude Code plugin a Team declares ([ADR-0139](../adrs/0139-a-team-declares-claude-code-plugins-pinned-to-a-commit-whose-hooks-run-guarded-with-only-their-declared-environment.md))
+tell the service it reports to which Run its session belongs to, so that
+service can fold the session into the Run instead of counting a second
+session.
+
+A plugin opts in with `runIdentity: {audience}` on its declaration (chart
+`harness.claudeCode.plugins[].runIdentity`). The audience is the one service
+that accepts the token: an https URL without credentials, query or fragment,
+or a URN. ploegd needs `PLOEG_RUN_IDENTITY_SIGNING_KEY` and
+`PLOEG_RUN_IDENTITY_ISSUER` (chart `runIdentity`); without them it issues
+none and the plugin's hooks run without one.
+
+**What a hook receives.** The hook guard sets `AGENT_RUN_IDENTITY_TOKEN` for
+every hook of a plugin that opted in, read when the hook starts, so each hook
+gets the token the worker last refreshed; it sets nothing for a plugin that
+did not opt in, nothing before the first token and nothing once the token
+expired. A declaration cannot set the name itself.
+
+**The token.** A compact JWS, `ES256`, header `typ: run-identity+jwt` and
+`kid` (the key's RFC 7638 thumbprint). Its claims are `runIdentityClaims` in
+[run-api.v1.schema.json](run-api.v1.schema.json):
+
+| Claim | Meaning |
+| --- | --- |
+| `iss` | `PLOEG_RUN_IDENTITY_ISSUER`, the URL the consumer knows ploegd by |
+| `sub` | `run:<run.id>` |
+| `aud` | the plugin's declared audience, one value |
+| `iat`, `nbf`, `exp` | issued now; expires with the Run's current lease, at most 15 minutes later |
+| `jti` | random, unique per token |
+| `run.id`, `run.workItemId`, `run.shiftId` | the operator API's ids of the Run, its Work Item and its Shift |
+| `run.round`, `run.role`, `run.team`, `run.harness`, `run.branch` | the Run's place in its Shift and where it works |
+| `run.trace` | the `Agent-Trace-Id` trailer on each of the Run's commits, and the alias of its model key |
+
+Every fact comes from ploegd's records of the Run; the worker names only the
+audiences. The token carries no credential: nothing in Ploeg accepts it.
+
+**Verifying it.** A consumer pins two values in its own configuration, the
+issuer and its own audience, and fetches the keys from
+`GET <issuer>/api/v1/run-identity/jwks` (a JWK Set, unauthenticated, cacheable
+for five minutes). It accepts a token only when the signature verifies under
+the key its `kid` names, `alg` is `ES256`, `typ` is `run-identity+jwt`, `iss`
+and `aud` equal the pinned values, and `exp` has not passed, with at most a
+minute of clock skew. It never takes the issuer or the key set's URL from the
+token. Any JOSE library does this; in Go,
+[pkg/runidentity](../../pkg/runidentity/runidentity.go) has `ParseKeySet` and
+`Verify`. A key ploegd stopped signing with stays in the key set while
+`PLOEG_RUN_IDENTITY_RETIRED_KEYS` lists it, so a token signed just before a
+rotation still verifies until it expires.
+
+**Reading more about the Run.** The token is the Run's name, not access to
+it. A consumer that holds an operator credential for the Run's Team reads
+`GET /api/v1/operator/runs/{run.id}` and the Work Item as it always could;
+`keyAlias` there equals `run.trace`.
+
+**Refresh, take-over and hand back.** The worker asks
+`POST /api/v1/runs/{token}/identity` with the audiences before the harness
+starts and again every third of the lease, so a token never lapses between
+two refreshes, and removes the tokens when the Run's harness is done. ploegd
+answers 409 for a Run that is not running: once a Run yields to a person
+([ADR-0142](../adrs/0142-a-person-takes-over-a-running-run-at-its-next-safe-point-and-hands-it-back-on-the-same-branch.md))
+or ends, no new token names it, and the last one expires with the lease it
+was signed for. The person's own session while they hold the Work Item is
+not a Run and carries no Run identity. A hand back starts a new Run of the
+same Shift and branch, whose tokens name the new Run; a consumer links the
+two through `run.shiftId`, `run.branch` and the `Ploeg-Yield` trailer. A Run
+a person's client carries ([ADR-0112](../adrs/0112-a-claude-environment-run-uses-the-claude-login-of-the-person-it-acts-for.md))
+gets none (409): that session is the person's own.

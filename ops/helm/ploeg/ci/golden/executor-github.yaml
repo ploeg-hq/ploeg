@@ -303,6 +303,18 @@ spec:
                 secretKeyRef:
                   name: agent-litellm-master
                   key: LITELLM_MASTER_KEY
+            - name: PLOEG_RUN_IDENTITY_ISSUER
+              value: "https://ploeg.example.com"
+            - name: PLOEG_RUN_IDENTITY_SIGNING_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ploeg-run-identity
+                  key: signing-key.pem
+            - name: PLOEG_RUN_IDENTITY_RETIRED_KEYS
+              valueFrom:
+                secretKeyRef:
+                  name: ploeg-run-identity
+                  key: retired-keys.pem
             - name: PLOEG_WORKER_AUTH_MODE
               value: "managed"
             - name: PLOEG_WORKER_SIGNING_KEY
@@ -449,7 +461,7 @@ spec:
               - name: PLOEG_HARNESS_IDLE_TIMEOUT
                 value: "15m"
               - name: PLOEG_CLAUDE_PLUGINS
-                value: "[{\"env\":[{\"name\":\"LINK_URL\",\"value\":\"https://link.example.com\"},{\"fromEnv\":\"PLOEG_CLAUDE_PLUGIN_ENV_0_1\",\"name\":\"LINK_TOKEN\"}],\"hookTimeout\":\"15s\",\"marketplace\":{\"commit\":\"0123456789abcdef0123456789abcdef01234567\",\"url\":\"https://github.com/example/claude-plugins.git\"},\"name\":\"session-link\"}]"
+                value: "[{\"env\":[{\"name\":\"LINK_URL\",\"value\":\"https://link.example.com\"},{\"fromEnv\":\"PLOEG_CLAUDE_PLUGIN_ENV_0_1\",\"name\":\"LINK_TOKEN\"}],\"hookTimeout\":\"15s\",\"marketplace\":{\"commit\":\"0123456789abcdef0123456789abcdef01234567\",\"url\":\"https://github.com/example/claude-plugins.git\"},\"name\":\"session-link\",\"runIdentity\":{\"audience\":\"https://link.example.com\"}}]"
               - name: PLOEG_CLAUDE_PLUGIN_ENV_0_1
                 valueFrom:
                   secretKeyRef: {name: "session-link-plugin", key: "token"}
@@ -662,7 +674,7 @@ spec:
               - name: PLOEG_HARNESS_IDLE_TIMEOUT
                 value: "15m"
               - name: PLOEG_CLAUDE_PLUGINS
-                value: "[{\"env\":[{\"name\":\"LINK_URL\",\"value\":\"https://link.example.com\"},{\"fromEnv\":\"PLOEG_CLAUDE_PLUGIN_ENV_0_1\",\"name\":\"LINK_TOKEN\"}],\"hookTimeout\":\"15s\",\"marketplace\":{\"commit\":\"0123456789abcdef0123456789abcdef01234567\",\"url\":\"https://github.com/example/claude-plugins.git\"},\"name\":\"session-link\"}]"
+                value: "[{\"env\":[{\"name\":\"LINK_URL\",\"value\":\"https://link.example.com\"},{\"fromEnv\":\"PLOEG_CLAUDE_PLUGIN_ENV_0_1\",\"name\":\"LINK_TOKEN\"}],\"hookTimeout\":\"15s\",\"marketplace\":{\"commit\":\"0123456789abcdef0123456789abcdef01234567\",\"url\":\"https://github.com/example/claude-plugins.git\"},\"name\":\"session-link\",\"runIdentity\":{\"audience\":\"https://link.example.com\"}}]"
               - name: PLOEG_CLAUDE_PLUGIN_ENV_0_1
                 valueFrom:
                   secretKeyRef: {name: "session-link-plugin", key: "token"}
