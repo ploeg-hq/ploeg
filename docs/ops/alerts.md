@@ -64,6 +64,8 @@ monitoring:
 
 Every alert matches ploegd's series with `job="<release>",namespace="<release namespace>"`. The chart's ServiceMonitor produces exactly those labels. If you scrape some other way, set `monitoring.prometheusRule.selector` to your own matchers, such as `job="ploegd"`. Every alert has `enabled`, `for` and `severity`, and the thresholds are listed with each alert below. [`ci/monitoring-values.yaml`](../../ops/helm/ploeg/ci/monitoring-values.yaml) renders every alert, and its golden shows the output.
 
+Every alert has a demonstrated trigger. [`ci/alert-rules-test.yaml`](../../ops/helm/ploeg/ci/alert-rules-test.yaml) feeds `promtool test rules` synthetic series against the rule the chart renders with its default values, and checks, for each alert, the input that makes it fire with its labels and annotations, and at least one input where it must stay quiet: below the threshold, before `for` has passed, another label, or another job. `mise run test-alert-rules` runs it, and so does `mise run verify` in CI. The script fails when an alert the chart renders has no test group of its own, so a new alert needs its test in the same change. A changed threshold or `for` in `values.yaml` fails the test until the test changes with it.
+
 The SQL below is for `psql` against the Ploeg database. It only reads.
 
 ## PloegShiftStuck

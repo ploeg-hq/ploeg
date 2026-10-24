@@ -281,4 +281,4 @@ components:
     kind: tooling
     license: Apache-2.0 AND MIT
     disposition: not-distributed
-    note: Pinned in mise.toml and the workflows - Go toolchain (BSD-3-Clause), Helm, oras, cosign and goose (Apache-2.0), uv (Apache-2.0 OR MIT), Node.js and @fission-ai/openspec (MIT), PyYAML (MIT), actions/checkout and jdx/mise-action (MIT). None is copied into an artifact.
+    note: Pinned in mise.toml and the workflows - Go toolchain (BSD-3-Clause), Helm, oras, cosign, goose and Prometheus promtool (Apache-2.0), uv (Apache-2.0 OR MIT), Node.js and @fission-ai/openspec (MIT), PyYAML (MIT), actions/checkout and jdx/mise-action (MIT). None is copied into an artifact.
