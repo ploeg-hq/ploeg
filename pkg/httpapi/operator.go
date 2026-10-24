@@ -190,7 +190,12 @@ func (s *Server) operatorAuth(next http.Handler) http.Handler {
 }
 
 func (s *Server) operatorHandler() http.Handler {
+	return s.operatorAuth(s.operatorRoutes())
+}
+
+func (s *Server) operatorRoutes() *http.ServeMux {
 	mux := http.NewServeMux()
+	s.registerOperatorVersion(mux)
 	mux.HandleFunc("GET /api/v1/operator/teams", s.handleOperatorTeams)
 	mux.HandleFunc("GET /api/v1/operator/work-items", s.handleOperatorItems)
 	mux.HandleFunc("GET /api/v1/operator/work-items/lookup", s.handleOperatorSourceLookup)
@@ -220,7 +225,7 @@ func (s *Server) operatorHandler() http.Handler {
 	s.registerContext(mux)
 	s.registerFacts(mux)
 	s.registerOperatorKnowledge(mux)
-	return s.operatorAuth(mux)
+	return mux
 }
 
 func (s *Server) handleOperatorTeams(w http.ResponseWriter, r *http.Request) {

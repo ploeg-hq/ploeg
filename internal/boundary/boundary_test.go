@@ -29,6 +29,13 @@ var records = []string{
 	"internal/boundary/",
 }
 
+// consumerOwned holds files each consumer writes about itself, so a failing
+// expectation names the consumer to ask (ADR-0146). Ploeg's own code and
+// documentation still name none.
+var consumerOwned = []string{
+	"docs/contracts/consumers/",
+}
+
 func root(t *testing.T) string {
 	t.Helper()
 	dir, err := os.Getwd()
@@ -45,6 +52,15 @@ func root(t *testing.T) string {
 		}
 		dir = parent
 	}
+}
+
+func isConsumerOwned(path string) bool {
+	for _, prefix := range consumerOwned {
+		if strings.HasPrefix(path, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func isRecord(path string) bool {
@@ -114,7 +130,7 @@ func consumerMentions(base string) ([]string, error) {
 			}
 			return nil
 		}
-		if isRecord(rel) {
+		if isRecord(rel) || isConsumerOwned(rel) {
 			return nil
 		}
 		data, err := os.ReadFile(path)
@@ -132,4 +148,26 @@ func consumerMentions(base string) ([]string, error) {
 		return nil
 	})
 	return mentions, err
+}
+
+func TestOnlyAConsumersOwnExpectationsMayNameIt(t *testing.T) {
+	base := t.TempDir()
+	write := func(name, content string) {
+		path := filepath.Join(base, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("docs/contracts/consumers/unfold/0.4.json", `{"consumer": "unfold"}`)
+	write("docs/contracts/README.md", "Expectations come from Unfold.\n")
+	mentions, err := consumerMentions(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(mentions) != 1 || !strings.HasPrefix(mentions[0], "docs/contracts/README.md:1") {
+		t.Fatalf("mentions = %v, want only the README line", mentions)
+	}
 }
