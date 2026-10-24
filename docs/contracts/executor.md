@@ -38,7 +38,10 @@ The spawned process (normally `ploeg-worker`, but anything speaking the run
 API qualifies — schemas in [run-api.v1.schema.json](run-api.v1.schema.json)):
 
 1. Send an authenticated claim with the worker's configured team and role.
-   **204 means exit 0** immediately; no eligible work was claimed.
+   **204 means exit 0** immediately; no eligible work was claimed. **426
+   means exit non-zero** without claiming again: `ploegd` does not serve the
+   worker's `workerVersion`, and the body names the served range
+   ([ADR 0134](../adrs/0134-ploeg-keeps-each-release-compatible-with-the-one-before-and-removes-only-after-a-deprecated-minor.md)).
 2. Renew the lease at TTL/3 via `POST /api/v1/runs/{token}/renew`; a 404
    means the lease is gone — kill the harness and stop.
 3. Report progress via `.../checkpoint` (best-effort) and exactly one

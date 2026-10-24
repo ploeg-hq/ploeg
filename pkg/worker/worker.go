@@ -41,6 +41,9 @@ type Config struct {
 	// startup; "" is unknown. It rides on the claim and the Outcome Report
 	// (ADR-0097).
 	HarnessVersion string
+	// Version is this ploeg-worker's release; it rides on every claim so
+	// ploegd can refuse a release it does not serve (ADR-0134).
+	Version string
 	// Role is this pod's slot in a Round (PLOEG_ROLE). Empty = the pre-Shift
 	// claim over queued work items; the pod shape is fixed at render time, so
 	// one workload serves exactly one role.
@@ -152,7 +155,8 @@ type profiledAdapter interface {
 }
 
 func New(cfg Config, adapter harness.Adapter, broker llmbroker.Broker, log *slog.Logger) *Worker {
-	api := &APIClient{Base: strings.TrimRight(cfg.APIURL, "/"), HC: &http.Client{Timeout: 30 * time.Second}, BootstrapToken: cfg.BootstrapToken, WorkerID: cfg.WorkerID}
+	api := &APIClient{Base: strings.TrimRight(cfg.APIURL, "/"), HC: &http.Client{Timeout: 30 * time.Second}, BootstrapToken: cfg.BootstrapToken, WorkerID: cfg.WorkerID,
+		WorkerVersion: cfg.Version}
 	if adapter != nil {
 		api.Harness = adapter.Name()
 		if p, ok := adapter.(profiledAdapter); ok {
@@ -197,6 +201,13 @@ var (
 // an attempt it never spent.
 func (w *Worker) RunContext(parent context.Context) error {
 	claimed, err := w.API.Claim(w.Cfg.Team, w.Cfg.Role)
+	var unsupported *UnsupportedWorkerVersion
+	if errors.As(err, &unsupported) {
+		w.Log.Error("ploegd does not serve this worker version; exiting without claiming again",
+			"worker_version", w.Cfg.Version, "ploegd_version", unsupported.Ploegd,
+			"oldest_worker", unsupported.OldestWorker, "newest_worker", unsupported.NewestWorker,
+			"upgrade_first", unsupported.Upgrade)
+	}
 	if err != nil {
 		return fmt.Errorf("claim: %w", err)
 	}

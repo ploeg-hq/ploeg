@@ -109,6 +109,7 @@ func run(log *slog.Logger) error {
 		BootstrapToken: os.Getenv("PLOEG_WORKER_BOOTSTRAP_TOKEN"),
 		WorkerID:       envOr("PLOEG_WORKER_ID", os.Getenv("POD_UID")),
 		Team:           requireEnv("PLOEG_TEAM"),
+		Version:        version,
 		// This pod's slot in a Round. NOT boot-required: unset is the
 		// pre-Shift claim over queued work items, which is exactly what a
 		// team without a plan keeps doing.
