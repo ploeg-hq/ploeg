@@ -21,6 +21,7 @@ import (
 	"github.com/ploeg-hq/ploeg/pkg/gate"
 	"github.com/ploeg-hq/ploeg/pkg/harness"
 	"github.com/ploeg-hq/ploeg/pkg/provider"
+	"github.com/ploeg-hq/ploeg/pkg/runidentity"
 	"github.com/ploeg-hq/ploeg/pkg/store"
 	"github.com/ploeg-hq/ploeg/pkg/target"
 	"github.com/ploeg-hq/ploeg/pkg/work"
@@ -49,6 +50,9 @@ type Server struct {
 	ScopeTeams map[string]string
 	LeaseTTL   time.Duration
 	Log        *slog.Logger
+	// RunIdentity signs the Run identities a Team's declared plugins receive
+	// and publishes its key set (ADR-0149). Nil = both routes answer 404.
+	RunIdentity *runidentity.Signer
 	// Engine is the Shift lifecycle fast path (run-multi-agent-shifts): ingest
 	// opens, an outcome report evaluates. Nil = no shift engine configured,
 	// dispatch unchanged. Engine errors are logged, never returned to the
@@ -260,6 +264,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/deploys", s.handleDeploy)
 	mux.Handle("/api/v1/operator/", s.operatorHandler())
 	s.RegisterLLMControl(mux)
+	s.registerRunIdentity(mux)
 	return s.WorkerHandler(mux)
 }
 
