@@ -211,7 +211,7 @@ func explainWrite(err error, commandID string) error {
 	case errors.Is(err, operatorclient.ErrTimeout):
 		return fmt.Errorf("Ploeg did not answer within 5 seconds, so the change may or may not have happened. Call the tool again with commandId %s to find out without acting twice", commandID)
 	case errors.Is(err, operatorclient.ErrUnauthorized):
-		return errors.New("Ploeg refused the credential ploeg-mcp called it with; nothing changed. Ask an administrator to check PLOEG_MCP_GROUPS, or the consumer's clientIds when PLOEG_MCP_EXCHANGE_TOKEN_URL is set")
+		return errors.New("Ploeg refused the credential ploeg-mcp called it with; nothing changed. Ask an administrator to check PLOEG_MCP_GROUPS, or the consumer's audiences or clientIds when PLOEG_MCP_EXCHANGE_TOKEN_URL is set")
 	case errors.As(err, &apiErr) && apiErr.Message != "":
 		return fmt.Errorf("Ploeg refused (%d %s): %s Nothing changed", apiErr.Status, apiErr.Code, apiErr.Message)
 	}

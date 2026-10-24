@@ -76,3 +76,37 @@ func TestAnOptionalScopeNeedsPartiesApartFromTheAudience(t *testing.T) {
 		}
 	}
 }
+
+func TestATokenIssuedToItsOwnAudienceNeedsAScopeClaim(t *testing.T) {
+	is := newIssuer(t)
+	v, err := mcpauth.NewVerifier(mcpauth.Config{Issuer: is.url, Audiences: []string{"ploeg", "ploeg-console"}, AuthorizedParties: []string{"acting-app"},
+		SelfIssuedAudiences: []string{"ploeg-console"}, ScopeOptional: true, MaxLifetime: 5 * time.Minute, Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := exchangedClaims(is)
+	c["aud"], c["azp"], c["scope"] = "ploeg-console", "ploeg-console", ""
+	info, err := v.Verify(context.Background(), is.sign("rsa-1", c), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if aud, _ := info.Extra["audiences"].([]string); info.Extra["client"] != "ploeg-console" || len(aud) != 1 || aud[0] != "ploeg-console" {
+		t.Fatalf("token info %+v", info)
+	}
+	for name, edit := range map[string]func(jwt.MapClaims){
+		"no scope claim, the shape of an ID token": func(c jwt.MapClaims) { delete(c, "scope") },
+		"no azp":                                 func(c jwt.MapClaims) { delete(c, "azp") },
+		"Ploeg's shared audience as its own azp": func(c jwt.MapClaims) { c["aud"], c["azp"] = "ploeg", "ploeg" },
+		"a self-issued audience for another aud": func(c jwt.MapClaims) { c["aud"] = "ploeg" },
+	} {
+		c := exchangedClaims(is)
+		c["aud"], c["azp"], c["scope"] = "ploeg-console", "ploeg-console", ""
+		edit(c)
+		if _, err := v.Verify(context.Background(), is.sign("rsa-1", c), nil); !errors.Is(err, auth.ErrInvalidToken) {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	if _, err := mcpauth.NewVerifier(mcpauth.Config{Issuer: is.url, Audiences: []string{"ploeg"}, SelfIssuedAudiences: []string{"ploeg-console"}, ScopeOptional: true}); err == nil {
+		t.Fatal("a self-issued audience that is not an audience was accepted")
+	}
+}

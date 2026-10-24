@@ -280,9 +280,13 @@ must have opened a published pull request. Policies and
 verifier credentials stay in the controller deployment.
 
 The token is supplied as `Authorization: Bearer …`. An entry may also list
-`clientIds`, the identity provider clients whose person tokens make it the
-caller (ADR-0150); they need `PLOEG_OPERATOR_PERSON_ISSUER` and
-`PLOEG_OPERATOR_PERSON_AUDIENCE`, and no client id may equal that audience.
+`audiences`, the audiences of person tokens exchanged for that consumer alone,
+and `clientIds`, the identity provider clients whose person tokens for Ploeg's
+shared audience make it the caller (ADR-0150). Both need
+`PLOEG_OPERATOR_PERSON_ISSUER`, and `clientIds` also need
+`PLOEG_OPERATOR_PERSON_AUDIENCE`. An audience listed by two consumers, an
+audience equal to a client id, and a client id or consumer audience equal to
+Ploeg's shared audience stop the boot.
 No consumers configured means every operator request is refused. Consumer names and policies may live
 in configuration; bearer values belong in the deployment's existing secret
 provisioning path, supplied through environment references.
@@ -649,12 +653,17 @@ events recorded before attribution existed carry none and never match.
 
 A consumer acting for a person can prove the person instead of naming them
 ([ADR-0150](../adrs/0150-an-operator-consumer-proves-the-person-it-acts-for-with-a-token-exchanged-for-ploegs-audience.md)). It exchanges the person's token at the identity
-provider (RFC 8693) for a token whose `aud` is Ploeg's audience
-(`PLOEG_OPERATOR_PERSON_AUDIENCE`) and sends it as `Authorization: Bearer …`;
-ploegd takes the caller from the token's `azp` (or `client_id`), which must be
-one of exactly one consumer's `clientIds`. A consumer may instead keep its own
-bearer and send the person token in `X-Ploeg-Person-Token`; the token's `azp`
-must then be one of that consumer's `clientIds`. ploegd verifies the signature
+provider (RFC 8693) and sends it as `Authorization: Bearer …`. The token
+belongs to the consumer whose `audiences` its `aud` names; its `azp` (or
+`client_id`) must be present and is that audience or one of the consumer's
+`clientIds`, and an `aud` naming two consumers' audiences is refused. Without a
+consumer audience, `aud` must be Ploeg's shared audience
+(`PLOEG_OPERATOR_PERSON_AUDIENCE`) and the token belongs to the one consumer
+whose `clientIds` list its `azp`. A consumer may instead keep its own bearer and
+send the person token in `X-Ploeg-Person-Token`; the token must then belong to
+that consumer, so a token exchanged for one consumer is refused next to
+another's credential. A token whose `azp` equals its audience must carry a
+`scope` claim, possibly empty, so an ID token is never accepted. ploegd verifies the signature
 against the configured issuer's keys (asymmetric algorithms only), `iss`, `aud`,
 `exp` and `iat` with a lifetime of at most `PLOEG_OPERATOR_PERSON_MAX_LIFETIME`
 (default five minutes) and `sub`; any failure answers 401 `invalid_token` and
