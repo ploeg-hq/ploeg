@@ -10,7 +10,7 @@ A Run token identifies work; it does not authenticate a managed request. The sig
 
 | Operation | Required authority | Result |
 | --- | --- | --- |
-| `POST /api/v1/claim` | Bootstrap capability matching the requested team and role; worker identity | Existing claim payload plus `controlToken`; managed inference authorization is reserved first |
+| `POST /api/v1/claim` | Bootstrap capability matching the requested team and role; worker identity | Existing claim payload plus `controlToken`; managed inference authorization is reserved first. 426 with the served worker range when `ploegd` does not serve the claim's `workerVersion` ([ADR 0134](../adrs/0134-ploeg-keeps-each-release-compatible-with-the-one-before-and-removes-only-after-a-deprecated-minor.md)) |
 | Run renew, checkpoint and outcome routes | Matching signed Run capability and worker identity | Existing work-control behavior |
 | `POST /api/v1/runs/{token}/llm/credential` | Live signed Run capability | One inference key and alias; controller policy selects the budget, models and TTL |
 | `POST /api/v1/runs/{token}/llm/block` | Live signed Run capability | Blocks matching gateway keys while retaining accounting identities |

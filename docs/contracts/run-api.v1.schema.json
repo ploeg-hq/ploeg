@@ -31,10 +31,30 @@
         "yields": {
           "type": "boolean",
           "description": "True when the worker's Harness can stop its agent at a safe point for a person (ADR-0142, proposed). ploegd records it on the claimed Run and refuses a take-over of a running Run without it. Absent is false."
+        },
+        "workerVersion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "The release of the worker sending the claim, such as v0.2.0 or v0.2.0-rc.47 (ADR-0134). ploegd serves workers of its own minor and the previous one; a release outside that range gets HTTP 426 with a workerVersionRefusal body and claims nothing. Absent, or a version that is not a release (such as 0.0.0-dev), is not judged."
         }
       },
       "required": ["team"],
       "additionalProperties": false
+    },
+    "workerVersionRefusal": {
+      "type": "object",
+      "description": "HTTP 426 body of POST /api/v1/claim when ploegd does not serve the worker's release (ADR-0134). Nothing was claimed, and claiming again cannot succeed until one side is upgraded. Over HTTP/1.1 the Upgrade header lists the served worker lines as ploeg-worker/<major.minor>.",
+      "properties": {
+        "error": { "const": "worker_version_unsupported" },
+        "message": { "type": "string", "description": "One sentence naming both versions, the served range and what to upgrade." },
+        "ploegd": { "type": "string", "description": "ploegd's release." },
+        "worker": { "type": "string", "description": "The workerVersion the claim sent." },
+        "oldestWorker": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+$", "description": "The oldest worker minor ploegd serves, as major.minor." },
+        "newestWorker": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+$", "description": "The newest worker minor ploegd serves, as major.minor: ploegd's own." },
+        "upgrade": { "enum": ["worker", "ploegd"], "description": "What to upgrade: worker when the worker is older than the range, ploegd when the worker is newer than ploegd (upgrade ploegd first, then the workers)." }
+      },
+      "required": ["error", "message", "ploegd", "worker", "oldestWorker", "newestWorker", "upgrade"]
     },
     "claimResponse": {
       "description": "HTTP 200 body; HTTP 204 = no claimable work (empty-handed convention, exit 0), which also covers an exhausted Shift budget — retrying cannot fix running out of money, so the sweeper parks the item instead.",
