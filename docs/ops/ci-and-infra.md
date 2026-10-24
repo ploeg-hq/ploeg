@@ -21,6 +21,15 @@ A pull mirror copies Git refs and objects, not the complete issues, reviews, rel
 
 Existing WebGrip desired state remains in [homelab-cluster](https://forgejo.webgrip.dev/webgrip/homelab-cluster). This repository cut does not change production pins, network policies or secrets.
 
+## Vulnerability and static analysis gates
+
+- [image-security.yml](../../.github/workflows/image-security.yml) builds every image listed in [images.yaml](../../ops/security/images.yaml) and runs the [CVE gate](../../ops/vex/README.md) on it. It also runs the gate's self-test and `govulncheck ./...`. It runs on pull requests, on pushes and daily, and fails on any Critical or High finding that no reviewed OpenVEX statement covers, and on any reachable Go vulnerability.
+- [codeql.yml](../../.github/workflows/codeql.yml) runs CodeQL for Go with `security-extended` and fails on a result of security severity 7.0 or more.
+- [scorecard.yml](../../.github/workflows/scorecard.yml) publishes the OpenSSF Scorecard of `development`.
+- The release runs the same CVE gate against each pushed digest before tagging or signing it ([ADR 0145](../adrs/0145-a-release-publishes-no-image-over-its-cve-budget-and-attaches-signed-openvex-to-every-digest.md)).
+
+Grype and govulncheck are pinned in `mise.toml`. Grype's database is downloaded fresh on each run, verified by hash, and must be under 120 hours old. When the update check fails, the gate gives no verdict and the job fails.
+
 ## Dependency updates
 
 Renovate proposes updates from [`renovate.json5`](../../renovate.json5). It runs in homelab-cluster as the RenovateJob `ploeg-hq`, authenticated as a GitHub App of its own (`ploeg-hq-renovate`), separate from the App that manages rulesets and settings. The shared [Webgrip presets](https://forgejo.webgrip.dev/webgrip/renovate-config) set the policy:
@@ -29,6 +38,8 @@ Renovate proposes updates from [`renovate.json5`](../../renovate.json5). It runs
 - Minor, patch, digest and pin updates share the branch `renovate/all-non-major` and merge themselves when `verify` is green, after a soak of three days for a minor and one day for a patch. Indirect Go modules are included.
 - Majors, Go toolchain minors, the DinD image in `values.yaml` and the semantic-release configuration wait for a tick on the Dependency Dashboard issue. A `values.yaml` image changes the golden renders, so run `scripts/helm-golden.sh update` on its branch.
 - Ploeg's own images and the chart version belong to the release train and are never proposed. Paired version and checksum pins (`CLAUDE_CODE_VERSION`, `GOOSE_VERSION`) are not managed: Renovate cannot update the checksum with them.
+
+The `toolchain` line in `go.mod` decides which Go builds every shipped binary. The official `golang` images set `GOTOOLCHAIN=local`, which ignores that line, so on 2026-10-24 `ploegd:0.2.0-rc.50` shipped go1.27.1 while `go.mod` named go1.27.3, with three Critical and 24 High standard-library findings. The image builders now set `GOTOOLCHAIN=auto`: a builder older than `go.mod` downloads the named toolchain, checksum-verified against the Go checksum database. CI runs [`check-go-toolchain.sh`](../../scripts/check-go-toolchain.sh) on each built image, and it fails when any Go binary in it is older than `go.mod`'s toolchain. Bump `go.mod`'s toolchain, the builder tag and `mise.toml` together.
 
 Dependency bumps are releasable commits and cut a candidate. Actions and the release configuration land as `ci(...)`, which do not. Setup and the App's permissions: homelab-cluster `docs/techdocs/docs/runbooks/github-app-ploeg-hq.md`.
 
