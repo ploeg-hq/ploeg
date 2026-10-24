@@ -24,8 +24,8 @@ The generator follows each binary's imports inside the module and records every 
 | `KUBECONFIG` | ploeg-worker |  | Administrative configuration. The worker refuses to start when it is set. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `KUBERNETES_SERVICE_HOST` | ploeg-worker |  |  | [launcher.go](../../pkg/sandboxlaunch/launcher.go) |
 | `KUBERNETES_SERVICE_PORT` | ploeg-worker |  |  | [launcher.go](../../pkg/sandboxlaunch/launcher.go) |
-| `LANG` | ploeg-worker |  |  | [fetch.go](../../pkg/harness/claudeplugins/fetch.go), [git.go](../../pkg/worker/git.go), [openspec.go](../../pkg/worker/openspec.go) |
-| `LC_ALL` | ploeg-worker |  |  | [git.go](../../pkg/worker/git.go), [openspec.go](../../pkg/worker/openspec.go) |
+| `LANG` | ploeg-worker |  |  | [git.go](../../pkg/worker/git.go), [fetch.go](../../pkg/harness/claudeplugins/fetch.go) |
+| `LC_ALL` | ploeg-worker |  |  | [git.go](../../pkg/worker/git.go) |
 | `LITELLM_ADMIN_URL` | ploeg-worker |  | Controller-only. The worker refuses to start when it is set. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `LITELLM_ADMIN_URL` | ploegd |  | LiteLLM management URL (chart `executor.litellm.adminUrl`). Unset disables key revocation, and managed worker mode then refuses to start. | [main.go](../../cmd/ploegd/main.go) |
 | `LITELLM_KEY_BUDGET` | ploeg-worker |  | USD budget the per-run inference key is minted at when no Shift authorized the Run; a Shift's authorization replaces it (ADR-0012). The Run's prompt states the amount (ADR-0133). It must be a number: `0` mints an uncapped key, and the prompt then states no budget. | [main.go](../../cmd/ploeg-worker/main.go) |
@@ -36,7 +36,7 @@ The generator follows each binary's imports inside the module and records every 
 | `LLM_BASE_URL` | ploeg-worker |  | Model gateway URL (chart `executor.litellm.baseUrl`). | [main.go](../../cmd/ploeg-worker/main.go) |
 | `LLM_MODEL` | ploeg-worker |  |  | [main.go](../../cmd/ploeg-worker/main.go) |
 | `NODE_NAME` | ploeg-worker |  |  | [main.go](../../cmd/ploeg-worker/main.go), [worker.go](../../pkg/worker/worker.go) |
-| `PATH` | ploeg-worker |  | Passed to `git` and `openspec` subprocesses; also on the harness allowlist. | [fetch.go](../../pkg/harness/claudeplugins/fetch.go), [git.go](../../pkg/worker/git.go), [harness_version.go](../../pkg/worker/harness_version.go), [openspec.go](../../pkg/worker/openspec.go) |
+| `PATH` | ploeg-worker |  | Passed to the worker's `git` subprocesses. The harness, its verification commands and the `openspec` CLI take `PATH` from the container the harness runs in (ADR-0138). | [git.go](../../pkg/worker/git.go), [fetch.go](../../pkg/harness/claudeplugins/fetch.go) |
 | `PLOEG_ACP_ARGV` | ploeg-worker |  | `acp` harness only: the whole launch command as a JSON array; required when the profile is `custom`. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_ACP_CONFIG_JSON` | ploeg-worker |  | `acp` harness only: replaces the generated agent configuration of the `opencode` or `qwen-code` profile wholesale. The `goose` and `openhands` profiles refuse it at startup. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_ACP_IDLE_TIMEOUT` | ploeg-worker |  | `acp` harness only: timeout without protocol traffic. Empty means the adapter default (10m). The Run's prompt states it (ADR-0133). | [main.go](../../cmd/ploeg-worker/main.go) |
@@ -109,6 +109,7 @@ The generator follows each binary's imports inside the module and records every 
 | `PLOEG_HARNESS_ARGS` | ploeg-worker |  | `exec` harness only: JSON argv template with `{taskspec}` and `{taskfile}` (chart `executor.harness.args`). | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_HARNESS_ENTRYPOINT` | ploeg-worker |  | Harness binary override (chart `executor.harness.entrypoint`). Empty means the adapter default. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_HARNESS_IDLE_TIMEOUT` | ploeg-worker | `15m` | Stops a harness that prints nothing and makes no model call for this long, with failure reason `idle`. The Run's prompt states it unless the adapter keeps its own idle limit (ADR-0133). | [main.go](../../cmd/ploeg-worker/main.go) |
+| `PLOEG_HARNESS_LAUNCHER` | ploeg-worker |  | Unix socket the worker listens on for `ploeg-worker harness-serve` in the harness's own container (ADR-0138). The worker accepts one connection, removes the socket and runs the harness, its verification commands and the OpenSpec CLI there; set by the chart with `executor.harnessContainer: separate`. Unset runs them in the worker's own container. | [launcher.go](../../cmd/ploeg-worker/launcher.go) |
 | `PLOEG_HARNESS_TIMEOUT` | ploeg-worker | `100m` | Stops a harness that runs longer than this, with failure reason `timeout`. The Run's prompt states it, or the adapter's own shorter prompt limit (ADR-0133). | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_KNOWLEDGE_BUDGET_BYTES` | ploeg-worker |  |  | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_KNOWLEDGE_DIRS` | ploeg-worker |  |  | [main.go](../../cmd/ploeg-worker/main.go) |
@@ -183,7 +184,7 @@ The generator follows each binary's imports inside the module and records every 
 | `REPO_OWNER` | ploeg-worker |  | Fallback repository owner for a team that pins one. The repository normally comes from the claimed Work Item. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `SSL_CERT_DIR` | ploeg-worker |  | Passed to `git` when the worker fetches a Claude Code plugin marketplace. | [fetch.go](../../pkg/harness/claudeplugins/fetch.go) |
 | `SSL_CERT_FILE` | ploeg-worker |  | Passed to `git` when the worker fetches a Claude Code plugin marketplace. | [fetch.go](../../pkg/harness/claudeplugins/fetch.go) |
-| `TZ` | ploeg-worker |  |  | [fetch.go](../../pkg/harness/claudeplugins/fetch.go), [git.go](../../pkg/worker/git.go), [openspec.go](../../pkg/worker/openspec.go) |
+| `TZ` | ploeg-worker |  |  | [git.go](../../pkg/worker/git.go), [fetch.go](../../pkg/harness/claudeplugins/fetch.go) |
 | `WORK_DIR` | ploeg-worker | `/mnt/ci-shared` |  | [main.go](../../cmd/ploeg-worker/main.go) |
 
 ## Helm values
@@ -315,6 +316,7 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `executor.harness.toolchains` |  | `[]` | Language toolchains mounted read-only at /opt/ploeg/toolchains/<name> as image volumes (Kubernetes >= 1.35), pulled by the kubelet, so a Run can run the target repository's checks without registry egress. `path` lists directories inside the image to put on PATH (default /bin); `env` is set in the harness environment (PLOEG_TOOLCHAINS). | values.yaml |
 | `executor.harness.verify` |  | `[]` | Shell command lines a Run is told to run before it hands off, and that ploeg-worker runs itself after a writing Run that opened or updated a pull request; the result is posted on the pull request (PLOEG_VERIFY_COMMANDS). Write a formatter check so it fails on output, e.g. test -z "$(gofmt -l .)". | values.yaml |
 | `executor.harness.verifyTimeout` |  | `""` | Go duration for the worker's own run; "" = 15m (PLOEG_VERIFY_TIMEOUT) | values.yaml |
+| `executor.harnessContainer` | one of `"separate"`, `"shared"` | `separate` | separate (the default) runs the harness in its own container of the Run's pod, behind ploeg-worker harness-serve, with no credential in its environment, while the worker container keeps every credential and both proxies (ADR-0138). A workload with DinD, a credential proxy off or harness claude-environment keeps shared. shared runs the harness in the worker's container; deprecated, removed in the minor after 0.2. | values.yaml, values.schema.json |
 | `executor.litellm.adminUrl` |  | `""` | ploegd's LiteLLM management URL (LITELLM_ADMIN_URL), e.g. http://litellm.<namespace>.svc.cluster.local:4000. REQUIRED while workerAuth.mode is managed: ploegd refuses to start without it. | values.yaml |
 | `executor.litellm.baseUrl` |  | `""` | The model gateway workers call (LLM_BASE_URL), e.g. http://litellm.<namespace>.svc.cluster.local:4000/v1. REQUIRED with the executor enabled. | values.yaml |
 | `executor.litellm.keyDuration` |  | `4h` | Per-run key lifetime; a positive Go duration between one second and 24 hours. | values.yaml |
@@ -389,7 +391,13 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `executor.workerBinResources.limits.memory` |  | `64Mi` |  | values.yaml |
 | `executor.workerBinResources.requests.cpu` |  | `50m` |  | values.yaml |
 | `executor.workerBinResources.requests.memory` |  | `64Mi` |  | values.yaml |
-| `executor.workerImage` | string | `""` | empty = image.repository:tag (carries /usr/local/bin/ploeg-worker) | values.yaml, values.schema.json |
+| `executor.workerContainerResources` | object |  | Resources of the worker container when the harness runs in its own container; the harness container keeps workerResources. | values.yaml, values.schema.json |
+| `executor.workerContainerResources.limits.cpu` |  | `250m` |  | values.yaml |
+| `executor.workerContainerResources.limits.memory` |  | `512Mi` |  | values.yaml |
+| `executor.workerContainerResources.requests.cpu` |  | `250m` |  | values.yaml |
+| `executor.workerContainerResources.requests.memory` |  | `512Mi` |  | values.yaml |
+| `executor.workerContainerSecurityContext` | object | `{}` | Merged over the worker container's default context when the harness runs in its own container: restricted, a read-only root filesystem, and the uid and gid of workerSecurityContext (1000 when it names none), because both containers write the shared work directory. | values.yaml, values.schema.json |
+| `executor.workerImage` | string | `""` | empty = worker.image with harnessContainer separate, image.repository:tag with shared | values.yaml, values.schema.json |
 | `executor.workerResources.limits.cpu` |  | `1` |  | values.yaml |
 | `executor.workerResources.limits.memory` |  | `1Gi` |  | values.yaml |
 | `executor.workerResources.requests.cpu` |  | `1` |  | values.yaml |
@@ -577,6 +585,10 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `tracker.url` | string | `""` | e.g. https://vikunja.example/api/v1 | values.yaml, values.schema.json |
 | `webhook` |  |  | The Vikunja webhook secret (PLOEG_VIKUNJA_SECRET). Unset = no env is rendered and every Vikunja webhook is rejected; ploegd still starts. | values.yaml |
 | `webhook.existingSecret` |  | `{}` |  | values.yaml |
+| `worker.image` | object |  | The ploeg-worker image (ADR-0138): ploeg-worker, git and CA certificates on a distroless base. It runs the worker container when the harness runs in its own container and provides the launcher binary the harness container runs; executor.workerImage overrides it. | values.yaml, values.schema.json |
+| `worker.image.digest` | string | `""` | Digest of the appVersion image; the release writes it into the published chart | values.yaml, values.schema.json |
+| `worker.image.repository` | string | `ghcr.io/ploeg-hq/ploeg-worker` |  | values.yaml, values.schema.json |
+| `worker.image.tag` | string | `""` |  | values.yaml, values.schema.json |
 
 ## Shared value shapes
 
@@ -665,6 +677,7 @@ name becomes the workload suffix (ploeg-worker-<team>-<role>); writes marks the 
 | Key | Type | Description |
 | --- | --- | --- |
 | `name` | one of `"openhands"`, `"exec"`, `"claude-code"`, `"acp"`, `"claude-environment"` | `openhands`, `exec`, `claude-code` or `acp`. |
+| `harnessContainer` | one of `"separate"`, `"shared"` | Per team or Role: overrides executor.harnessContainer for this workload. separate on a workload with DinD, a credential proxy off or harness claude-environment fails the render (ADR-0138). |
 | `image` | string | Agent image. Empty means `executor.runnerImage`. |
 | `entrypoint` | string | Harness binary override. Empty means the adapter default. |
 | `args` | array | `exec` harness only: argv template with `{taskspec}` and `{taskfile}`. |

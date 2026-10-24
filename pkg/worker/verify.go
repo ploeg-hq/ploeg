@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -168,12 +167,12 @@ type pushedCandidate struct {
 // make the pushed commit pass. The clone must be at the candidate's commit,
 // and the branch must still point there after the checks; otherwise the
 // verification is incomplete and names why.
-func verifyPushedCommit(ctx context.Context, c pushedCandidate, env, cmds []string, limit time.Duration) verification {
+func verifyPushedCommit(ctx context.Context, side harnessSide, c pushedCandidate, env, cmds []string, limit time.Duration) verification {
 	defer os.RemoveAll(c.dir)
 	if err := c.checkout(ctx); err != nil {
 		return notVerified(c.commit, cmds, err.Error())
 	}
-	v := runVerification(ctx, c.dir, env, cmds, limit)
+	v := runVerification(ctx, side, c.dir, env, cmds, limit)
 	v.Fresh = true
 	if v.Stopped != "" {
 		return v
@@ -228,7 +227,7 @@ func objectName(s string) bool {
 // runVerification runs cmds in order in dir with env, stopping at the first
 // failure. The worker runs it after the harness exits, so what it reports is
 // Ploeg's observation, not the agent's claim.
-func runVerification(ctx context.Context, dir string, env, cmds []string, limit time.Duration) verification {
+func runVerification(ctx context.Context, side harnessSide, dir string, env, cmds []string, limit time.Duration) verification {
 	v := verification{StartedAt: time.Now(), Commit: gitOutput(ctx, dir, "rev-parse", "HEAD")}
 	v.Dirty = gitOutput(ctx, dir, "status", "--porcelain") != ""
 	if limit <= 0 {
@@ -241,19 +240,14 @@ func runVerification(ctx context.Context, dir string, env, cmds []string, limit 
 			v.Checks = append(v.Checks, checkResult{Command: c})
 			continue
 		}
-		cmd := exec.CommandContext(runCtx, "sh", "-c", c)
-		cmd.Dir = dir
-		cmd.Env = env
-		harness.KillProcessGroupOnCancel(cmd)
-		cmd.WaitDelay = harness.ProcessWaitDelay
 		var out harness.TailBuffer
-		cmd.Stdout, cmd.Stderr = &out, &out
 		started := time.Now()
-		err := cmd.Run()
-		res := checkResult{Command: c, Ran: true, Output: tail(out.Bytes(), verifyOutputLimit), StartedAt: started, FinishedAt: time.Now()}
-		if cmd.ProcessState != nil {
-			res.ExitCode = cmd.ProcessState.ExitCode()
+		res := checkResult{Command: c, Ran: true}
+		proc, err := side.spawner.Start(runCtx, harness.Command{Argv: []string{"sh", "-c", c}, Dir: dir, Env: env, Stdout: &out, Stderr: &out})
+		if err == nil {
+			res.ExitCode, err = proc.Wait()
 		}
+		res.Output, res.StartedAt, res.FinishedAt = tail(out.Bytes(), verifyOutputLimit), started, time.Now()
 		if err != nil && res.ExitCode == 0 {
 			res.ExitCode = -1
 			res.Output = strings.TrimSpace(res.Output + "\n" + err.Error())

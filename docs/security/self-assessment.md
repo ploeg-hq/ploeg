@@ -2,7 +2,7 @@
 type: explanation
 audience: [owner, operator, contributor, reviewer]
 owner: ploeg
-last_verified: 2026-10-23
+last_verified: 2026-10-24
 verified_by: "Source read at development c37de7f; repository settings, rulesets, releases and signatures read through the GitHub API and cosign on 2026-10-23"
 ---
 
@@ -35,7 +35,7 @@ This document follows the [CNCF TAG Security and Compliance self-assessment outl
 | Software | <https://github.com/ploeg-hq/ploeg> |
 | Security Provider | No. Ploeg authorizes, budgets and records AI-agent work. Credential scoping and isolation are central to its design, but securing other systems is not its primary function. |
 | Languages | Go (controller, worker, MCP server), Helm templates, Shell, Python (documentation generators), SQL (migrations) |
-| SBOM | Each released image (`ghcr.io/ploeg-hq/ploegd`, `ghcr.io/ploeg-hq/claude-runner`) carries a BuildKit SPDX SBOM and build provenance as OCI attestations in its signed index. Source dependencies are pinned in [go.mod](../../go.mod) and [go.sum](../../go.sum). Release binaries and the chart archive have no separate SBOM asset ([F-20](threat-model.md#findings)). |
+| SBOM | Each released image (`ghcr.io/ploeg-hq/ploegd`, `ghcr.io/ploeg-hq/claude-runner`, `ghcr.io/ploeg-hq/ploeg-worker`) carries a BuildKit SPDX SBOM and build provenance as OCI attestations in its signed index. Source dependencies are pinned in [go.mod](../../go.mod) and [go.sum](../../go.sum). Release binaries and the chart archive have no separate SBOM asset ([F-20](threat-model.md#findings)). |
 
 ### Security links
 
@@ -74,8 +74,8 @@ The actors below are separated by an isolation mechanism. The [threat model's tr
 | --- | --- | --- |
 | **ploegd** (controller) | Admission, Shift engine, claims and Leases, credential minting, settlement, sweeps, operator API, webhooks | Its own pod: distroless, non-root, read-only root filesystem, no capabilities, no service-account token. Sole holder of management credentials: LiteLLM master key, worker signing key, bootstrap registry, forge bot password or GitHub App key, tracker tokens, webhook secrets, operator consumer token hashes. |
 | **PostgreSQL** | Durable state: Work Items, Shifts, Runs, Leases, accounts, audit | Reached only by ploegd and by KEDA's scaler role. Minted keys are stored as hashes or ids, not plaintext. |
-| **ploeg-worker** | Claims one Run, prepares the clone, starts the harness, runs the credential proxies, scans for leaks, verifies, reports | Ephemeral pod with no service-account token. Holds only its team's bootstrap token, the Run's signed capability and the Run's keys. Marks itself non-dumpable and sheds `CAP_SYS_PTRACE`. |
-| **Harness** (the agent: OpenHands, an ACP agent, or `exec`) | Reads the task, edits the clone, calls the model, pushes the Run's branch | A child process of ploeg-worker in the same container and uid. It gets an allowlisted environment, a private HOME and placeholders. This is a process boundary only. |
+| **ploeg-worker** | Claims one Run, prepares the clone, starts the harness through the launcher, runs the credential proxies, scans for leaks, verifies, reports | The Job's main container of an ephemeral pod with no service-account token, from the ploeg-worker image. Holds only its team's bootstrap token, the forge token, the Run's signed capability and the Run's keys. Marks itself non-dumpable and sheds `CAP_SYS_PTRACE`. |
+| **Harness** (the agent: OpenHands, an ACP agent, or `exec`) | Reads the task, edits the clone, calls the model, pushes the Run's branch | Runs in its own container of the pod (a native sidecar from the harness image) behind `ploeg-worker harness-serve`, with no Secret mounted and no environment of its own ([ADR-0138](../adrs/0138-a-harness-runs-in-its-own-container-and-no-credential-enters-it.md)). It gets an allowlisted environment, a private HOME and placeholders. A workload with DinD, a proxy off, `claude-environment` or `harnessContainer: shared` keeps it as a child process of ploeg-worker in one container, a process boundary only. |
 | **LiteLLM gateway** | Model routing, per-key budgets, spend logs | Separate deployment. Workers hold only per-Run keys scoped to one model, a budget and a TTL. |
 | **Forge** (GitHub, Forgejo; GitLab partially) | Repositories, pull requests, CI facts | External. Per-Run tokens limited to one repository; the push fence limits pushes to the Run's branch. |
 | **Tracker** | Source of requested work and write-backs | External. Events are HMAC-verified. |
@@ -144,7 +144,7 @@ These are design elements the product's security depends on and that a deploymen
 | Inference accounts | Authorize before mint; one durable mint; settlement from gateway evidence | [llm_accounts.go](../../pkg/store/llm_accounts.go); [worker control](../contracts/worker-control.md#accounting-states) |
 | Per-Run forge credential broker | Per-repository push rights, revoked on settle and on Lease lapse | [pkg/forgebroker](../../pkg/forgebroker/); [ADR-0013](../adrs/0013-push-rights-are-minted-per-run.md) |
 | Credential proxies and push fence | The harness sees placeholders; pushes only to its branch; Role allowlist | [llmproxy.go](../../pkg/worker/llmproxy.go), [forgeproxy.go](../../pkg/worker/forgeproxy.go), [pushfence.go](../../pkg/worker/pushfence.go); [ADR-0034](../adrs/0034-the-harness-gets-placeholders-the-worker-keeps-credentials.md) |
-| Harness environment allowlist and process concealment | Keeps the worker's own credentials out of the harness | [environment.go](../../pkg/worker/environment.go), [conceal_linux.go](../../pkg/worker/conceal_linux.go), [capabilities_linux.go](../../pkg/worker/capabilities_linux.go) |
+| Separate harness container, environment allowlist and process concealment | Keeps the worker's own credentials, and its credentialed `git` children, out of the harness | [pkg/harness/launch](../../pkg/harness/launch/), chart `executor.harnessContainer`, [environment.go](../../pkg/worker/environment.go), [conceal_linux.go](../../pkg/worker/conceal_linux.go), [capabilities_linux.go](../../pkg/worker/capabilities_linux.go); `TestHarnessContainerSeesNoCredential` |
 | Worker-private git | Harness-written git configuration cannot redirect or run inside the worker's credentialed git after the harness exits | [workergit.go](../../pkg/worker/workergit.go) |
 | Leak watch | Stops a Run that wrote a credential into a commit, request or learning | [leakwatch.go](../../pkg/worker/leakwatch.go); [ADR-0105](../adrs/0105-a-credential-leak-parks-the-work-item-and-closes-its-pull-request.md) |
 | Webhook authentication | Only the configured tracker or forge can admit or settle work | Provider `ParseWebhook` implementations in [pkg/provider](../../pkg/provider/) |
@@ -210,8 +210,8 @@ The facts below were read from the repository and the GitHub API on 2026-10-23.
   - The toolchain is pinned with checksums in `mise.lock`.
 - **Release integrity.**
   - Release candidates are cut automatically from `development`; a stable release is a reviewed tag on `main` ([releases](../ops/release-versioning.md)).
-  - Images are built with `-trimpath` and `CGO_ENABLED=0` on digest-pinned base images (`ploegd`: distroless static, non-root).
-  - The release job signs both images and the OCI chart by digest with keyless cosign (GitHub OIDC identity, Fulcio certificate, Rekor log) and verifies each signature before publishing. Verified on 2026-10-23 for `ploegd` 0.2.0-rc.47.
+  - Images are built with `-trimpath` and `CGO_ENABLED=0` on digest-pinned base images (`ploegd`: distroless static, non-root; `ploeg-worker`: distroless base with git copied from Debian packages, non-root).
+  - The release job signs every image and the OCI chart by digest with keyless cosign (GitHub OIDC identity, Fulcio certificate, Rekor log) and verifies each signature before publishing. Verified on 2026-10-23 for `ploegd` 0.2.0-rc.47.
   - BuildKit SBOM and provenance attestations ride in each signed image index.
   - The chart is stamped with both image digests.
   - Release tarballs, the chart archive and `SHA256SUMS` are not signed, and the only stable release, v0.1.0, predates signing ([F-20](threat-model.md#findings)).
@@ -272,9 +272,9 @@ A project-level procedure for triage, confirmation, notification and patch relea
 | ID | Severity | Summary |
 | --- | --- | --- |
 | F-01 | Critical | Chart default privileged DinD hands the harness node-level control and turns both credential proxies off (fixed in PR #231: the default is `dind: false`, and `dind: true` needs an explicit acknowledgement) |
-| F-24 | Critical | The board watch sent the real forge token from inside the harness-writable clone while the harness ran (fixed in PR #230: the `ls-remote` now runs outside any repository) |
+| F-24 | Critical | The board watch sent the real forge token from inside the harness-writable clone while the harness ran (fixed in PR #230: the `ls-remote` now runs outside any repository; its token in that process's environment is out of the harness's reach since ADR-0138, #221) |
 | F-02 | High | No NetworkPolicy for ploegd or worker pods |
-| F-03 | High | Shared builder forge token and bootstrap token sit in every writer container, guarded by one in-process control |
+| F-03 | High | Shared builder forge token and bootstrap token sat in the harness's container, guarded by one in-process control that did not cover the worker's `git` children (fixed in PR #240, ADR-0138: the harness runs in its own container with no credential, and `shared` is deprecated) |
 | F-04 | Medium | Proxy qualification predates the current proxy code; no Run has used it |
 | F-08 | High | ploeg-mcp action confirmation can be skipped by the client (blocking only if ploeg-mcp `execute` groups join the profile) |
 | F-36 | High | Any reviewer can re-queue paid Shifts without limit when rework is on (blocking only if the profile allows rework where outsiders can review) |

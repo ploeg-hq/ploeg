@@ -443,7 +443,7 @@ spec:
           # Extracts ploeg-worker from the distroless ploegd image via
           # self-copy (no shell in distroless).
           - name: worker-bin
-            image: ghcr.io/ploeg-hq/ploegd:CHART-VERSION
+            image: ghcr.io/ploeg-hq/ploeg-worker:CHART-VERSION
             command: ["/usr/local/bin/ploeg-worker", "install", "/mnt/bin/ploeg-worker"]
             securityContext:
               runAsNonRoot: true
@@ -463,10 +463,40 @@ spec:
               requests:
                 cpu: 50m
                 memory: 64Mi
+          - name: harness
+            image: registry.example/agent-runner:1.3.0
+            restartPolicy: Always
+            command: ["/mnt/bin/ploeg-worker", "harness-serve", "/run/ploeg/launcher/launcher.sock"]
+            volumeMounts:
+              - name: worker-bin
+                mountPath: /mnt/bin
+                readOnly: true
+              - name: harness-launcher
+                mountPath: /run/ploeg/launcher
+                readOnly: true
+              - name: ci-shared
+                mountPath: /mnt/ci-shared
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop:
+                - ALL
+              runAsGroup: 1000
+              runAsNonRoot: true
+              runAsUser: 1000
+              seccompProfile:
+                type: RuntimeDefault
+            resources:
+              limits:
+                cpu: "1"
+                memory: 1Gi
+              requests:
+                cpu: "1"
+                memory: 1Gi
         containers:
           - name: worker
-            image: registry.example/agent-runner:1.3.0
-            command: ["/mnt/bin/ploeg-worker"]
+            image: ghcr.io/ploeg-hq/ploeg-worker:CHART-VERSION
+            command: ["/usr/local/bin/ploeg-worker"]
             env:
               - name: PLOEG_API_URL
                 value: "http://ploeg:8080"
@@ -531,17 +561,23 @@ spec:
                     fieldPath: metadata.uid
               - name: WORK_DIR
                 value: /mnt/ci-shared
+              - name: PLOEG_HARNESS_LAUNCHER
+                value: /run/ploeg/launcher/launcher.sock
+              - name: GOMEMLIMIT
+                value: "460MiB"
             volumeMounts:
-              - name: worker-bin
-                mountPath: /mnt/bin
-                readOnly: true
               - name: ci-shared
                 mountPath: /mnt/ci-shared
+              - name: harness-launcher
+                mountPath: /run/ploeg/launcher
+              - name: worker-tmp
+                mountPath: /tmp
             securityContext:
               allowPrivilegeEscalation: false
               capabilities:
                 drop:
                 - ALL
+              readOnlyRootFilesystem: true
               runAsGroup: 1000
               runAsNonRoot: true
               runAsUser: 1000
@@ -549,14 +585,21 @@ spec:
                 type: RuntimeDefault
             resources:
               limits:
-                cpu: "1"
-                memory: 1Gi
+                cpu: 250m
+                memory: 512Mi
               requests:
-                cpu: "1"
-                memory: 1Gi
+                cpu: 250m
+                memory: 512Mi
         volumes:
           - name: worker-bin
             emptyDir: {}
+          - name: harness-launcher
+            emptyDir:
+              medium: Memory
+              sizeLimit: 1Mi
+          - name: worker-tmp
+            emptyDir:
+              sizeLimit: 1Gi
           # Disk-backed (not tmpfs): repo checkout + gate builds are large.
           # Same absolute path in worker AND dind so `docker run -v`
           # bind-mounts resolve on the daemon's filesystem.
@@ -646,7 +689,7 @@ spec:
           # Extracts ploeg-worker from the distroless ploegd image via
           # self-copy (no shell in distroless).
           - name: worker-bin
-            image: ghcr.io/ploeg-hq/ploegd:CHART-VERSION
+            image: ghcr.io/ploeg-hq/ploeg-worker:CHART-VERSION
             command: ["/usr/local/bin/ploeg-worker", "install", "/mnt/bin/ploeg-worker"]
             securityContext:
               runAsNonRoot: true
@@ -666,10 +709,40 @@ spec:
               requests:
                 cpu: 50m
                 memory: 64Mi
+          - name: harness
+            image: harbor.webgrip.dev/webgrip/custom-agent:0.1.0
+            restartPolicy: Always
+            command: ["/mnt/bin/ploeg-worker", "harness-serve", "/run/ploeg/launcher/launcher.sock"]
+            volumeMounts:
+              - name: worker-bin
+                mountPath: /mnt/bin
+                readOnly: true
+              - name: harness-launcher
+                mountPath: /run/ploeg/launcher
+                readOnly: true
+              - name: ci-shared
+                mountPath: /mnt/ci-shared
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop:
+                - ALL
+              runAsGroup: 1000
+              runAsNonRoot: true
+              runAsUser: 1000
+              seccompProfile:
+                type: RuntimeDefault
+            resources:
+              limits:
+                cpu: "1"
+                memory: 1Gi
+              requests:
+                cpu: "1"
+                memory: 1Gi
         containers:
           - name: worker
-            image: harbor.webgrip.dev/webgrip/custom-agent:0.1.0
-            command: ["/mnt/bin/ploeg-worker"]
+            image: ghcr.io/ploeg-hq/ploeg-worker:CHART-VERSION
+            command: ["/usr/local/bin/ploeg-worker"]
             env:
               - name: PLOEG_API_URL
                 value: "http://ploeg:8080"
@@ -738,17 +811,23 @@ spec:
                     fieldPath: metadata.uid
               - name: WORK_DIR
                 value: /mnt/ci-shared
+              - name: PLOEG_HARNESS_LAUNCHER
+                value: /run/ploeg/launcher/launcher.sock
+              - name: GOMEMLIMIT
+                value: "460MiB"
             volumeMounts:
-              - name: worker-bin
-                mountPath: /mnt/bin
-                readOnly: true
               - name: ci-shared
                 mountPath: /mnt/ci-shared
+              - name: harness-launcher
+                mountPath: /run/ploeg/launcher
+              - name: worker-tmp
+                mountPath: /tmp
             securityContext:
               allowPrivilegeEscalation: false
               capabilities:
                 drop:
                 - ALL
+              readOnlyRootFilesystem: true
               runAsGroup: 1000
               runAsNonRoot: true
               runAsUser: 1000
@@ -756,14 +835,21 @@ spec:
                 type: RuntimeDefault
             resources:
               limits:
-                cpu: "1"
-                memory: 1Gi
+                cpu: 250m
+                memory: 512Mi
               requests:
-                cpu: "1"
-                memory: 1Gi
+                cpu: 250m
+                memory: 512Mi
         volumes:
           - name: worker-bin
             emptyDir: {}
+          - name: harness-launcher
+            emptyDir:
+              medium: Memory
+              sizeLimit: 1Mi
+          - name: worker-tmp
+            emptyDir:
+              sizeLimit: 1Gi
           # Disk-backed (not tmpfs): repo checkout + gate builds are large.
           # Same absolute path in worker AND dind so `docker run -v`
           # bind-mounts resolve on the daemon's filesystem.
@@ -1063,7 +1149,7 @@ spec:
           # Extracts ploeg-worker from the distroless ploegd image via
           # self-copy (no shell in distroless).
           - name: worker-bin
-            image: ghcr.io/ploeg-hq/ploegd:CHART-VERSION
+            image: ghcr.io/ploeg-hq/ploeg-worker:CHART-VERSION
             command: ["/usr/local/bin/ploeg-worker", "install", "/mnt/bin/ploeg-worker"]
             securityContext:
               runAsNonRoot: true
@@ -1083,10 +1169,43 @@ spec:
               requests:
                 cpu: 50m
                 memory: 64Mi
+          - name: harness
+            image: registry.example/agent-runner:1.3.0
+            restartPolicy: Always
+            command: ["/mnt/bin/ploeg-worker", "harness-serve", "/run/ploeg/launcher/launcher.sock"]
+            volumeMounts:
+              - name: worker-bin
+                mountPath: /mnt/bin
+                readOnly: true
+              - name: harness-launcher
+                mountPath: /run/ploeg/launcher
+                readOnly: true
+              - name: ci-shared
+                mountPath: /mnt/ci-shared
+              - name: toolchain-go
+                mountPath: /opt/ploeg/toolchains/go
+                readOnly: true
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop:
+                - ALL
+              runAsGroup: 1000
+              runAsNonRoot: true
+              runAsUser: 1000
+              seccompProfile:
+                type: RuntimeDefault
+            resources:
+              limits:
+                cpu: "1"
+                memory: 1Gi
+              requests:
+                cpu: "1"
+                memory: 1Gi
         containers:
           - name: worker
-            image: registry.example/agent-runner:1.3.0
-            command: ["/mnt/bin/ploeg-worker"]
+            image: ghcr.io/ploeg-hq/ploeg-worker:CHART-VERSION
+            command: ["/usr/local/bin/ploeg-worker"]
             env:
               - name: PLOEG_API_URL
                 value: "http://ploeg:8080"
@@ -1149,20 +1268,23 @@ spec:
                     fieldPath: metadata.uid
               - name: WORK_DIR
                 value: /mnt/ci-shared
+              - name: PLOEG_HARNESS_LAUNCHER
+                value: /run/ploeg/launcher/launcher.sock
+              - name: GOMEMLIMIT
+                value: "460MiB"
             volumeMounts:
-              - name: worker-bin
-                mountPath: /mnt/bin
-                readOnly: true
               - name: ci-shared
                 mountPath: /mnt/ci-shared
-              - name: toolchain-go
-                mountPath: /opt/ploeg/toolchains/go
-                readOnly: true
+              - name: harness-launcher
+                mountPath: /run/ploeg/launcher
+              - name: worker-tmp
+                mountPath: /tmp
             securityContext:
               allowPrivilegeEscalation: false
               capabilities:
                 drop:
                 - ALL
+              readOnlyRootFilesystem: true
               runAsGroup: 1000
               runAsNonRoot: true
               runAsUser: 1000
@@ -1170,14 +1292,21 @@ spec:
                 type: RuntimeDefault
             resources:
               limits:
-                cpu: "1"
-                memory: 1Gi
+                cpu: 250m
+                memory: 512Mi
               requests:
-                cpu: "1"
-                memory: 1Gi
+                cpu: 250m
+                memory: 512Mi
         volumes:
           - name: worker-bin
             emptyDir: {}
+          - name: harness-launcher
+            emptyDir:
+              medium: Memory
+              sizeLimit: 1Mi
+          - name: worker-tmp
+            emptyDir:
+              sizeLimit: 1Gi
           # Disk-backed (not tmpfs): repo checkout + gate builds are large.
           # Same absolute path in worker AND dind so `docker run -v`
           # bind-mounts resolve on the daemon's filesystem.
@@ -1271,7 +1400,7 @@ spec:
           # Extracts ploeg-worker from the distroless ploegd image via
           # self-copy (no shell in distroless).
           - name: worker-bin
-            image: ghcr.io/ploeg-hq/ploegd:CHART-VERSION
+            image: ghcr.io/ploeg-hq/ploeg-worker:CHART-VERSION
             command: ["/usr/local/bin/ploeg-worker", "install", "/mnt/bin/ploeg-worker"]
             securityContext:
               runAsNonRoot: true
@@ -1291,10 +1420,40 @@ spec:
               requests:
                 cpu: 50m
                 memory: 64Mi
+          - name: harness
+            image: registry.example/agent-runner:1.3.0
+            restartPolicy: Always
+            command: ["/mnt/bin/ploeg-worker", "harness-serve", "/run/ploeg/launcher/launcher.sock"]
+            volumeMounts:
+              - name: worker-bin
+                mountPath: /mnt/bin
+                readOnly: true
+              - name: harness-launcher
+                mountPath: /run/ploeg/launcher
+                readOnly: true
+              - name: ci-shared
+                mountPath: /mnt/ci-shared
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop:
+                - ALL
+              runAsGroup: 1000
+              runAsNonRoot: true
+              runAsUser: 1000
+              seccompProfile:
+                type: RuntimeDefault
+            resources:
+              limits:
+                cpu: "1"
+                memory: 1Gi
+              requests:
+                cpu: "1"
+                memory: 1Gi
         containers:
           - name: worker
-            image: registry.example/agent-runner:1.3.0
-            command: ["/mnt/bin/ploeg-worker"]
+            image: ghcr.io/ploeg-hq/ploeg-worker:CHART-VERSION
+            command: ["/usr/local/bin/ploeg-worker"]
             env:
               - name: PLOEG_API_URL
                 value: "http://ploeg:8080"
@@ -1359,17 +1518,23 @@ spec:
                     fieldPath: metadata.uid
               - name: WORK_DIR
                 value: /mnt/ci-shared
+              - name: PLOEG_HARNESS_LAUNCHER
+                value: /run/ploeg/launcher/launcher.sock
+              - name: GOMEMLIMIT
+                value: "460MiB"
             volumeMounts:
-              - name: worker-bin
-                mountPath: /mnt/bin
-                readOnly: true
               - name: ci-shared
                 mountPath: /mnt/ci-shared
+              - name: harness-launcher
+                mountPath: /run/ploeg/launcher
+              - name: worker-tmp
+                mountPath: /tmp
             securityContext:
               allowPrivilegeEscalation: false
               capabilities:
                 drop:
                 - ALL
+              readOnlyRootFilesystem: true
               runAsGroup: 1000
               runAsNonRoot: true
               runAsUser: 1000
@@ -1377,14 +1542,21 @@ spec:
                 type: RuntimeDefault
             resources:
               limits:
-                cpu: "1"
-                memory: 1Gi
+                cpu: 250m
+                memory: 512Mi
               requests:
-                cpu: "1"
-                memory: 1Gi
+                cpu: 250m
+                memory: 512Mi
         volumes:
           - name: worker-bin
             emptyDir: {}
+          - name: harness-launcher
+            emptyDir:
+              medium: Memory
+              sizeLimit: 1Mi
+          - name: worker-tmp
+            emptyDir:
+              sizeLimit: 1Gi
           # Disk-backed (not tmpfs): repo checkout + gate builds are large.
           # Same absolute path in worker AND dind so `docker run -v`
           # bind-mounts resolve on the daemon's filesystem.
@@ -1676,7 +1848,7 @@ spec:
           # Extracts ploeg-worker from the distroless ploegd image via
           # self-copy (no shell in distroless).
           - name: worker-bin
-            image: ghcr.io/ploeg-hq/ploegd:CHART-VERSION
+            image: ghcr.io/ploeg-hq/ploeg-worker:CHART-VERSION
             command: ["/usr/local/bin/ploeg-worker", "install", "/mnt/bin/ploeg-worker"]
             securityContext:
               runAsNonRoot: true
@@ -1696,10 +1868,40 @@ spec:
               requests:
                 cpu: 50m
                 memory: 64Mi
+          - name: harness
+            image: registry.example/agent-runner:1.3.0
+            restartPolicy: Always
+            command: ["/mnt/bin/ploeg-worker", "harness-serve", "/run/ploeg/launcher/launcher.sock"]
+            volumeMounts:
+              - name: worker-bin
+                mountPath: /mnt/bin
+                readOnly: true
+              - name: harness-launcher
+                mountPath: /run/ploeg/launcher
+                readOnly: true
+              - name: ci-shared
+                mountPath: /mnt/ci-shared
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop:
+                - ALL
+              runAsGroup: 1000
+              runAsNonRoot: true
+              runAsUser: 1000
+              seccompProfile:
+                type: RuntimeDefault
+            resources:
+              limits:
+                cpu: "1"
+                memory: 1Gi
+              requests:
+                cpu: "1"
+                memory: 1Gi
         containers:
           - name: worker
-            image: registry.example/agent-runner:1.3.0
-            command: ["/mnt/bin/ploeg-worker"]
+            image: ghcr.io/ploeg-hq/ploeg-worker:CHART-VERSION
+            command: ["/usr/local/bin/ploeg-worker"]
             env:
               - name: PLOEG_API_URL
                 value: "http://ploeg:8080"
@@ -1760,17 +1962,23 @@ spec:
                     fieldPath: metadata.uid
               - name: WORK_DIR
                 value: /mnt/ci-shared
+              - name: PLOEG_HARNESS_LAUNCHER
+                value: /run/ploeg/launcher/launcher.sock
+              - name: GOMEMLIMIT
+                value: "460MiB"
             volumeMounts:
-              - name: worker-bin
-                mountPath: /mnt/bin
-                readOnly: true
               - name: ci-shared
                 mountPath: /mnt/ci-shared
+              - name: harness-launcher
+                mountPath: /run/ploeg/launcher
+              - name: worker-tmp
+                mountPath: /tmp
             securityContext:
               allowPrivilegeEscalation: false
               capabilities:
                 drop:
                 - ALL
+              readOnlyRootFilesystem: true
               runAsGroup: 1000
               runAsNonRoot: true
               runAsUser: 1000
@@ -1778,14 +1986,21 @@ spec:
                 type: RuntimeDefault
             resources:
               limits:
-                cpu: "1"
-                memory: 1Gi
+                cpu: 250m
+                memory: 512Mi
               requests:
-                cpu: "1"
-                memory: 1Gi
+                cpu: 250m
+                memory: 512Mi
         volumes:
           - name: worker-bin
             emptyDir: {}
+          - name: harness-launcher
+            emptyDir:
+              medium: Memory
+              sizeLimit: 1Mi
+          - name: worker-tmp
+            emptyDir:
+              sizeLimit: 1Gi
           # Disk-backed (not tmpfs): repo checkout + gate builds are large.
           # Same absolute path in worker AND dind so `docker run -v`
           # bind-mounts resolve on the daemon's filesystem.
@@ -1886,7 +2101,7 @@ spec:
           # Extracts ploeg-worker from the distroless ploegd image via
           # self-copy (no shell in distroless).
           - name: worker-bin
-            image: ghcr.io/ploeg-hq/ploegd:CHART-VERSION
+            image: ghcr.io/ploeg-hq/ploeg-worker:CHART-VERSION
             command: ["/usr/local/bin/ploeg-worker", "install", "/mnt/bin/ploeg-worker"]
             securityContext:
               runAsNonRoot: true
@@ -1906,10 +2121,40 @@ spec:
               requests:
                 cpu: 50m
                 memory: 64Mi
+          - name: harness
+            image: registry.example/agent-runner:1.3.0
+            restartPolicy: Always
+            command: ["/mnt/bin/ploeg-worker", "harness-serve", "/run/ploeg/launcher/launcher.sock"]
+            volumeMounts:
+              - name: worker-bin
+                mountPath: /mnt/bin
+                readOnly: true
+              - name: harness-launcher
+                mountPath: /run/ploeg/launcher
+                readOnly: true
+              - name: ci-shared
+                mountPath: /mnt/ci-shared
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop:
+                - ALL
+              runAsGroup: 1000
+              runAsNonRoot: true
+              runAsUser: 1000
+              seccompProfile:
+                type: RuntimeDefault
+            resources:
+              limits:
+                cpu: "1"
+                memory: 1Gi
+              requests:
+                cpu: "1"
+                memory: 1Gi
         containers:
           - name: worker
-            image: registry.example/agent-runner:1.3.0
-            command: ["/mnt/bin/ploeg-worker"]
+            image: ghcr.io/ploeg-hq/ploeg-worker:CHART-VERSION
+            command: ["/usr/local/bin/ploeg-worker"]
             env:
               - name: PLOEG_API_URL
                 value: "http://ploeg:8080"
@@ -1972,17 +2217,23 @@ spec:
                     fieldPath: metadata.uid
               - name: WORK_DIR
                 value: /mnt/ci-shared
+              - name: PLOEG_HARNESS_LAUNCHER
+                value: /run/ploeg/launcher/launcher.sock
+              - name: GOMEMLIMIT
+                value: "460MiB"
             volumeMounts:
-              - name: worker-bin
-                mountPath: /mnt/bin
-                readOnly: true
               - name: ci-shared
                 mountPath: /mnt/ci-shared
+              - name: harness-launcher
+                mountPath: /run/ploeg/launcher
+              - name: worker-tmp
+                mountPath: /tmp
             securityContext:
               allowPrivilegeEscalation: false
               capabilities:
                 drop:
                 - ALL
+              readOnlyRootFilesystem: true
               runAsGroup: 1000
               runAsNonRoot: true
               runAsUser: 1000
@@ -1990,14 +2241,21 @@ spec:
                 type: RuntimeDefault
             resources:
               limits:
-                cpu: "1"
-                memory: 1Gi
+                cpu: 250m
+                memory: 512Mi
               requests:
-                cpu: "1"
-                memory: 1Gi
+                cpu: 250m
+                memory: 512Mi
         volumes:
           - name: worker-bin
             emptyDir: {}
+          - name: harness-launcher
+            emptyDir:
+              medium: Memory
+              sizeLimit: 1Mi
+          - name: worker-tmp
+            emptyDir:
+              sizeLimit: 1Gi
           # Disk-backed (not tmpfs): repo checkout + gate builds are large.
           # Same absolute path in worker AND dind so `docker run -v`
           # bind-mounts resolve on the daemon's filesystem.
@@ -2362,7 +2620,7 @@ spec:
           # Extracts ploeg-worker from the distroless ploegd image via
           # self-copy (no shell in distroless).
           - name: worker-bin
-            image: ghcr.io/ploeg-hq/ploegd:CHART-VERSION
+            image: ghcr.io/ploeg-hq/ploeg-worker:CHART-VERSION
             command: ["/usr/local/bin/ploeg-worker", "install", "/mnt/bin/ploeg-worker"]
             securityContext:
               runAsNonRoot: true
@@ -2382,10 +2640,40 @@ spec:
               requests:
                 cpu: 50m
                 memory: 64Mi
+          - name: harness
+            image: registry.example/agent-runner:1.3.0
+            restartPolicy: Always
+            command: ["/mnt/bin/ploeg-worker", "harness-serve", "/run/ploeg/launcher/launcher.sock"]
+            volumeMounts:
+              - name: worker-bin
+                mountPath: /mnt/bin
+                readOnly: true
+              - name: harness-launcher
+                mountPath: /run/ploeg/launcher
+                readOnly: true
+              - name: ci-shared
+                mountPath: /mnt/ci-shared
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop:
+                - ALL
+              runAsGroup: 1000
+              runAsNonRoot: true
+              runAsUser: 1000
+              seccompProfile:
+                type: RuntimeDefault
+            resources:
+              limits:
+                cpu: "1"
+                memory: 1Gi
+              requests:
+                cpu: "1"
+                memory: 1Gi
         containers:
           - name: worker
-            image: registry.example/agent-runner:1.3.0
-            command: ["/mnt/bin/ploeg-worker"]
+            image: ghcr.io/ploeg-hq/ploeg-worker:CHART-VERSION
+            command: ["/usr/local/bin/ploeg-worker"]
             env:
               - name: PLOEG_API_URL
                 value: "http://ploeg:8080"
@@ -2446,17 +2734,23 @@ spec:
                     fieldPath: metadata.uid
               - name: WORK_DIR
                 value: /mnt/ci-shared
+              - name: PLOEG_HARNESS_LAUNCHER
+                value: /run/ploeg/launcher/launcher.sock
+              - name: GOMEMLIMIT
+                value: "460MiB"
             volumeMounts:
-              - name: worker-bin
-                mountPath: /mnt/bin
-                readOnly: true
               - name: ci-shared
                 mountPath: /mnt/ci-shared
+              - name: harness-launcher
+                mountPath: /run/ploeg/launcher
+              - name: worker-tmp
+                mountPath: /tmp
             securityContext:
               allowPrivilegeEscalation: false
               capabilities:
                 drop:
                 - ALL
+              readOnlyRootFilesystem: true
               runAsGroup: 1000
               runAsNonRoot: true
               runAsUser: 1000
@@ -2464,14 +2758,21 @@ spec:
                 type: RuntimeDefault
             resources:
               limits:
-                cpu: "1"
-                memory: 1Gi
+                cpu: 250m
+                memory: 512Mi
               requests:
-                cpu: "1"
-                memory: 1Gi
+                cpu: 250m
+                memory: 512Mi
         volumes:
           - name: worker-bin
             emptyDir: {}
+          - name: harness-launcher
+            emptyDir:
+              medium: Memory
+              sizeLimit: 1Mi
+          - name: worker-tmp
+            emptyDir:
+              sizeLimit: 1Gi
           # Disk-backed (not tmpfs): repo checkout + gate builds are large.
           # Same absolute path in worker AND dind so `docker run -v`
           # bind-mounts resolve on the daemon's filesystem.

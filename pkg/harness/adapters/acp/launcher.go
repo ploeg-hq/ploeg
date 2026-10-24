@@ -7,16 +7,17 @@ import (
 	"context"
 	"io"
 	"os"
-	"os/exec"
 	"sync"
 	"syscall"
+
+	"github.com/ploeg-hq/ploeg/pkg/harness"
 )
 
 // launcher is the subprocess seam. Injecting it is what lets the whole adapter
 // be driven by an in-process fake in tests, with no `go build`, no network, and
 // no real agent binary.
 type launcher interface {
-	launch(ctx context.Context, argv []string, dir string, env []string, stderr io.Writer, onRaw func([]byte)) (*process, error)
+	launch(ctx context.Context, spawner harness.Spawner, argv []string, dir string, env []string, stderr io.Writer, onRaw func([]byte)) (*process, error)
 }
 
 // process is a running agent, with its protocol channel already separated from
@@ -41,74 +42,34 @@ var syscallTERM os.Signal = syscall.SIGTERM
 
 type execLauncher struct{}
 
-func (execLauncher) launch(_ context.Context, argv []string, dir string, env []string, stderr io.Writer, onRaw func([]byte)) (*process, error) {
+func (execLauncher) launch(ctx context.Context, spawner harness.Spawner, argv []string, dir string, env []string, stderr io.Writer, onRaw func([]byte)) (*process, error) {
 	if len(argv) == 0 {
 		return nil, errEmptyArgv
 	}
-	// Deliberately NOT exec.CommandContext. Node-based ACP agents (opencode and
-	// the npm adapter processes) fork children; killing only the direct child
-	// orphans processes that still hold the DinD socket and the per-run LiteLLM
-	// key. We own the lifecycle so we can signal the process group.
-	cmd := exec.Command(argv[0], argv[1:]...)
-	cmd.Dir = dir
-	cmd.Env = env
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-
-	stdinPipe, err := cmd.StdinPipe()
+	if spawner == nil {
+		spawner = harness.NewLocalSpawner()
+	}
+	proc, err := spawner.Start(context.WithoutCancel(ctx), harness.Command{
+		Argv: argv, Dir: dir, Env: env, Stdin: true, StdoutPipe: true, Stderr: stderr,
+	})
 	if err != nil {
 		return nil, err
 	}
-	stdoutPipe, err := cmd.StdoutPipe()
-	if err != nil {
-		return nil, err
-	}
-	cmd.Stderr = stderr
 
-	if err := cmd.Start(); err != nil {
-		return nil, err
-	}
+	protocol := newJSONLFilter(proc.Stdout(), stderr, onRaw)
+	stdin := newAsyncWriter(proc.Stdin())
 
-	protocol := newJSONLFilter(stdoutPipe, stderr, onRaw)
-	stdin := newAsyncWriter(stdinPipe)
-
-	var (
-		waitOnce sync.Once
-		code     int
-		waitErr  error
-	)
-	wait := func() (int, error) {
-		waitOnce.Do(func() {
-			waitErr = cmd.Wait()
-			code = -1
-			if cmd.ProcessState != nil {
-				code = cmd.ProcessState.ExitCode()
-			}
-		})
-		return code, waitErr
-	}
-
-	pgid := cmd.Process.Pid // Setpgid makes the child its own group leader
 	signalGroup := func(sig os.Signal) error {
 		s, ok := sig.(syscall.Signal)
 		if !ok {
-			return cmd.Process.Signal(sig)
+			s = syscall.SIGTERM
 		}
-		// Negative pid = the whole group. Fall back to the direct child if the
-		// group is already gone.
-		if err := syscall.Kill(-pgid, s); err != nil {
-			return cmd.Process.Signal(sig)
-		}
-		return nil
+		return proc.Signal(s)
 	}
 	var killOnce sync.Once
-	kill := func() {
-		killOnce.Do(func() {
-			_ = syscall.Kill(-pgid, syscall.SIGKILL)
-			_ = cmd.Process.Kill()
-		})
-	}
+	kill := func() { killOnce.Do(proc.Kill) }
 
-	return &process{Stdin: stdin, Stdout: protocol, Wait: wait, Signal: signalGroup, Kill: kill}, nil
+	return &process{Stdin: stdin, Stdout: protocol, Wait: proc.Wait, Signal: signalGroup, Kill: kill}, nil
 }
 
 // --- stdout demultiplexing -------------------------------------------------

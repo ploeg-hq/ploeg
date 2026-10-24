@@ -18,7 +18,7 @@ A stable `v0.x.y` stays a reviewed act. Merge `development` into `main`, set `ve
 
 ## The published chart pins its images
 
-`release.sh` reads the digests BuildKit reports for `ploegd` and `claude-runner` and hands them to [scripts/package-chart.sh](../../scripts/package-chart.sh), which writes them into a copy of the chart as `image.digest` and `claudeRunner.image.digest` before `helm package`. A cluster that sets no image therefore runs the release's own builds by digest: ploegd, its workers, `ploeg-mcp`, `claude-runner` and a `claude-environment` worker. `values.yaml` in git keeps both digests empty. [scripts/test-package-chart.sh](../../scripts/test-package-chart.sh), run by `mise run verify`, fails when the packaged chart renders an image without a digest or when `release.sh` packages the chart any other way.
+`release.sh` reads the digests BuildKit reports for `ploegd`, `claude-runner` and `ploeg-worker` and hands them to [scripts/package-chart.sh](../../scripts/package-chart.sh), which writes them into a copy of the chart as `image.digest`, `claudeRunner.image.digest` and `worker.image.digest` before `helm package`. A cluster that sets no image therefore runs the release's own builds by digest: ploegd, its workers' worker containers, `ploeg-mcp`, `claude-runner` and a `claude-environment` worker. `values.yaml` in git keeps all three digests empty. [scripts/test-package-chart.sh](../../scripts/test-package-chart.sh), run by `mise run verify`, fails when the packaged chart renders an image without a digest or when `release.sh` packages the chart any other way.
 
 ## After publication
 
@@ -50,7 +50,7 @@ The script sends its own `User-Agent`. A forge behind Cloudflare's Browser Integ
 
 A maintainer can dispatch the release workflow with an existing tag whose publication is missing; publication refuses a published release, a draft that already carries assets, and existing artifacts.
 
-The initial artifacts are Linux amd64 controller/worker binaries, `ghcr.io/ploeg-hq/ploegd`, the OCI Helm chart `oci://ghcr.io/ploeg-hq/charts/ploeg`, SHA256 checksums and source metadata. BuildKit attaches image SBOM and build provenance, and both images and the chart carry a keyless cosign signature from the release workflow ([CI and infrastructure](ci-and-infra.md#credentials-and-signing)). Additional architectures are follow-up work. No `latest` alias is published.
+The initial artifacts are Linux amd64 controller/worker binaries, `ghcr.io/ploeg-hq/ploegd`, `ghcr.io/ploeg-hq/claude-runner`, `ghcr.io/ploeg-hq/ploeg-worker`, the OCI Helm chart `oci://ghcr.io/ploeg-hq/charts/ploeg`, SHA256 checksums and source metadata. BuildKit attaches image SBOM and build provenance, and every image and the chart carry a keyless cosign signature from the release workflow ([CI and infrastructure](ci-and-infra.md#credentials-and-signing)). Additional architectures are follow-up work. No `latest` alias is published.
 
 If a job fails after pushing an artifact, do not overwrite it by rerunning the entire publication. Inspect the existing digest and evidence; finish only missing publication through a reviewed recovery, or use a new version. Keep published tags immutable.
 

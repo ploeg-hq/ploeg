@@ -103,7 +103,7 @@ func readLines(t *testing.T, r io.Reader, n int, within time.Duration) []string 
 func TestLauncher_BannerNeverReachesTheProtocolChannel(t *testing.T) {
 	var noise safeBuffer
 	argv, env := helper(t, "banner-then-json")
-	p, err := execLauncher{}.launch(context.Background(), argv, t.TempDir(), env, &noise, nil)
+	p, err := execLauncher{}.launch(context.Background(), nil, argv, t.TempDir(), env, &noise, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +129,7 @@ func TestLauncher_BannerNeverReachesTheProtocolChannel(t *testing.T) {
 func TestLauncher_KillReapsTheWholeProcessGroup(t *testing.T) {
 	var noise safeBuffer
 	argv, env := helper(t, "fork-child-then-sleep")
-	p, err := execLauncher{}.launch(context.Background(), argv, t.TempDir(), env, &noise, nil)
+	p, err := execLauncher{}.launch(context.Background(), nil, argv, t.TempDir(), env, &noise, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,7 +159,7 @@ func TestLauncher_KillReapsTheWholeProcessGroup(t *testing.T) {
 func TestLauncher_SignalEscalatesToTheGroup(t *testing.T) {
 	var noise safeBuffer
 	argv, env := helper(t, "ignore-sigterm")
-	p, err := execLauncher{}.launch(context.Background(), argv, t.TempDir(), env, &noise, nil)
+	p, err := execLauncher{}.launch(context.Background(), nil, argv, t.TempDir(), env, &noise, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,7 +185,7 @@ func TestLauncher_SignalEscalatesToTheGroup(t *testing.T) {
 func TestLauncher_WaitIsIdempotent(t *testing.T) {
 	argv, env := helper(t, "banner-then-json")
 	var noise safeBuffer
-	p, err := execLauncher{}.launch(context.Background(), argv, t.TempDir(), env, &noise, nil)
+	p, err := execLauncher{}.launch(context.Background(), nil, argv, t.TempDir(), env, &noise, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,7 +202,7 @@ func TestLauncher_WaitIsIdempotent(t *testing.T) {
 func TestLauncher_StdinBacklogDoesNotDeadlock(t *testing.T) {
 	argv, env := helper(t, "never-read-stdin")
 	var noise safeBuffer
-	p, err := execLauncher{}.launch(context.Background(), argv, t.TempDir(), env, &noise, nil)
+	p, err := execLauncher{}.launch(context.Background(), nil, argv, t.TempDir(), env, &noise, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -233,7 +233,7 @@ func TestLauncher_StdinBacklogDoesNotDeadlock(t *testing.T) {
 func TestLauncher_StdinReachesTheChild(t *testing.T) {
 	argv, env := helper(t, "echo-stdin")
 	var noise safeBuffer
-	p, err := execLauncher{}.launch(context.Background(), argv, t.TempDir(), env, &noise, nil)
+	p, err := execLauncher{}.launch(context.Background(), nil, argv, t.TempDir(), env, &noise, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -248,7 +248,7 @@ func TestLauncher_StdinReachesTheChild(t *testing.T) {
 }
 
 func TestLauncher_EmptyArgvIsAnError(t *testing.T) {
-	if _, err := (execLauncher{}).launch(context.Background(), nil, t.TempDir(), nil, io.Discard, nil); err != errEmptyArgv {
+	if _, err := (execLauncher{}).launch(context.Background(), nil, nil, t.TempDir(), nil, io.Discard, nil); err != errEmptyArgv {
 		t.Errorf("err = %v, want %v", err, errEmptyArgv)
 	}
 }

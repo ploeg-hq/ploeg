@@ -11,3 +11,7 @@ exceptions:
     surface: ghcr.io/ploeg-hq/claude-runner
     pointer: /usr/local/bin/claude
     adr: "0141"
+  - base: v0.2.0-rc.50
+    surface: ops/helm/ploeg/values.yaml
+    pointer: executor.harnessContainer
+    adr: "0138"

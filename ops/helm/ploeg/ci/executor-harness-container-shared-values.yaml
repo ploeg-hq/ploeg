@@ -1,0 +1,7 @@
+executor:
+  enabled: true
+  harnessContainer: shared
+  teams:
+    - name: defaults
+      model: litellm_proxy/deepseek-chat
+      budget: "1"

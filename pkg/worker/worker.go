@@ -131,7 +131,13 @@ type Worker struct {
 	API     *APIClient
 	Adapter harness.Adapter
 	Broker  llmbroker.Broker
-	agent   observedAgent
+	// Spawner starts the harness, its verification commands and the OpenSpec
+	// CLI where the harness runs; nil starts them as the worker's children.
+	Spawner harness.Spawner
+	// HarnessEnviron is the environment of the container the harness runs in,
+	// the source of its allowlisted variables; nil is the worker's own.
+	HarnessEnviron []string
+	agent          observedAgent
 	// pluginFetch replaces the git fetch of plugin marketplaces in tests.
 	pluginFetch claudeplugins.Fetcher
 }
@@ -433,7 +439,7 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 		model = w.Cfg.LLMModels[0]
 	}
 	if openSpec != nil {
-		brief := openSpecBriefFor(ctx, *openSpec, home)
+		brief := openSpecBriefFor(ctx, w.side(), *openSpec, home)
 		spec.OpenSpec = &brief
 		w.Log.Info("briefed from the OpenSpec change", "change", brief.Change, "source", brief.Source, "bytes", len(brief.Brief))
 	}
@@ -563,7 +569,7 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 		RepoDir:    cloneDir,
 		ScratchDir: scratchDir,
 		Prompt:     taskPrompt(harnessSpec, planner, writes, priorPR, onReviewBranch) + support,
-		BaseEnv:    append(append(withToolchains(harnessEnvironment(os.Environ(), home, scratchDir, writes, harnessForgeToken, w.Cfg.LLMBaseURL, harnessModelName(w.Cfg)), w.Cfg.Toolchains), runEnv...), w.runTelemetryEnvironment(claimed.Role, trace)...),
+		BaseEnv:    append(append(withToolchains(harnessEnvironment(w.side().environ, home, scratchDir, writes, harnessForgeToken, w.Cfg.LLMBaseURL, harnessModelName(w.Cfg)), w.Cfg.Toolchains), runEnv...), w.runTelemetryEnvironment(claimed.Role, trace)...),
 		LLM:        harness.LLMEnv{BaseURL: w.Cfg.LLMBaseURL, Model: model, TraceID: trace},
 		Stdout:     io.MultiWriter(os.Stdout, &logTail),
 		Stderr:     io.MultiWriter(os.Stderr, &logTail),
@@ -584,6 +590,7 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 		},
 		CatchUp:    board.catchUp,
 		PluginDirs: pluginDirs,
+		Spawner:    w.side().spawner,
 	}
 
 	env.BaseEnv = append(env.BaseEnv, gitEnv...)
@@ -599,6 +606,9 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 		Models:    w.Cfg.LLMModels,
 		TTL:       w.Cfg.KeyTTL,
 	}, w.Cfg.HarnessTimeout, w.Cfg.LLMKeyIsolation, leaks.watch)
+	if err := w.side().spawner.KillAll(context.WithoutCancel(ctx)); err != nil {
+		w.Log.Warn("could not end the processes the harness left behind", "err", err)
+	}
 	env.Transcript.Stage(harnessFinished(w.Adapter.Name(), report, mintErr, runErr))
 	closeTranscript(env.Transcript)
 	notesLive.Close(context.WithoutCancel(ctx))
@@ -623,13 +633,13 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	})
 	final.Delivery = observedDelivery(ref, branch, prior, after, errors.Join(priorErr, prErr))
 	if openSpec != nil && openSpecGateApplies(final, writes, onReviewBranch) {
-		gate := runOpenSpecGate(ctx, *openSpec, cloneURL, forgeToken, branch, home)
+		gate := runOpenSpecGate(ctx, w.side(), *openSpec, cloneURL, forgeToken, branch, home)
 		w.Log.Info("OpenSpec gate", "change", openSpec.ID, "ran", gate.Ran, "passed", gate.Passed)
 		final = applyOpenSpecGate(final, openSpec.ID, gate, writes)
 	}
 	if writes && len(verifyCommands) > 0 && verifiesOutcome(final.Outcome) && ctx.Err() == nil {
-		verifyEnv := withToolchains(harnessEnvironment(os.Environ(), home, scratchDir, false, "", w.Cfg.LLMBaseURL, harnessModelName(w.Cfg)), w.Cfg.Toolchains)
-		v := verifyPushedCommit(ctx, pushedCandidate{
+		verifyEnv := withToolchains(harnessEnvironment(w.side().environ, home, scratchDir, false, "", w.Cfg.LLMBaseURL, harnessModelName(w.Cfg)), w.Cfg.Toolchains)
+		v := verifyPushedCommit(ctx, w.side(), pushedCandidate{
 			dir: filepath.Join(w.Cfg.WorkDir, "verify-vik-"+item.ExternalID), cloneURL: cloneURL, token: forgeToken,
 			branch: branch, commit: after.HeadSHA,
 		}, verifyEnv, verifyCommands, w.Cfg.VerifyTimeout)

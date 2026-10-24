@@ -18,6 +18,7 @@ Every component Ploeg distributes, with its licence and a disposition against th
 | `ploeg_<version>_linux_amd64.tar.gz` | `ploegd`, `ploeg-worker`, `LICENSE`, `NOTICE`, `THIRD-PARTY-NOTICES` |
 | `ghcr.io/ploeg-hq/ploegd` | distroless static-debian13, `ploegd`, `ploeg-worker`, `ploeg-mcp`, the three notice files in `/usr/share/doc/ploeg/` |
 | `ghcr.io/ploeg-hq/claude-runner` | debian bookworm-slim, five apt packages, Ploeg's runner hooks, the Claude Code installer and its pin, `LICENSE` and `NOTICE`. Claude Code itself is installed at start ([ADR-0141](../adrs/0141-the-claude-runner-image-carries-no-claude-code-and-installs-anthropics-signed-release-at-start.md)) |
+| `ghcr.io/ploeg-hq/ploeg-worker` | distroless base-debian13, `ploeg-worker`, git 2.47.3 with the libraries it links copied from Debian 13 apt packages (their dpkg records and copyright files included), the three notice files in `/usr/share/doc/ploeg/` |
 | `oci://ghcr.io/ploeg-hq/charts/ploeg` | the chart; no chart dependencies; defaults that pull `docker:29.8.2-dind` |
 
 ## Outbound licences

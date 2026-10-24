@@ -1,14 +1,12 @@
 package worker
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -99,31 +97,32 @@ func relativeTo(base, p string) string {
 	return filepath.ToSlash(rel)
 }
 
-func openSpecEnvironment(home string) []string {
+func openSpecEnvironment(home string, environ []string) []string {
 	env := []string{"HOME=" + home, "OPENSPEC_TELEMETRY=0", "DO_NOT_TRACK=1", "NO_COLOR=1", "CI=1"}
 	for _, key := range []string{"PATH", "LANG", "LC_ALL", "TZ"} {
-		if value, ok := os.LookupEnv(key); ok {
+		if value, ok := lookupEnv(environ, key); ok {
 			env = append(env, key+"="+value)
 		}
 	}
 	return env
 }
 
-var errOpenSpecUnavailable = errors.New("the openspec CLI is not on the worker's PATH")
+var errOpenSpecUnavailable = errors.New("the openspec CLI is not on the harness's PATH")
 
-func runOpenSpec(ctx context.Context, dir, home string, args ...string) (stdout []byte, stderr string, err error) {
-	bin, err := exec.LookPath(openSpecBinary)
+func runOpenSpec(ctx context.Context, side harnessSide, dir, home string, args ...string) (stdout []byte, stderr string, err error) {
+	runCtx, cancel := context.WithTimeout(ctx, openSpecTimeout)
+	defer cancel()
+	bin, err := side.lookPath(runCtx, openSpecBinary)
 	if err != nil {
 		return nil, "", errOpenSpecUnavailable
 	}
-	runCtx, cancel := context.WithTimeout(ctx, openSpecTimeout)
-	defer cancel()
-	cmd := exec.CommandContext(runCtx, bin, args...)
-	cmd.Dir = dir
-	cmd.Env = openSpecEnvironment(home)
-	var out, errOut bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &out, &errOut
-	err = cmd.Run()
+	var out, errOut lockedBuffer
+	proc, err := side.spawner.Start(runCtx, harness.Command{
+		Argv: append([]string{bin}, args...), Dir: dir, Env: openSpecEnvironment(home, side.environ), Stdout: &out, Stderr: &errOut,
+	})
+	if err == nil {
+		_, err = proc.Wait()
+	}
 	if runCtx.Err() != nil {
 		err = fmt.Errorf("openspec %s timed out after %s", args[0], openSpecTimeout)
 	}
@@ -147,9 +146,9 @@ type openSpecApply struct {
 	Instruction string `json:"instruction"`
 }
 
-func openSpecBriefFor(ctx context.Context, ch openSpecChange, home string) harness.OpenSpecBrief {
+func openSpecBriefFor(ctx context.Context, side harnessSide, ch openSpecChange, home string) harness.OpenSpecBrief {
 	brief := harness.OpenSpecBrief{Change: ch.ID, Root: ch.RelRoot}
-	out, stderr, err := runOpenSpec(ctx, ch.Root, home, "instructions", "apply", "--change", ch.ID, "--json")
+	out, stderr, err := runOpenSpec(ctx, side, ch.Root, home, "instructions", "apply", "--change", ch.ID, "--json")
 	var apply openSpecApply
 	if err == nil {
 		err = json.Unmarshal(out, &apply)
@@ -298,11 +297,10 @@ type openSpecValidation struct {
 	} `json:"summary"`
 }
 
-func validateOpenSpecChange(ctx context.Context, root, id, home string) openSpecGate {
+func validateOpenSpecChange(ctx context.Context, side harnessSide, root, id, home string) openSpecGate {
 	command := openSpecValidateCommand(id)
-	out, stderr, err := runOpenSpec(ctx, root, home, "validate", id, "--type", "change", "--strict", "--json", "--no-interactive")
-	var exitErr *exec.ExitError
-	if err != nil && !errors.As(err, &exitErr) {
+	out, stderr, err := runOpenSpec(ctx, side, root, home, "validate", id, "--type", "change", "--strict", "--json", "--no-interactive")
+	if _, ran := harness.ExitCode(err); err != nil && !ran {
 		return openSpecGate{Output: fmt.Sprintf("`%s` could not run: %v", command, err)}
 	}
 	var v openSpecValidation
@@ -331,7 +329,7 @@ func validateOpenSpecChange(ctx context.Context, root, id, home string) openSpec
 	return openSpecGate{Ran: true, Output: capText(b.String(), maxOpenSpecGateBytes)}
 }
 
-func runOpenSpecGate(ctx context.Context, ch openSpecChange, cloneURL, token, branch, home string) openSpecGate {
+func runOpenSpecGate(ctx context.Context, side harnessSide, ch openSpecChange, cloneURL, token, branch, home string) openSpecGate {
 	gateCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), openSpecTimeout+30*time.Second)
 	defer cancel()
 	repo, err := openWorkerRepository(gateCtx, ch.repo, cloneURL, token)
@@ -344,7 +342,7 @@ func runOpenSpecGate(ctx context.Context, ch openSpecChange, cloneURL, token, br
 		return openSpecGate{Output: "could not check out the pushed branch " + branch + " to validate it: " + err.Error()}
 	}
 	root := filepath.Join(tree, filepath.FromSlash(ch.RelRoot))
-	return validateOpenSpecChange(gateCtx, root, ch.ID, home)
+	return validateOpenSpecChange(gateCtx, side, root, ch.ID, home)
 }
 
 func openSpecGateApplies(report harness.OutcomeReport, writes, onReviewBranch bool) bool {

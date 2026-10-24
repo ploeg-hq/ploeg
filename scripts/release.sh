@@ -35,8 +35,9 @@ draft=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq "[.[] | sel
 image="ghcr.io/ploeg-hq/ploegd:$version"
 chart="ghcr.io/ploeg-hq/charts/ploeg:$version"
 runner_image="ghcr.io/ploeg-hq/claude-runner:$version"
+worker_image="ghcr.io/ploeg-hq/ploeg-worker:$version"
 printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
-for artifact in "$image" "$chart" "$runner_image"; do
+for artifact in "$image" "$chart" "$runner_image" "$worker_image"; do
   if docker manifest inspect "$artifact" > /dev/null 2>dist/registry-check.txt; then
     echo "Refusing to overwrite $artifact" >&2; exit 1
   fi
@@ -62,13 +63,19 @@ docker buildx build --file ops/claude-runner/Dockerfile --platform linux/amd64 \
   --label "org.opencontainers.image.version=$version" --label "org.opencontainers.image.revision=$commit" \
   --provenance=mode=max --sbom=true --metadata-file dist/claude-runner-image-metadata.json \
   --tag "$runner_image" --push .
+docker buildx build --file ops/docker/ploeg-worker/Dockerfile --platform linux/amd64 \
+  --build-arg "IMAGE_VERSION=$version" --build-arg "IMAGE_REVISION=$commit" \
+  --build-arg "IMAGE_CREATED=$(git show -s --format=%cI HEAD)" \
+  --provenance=mode=max --sbom=true --metadata-file dist/ploeg-worker-image-metadata.json \
+  --tag "$worker_image" --push .
 image_digest=$(jq -r '."containerimage.digest"' dist/image-metadata.json)
 runner_digest=$(jq -r '."containerimage.digest"' dist/claude-runner-image-metadata.json)
-bash scripts/package-chart.sh "$version" "$image_digest" "$runner_digest" dist
+worker_digest=$(jq -r '."containerimage.digest"' dist/ploeg-worker-image-metadata.json)
+bash scripts/package-chart.sh "$version" "$image_digest" "$runner_digest" "$worker_digest" dist
 printf '%s' "$GH_TOKEN" | helm registry login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
 helm push "dist/ploeg-$version.tgz" oci://ghcr.io/ploeg-hq/charts 2>&1 | tee dist/chart-push.txt
 chart_digest=$(sed -n 's/^Digest: *//p' dist/chart-push.txt)
-signed_artifacts=("ghcr.io/ploeg-hq/ploegd@$image_digest" "ghcr.io/ploeg-hq/claude-runner@$runner_digest" "ghcr.io/ploeg-hq/charts/ploeg@$chart_digest")
+signed_artifacts=("ghcr.io/ploeg-hq/ploegd@$image_digest" "ghcr.io/ploeg-hq/claude-runner@$runner_digest" "ghcr.io/ploeg-hq/ploeg-worker@$worker_digest" "ghcr.io/ploeg-hq/charts/ploeg@$chart_digest")
 signer_identity="^https://github\.com/ploeg-hq/ploeg/\.github/workflows/release\.yml@refs/(heads/development|heads/main|tags/v0\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?)$"
 for artifact in "${signed_artifacts[@]}"; do
   [[ "$artifact" =~ @sha256:[a-f0-9]{64}$ ]] || { echo "No digest resolved for $artifact; refusing to publish unsigned" >&2; exit 1; }
@@ -80,9 +87,9 @@ printf '%s\n' "${signed_artifacts[@]}" > dist/signed-artifacts.txt
 printf '%s\n' "$commit" > dist/source-commit.txt
 cp PROVENANCE.md dist/PROVENANCE.md
 printf 'image:\n  repository: ghcr.io/ploeg-hq/ploegd\n  tag: %s\n' "$version" > dist/registry-values.yaml
-(cd dist && sha256sum "ploeg_${version}_linux_amd64.tar.gz" "ploeg-$version.tgz" image-metadata.json claude-runner-image-metadata.json signed-artifacts.txt source-commit.txt PROVENANCE.md registry-values.yaml > SHA256SUMS)
-printf 'Ploeg %s\n\nIndependent release from commit %s. Experimental: qualification is limited to tested paths.\n\nController and worker: %s (Linux amd64). Self-hosted Claude runner and dispatch image (ADR-0084): ghcr.io/ploeg-hq/claude-runner:%s. Helm chart: oci://ghcr.io/ploeg-hq/charts/ploeg, version %s. BuildKit publishes image SBOM and build provenance attestations. Both images and the chart are signed keyless with cosign by the ploeg-hq/ploeg release workflow (GitHub Actions OIDC, public Rekor log); verify with cosign verify --certificate-oidc-issuer https://token.actions.githubusercontent.com --certificate-identity-regexp '^https://github.com/ploeg-hq/ploeg/.github/workflows/release.yml@'. Release assets include binaries, chart, checksums, the signed digests and source provenance.\n\nThis starts the new github.com/ploeg-hq/ploeg module; old webgrip/ploeg versions remain unchanged. No latest alias or deployment is updated. See PROVENANCE.md and the managed-worker migration guide before adoption.\n' "$version" "$commit" "$image" "$version" "$version" > dist/release-notes.md
-assets=("dist/ploeg_${version}_linux_amd64.tar.gz" "dist/ploeg-$version.tgz" dist/image-metadata.json dist/claude-runner-image-metadata.json dist/signed-artifacts.txt dist/source-commit.txt dist/PROVENANCE.md dist/registry-values.yaml dist/SHA256SUMS)
+(cd dist && sha256sum "ploeg_${version}_linux_amd64.tar.gz" "ploeg-$version.tgz" image-metadata.json claude-runner-image-metadata.json ploeg-worker-image-metadata.json signed-artifacts.txt source-commit.txt PROVENANCE.md registry-values.yaml > SHA256SUMS)
+printf 'Ploeg %s\n\nIndependent release from commit %s. Experimental: qualification is limited to tested paths.\n\nController and worker: %s (Linux amd64). Self-hosted Claude runner and dispatch image (ADR-0084): ghcr.io/ploeg-hq/claude-runner:%s. Worker image, the worker container of a Run whose harness runs in its own container (ADR-0138): ghcr.io/ploeg-hq/ploeg-worker:%s. Helm chart: oci://ghcr.io/ploeg-hq/charts/ploeg, version %s. BuildKit publishes image SBOM and build provenance attestations. Every image and the chart are signed keyless with cosign by the ploeg-hq/ploeg release workflow (GitHub Actions OIDC, public Rekor log); verify with cosign verify --certificate-oidc-issuer https://token.actions.githubusercontent.com --certificate-identity-regexp '^https://github.com/ploeg-hq/ploeg/.github/workflows/release.yml@'. Release assets include binaries, chart, checksums, the signed digests and source provenance.\n\nThis starts the new github.com/ploeg-hq/ploeg module; old webgrip/ploeg versions remain unchanged. No latest alias or deployment is updated. See PROVENANCE.md and the managed-worker migration guide before adoption.\n' "$version" "$commit" "$image" "$version" "$version" "$version" > dist/release-notes.md
+assets=("dist/ploeg_${version}_linux_amd64.tar.gz" "dist/ploeg-$version.tgz" dist/image-metadata.json dist/claude-runner-image-metadata.json dist/ploeg-worker-image-metadata.json dist/signed-artifacts.txt dist/source-commit.txt dist/PROVENANCE.md dist/registry-values.yaml dist/SHA256SUMS)
 prerelease=false
 [[ "$tag" != *-rc.* ]] || prerelease=true
 if [[ "$draft" == none ]]; then

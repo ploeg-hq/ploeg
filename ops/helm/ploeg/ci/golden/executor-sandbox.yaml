@@ -892,7 +892,7 @@ spec:
       automountServiceAccountToken: false
       containers:
       - command:
-        - /mnt/bin/ploeg-worker
+        - /usr/local/bin/ploeg-worker
         env:
         - name: PLOEG_API_URL
           value: http://ploeg:8080
@@ -946,38 +946,44 @@ spec:
               fieldPath: metadata.uid
         - name: WORK_DIR
           value: /mnt/ci-shared
-        image: registry.example/agent-runner:1.3.0
+        - name: PLOEG_HARNESS_LAUNCHER
+          value: /run/ploeg/launcher/launcher.sock
+        - name: GOMEMLIMIT
+          value: 460MiB
+        image: ghcr.io/ploeg-hq/ploeg-worker:CHART-VERSION
         name: worker
         resources:
           limits:
-            cpu: "1"
-            memory: 1Gi
+            cpu: 250m
+            memory: 512Mi
           requests:
-            cpu: "1"
-            memory: 1Gi
+            cpu: 250m
+            memory: 512Mi
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
             drop:
             - ALL
+          readOnlyRootFilesystem: true
           runAsGroup: 1000
           runAsNonRoot: true
           runAsUser: 1000
           seccompProfile:
             type: RuntimeDefault
         volumeMounts:
-        - mountPath: /mnt/bin
-          name: worker-bin
-          readOnly: true
         - mountPath: /mnt/ci-shared
           name: ci-shared
+        - mountPath: /run/ploeg/launcher
+          name: harness-launcher
+        - mountPath: /tmp
+          name: worker-tmp
       dnsPolicy: ClusterFirst
       initContainers:
       - command:
         - /usr/local/bin/ploeg-worker
         - install
         - /mnt/bin/ploeg-worker
-        image: ghcr.io/ploeg-hq/ploegd:CHART-VERSION
+        image: ghcr.io/ploeg-hq/ploeg-worker:CHART-VERSION
         name: worker-bin
         resources:
           limits:
@@ -998,6 +1004,39 @@ spec:
         volumeMounts:
         - mountPath: /mnt/bin
           name: worker-bin
+      - command:
+        - /mnt/bin/ploeg-worker
+        - harness-serve
+        - /run/ploeg/launcher/launcher.sock
+        image: registry.example/agent-runner:1.3.0
+        name: harness
+        resources:
+          limits:
+            cpu: "1"
+            memory: 1Gi
+          requests:
+            cpu: "1"
+            memory: 1Gi
+        restartPolicy: Always
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          runAsGroup: 1000
+          runAsNonRoot: true
+          runAsUser: 1000
+          seccompProfile:
+            type: RuntimeDefault
+        volumeMounts:
+        - mountPath: /mnt/bin
+          name: worker-bin
+          readOnly: true
+        - mountPath: /run/ploeg/launcher
+          name: harness-launcher
+          readOnly: true
+        - mountPath: /mnt/ci-shared
+          name: ci-shared
       restartPolicy: Never
       runtimeClassName: kata
       securityContext:
@@ -1009,6 +1048,13 @@ spec:
       volumes:
       - emptyDir: {}
         name: worker-bin
+      - emptyDir:
+          medium: Memory
+          sizeLimit: 1Mi
+        name: harness-launcher
+      - emptyDir:
+          sizeLimit: 1Gi
+        name: worker-tmp
       - emptyDir:
           sizeLimit: 8Gi
         name: ci-shared

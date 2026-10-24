@@ -172,6 +172,7 @@ components:
     shipped_in:
       - source
       - ploegd image
+      - ploeg-worker image
       - release tarball
       - Helm chart
     license: Apache-2.0
@@ -208,6 +209,7 @@ components:
     kind: language runtime
     shipped_in:
       - ploegd image
+      - ploeg-worker image
       - release tarball
     license: BSD-3-Clause AND LicenseRef-Google-Patents-Notice-Golang
     disposition: allowlisted
@@ -218,7 +220,7 @@ components:
       - golang
     license: BSD-3-Clause AND GPL-2.0-or-later
     disposition: not-distributed
-    note: Build stage of ops/docker/ploegd/Dockerfile (golang:1.27-trixie, digest-pinned). Only the compiled binaries leave it, so none of its Debian packages reach the image.
+    note: Build stage of ops/docker/ploegd/Dockerfile and ops/docker/ploeg-worker/Dockerfile (golang:1.27-trixie, digest-pinned). Only the compiled binaries leave it, so none of its Debian packages reach either image.
   - name: distroless static-debian13 base image (ploegd)
     kind: base image
     refs:
@@ -228,6 +230,22 @@ components:
     license: GPL-2.0-or-later AND GPL-2.0-only AND MPL-2.0 AND LicenseRef-Public-Domain AND LicenseRef-media-types
     disposition: container-guidance
     note: Six Debian 13 packages, read from the pinned digest on 2026-10-23 - base-files 13.8+deb13u7 (GPL-2+), ca-certificates 20250419 (GPL-2+ scripts, MPL-2.0 Mozilla certificate data), media-types 13.0.0 (ad-hoc permissive), netbase 6.5 (GPL-2), tzdata and tzdata-legacy 2026c (public domain). Each keeps its copyright file under /usr/share/doc and its dpkg record, which the container image guidance (A)(2) asks for, and the image's Dockerfile is public (GoogleContainerTools/distroless, Apache-2.0). This is the minimal base the guidance prefers. Base-image content is reviewed under the container image guidance, not the allowlist; confirm with CNCF staff that no exception is expected.
+  - name: distroless base-debian13 base image (ploeg-worker)
+    kind: base image
+    refs:
+      - distroless/base-debian13
+    shipped_in:
+      - ploeg-worker image
+    license: GPL-2.0-or-later AND LGPL-2.1-or-later AND Apache-2.0 AND BSD-3-Clause AND Zlib AND MPL-2.0 AND LicenseRef-Public-Domain AND LicenseRef-media-types
+    disposition: container-guidance
+    note: Ten Debian 13 packages, read from the pinned digest sha256:f9518b74815721f537a7458cc693b4406208c04fce23bbffab511516117f34fd on 2026-10-24 - base-files, ca-certificates, libc6 (glibc, LGPL-2.1+), libssl3t64 (Apache-2.0), libzstd1 (BSD-3-Clause), media-types, netbase, tzdata, tzdata-legacy and zlib1g (Zlib). Each keeps its copyright file and its dpkg record under /var/lib/dpkg/status.d, as the container image guidance (A)(2) asks, and the image's Dockerfile is public (GoogleContainerTools/distroless, Apache-2.0). The ploeg-worker image (ADR-0138) needs glibc for git, which static-debian13 lacks.
+  - name: Debian packages copied into ploeg-worker
+    kind: os packages
+    shipped_in:
+      - ploeg-worker image
+    license: GPL-2.0-only AND LGPL-2.1-or-later AND GPL-3.0-or-later AND curl AND MIT AND BSD-2-Clause AND BSD-3-Clause AND ISC AND OLDAP-2.8 AND Apache-2.0 AND Zlib
+    disposition: container-guidance
+    note: ops/docker/ploeg-worker/Dockerfile installs git with apt from Debian 13 (debian:trixie-slim, digest-pinned) in a build stage and copies git 2.47.3, git-remote-http(s) and the 31 shared libraries they link (libcurl3t64-gnutls, libgnutls30t64, the Kerberos, nettle, nghttp, ngtcp2, idn2, psl, ssh2, sasl2, ldap and pcre2 libraries among them) into the distroless base. For every package a file came from, the copy carries its dpkg-query record under /var/lib/dpkg/status.d and its copyright file under /usr/share/doc, and /usr/share/doc/ploeg-worker-git-packages.txt lists them; the BuildKit SBOM attached to each release is the authoritative package list.
   - name: debian bookworm-slim base image (claude-runner)
     kind: base image
     refs:

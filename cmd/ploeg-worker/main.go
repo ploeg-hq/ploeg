@@ -13,7 +13,6 @@ import (
 	"io"
 	"log/slog"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strconv"
@@ -40,6 +39,14 @@ func main() {
 	if len(os.Args) >= 3 && os.Args[1] == "install" {
 		if err := installSelf(os.Args[2]); err != nil {
 			log.Error("install failed", "dst", os.Args[2], "err", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	if len(os.Args) >= 3 && os.Args[1] == "harness-serve" {
+		if err := runHarnessServe(os.Args[2]); err != nil {
+			log.Error("harness launcher exiting", "socket", os.Args[2], "err", err)
 			os.Exit(1)
 		}
 		return
@@ -194,10 +201,16 @@ func run(log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	if err := worker.CheckHarnessBinary(hc, exec.LookPath); err != nil {
+	side, err := connectHarnessSide(log, hc)
+	if err != nil {
 		return err
 	}
-	cfg.HarnessVersion = worker.HarnessVersion(hc, exec.LookPath, worker.CommandVersionProbe)
+	defer side.close()
+	lookPath := worker.LookPathIn(context.Background(), side.spawner, side.environ)
+	if err := worker.CheckHarnessBinary(hc, lookPath); err != nil {
+		return err
+	}
+	cfg.HarnessVersion = worker.HarnessVersion(hc, lookPath, worker.SpawnedVersionProbe(side.spawner, side.environ, side.scratch(cfg.WorkDir)))
 	cfg.SkillDirs = worker.SkillDirectories(hc)
 	cfg.KnowledgeDirs = filepath.SplitList(os.Getenv("PLOEG_KNOWLEDGE_DIRS"))
 	cfg.RepoKnowledgeDir = os.Getenv("PLOEG_REPO_KNOWLEDGE_DIR")
@@ -216,7 +229,7 @@ func run(log *slog.Logger) error {
 	if cfg.Toolchains, err = worker.ParseToolchains(os.Getenv("PLOEG_TOOLCHAINS")); err != nil {
 		return err
 	}
-	if err := worker.CheckToolchains(cfg.Toolchains); err != nil {
+	if err := worker.CheckToolchains(cfg.Toolchains, func(dir string) error { return side.spawner.CheckDir(context.Background(), dir) }); err != nil {
 		return err
 	}
 	if cfg.Telemetry, err = worker.ParseTelemetry(os.Getenv("PLOEG_TELEMETRY")); err != nil {
@@ -226,7 +239,7 @@ func run(log *slog.Logger) error {
 		return err
 	}
 	if len(cfg.ClaudePlugins) > 0 {
-		if cfg.PluginHookGuard, err = os.Executable(); err != nil {
+		if cfg.PluginHookGuard, err = side.executable(); err != nil {
 			return fmt.Errorf("PLOEG_CLAUDE_PLUGINS: cannot locate the worker binary for the hook guard: %w", err)
 		}
 	}
@@ -265,7 +278,9 @@ func run(log *slog.Logger) error {
 	// staying silent about it was.
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	return worker.New(cfg, adapter, broker, log).RunContext(ctx)
+	w := worker.New(cfg, adapter, broker, log)
+	w.Spawner, w.HarnessEnviron = side.spawner, side.environ
+	return w.RunContext(ctx)
 }
 
 // logClaudePluginReach says which declared Claude Code plugins this harness
