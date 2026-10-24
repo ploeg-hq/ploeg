@@ -26,19 +26,28 @@ sandbox executor. Context: the root context.
 {{- end -}}
 
 {{/*
-ploeg.runtimeClassName resolves the RuntimeClass for one (team, role)
-SandboxTemplate through the role -> team -> global chain, the same
-field-by-field override shape as harness: a Role's sandbox.runtimeClassName
-wins over its team's, which wins over executor.sandbox.runtimeClassName. Empty
-at every tier yields "", and sandbox.yaml then renders no runtimeClassName at
-all (the node's default runtime).
+ploeg.runtimeClassName resolves the RuntimeClass of one (team, role) worker pod
+under every executor type, through the role -> team -> global chain: a Role's
+runtimeClassName wins over its team's, which wins over
+executor.runtimeClassName. Under the sandbox executor each tier first reads its
+sandbox.runtimeClassName, the sandbox-only spelling that predates the
+executor-wide key, so existing sandbox values render unchanged. Empty at every
+tier yields "", and the worker pod renders no runtimeClassName at all (the
+node's default runtime).
 Context: (dict "root" $ "team" <team> "role" <role>).
 */}}
 {{- define "ploeg.runtimeClassName" -}}
-{{- $rh := (.role | default dict).sandbox | default dict }}
-{{- $th := .team.sandbox | default dict }}
-{{- $gh := .root.Values.executor.sandbox | default dict }}
-{{- $rh.runtimeClassName | default $th.runtimeClassName | default $gh.runtimeClassName | default "" }}
+{{- $role := .role | default dict }}
+{{- $tiers := list $role .team .root.Values.executor }}
+{{- $sandbox := eq (include "ploeg.teamExecutorType" (dict "root" .root "team" .team)) "sandbox" }}
+{{- $resolved := "" }}
+{{- range $tier := $tiers }}
+{{- if not $resolved }}
+{{- if $sandbox }}{{- $resolved = ($tier.sandbox | default dict).runtimeClassName | default "" }}{{- end }}
+{{- $resolved = $resolved | default ($tier.runtimeClassName | default "") }}
+{{- end }}
+{{- end }}
+{{- $resolved }}
 {{- end -}}
 
 {{- define "ploeg.sandboxLauncherName" -}}
