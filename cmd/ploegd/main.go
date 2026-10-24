@@ -421,6 +421,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 		ChatAllowanceUSD: chatAllowance,
 		ChatBudgetUSD:    chatBudget,
 		FollowUps:        cfg.ForgeFollowUps(),
+		FastChecks:       fastChecks(cfg),
 		ForgeBots:        forgeBots(),
 		Deploys:          deploys,
 		Gates:            gates,
@@ -441,6 +442,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 		}
 	}
 	log.Info("forge follow-ups loaded", "teams", len(srv.FollowUps))
+	log.Info("fast checks loaded", "repositories", len(srv.FastChecks))
 	if engine != nil {
 		srv.Engine = engine
 	}
@@ -456,6 +458,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 			CIWaits:         ciWaits(cfg),
 			Log:             log,
 		}
+		reviews.Conflicts = srv
 		srv.Reviews = reviews
 		log.Info("pull request merge detection enabled", "reconcile_every", reviewEvery,
 			"tracker_done_on_merge", reviews.MarkTrackerDone)
@@ -640,6 +643,14 @@ func dispatchGate(engine *shiftengine.Engine, cfg *config.File, log *slog.Logger
 	}
 	log.Info("dispatch gate", "dependency_hold", hold, "dependency_recheck", engine.DependencyRecheck.String(), "premise_check_teams", len(engine.PremiseModels))
 	return nil
+}
+
+func fastChecks(cfg *config.File) map[string][]string {
+	out := map[string][]string{}
+	for _, c := range cfg.FastChecks() {
+		out[httpapi.FastCheckRoute(c.Forge, c.Repo)] = c.Commands
+	}
+	return out
 }
 
 func ciWaits(cfg *config.File) shiftengine.CIWaits {

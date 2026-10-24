@@ -97,6 +97,10 @@ type ClaimResponse struct {
 	// back (ADR-0142): the worker checks the branch out as the person left
 	// it and names the commits they added. Nil from an older ploegd.
 	Handback *work.Handback `json:"handback,omitempty"`
+	// FastCheck is the fast check of the Work Item's repository, sent to a
+	// writing Run only (ADR-0146). Nil from an older ploegd and for a
+	// repository that declares none.
+	FastCheck []string `json:"fastCheck,omitempty"`
 }
 
 // Claim returns nil when the queue is empty (HTTP 204) — the empty-handed
