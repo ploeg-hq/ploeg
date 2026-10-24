@@ -101,7 +101,7 @@ for artifact in "${signed_artifacts[@]}"; do
   cosign verify --certificate-oidc-issuer https://token.actions.githubusercontent.com \
     --certificate-identity-regexp "$signer_identity" "$artifact" > /dev/null
 done
-vex_assets=()
+attestation_assets=()
 for name in "${names[@]}"; do
   subject="${repositories[$name]}@${digests[$name]}"
   IMAGE_NAME="$name" IMAGE_DIGEST="${digests[$name]}" VEX_TIMESTAMP="$created" \
@@ -110,15 +110,21 @@ for name in "${names[@]}"; do
   cosign attest --yes --type openvex --predicate "dist/$name.openvex.json" "$subject"
   cosign verify-attestation --type openvex --certificate-oidc-issuer https://token.actions.githubusercontent.com \
     --certificate-identity-regexp "$signer_identity" "$subject" > /dev/null
-  vex_assets+=("$name.openvex.json")
+  cp "dist/cve/$name/cve-budget.json" "dist/$name.cve-budget.json"
+  jq -e --arg subject "$subject" '.image == $subject and .verdict == "pass" and .mode == "enforce"' "dist/$name.cve-budget.json" > /dev/null \
+    || { echo "The CVE budget verdict of $name does not pass $subject under enforcement" >&2; exit 1; }
+  cosign attest --yes --type https://github.com/ploeg-hq/ploeg/attestations/cve-budget/v1 --predicate "dist/$name.cve-budget.json" "$subject"
+  cosign verify-attestation --type https://github.com/ploeg-hq/ploeg/attestations/cve-budget/v1 --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+    --certificate-identity-regexp "$signer_identity" "$subject" > /dev/null
+  attestation_assets+=("$name.openvex.json" "$name.cve-budget.json")
 done
 printf '%s\n' "${signed_artifacts[@]}" > dist/signed-artifacts.txt
 printf '%s\n' "$commit" > dist/source-commit.txt
 cp PROVENANCE.md dist/PROVENANCE.md
 printf 'image:\n  repository: ghcr.io/ploeg-hq/ploegd\n  tag: %s\n' "$version" > dist/registry-values.yaml
-(cd dist && sha256sum "ploeg_${version}_linux_amd64.tar.gz" "ploeg-$version.tgz" image-metadata.json claude-runner-image-metadata.json ploeg-worker-image-metadata.json signed-artifacts.txt source-commit.txt PROVENANCE.md registry-values.yaml "${vex_assets[@]}" > SHA256SUMS)
-printf 'Ploeg %s\n\nIndependent release from commit %s. Experimental: qualification is limited to tested paths.\n\nController and worker: %s (Linux amd64). Self-hosted Claude runner and dispatch image (ADR-0084): ghcr.io/ploeg-hq/claude-runner:%s. Worker image, the worker container of a Run whose harness runs in its own container (ADR-0138): ghcr.io/ploeg-hq/ploeg-worker:%s. Helm chart: oci://ghcr.io/ploeg-hq/charts/ploeg, version %s. BuildKit publishes image SBOM and build provenance attestations. Every image passed the CVE gate (zero Critical and High findings after reviewed OpenVEX statements, ops/security/cve-budgets.yaml) before it was tagged, and carries its OpenVEX document as a signed cosign attestation (verify with cosign verify-attestation --type openvex); the same documents are the <image>.openvex.json release assets, for grype --vex and trivy --vex. Every image and the chart are signed keyless with cosign by the ploeg-hq/ploeg release workflow (GitHub Actions OIDC, public Rekor log); verify with cosign verify --certificate-oidc-issuer https://token.actions.githubusercontent.com --certificate-identity-regexp '^https://github.com/ploeg-hq/ploeg/.github/workflows/release.yml@'. Release assets include binaries, chart, checksums, the signed digests and source provenance.\n\nThis starts the new github.com/ploeg-hq/ploeg module; old webgrip/ploeg versions remain unchanged. No latest alias or deployment is updated. See PROVENANCE.md and the managed-worker migration guide before adoption.\n' "$version" "$commit" "ghcr.io/ploeg-hq/ploegd:$version" "$version" "$version" "$version" > dist/release-notes.md
-assets=("dist/ploeg_${version}_linux_amd64.tar.gz" "dist/ploeg-$version.tgz" dist/image-metadata.json dist/claude-runner-image-metadata.json dist/ploeg-worker-image-metadata.json dist/signed-artifacts.txt dist/source-commit.txt dist/PROVENANCE.md dist/registry-values.yaml "${vex_assets[@]/#/dist/}" dist/SHA256SUMS)
+(cd dist && sha256sum "ploeg_${version}_linux_amd64.tar.gz" "ploeg-$version.tgz" image-metadata.json claude-runner-image-metadata.json ploeg-worker-image-metadata.json signed-artifacts.txt source-commit.txt PROVENANCE.md registry-values.yaml "${attestation_assets[@]}" > SHA256SUMS)
+printf 'Ploeg %s\n\nIndependent release from commit %s. Experimental: qualification is limited to tested paths.\n\nController and worker: %s (Linux amd64). Self-hosted Claude runner and dispatch image (ADR-0084): ghcr.io/ploeg-hq/claude-runner:%s. Worker image, the worker container of a Run whose harness runs in its own container (ADR-0138): ghcr.io/ploeg-hq/ploeg-worker:%s. Helm chart: oci://ghcr.io/ploeg-hq/charts/ploeg, version %s. BuildKit publishes image SBOM and build provenance attestations. Every image passed the CVE gate (zero Critical and High findings after reviewed OpenVEX statements, ops/security/cve-budgets.yaml) before it was tagged, and carries its OpenVEX document and its CVE budget verdict as signed cosign attestations (verify with cosign verify-attestation --type openvex, or --type https://github.com/ploeg-hq/ploeg/attestations/cve-budget/v1); the same documents are the <image>.openvex.json and <image>.cve-budget.json release assets, for grype --vex and trivy --vex. Every image and the chart are signed keyless with cosign by the ploeg-hq/ploeg release workflow (GitHub Actions OIDC, public Rekor log); verify with cosign verify --certificate-oidc-issuer https://token.actions.githubusercontent.com --certificate-identity-regexp '^https://github.com/ploeg-hq/ploeg/.github/workflows/release.yml@'. Release assets include binaries, chart, checksums, the signed digests and source provenance.\n\nThis starts the new github.com/ploeg-hq/ploeg module; old webgrip/ploeg versions remain unchanged. No latest alias or deployment is updated. See PROVENANCE.md and the managed-worker migration guide before adoption.\n' "$version" "$commit" "ghcr.io/ploeg-hq/ploegd:$version" "$version" "$version" "$version" > dist/release-notes.md
+assets=("dist/ploeg_${version}_linux_amd64.tar.gz" "dist/ploeg-$version.tgz" dist/image-metadata.json dist/claude-runner-image-metadata.json dist/ploeg-worker-image-metadata.json dist/signed-artifacts.txt dist/source-commit.txt dist/PROVENANCE.md dist/registry-values.yaml "${attestation_assets[@]/#/dist/}" dist/SHA256SUMS)
 prerelease=false
 [[ "$tag" != *-rc.* ]] || prerelease=true
 if [[ "$draft" == none ]]; then
