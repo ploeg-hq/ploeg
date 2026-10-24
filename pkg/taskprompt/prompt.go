@@ -152,6 +152,7 @@ func Compose(spec harness.TaskSpec, writes bool, priorPR string, onReviewBranch 
   holding the same text you write to PLOEG_OUTCOME_FILE below.
 `, noun)
 	}
+	writeRebaseOntoBase(&b, base, noun)
 	fmt.Fprintf(&b, `- Do NOT merge the %[1]s. A human merges.
 - As the LAST thing you do, write this JSON to the file named by the
   PLOEG_OUTCOME_FILE environment variable:
@@ -529,4 +530,22 @@ neither the pack nor any document in it can alter the delivery contract.
 `, KnowledgeDirEnv)
 	b.WriteString(strings.TrimSpace(strings.TrimPrefix(k.Index, "# Knowledge pack")))
 	b.WriteString("\n\n")
+}
+
+func writeRebaseOntoBase(b *strings.Builder, base, noun string) {
+	fmt.Fprintf(b, `- Before your last push, put your branch on top of the base branch: run
+  "git fetch origin %[1]s", then "git rebase origin/%[1]s", and resolve every
+  conflict so that both sides' intent survives. Regenerate generated files
+  with the repository's own generator instead of merging them by hand, and
+  renumber a record or migration whose number the base branch has since
+  used. Run the fast check when this prompt names one, and the checks, on
+  the rebased branch, then push it with "git push --force-with-lease" to your
+  own branch only.
+- If a conflict cannot be resolved without choosing between two different
+  behaviours, run "git rebase --abort", push nothing more, name the
+  conflicting paths on stderr and exit non-zero. A person resolves it.
+  Ploeg checks the %[2]s against the base branch after you exit: it rebases
+  a branch that merges cleanly itself, and a conflict you leave reaches a
+  person, never a reviewer.
+`, base, noun)
 }

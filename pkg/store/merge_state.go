@@ -28,6 +28,9 @@ type MergeCheck struct {
 	State            MergeState
 	HeadSHA          string
 	UnmergeablePolls int
+	// Entered is set by RecordMergeCheck when this poll moved the pull
+	// request into conflicted.
+	Entered bool
 }
 
 // NextMergeCheck applies one forge poll to prev. mergeable true is clean.
@@ -101,6 +104,7 @@ func (s *Store) RecordMergeCheck(ctx context.Context, key PullRequestKey, workIt
 		WHERE id = $1`, id, string(next.State), next.HeadSHA, next.UnmergeablePolls, obs.BaseBranch, at); err != nil {
 		return MergeCheck{}, false, err
 	}
+	next.Entered = prev.State != MergeConflicted && next.State == MergeConflicted
 	if (prev.State == MergeConflicted) != (next.State == MergeConflicted) {
 		action := "pull_request.mergeable"
 		if next.State == MergeConflicted {

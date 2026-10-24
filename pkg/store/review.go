@@ -33,14 +33,19 @@ type ReviewItem struct {
 	// ShiftID is the Work Item's last Shift, the one that handed it to
 	// review; zero when it has none.
 	ShiftID int64
+	// Branch is that Shift's branch, the pull request's head branch; empty
+	// when it has none.
+	Branch string
 }
 
 const awaitingReviewQuery = `
 		SELECT w.id, w.provider, w.external_id,
 		       w.target_forge, w.target_owner, w.target_repo, w.target_base_branch,
 		       COALESCE(last.links, '{}'), last.delivery, w.origin, w.source_pr,
-		       COALESCE((SELECT sh.id FROM shifts sh WHERE sh.work_item_id = w.id ORDER BY sh.id DESC LIMIT 1), 0)
+		       COALESCE(lastshift.id, 0), COALESCE(lastshift.branch, '')
 		FROM work_items w
+		LEFT JOIN LATERAL (SELECT sh.id, sh.branch FROM shifts sh WHERE sh.work_item_id = w.id
+		                   ORDER BY sh.id DESC LIMIT 1) lastshift ON true
 		LEFT JOIN LATERAL (SELECT r.links, r.delivery FROM agent_runs r
 		                   WHERE r.work_item_id = w.id AND r.writes AND r.state = 'finished'
 		                     AND r.outcome IN ('pr_opened', 'pr_updated')
@@ -63,7 +68,7 @@ func (s *Store) AwaitingReview(ctx context.Context) ([]ReviewItem, error) {
 		var t work.Target
 		var delivery []byte
 		if err := rows.Scan(&it.WorkItemID, &it.Provider, &it.ExternalID,
-			&t.Forge, &t.Owner, &t.Repo, &t.BaseBranch, &it.Links, &delivery, &it.Origin, &it.SourcePR, &it.ShiftID); err != nil {
+			&t.Forge, &t.Owner, &t.Repo, &t.BaseBranch, &it.Links, &delivery, &it.Origin, &it.SourcePR, &it.ShiftID, &it.Branch); err != nil {
 			return nil, err
 		}
 		if delivery != nil {
