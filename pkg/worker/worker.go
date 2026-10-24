@@ -787,7 +787,7 @@ func runWatchedAgent(ctx context.Context, log *slog.Logger, broker llmbroker.Bro
 	harnessKey := cred.APIKey
 	switch {
 	case isolation == KeyIsolationProxy && cred.APIKey != "":
-		proxy, err := startLLMKeyProxy(env.LLM.BaseURL, cred.APIKey, env.Activity)
+		proxy, err := startLLMKeyProxy(env.LLM.BaseURL, cred.APIKey, env.Activity, proxyRun{trace: cred.Alias, log: log})
 		if err != nil {
 			return harness.OutcomeReport{}, fmt.Errorf("isolate the per-run key: %w", err), nil
 		}

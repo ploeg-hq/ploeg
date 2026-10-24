@@ -42,7 +42,7 @@ func fakeGateway(t *testing.T) (*httptest.Server, *gatewaySeen) {
 
 func TestKeyProxySwapsTheBearerPlaceholderForTheRealKey(t *testing.T) {
 	gw, seen := fakeGateway(t)
-	p, err := startLLMKeyProxy(gw.URL+"/v1", "sk-real-run-key", nil)
+	p, err := startLLMKeyProxy(gw.URL+"/v1", "sk-real-run-key", nil, proxyRun{log: discardLog()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,7 @@ func TestKeyProxySwapsTheBearerPlaceholderForTheRealKey(t *testing.T) {
 
 func TestKeyProxySwapsAnAnthropicStyleKey(t *testing.T) {
 	gw, seen := fakeGateway(t)
-	p, err := startLLMKeyProxy(gw.URL, "sk-real-run-key", nil)
+	p, err := startLLMKeyProxy(gw.URL, "sk-real-run-key", nil, proxyRun{log: discardLog()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +95,7 @@ func TestKeyProxyStreamsWithoutBuffering(t *testing.T) {
 	}))
 	defer gw.Close()
 	defer close(release)
-	p, err := startLLMKeyProxy(gw.URL, "sk-real-run-key", nil)
+	p, err := startLLMKeyProxy(gw.URL, "sk-real-run-key", nil, proxyRun{log: discardLog()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +128,7 @@ func TestKeyProxyRefusesRequestsWithoutThePlaceholder(t *testing.T) {
 		forwarded.Add(1)
 	}))
 	defer gw.Close()
-	p, err := startLLMKeyProxy(gw.URL, "sk-real-run-key", nil)
+	p, err := startLLMKeyProxy(gw.URL, "sk-real-run-key", nil, proxyRun{log: discardLog()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -319,7 +319,7 @@ func TestSilentHarnessThatKeepsCallingTheModelIsNotIdle(t *testing.T) {
 // same header, and never the placeholder or a second credential.
 func TestKeyProxySwapsTheLiteLLMKeyHeaderForMCP(t *testing.T) {
 	gw, seen := fakeGateway(t)
-	p, err := startLLMKeyProxy(gw.URL+"/v1", "sk-real-run-key", nil)
+	p, err := startLLMKeyProxy(gw.URL+"/v1", "sk-real-run-key", nil, proxyRun{log: discardLog()})
 	if err != nil {
 		t.Fatal(err)
 	}

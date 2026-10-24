@@ -54,6 +54,14 @@ func startForgeTokenProxy(repo harness.RepoRef, tokens forgeTokenSource, access 
 		return nil, fmt.Errorf("listen for the forge token proxy: %w", err)
 	}
 	scope := newForgeScope(repo, access)
+	refusals := refusalLog{
+		proxy: forgeProxyName,
+		run:   leaks.run,
+		log:   leaks.log,
+		secrets: func() []string {
+			return append(leaks.watch.values(), placeholder)
+		},
+	}
 	publicGitHubAPI := repo.Dialect() == harness.ForgeGitHub && strings.EqualFold(target.Host, "github.com")
 	proxy := &httputil.ReverseProxy{
 		Rewrite: func(r *httputil.ProxyRequest) {
@@ -67,12 +75,18 @@ func startForgeTokenProxy(repo harness.RepoRef, tokens forgeTokenSource, access 
 			r.Out.Host = host
 			attachForgeToken(r.Out.Header, kind, repo.Dialect(), tokens.current(r.In.Context()))
 		},
+		ModifyResponse: func(resp *http.Response) error {
+			if resp.StatusCode == http.StatusUnauthorized && resp.Request != nil {
+				refusals.upstreamRejectedCredential(resp.Request, resp.StatusCode)
+			}
+			return nil
+		},
 		FlushInterval: -1,
 	}
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		kind := scope.kind(r)
+		kind, outOfScope := scope.classify(r)
 		if kind == forgeOutOfScope {
-			http.Error(w, "this Run's forge access is limited to what its Role needs in "+repo.ProjectPath(), http.StatusForbidden)
+			refusals.refuse(w, r, outOfScope, "this Run's forge access is limited to what its Role needs in "+repo.ProjectPath())
 			return
 		}
 		if kind == forgeGit && !carriesForgeCredential(r.Header) {
@@ -80,22 +94,23 @@ func startForgeTokenProxy(repo harness.RepoRef, tokens forgeTokenSource, access 
 			return
 		}
 		if !presentsForgePlaceholder(r.Header, placeholder) {
-			http.Error(w, "this Run's forge proxy serves only requests that present the Run's placeholder", http.StatusForbidden)
+			refusals.refuse(w, r, placeholderRefusal(carriesForgeCredential(r.Header)),
+				"this Run's forge proxy serves only requests that present the Run's placeholder")
 			return
 		}
 		if _, leaked := leaks.watch.leak(); leaked && writesToTheForge(kind, r) {
-			http.Error(w, "a credential leak stopped this Run's writes to the forge", http.StatusForbidden)
+			refusals.refuse(w, r, refusalWritesStoppedByLeak, "a credential leak stopped this Run's writes to the forge")
 			return
 		}
 		if kind == forgeAPI {
-			if err := inspectAPIRequestForLeaks(r, leaks); err != nil {
-				http.Error(w, err.Error(), http.StatusForbidden)
+			if reason, err := inspectAPIRequestForLeaks(r, leaks); err != nil {
+				refusals.refuse(w, r, reason, err.Error())
 				return
 			}
 		}
 		if isReceivePack(r) {
-			if err := fence.admit(r); err != nil {
-				http.Error(w, err.Error(), http.StatusForbidden)
+			if reason, err := fence.admit(r); err != nil {
+				refusals.refuse(w, r, reason, err.Error())
 				return
 			}
 		}
@@ -158,31 +173,38 @@ func writesToTheForge(kind forgeRequestKind, r *http.Request) bool {
 	return isReceivePack(r) || (kind == forgeAPI && !slices.Contains(readMethods, r.Method))
 }
 
-func inspectAPIRequestForLeaks(r *http.Request, leaks leakScope) error {
+func inspectAPIRequestForLeaks(r *http.Request, leaks leakScope) (refusalReason, error) {
 	route := r.Method + " " + r.URL.Path
 	if encoding := r.Header.Get("Content-Encoding"); encoding != "" && !strings.EqualFold(encoding, "identity") {
-		return fmt.Errorf("the forge proxy cannot inspect an API body with Content-Encoding %q", encoding)
+		return refusalUninspectableBody, fmt.Errorf("the forge proxy cannot inspect an API body with Content-Encoding %q", encoding)
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxInspectedAPIBody+1))
 	if err != nil {
-		return fmt.Errorf("read the API request body: %w", err)
+		return refusalUninspectableBody, fmt.Errorf("read the API request body: %w", err)
 	}
 	if len(body) > maxInspectedAPIBody {
-		return fmt.Errorf("the API request body exceeds the %d bytes the forge proxy inspects", maxInspectedAPIBody)
+		return refusalUninspectableBody, fmt.Errorf("the API request body exceeds the %d bytes the forge proxy inspects", maxInspectedAPIBody)
 	}
 	r.Body = io.NopCloser(bytes.NewReader(body))
 	query, _ := url.QueryUnescape(r.URL.RawQuery)
 	for _, part := range [][]byte{body, []byte(r.URL.RawQuery), []byte(query)} {
 		if kind, found := leaks.watch.find(part); found {
 			leaks.report(credentialLeak{kind: kind, where: "the forge API request " + route})
-			return fmt.Errorf("refused %s: the request carries one of this Run's credentials", route)
+			return refusalCredentialInRequest, fmt.Errorf("refused %s: the request carries one of this Run's credentials", route)
 		}
 	}
-	return nil
+	return "", nil
 }
 
 func carriesForgeCredential(h http.Header) bool {
 	return h.Get("Authorization") != "" || h.Get("Private-Token") != ""
+}
+
+func placeholderRefusal(presentedACredential bool) refusalReason {
+	if presentedACredential {
+		return refusalWrongPlaceholder
+	}
+	return refusalMissingPlaceholder
 }
 
 func challengeGitForPlaceholder(w http.ResponseWriter) {
@@ -345,31 +367,37 @@ func newForgeScope(repo harness.RepoRef, access forgeAccess) forgeScope {
 }
 
 func (s forgeScope) kind(r *http.Request) forgeRequestKind {
+	kind, _ := s.classify(r)
+	return kind
+}
+
+func (s forgeScope) classify(r *http.Request) (forgeRequestKind, refusalReason) {
 	segments, ok := s.decodedSegments(r.URL.EscapedPath())
 	if !ok {
-		return forgeOutOfScope
+		return forgeOutOfScope, refusalUnsafePath
 	}
 	if rest, ok := s.gitRemainder(segments); ok {
 		if len(rest) == 2 && rest[0] == "info" && rest[1] == "refs" {
 			rest = []string{"info", "refs?service=" + r.URL.Query().Get("service")}
 		}
 		if allowed(s.git, r.Method, rest) {
-			return forgeGit
+			return forgeGit, ""
 		}
-		return forgeOutOfScope
+		return forgeOutOfScope, refusalForbiddenEndpoint
 	}
 	if rest, ok := hasPrefix(segments, s.apiPrefix); ok {
 		if s.gitlab {
 			if len(rest) == 0 || rest[0] != strings.Join(s.project, "/") {
-				return forgeOutOfScope
+				return forgeOutOfScope, refusalOutsideRepository
 			}
 			rest = rest[1:]
 		}
 		if allowed(s.api, r.Method, rest) {
-			return forgeAPI
+			return forgeAPI, ""
 		}
+		return forgeOutOfScope, refusalForbiddenEndpoint
 	}
-	return forgeOutOfScope
+	return forgeOutOfScope, refusalOutsideRepository
 }
 
 func (s forgeScope) decodedSegments(escaped string) ([]string, bool) {

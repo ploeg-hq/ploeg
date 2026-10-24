@@ -34,19 +34,19 @@ func isReceivePack(r *http.Request) bool {
 	return r.Method == http.MethodPost && strings.HasSuffix(strings.ToLower(r.URL.Path), "/git-receive-pack")
 }
 
-func (f pushFence) admit(r *http.Request) error {
+func (f pushFence) admit(r *http.Request) (refusalReason, error) {
 	body, err := decodedPushBody(r)
 	if err != nil {
-		return err
+		return refusalUninspectablePush, err
 	}
 	var inspected bytes.Buffer
 	updates, err := readRefUpdates(io.LimitReader(io.TeeReader(body, &inspected), maxCommandListBytes))
 	if err != nil {
-		return err
+		return refusalUninspectablePush, err
 	}
 	for _, u := range updates {
-		if err := f.permits(u); err != nil {
-			return err
+		if reason, err := f.permits(u); err != nil {
+			return reason, err
 		}
 	}
 	replay := io.MultiReader(&inspected, body)
@@ -54,7 +54,7 @@ func (f pushFence) admit(r *http.Request) error {
 		io.Reader
 		io.Closer
 	}{replay, r.Body}
-	return nil
+	return "", nil
 }
 
 func decodedPushBody(r *http.Request) (io.Reader, error) {
@@ -83,14 +83,14 @@ func (u refUpdate) deletes() bool {
 	return strings.Trim(u.newID, "0") == ""
 }
 
-func (f pushFence) permits(u refUpdate) error {
+func (f pushFence) permits(u refUpdate) (refusalReason, error) {
 	if u.ref != f.runBranchRef {
-		return fmt.Errorf("this Run may push only %s, not %s", f.runBranchRef, u.ref)
+		return refusalPushToOtherBranch, fmt.Errorf("this Run may push only %s, not %s", f.runBranchRef, u.ref)
 	}
 	if u.deletes() {
-		return fmt.Errorf("this Run may not delete its own branch %s", u.ref)
+		return refusalBranchDeletion, fmt.Errorf("this Run may not delete its own branch %s", u.ref)
 	}
-	return nil
+	return "", nil
 }
 
 func readRefUpdates(r io.Reader) ([]refUpdate, error) {
