@@ -165,6 +165,45 @@ func (v Verdict) Line() string {
 		v.High, v.Budget.High, mark(v.High > v.Budget.High), v.Suppressed, v.Budget.Mode)
 }
 
+const VerdictPredicateType = "https://github.com/ploeg-hq/ploeg/attestations/cve-budget/v1"
+
+type Counts struct {
+	Critical int `json:"critical"`
+	High     int `json:"high"`
+}
+
+type Scanner struct {
+	Name string `json:"name"`
+}
+
+type VerdictPredicate struct {
+	Image         string  `json:"image"`
+	ImageName     string  `json:"imageName"`
+	Verdict       string  `json:"verdict"`
+	Mode          Mode    `json:"mode"`
+	Budget        Counts  `json:"budget"`
+	Found         Counts  `json:"found"`
+	VEXSuppressed int     `json:"vexSuppressed"`
+	Scanner       Scanner `json:"scanner"`
+}
+
+func (v Verdict) Predicate(imageRef string) VerdictPredicate {
+	verdict := "pass"
+	if v.Over() {
+		verdict = "fail"
+	}
+	return VerdictPredicate{
+		Image:         imageRef,
+		ImageName:     v.Image,
+		Verdict:       verdict,
+		Mode:          v.Budget.Mode,
+		Budget:        Counts{Critical: v.Budget.Critical, High: v.Budget.High},
+		Found:         Counts{Critical: v.Critical, High: v.High},
+		VEXSuppressed: v.Suppressed,
+		Scanner:       Scanner{Name: "grype"},
+	}
+}
+
 func (v Verdict) Markdown() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "## CVE budget %s\n\n| Severity | Found | Budget | |\n| --- | --- | --- | --- |\n", v.Image)

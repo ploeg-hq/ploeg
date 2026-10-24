@@ -188,3 +188,28 @@ func TestBudgetsFallBackToTheDefaultsAndRefuseNonsense(t *testing.T) {
 		t.Fatal("an unknown mode or a negative budget was accepted")
 	}
 }
+
+func TestThePredicateCarriesTheVerdictAdmissionChecks(t *testing.T) {
+	ref := "ghcr.io/ploeg-hq/fixture@sha256:" + strings.Repeat("a", 64)
+	within := Verdict{Image: "fixture", Budget: Budget{Mode: Enforce}, Suppressed: 2}.Predicate(ref)
+	if within.Verdict != "pass" || within.Mode != Enforce || within.Image != ref || within.ImageName != "fixture" || within.VEXSuppressed != 2 {
+		t.Fatalf("within budget: %+v", within)
+	}
+	over := Verdict{Image: "fixture", Budget: Budget{Mode: Warn}, High: 1}.Predicate(ref)
+	if over.Verdict != "fail" || over.Mode != Warn || over.Found.High != 1 {
+		t.Fatalf("over budget in warn mode must still say fail: %+v", over)
+	}
+	raw, err := json.Marshal(over)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fields map[string]any
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"image", "imageName", "verdict", "mode", "budget", "found", "vexSuppressed", "scanner"} {
+		if _, ok := fields[key]; !ok {
+			t.Errorf("the predicate has no %q field: %s", key, raw)
+		}
+	}
+}
