@@ -1763,7 +1763,8 @@
           "type": "string",
           "pattern": "^$|^0$|^[0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h)$"
         },
-        "telemetry": { "$ref": "#/definitions/telemetry" }
+        "telemetry": { "$ref": "#/definitions/telemetry" },
+        "claudeCode": { "$ref": "#/definitions/claudeCode" }
       },
       "additionalProperties": false
     },
@@ -1847,6 +1848,61 @@
         "telemetry": { "$ref": "#/definitions/telemetry" }
       },
       "additionalProperties": false
+    },
+    "claudeCode": {
+      "type": "object",
+      "description": "claude-code harness only (ADR-0139). Rendered only into a claude-code pod.",
+      "additionalProperties": false,
+      "properties": {
+        "plugins": {
+          "type": "array",
+          "description": "Claude Code plugins every Run loads (PLOEG_CLAUDE_PLUGINS). The most specific list wins whole; empty loads none.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "marketplace"],
+            "properties": {
+              "name": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$", "maxLength": 64 },
+              "marketplace": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["url", "commit"],
+                "properties": {
+                  "url": { "type": "string", "pattern": "^(https://[^\\s@?#]+|/[^\\s]*)$" },
+                  "commit": { "type": "string", "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$" }
+                }
+              },
+              "env": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["name"],
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "pattern": "^[A-Z_][A-Z0-9_]*$",
+                      "not": { "pattern": "^(ANTHROPIC_|CLAUDE|PLOEG_|LLM_|LITELLM_|OPENAI_|OTEL_|GIT_|AGENT_BUILDER|FORGE_|DOCKER_|XDG_|LD_|DYLD_)" }
+                    },
+                    "value": { "type": "string" },
+                    "secret": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["name", "key"],
+                      "properties": {
+                        "name": { "type": "string", "minLength": 1 },
+                        "key": { "type": "string", "minLength": 1 }
+                      }
+                    }
+                  },
+                  "not": { "required": ["value", "secret"] }
+                }
+              },
+              "hookTimeout": { "type": "string", "pattern": "^$|^0$|^[0-9]+(\\.[0-9]+)?(ms|s|m)$" }
+            }
+          }
+        }
+      }
     },
     "telemetry": {
       "type": "object",
