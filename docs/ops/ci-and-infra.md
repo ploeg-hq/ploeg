@@ -30,6 +30,8 @@ Renovate proposes updates from [`renovate.json5`](../../renovate.json5). It runs
 - Majors, Go toolchain minors, the DinD image in `values.yaml` and the semantic-release configuration wait for a tick on the Dependency Dashboard issue. A `values.yaml` image changes the golden renders, so run `scripts/helm-golden.sh update` on its branch.
 - Ploeg's own images and the chart version belong to the release train and are never proposed. Paired version and checksum pins (`CLAUDE_CODE_VERSION`, `GOOSE_VERSION`) are not managed: Renovate cannot update the checksum with them.
 
+The `toolchain` line in `go.mod` decides which Go builds every shipped binary. The official `golang` images set `GOTOOLCHAIN=local`, which ignores that line, so on 2026-10-24 `ploegd:0.2.0-rc.50` shipped go1.27.1 while `go.mod` named go1.27.3, with three Critical and 24 High standard-library findings. The image builders now set `GOTOOLCHAIN=auto`: a builder older than `go.mod` downloads the named toolchain, checksum-verified against the Go checksum database. CI runs [`check-go-toolchain.sh`](../../scripts/check-go-toolchain.sh) on each built image, and it fails when any Go binary in it is older than `go.mod`'s toolchain. Bump `go.mod`'s toolchain, the builder tag and `mise.toml` together.
+
 Dependency bumps are releasable commits and cut a candidate. Actions and the release configuration land as `ci(...)`, which do not. Setup and the App's permissions: homelab-cluster `docs/techdocs/docs/runbooks/github-app-ploeg-hq.md`.
 
 ## Forge webhooks
