@@ -31,7 +31,7 @@ This document follows the [CNCF TAG Security and Compliance self-assessment outl
 
 | | |
 | -- | -- |
-| Assessment Stage | Incomplete. Release-blocking findings are open, and the reviewer sign-off asked for in issue #34 is pending. |
+| Assessment Stage | Incomplete. One release-blocking finding is open ([F-04](threat-model.md#findings), #225), and the reviewer sign-off asked for in issue #34 is pending. |
 | Software | <https://github.com/ploeg-hq/ploeg> |
 | Security Provider | No. Ploeg authorizes, budgets and records AI-agent work. Credential scoping and isolation are central to its design, but securing other systems is not its primary function. |
 | Languages | Go (controller, worker, MCP server), Helm templates, Shell, Python (documentation generators), SQL (migrations) |
@@ -114,7 +114,7 @@ The actors below are separated by an isolation mechanism. The [threat model's tr
 
 - **Ploeg does not make a model resist prompt injection.** It bounds what a hijacked agent can reach. It does not prove the agent will ignore injected instructions.
 - **Ploeg is not a sandbox.** The supported profile relies on Kubernetes, the container runtime, Pod Security Admission and the installer's NetworkPolicies for confinement. A namespace alone is not a sandbox.
-- **Ploeg does not enforce network egress.** The chart renders no NetworkPolicy for workers ([F-02](threat-model.md#findings)). The installer owns egress.
+- **Ploeg does not enforce network egress.** The chart renders a default-deny NetworkPolicy for every pod it creates ([F-02](threat-model.md#findings), fixed in PR #233), but a NetworkPolicy cannot name a hostname and enforces nothing on a CNI that ignores it. The installer owns the CNI that enforces egress.
 - **Ploeg does not prove an exact monetary ceiling.** Gateway budgets bound spend, but requests already in flight can exceed a key's cap.
 - **Ploeg does not verify the person an operator consumer names.** A consumer is trusted to name its signed-in user truthfully.
 - **Ploeg does not review code.** Agent reviewers are advisory, and a person decides what merges.
@@ -274,16 +274,16 @@ A project-level procedure for triage, confirmation, notification and patch relea
   - The first real-binary attack drill found that OpenCode 1.18.30 started a repository's plugin and MCP server at `session/new`; the profile now sets `OPENCODE_DISABLE_PROJECT_CONFIG=true` ([ADR-0126](../adrs/0126-a-recurring-attack-drill-runs-every-harness-against-a-hostile-repository.md)).
   - The proxies were changed to refuse any request that does not present the Run's placeholder (Ploeg #64).
   - The worker container gained a restricted security context after a server dry run reported three `restricted` violations ([ADR-0120](../adrs/0120-a-worker-container-meets-the-restricted-pod-security-standard-by-default.md)).
-- **This assessment's findings.** This assessment produced 39 findings, listed in the [threat model](threat-model.md#findings). Seven are release-blocking for the supported profile, two of them only if the profile admits a feature it currently excludes:
+- **This assessment's findings.** This assessment produced 39 findings, listed in the [threat model](threat-model.md#findings). Seven are release-blocking for the supported profile, two of them only if the profile admits a feature it currently excludes. Six are fixed; F-04 is the only one still open:
 
 | ID | Severity | Summary |
 | --- | --- | --- |
 | F-01 | Critical | Chart default privileged DinD hands the harness node-level control and turns both credential proxies off (fixed in PR #231: the default is `dind: false`, and `dind: true` needs an explicit acknowledgement) |
 | F-24 | Critical | The board watch sent the real forge token from inside the harness-writable clone while the harness ran (fixed in PR #230: the `ls-remote` now runs outside any repository; its token in that process's environment is out of the harness's reach since ADR-0138, #221) |
-| F-02 | High | No NetworkPolicy for ploegd or worker pods |
+| F-02 | High | No NetworkPolicy for ploegd or worker pods (fixed in PR #233, ADR-0137: the chart renders a default-deny policy for every pod it creates, with the allowlist derived from its own URLs) |
 | F-03 | High | Shared builder forge token and bootstrap token sat in the harness's container, guarded by one in-process control that did not cover the worker's `git` children (fixed in PR #240, ADR-0138: the harness runs in its own container with no credential, and `shared` is deprecated) |
-| F-04 | Medium | Proxy qualification predates the current proxy code; no Run has used it |
-| F-08 | High | ploeg-mcp action confirmation can be skipped by the client (blocking only if ploeg-mcp `execute` groups join the profile) |
+| F-04 | Medium | Proxy qualification predates the current proxy code; no Run has used it (open, #225: requalification needs a live Run) |
+| F-08 | High | ploeg-mcp action confirmation can be skipped by the client (blocking only if ploeg-mcp `execute` groups join the profile; fixed in PR #260, ADR-0152: the confirmation state is signed and acted on once) |
 | F-36 | High | Any reviewer could re-queue paid Shifts without limit when rework was on (fixed in PR #261: rework only from listed or writing reviewers, capped by `maxReworks`) |
 
 Each finding still needs a disposition, an owner and a date (issue #34). They are not filed as issues by this change.
