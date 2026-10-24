@@ -32,6 +32,7 @@ jobs:
           languages: go
           build-mode: manual
           queries: security-extended
+          config-file: ./.github/codeql/codeql-config.yml
       - name: Build every package
         run: mise exec -- go build ./...
       - uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
