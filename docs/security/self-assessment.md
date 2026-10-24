@@ -274,7 +274,7 @@ A project-level procedure for triage, confirmation, notification and patch relea
 | F-01 | Critical | Chart default privileged DinD hands the harness node-level control and turns both credential proxies off (fixed in PR #231: the default is `dind: false`, and `dind: true` needs an explicit acknowledgement) |
 | F-24 | Critical | The board watch sent the real forge token from inside the harness-writable clone while the harness ran (fixed in PR #230: the `ls-remote` now runs outside any repository; its token in that process's environment is out of the harness's reach since ADR-0138, #221) |
 | F-02 | High | No NetworkPolicy for ploegd or worker pods |
-| F-03 | High | Shared builder forge token and bootstrap token sat in the harness's container, guarded by one in-process control that did not cover the worker's `git` children (fixed by ADR-0138: the harness runs in its own container with no credential, and `shared` is deprecated) |
+| F-03 | High | Shared builder forge token and bootstrap token sat in the harness's container, guarded by one in-process control that did not cover the worker's `git` children (fixed in PR #240, ADR-0138: the harness runs in its own container with no credential, and `shared` is deprecated) |
 | F-04 | Medium | Proxy qualification predates the current proxy code; no Run has used it |
 | F-08 | High | ploeg-mcp action confirmation can be skipped by the client (blocking only if ploeg-mcp `execute` groups join the profile) |
 | F-36 | High | Any reviewer can re-queue paid Shifts without limit when rework is on (blocking only if the profile allows rework where outsiders can review) |
