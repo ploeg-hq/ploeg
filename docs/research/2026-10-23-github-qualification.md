@@ -77,3 +77,23 @@ A live webhook check needs a ploegd endpoint that github.com can reach. No quali
 
 1. Register a Ploeg App owned by `ploeg-hq` with the permissions in [Connect GitHub as a forge](../how-to/connect-github-as-a-forge.md). Install it on `ploeg-hq/ploeg-qualification` only.
 2. Run both qualifications with `PLOEG_GITHUB_E2E_APP_ID` and `PLOEG_GITHUB_E2E_APP_PRIVATE_KEY_FILE` in place of the token, and append the result to this note.
+
+## 2026-10-24: the GitHub App path
+
+The organisation now owns a dedicated App, `ploeg-hq-forge` (App ID 5456172), with exactly the permissions of [Connect GitHub as a forge](../how-to/connect-github-as-a-forge.md): Contents and Pull requests and Issues read and write, Checks and Commit statuses read, Metadata read, no webhook. It is installed on `ploeg-hq/ploeg-qualification` only (installation 174864440). The maintainer ran both qualifications at `development` 2fc4ddc with `PLOEG_GITHUB_E2E_APP_ID` and `PLOEG_GITHUB_E2E_APP_PRIVATE_KEY_FILE` set; the tracker qualification mints an installation token whenever an App ID is set, so neither test used the personal token.
+
+```text
+=== RUN   TestQualificationGitHubIssuesReadAndWriteBack
+--- PASS: TestQualificationGitHubIssuesReadAndWriteBack (4.98s)
+ok      github.com/ploeg-hq/ploeg/pkg/provider/githubissues     4.987s
+=== RUN   TestQualificationAGitHubRunDeliversAPullRequest
+--- PASS: TestQualificationAGitHubRunDeliversAPullRequest (9.88s)
+ok      github.com/ploeg-hq/ploeg/pkg/provider/github   9.879s
+```
+
+Live state afterwards, read through the API:
+
+- Issue [#2](https://github.com/ploeg-hq/ploeg-qualification/issues/2) was opened and commented on by `ploeg-hq-forge[bot]` and is closed.
+- Pull request [#3](https://github.com/ploeg-hq/ploeg-qualification/pull/3), `test: ploeg forge qualification`, was opened by `app/ploeg-hq-forge` from branch `agent/e2e-e2e8567971115686`, commented on by the bot and closed; the branch no longer exists, so the test cleaned up after itself.
+
+Both opt-in qualifications now pass on github.com through the App, which is the credential ADR-0086 requires. The webhook path (signature, delivery deduplication, events from github.com) still has fixture tests only, because no ploegd endpoint that github.com can reach takes part in a qualification.
