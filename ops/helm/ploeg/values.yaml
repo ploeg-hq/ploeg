@@ -297,6 +297,23 @@ deploys: {}
 #     name: ploeg-deploy-token
 #     key: token
 
+# ADR-0149 (proposed): ploegd signs a short-lived Run identity (ES256 JWT) for
+# each Claude Code plugin that opts in with harness.claudeCode.plugins[].runIdentity,
+# and publishes its public keys at /api/v1/run-identity/jwks. The token names
+# the Run and authorizes nothing in Ploeg. Empty issues none. The signing key
+# is a PEM P-256 private key (openssl genpkey -algorithm EC -pkeyopt
+# ec_paramgen_curve:P-256); a plugin env may never read its Secret. To rotate,
+# move the old public key into retiredKeysSecret for one lease longer than
+# the longest Run identity (15 minutes) before you drop it.
+runIdentity: {}
+#   issuer: https://ploeg.example.com   # the URL consumers reach ploegd at; the token's iss
+#   signingKeySecret:
+#     name: ploeg-run-identity
+#     key: signing-key.pem
+#   retiredKeysSecret:                  # optional: concatenated PEM PUBLIC KEY blocks
+#     name: ploeg-run-identity
+#     key: retired-keys.pem
+
 # ADR-0087/0088 (proposed): the Tenant's graphs on an Omnigraph server. With
 # notesGraph, ploegd writes each learning a Run keeps as a Work Item Note and
 # serves later Runs of the same root Work Item their notes. With
@@ -537,6 +554,8 @@ executor:
       #     - {name: LINK_URL, value: https://link.example.com}
       #     - {name: LINK_TOKEN, secret: {name: session-link-plugin, key: token}}
       #   hookTimeout: 10s  # one hook's bound; at most 60s
+      #   runIdentity:      # ADR-0149: hand every hook a Run identity in AGENT_RUN_IDENTITY_TOKEN
+      #     audience: https://link.example.com  # the one service that accepts it; needs runIdentity.signingKeySecret
     # acp harness only. One adapter speaks Zed's Agent CLIENT Protocol (stdio
     # JSON-RPC, wire version 1) to any ACP-capable agent. Unrelated to IBM's
     # former Agent COMMUNICATION Protocol, which merged into A2A — see ADR-0007.

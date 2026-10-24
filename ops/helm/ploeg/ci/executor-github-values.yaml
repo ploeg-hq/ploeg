@@ -1,3 +1,11 @@
+runIdentity:
+  issuer: https://ploeg.example.com
+  signingKeySecret:
+    name: ploeg-run-identity
+    key: signing-key.pem
+  retiredKeysSecret:
+    name: ploeg-run-identity
+    key: retired-keys.pem
 tracker:
   github:
     appId: "123456"
@@ -41,6 +49,8 @@ executor:
                 - {name: LINK_URL, value: https://link.example.com}
                 - {name: LINK_TOKEN, secret: {name: session-link-plugin, key: token}}
               hookTimeout: 15s
+              runIdentity:
+                audience: https://link.example.com
       plan:
         - roles:
             - {name: builder, writes: true, cap: "3.00"}
