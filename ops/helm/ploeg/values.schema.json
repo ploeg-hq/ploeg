@@ -219,7 +219,7 @@
       "properties": {
         "image": {
           "type": "object",
-          "description": "The ploeg-worker image (ADR-0138): ploeg-worker, git and CA certificates on a distroless base. It runs the worker container when the harness runs in its own container and provides the launcher binary the harness container runs; executor.workerImage overrides it.",
+          "description": "The ploeg-worker image (ADR-0138): ploeg-worker, git and CA certificates from Wolfi on an empty base, with no shell (ADR-0144). It runs the worker container when the harness runs in its own container and provides the launcher binary the harness container runs; executor.workerImage overrides it.",
           "properties": {
             "repository": {
               "type": "string",

@@ -91,6 +91,8 @@ executor:
         image: registry.example.com/team/claude-runner:<tag>
 ```
 
+The image is Wolfi, not Debian, since [ADR 0144](../adrs/0144-every-published-image-is-built-on-a-base-that-scans-clean-and-pulls-without-credentials.md): as root, add packages with `apk add --no-cache <package>`, not `apt-get`.
+
 That image contains Anthropic's binary under Anthropic's terms. Keep it in a private registry and don't publish it.
 
 To download from a mirror instead, set `PLOEG_CLAUDE_CODE_RELEASES_URL` and `PLOEG_CLAUDE_CODE_KEY_URL` in `claudeRunner.env`; the chart hands every `PLOEG_CLAUDE_CODE_*` entry there to the init container too. The mirror must serve the same paths as `https://downloads.claude.ai/claude-code-releases/<version>/` and `/keys/claude-code.asc`. Only the runner reads these variables; workers need your own image.

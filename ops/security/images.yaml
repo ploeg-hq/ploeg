@@ -1,0 +1,13 @@
+images:
+  - name: ploegd
+    repository: ghcr.io/ploeg-hq/ploegd
+    dockerfile: ops/docker/ploegd/Dockerfile
+    ships_go: true
+  - name: claude-runner
+    repository: ghcr.io/ploeg-hq/claude-runner
+    dockerfile: ops/claude-runner/Dockerfile
+    ships_go: false
+  - name: ploeg-worker
+    repository: ghcr.io/ploeg-hq/ploeg-worker
+    dockerfile: ops/docker/ploeg-worker/Dockerfile
+    ships_go: true

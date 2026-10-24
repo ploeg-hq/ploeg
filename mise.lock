@@ -40,36 +40,79 @@ url = "https://github.com/sigstore/cosign/releases/download/v2.4.3/cosign-window
 url_api = "https://api.github.com/repos/sigstore/cosign/releases/assets/230729353"
 
 [[tools.go]]
-version = "1.27.1"
+version = "1.27.3"
 backend = "core:go"
 
 [tools.go."platforms.linux-arm64"]
-checksum = "sha256:3450b45a3f9ee8568792736a5c5e70a1f2e9b36c35a8f74958c03e51d7d92bec"
-url = "https://dl.google.com/go/go1.27.1.linux-arm64.tar.gz"
+checksum = "sha256:a06e99309dbcbdca1a8ccd2282c3ee146e55930886e26b4f1193269587165f49"
+url = "https://dl.google.com/go/go1.27.3.linux-arm64.tar.gz"
 
 [tools.go."platforms.linux-arm64-musl"]
-checksum = "sha256:3450b45a3f9ee8568792736a5c5e70a1f2e9b36c35a8f74958c03e51d7d92bec"
-url = "https://dl.google.com/go/go1.27.1.linux-arm64.tar.gz"
+checksum = "sha256:a06e99309dbcbdca1a8ccd2282c3ee146e55930886e26b4f1193269587165f49"
+url = "https://dl.google.com/go/go1.27.3.linux-arm64.tar.gz"
 
 [tools.go."platforms.linux-x64"]
-checksum = "sha256:63d339f0da5ab53635a56f2490a7984dfe12dfcff22ad749f63edaf590168445"
-url = "https://dl.google.com/go/go1.27.1.linux-amd64.tar.gz"
+checksum = "sha256:65efbc80fdc1fa2cd2631cad5b481777a68e8725f34e89f50fc6ac714e379b40"
+url = "https://dl.google.com/go/go1.27.3.linux-amd64.tar.gz"
 
 [tools.go."platforms.linux-x64-musl"]
-checksum = "sha256:63d339f0da5ab53635a56f2490a7984dfe12dfcff22ad749f63edaf590168445"
-url = "https://dl.google.com/go/go1.27.1.linux-amd64.tar.gz"
+checksum = "sha256:65efbc80fdc1fa2cd2631cad5b481777a68e8725f34e89f50fc6ac714e379b40"
+url = "https://dl.google.com/go/go1.27.3.linux-amd64.tar.gz"
 
 [tools.go."platforms.macos-arm64"]
-checksum = "sha256:ee215d57e0ec269c60cc9ceca68e6bda321ba9ee5afe24f4b0988703c2d87d12"
-url = "https://dl.google.com/go/go1.27.1.darwin-arm64.tar.gz"
+checksum = "sha256:dd3908cf20959d798c1e06ebe5b72213f0505ce01373b40ce3110975a6cd99c2"
+url = "https://dl.google.com/go/go1.27.3.darwin-arm64.tar.gz"
 
 [tools.go."platforms.macos-x64"]
-checksum = "sha256:8f8f52c6649542cf027bbc9b9c68d1ec042f9f34808a40413f0b8b3f66f3caa4"
-url = "https://dl.google.com/go/go1.27.1.darwin-amd64.tar.gz"
+checksum = "sha256:b6f8e931e4ab497fcde6da8ae4499a58f9d258e55c8a80824a516eae5950a750"
+url = "https://dl.google.com/go/go1.27.3.darwin-amd64.tar.gz"
 
 [tools.go."platforms.windows-x64"]
-checksum = "sha256:a3911b5e0e1b1053f25ed0675f4c1c6aad1e2bfcf253df2b9be4caabd2edd95d"
-url = "https://dl.google.com/go/go1.27.1.windows-amd64.zip"
+checksum = "sha256:f26081f438319757f8a1b46d7d0b2c5ec7583d4038e485e0aa725cfde7885fff"
+url = "https://dl.google.com/go/go1.27.3.windows-amd64.zip"
+
+[[tools."go:golang.org/x/vuln/cmd/govulncheck"]]
+version = "1.9.0"
+backend = "go:golang.org/x/vuln/cmd/govulncheck"
+
+[[tools.grype]]
+version = "0.121.0"
+backend = "aqua:anchore/grype"
+
+[tools.grype."platforms.linux-arm64"]
+checksum = "sha256:86f570f75ca947ea3dd6486309232bcff6d78e44ba081ae75ab14eab72be3dae"
+url = "https://github.com/anchore/grype/releases/download/v0.121.0/grype_0.121.0_linux_arm64.tar.gz"
+url_api = "https://api.github.com/repos/anchore/grype/releases/assets/657365425"
+
+[tools.grype."platforms.linux-arm64-musl"]
+checksum = "sha256:86f570f75ca947ea3dd6486309232bcff6d78e44ba081ae75ab14eab72be3dae"
+url = "https://github.com/anchore/grype/releases/download/v0.121.0/grype_0.121.0_linux_arm64.tar.gz"
+url_api = "https://api.github.com/repos/anchore/grype/releases/assets/657365425"
+
+[tools.grype."platforms.linux-x64"]
+checksum = "sha256:64e07133d3486115de647a66581461dccf5c732748a0a3119077395565f15519"
+url = "https://github.com/anchore/grype/releases/download/v0.121.0/grype_0.121.0_linux_amd64.tar.gz"
+url_api = "https://api.github.com/repos/anchore/grype/releases/assets/657365424"
+
+[tools.grype."platforms.linux-x64-musl"]
+checksum = "sha256:64e07133d3486115de647a66581461dccf5c732748a0a3119077395565f15519"
+url = "https://github.com/anchore/grype/releases/download/v0.121.0/grype_0.121.0_linux_amd64.tar.gz"
+url_api = "https://api.github.com/repos/anchore/grype/releases/assets/657365424"
+
+[tools.grype."platforms.macos-arm64"]
+checksum = "sha256:7be39d3a0428c664ce0183e4aba31ed9accffce9eda7e7f6fa84e9c512285f27"
+url = "https://github.com/anchore/grype/releases/download/v0.121.0/grype_0.121.0_darwin_arm64.tar.gz"
+url_api = "https://api.github.com/repos/anchore/grype/releases/assets/657365499"
+
+[tools.grype."platforms.macos-x64"]
+checksum = "sha256:27eef17e42f0340af6582cdbc33ad18faf9f601c613ab81d2e1658a94cbc357f"
+url = "https://github.com/anchore/grype/releases/download/v0.121.0/grype_0.121.0_darwin_amd64.tar.gz"
+url_api = "https://api.github.com/repos/anchore/grype/releases/assets/657365504"
+
+[tools.grype."platforms.windows-x64"]
+checksum = "sha256:f867bbdc14bd8b0d99b3fc47d839af07480a540072b16896373a8ba32b76f588"
+url = "https://github.com/anchore/grype/releases/download/v0.121.0/grype_0.121.0_windows_amd64.zip"
+url_api = "https://api.github.com/repos/anchore/grype/releases/assets/657365506"
 
 [[tools.helm]]
 version = "4.3.0"
