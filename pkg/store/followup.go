@@ -219,7 +219,53 @@ const (
 	// ReviewRecorded means the review is stored and waits for the next Shift
 	// on the Work Item, which nothing starts automatically.
 	ReviewRecorded ReviewAction = "recorded"
+	// ReviewCapped means the Work Item was awaiting review but requests for
+	// changes have queued it MaxReworks times already. The review is stored
+	// for the next Shift a person starts, and nothing is queued.
+	ReviewCapped ReviewAction = "capped"
 )
+
+// ReworkRefusal says why a request for changes did not send work back.
+type ReworkRefusal string
+
+const (
+	// ReworkReviewerNotAllowed means the reviewer is neither listed in
+	// reworkReviewers nor reported by the forge with write access.
+	ReworkReviewerNotAllowed ReworkRefusal = "reviewer_not_allowed"
+	// ReworkPermissionUnknown means the reviewer is not listed and the forge
+	// could not say whether they have write access.
+	ReworkPermissionUnknown ReworkRefusal = "permission_unknown"
+)
+
+// RefusedRework is a request for changes refused before it reached the
+// Work Item.
+type RefusedRework struct {
+	WorkItemID int64
+	Provider   string
+	Repo       string
+	PR         int
+	Reviewer   string
+	Reason     ReworkRefusal
+}
+
+// AuditReworkRefused is the audit action of a refused request for changes.
+const AuditReworkRefused = "review.rework_refused"
+
+// RecordReworkRefused audits a request for changes that was refused. The
+// review itself is not stored, so its body never reaches a Run.
+func (s *Store) RecordReworkRefused(ctx context.Context, r RefusedRework) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	if err := audit(ctx, tx, "webhook:"+r.Provider, AuditReworkRefused, &r.WorkItemID, map[string]any{
+		"repo": r.Repo, "pr": r.PR, "reviewer": r.Reviewer, "reason": string(r.Reason),
+	}); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
 
 // ChangesRequested is a person's request for changes on a Ploeg pull request.
 type ChangesRequested struct {
@@ -232,11 +278,15 @@ type ChangesRequested struct {
 	// HeadSHA is the pull request head the review was given on, empty when
 	// the forge did not say (ADR-0045).
 	HeadSHA string
+	// MaxReworks caps how many times requests for changes queue the Work
+	// Item again. Zero means work.DefaultMaxReworks.
+	MaxReworks int
 }
 
 // RecordChangesRequested stores a request for changes against its Work Item
-// and queues the Work Item again when it is awaiting review. The review stays
-// pending until a writing Round of a Shift on that Work Item opens.
+// and queues the Work Item again when it is awaiting review and has been
+// queued by requests for changes fewer than cr.MaxReworks times. The review
+// stays pending until a writing Round of a Shift on that Work Item opens.
 func (s *Store) RecordChangesRequested(ctx context.Context, cr ChangesRequested) (ReviewAction, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -264,43 +314,68 @@ func (s *Store) RecordChangesRequested(ctx context.Context, cr ChangesRequested)
 	case liveShift:
 		action = ReviewLiveShift
 	case state == string(work.StateAwaitingReview):
-		requeued, err := requeueAwaitingReview(ctx, tx, cr.WorkItemID)
+		result, err := requeueAwaitingReview(ctx, tx, cr.WorkItemID, reworkCap(cr.MaxReworks))
 		if err != nil {
 			return "", err
 		}
-		if requeued {
+		switch result {
+		case requeueDone:
 			action = ReviewRequeued
+		case requeueCapped:
+			action = ReviewCapped
 		}
 	}
 	if err := audit(ctx, tx, "webhook:"+cr.Provider, "review.changes_requested", &cr.WorkItemID, map[string]any{
 		"repo": cr.Repo, "pr": cr.PR, "reviewer": cr.Reviewer, "action": string(action),
+		"max_reworks": reworkCap(cr.MaxReworks),
 	}); err != nil {
 		return "", err
 	}
 	return action, tx.Commit(ctx)
 }
 
+// ReworkCaps returns a Team's cap on re-queues by requests for changes per
+// Work Item. A result of zero or less means work.DefaultMaxReworks.
+type ReworkCaps func(team string) int
+
 // RequeueForPendingReview queues a Work Item that is awaiting review again
-// when a request for changes is still pending on it. It reports whether the
-// Work Item was queued.
-func (s *Store) RequeueForPendingReview(ctx context.Context, workItemID int64) (bool, error) {
+// when a request for changes is still pending on it, unless requests for
+// changes have already queued it as often as its Team's cap allows. It
+// reports whether the Work Item was queued. A nil caps applies
+// work.DefaultMaxReworks to every Team.
+func (s *Store) RequeueForPendingReview(ctx context.Context, workItemID int64, caps ReworkCaps) (bool, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return false, err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 	var pending bool
+	var team string
 	if err := tx.QueryRow(ctx, `
-		SELECT EXISTS (SELECT 1 FROM work_item_reviews WHERE work_item_id = $1 AND shift_id IS NULL)
-		FROM work_items WHERE id = $1 FOR UPDATE`, workItemID).Scan(&pending); err != nil {
+		SELECT EXISTS (SELECT 1 FROM work_item_reviews WHERE work_item_id = $1 AND shift_id IS NULL), team
+		FROM work_items WHERE id = $1 FOR UPDATE`, workItemID).Scan(&pending, &team); err != nil {
 		return false, err
 	}
 	if !pending {
 		return false, nil
 	}
-	requeued, err := requeueAwaitingReview(ctx, tx, workItemID)
-	if err != nil || !requeued {
+	limit := 0
+	if caps != nil {
+		limit = caps(team)
+	}
+	result, err := requeueAwaitingReview(ctx, tx, workItemID, reworkCap(limit))
+	if err != nil {
 		return false, err
+	}
+	if result == requeueCapped {
+		if err := audit(ctx, tx, "ploegd:shift-engine", "review.rework_capped", &workItemID,
+			map[string]any{"max_reworks": reworkCap(limit)}); err != nil {
+			return false, err
+		}
+		return false, tx.Commit(ctx)
+	}
+	if result != requeueDone {
+		return false, nil
 	}
 	if err := audit(ctx, tx, "ploegd:shift-engine", "work_item.queued", &workItemID,
 		map[string]any{"reason": "a request for changes arrived while the previous Shift ran"}); err != nil {
@@ -309,15 +384,45 @@ func (s *Store) RequeueForPendingReview(ctx context.Context, workItemID int64) (
 	return true, tx.Commit(ctx)
 }
 
-func requeueAwaitingReview(ctx context.Context, tx pgx.Tx, workItemID int64) (bool, error) {
-	tag, err := tx.Exec(ctx, `
-		UPDATE work_items
-		SET state = 'queued', attempts = 0, infra_failures = 0, next_eligible_at = NULL, updated_at = now()
-		WHERE id = $1 AND state = 'awaiting_review' AND NOT operator_owned`, workItemID)
-	if err != nil {
-		return false, err
+type requeueResult int
+
+const (
+	requeueSkipped requeueResult = iota
+	requeueDone
+	requeueCapped
+)
+
+func reworkCap(limit int) int {
+	if limit <= 0 {
+		return work.DefaultMaxReworks
 	}
-	return tag.RowsAffected() == 1, nil
+	return limit
+}
+
+func requeueAwaitingReview(ctx context.Context, tx pgx.Tx, workItemID int64, limit int) (requeueResult, error) {
+	var requeues int
+	err := tx.QueryRow(ctx, `
+		UPDATE work_items
+		SET state = 'queued', attempts = 0, infra_failures = 0, next_eligible_at = NULL,
+			review_requeues = review_requeues + 1, updated_at = now()
+		WHERE id = $1 AND state = 'awaiting_review' AND NOT operator_owned AND review_requeues < $2
+		RETURNING review_requeues`, workItemID, limit).Scan(&requeues)
+	if err == nil {
+		return requeueDone, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return requeueSkipped, err
+	}
+	var capped bool
+	if err := tx.QueryRow(ctx, `
+		SELECT state = 'awaiting_review' AND NOT operator_owned AND review_requeues >= $2
+		FROM work_items WHERE id = $1`, workItemID, limit).Scan(&capped); err != nil {
+		return requeueSkipped, err
+	}
+	if capped {
+		return requeueCapped, nil
+	}
+	return requeueSkipped, nil
 }
 
 // PendingReviews counts the requests for changes on a Work Item that no

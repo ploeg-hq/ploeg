@@ -1000,5 +1000,7 @@ config: {}
 #         repairFailedChecks: true    # a failed check queues a repair Follow-Up
 #         maxRepairs: 2               # repair Follow-Ups per pull request; 0 = 2
 #         reworkOnChangesRequested: true  # a person's "request changes" sends it back
+#         reworkReviewers: [ryan]     # also send back on these logins; forge writers always count
+#         maxReworks: 3               # re-queues by reviews per Work Item; 0 = 3
 #       premiseCheck:                 # ADR-0123; omit = no premise check (the default)
 #         model: hetzner-qwen3-8-27b  # a gateway model priced at zero; ploegd refuses any other

@@ -308,6 +308,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 			Uniform:      uniform,
 			UsageReport:  usageReport,
 			CIWaits:      ciWaits(cfg),
+			ReworkCaps:   reworkCaps(cfg),
 			ReportLinks: shiftengine.ReportLinks{
 				WorkItem:       os.Getenv("PLOEG_REPORT_WORK_ITEM_URL"),
 				TeamDashboard:  os.Getenv("PLOEG_REPORT_TEAM_DASHBOARD_URL"),
@@ -651,6 +652,11 @@ func fastChecks(cfg *config.File) map[string][]string {
 		out[httpapi.FastCheckRoute(c.Forge, c.Repo)] = c.Commands
 	}
 	return out
+}
+
+func reworkCaps(cfg *config.File) store.ReworkCaps {
+	policies := cfg.ForgeFollowUps()
+	return func(team string) int { return policies[team].ReworkCap() }
 }
 
 func ciWaits(cfg *config.File) shiftengine.CIWaits {

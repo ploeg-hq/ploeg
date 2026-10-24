@@ -160,9 +160,10 @@ func (s *Store) loadBoardRun(ctx context.Context, runToken string) (boardRun, er
 // quietActions are audit actions that tell a running agent nothing about
 // its work: its own progress, the gateway's bookkeeping and Lease upkeep.
 // Outcomes are left out too, so Runs of one Round never observe each other
-// (ADR-0010); a person's note is served with its text instead.
+// (ADR-0010); a person's note is served with its text instead. A request for
+// changes refused before it reached the Work Item tells it nothing either.
 const quietActions = `a.action NOT LIKE 'checkpoint.%' AND a.action NOT LIKE 'llm.%' AND a.action NOT LIKE 'lease.%'
-	AND a.action NOT LIKE 'outcome.%' AND a.action NOT IN ('run.claimed', '` + AuditOperatorNoteAdded + `', '` + AuditOperatorNoteConsumed + `')`
+	AND a.action NOT LIKE 'outcome.%' AND a.action NOT IN ('run.claimed', '` + AuditOperatorNoteAdded + `', '` + AuditOperatorNoteConsumed + `', '` + AuditReworkRefused + `')`
 
 // BoardChanges answers what changed on the board since the running Run's
 // briefing (ADR-0124): Ploeg's own events for the Work Item, instructions

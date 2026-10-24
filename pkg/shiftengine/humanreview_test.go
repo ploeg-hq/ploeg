@@ -98,3 +98,38 @@ func TestHumanReview_WhenTheShiftClosesAwaitingReviewItOpensANewShift(t *testing
 		t.Errorf("new shift briefing = %+v, want the human review", notes)
 	}
 }
+
+func TestHumanReview_AShiftClosingAtTheReworkCapQueuesNothing(t *testing.T) {
+	ctx := context.Background()
+	resetTables(t)
+	e := &Engine{Store: testStore, Plans: plan.Plans{}, Uniform: true,
+		ReworkCaps: func(string) int { return 1 },
+		Log:        slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))}
+	id, item := ingest(t, "bronze", "982")
+	if err := e.EnsureShift(ctx, id, item); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := testPool.Exec(ctx, `UPDATE work_items SET review_requeues = 1 WHERE id = $1`, id); err != nil {
+		t.Fatal(err)
+	}
+	run, err := testStore.ClaimRole(ctx, "bronze", "", time.Minute, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := requestChanges(t, id, "one more time"); got != store.ReviewLiveShift {
+		t.Fatalf("action = %q, want %q", got, store.ReviewLiveShift)
+	}
+	if _, err := testStore.ReportOutcome(ctx, run.RunToken,
+		store.Report(work.OutcomePROpened, "opened", "", []string{"https://forgejo/o/r/pulls/1"}, nil, nil)); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.EvaluateItem(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	if si, _ := testStore.LiveShiftForItem(ctx, id); si != nil {
+		t.Fatalf("a review past the rework cap opened shift %d", si.ID)
+	}
+	if got := itemState(t, id); got != string(work.StateAwaitingReview) {
+		t.Errorf("item state = %q, want it left awaiting review", got)
+	}
+}
