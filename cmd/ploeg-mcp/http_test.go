@@ -84,6 +84,7 @@ func newRemoteTokens(t *testing.T, upstream func(*remote) http.Handler, groups, 
 		"PLOEG_MCP_GROUPS":         groups,
 		"ADMINS_TOKEN":             r.admins,
 		"READERS_TOKEN":            r.readers,
+		confirmationKeyEnv:         randomToken(t),
 	}
 	for k, v := range extra {
 		env[k] = v
@@ -108,9 +109,14 @@ func randomToken(t *testing.T) string {
 
 func (r *remote) token(groups []string, scope string) string {
 	r.t.Helper()
+	return r.tokenFor("subject-1", groups, scope)
+}
+
+func (r *remote) tokenFor(subject string, groups []string, scope string) string {
+	r.t.Helper()
 	now := time.Now()
 	tok := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
-		"iss": r.issuer, "sub": "subject-1", "aud": "ploeg-mcp", "azp": "ploeg-mcp", "scope": scope,
+		"iss": r.issuer, "sub": subject, "aud": "ploeg-mcp", "azp": "ploeg-mcp", "scope": scope,
 		"iat": now.Unix(), "exp": now.Add(5 * time.Minute).Unix(), "groups": groups, "preferred_username": "ryan",
 	})
 	tok.Header["kid"] = "k1"
@@ -294,19 +300,21 @@ func TestHTTPConfigurationIsRefusedWhenIncomplete(t *testing.T) {
 		t.Fatalf("good configuration: %v", err)
 	}
 	for name, change := range map[string][2]string{
-		"no resource":          {"PLOEG_MCP_RESOURCE", ""},
-		"a relative resource":  {"PLOEG_MCP_RESOURCE", "/mcp"},
-		"no issuer":            {"PLOEG_MCP_ISSUER", ""},
-		"no client ids":        {"PLOEG_MCP_CLIENT_IDS", " , "},
-		"no groups":            {"PLOEG_MCP_GROUPS", "[]"},
-		"groups not JSON":      {"PLOEG_MCP_GROUPS", "ploeg-readers=READERS_TOKEN"},
-		"an unknown field":     {"PLOEG_MCP_GROUPS", `[{"group":"g","tokenEnv":"READERS_TOKEN","verify":true}]`},
-		"a missing token":      {"READERS_TOKEN", ""},
-		"two scopes required":  {"PLOEG_MCP_SCOPE", "ploeg:read ploeg:steer"},
-		"a lifetime too long":  {"PLOEG_MCP_MAX_TOKEN_LIFETIME", "48h"},
-		"a duplicated group":   {"PLOEG_MCP_GROUPS", `[{"group":"g","tokenEnv":"READERS_TOKEN"},{"group":"g","tokenEnv":"READERS_TOKEN"}]`},
-		"a lowercase tokenEnv": {"PLOEG_MCP_GROUPS", `[{"group":"g","tokenEnv":"readers"}]`},
-		"a blank namespace":    {"PLOEG_MCP_SUBJECT_NAMESPACE", " "},
+		"no resource":                        {"PLOEG_MCP_RESOURCE", ""},
+		"a relative resource":                {"PLOEG_MCP_RESOURCE", "/mcp"},
+		"no issuer":                          {"PLOEG_MCP_ISSUER", ""},
+		"no client ids":                      {"PLOEG_MCP_CLIENT_IDS", " , "},
+		"no groups":                          {"PLOEG_MCP_GROUPS", "[]"},
+		"groups not JSON":                    {"PLOEG_MCP_GROUPS", "ploeg-readers=READERS_TOKEN"},
+		"an unknown field":                   {"PLOEG_MCP_GROUPS", `[{"group":"g","tokenEnv":"READERS_TOKEN","verify":true}]`},
+		"a missing token":                    {"READERS_TOKEN", ""},
+		"two scopes required":                {"PLOEG_MCP_SCOPE", "ploeg:read ploeg:steer"},
+		"a lifetime too long":                {"PLOEG_MCP_MAX_TOKEN_LIFETIME", "48h"},
+		"a duplicated group":                 {"PLOEG_MCP_GROUPS", `[{"group":"g","tokenEnv":"READERS_TOKEN"},{"group":"g","tokenEnv":"READERS_TOKEN"}]`},
+		"a lowercase tokenEnv":               {"PLOEG_MCP_GROUPS", `[{"group":"g","tokenEnv":"readers"}]`},
+		"a blank namespace":                  {"PLOEG_MCP_SUBJECT_NAMESPACE", " "},
+		"execute without a confirmation key": {"PLOEG_MCP_GROUPS", `[{"group":"g","tokenEnv":"READERS_TOKEN","execute":true}]`},
+		"a short confirmation key":           {confirmationKeyEnv, strings.Repeat("k", minConfirmationKeyBytes-1)},
 	} {
 		env := map[string]string{}
 		for k, v := range good {

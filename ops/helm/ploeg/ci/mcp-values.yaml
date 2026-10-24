@@ -22,6 +22,8 @@ mcp:
   envFrom:
     - secretRef:
         name: ploeg-mcp-consumers
+  confirmationKeySecret:
+    name: ploeg-mcp-confirmation
   networkPolicy:
     ingress:
       enabled: true

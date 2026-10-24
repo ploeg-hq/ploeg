@@ -103,6 +103,12 @@ mcp:
   #     valueFrom: {secretKeyRef: {name: ploeg-mcp-reader, key: token}}
   extraEnv: []
   envFrom: [] # e.g. [{secretRef: {name: ploeg-mcp-consumers}}]
+  # The Secret key ploeg-mcp signs each person's confirmation of an action
+  # with (ADR-0152), set as PLOEG_MCP_CONFIRMATION_KEY. Required once a group
+  # in PLOEG_MCP_GROUPS is marked execute: ploeg-mcp refuses to start without
+  # it. At least 32 bytes, such as `openssl rand -base64 48`; every replica
+  # reads the same Secret.
+  confirmationKeySecret: {} # e.g. {name: ploeg-mcp-confirmation, key: key}; key defaults to key
   annotations: {} # on the Deployment, e.g. {reloader.stakater.com/auto: "true"}
   podAnnotations: {}
   nodeSelector: {} # empty = nodeSelector

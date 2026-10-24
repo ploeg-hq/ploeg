@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -32,7 +31,6 @@ var identityName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$`)
 
 type person struct {
 	ID       string
-	Subject  string
 	Username string
 	token    string
 }
@@ -90,16 +88,6 @@ type actionOut struct {
 	Replayed    bool   `json:"replayed,omitempty" jsonschema:"true when this commandId had already acted; nothing changed now"`
 }
 
-type confirmState struct {
-	Tool      string `json:"t"`
-	ID        string `json:"i"`
-	CommandID string `json:"c"`
-	Effect    string `json:"e"`
-	Args      string `json:"a"`
-	Subject   string `json:"s"`
-	Expires   int64  `json:"x"`
-}
-
 func digest(s string) string {
 	sum := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(sum[:])
@@ -113,6 +101,7 @@ type action[In any] struct {
 	describe  func(ctx context.Context, who operatorclient.Attribution, in In) (string, error)
 	act       func(ctx context.Context, who operatorclient.Attribution, commandID string, in In) (actionOut, error)
 	prove     func(ctx context.Context, p person) (context.Context, error)
+	confirm   *confirmations
 }
 
 type writerKey struct{}
@@ -168,20 +157,21 @@ func (a action[In]) handler(ctx context.Context, req *mcp.CallToolRequest, in In
 			commandID = randomID("mcp-")
 		}
 		state := confirmState{Tool: a.name, ID: randomID("confirm-"), CommandID: commandID, Effect: digest(effect), Args: digest(string(args)),
-			Subject: p.Subject, Expires: time.Now().Add(confirmWindow).Unix()}
-		raw, _ := json.Marshal(state)
+			Actor: p.ID, Expires: a.confirm.now().Add(confirmWindow).Unix()}
 		return &mcp.CallToolResult{
 			InputRequests: mcp.InputRequestMap{state.ID: &mcp.ElicitParams{Mode: "form", Message: effect, RequestedSchema: confirmSchema}},
-			RequestState:  base64.RawURLEncoding.EncodeToString(raw),
+			RequestState:  a.confirm.seal(state),
 		}, out, nil
 	}
-	var state confirmState
-	raw, err := base64.RawURLEncoding.DecodeString(req.Params.RequestState)
-	if err != nil || json.Unmarshal(raw, &state) != nil || state.Tool != a.name || state.Subject != p.Subject || state.Args != digest(string(args)) || !identityName.MatchString(state.CommandID) {
-		return nil, out, errors.New("this confirmation does not belong to this call; nothing changed. Call the tool again")
+	state, err := a.confirm.open(req.Params.RequestState)
+	if err != nil {
+		return nil, out, err
 	}
-	if time.Now().Unix() > state.Expires {
-		return nil, out, errors.New("the confirmation expired; nothing changed. Call the tool again")
+	if state.Tool != a.name || state.Actor != p.ID || state.Args != digest(string(args)) || !identityName.MatchString(state.CommandID) {
+		return nil, out, errForeignConfirmation
+	}
+	if err := a.confirm.spend(state); err != nil {
+		return nil, out, err
 	}
 	if state.Effect != digest(effect) {
 		return nil, out, errors.New("what this would do changed while you decided; nothing changed. Call the tool again to see the new effect")
@@ -237,6 +227,7 @@ func addAction[In any](srv *mcp.Server, s *server, tool *mcp.Tool, a action[In])
 	tool.Annotations.Title = tool.Title
 	a.name = tool.Name
 	a.prove = s.prove
+	a.confirm = s.confirm
 	mcp.AddTool(srv, tool, a.handler)
 }
 

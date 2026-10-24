@@ -25,20 +25,22 @@ const instructions = `Ploeg budgets and runs agent work. A Work Item is one trac
 type server struct {
 	c        *operatorclient.Client
 	exchange *mcpauth.Exchanger
+	confirm  *confirmations
 }
 
-// newServer returns the MCP server for one Operator Consumer. actions adds the
-// tools that change work; only HTTP mode passes true, for a group mapped to an
-// execute-capable consumer.
-func newServer(c *operatorclient.Client, actions bool) *mcp.Server {
-	return newExchangingServer(c, actions, nil)
+// newServer returns the read-only MCP server for one Operator Consumer.
+func newServer(c *operatorclient.Client) *mcp.Server {
+	return newExchangingServer(c, nil, nil)
 }
 
-// newExchangingServer is newServer whose actions, when exchange is set, call
-// ploegd with the person's token exchanged for Ploeg's audience instead of the
+// newExchangingServer is newServer plus, when confirm is set, the tools that
+// change work: only HTTP mode sets it, for a group mapped to an
+// execute-capable consumer, and every action's confirmation state is sealed
+// and checked with it (ADR-0152). When exchange is set, actions call ploegd
+// with the person's token exchanged for Ploeg's audience instead of the
 // consumer's credential (ADR-0150).
-func newExchangingServer(c *operatorclient.Client, actions bool, exchange *mcpauth.Exchanger) *mcp.Server {
-	s := &server{c: c, exchange: exchange}
+func newExchangingServer(c *operatorclient.Client, confirm *confirmations, exchange *mcpauth.Exchanger) *mcp.Server {
+	s := &server{c: c, exchange: exchange, confirm: confirm}
 	srv := mcp.NewServer(&mcp.Implementation{Name: "ploeg-mcp", Title: "Ploeg", Version: version}, &mcp.ServerOptions{Instructions: instructions})
 	readOnly := func(title string) *mcp.ToolAnnotations {
 		open := false
@@ -54,7 +56,7 @@ func newExchangingServer(c *operatorclient.Client, actions bool, exchange *mcpau
 		Description: "Runs newest first with role, outcome, verdict, failure reason and cost. Pass nextCursor back as before for older Runs."}, s.recentRuns)
 	mcp.AddTool(srv, &mcp.Tool{Name: "ploeg_changes_since", Title: "Changes since", Annotations: readOnly("Changes since"),
 		Description: "Audit events in the order they happened. Without a cursor it returns the newest events; pass the returned cursor next time to get only what happened since."}, s.changesSince)
-	if actions {
+	if confirm != nil {
 		registerActions(srv, s)
 	}
 	return srv
