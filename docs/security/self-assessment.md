@@ -210,7 +210,7 @@ The facts below were read from the repository and the GitHub API on 2026-10-23.
   - The toolchain is pinned with checksums in `mise.lock`.
 - **Release integrity.**
   - Release candidates are cut automatically from `development`; a stable release is a reviewed tag on `main` ([releases](../ops/release-versioning.md)).
-  - Images are built with `-trimpath` and `CGO_ENABLED=0` on digest-pinned base images (`ploegd`: distroless static, non-root; `ploeg-worker`: distroless base with git copied from Debian packages, non-root).
+  - Images are built with `-trimpath` and `CGO_ENABLED=0` on digest-pinned base images (`ploegd`: distroless static, non-root; `ploeg-worker`: Wolfi git on an empty base without a shell, non-root; `claude-runner`: Wolfi, [ADR 0144](../adrs/0144-every-published-image-is-built-on-a-base-that-scans-clean-and-pulls-without-credentials.md)).
   - The release job signs every image and the OCI chart by digest with keyless cosign (GitHub OIDC identity, Fulcio certificate, Rekor log) and verifies each signature before publishing. Verified on 2026-10-23 for `ploegd` 0.2.0-rc.47.
   - BuildKit SBOM and provenance attestations ride in each signed image index.
   - The chart is stamped with both image digests.
