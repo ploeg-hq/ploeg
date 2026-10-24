@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+bash scripts/check-provenance.sh
 test -z "$(gofmt -l .)"
 go vet ./...
 go build ./...

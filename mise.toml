@@ -21,6 +21,10 @@ description = "Install the pinned standalone toolchain"
 run = "bash scripts/verify.sh"
 description = "Build, test and validate the standalone project"
 
+[tasks.check-provenance]
+run = "bash scripts/check-provenance.sh --source"
+description = "Check PROVENANCE.md's record against this history and its frozen source"
+
 [tasks.test-alert-rules]
 run = "bash scripts/test-alert-rules.sh"
 description = "Make every chart alert fire, and stay quiet, on synthetic series (promtool test rules)"

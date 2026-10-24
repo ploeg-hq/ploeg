@@ -33,6 +33,8 @@ jobs:
             sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           fi
       - run: mise run verify
+      - name: The history starts at the recorded root and the initial tree is the recorded derivation of its frozen source
+        run: bash scripts/check-provenance.sh --source
       - run: mise run docs-check
       - name: Build controller and worker image
         run: docker build --file ops/docker/ploegd/Dockerfile --tag ploeg-ci:${GITHUB_SHA} .
