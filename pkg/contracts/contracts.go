@@ -1,5 +1,5 @@
 // Package contracts names the published contracts under docs/contracts that
-// this Ploeg serves, and the major version of each it answers (ADR-0146).
+// this Ploeg serves, and the major version of each it answers (ADR-0147).
 package contracts
 
 import "slices"

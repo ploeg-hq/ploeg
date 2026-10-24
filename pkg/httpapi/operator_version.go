@@ -35,7 +35,7 @@ func (s *Server) handleOperatorVersion(w http.ResponseWriter, r *http.Request) {
 
 // ServesRoute reports whether ploegd routes a request with this method to this
 // concrete path, without running a handler. A consumer's recorded
-// expectations are checked against it (ADR-0146).
+// expectations are checked against it (ADR-0147).
 func (s *Server) ServesRoute(method, path string) bool {
 	r, err := http.NewRequest(method, path, nil)
 	if err != nil {

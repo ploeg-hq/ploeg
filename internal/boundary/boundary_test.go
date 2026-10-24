@@ -30,7 +30,7 @@ var records = []string{
 }
 
 // consumerOwned holds files each consumer writes about itself, so a failing
-// expectation names the consumer to ask (ADR-0146). Ploeg's own code and
+// expectation names the consumer to ask (ADR-0147). Ploeg's own code and
 // documentation still name none.
 var consumerOwned = []string{
 	"docs/contracts/consumers/",

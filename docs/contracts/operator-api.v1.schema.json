@@ -121,7 +121,7 @@
         "name",
         "versions"
       ],
-      "description": "One published contract under docs/contracts and every major version of it this Ploeg serves. Two majors are served only during the overlap minor of a breaking change (ADR-0146).",
+      "description": "One published contract under docs/contracts and every major version of it this Ploeg serves. Two majors are served only during the overlap minor of a breaking change (ADR-0147).",
       "properties": {
         "name": {
           "type": "string",
@@ -146,7 +146,7 @@
         "ploeg",
         "contracts"
       ],
-      "description": "GET /api/v1/operator/version (ADR-0146): the release this Ploeg runs and the contracts it serves, for any authenticated operator consumer whatever its team scope. A consumer compares contracts with the majors it requires. A Ploeg that answers 404 here predates the route and serves major 1 of every contract it has.",
+      "description": "GET /api/v1/operator/version (ADR-0147): the release this Ploeg runs and the contracts it serves, for any authenticated operator consumer whatever its team scope. A consumer compares contracts with the majors it requires. A Ploeg that answers 404 here predates the route and serves major 1 of every contract it has.",
       "properties": {
         "schemaVersion": {
           "const": "1.0"

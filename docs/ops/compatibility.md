@@ -76,7 +76,7 @@ The removal is a `feat!` with a `BREAKING CHANGE:` footer and an ADR, and adds a
 | `ploeg-worker` newer than `ploegd` | no; upgrade `ploegd` first, as Kubernetes requires of the kubelet ([version skew policy](https://kubernetes.io/releases/version-skew-policy/)) |
 | `ploeg-mcp` and `claude-runner` with `ploegd` | same release; they ship in the same release and the chart pins all images by digest |
 | Chart N with images N | same release |
-| An operator consumer built against the contract bundle of N or the previous minor, with `ploegd` N | yes; checked for every consumer that records its expectations ([ADR 0146](../adrs/0146-ploeg-serves-the-major-of-each-contract-and-keeps-its-consumers-two-newest-lines-working.md)) |
+| An operator consumer built against the contract bundle of N or the previous minor, with `ploegd` N | yes; checked for every consumer that records its expectations ([ADR 0147](../adrs/0147-ploeg-serves-the-major-of-each-contract-and-keeps-its-consumers-two-newest-lines-working.md)) |
 | Database migrated by N with `ploegd` from the previous release | yes (rollback) |
 | Database migrated by N with anything older | no; restore |
 

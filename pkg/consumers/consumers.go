@@ -1,6 +1,6 @@
 // Package consumers checks the expectations that consumers of Ploeg's
 // contracts record against the contracts and routes this Ploeg serves
-// (ADR-0146). A consumer keeps one expectation set per release line under
+// (ADR-0147). A consumer keeps one expectation set per release line under
 // docs/contracts/consumers/<consumer>/<major>.<minor>.json, at most the two
 // newest lines, and every set must hold on every change to Ploeg.
 package consumers
