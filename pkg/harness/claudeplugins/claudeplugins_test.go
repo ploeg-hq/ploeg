@@ -3,6 +3,7 @@ package claudeplugins
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"os"
@@ -70,6 +71,11 @@ func TestParse_Refusals(t *testing.T) {
 		"duplicate plugin":      `[{"name":"p",` + ok + `},{"name":"p",` + ok + `}]`,
 		"long hook timeout":     `[{"name":"p",` + ok + `,"hookTimeout":"5m"}]`,
 		"unknown field":         `[{"name":"p",` + ok + `,"mcpServers":{}}]`,
+		"identity spoofed":      `[{"name":"p",` + ok + `,"env":[{"name":"AGENT_RUN_IDENTITY_TOKEN","value":"forged"}]}]`,
+		"identity no audience":  `[{"name":"p",` + ok + `,"runIdentity":{}}]`,
+		"identity http":         `[{"name":"p",` + ok + `,"runIdentity":{"audience":"http://observer.example"}}]`,
+		"identity as true":      `[{"name":"p",` + ok + `,"runIdentity":true}]`,
+		"identity extra field":  `[{"name":"p",` + ok + `,"runIdentity":{"audience":"urn:example:o","scope":"all"}}]`,
 	}
 	for name, raw := range cases {
 		if _, err := Parse(raw, noEnv); err == nil {
@@ -442,5 +448,90 @@ func TestGuard_UnreadableSpecIsHarmless(t *testing.T) {
 	var out, errOut bytes.Buffer
 	if code := Guard("/nonexistent/spec.json", strings.NewReader(""), &out, &errOut, nil); code != 0 || out.Len() != 0 {
 		t.Errorf("exit %d out %q", code, out.String())
+	}
+}
+
+func TestParse_RunIdentityOptIn(t *testing.T) {
+	raw := `[{"name":"p","marketplace":{"url":"https://forge.example/p.git","commit":"` + pin + `"},"runIdentity":{"audience":"https://observer.example"}}]`
+	got, err := Parse(raw, noEnv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got[0].RunIdentity == nil || got[0].RunIdentity.Audience != "https://observer.example" {
+		t.Errorf("opt-in lost: %+v", got[0])
+	}
+}
+
+func TestInstall_RunIdentityOptInPointsEveryHookAtOneFile(t *testing.T) {
+	root := t.TempDir()
+	p := plugin("linker")
+	p.RunIdentity = &RunIdentity{Audience: "https://observer.example"}
+	results := Installer{Fetch: fakeFetch(linkerFiles()), GuardBin: guardBin(t)}.Install(context.Background(), []Plugin{p, plugin("sneaky")}, root)
+	r := results[0]
+	want := filepath.Join(root, ".guard", "linker", RunIdentityFileName)
+	if r.RunIdentityFile != want || r.Audience != "https://observer.example" {
+		t.Fatalf("result = %+v", r)
+	}
+	specs, _ := filepath.Glob(filepath.Join(root, ".guard", "linker", "*.json"))
+	if len(specs) != r.Hooks || len(specs) == 0 {
+		t.Fatalf("specs %v for %d hooks", specs, r.Hooks)
+	}
+	for _, spec := range specs {
+		var gs GuardSpec
+		readJSON(t, spec, &gs)
+		if gs.RunIdentityFile != want {
+			t.Errorf("%s reads the identity from %q", spec, gs.RunIdentityFile)
+		}
+	}
+	if results[1].RunIdentityFile != "" {
+		t.Errorf("a refused plugin got an identity file: %+v", results[1])
+	}
+	without := Installer{Fetch: fakeFetch(linkerFiles()), GuardBin: guardBin(t)}.Install(context.Background(), []Plugin{plugin("linker")}, t.TempDir())
+	if without[0].RunIdentityFile != "" {
+		t.Errorf("a plugin that did not opt in got an identity file: %+v", without[0])
+	}
+}
+
+func identityToken(t *testing.T, exp time.Time) string {
+	t.Helper()
+	claims, _ := json.Marshal(map[string]any{"exp": exp.Unix(), "run": map[string]any{"id": "1"}})
+	return "eyJhbGciOiJFUzI1NiJ9." + base64.RawURLEncoding.EncodeToString(claims) + ".c2ln"
+}
+
+func TestGuard_PassesTheCurrentRunIdentityOnlyWhileItLasts(t *testing.T) {
+	env := []string{"PATH=" + os.Getenv("PATH"), RunIdentityEnv + "=from-claude-code"}
+	file := filepath.Join(t.TempDir(), RunIdentityFileName)
+	spec := GuardSpec{Command: "env", Timeout: time.Second, RunIdentityFile: file}
+
+	_, out, _ := guard(t, spec, "", env)
+	if strings.Contains(out, RunIdentityEnv) {
+		t.Errorf("a hook got %s before the worker wrote one:\n%s", RunIdentityEnv, out)
+	}
+	live := identityToken(t, time.Now().Add(time.Minute))
+	if err := os.WriteFile(file, []byte(live+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, out, _ = guard(t, spec, "", env); !strings.Contains(out, RunIdentityEnv+"="+live+"\n") {
+		t.Errorf("the hook did not get the current identity:\n%s", out)
+	}
+	refreshed := identityToken(t, time.Now().Add(2*time.Minute))
+	if err := os.WriteFile(file, []byte(refreshed), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, out, _ = guard(t, spec, "", env); !strings.Contains(out, RunIdentityEnv+"="+refreshed) {
+		t.Errorf("the next hook did not get the refreshed identity:\n%s", out)
+	}
+	if err := os.WriteFile(file, []byte(identityToken(t, time.Now().Add(-time.Second))), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, out, _ = guard(t, spec, "", env); strings.Contains(out, RunIdentityEnv) {
+		t.Errorf("a hook got an expired identity:\n%s", out)
+	}
+	spec.RunIdentityFile = ""
+	if err := os.WriteFile(file, []byte(live), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, out, _ = guard(t, spec, "", env); strings.Contains(out, RunIdentityEnv) {
+		t.Errorf("a hook of a plugin that did not opt in got an identity:\n%s", out)
 	}
 }

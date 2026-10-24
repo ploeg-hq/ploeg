@@ -1,0 +1,25 @@
+# CI-only values: a Claude Code plugin variable read from the Secret that holds
+# ploegd's Run identity signing key must be refused; a plugin receives the
+# signed token, never the key that signs it (ADR-0149).
+runIdentity:
+  issuer: https://ploeg.example.com
+  signingKeySecret:
+    name: ploeg-run-identity
+    key: signing-key.pem
+executor:
+  enabled: true
+  teams:
+    - name: bronze
+      model: litellm_proxy/claude-sonnet-5
+      budget: "2"
+      harness:
+        name: claude-code
+        image: harbor.webgrip.dev/webgrip/agent:0.1.0
+        claudeCode:
+          plugins:
+            - name: session-link
+              marketplace:
+                url: https://forgejo.example.com/team/claude-plugins.git
+                commit: 0123456789abcdef0123456789abcdef01234567
+              env:
+                - {name: LINK_KEY, secret: {name: ploeg-run-identity, key: signing-key.pem}}

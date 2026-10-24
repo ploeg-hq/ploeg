@@ -391,6 +391,10 @@ func run(ctx context.Context, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	identities, err := runIdentitySigner(log)
+	if err != nil {
+		return err
+	}
 	srv := &httpapi.Server{
 		OperatorConfig: operator,
 		WorkerSecurity: workerSecurity,
@@ -425,6 +429,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 		ContextMaxTotalBytes: contextMaxTotal,
 
 		DisableRunTranscripts: !runTranscripts,
+		RunIdentity:           identities,
 	}
 	if notes != nil {
 		srv.Notes = notes

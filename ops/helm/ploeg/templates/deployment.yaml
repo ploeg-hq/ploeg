@@ -332,6 +332,24 @@ spec:
                   key: {{ .key }}
             {{- end }}
             {{- end }}
+            {{- with .Values.runIdentity }}
+            {{- with .signingKeySecret }}
+            - name: PLOEG_RUN_IDENTITY_ISSUER
+              value: {{ required "runIdentity.issuer is required with runIdentity.signingKeySecret" $.Values.runIdentity.issuer | quote }}
+            - name: PLOEG_RUN_IDENTITY_SIGNING_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .name }}
+                  key: {{ .key }}
+            {{- end }}
+            {{- with .retiredKeysSecret }}
+            - name: PLOEG_RUN_IDENTITY_RETIRED_KEYS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .name }}
+                  key: {{ .key }}
+            {{- end }}
+            {{- end }}
             {{- with .Values.knowledgeGraph }}
             {{- if .url }}
             - name: PLOEG_OMNIGRAPH_URL
