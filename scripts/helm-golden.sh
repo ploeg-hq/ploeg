@@ -64,6 +64,8 @@ for case in ":default" \
 	"ops/helm/ploeg/ci/executor-sandbox-team-values.yaml:executor-sandbox-team" \
 	"ops/helm/ploeg/ci/executor-isolation-values.yaml:executor-isolation" \
 	"ops/helm/ploeg/ci/executor-isolation-disabled-values.yaml:executor-isolation-disabled" \
+	"ops/helm/ploeg/ci/executor-default-worker-values.yaml:executor-default-worker" \
+	"ops/helm/ploeg/ci/executor-acknowledged-dind-values.yaml:executor-acknowledged-dind" \
 	"ops/helm/ploeg/ci/executor-harness-selection-values.yaml:executor-harness-selection" \
 	"ops/helm/ploeg/ci/monitoring-values.yaml:monitoring" \
 	"ops/helm/ploeg/ci/knowledge-graph-values.yaml:knowledge-graph" \
@@ -95,6 +97,8 @@ for case in "ops/helm/ploeg/ci/reject-reader-without-read-token-values.yaml:read
 	"ops/helm/ploeg/ci/reject-runtimeclass-non-string-values.yaml:runtimeClassName" \
 	"ops/helm/ploeg/ci/reject-telemetry-without-endpoint-values.yaml:endpoint" \
 	"ops/helm/ploeg/ci/reject-telemetry-unknown-opt-in-values.yaml:allowHarnesses" \
+	"ops/helm/ploeg/ci/reject-claude-plugin-ploeg-secret-values.yaml:holds a Ploeg credential" \
+	"ops/helm/ploeg/ci/reject-claude-plugin-moving-ref-values.yaml:commit" \
 	"ops/helm/ploeg/ci/reject-missing-database-values.yaml:database.existingSecret.name is required" \
 	"ops/helm/ploeg/ci/reject-missing-litellm-admin-url-values.yaml:executor.litellm.adminUrl is required" \
 	"ops/helm/ploeg/ci/reject-missing-gateway-values.yaml:executor.litellm.baseUrl is required" \
@@ -106,7 +110,8 @@ for case in "ops/helm/ploeg/ci/reject-reader-without-read-token-values.yaml:read
 	"ops/helm/ploeg/ci/reject-models-without-default-values.yaml:lists models without its default model" \
 	"ops/helm/ploeg/ci/reject-claude-environment-without-login-values.yaml:requires harness.claudeEnvironment.environmentId and loginSecret or loginVolume" \
 	"ops/helm/ploeg/ci/reject-client-carrier-without-environment-values.yaml:carrier client requires harness.claudeEnvironment.environmentId" \
-	"ops/helm/ploeg/ci/reject-claude-runner-without-environment-secret-values.yaml:claudeRunner.environmentSecret.name is required"; do
+	"ops/helm/ploeg/ci/reject-claude-runner-without-environment-secret-values.yaml:claudeRunner.environmentSecret.name is required" \
+	"ops/helm/ploeg/ci/reject-dind-without-acknowledgement-values.yaml:harness.dind is true without harness.acknowledgePrivilegedDind: true"; do
 	values=${case%%:*}
 	expected=${case#*:}
 	if out=$(helm template ploeg ops/helm/ploeg -f "$REQUIRED" -f "$values" 2>&1); then
@@ -118,6 +123,38 @@ for case in "ops/helm/ploeg/ci/reject-reader-without-read-token-values.yaml:read
 		status=1
 	fi
 done
+
+must_render_with() {
+	values=$1
+	shift
+	if ! out=$(helm template ploeg ops/helm/ploeg -f "$REQUIRED" -f "$values" 2>&1); then
+		echo "chart refused '$values', which it must render:"
+		echo "$out"
+		status=1
+		return
+	fi
+	expecting=present
+	for token in "$@"; do
+		if [ "$token" = "--" ]; then
+			expecting=absent
+			continue
+		fi
+		if [ "$expecting" = present ] && ! printf '%s' "$out" | grep -qF -- "$token"; then
+			echo "chart render '$values' lacks '$token'"
+			status=1
+		elif [ "$expecting" = absent ] && printf '%s' "$out" | grep -qF -- "$token"; then
+			echo "chart render '$values' carries '$token'"
+			status=1
+		fi
+	done
+}
+
+must_render_with ops/helm/ploeg/ci/executor-default-worker-values.yaml \
+	'name: PLOEG_LLM_KEY_ISOLATION' 'name: PLOEG_FORGE_TOKEN_ISOLATION' 'runAsNonRoot: true' \
+	-- 'name: dind' 'privileged: true' 'ploeg.webgrip.dev/privileged-dind' 'PLOEG_CREDENTIAL_ISOLATION_OFF_REASON' 'DOCKER_HOST'
+must_render_with ops/helm/ploeg/ci/executor-acknowledged-dind-values.yaml \
+	'name: dind' 'privileged: true' 'ploeg.webgrip.dev/privileged-dind: "true"' 'name: PLOEG_CREDENTIAL_ISOLATION_OFF_REASON' 'value: "dind"' 'name: DOCKER_CERT_PATH' \
+	-- 'name: PLOEG_LLM_KEY_ISOLATION' 'name: PLOEG_FORGE_TOKEN_ISOLATION'
 
 if [ "$mode" = "check" ] && [ "$status" -ne 0 ]; then
 	echo

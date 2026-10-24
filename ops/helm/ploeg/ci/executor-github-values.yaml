@@ -31,6 +31,16 @@ executor:
       harness:
         name: claude-code
         dind: false
+        claudeCode:
+          plugins:
+            - name: session-link
+              marketplace:
+                url: https://github.com/example/claude-plugins.git
+                commit: 0123456789abcdef0123456789abcdef01234567
+              env:
+                - {name: LINK_URL, value: https://link.example.com}
+                - {name: LINK_TOKEN, secret: {name: session-link-plugin, key: token}}
+              hookTimeout: 15s
       plan:
         - roles:
             - {name: builder, writes: true, cap: "3.00"}

@@ -8,7 +8,7 @@ fail=0
 
 note() { printf '  %s\n' "$1"; fail=1; }
 
-echo "License consistency — Apache-2.0"
+echo "License consistency — Apache-2.0 code, CC-BY-4.0 documentation"
 
 [ -f LICENSE ] || note "LICENSE is missing"
 grep -q 'Apache License' LICENSE 2>/dev/null || note "LICENSE is not Apache-2.0"
@@ -28,9 +28,27 @@ for image in $(grep -rl 'org.opencontainers.image.licenses' ops --include='Docke
     || note "$image does not label the image Apache-2.0"
 done
 
+[ -f THIRD-PARTY-NOTICES ] || note "THIRD-PARTY-NOTICES is missing; the binaries link MIT and BSD code whose notices must travel with them"
+grep -q '^COPY LICENSE NOTICE THIRD-PARTY-NOTICES /usr/share/doc/ploeg/' ops/docker/ploegd/Dockerfile \
+  || note "the ploegd image no longer carries LICENSE, NOTICE and THIRD-PARTY-NOTICES"
+grep -q '^COPY LICENSE NOTICE /usr/share/doc/ploeg/' ops/claude-runner/Dockerfile \
+  || note "the claude-runner image no longer carries LICENSE and NOTICE"
+grep -qiE 'downloads\.claude\.ai|claude-code-releases|@anthropic-ai/claude-code|claude\.ai/install' ops/claude-runner/Dockerfile \
+  && note "ops/claude-runner/Dockerfile copies Claude Code into a published image; it installs at container start instead (ADR-0141)"
+grep -q '^COPY --chmod=0755 ops/claude-runner/install-claude-code /usr/local/bin/ploeg-install-claude-code' ops/claude-runner/Dockerfile \
+  || note "the claude-runner image no longer carries the installer that fetches Claude Code at start"
+grep -q '^notices=(LICENSE NOTICE THIRD-PARTY-NOTICES)' scripts/release.sh \
+  && grep -q 'ploegd ploeg-worker "${notices\[@\]}"' scripts/release.sh \
+  || note "the release tarball no longer carries LICENSE, NOTICE and THIRD-PARTY-NOTICES"
+[ -f docs/cncf/license-inventory.yaml ] || note "docs/cncf/license-inventory.yaml is missing; go test ./internal/licenses/ keeps it current"
+
 [ -f REUSE.toml ] || note "REUSE.toml is missing; per-file licensing would stop being declared"
 grep -q 'SPDX-License-Identifier = "Apache-2.0"' REUSE.toml 2>/dev/null \
   || note "REUSE.toml does not declare Apache-2.0 for the repository"
+grep -q 'SPDX-License-Identifier = "CC-BY-4.0"' REUSE.toml 2>/dev/null \
+  || note "REUSE.toml does not declare CC-BY-4.0 for the documentation; CNCF charter section 11(b)(iv)"
+grep -q 'LICENSES/CC-BY-4.0.txt' README.md 2>/dev/null \
+  || note "README.md no longer states the documentation licence"
 for id in $(grep -oE 'SPDX-License-Identifier = "[^"]+"' REUSE.toml 2>/dev/null | sed 's/.*"\(.*\)"/\1/' | sort -u); do
   [ -f "LICENSES/$id.txt" ] || note "REUSE.toml declares $id but LICENSES/$id.txt is missing"
 done

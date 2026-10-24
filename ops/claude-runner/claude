@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
+binary=$(ploeg-install-claude-code)
+export DISABLE_AUTOUPDATER="${DISABLE_AUTOUPDATER:-1}"
+exec "$binary" "$@"

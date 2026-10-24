@@ -10,18 +10,24 @@ verified_by: "mise run docs-check (every link resolves); llms.txt links this pag
 
 Use these sources for the current implementation. The [architecture](architecture.md) distinguishes implemented behavior from remaining limits; the [ADR index](adrs/README.md) distinguishes accepted decisions from proposals.
 
+## Try it
+
+- [Quickstart](quickstart.md): verify a release's signatures, install it on a local kind cluster and complete one Run with a fake model and a local forge
+
 ## Operate
 
 - [Self-hosting security contract](ops/self-hosting-security.md): chart controls, cluster responsibilities, identity gaps and version-specific qualification
 
 - [Operator runbooks](how-to/index.md): stuck Leases and Runs, credential rotation, draining, spend, database recovery
 - [Managed workers and recovery](ops/managed-workers.md)
+- [Network policies](ops/network.md): what every Ploeg pod may reach, how the chart derives it, and what your CNI must enforce
 - [Metrics and alerts](ops/alerts.md)
 - [Briefings: versions, catch-up, usefulness and replay](ops/briefings.md)
 - [Tracker configuration](ops/board.md)
 - [Configuration reference](reference/configuration.md): every environment variable and Helm value, generated from the source
 - [CI and infrastructure](ops/ci-and-infra.md)
 - [Experimental releases](ops/release-versioning.md)
+- [Compatibility policy](ops/compatibility.md): what each release keeps working, deprecation, rollback and version pairs
 
 ## Integrate
 
@@ -32,6 +38,12 @@ Use these sources for the current implementation. The [architecture](architectur
 - [Executor launch](contracts/executor.md)
 - [ACP harness profiles](contracts/acp-profiles.md)
 
+## Security
+
+- [Threat model](security/threat-model.md): the supported deployment profile, trust boundaries, STRIDE per element and findings
+- [Security self-assessment](security/self-assessment.md), following the CNCF TAG Security and Compliance outline
+- [Reporting a vulnerability](../SECURITY.md)
+
 ## Understand and change
 
 - [Architecture](architecture.md)
@@ -39,6 +51,7 @@ Use these sources for the current implementation. The [architecture](architectur
 - [Decision ledger](adrs/README.md)
 - [Product intent and design history](design.md)
 - [Brand identity](brand/README.md) and [trademark policy](brand/TRADEMARK.md)
+- [Licence inventory](cncf/license-inventory.md): every distributed component against the CNCF licence policy
 
 The [backlog](backlog.md), [OpenSpec changes](../openspec/changes/) and [research dossiers](research/) retain plans and evidence. Their existence does not establish implemented behavior or current priority.
 

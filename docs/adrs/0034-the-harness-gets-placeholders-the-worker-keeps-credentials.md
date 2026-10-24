@@ -156,3 +156,13 @@ Any one of these reopens this record:
   `ploeg-worker` logs why. Qualification record:
   [research/2026-10-04-isolation-qualification.md](../research/2026-10-04-isolation-qualification.md).
   The status and the decision above are unchanged.
+* 2026-10-23 — The threat model's F-24 found a gap in this boundary: the board
+  watch's `git ls-remote` ran inside the harness-writable clone with the real
+  forge token, so an `http.proxy` the harness wrote into `.git/config`
+  received it. Every token-bearing `ls-remote` now runs in a fresh empty
+  directory outside any repository (`runGitOutsideAnyRepository` in
+  [git.go](../../pkg/worker/git.go));
+  `TestRemoteForgeHeadIgnoresGitConfigurationTheHarnessWrote` plants
+  `http.proxy` and `url.*.insteadOf` plus a credential helper and proves
+  neither the token nor a request reaches the planted server. PR #230.
+  The status and the decision above are unchanged.

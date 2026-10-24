@@ -29,7 +29,6 @@ def render(values, kube="1.30.0", ok=True):
 
 
 values = {"security": {key: {"enabled": True, "runtimeClassNames": ["kata"]}}}
-values["security"]["workerNetworkPolicy"] = {"enabled": True}
 values["executor"] = {
     "enabled": True,
     "harness": {"name": "exec", "dind": False},
@@ -49,14 +48,16 @@ pod = next(doc for doc in documents if doc["kind"] == "SandboxTemplate")["spec"]
 pod.update({"apiVersion": "v1", "kind": "Pod"})
 selector = policy["spec"]["matchConstraints"]["objectSelector"]["matchLabels"]
 assert all(pod["metadata"]["labels"].get(k) == v for k, v in selector.items())
-network = next(doc for doc in documents if doc["kind"] == "NetworkPolicy" and doc["metadata"]["name"].endswith("-worker-boundary"))
-assert network["spec"]["podSelector"]["matchLabels"] == selector
+network = next(doc for doc in documents if doc["kind"] == "NetworkPolicy" and doc["metadata"]["name"].endswith("-worker"))
+assert all(pod["metadata"]["labels"].get(k) == v for k, v in network["spec"]["podSelector"]["matchLabels"].items())
 assert network["spec"]["ingress"] == []
-assert network["spec"]["egress"][0]["ports"] == [{"protocol": "TCP", "port": 8080}]
+assert any({"protocol": "TCP", "port": 8080} in rule.get("ports", []) for rule in network["spec"]["egress"])
 assert all(rule.get("to") for rule in network["spec"]["egress"])
 unsafe = copy.deepcopy(values)
 unsafe["executor"]["harness"]["dind"] = True
-assert "forbids privileged DinD" in render(unsafe, ok=False)
+unsafe["executor"]["harness"]["acknowledgePrivilegedDind"] = True
+unsafe_error = render(unsafe, ok=False)
+assert "forbids privileged DinD" in unsafe_error, unsafe_error
 
 environment = celpy.Environment()
 programs = [environment.program(environment.compile(item["expression"])) for item in policy["spec"]["validations"]]

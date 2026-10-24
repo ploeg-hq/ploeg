@@ -174,7 +174,7 @@ func remoteForgeHead(cloneDir, cloneURL string, token func(context.Context) stri
 		if branch == "" {
 			return "", false
 		}
-		out, err := runGit(ctx, cloneDir, cloneURL, token(ctx), "ls-remote", cloneURL, "refs/heads/"+branch)
+		out, err := runGitOutsideAnyRepository(ctx, cloneURL, token(ctx), "ls-remote", cloneURL, "refs/heads/"+branch)
 		if err != nil {
 			return "", false
 		}

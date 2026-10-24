@@ -1,6 +1,16 @@
 {{- if .Values.claudeRunner.enabled }}
 {{- $r := .Values.claudeRunner }}
 {{- $name := include "ploeg.claudeRunnerName" . }}
+{{- $cc := $r.claudeCode | default dict }}
+{{- $ccEnv := list }}
+{{- with $cc.version }}{{- $ccEnv = append $ccEnv (dict "name" "CLAUDE_CODE_VERSION" "value" .) }}{{- end }}
+{{- with $cc.sha256 }}{{- $ccEnv = append $ccEnv (dict "name" "CLAUDE_CODE_SHA256" "value" .) }}{{- end }}
+{{- $installEnv := list }}
+{{- range $key, $value := $r.env }}
+{{- if and (hasPrefix "PLOEG_CLAUDE_CODE_" $key) (ne $key "PLOEG_CLAUDE_CODE_DIR") }}
+{{- $installEnv = append $installEnv (dict "name" $key "value" ($value | toString)) }}
+{{- end }}
+{{- end }}
 {{- if not ($r.environmentSecret | default dict).name }}
 {{- fail "claudeRunner.environmentSecret.name is required when claudeRunner.enabled is true: the Secret holding SELF_HOSTED_RUNNER_ENVIRONMENT_SECRET, which registers the runner with its Claude environment" }}
 {{- end }}
@@ -47,6 +57,33 @@ spec:
         fsGroup: 1000
         seccompProfile:
           type: RuntimeDefault
+      {{- if $cc.install }}
+      initContainers:
+        - name: claude-code
+          image: {{ include "ploeg.claudeRunnerImage" . }}
+          command: ["ploeg-install-claude-code"]
+          env:
+            - name: PLOEG_CLAUDE_CODE_DIR
+              value: /opt/claude-code
+            {{- with (concat $ccEnv $installEnv) }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          securityContext:
+            runAsUser: 65532
+            runAsGroup: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 512Mi
+          volumeMounts:
+            - name: claude-code
+              mountPath: /opt/claude-code
+      {{- end }}
       containers:
         - name: runner
           image: {{ include "ploeg.claudeRunnerImage" . }}
@@ -62,6 +99,9 @@ spec:
           env:
             - name: PLOEG_URL
               value: {{ $r.ploegUrl | default (include "ploeg.apiUrl" .) | quote }}
+            {{- with $ccEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
             {{- range $key, $value := $r.env }}
             - name: {{ $key }}
               value: {{ $value | quote }}
@@ -93,10 +133,20 @@ spec:
           volumeMounts:
             - name: work
               mountPath: /home/runner/work
+            {{- if $cc.install }}
+            - name: claude-code
+              mountPath: /opt/claude-code
+              readOnly: true
+            {{- end }}
       volumes:
         - name: work
           emptyDir:
             sizeLimit: {{ $r.workSizeLimit }}
+        {{- if $cc.install }}
+        - name: claude-code
+          emptyDir:
+            sizeLimit: 1Gi
+        {{- end }}
 {{- end }}
 {{- range .Values.claudeRunner.loginVolumes }}
 ---

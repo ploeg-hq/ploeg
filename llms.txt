@@ -5,6 +5,7 @@
 ## Current documentation
 
 - [Start here](docs/index.md): human and agent reading path.
+- [Quickstart](docs/quickstart.md): a first Run on a local kind cluster from released artifacts.
 - [Architecture](docs/architecture.md): implemented boundaries and limits.
 - [Contracts](docs/contracts/README.md): published schemas and integration requirements.
 - [Domain source](docs/domain/model.yaml): structured Ploeg vocabulary.

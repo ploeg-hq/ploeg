@@ -24,7 +24,7 @@ The generator follows each binary's imports inside the module and records every 
 | `KUBECONFIG` | ploeg-worker |  | Administrative configuration. The worker refuses to start when it is set. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `KUBERNETES_SERVICE_HOST` | ploeg-worker |  |  | [launcher.go](../../pkg/sandboxlaunch/launcher.go) |
 | `KUBERNETES_SERVICE_PORT` | ploeg-worker |  |  | [launcher.go](../../pkg/sandboxlaunch/launcher.go) |
-| `LANG` | ploeg-worker |  |  | [git.go](../../pkg/worker/git.go), [openspec.go](../../pkg/worker/openspec.go) |
+| `LANG` | ploeg-worker |  |  | [fetch.go](../../pkg/harness/claudeplugins/fetch.go), [git.go](../../pkg/worker/git.go), [openspec.go](../../pkg/worker/openspec.go) |
 | `LC_ALL` | ploeg-worker |  |  | [git.go](../../pkg/worker/git.go), [openspec.go](../../pkg/worker/openspec.go) |
 | `LITELLM_ADMIN_URL` | ploeg-worker |  | Controller-only. The worker refuses to start when it is set. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `LITELLM_ADMIN_URL` | ploegd |  | LiteLLM management URL (chart `executor.litellm.adminUrl`). Unset disables key revocation, and managed worker mode then refuses to start. | [main.go](../../cmd/ploegd/main.go) |
@@ -36,7 +36,7 @@ The generator follows each binary's imports inside the module and records every 
 | `LLM_BASE_URL` | ploeg-worker |  | Model gateway URL (chart `executor.litellm.baseUrl`). | [main.go](../../cmd/ploeg-worker/main.go) |
 | `LLM_MODEL` | ploeg-worker |  |  | [main.go](../../cmd/ploeg-worker/main.go) |
 | `NODE_NAME` | ploeg-worker |  |  | [main.go](../../cmd/ploeg-worker/main.go), [worker.go](../../pkg/worker/worker.go) |
-| `PATH` | ploeg-worker |  | Passed to `git` and `openspec` subprocesses; also on the harness allowlist. | [git.go](../../pkg/worker/git.go), [harness_version.go](../../pkg/worker/harness_version.go), [openspec.go](../../pkg/worker/openspec.go) |
+| `PATH` | ploeg-worker |  | Passed to `git` and `openspec` subprocesses; also on the harness allowlist. | [fetch.go](../../pkg/harness/claudeplugins/fetch.go), [git.go](../../pkg/worker/git.go), [harness_version.go](../../pkg/worker/harness_version.go), [openspec.go](../../pkg/worker/openspec.go) |
 | `PLOEG_ACP_ARGV` | ploeg-worker |  | `acp` harness only: the whole launch command as a JSON array; required when the profile is `custom`. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_ACP_CONFIG_JSON` | ploeg-worker |  | `acp` harness only: replaces the generated agent configuration of the `opencode` or `qwen-code` profile wholesale. The `goose` and `openhands` profiles refuse it at startup. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_ACP_IDLE_TIMEOUT` | ploeg-worker |  | `acp` harness only: timeout without protocol traffic. Empty means the adapter default (10m). The Run's prompt states it (ADR-0133). | [main.go](../../cmd/ploeg-worker/main.go) |
@@ -53,6 +53,7 @@ The generator follows each binary's imports inside the module and records every 
 | `PLOEG_CLAUDE_ENVIRONMENTS` | ploegd |  | `true` enables Runs executed as Claude Code sessions in a Team's self-hosted environment (ADR-0084): a worker records its dispatched session on `POST /api/v1/runs/{token}/claude-session`, and a runner's session hook exchanges Anthropic's session token for the Run's push credential on `POST /api/v1/claude-sessions/forge-credential`. The exchange needs per-run push credentials (`PLOEG_FORGEJO_BOT_PASSWORD`) and `PLOEG_FORGEJO_URL`, under which it names the push remote; the shared token never leaves ploegd. `ops/claude-runner/post-session` is the runner hook that calls it. Anything else leaves both routes answering 404. | [claudesessions.go](../../cmd/ploegd/claudesessions.go) |
 | `PLOEG_CLAUDE_ENVIRONMENT_ID` | ploeg-worker |  | The `ccpool_…` id of the Team's self-hosted Claude environment a `claude-environment` worker dispatches its Runs to (ADR-0084, chart `harness.claudeEnvironment.environmentId`). Required with that harness. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_CLAUDE_PERMISSION_MODE` | ploeg-worker |  |  | [main.go](../../cmd/ploeg-worker/main.go) |
+| `PLOEG_CLAUDE_PLUGINS` | ploeg-worker |  | JSON array of `{name, marketplace: {url, commit}, env: [{name, value \| fromEnv}], hookTimeout}`: the Claude Code plugins a `claude-code` Run loads (ADR-0139, chart `harness.claudeCode.plugins`). `commit` is a full commit id; `url` is https or an absolute path; `fromEnv` may name only a `PLOEG_CLAUDE_PLUGIN_ENV_*` variable; names Ploeg, the harness or the gateway read are refused. A malformed declaration stops the worker before it claims. Each Run fetches the marketplace without credentials, installs the plugin's skills, commands, agents and command hooks, and runs every hook under `ploeg-worker hook-guard` with only the declared env; a plugin it cannot fetch or guard is left out and logged, and the Run continues. Unset loads none and leaves the Run's Claude Code invocation unchanged. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_CLAUDE_POLL_INTERVAL` | ploeg-worker |  | How often a `claude-environment` worker asks ploegd whether the runner reported the session's end. Unset = 15s. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_CLAUDE_SESSION_JWKS_URL` | ploegd |  | Where ploegd fetches the keys that sign Claude session tokens. Unset uses Anthropic's published JWKS; tests point it at a fake. | [claudesessions.go](../../cmd/ploegd/claudesessions.go) |
 | `PLOEG_CLAUDE_SESSION_TIMEOUT` | ploegd | `100m` | How long ploegd holds a client-carried Run and its Lease once its runner session is recorded (ADR-0112), so its client need not renew. Go duration; default `100m`, like the chart's harness timeout. Past it, a Run without a runner report ends at its deadline as any lapsed Run does. | [claudesessions.go](../../cmd/ploegd/claudesessions.go) |
@@ -180,7 +181,9 @@ The generator follows each binary's imports inside the module and records every 
 | `POD_UID` | ploeg-worker |  | Downward-API pod UID; the worker identity when `PLOEG_WORKER_ID` is unset. | [main.go](../../cmd/ploeg-worker/main.go), [sandbox.go](../../cmd/ploeg-worker/sandbox.go), [worker.go](../../pkg/worker/worker.go) |
 | `REPO_NAME` | ploeg-worker |  | Fallback repository name for a team that pins one. The repository normally comes from the claimed Work Item. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `REPO_OWNER` | ploeg-worker |  | Fallback repository owner for a team that pins one. The repository normally comes from the claimed Work Item. | [main.go](../../cmd/ploeg-worker/main.go) |
-| `TZ` | ploeg-worker |  |  | [git.go](../../pkg/worker/git.go), [openspec.go](../../pkg/worker/openspec.go) |
+| `SSL_CERT_DIR` | ploeg-worker |  | Passed to `git` when the worker fetches a Claude Code plugin marketplace. | [fetch.go](../../pkg/harness/claudeplugins/fetch.go) |
+| `SSL_CERT_FILE` | ploeg-worker |  | Passed to `git` when the worker fetches a Claude Code plugin marketplace. | [fetch.go](../../pkg/harness/claudeplugins/fetch.go) |
+| `TZ` | ploeg-worker |  |  | [fetch.go](../../pkg/harness/claudeplugins/fetch.go), [git.go](../../pkg/worker/git.go), [openspec.go](../../pkg/worker/openspec.go) |
 | `WORK_DIR` | ploeg-worker | `/mnt/ci-shared` |  | [main.go](../../cmd/ploeg-worker/main.go) |
 
 ## Helm values
@@ -189,9 +192,13 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 
 | Key | Type | Default | Description | Source |
 | --- | --- | --- | --- | --- |
-| `claudeRunner` | object |  | claude-runner: the self-hosted Claude environment runner that executes claude-environment Runs as Claude Code sessions (ADR-0084), from the release's claude-runner image. Off by default. ops/claude-runner/README.md explains the runner settings. The pod reaches Anthropic, the forge's HTTPS host and ploegd; write that egress policy for your CNI, because it names hosts a NetworkPolicy cannot. | values.yaml, values.schema.json |
+| `claudeRunner` | object |  | claude-runner: the self-hosted Claude environment runner that executes claude-environment Runs as Claude Code sessions (ADR-0084), from the release's claude-runner image. Off by default. ops/claude-runner/README.md explains the runner settings. The pod reaches Anthropic, the forge's HTTPS host and ploegd; networkPolicy renders that egress, with Anthropic as the internet on 443 because a NetworkPolicy cannot name a host. | values.yaml, values.schema.json |
 | `claudeRunner.annotations` | object | `{}` |  | values.yaml, values.schema.json |
 | `claudeRunner.args` | array | `["--capacity", "1", "--release-idle-session-min", "1", "--kill-session-after-min", "90", "--drain-grace-sec", "600", "--remove-session-state"]` | Runner flags after self-hosted-runner --base-dir and --hooks-dir. One session per pod, so nothing a session leaves behind is seen by the next. | values.yaml, values.schema.json |
+| `claudeRunner.claudeCode` | object |  | Where the runner's Claude Code comes from. Ploeg's claude-runner image carries none (ADR-0141): an init container installs the pinned version from Anthropic's GPG-signed release into an emptyDir, which the runner mounts read-only at `/opt/claude-code`. Needs egress to `downloads.claude.ai:443`. | values.yaml, values.schema.json |
+| `claudeRunner.claudeCode.install` | boolean | `true` | Install Claude Code from Anthropic's signed release into the runner pod before it starts; false when the image already carries it | values.yaml, values.schema.json |
+| `claudeRunner.claudeCode.sha256` | string | `""` | Expected sha256 of the version's Linux binary; empty trusts the signed manifest alone | values.yaml, values.schema.json |
+| `claudeRunner.claudeCode.version` | string | `""` | Claude Code version to install; empty uses the image's pin | values.yaml, values.schema.json |
 | `claudeRunner.enabled` | boolean | `false` |  | values.yaml, values.schema.json |
 | `claudeRunner.env` | object | `{}` | name: value, e.g. OTEL_EXPORTER_OTLP_ENDPOINT for the sessions' telemetry | values.yaml, values.schema.json |
 | `claudeRunner.environmentSecret` | object |  | REQUIRED when enabled: the Secret with SELF_HOSTED_RUNNER_ENVIRONMENT_SECRET, the environment key from the claude.ai admin page. Loaded with envFrom. | values.yaml, values.schema.json |
@@ -280,6 +287,7 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `executor.gitlab.url` | string | `""` | Base URL, no /api/v4. Empty = ploegd configures no GitLab provider, so findings never reach a merge request. | values.yaml, values.schema.json |
 | `executor.gitlab.webhookSecret` | [secretRef](#secretref) | `{}` | Shared secret GitLab sends as X-Gitlab-Token to POST /webhooks/forge/gitlab. Unset = every forge webhook is rejected. | values.yaml, values.schema.json |
 | `executor.harness` | [harness](#harness) |  | Global harness defaults; a team's optional `harness:` block overrides these field-by-field (see teams below). | values.yaml, values.schema.json |
+| `executor.harness.acknowledgePrivilegedDind` |  | `false` | Required `true` wherever `dind` is `true`, resolved Role, then team, then here. Records that the operator accepts that the harness holds a privileged Docker daemon's client certificates (root on the node) and, with both proxies off, the real per-Run model key and forge token (ADR-0136). | values.yaml |
 | `executor.harness.acp` |  |  | acp harness only. One adapter speaks Zed's Agent CLIENT Protocol (stdio JSON-RPC, wire version 1) to any ACP-capable agent. Unrelated to IBM's former Agent COMMUNICATION Protocol, which merged into A2A — see ADR-0007. | values.yaml |
 | `executor.harness.acp.argv` |  | `[]` | whole launch command; REQUIRED when profile is custom | values.yaml |
 | `executor.harness.acp.configJson` |  | `""` | Replaces the profile's generated agent config (opencode, qwen-code) wholesale, so a wrong provider block is a values edit rather than an agent image rebuild. goose is configured by environment and refuses it. | values.yaml |
@@ -288,13 +296,15 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `executor.harness.acp.profile` |  | `opencode` | opencode \| qwen-code \| goose \| openhands \| custom (PLOEG_ACP_PROFILE) | values.yaml |
 | `executor.harness.acp.promptTimeout` |  | `""` | Go duration; "" = adapter default (45m) | values.yaml |
 | `executor.harness.args` |  | `[]` | exec harness only: argv template with {taskspec}/{taskfile} | values.yaml |
+| `executor.harness.claudeCode` |  |  | claude-code harness only (ADR-0139): Claude Code plugins every Run of the Team loads, each fetched by the worker from a plugin marketplace at a pinned commit. Set at executor, team or Role level; the most specific list wins whole. Each hook runs under ploeg-worker's guard with only the plugin's declared env and cannot block or stop the Run; MCP and LSP servers, monitors, bin/ and settings.json are left out. A marketplace off the forge needs networkPolicy.worker.extraEgress. Empty loads none, and the Run's Claude Code reads the clone's settings as before. | values.yaml |
+| `executor.harness.claudeCode.plugins` |  | `[]` | Claude Code plugins every `claude-code` Run loads (`PLOEG_CLAUDE_PLUGINS`, ADR-0139), set at executor, team or Role level; the most specific list wins whole and renders only into a claude-code pod. Each entry names the plugin, its marketplace `url` and a full `commit`, the `env` its hooks receive (a `value`, or a `secret: {name, key}` rendered as a `PLOEG_CLAUDE_PLUGIN_ENV_*` secretKeyRef; a Secret holding a Ploeg credential is refused), and `hookTimeout` (default 10s, at most 60s). Empty loads none. | values.yaml |
 | `executor.harness.claudeEnvironment` |  |  | claude-environment harness only (ADR-0084): the Run executes as a Claude Code session in the Team's self-hosted environment, paid by the Team's Claude plan. The agent image needs the claude CLI and git. | values.yaml |
 | `executor.harness.claudeEnvironment.carrier` |  | `""` | client: the person's own Claude Code carries the Runs (ADR-0112). No worker is rendered or claims them, and no login is needed: each Work Item waits as needs_human until the person it acts for claims its Run through the operator API and dispatches it with their own login. ploegd reads the carrier and environmentId from PLOEG_TEAM_HARNESSES. "" = a worker dispatches with loginVolume or loginSecret. | values.yaml |
 | `executor.harness.claudeEnvironment.environmentId` |  | `""` | ccpool_… (PLOEG_CLAUDE_ENVIRONMENT_ID) | values.yaml |
 | `executor.harness.claudeEnvironment.loginSecret` |  | `""` |  | values.yaml |
 | `executor.harness.claudeEnvironment.loginVolume` |  | `""` | The Team member login that dispatches, one of two ways. loginVolume names a PersistentVolumeClaim holding a Claude config directory a person signed in to with `claude auth login`; the CLI refreshes it in place. loginSecret names a Secret with keys refreshToken and scopes that each Run exchanges with `claude auth login`. Anthropic caps either login at 30 days, so a person renews it. | values.yaml |
 | `executor.harness.claudeEnvironment.pollInterval` |  | `""` | Go duration; "" = 15s (PLOEG_CLAUDE_POLL_INTERVAL) | values.yaml |
-| `executor.harness.dind` |  | `true` | privileged DinD sidecar + DOCKER_* wiring (OpenHands + gates need it) | values.yaml |
+| `executor.harness.dind` |  | `false` | false (the default) is the strict profile: no privileged sidecar, both credential proxies on for a qualified harness. true adds the privileged docker:dind sidecar and DOCKER_* wiring for gate builds inside a container, mounts the daemon's client certificates into the harness and turns both proxies off for that workload; the render refuses it unless acknowledgePrivilegedDind is true in the same chain (ADR-0136). | values.yaml |
 | `executor.harness.entrypoint` |  | `""` | binary override (PLOEG_HARNESS_ENTRYPOINT); "" = adapter default | values.yaml |
 | `executor.harness.idleTimeout` |  | `15m` | Stops a harness that prints nothing and makes no model call for this long (`PLOEG_HARNESS_IDLE_TIMEOUT`). | values.yaml |
 | `executor.harness.image` |  | `""` | Agent image. REQUIRED with the executor enabled, here, in runnerImage or per team: Ploeg publishes no agent image, so the render fails without one. A claude-environment harness that sets none uses claudeRunner.image. | values.yaml |
@@ -321,7 +331,7 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `executor.sandbox.launcherResources.limits.memory` |  | `32Mi` |  | values.yaml |
 | `executor.sandbox.launcherResources.requests.cpu` |  | `10m` |  | values.yaml |
 | `executor.sandbox.launcherResources.requests.memory` |  | `32Mi` |  | values.yaml |
-| `executor.sandbox.networkPolicy` | object | `{}` | {} = Unmanaged: the cluster's own policies, selected by the worker's labels, apply. A NetworkPolicy spec here (ingress/egress rules) makes agent-sandbox manage one policy per template with exactly these rules. Allow at least DNS, ploegd, the model gateway and the forge; the controller's secure default is never used, because it blocks all three. | values.yaml, values.schema.json |
+| `executor.sandbox.networkPolicy` | object | `{}` | {} = Unmanaged: the chart's worker policy (networkPolicy) and the cluster's own, selected by the worker's labels, apply. A NetworkPolicy spec here (ingress/egress rules) makes agent-sandbox manage one more policy per template with exactly these rules, added to those; the controller's secure default is never used, because it blocks DNS, ploegd, the model gateway and the forge alike. | values.yaml, values.schema.json |
 | `executor.sandbox.networkPolicy.egress` | array |  |  | values.schema.json |
 | `executor.sandbox.networkPolicy.ingress` | array |  |  | values.schema.json |
 | `executor.sandbox.runtimeClassName` | string | `""` | type=sandbox only. Global fallback RuntimeClass for every team and role; a team's (or a Role's) own `sandbox.runtimeClassName` overrides it field by field. "" = the node's default runtime; set kata or gvisor only after qualifying it with the privileged DinD sidecar on your nodes. Place Kata on bare metal (its own kernel, no nested-virt requirement). Place gVisor systrap on VMs without nested virt, accepting its file-I/O penalty on clone-heavy runs. | values.yaml, values.schema.json |
@@ -502,6 +512,31 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `monitoring.serviceMonitor.interval` | string | `30s` |  | values.yaml, values.schema.json |
 | `monitoring.serviceMonitor.labels` | object | `{}` | e.g. {release: kube-prometheus-stack}, whatever your Prometheus selects on | values.yaml, values.schema.json |
 | `monitoring.serviceMonitor.scrapeTimeout` | string | `10s` |  | values.yaml, values.schema.json |
+| `networkPolicy` | object |  | Default-deny NetworkPolicies for every pod the chart renders (ploegd, workers, the sandbox launcher, claude-runner, ploeg-mcp), each with the allowlist that pod needs. Egress to an endpoint is derived from its URL unless `peers` names it: an IP is itself, a bare name is the release namespace, `name.ns.svc` is that namespace, anything else is the internet outside `privateCidrs`, on the URL's port or the scheme's default. The policies are plain `networking.k8s.io/v1` objects and are applied only by a CNI that enforces NetworkPolicy (Cilium, Calico, Antrea); kind's kindnet and Flannel ignore them. An installer's own policies add to these, never subtract (docs/ops/network.md). | values.yaml, values.schema.json |
+| `networkPolicy.claudeRunner.extraEgress` | [networkPolicyEgressRules](#networkpolicyegressrules) | `[]` |  | values.yaml, values.schema.json |
+| `networkPolicy.database` | object |  | ploegd's PostgreSQL. The connection URI lives in a Secret the chart cannot read, so there is nothing to derive: empty `peers` allows every pod in the release namespace on `port`. | values.yaml, values.schema.json |
+| `networkPolicy.database.peers` | [networkPolicyPeers](#networkpolicypeers) | `[]` |  | values.yaml, values.schema.json |
+| `networkPolicy.database.port` | integer or string | `5432` | The PostgreSQL port as the pod listens on it. | values.yaml, values.schema.json |
+| `networkPolicy.dns` | object |  | The cluster DNS every policy allows. The default selects CoreDNS as kubeadm, kind and Talos label it; a cluster with another label names its own peers. | values.yaml, values.schema.json |
+| `networkPolicy.dns.peers` | [networkPolicyPeers](#networkpolicypeers) | `[{"namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "kube-system"}}, "podSelector": {"matchLabels": {"k8s-app": "kube-dns"}}}]` |  | values.yaml, values.schema.json |
+| `networkPolicy.dns.ports` | [networkPolicyPorts](#networkpolicyports) | `[{"protocol": "UDP", "port": 53}, {"protocol": "TCP", "port": 53}]` |  | values.yaml, values.schema.json |
+| `networkPolicy.enabled` | boolean | `true` | Render the policies. `false` renders none and leaves the network to the installer, which the threat model records as finding F-02. | values.yaml, values.schema.json |
+| `networkPolicy.forge` | [networkPolicyEndpoint](#networkpolicyendpoint) | `{"peers": [], "port": ""}` | The forges: workers reach the executor's forge `url`; ploegd and claude-runner reach every configured forge's `publicUrl` or `url`, and api.github.com for github.com. Empty `peers` derives the destination from each URL. | values.yaml, values.schema.json |
+| `networkPolicy.gateway` | [networkPolicyEndpoint](#networkpolicyendpoint) | `{"peers": [], "port": ""}` | The model gateway: ploegd reaches `executor.litellm.adminUrl` and workers `executor.litellm.baseUrl`. Empty `peers` derives the destination from each URL. | values.yaml, values.schema.json |
+| `networkPolicy.knowledgeGraph` | [networkPolicyEndpoint](#networkpolicyendpoint) | `{"peers": [], "port": ""}` | The Omnigraph server at `knowledgeGraph.url`, reached by ploegd only. Empty `peers` derives the destination from the URL. | values.yaml, values.schema.json |
+| `networkPolicy.kubernetesApi` | object |  | The Kubernetes API the sandbox launcher creates SandboxClaims through. The API server is not a pod, so empty `peers` allows any peer on `ports`; name its endpoint addresses as ipBlocks to narrow it, or add your CNI's API-server entity in a policy of your own. | values.yaml, values.schema.json |
+| `networkPolicy.kubernetesApi.peers` | [networkPolicyPeers](#networkpolicypeers) | `[]` |  | values.yaml, values.schema.json |
+| `networkPolicy.kubernetesApi.ports` | [networkPolicyPorts](#networkpolicyports) | `[{"protocol": "TCP", "port": 6443}, {"protocol": "TCP", "port": 443}]` |  | values.yaml, values.schema.json |
+| `networkPolicy.mcp.extraEgress` | [networkPolicyEgressRules](#networkpolicyegressrules) | `[]` |  | values.yaml, values.schema.json |
+| `networkPolicy.mcp.ingressFrom` | [networkPolicyPeers](#networkpolicypeers) | `[]` | Peers that may reach ploeg-mcp on `mcp.port`. Empty allows any peer on that port; `mcp.networkPolicy.ingress` is the older per-component form and still renders. | values.yaml, values.schema.json |
+| `networkPolicy.ploegd.extraEgress` | [networkPolicyEgressRules](#networkpolicyegressrules) | `[]` | Further egress rules for ploegd, such as a tracker or forge whose URL the derivation cannot place. | values.yaml, values.schema.json |
+| `networkPolicy.ploegd.extraIngress` | [networkPolicyIngressRules](#networkpolicyingressrules) | `[]` |  | values.yaml, values.schema.json |
+| `networkPolicy.ploegd.ingressFrom` | [networkPolicyPeers](#networkpolicypeers) | `[]` | Peers that may reach ploegd on 8080: the gateway that forwards webhooks, operator consumers, Prometheus. Empty allows any peer on that port, because the chart cannot know your gateway; set, the policy allows these peers plus this release's own worker, launcher, ploeg-mcp and claude-runner pods. | values.yaml, values.schema.json |
+| `networkPolicy.privateCidrs` | array | `["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]` | CIDRs an internet rule excludes, so a pod allowed to reach a public host cannot reach the cluster, the nodes or the LAN through the same rule. Add your pod, service and node ranges when they are outside RFC 1918. | values.yaml, values.schema.json |
+| `networkPolicy.sandboxLauncher.extraEgress` | [networkPolicyEgressRules](#networkpolicyegressrules) | `[]` |  | values.yaml, values.schema.json |
+| `networkPolicy.telemetry` | [networkPolicyEndpoint](#networkpolicyendpoint) | `{"peers": [], "port": ""}` | Every OTLP collector a harness `telemetry.endpoint` or `claudeRunner.env.OTEL_EXPORTER_OTLP_ENDPOINT` names. Empty `peers` derives the destination from each URL. | values.yaml, values.schema.json |
+| `networkPolicy.tracker` | [networkPolicyEndpoint](#networkpolicyendpoint) | `{"peers": [], "port": ""}` | The trackers ploegd calls: `tracker.url`, ClickUp when a ClickUp Secret is set, the GitHub API when `tracker.github.appId` is set. Empty `peers` derives the destination from each URL. | values.yaml, values.schema.json |
+| `networkPolicy.worker.extraEgress` | [networkPolicyEgressRules](#networkpolicyegressrules) | `[]` | Further egress rules for every worker pod, such as the registry a DinD sidecar pulls from or the allowlist proxy of ADR-0037. Each rule widens what a model-directed harness can reach. | values.yaml, values.schema.json |
 | `nodeSelector` |  | `{}` | Node selector for the ploegd pod. Empty = any schedulable node. | values.yaml |
 | `operator.consumers` | array | `[]` | Operator read consumers, forwarded as `PLOEG_OPERATOR_CONSUMERS`. | values.yaml, values.schema.json |
 | `operator.consumers[].execute` | boolean |  | Grants execution commands. Defaults to false. | values.schema.json |
@@ -526,10 +561,6 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `resources.requests.memory` |  | `256Mi` |  | values.yaml |
 | `security.workerAdmission.enabled` | boolean | `false` |  | values.yaml, values.schema.json |
 | `security.workerAdmission.runtimeClassNames` | array | `[]` |  | values.yaml, values.schema.json |
-| `security.workerNetworkPolicy.dns.namespaceSelector.matchLabels.kubernetes.io/metadata.name` |  | `kube-system` |  | values.yaml |
-| `security.workerNetworkPolicy.dns.podSelector.matchLabels.k8s-app` |  | `kube-dns` |  | values.yaml |
-| `security.workerNetworkPolicy.egress` | array | `[]` |  | values.yaml, values.schema.json |
-| `security.workerNetworkPolicy.enabled` | boolean | `false` |  | values.yaml, values.schema.json |
 | `service.port` |  | `8080` |  | values.yaml |
 | `tracker` | object |  | Tracker write-backs (backlog #31): how a closed Shift reaches a person with the pull request link. Unset = the Vikunja provider keeps its logging no-op — runs still finish, the board simply is not updated. Ingest (the webhook) is configured separately and needs no token. | values.yaml, values.schema.json |
 | `tracker.clickup` | object or null |  | The ClickUp tracker (pkg/provider/clickup). Ingest and write-backs are independent: webhookSecret alone verifies deliveries, tokenSecret alone enables reads and write-backs, either without the other degrades rather than fails. ClickUp GENERATES the webhook secret on registration — capture it from the create-webhook response; there is nothing to invent. | values.yaml, values.schema.json |
@@ -552,6 +583,43 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 ## Shared value shapes
 
 Several keys above share one schema definition.
+
+### networkPolicyPeers
+
+A list of NetworkPolicyPeer objects: `podSelector`, `namespaceSelector` or `ipBlock`, as in `networking.k8s.io/v1`.
+
+| Key | Type | Description |
+| --- | --- | --- |
+
+### networkPolicyPorts
+
+A list of NetworkPolicyPort objects: `protocol` and `port`, as in `networking.k8s.io/v1`.
+
+| Key | Type | Description |
+| --- | --- | --- |
+
+### networkPolicyIngressRules
+
+A list of NetworkPolicyIngressRule objects, appended to the policy as written.
+
+| Key | Type | Description |
+| --- | --- | --- |
+
+### networkPolicyEgressRules
+
+A list of NetworkPolicyEgressRule objects, appended to the policy as written.
+
+| Key | Type | Description |
+| --- | --- | --- |
+
+### networkPolicyEndpoint
+
+Where one kind of endpoint lives. Empty `peers` derives the destination from each configured URL; set, they replace it for every URL of the kind. Empty `port` is each URL's port, or 443 for https and 80 for http; set, it replaces it, which a Service whose port differs from its pods' needs.
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `peers` | [networkPolicyPeers](#networkpolicypeers) |  |
+| `port` | integer or string |  |
 
 ### goMemLimit
 
@@ -603,7 +671,8 @@ name becomes the workload suffix (ploeg-worker-<team>-<role>); writes marks the 
 | `entrypoint` | string | Harness binary override. Empty means the adapter default. |
 | `args` | array | `exec` harness only: argv template with `{taskspec}` and `{taskfile}`. |
 | `outcomeFile` | string | `exec` harness only: OutcomeReport JSON path override. |
-| `dind` | boolean | Adds the privileged DinD sidecar and Docker wiring. OpenHands and gate builds need it. |
+| `dind` | boolean | false (the chart default) renders no privileged sidecar and keeps both credential proxies on for a qualified harness. true adds the privileged docker:dind sidecar, mounts its client certificates into the harness container and turns both credential proxies off for that workload (PLOEG_CREDENTIAL_ISOLATION_OFF_REASON=dind); the render refuses it without acknowledgePrivilegedDind (ADR-0136). |
+| `acknowledgePrivilegedDind` | boolean | Required true for a workload with dind: true, resolved role, then team, then executor.harness. It records that the operator accepts that the harness holds the client certificates of a privileged Docker daemon (root on the node) and, with the proxies off, the real per-Run model key and forge token (ADR-0136). |
 | `credentialIsolation` | one of `""`, `"proxy"` | Explicit per-workload setting for both credential proxies (ADR-0034). Unset = executor.forgeTokenIsolation and executor.litellm.keyIsolation apply to a qualified harness without DinD, and every other workload runs with both off. |
 | `timeout` | string | Stops a harness that runs longer than this. |
 | `idleTimeout` | string | Stops a harness that is silent for this long. |
@@ -613,6 +682,7 @@ name becomes the workload suffix (ploeg-worker-<team>-<role>); writes marks the 
 | `verify` | array |  |
 | `verifyTimeout` | string |  |
 | `telemetry` | [telemetry](#telemetry) |  |
+| `claudeCode` | [claudeCode](#claudecode) |  |
 
 ### allowedHarness
 
@@ -624,7 +694,8 @@ name becomes the workload suffix (ploeg-worker-<team>-<role>); writes marks the 
 | `entrypoint` | string |  |
 | `args` | array |  |
 | `outcomeFile` | string |  |
-| `dind` | boolean |  |
+| `dind` | boolean | false (the chart default) renders no privileged sidecar and keeps both credential proxies on for a qualified harness. true adds the privileged docker:dind sidecar, mounts its client certificates into the harness container and turns both credential proxies off for that workload (PLOEG_CREDENTIAL_ISOLATION_OFF_REASON=dind); the render refuses it without acknowledgePrivilegedDind (ADR-0136). |
+| `acknowledgePrivilegedDind` | boolean | Required true for a workload with dind: true, resolved role, then team, then executor.harness. It records that the operator accepts that the harness holds the client certificates of a privileged Docker daemon (root on the node) and, with the proxies off, the real per-Run model key and forge token (ADR-0136). |
 | `credentialIsolation` | one of `""`, `"proxy"` | Explicit per-workload setting for both credential proxies (ADR-0034). Unset = executor.forgeTokenIsolation and executor.litellm.keyIsolation apply to a qualified harness without DinD, and every other workload runs with both off. |
 | `timeout` | string |  |
 | `idleTimeout` | string |  |
@@ -634,6 +705,25 @@ name becomes the workload suffix (ploeg-worker-<team>-<role>); writes marks the 
 | `verify` | array |  |
 | `verifyTimeout` | string |  |
 | `telemetry` | [telemetry](#telemetry) |  |
+
+### claudeCode
+
+claude-code harness only (ADR-0139). Rendered only into a claude-code pod.
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `plugins` | array | Claude Code plugins every Run loads (PLOEG_CLAUDE_PLUGINS). The most specific list wins whole; empty loads none. |
+| `plugins[].name` | string |  |
+| `plugins[].marketplace` | object |  |
+| `plugins[].marketplace.url` | string |  |
+| `plugins[].marketplace.commit` | string |  |
+| `plugins[].env` | array |  |
+| `plugins[].env[].name` | string |  |
+| `plugins[].env[].value` | string |  |
+| `plugins[].env[].secret` | object |  |
+| `plugins[].env[].secret.name` | string |  |
+| `plugins[].env[].secret.key` | string |  |
+| `plugins[].hookTimeout` | string |  |
 
 ### telemetry
 

@@ -1,0 +1,450 @@
+---
+type: explanation
+audience: [owner, operator, contributor, reviewer]
+owner: ploeg
+last_verified: 2026-10-23
+verified_by: "Source read at development c37de7f: pkg/worker, pkg/httpapi, pkg/forgebroker, pkg/provider, pkg/taskprompt, pkg/notes, cmd/ploegd, cmd/ploeg-worker, ops/helm/ploeg templates and golden renders; repository settings read through the GitHub API on 2026-10-23"
+---
+
+# Ploeg threat model
+
+This is the threat model for the deployment profile Ploeg intends to support first (issue #15). It was written by the project and has not been reviewed by anyone independent of it. The [security self-assessment](self-assessment.md) builds on it.
+
+Source revision: `development` at `c37de7f` (2026-10-23). Every mitigation listed below was checked against that source unless its row says **doc only**. Where the documentation and the code disagree, the code wins and the disagreement is listed in [Where the documentation and the code disagree](#where-the-documentation-and-the-code-disagree).
+
+## Method
+
+CNCF TAG Security and Compliance does not prescribe a threat-modeling method. Its [security assessment guide](https://github.com/cncf/tag-security/blob/main/community/assessments/guide/README.md) asks a Sandbox project to document "their threat model and security design". The [Cloud Native Security Whitepaper v2](https://github.com/cncf/tag-security/blob/main/community/resources/security-whitepaper/v2/cloud-native-security-whitepaper.md), in its Threat Modeling section, asks for three things:
+
+- a scoped representation of the architecture, with processes, data stores and security boundaries;
+- threat identification with "a mature, well-used model of threats such as STRIDE or OCTAVE";
+- the actor classes malicious insider, uninformed insider and malicious outsider.
+
+It builds this on the four-step [OWASP threat modeling](https://owasp.org/www-community/Threat_Modeling) process. The completed TAG assessments of [External Secrets Operator](https://github.com/cncf/tag-security/blob/main/community/assessments/projects/external-secrets/docs/stride-threat-model.md), Guardon and others use STRIDE. All of these sources were read on 2026-10-23.
+
+This model therefore uses:
+
+- **STRIDE per element.** It is applied to data-flow diagrams that draw the trust boundaries explicitly. STRIDE is the method the whitepaper names first and the one TAG reviewers already read. Applying it per element ties each threat to a component and a data flow, so a reviewer can check it against the code.
+- **Attack trees.** They cover the four attacker goals that matter most for an agent dispatch plane, so that combinations of threats are visible.
+- **The OWASP AI risk lists.** Each threat that comes from model-directed execution is mapped to the [OWASP Top 10 for LLM Applications 2025](https://genai.owasp.org/llm-top-10/) (`LLM01` to `LLM10`) and the [OWASP Top 10 for Agentic Applications 2026](https://genai.owasp.org/2025/12/09/owasp-top-10-for-agentic-applications-the-benchmark-for-agentic-security-in-the-age-of-autonomous-ai/) (`ASI01` Agent Goal Hijack to `ASI10` Rogue Agents). Ploeg runs an agent on input it does not control, so these risks are first-class.
+- **The four questions of the [Threat Modeling Manifesto](https://www.threatmodelingmanifesto.org/).** They give the document its order: what are we working on (profile, diagrams, assets), what can go wrong (STRIDE, attack trees), what are we going to do about it (mitigations, findings), and did we do a good enough job (verification and open questions).
+
+Likelihood and impact use three levels, and severity is read from this matrix:
+
+| Likelihood \ Impact | Low | Medium | High |
+| --- | --- | --- | --- |
+| **High** | Medium | High | Critical |
+| **Medium** | Low | Medium | High |
+| **Low** | Low | Low | Medium |
+
+- *Impact High* means credential theft beyond one Run, escape from the pod, a change published without review, or spend beyond the authorized budget.
+- *Likelihood High* means a remote or repository-supplied attacker can do it with no further foothold.
+
+## The supported deployment profile
+
+**Status: proposed. The maintainer has to confirm it.** This model assumes the profile below. A deployment outside it is not covered here, and the chart does not stop anyone leaving it; finding [F-11](#findings) records that gap.
+
+### Profile P1: unattended workers without Docker, credential proxies on
+
+| Axis | Required setting | Where it is set |
+| --- | --- | --- |
+| Controller | One `ploegd` replica, chart defaults (non-root, read-only root filesystem, no service-account token) | [deployment.yaml](../../ops/helm/ploeg/templates/deployment.yaml) |
+| Worker authentication | `executor.workerAuth.mode: managed`, with signing key and bootstrap registry from Secrets | [worker control](../contracts/worker-control.md) |
+| Executor | `executor.type: keda` (KEDA ScaledJob) or `cronjob` | [values.yaml](../../ops/helm/ploeg/values.yaml) |
+| Harness | One in `ploeg.isolationQualifiedHarnesses` (`openhands`, `acp/openhands`, `exec`) | [_helpers.tpl](../../ops/helm/ploeg/templates/_helpers.tpl) lines 174 to 180 |
+| Docker | `harness.dind: false` on every team and Role, the chart default since [PR #231](https://github.com/ploeg-hq/ploeg/pull/231) ([ADR-0136](../adrs/0136-the-chart-default-is-the-strict-isolation-profile-and-privileged-dind-is-an-acknowledged-opt-in.md)) | values |
+| Credential proxies | `executor.litellm.keyIsolation: proxy` and `executor.forgeTokenIsolation: proxy`, no `credentialIsolation` override | values |
+| Worker container | Default `executor.workerSecurityContext` (uid 1000, no privilege escalation, no capabilities, `RuntimeDefault` seccomp) | [ADR-0120](../adrs/0120-a-worker-container-meets-the-restricted-pod-security-standard-by-default.md) |
+| Namespace | Pod Security Admission `enforce: restricted` on the worker namespace | installer |
+| Forge | GitHub with a GitHub App (per-Run installation tokens), or Forgejo 15 or later with `botPasswordSecret` (per-Run repository tokens) | [ADR-0013](../adrs/0013-push-rights-are-minted-per-run.md), [ADR-0086](../adrs/0086-github-is-a-forge-and-a-run-pushes-with-its-own-github-app-installation-token.md) |
+| Teams and targets | Every team has a Shift plan, and every Work Item resolves a Work Target. Only the Shift-scoped claim mints a per-Run forge token; a plan-less claim or an untargeted Work Item falls back to the shared builder token ([server.go](../../pkg/httpapi/server.go) lines 637 to 655 and 713 to 726) | values, `config` |
+| Reading Roles | `readTokenSecret` set, so readers never hold a write token | chart guard `reject-reader-without-read-token` |
+| Forge follow-ups | `forgeFollowUps.reworkOnChangesRequested` stays off for any repository where people outside the team can submit a review ([F-36](#findings)) | `config.teams` |
+| Webhooks | A webhook secret for every tracker and forge that sends events | [ci-and-infra](../ops/ci-and-infra.md#forge-webhooks) |
+| Network | The chart's default-deny NetworkPolicies, `networkPolicy.enabled: true`, on a CNI that enforces them ([network policies](../ops/network.md)); the paths below are what they allow | [templates/networkpolicy.yaml](../../ops/helm/ploeg/templates/networkpolicy.yaml), installer's CNI |
+| Transport | ploegd reached in-cluster only. The internet reaches only `/webhooks/*`, through a TLS-terminating gateway. Pod-to-pod traffic is encrypted by the CNI or a mesh when it crosses nodes | installer |
+| Model gateway | LiteLLM 1.103.0 or later with spend logs on; the master key only in ploegd | [managed workers](../ops/managed-workers.md) |
+
+The worker namespace needs these network paths and no others. The chart renders each of them from its URL values ([network policies](../ops/network.md)); the KEDA row is the installer's, because the KEDA operator is not a Ploeg pod:
+
+| From | To | Port | Why |
+| --- | --- | --- | --- |
+| worker pods | cluster DNS | 53 | name resolution |
+| worker pods | ploegd Service | 8080 | claim, renew, outcome, credential refresh |
+| worker pods | LiteLLM proxy | 4000 | inference with the per-Run key |
+| worker pods | forge HTTP(S) | 443 or the forge's port | clone, push, pull request API |
+| ploegd | PostgreSQL | 5432 | state |
+| ploegd | LiteLLM admin, forge API, tracker API | their ports | management, minting, write-backs |
+| gateway | ploegd | 8080, path `/webhooks/*` only | tracker and forge events |
+| KEDA operator | PostgreSQL | 5432 | queue depth, as a least-privilege role |
+
+### What the profile excludes
+
+| Excluded | Why |
+| --- | --- |
+| `harness.dind: true` (an opt-in that renders only with `harness.acknowledgePrivilegedDind: true`; the default is `false` since PR #231) | Privileged sidecar whose client certificates the harness holds. It also turns both credential proxies off ([F-01](#findings)). |
+| `executor.workerAuth.mode: legacy` | Unauthenticated worker routes, static inference key, no managed accounting |
+| `claude-code`, `acp/opencode`, `acp/qwen-code`, `acp/goose`, `acp/custom` | Not qualified with both proxies on ([qualification record](../research/2026-10-04-isolation-qualification.md)) |
+| `claude-environment` and the `claudeRunner` | The Run executes outside the pod on a third-party runner. The login is a person's credential. |
+| `executor.type: sandbox` | Marked experimental. It needs agent-sandbox and a namespace-wide `sandboxclaims` role ([F-21](#findings)). A Kata runtime class on top of P1 is stronger and welcome, but it is not what this model assumes. |
+| Static shared forge token for writers (no App, no bot password) | It cannot be scoped per Run or revoked |
+| GitLab as a forge | No per-Run GitLab broker exists; GitLab writers always use the shared token, and in a mixed deployment a GitLab Run's mint is routed to the Forgejo broker ([F-31](#findings)) |
+| Delegated Operator Executions | Being retired ([ADR-0102](../adrs/0102-an-operator-consumer-admits-work-items-that-ploeg-worker-executes.md)) |
+| `ploeg-mcp` groups with `execute` | The confirmation step can be skipped by the client ([F-08](#findings)). Read-only groups are in scope. |
+| Registry egress (`registries` profile, [ADR-0037](../adrs/0037-teams-opt-into-registry-egress-through-a-logged-allowlist-proxy.md)) | Enforcement lives outside the chart and is not modelled here |
+
+## Data-flow diagrams
+
+### Level 0: context
+
+```mermaid
+flowchart LR
+  subgraph EXT["Outside the cluster (untrusted network)"]
+    TA["Tracker\nVikunja / ClickUp / GitHub Issues"]
+    FG["Forge\nForgejo / GitLab / GitHub"]
+    MP["Model providers"]
+    PER["People: ticket authors,\nreviewers, operators"]
+  end
+  subgraph CL["Kubernetes cluster"]
+    subgraph CP["Control-plane namespace (trusted)"]
+      PD["ploegd"]
+      DB[("PostgreSQL")]
+      SEC[("Kubernetes Secrets")]
+      GW["LiteLLM gateway"]
+    end
+    subgraph EX["Worker namespace (execution boundary)"]
+      WP["Worker pod:\nploeg-worker + harness"]
+    end
+    OC["Operator consumer\nor ploeg-mcp"]
+    KEDA["KEDA operator"]
+  end
+  TA -- "DF1 webhook (HMAC)" --> PD
+  PD -- "DF2 reads, write-backs (API token)" --> TA
+  FG -- "DF3 webhook (HMAC or token)" --> PD
+  PD -- "DF4 mint and revoke per-Run tokens, read PR facts" --> FG
+  PD -- "DF5 SQL" --> DB
+  SEC -- "DF6 env at pod start" --> PD
+  PD -- "DF7 mint, block, spend (master key)" --> GW
+  GW -- "DF8 inference" --> MP
+  KEDA -- "DF9 queue count (SQL)" --> DB
+  KEDA -- "DF10 create Job" --> WP
+  WP -- "DF11 claim, renew, outcome (bootstrap, then signed capability)" --> PD
+  WP -- "DF12 inference (per-Run key)" --> GW
+  WP -- "DF13 clone, push, PR API (per-Run token)" --> FG
+  PER -- "DF14 tickets, labels, reviews" --> TA
+  PER -- "DF15 sign-in, actions" --> OC
+  OC -- "DF16 operator API (consumer token, X-Ploeg-Actor)" --> PD
+```
+
+### Level 1: inside the worker pod
+
+The worker pod holds the weakest boundary in the system. `ploeg-worker` and the harness it starts are separate processes in one container, run as the same uid, and share a filesystem and a network namespace.
+
+```mermaid
+flowchart TB
+  subgraph POD["Worker pod (P1: no DinD, restricted)"]
+    subgraph WK["ploeg-worker process (non-dumpable, no CAP_SYS_PTRACE)"]
+      ENV[("Container env:\nbootstrap token,\nshared builder forge token")]
+      CAP[("Signed Run capability,\nper-Run model key,\nper-Run forge token")]
+      KP["Model key proxy\n127.0.0.1"]
+      FP["Forge proxy + push fence\n127.0.0.1"]
+      LW["Leak watch, worker git,\nverification"]
+    end
+    subgraph HN["Harness process tree (model-directed, untrusted)"]
+      AG["Agent: OpenHands / ACP agent / exec"]
+    end
+    WD[("Work directory emptyDir:\nclone, HOME, outcome file")]
+  end
+  PD["ploegd"]
+  GW["LiteLLM"]
+  FG["Forge"]
+  REPO["Target repository content\n(attacker-controlled)"]
+  PD -- "claim response: prompt, capability, keys" --> WK
+  WK -- "prompt, placeholders, allowlisted env" --> AG
+  AG -- "HB1 model calls with placeholder" --> KP
+  KP -- "real key" --> GW
+  AG -- "HB2 git and API with placeholder" --> FP
+  FP -- "real token, Run repo and branch only" --> FG
+  REPO -- "clone" --> WD
+  AG <-- "reads and writes" --> WD
+  WD -- "outcome report" --> WK
+  LW -- "scan pushed commits" --> FG
+```
+
+### Trust boundaries
+
+| ID | Boundary | What enforces it |
+| --- | --- | --- |
+| TB1 | Internet and external SaaS to the cluster | Gateway TLS and installer routing. Webhook HMAC in ploegd. |
+| TB2 | Control-plane namespace to worker namespace | Separate pods. Worker pods mount no service-account token. Controller-only Secrets are wired only to ploegd ([_worker_control.tpl](../../ops/helm/ploeg/templates/_worker_control.tpl)). The chart's NetworkPolicies let a worker reach ploegd on 8080 and nothing reach a worker ([network policies](../ops/network.md)); enforcement is the CNI's ([F-02](#findings)). |
+| TB3 | `ploeg-worker` to harness, inside one container | Environment allowlist, `PR_SET_DUMPABLE=0`, ptrace capability shed, placeholders and loopback proxies. This is a process boundary, not a container boundary ([F-03](#findings)). |
+| TB4 | Pod to node | Container runtime (runc in P1), `restricted` Pod Security, seccomp `RuntimeDefault` |
+| TB5 | Operator consumer to ploegd | Consumer bearer token, team scope, `execute` and `verify` flags. Person identity is asserted by the consumer ([F-07](#findings)). |
+| TB6 | ploegd to the model gateway and forge | Per-Run keys and tokens with scope, budget and expiry set by ploegd |
+
+## Assets
+
+| ID | Asset | Where it lives | Why it matters |
+| --- | --- | --- | --- |
+| AS1 | LiteLLM master key | ploegd env (`LITELLM_MASTER_KEY`) | Unlimited model spend and key administration |
+| AS2 | Worker signing key | ploegd env (`PLOEG_WORKER_SIGNING_KEY`) | Forges a capability for any running Run |
+| AS3 | Bootstrap registry and per-team bootstrap tokens | ploegd env (whole registry); each worker container (its own entry) | Claims paid work for a team and Role; no expiry |
+| AS4 | Forge bot password (Forgejo) or GitHub App private key | ploegd env | Mints write tokens for every repository the bot or App can reach |
+| AS5 | Shared builder forge token (`agent-builder-token`) | ploegd and every writer worker container | Long-lived write access to every repository the bot can push to |
+| AS6 | Per-Run model key | ploegd (minted), worker memory, gateway | Spend up to the Run's cap until blocked or expired |
+| AS7 | Per-Run forge token | worker memory and forge | Push and pull request rights on one repository |
+| AS8 | Signed Run capability | worker memory | Acts on one Run for at most 24 hours while it runs |
+| AS9 | Operator consumer tokens | ploegd env (SHA-256 compared); consumer | Admission, cancel, steer, claim within the consumer's scope and budget |
+| AS10 | Tracker and forge API tokens, webhook secrets | ploegd env | Write-backs to boards; forging events |
+| AS11 | Database credentials and contents (Work Item text, transcripts, notes, audit, spend) | PostgreSQL | Integrity of authorization and accounting; confidentiality of ticket text |
+| AS12 | Target repository branches and pull requests | forge | Integrity of what reviewers merge |
+| AS13 | Authorized budget and settled spend | PostgreSQL, gateway spend logs | Financial loss |
+| AS14 | The node and other pods | cluster | Lateral movement |
+| AS15 | Release artifacts (images, chart, signatures) | ghcr.io, GitHub Releases, Rekor | Supply chain for every installer |
+
+## Actors
+
+The whitepaper's three classes are refined into the actors that touch Ploeg.
+
+| ID | Actor | Class | Capability assumed |
+| --- | --- | --- | --- |
+| AC1 | Internet attacker | malicious outsider | Reaches anything the gateway exposes; can send webhooks |
+| AC2 | Author of hostile repository content | malicious outsider | Controls files in a repository a Run clones: instructions, configs, hooks, symlinks, scripts |
+| AC3 | Ticket author or tracker writer | uninformed or malicious insider | Writes Work Item text; may assign or label work when the tracker allows it |
+| AC4 | Hijacked agent (the harness after prompt injection) | malicious insider inside TB3 | Arbitrary code as uid 1000 in the worker container, network as the pod |
+| AC5 | Compromised or careless operator consumer | malicious or uninformed insider | Holds a consumer token; names any person in `X-Ploeg-Actor` |
+| AC6 | Other workload in the cluster | malicious insider | Pod network access, no Ploeg credentials |
+| AC7 | Supply-chain attacker | malicious outsider | Compromises a dependency, agent image, action or the maintainer's account |
+| AC8 | Installer or operator who misconfigures | uninformed insider | Sets chart values, Secrets and cluster policy |
+
+## Entry points
+
+| ID | Entry point | Authentication | Reference |
+| --- | --- | --- | --- |
+| EP1 | `POST /webhooks/tracker/{provider}` | HMAC-SHA256 (Vikunja, ClickUp, GitHub Issues); rejected without a secret | [server.go](../../pkg/httpapi/server.go) line 240; provider `hmac.Equal` at vikunja.go:167, clickup.go:228, githubissues.go:347 |
+| EP2 | `POST /webhooks/forge/{provider}` | HMAC (Forgejo, GitHub); shared token (GitLab) | forgejo.go:611, github/webhook.go:214, gitlab.go:512 |
+| EP3 | `POST /api/v1/claim` | Bootstrap token (SHA-256, constant time), worker id, team and Role must match | [worker_auth.go](../../pkg/httpapi/worker_auth.go) lines 69 to 165 |
+| EP4 | `/api/v1/runs/{token}/*` incl. `llm/*` and `forge-credential` | HMAC-signed capability bound to run token, worker id, team and Role; Run must be `running` and before its deadline | worker_auth.go lines 173 to 185 |
+| EP5 | `/api/v1/operator/*` | Consumer bearer token (SHA-256, constant time), team scope, `execute`/`verify` flags | [operator.go](../../pkg/httpapi/operator.go) lines 134 to 189 |
+| EP6 | `/api/v1/deploys` | Deploy bearer token, 404 when unset | [deploys.go](../../pkg/httpapi/deploys.go) lines 44 to 55 |
+| EP7 | `POST /api/v1/claude-sessions/*` | Session JWT (excluded from P1) | `pkg/claudesession` |
+| EP8 | `GET /healthz`, `/readyz`, `/metrics` | None; aggregate state, team names, spend per hour | server.go lines 237 to 239 |
+| EP9 | `GET /api/v1/queue/{team}` | Rejected in managed mode; open in legacy mode | worker_auth.go lines 116 to 124 and 169 to 172 |
+| EP10 | ploeg-mcp `:8090` | OAuth access token (JWKS, issuer, `aud`/`azp` = client id, `ploeg:read`) | `pkg/mcpauth` |
+| EP11 | Target repository content | None: it is attacker input by design | [attack drill](../ops/attack-drill.md) |
+| EP12 | Work Item text from the tracker | Webhook HMAC proves the tracker sent it, not who wrote it | [taskprompt/prompt.go](../../pkg/taskprompt/prompt.go) lines 58 to 61 |
+
+## STRIDE per element
+
+Each row names the threat, the AI-risk mapping where one applies, likelihood (L) and impact (I), the mitigation and its evidence, and the residual risk. The verification owner is the maintainer role that must prove the mitigation and keep proving it. With one maintainer, each role is that person; the role is named so that the work can move when people join.
+
+### ploegd (process)
+
+| ID | STRIDE | Threat | L / I | Mitigation and evidence | Residual | Verification owner |
+| --- | --- | --- | --- | --- | --- | --- |
+| T-PD-1 | S | Forged tracker or forge webhook queues paid work or settles a pull request | L / H | HMAC per provider, constant-time; no secret means every delivery is rejected (EP1, EP2 references) | Low. GitLab uses a shared token, not a body MAC. | control plane |
+| T-PD-2 | S, R | Replay of a captured signed webhook re-queues finished work or settles a reopened pull request. Delivery-id headers are not signed; Vikunja, ClickUp and GitLab have no dedupe; no timestamp window. | M / M | Dedupe on `X-GitHub-Delivery` and `X-Forgejo-Delivery` only ([server.go](../../pkg/httpapi/server.go) `DeliveryRecorded`; `SeenDelivery` in [shift.go](../../pkg/store/shift.go) around line 1069). TLS at the gateway makes capture harder. | **Medium**, [F-05](#findings) | control plane |
+| T-PD-3 | S | Stolen consumer token acts as any person within that consumer's teams | M / M | Tokens hashed and constant-time compared (operator.go:122-154); team scope; `maxBudgetUsd` cap at admission | **Medium**: `X-Ploeg-Actor` is not verified ([attribution.go](../../pkg/httpapi/attribution.go) lines 25 to 67), [F-07](#findings) | control plane |
+| T-PD-4 | T | A stale or superseded worker commits an outcome | L / H | Fresh 24-byte run token per attempt (`newToken`, [store.go](../../pkg/store/store.go) line 1079); capability bound to the run token; middleware requires `running` and a future deadline (worker_auth.go:181); outcome `UPDATE … WHERE state='running'` with digest-checked replay (store.go:618-641). Tests: `TestWorkerControlRejectsWrongScopesAndExpiredLeases`, `TestWorkerCapabilityBindsAudienceAndExpiry` ([worker_auth_test.go](../../pkg/httpapi/worker_auth_test.go)) | Low. Failure-injection tests are issue #18. | control plane |
+| T-PD-5 | R | An operator action cannot be tied to a person | M / L | Every mutating route needs `X-Ploeg-Actor`; audit events record consumer, actor and channel ([ADR-0108](../adrs/0108-every-operator-action-names-its-person-and-channel-and-an-mcp-action-needs-the-persons-confirmation.md)) | Medium: the actor is the consumer's claim (F-07) | control plane |
+| T-PD-6 | R | Brute-force on worker routes goes unrecorded | M / L | Rejections are logged and counted (`RecordWorkerRejection`) | Low: after 30 rejections a minute the global limiter returns 429 without logging or recording (worker_auth.go:189-210), [F-19](#findings) | control plane |
+| T-PD-7 | I | `/metrics` and `/readyz` leak data | H / L | Aggregate only, no secrets ([metrics.go](../../pkg/httpapi/metrics.go)) | Low: team names and spend per hour are readable by anything that reaches the port | control plane |
+| T-PD-8 | I | Credentials cross the network in clear text | M / H | Claim responses set `Cache-Control: no-store` (worker_auth.go:162). The contract requires confidential transport ([worker control](../contracts/worker-control.md)). | **Medium**: ploegd serves plain HTTP only (`cmd/ploegd/boot.go`), and the chart's default API URL is `http://`. P1 requires CNI or mesh encryption. [F-06](#findings) | runtime |
+| T-PD-9 | I | Internal error text returned to callers | M / L | None | Low: `runError` and `handleOutcome` echo `err.Error()` ([server.go](../../pkg/httpapi/server.go) line 1016), [F-19](#findings) | control plane |
+| T-PD-10 | D | Request floods or large bodies | M / M | Server timeouts and header cap ([httpserver.go](../../cmd/ploegd/httpserver.go)); per-route body caps ([request_limits.go](../../pkg/httpapi/request_limits.go)); Guaranteed QoS | Medium: no per-client rate limit; the GitHub forge webhook reads up to 25 MiB before checking the signature, [F-18](#findings) | control plane |
+| T-PD-12 | D, E | Anyone who can submit a "changes requested" review re-queues the Work Item with attempts reset and a fresh Shift pool, without limit | M / H | Opt-in per team (`ReworkOnChangesRequested`, [forge_followup.go](../../pkg/httpapi/forge_followup.go) line 89); Ploeg's own bot reviews are ignored | **High** when on: no reviewer authorization check and no cap on Shifts per Work Item ([followup.go](../../pkg/store/followup.go) lines 293 to 301). The review body also enters the writer's prompt. [F-36](#findings) | control plane |
+| T-PD-11 | E | Compromise of ploegd yields every controller secret (AS1 to AS5, AS9, AS10) | L / H | Distroless, non-root, read-only root filesystem, no capabilities, no service-account token ([deployment.yaml](../../ops/helm/ploeg/templates/deployment.yaml) lines 27 to 48) | Medium: one process holds every management credential by design ([ADR-0025](../adrs/0025-management-authority-stays-in-the-control-plane.md)) | control plane |
+
+### PostgreSQL (data store)
+
+| ID | STRIDE | Threat | L / I | Mitigation and evidence | Residual | Verification owner |
+| --- | --- | --- | --- | --- | --- | --- |
+| T-DB-1 | T, I | KEDA's database role reads or changes more than the queue count | M / M | Team and Role names in scaler SQL are schema-limited to `^[a-z0-9-]`; `ploeg_observer` grants exclude credentials ([0072_observer_role.sql](../../pkg/store/migrations/0072_observer_role.sql)) | **Medium**: neither the chart nor the migrations create `ploeg_scaler` with least privilege; one documented deployment granted it `pg_read_all_data`. `sslmode` is not schema-validated. [F-12](#findings) | runtime |
+| T-DB-2 | I | Minted keys or tokens stored in plaintext | L / H | Mint intent has one durable winner; a lost response does not reconstruct the plaintext ([worker control](../contracts/worker-control.md#accounting-states)). Consumer and deploy tokens are compared as SHA-256. | Low (doc only for key-column contents) | control plane |
+| T-DB-3 | D | Long transactions block migrations or traffic | M / M | `lock_timeout` 5 s on migrations; statement and idle-in-transaction timeouts on pooled connections ([values.yaml](../../ops/helm/ploeg/values.yaml) `database.pool`) | Low | control plane |
+
+### Worker pod: `ploeg-worker` process
+
+| ID | STRIDE | Threat | L / I | Mitigation and evidence | Residual | Verification owner |
+| --- | --- | --- | --- | --- | --- | --- |
+| T-WK-1 | S | A process on the pod's loopback borrows the proxies | M / H | Both proxies forward only requests presenting the Run's placeholder, compared in constant time ([llmproxy.go](../../pkg/worker/llmproxy.go) line 142); tests `TestKeyProxyRefusesRequestsWithoutThePlaceholder`, `TestForgeProxyRefusesRequestsWithoutThePlaceholder` | Low. The harness holds the placeholder, so this protects against other processes, not against the harness. | runtime |
+| T-WK-2 | T, I | The harness rewrites git configuration so the worker's credentialed git runs its code or sends the token elsewhere | H / H | After the harness exits, the worker runs its own git in a fresh git directory with no system or global configuration that borrows the clone's objects ([workergit.go](../../pkg/worker/workergit.go)); tests `TestWorkerLeakScanIgnoresGitConfigurationTheHarnessWrote` and siblings ([workergit_test.go](../../pkg/worker/workergit_test.go) lines 161 to 185) | Low. *While* the harness runs, the board watch's `git ls-remote` carries the real forge token; since PR #230 it runs in a fresh empty directory outside any repository with `GIT_CEILING_DIRECTORIES` set to it ([git.go](../../pkg/worker/git.go) `runGitOutsideAnyRepository`), so the clone's `.git/config` is never read; test `TestRemoteForgeHeadIgnoresGitConfigurationTheHarnessWrote` ([forgehead_test.go](../../pkg/worker/forgehead_test.go)). The watch's `cat-file -e` still runs in the clone, without a token. [F-24](#findings), fixed | runtime |
+| T-WK-3 | T | Hidden Unicode or a symlink in an instruction file smuggles instructions or reads outside the clone | H / M | Instruction files are scanned; hidden characters stop the Run before the harness; symlinks are followed only inside the repository ([instructions_test.go](../../pkg/worker/instructions_test.go) lines 86 to 272) | Medium: the hidden-character set misses Unicode tag characters (U+E0000 to U+E007F) and several invisible marks, the file list misses `GEMINI.md`, `.github/copilot-instructions.md` and `.clinerules`, and Work Item text is not scanned ([instructions.go](../../pkg/worker/instructions.go) lines 21 to 54). [F-28](#findings) | runtime |
+| T-WK-4 | I | The harness reads the worker's environment or memory through `/proc` | H / H | `PR_SET_DUMPABLE=0` at start ([conceal_linux.go](../../pkg/worker/conceal_linux.go) lines 14 to 18, called at [main.go](../../cmd/ploeg-worker/main.go) line 79); `CAP_SYS_PTRACE` shed and refused ([capabilities_linux.go](../../pkg/worker/capabilities_linux.go), main.go line 138); tests `TestHarnessCannotReadConcealedWorkerEnvironment` | **High**: one process-level control guards AS3 and AS5, which sit in the container spec as `secretKeyRef` env vars. A kernel or procfs bypass exposes long-lived credentials. [F-03](#findings) | runtime |
+| T-WK-5 | I | The real model key or forge token reaches the harness | H / H | In P1 both proxies are on. The harness gets placeholders and a loopback URL ([environment.go](../../pkg/worker/environment.go) lines 8 to 32). Test `TestAttackDrill_HarnessEnvironmentNeverHoldsRealCredentials` ([attack_drill_test.go](../../pkg/worker/attack_drill_test.go) line 26), `TestIsolatedRunNeverHandsTheKeyToTheHarness` | Low in P1. **Critical outside P1**: an acknowledged `dind: true` opt-in or an unqualified workload renders both proxies off ([_helpers.tpl](../../ops/helm/ploeg/templates/_helpers.tpl) lines 298 to 318); the default no longer does, [F-01](#findings). | runtime |
+| T-WK-6 | E | A stale worker keeps working after losing its Lease | M / M | Renewal every TTL/3; three consecutive failures or a 404 cancel the Run ([worker.go](../../pkg/worker/worker.go) lines 216 to 222 and 1087 to 1110); Forgejo per-Run tokens of Runs without a Lease are swept ([forgejo.go](../../pkg/forgebroker/forgejo.go) lines 178 to 205) | Low. Pushes already made remain; cancellation timing is bounded by about one TTL. Issue #18. | runtime |
+
+### Harness (process, model-directed)
+
+| ID | STRIDE | Threat | AI risk | L / I | Mitigation and evidence | Residual | Verification owner |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| T-HN-1 | T | Prompt injection from repository files steers the agent | LLM01, ASI01 | H / M | Repository instructions rank below the delivery contract ([ADR-0030](../adrs/0030-target-repository-instructions-rank-below-the-delivery-contract.md)); ACP profiles disable repository plugins, MCP servers and `.env` ([ACP profiles](../contracts/acp-profiles.md), `TestHostileConfig`); the attack drill runs weekly ([ADR-0126](../adrs/0126-a-recurring-attack-drill-runs-every-harness-against-a-hostile-repository.md)) | Medium: no control proves a model resists injection during a prompt turn. The impact is bounded by T-WK-5, the push fence and review. | runtime |
+| T-HN-2 | T | Prompt injection from Work Item text | LLM01, ASI01 | M / M | Webhook HMAC proves the tracker sent the event. Notes and blackboard evidence are fenced as data ([notes/render.go](../../pkg/notes/render.go) line 98). | **Medium**: the Work Item title and description are inserted as instructions with no untrusted framing ([taskprompt/prompt.go](../../pkg/taskprompt/prompt.go) lines 58 to 61), and anyone who can assign or label work in a configured project can dispatch. [F-09](#findings) | control plane |
+| T-HN-3 | E | The agent pushes outside its branch, merges, or touches other repositories | ASI02, ASI03, LLM06 | H / H | Forge proxy allowlist per Role and the Run's repository only; push fence on `git-receive-pack` admits only `refs/heads/<run branch>` and no deletion ([pushfence.go](../../pkg/worker/pushfence.go)); tests `TestForgeProxyRefusesEverythingOutsideTheRunsRepository`, `TestForgeProxyRefusesForgejoEndpointsNoRoleNeeds`, `TestForgeProxyRefusesEncodedTraversalAndSeparators` ([forgeproxy_test.go](../../pkg/worker/forgeproxy_test.go)) | Medium. Ploeg never merges; a person does. But a writer may `PATCH` any pull request and comment on any issue in the repository, not only its own ([forgeproxy.go](../../pkg/worker/forgeproxy.go) lines 244 to 300), so it can retitle, retarget or close other people's pull requests. [F-26](#findings) | runtime |
+| T-HN-10 | T | Code the agent left running, or agent-authored code run by the worker's verification, tampers with the result | ASI05 | M / M | Verification runs on a fresh clone of the pushed head with no forge or model secret in its environment ([verify.go](../../pkg/worker/verify.go) lines 166 to 207, [worker.go](../../pkg/worker/worker.go) line 620); harness killed by process group | Medium: a child that left the process group with `setsid` survives the kill, shares the uid and work directory with verification, and the forge proxy still listens until the Run ends (worker.go line 546). [F-25](#findings) | runtime |
+| T-HN-12 | T | Agent text published to forges and trackers carries markdown, mentions, links or HTML | LLM05 | M / M | Delivery links are bound to the Work Target's repository when one resolves ([delivery.go](../../pkg/store/delivery.go) lines 97 to 148) | Medium: the summary and findings are posted unescaped to pull requests, and as `htmlBody` to Vikunja and ClickUp. For a Work Item without a target, an agent-supplied link from any host reaches the tracker with "Please review and merge" ([publish.go](../../pkg/shiftengine/publish.go) lines 249 to 366). [F-37](#findings) | control plane |
+| T-HN-11 | D | A hostile outcome file exhausts the worker's memory | | M / L | JSON errors do not echo content | Low: the drop box is read with `os.ReadFile`, no size limit, symlinks followed ([dropbox.go](../../pkg/harness/dropbox.go) lines 40 to 55). [F-29](#findings) | runtime |
+| T-HN-4 | I | The agent writes a credential into a commit, comment or learning | LLM02 | M / H | Leak watch over the real key, forge token and a per-Run canary; forge writes carrying them are refused; pushed commits are scanned before the outcome is reported; a hit parks the Work Item and closes the pull request ([leakwatch.go](../../pkg/worker/leakwatch.go), [ADR-0105](../adrs/0105-a-credential-leak-parks-the-work-item-and-closes-its-pull-request.md)); transcripts redacted ([redact.go](../../pkg/transcript/redact.go)) | Low. Model traffic is not scanned by design. | runtime |
+| T-HN-5 | I | The agent exfiltrates repository content or the prompt over the network | LLM02, ASI02 | H / M | The chart's worker NetworkPolicy: egress to DNS, ploegd, the model gateway, the forge and a configured OTLP collector only, no ingress ([network policies](../ops/network.md), [F-02](#findings)) | Medium. The policy holds only on a CNI that enforces NetworkPolicy; the gateway and the forge remain channels an agent may write to by design; a `claude-environment` team's workers reach every public address on 443. | runtime |
+| T-HN-6 | D | The agent spends without limit | LLM10 | M / H | Per-Run key with `max_budget`, model scope and TTL; Shift pool and Role caps ([ADR-0012](../adrs/0012-two-level-budgets-authorized-and-settled.md)); team `maxRunning`; harness and idle timeouts; settlement from gateway spend logs ([managed workers](../ops/managed-workers.md)) | Low. In-flight requests can exceed a cap by one call. | control plane |
+| T-HN-7 | E | The agent escapes the container to the node | ASI05 | L / H | P1: no DinD, uid 1000, no capabilities, no privilege escalation, seccomp, `restricted` namespace ([ADR-0120](../adrs/0120-a-worker-container-meets-the-restricted-pod-security-standard-by-default.md)); no service-account token | Low in P1 (shared kernel). **Critical with the acknowledged DinD opt-in**: the harness holds the client certificates of a privileged Docker daemon, [F-01](#findings). | runtime |
+| T-HN-8 | T | The agent poisons knowledge later Runs read | ASI06 | M / M | A Run's notes are untrusted and fenced; promotion beyond the Work Item needs evidence or a person ([ADR-0122](../adrs/0122-every-note-carries-its-provenance-untrusted-text-is-quoted-and-a-wider-level-needs-evidence-or-a-person.md), `pkg/notes`) | Low (doc and package read, not traced end to end) | control plane |
+| T-HN-9 | R | The agent's claims about its own delivery are trusted | ASI09 | M / M | Delivery facts come from the forge, not the outcome ([ADR-0059](../adrs/0059-delivery-facts-come-from-the-forge-never-from-the-agents-outcome.md)); ready-for-review only when the forge's CI passed on the pushed head ([ADR-0119](../adrs/0119-a-pull-request-is-ready-for-review-only-when-the-forges-ci-passed-on-its-head.md)) | Low (doc only) | control plane |
+
+### Forge and per-Run forge credentials (external entity and flow DF4, DF13)
+
+| ID | STRIDE | Threat | L / I | Mitigation and evidence | Residual | Verification owner |
+| --- | --- | --- | --- | --- | --- | --- |
+| T-FG-1 | E | A Forgejo per-Run token is wider than the Run's repository | M / H | Mint asks for `write:repository` restricted to `repositories: [{owner, name}]` ([forgejo.go](../../pkg/forgebroker/forgejo.go) lines 101 to 125) | **Medium**: repository-specific tokens exist only from Forgejo 15. The code does not check that the forge honoured the restriction, and no minimum version is documented. In P1 the token stays in the forge proxy, which limits it to the repository anyway. [F-10](#findings) | runtime |
+| T-FG-2 | E | A minted token outlives its Run | M / M | Revoke on settle; Forgejo orphan sweep by name prefix survives restarts (forgejo.go lines 178 to 215); GitHub tokens are revoked on settle and expire after one hour | Low. A ploegd restart forgets GitHub handles and the one-hour expiry is the bound ([github.go](../../pkg/forgebroker/github.go) lines 50 to 160), [F-15](#findings). | control plane |
+| T-FG-3 | T | A forged or replayed forge event settles a pull request | M / M | GitHub merged and closed events are confirmed through the API; Forgejo and GitLab settle from the payload | Medium, part of F-05 | control plane |
+
+### Model gateway (flows DF7, DF8, DF12)
+
+| ID | STRIDE | Threat | AI risk | L / I | Mitigation and evidence | Residual | Verification owner |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| T-GW-1 | E | A worker obtains management authority | LLM06 | L / H | Workers cannot build an administrative broker and refuse administrative env vars at start ([worker control](../contracts/worker-control.md#workspace-boundary)); the master key is wired only to ploegd | Low | control plane |
+| T-GW-2 | D | Spend continues after a Run stops | LLM10 | M / M | Key blocked on stop and on sweep; settlement waits for a quiet period; corrections inside a window ([managed workers](../ops/managed-workers.md#reconcile-uncertainty)) | Low | control plane |
+
+### Operator consumer and ploeg-mcp (flows DF15, DF16)
+
+| ID | STRIDE | Threat | AI risk | L / I | Mitigation and evidence | Residual | Verification owner |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| T-OC-1 | S | An access token issued to the same client id for another resource is accepted | | M / M | Issuer, JWKS, algorithm allowlist, expiry, short lifetime, required `ploeg:read` scope (`pkg/mcpauth`) | Medium: `aud` is checked against the client id, not the resource, [F-14](#findings) | control plane |
+| T-OC-2 | E | An agent driving an MCP client skips the person's confirmation | ASI09 | M / H | The effect text is shown through MCP elicitation and its digest is checked on the second call | **High**: the confirmation state is unsigned, so the client can supply it with `accept: true` in one call. ploegd checks only the header's format. [F-08](#findings). Excluded from P1. | control plane |
+| T-OC-3 | E | A consumer configured without `teams` acts on every team | | M / M | Documented in the [operator contract](../contracts/README.md) | Medium: an omitted scope means all teams, [F-16](#findings) | control plane |
+
+### Supply chain (AC7)
+
+| ID | STRIDE | Threat | L / I | Mitigation and evidence | Residual | Verification owner |
+| --- | --- | --- | --- | --- | --- | --- |
+| T-SC-1 | T | A malicious change merges | M / H | CI with read-only token; required `verify` and `dco` on `development`; actions pinned by commit SHA | **Medium**: no required review, admin bypass on both rulesets, organization does not require 2FA, [F-13](#findings) | release |
+| T-SC-2 | T | A tampered image or chart reaches installers | L / H | Keyless cosign signatures on both images and the chart by digest, verified before publish; BuildKit SBOM and provenance attestations; digest pins stamped into the chart ([ci-and-infra](../ops/ci-and-infra.md#credentials-and-signing)) | Low. Release tarballs and `SHA256SUMS` are unsigned; the signing identity accepts branch refs. [F-20](#findings) | release |
+| T-SC-3 | T | A vulnerable dependency ships | M / M | Renovate with security updates; Go toolchain bumps | Medium: no govulncheck, CodeQL or image scan in CI; the CVE budget is not enforced, [F-17](#findings) | release |
+| T-SC-4 | T | Release tooling fetched by mutable reference | L / H | `npm ci --ignore-scripts` | Medium: semantic-release configuration cloned by tag inside a `contents: write` job; the `claude-runner` base image is not digest-pinned, [F-17](#findings) | release |
+
+## Attack trees
+
+Each tree is an OR of branches unless a node says AND. A branch marked **closed in P1** has a mitigation verified above; a branch marked **open** maps to a finding.
+
+### AT1: obtain a forge credential that outlives one Run
+
+- Capture the forge token the worker sends while the harness runs
+  - Write `http.proxy` (and `http.sslVerify=false` for an HTTPS forge) into the clone's `.git/config` and listen on loopback for the board watch's `git ls-remote` — **closed in P1** (T-WK-2; F-24 fixed in PR #230)
+- Read the shared builder token (AS5) from the worker container
+  - Harness reads worker env through `/proc` — **closed in P1** (T-WK-4), one layer only (F-03)
+  - Harness receives it because isolation is off (acknowledged `dind: true` opt-in or unqualified harness) — **open outside P1**, never by default since PR #231 (F-01)
+  - Node compromise reads pod env — through the acknowledged DinD opt-in **open outside P1** (F-01); through a kernel bug, residual
+- Read the bot password or App key (AS4) — requires ploegd compromise (T-PD-11)
+- Use a per-Run Forgejo token beyond its repository — needs the token to leave the proxy (closed in P1) AND Forgejo older than 15 (F-10)
+- Keep a GitHub App token after a ploegd restart — bounded to one hour (F-15)
+
+### AT2: escape the worker pod
+
+- Drive the privileged DinD daemon with the mounted client certificates — **open only with the acknowledged `dind: true` opt-in**, never by default since PR #231 (F-01)
+- Reach the Kubernetes API with a service-account token — **closed** (no token mounted; verified in golden renders)
+- Reach unrelated services, ploegd internals or cloud metadata over the network — **closed by the chart's worker NetworkPolicy on an enforcing CNI**; open where the CNI ignores it (F-02)
+- Container breakout through the shared kernel — residual; a Kata runtime class reduces it
+
+### AT3: spend money nobody authorized (denial of wallet)
+
+- Dispatch work by assigning or labelling in a configured project — **open by design**, bounded by budgets (F-09)
+- Replay a captured tracker webhook to re-queue work — **open** where dedupe is missing (F-05)
+- Use a stolen bootstrap token to claim paid Runs — requires AT1-like access to the container env (F-03)
+- Exceed a Run's key cap — bounded by gateway budgets; one in-flight request
+- Submit "changes requested" reviews on a team with rework on — **open when enabled** (F-36)
+- Loop Follow-Ups or retries — bounded by `maxRepairs`, `maxFixRounds` and separate retry budgets ([ADR-0021](../adrs/0021-infra-failures-and-agent-failures-get-separate-retry-budgets.md))
+
+### AT4: publish a change nobody reviewed
+
+- Push to a protected or default branch — **closed in P1** (push fence, T-HN-3)
+- Merge through the API — **closed** (proxy refuses merge; Ploeg never merges)
+- Mark a pull request ready with a false claim — **closed** (ADR-0059, ADR-0119)
+- Approve through an MCP action without the person — **open for ploeg-mcp execute groups** (F-08), excluded from P1
+- A person merges a malicious change after an injected review — residual; human review is the control
+
+## Findings
+
+Severity follows the matrix in [Method](#method). Following issue #34, a finding is **release-blocking** when it permits credential exposure or authority bypass on the advertised supported path. The chart's default render counts as advertised; since [PR #231](https://github.com/ploeg-hq/ploeg/pull/231) it carries the P1 worker settings (no DinD, both proxies on), and a `dind: true` render fails without an explicit acknowledgement. F-01 is fixed by that pull request; the other findings are open.
+
+| ID | Severity | Release-blocking | Finding | Evidence |
+| --- | --- | --- | --- | --- |
+| F-01 | Critical | Fixed in [PR #231](https://github.com/ploeg-hq/ploeg/pull/231) | The chart default `harness.dind: true` rendered a privileged DinD sidecar and mounted its TLS client certificates into the harness container (`DOCKER_HOST`, `DOCKER_CERT_PATH`, `/certs` read-only). The harness could therefore run privileged containers, which is node root. The same setting turned both credential proxies off, so the harness also received the real per-Run model key and forge token. **Fix:** the default is `harness.dind: false` with both proxies on ([ADR-0136](../adrs/0136-the-chart-default-is-the-strict-isolation-profile-and-privileged-dind-is-an-acknowledged-opt-in.md)); `dind: true` renders only with `harness.acknowledgePrivilegedDind: true` on the Role, team or executor chain, and the refusal names what the harness would receive. Recorded as a break against `v0.2.0-rc.47` in [breaking-changes.yaml](../contracts/breaking-changes.yaml). | Before: [_helpers.tpl](../../ops/helm/ploeg/templates/_helpers.tpl) lines 298 to 318; [environment.go](../../pkg/worker/environment.go) line 11. After: `ploeg.roleUsesDind` in [_helpers.tpl](../../ops/helm/ploeg/templates/_helpers.tpl); goldens [executor-default-worker.yaml](../../ops/helm/ploeg/ci/golden/executor-default-worker.yaml) and [executor-acknowledged-dind.yaml](../../ops/helm/ploeg/ci/golden/executor-acknowledged-dind.yaml); [reject-dind-without-acknowledgement-values.yaml](../../ops/helm/ploeg/ci/reject-dind-without-acknowledgement-values.yaml) in `scripts/helm-golden.sh` |
+| F-24 | Critical | Yes | **Fixed in PR #230.** While the harness ran, the worker's board watch ran `git ls-remote` every two minutes inside the harness-writable clone. It sent the real forge token as an `http.<url>.extraheader`, and that git honoured the clone's `.git/config`, so a harness that wrote `http.proxy` (plus `http.sslVerify=false` for an HTTPS forge) captured the token, and a `url.*.insteadOf` with a `credential.helper` ran a program of its choice as the worker. This defeated `PLOEG_FORGE_TOKEN_ISOLATION=proxy` in P1, because ploegd puts `Board` on every claim. The fix runs every token-bearing `ls-remote` by URL in a fresh empty directory outside any repository (`runGitOutsideAnyRepository`), and the regression test plants both vectors in the clone and asserts that neither the token nor a request reaches the planted server and the helper never runs. | [board.go](../../pkg/worker/board.go) `remoteForgeHead`; [git.go](../../pkg/worker/git.go) `runGitOutsideAnyRepository`; [forgehead_test.go](../../pkg/worker/forgehead_test.go); [server.go](../../pkg/httpapi/server.go) lines 654 and 705 |
+| F-02 | High | Fixed in [#233](https://github.com/ploeg-hq/ploeg/pull/233) | The chart rendered no NetworkPolicy for ploegd, worker pods, the sandbox launcher or the claude-runner, so a worker's egress was whatever the cluster allowed by default. It now renders a default-deny policy for every pod it creates, with the allowlist derived from the chart's own URLs ([network policies](../ops/network.md), [ADR-0137](../adrs/0137-the-chart-renders-a-default-deny-networkpolicy-for-every-pod-with-an-allowlist-derived-from-its-urls.md)). Residual: a NetworkPolicy cannot name a hostname, so the Anthropic and public-forge rules allow 443 to every public address outside `privateCidrs`; the launcher's API-server rule is port-only by default; and the objects enforce nothing on a CNI that ignores them, which the installer must know. | [templates/networkpolicy.yaml](../../ops/helm/ploeg/templates/networkpolicy.yaml); golden renders; [test-chart-network-policies.sh](../../scripts/test-chart-network-policies.sh) |
+| F-03 | High | Yes | Every writer worker container receives the shared read-write builder forge token, and every worker its team's bootstrap token, as `secretKeyRef` env vars. This holds even when per-Run minting and both proxies are on. These credentials do not expire and are not scoped per Run. They are kept from the harness only by in-process controls in the same uid and container. | [_helpers.tpl](../../ops/helm/ploeg/templates/_helpers.tpl) lines 634 to 639 and 669 to 678; [golden executor-isolation.yaml](../../ops/helm/ploeg/ci/golden/executor-isolation.yaml) lines 335 to 348; [conceal_linux.go](../../pkg/worker/conceal_linux.go); [managed workers](../ops/managed-workers.md#operating-limits) |
+| F-04 | Medium | Yes | The proxy qualification that P1 rests on predates the change that made the proxies refuse requests without the placeholder (Ploeg #64), and no Run has used the current code. Only `openhands` (frozen, retirement proposed in ADR-0118), `acp/openhands` and `exec` are qualified. | [isolation qualification](../research/2026-10-04-isolation-qualification.md); [ADR-0118](../adrs/0118-the-unmaintained-openhands-cli-is-retired-as-a-harness.md) |
+| F-05 | Medium | No | Webhook replay and duplicate effects. Delivery-id headers are not covered by the signature. Vikunja, ClickUp and GitLab deliveries are not deduplicated, and no provider checks a timestamp. A captured body can re-queue paid work, and a replayed Forgejo or GitLab close event settles from the payload. Tracker dedupe is check-then-act, not atomic. Forge dedupe commits before its effects run, so a crash loses them. `work_item_reviews` has no unique key, so a duplicate review becomes an extra fix round. ADR-0060's inbox and outbox are not implemented. | [server.go](../../pkg/httpapi/server.go) lines 278 to 431; [shift.go](../../pkg/store/shift.go) around line 1069; providers at vikunja.go:84-95, clickup.go:122-133, gitlab.go:501-514 |
+| F-06 | Medium | No | ploegd and ploeg-mcp serve plain HTTP. Claim responses carry the signed capability, and credential routes carry per-Run keys and tokens. The worker-control contract requires confidential transport, but neither the code nor the chart provides or checks it. | [boot.go](../../cmd/ploegd/boot.go); [worker control](../contracts/worker-control.md#authority); `executor.apiUrl` default |
+| F-07 | Medium | No | Operator person identity (`X-Ploeg-Actor`, `X-Ploeg-Acting-User`, `X-Ploeg-Confirmation`) is checked for format only. A consumer token holder can act as, or claim client-carried Runs for, any person inside its teams. | [attribution.go](../../pkg/httpapi/attribution.go) lines 25 to 67; [architecture](../architecture.md#9-where-the-code-diverges-from-designmd) |
+| F-08 | High | Yes, unless ploeg-mcp `execute` groups stay outside the supported profile | The ploeg-mcp confirmation state for actions is unsigned base64 JSON. A client, or an agent driving one, can submit it with `accept: true` and skip the person's confirmation that ADR-0108 requires. | `cmd/ploeg-mcp` actions (`RequestState`); [ADR-0108](../adrs/0108-every-operator-action-names-its-person-and-channel-and-an-mcp-action-needs-the-persons-confirmation.md) |
+| F-09 | Medium | No | Work Item title and description enter the prompt as instructions with no untrusted framing. So do human review bodies and CI status text in rework briefings (`forge_followup.go` lines 142 to 178). Anyone with write access to a configured board, or triage on a configured GitHub repository, can dispatch work into the default team. | [taskprompt/prompt.go](../../pkg/taskprompt/prompt.go) lines 58 to 61 and 280 to 283; `vikunja.go:105-108`, `clickup.go:158-161`, `githubissues.go:233-243` |
+| F-10 | Medium | No | Forgejo per-Run tokens depend on repository-specific tokens, a Forgejo 15 feature. The broker does not check that the returned token is restricted, and no minimum Forgejo version is documented. | [forgejo.go](../../pkg/forgebroker/forgejo.go) lines 101 to 125 |
+| F-11 | Medium | No | The values schema accepts every setting outside P1 without an experimental flag or a warning: `dind: true`, `workerAuth.mode: legacy`, isolation `""`, a `credentialIsolation: proxy` override that forces proxies on with DinD, `workerSecurityContext: {}`, unpinned agent images. Issue #16 requires these to fail clearly or be marked experimental. | [values.schema.json](../../ops/helm/ploeg/values.schema.json); [_helpers.tpl](../../ops/helm/ploeg/templates/_helpers.tpl) lines 302 to 304 |
+| F-12 | Medium | No | The chart and migrations do not provide a least-privilege `ploeg_scaler` role for KEDA. One documented deployment granted it `pg_read_all_data`, and `scaler.sslmode` is not validated. | [triggerauthentication.yaml](../../ops/helm/ploeg/templates/triggerauthentication.yaml); [0072_observer_role.sql](../../pkg/store/migrations/0072_observer_role.sql); [substrate research](../research/2026-10-05-substrate-language-and-run-bottlenecks.md) |
+| F-13 | Medium | No | Project governance concentrates authority in one account. The details are in the [self-assessment](self-assessment.md#secure-development-practices). | [rulesets via API](https://github.com/ploeg-hq/ploeg/rules); [GOVERNANCE.md](../../GOVERNANCE.md) |
+| F-14 | Medium | No | ploeg-mcp accepts any access token whose `aud` or `azp` is a configured client id. It does not check the resource indicator, and it allows an `http` issuer. | `pkg/mcpauth/verifier.go` lines 36 to 63 |
+| F-25 | Medium | No | Agent-authored code outlives the harness. A child that leaves the process group with `setsid` survives the kill. It shares the uid and work directory with the worker's verification commands, so it can falsify their result, and it can still use the forge proxy, which stays up until the Run ends. | [verify.go](../../pkg/worker/verify.go) lines 166 to 273; [worker.go](../../pkg/worker/worker.go) lines 546 and 620; `procgroup_unix.go` |
+| F-26 | Medium | No | The forge proxy lets a writer `PATCH` any pull request and comment on any issue or pull request in the Run's repository, not only its own. A hijacked agent can retitle, retarget or close other people's pull requests. | [forgeproxy.go](../../pkg/worker/forgeproxy.go) lines 244 to 300 |
+| F-28 | Medium | No | The hidden-instruction gate is narrower than its purpose. Its hidden-character set misses Unicode tag characters (U+E0000 to U+E007F) and several invisible marks. Its file list misses `GEMINI.md`, `.github/copilot-instructions.md` and `.clinerules`. Work Item text is never scanned. | [instructions.go](../../pkg/worker/instructions.go) lines 21 to 54 |
+| F-30 | Medium | No | Writing Runs of a team without a Shift plan, or of a Work Item without a resolved target, silently get the shared builder token instead of a per-Run one. The chart default `botPasswordSecret: {}` does the same for every Forgejo Run. | [server.go](../../pkg/httpapi/server.go) lines 637 to 655 and 713 to 726; [worker.go](../../pkg/worker/worker.go) lines 273 to 276; `cmd/ploegd/forgecreds.go` |
+| F-31 | Medium | No | GitLab has no per-Run broker. In a deployment with Forgejo and GitLab, a GitLab Run's mint is routed to the Forgejo broker, which mints for whatever Forgejo repository has the same owner and name. The Claude-session exchange also mints without naming the forge. | [github.go](../../pkg/forgebroker/github.go) lines 172 to 181; `cmd/ploegd/forgecreds.go`; `pkg/httpapi/claude_session.go` line 151 |
+| F-36 | High | Yes, unless the profile keeps rework off where outsiders can review | With `reworkOnChangesRequested` on, any review author other than a configured bot can send a Work Item back. Each time, the Work Item is re-queued with attempts reset and gets a new Shift with a fresh pool. No reviewer authorization check and no cap on Shifts per Work Item exist. On a public GitHub repository, anyone can do this and spend without limit. | [forge_followup.go](../../pkg/httpapi/forge_followup.go) lines 84 to 131; [followup.go](../../pkg/store/followup.go) lines 293 to 301 |
+| F-37 | Medium | No | Agent-written summary and findings are published without escaping: as markdown on pull requests and as HTML (`htmlBody`) to Vikunja and ClickUp. For a Work Item without a resolved target, an agent-supplied pull request link to any host is posted to the tracker with a request to review and merge. | [publish.go](../../pkg/shiftengine/publish.go) lines 249 to 366; [delivery.go](../../pkg/store/delivery.go) lines 99 to 113 |
+| F-15 | Low | No | GitHub App token handles live only in ploegd memory. After a restart, revocation falls back to GitHub's one-hour expiry. | [github.go](../../pkg/forgebroker/github.go) lines 50 to 160; [ADR-0086](../adrs/0086-github-is-a-forge-and-a-run-pushes-with-its-own-github-app-installation-token.md) |
+| F-16 | Low | No | An operator consumer without `teams` is scoped to every team. | [operator.go](../../pkg/httpapi/operator.go) lines 32 to 42 |
+| F-17 | Medium | No | No SAST or dependency scanning runs in CI: no govulncheck, CodeQL or image scan, and the CVE budget has no enforcer. Release tooling is fetched by mutable tag inside a `contents: write` job. The `claude-runner` base image is not digest-pinned, and the drill installs OpenCode without an integrity check. | [.github/workflows/](../../.github/workflows/); [cve-budgets.yaml](../../ops/security/cve-budgets.yaml); [claude-runner Dockerfile](../../ops/claude-runner/Dockerfile) line 4 |
+| F-18 | Low | No | No per-client rate limiting. The GitHub forge webhook reads up to 25 MiB before verifying the signature. `docker-storage` and `worker-bin` emptyDirs have no size limit. | `pkg/provider/github/webhook.go` lines 65 to 78; [_helpers.tpl](../../ops/helm/ploeg/templates/_helpers.tpl) lines 757 to 782 |
+| F-19 | Low | No | The worker rejection limiter is global and stops logging and recording after 30 rejections a minute. Internal error text is returned in 500 responses. | [worker_auth.go](../../pkg/httpapi/worker_auth.go) lines 189 to 210; [server.go](../../pkg/httpapi/server.go) line 1016 |
+| F-20 | Low | No | Release tarballs, the chart archive and `SHA256SUMS` are unsigned. SBOMs exist only as OCI attestations. The only stable release, v0.1.0, predates signing. The verification identity regexp accepts branch refs. | [release.sh](../../scripts/release.sh); [ci-and-infra](../ops/ci-and-infra.md#credentials-and-signing) |
+| F-21 | Low | No | Under the experimental sandbox executor, the launcher mounts a service-account token that can create and delete any SandboxClaim in its namespace, and it also holds the bootstrap token. | [sandbox.yaml](../../ops/helm/ploeg/templates/sandbox.yaml) lines 55 to 77; [_sandbox.tpl](../../ops/helm/ploeg/templates/_sandbox.tpl) lines 67 and 127 to 133 |
+| F-22 | Low | No | Legacy worker-auth mode leaves claim, Run routes and `GET /api/v1/queue/{team}` unauthenticated. The queue route returns Work Item titles and descriptions without a limit. | [worker_auth.go](../../pkg/httpapi/worker_auth.go) lines 116 to 124; [store.go](../../pkg/store/store.go) lines 1049 to 1077 |
+| F-23 | Low | No | The single worker signing key has no key id or overlap, so rotation interrupts every running Run. | [managed workers](../ops/managed-workers.md#configure-the-controller) |
+| F-27 | Low | No | The model key proxy forwards any path. A Run's key is unscoped by model when `LLM_MODEL` is empty, and no parallel-request or rate limit is set on minted keys. In-flight requests can therefore overshoot `max_budget`, against ADR-0012's "exactly at the pool boundary". | [llmproxy.go](../../pkg/worker/llmproxy.go) lines 56 to 65; [litellm.go](../../pkg/llmbroker/litellm.go) lines 40 to 81; [ADR-0012](../adrs/0012-two-level-budgets-authorized-and-settled.md) |
+| F-29 | Low | No | The outcome drop box is read without a size limit and follows symlinks, so a symlink to `/dev/zero` exhausts the worker's memory. | [dropbox.go](../../pkg/harness/dropbox.go) lines 40 to 55 |
+| F-32 | Low | No | Leak detection has several gaps. It matches exact substrings only, so encoded or split values pass. It does not scan reader Runs or the outcome summary and findings. It reports through the worker that could be compromised. ploegd logs the agent-written summary unredacted at INFO, and server-side redaction has no pattern for 40-hex Forgejo tokens. | [leakwatch.go](../../pkg/worker/leakwatch.go) lines 64 to 79 and 243 to 262; [server.go](../../pkg/httpapi/server.go) lines 969 and 970; [redact.go](../../pkg/transcript/redact.go) |
+| F-33 | Low | No | The GitHub App mint does not check the returned repository selection, and it does not catch a permission requested as `write` but granted as `admin`. | [mint.go](../../pkg/githubapp/mint.go) lines 55 to 69 |
+| F-34 | Low | No | `svgsafe` matches element names without namespaces, and its CSS checks can be bypassed with CSS escapes, which permits external fetches from consumer-supplied images. | [svgsafe.go](../../pkg/svgsafe/svgsafe.go) lines 32, 33, 66 and 107 |
+| F-38 | Low | No | ploegd's runtime database role owns the schema, because migrations run at startup on the same connection string. | [main.go](../../cmd/ploegd/main.go) line 97; [0072_observer_role.sql](../../pkg/store/migrations/0072_observer_role.sql) line 3 |
+| F-39 | Low | No | A Run's created Work Item may name any known team, and is decided under the source team's policy. | `pkg/followup/followup.go` lines 88 to 105 |
+| F-35 | Low | No | ploegd holds the Forgejo bot's password, which is full control of the bot account rather than minting authority alone. The risk is accepted in ADR-0013, but no guidance tells an installer to keep the bot out of organization-owner and administrator roles. | [deployment.yaml](../../ops/helm/ploeg/templates/deployment.yaml) line 178; [ADR-0013](../adrs/0013-push-rights-are-minted-per-run.md) |
+
+## Where the documentation and the code disagree
+
+| Documentation says | Code or render shows | Reference |
+| --- | --- | --- |
+| The default worker security context "meets the Kubernetes `restricted` Pod Security Standard, so the worker namespace can enforce it" | The default render has a privileged DinD sidecar and passes neither `restricted` nor `baseline` | values.yaml lines 706 to 712; golden executor.yaml line 337 |
+| Both credential proxies are the default (`keyIsolation: proxy`, `forgeTokenIsolation: proxy`) | They are off for the default team, because the default is `dind: true` | values.yaml lines 389 to 396 and 559 to 565; golden executor.yaml line 384 |
+| ADR-0106 (proposed): strict by default | `dind: true` remains the chart default; the ADR's own context says so | [ADR-0106](../adrs/0106-a-run-declares-an-isolation-floor-and-a-cell-runs-it-at-the-strictest-class-it-can-honour.md) |
+| ADR-0118 (proposed) retires the OpenHands CLI | `openhands` is still the chart default and one of three qualified harnesses | values.yaml line 403; _helpers.tpl lines 174 to 180 |
+| "Transport must be authenticated and confidential across trust boundaries" | ploegd only serves plain HTTP; the default API URL is `http://` | [worker control](../contracts/worker-control.md); `cmd/ploegd/boot.go` |
+| "Managed worker queue snapshots are unavailable" | `GET /api/v1/queue/{team}` is still registered: rejected in managed mode, open in legacy mode | server.go line 256; worker_auth.go lines 169 to 172 |
+| "Forge webhooks record and deduplicate every event" | GitLab deliveries are not deduplicated, and dedupe relies on unsigned delivery headers | [architecture](../architecture.md#9-where-the-code-diverges-from-designmd); shift.go around line 1069 |
+| ADR-0060 describes a durable inbox and outbox for webhooks | The record is proposed; no inbox table exists | [ADR-0060](../adrs/0060-authenticated-webhooks-go-through-a-durable-inbox-and-required-publications-through-an-outbox.md) |
+| ADR-0013: "a Run cannot reach another repository the bot can see" | True only on Forgejo 15 or later, which the code does not check | forgejo.go lines 101 to 125 |
+| The chart ServiceAccount comment says ploegd holds the forge admin credential | The chart refuses `adminTokenSecret`; ploegd holds the bot password instead | serviceaccount.yaml; deployment.yaml lines 166 to 168 |
+| `knowledgeGraph` comment: network policies can keep Run pods off the graph | The chart ships no such policy | values.yaml lines 241 to 243 |
+| The sandbox fixture egress is "DNS, ploegd, the model gateway and the forge" | It allows the whole model-gateway and forge namespaces | ci/executor-sandbox-values.yaml |
+| ADR-0034 names `CAP_SYS_PTRACE` and a shared process namespace as what undoes concealment | It does not name DinD, which undoes it through the node | ADR-0034; golden executor.yaml |
+| The writer prompt says the sandbox reaches only the model gateway and the forge | Nothing in the chart or code enforces egress | [taskprompt/prompt.go](../../pkg/taskprompt/prompt.go) lines 378 and 379 |
+| ADR-0012: LiteLLM cuts a Run off exactly at the pool boundary | In-flight and concurrent requests can exceed `max_budget`; the managed-workers guide says so | ADR-0012; [managed workers](../ops/managed-workers.md#operating-limits) |
+| ADR-0016 (proposed) Confirmation: a test proves another repository rejects the minted token; a GitLab-capable broker | Neither exists | [ADR-0016](../adrs/0016-forge-registry-and-per-run-repo-scoped-credentials.md); `pkg/forgebroker` |
+| ADR-0030: claude-code runs with no `--mcp-config` | claude-code passes `--mcp-config` for the gateway's MCP server, as ADR-0078 later decided | `pkg/harness/adapters/claudecode/claudecode.go` lines 95 to 106 |
+| ADR-0066 (proposed): nothing a model wrote reaches another Run before a person accepts it | Run-written Work Item notes reach later Runs of the same work unreviewed, as the accepted ADR-0122 decided | [pack.go](../../pkg/knowledge/pack.go) lines 37 to 41; [ADR-0122](../adrs/0122-every-note-carries-its-provenance-untrusted-text-is-quoted-and-a-wider-level-needs-evidence-or-a-person.md) |
+| The alert `PloegModelKeyPastTTL` comes from the value `leakedModelKey` | It detects keys that outlived their TTL, not leaks | [prometheusrule.yaml](../../ops/helm/ploeg/templates/prometheusrule.yaml) lines 49 to 60 |
+| ADR-0040: a conflicted pull request becomes a priority ticket | A conflict writes only an audit row | `pkg/store/merge_state.go` lines 104 to 107 |
+| The observer-role header says it never grants text written by people, agents or trackers | It grants `work_items.title` and `agent_runs.links` | [0072_observer_role.sql](../../pkg/store/migrations/0072_observer_role.sql) |
+| Worker control, workspace boundary: non-dumpable concealment keeps the builder token from the harness, and the proxy refuses merging | The next paragraph says a workspace may discover its forge capability through `/proc`; under the chart default no proxy runs | [worker control](../contracts/worker-control.md#workspace-boundary) |
+| ADR-0025 (proposed) decides management authority stays in the control plane | The code already implements it as the default; only the record lags | [ADR-0025](../adrs/0025-management-authority-stays-in-the-control-plane.md); [architecture](../architecture.md#5-credentials-and-accounting) |
+
+## Did we do a good enough job
+
+What this model does not yet establish:
+
+- **No live boundary test.** No test probes host mounts, cloud metadata, unrelated services, the Kubernetes API or unapproved egress from a P1 worker pod (issue #16).
+- **No failure injection.** Controller restart, partition, duplicate dispatch and late completion are untested beyond the unit tests named above (issue #18).
+- **No live negative-credential tests.** Cross-Run, expired and revoked credentials have not been tried against a live forge and gateway (issue #17).
+- **Some mitigations are doc only.** The rows that say so were not traced into the code: key-column contents (T-DB-2), knowledge promotion (T-HN-8) and delivery facts (T-HN-9).
+- **No independent review.** Issue #34 asks for someone other than the main implementer to review the supported profile.
+
+Revisit this model when the supported profile changes, when a harness is qualified or retired, when a credential path changes, or within six months of 2026-10-23, whichever comes first.

@@ -6,6 +6,12 @@
     'github>webgrip/renovate-config:automerge-non-major#v1.13.0',
   ],
   platformAutomerge: true,
+  postUpgradeTasks: {
+    description: 'docs/cncf/license-inventory.yaml and THIRD-PARTY-NOTICES record every shipped module, base image and chart image with its licence, and go test ./internal/licenses/ fails verify when a bump leaves them stale. Renovate regenerates both in the branch, so a dependency update arrives with its inventory already current. The homelab Renovate job allows exactly this script.',
+    commands: ['./scripts/update-license-inventory.sh'],
+    fileFilters: ['docs/cncf/license-inventory.yaml', 'THIRD-PARTY-NOTICES'],
+    executionMode: 'branch',
+  },
   vulnerabilityAlerts: {
     description: 'Security fixes merge themselves the moment verify is green, through GitHub auto-merge, with no soak and no dashboard tick, whatever the update type. The shared overlay already sets automerge here; this repository states it so the guarantee does not depend on the overlay staying as it is.',
     automerge: true,

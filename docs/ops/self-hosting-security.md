@@ -18,27 +18,18 @@ security:
   workerAdmission:
     enabled: true
     runtimeClassNames: [kata]
-  workerNetworkPolicy:
-    enabled: true
-    egress:
-      - to:
-          - namespaceSelector:
-              matchLabels:
-                kubernetes.io/metadata.name: ai
-            podSelector:
-              matchLabels:
-                app.kubernetes.io/name: litellm
-        ports:
-          - protocol: TCP
-            port: 4000
+networkPolicy:
+  enabled: true
 ```
 
-Merge this fragment into a fully configured installation. Add the actual forge
-and required tool/telemetry gateways; it is not a complete deployment example.
-Both controls are opt-in so an estate's policies are not silently taken over.
+Merge this fragment into a fully configured installation. Native admission is
+opt-in; the chart already enables its baseline NetworkPolicies and strict
+credential-isolation profile by default. This fragment is not a complete
+deployment or proof of enforcement.
 
-Admission covers Pods labelled `ploeg-worker` with this release's instance label
-in its namespace, including sandbox worker Pods and init/ephemeral containers.
+Admission covers every Pod labelled `ploeg-worker` in the release namespace,
+including sandbox worker Pods and init/ephemeral containers. Dedicate the
+namespace to one Ploeg installation; admission is not separated by release label.
 It refuses host namespaces, shared process namespaces, hostPath, automatic API
 tokens, root/privileged containers, escalation, added capabilities and unconfined
 seccomp. It does not make the root filesystem read-only or restrict arbitrary
@@ -51,12 +42,13 @@ The policy does not cover ploegd, sandbox launchers, the separate Claude runner
 or client-carried sessions. Secure these independently. A launcher needs limited
 SandboxClaim API authority; an agent worker must not inherit its token.
 
-The worker NetworkPolicy selects this release instance, denies ingress and
-allows only DNS, the local controller on 8080 and supplied egress rules.
-Set `security.workerNetworkPolicy.dns` to the installation's namespace/pod
-selectors, or `{}` to allow no DNS. The default is kube-system/kube-dns.
-An external `executor.apiUrl` needs an explicit egress rule. This policy does
-not cover launchers or Claude runners.
+The existing `networkPolicy` settings cover the controller, workers, sandbox
+launcher, MCP server and Claude runner. Configure the actual database, forge,
+inference, API and ingress peers through those settings; see the
+[network guide](network.md) for endpoint derivation, private-CIDR exclusions,
+public-HTTPS exceptions and service/target-port limitations. Extra policies add
+allows; they cannot subtract the baseline's allowances. Review all policies
+that select a pod. Admission is separately namespace-scoped by the worker label.
 
 Standard NetworkPolicy cannot filter DNS names or HTTPS paths. Use a tested
 CNI-specific rule or proxy for those controls. Reaching the forge host does not

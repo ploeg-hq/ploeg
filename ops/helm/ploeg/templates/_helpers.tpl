@@ -372,6 +372,43 @@ global executor.harness defaults field-by-field (explicit hasKey checks, so
 {{- $hVerify := $rh.verify | default ($th.verify | default $gh.verify) }}
 {{- $hVerifyTimeout := $rh.verifyTimeout | default ($th.verifyTimeout | default $gh.verifyTimeout) }}
 {{- $hTelemetry := $rh.telemetry | default ($th.telemetry | default $gh.telemetry) }}
+{{- /* claude-code Team plugins (ADR-0139): the most specific list wins whole,
+     rendered only into a claude-code pod. A Secret-backed variable becomes a
+     PLOEG_CLAUDE_PLUGIN_ENV_<plugin>_<var> secretKeyRef, the only variables
+     the worker lets a plugin declaration read. */}}
+{{- $gcc := $gh.claudeCode | default dict }}
+{{- $tcc := $th.claudeCode | default dict }}
+{{- $rcc := $rh.claudeCode | default dict }}
+{{- $ccPlugins := $rcc.plugins | default ($tcc.plugins | default $gcc.plugins) }}
+{{- $ccPluginJson := list }}
+{{- $ccPluginSecrets := list }}
+{{- if eq $hName "claude-code" }}
+{{- $ploegSecrets := list $root.Values.executor.litellm.masterKeySecret.name }}
+{{- with $root.Values.executor.workerAuth.bootstrapSecret }}{{- $ploegSecrets = append $ploegSecrets .name }}{{- end }}
+{{- with $root.Values.executor.workerAuth.staticInferenceSecret }}{{- $ploegSecrets = append $ploegSecrets .name }}{{- end }}
+{{- $forgeCfg := include "ploeg.forge" $root | fromJson }}
+{{- with $forgeCfg.tokenSecret.name }}{{- $ploegSecrets = append $ploegSecrets . }}{{- end }}
+{{- with $forgeCfg.readTokenSecret.name }}{{- $ploegSecrets = append $ploegSecrets . }}{{- end }}
+{{- range $i, $p := $ccPlugins }}
+{{- $envJson := list }}
+{{- range $j, $e := ($p.env | default list) }}
+{{- if $e.secret }}
+{{- if has $e.secret.name $ploegSecrets }}
+{{- fail (printf "team %s: Claude Code plugin %s reads %s from Secret %s, which holds a Ploeg credential; a plugin never receives one (ADR-0139)" $team.name $p.name $e.name $e.secret.name) }}
+{{- end }}
+{{- $var := printf "PLOEG_CLAUDE_PLUGIN_ENV_%d_%d" $i $j }}
+{{- $ccPluginSecrets = append $ccPluginSecrets (dict "var" $var "secret" $e.secret) }}
+{{- $envJson = append $envJson (dict "name" $e.name "fromEnv" $var) }}
+{{- else }}
+{{- $envJson = append $envJson (dict "name" $e.name "value" ($e.value | default "")) }}
+{{- end }}
+{{- end }}
+{{- $entry := dict "name" $p.name "marketplace" $p.marketplace }}
+{{- if $envJson }}{{- $_ := set $entry "env" $envJson }}{{- end }}
+{{- if $p.hookTimeout }}{{- $_ := set $entry "hookTimeout" $p.hookTimeout }}{{- end }}
+{{- $ccPluginJson = append $ccPluginJson $entry }}
+{{- end }}
+{{- end }}
 {{- /* Each toolchain is an image volume the kubelet pulls, mounted read-only
      at /opt/ploeg/toolchains/<name>. The worker learns the mounted PATH
      directories from PLOEG_TOOLCHAINS, so the Run's sandbox needs no
@@ -385,8 +422,7 @@ global executor.harness defaults field-by-field (explicit hasKey checks, so
 {{- end }}
 {{- $toolchainEnv = append $toolchainEnv (dict "name" $tc.name "path" $paths "env" ($tc.env | default dict)) }}
 {{- end }}
-{{- $hDind := true }}
-{{- if hasKey $rh "dind" }}{{- $hDind = $rh.dind }}{{- else if hasKey $th "dind" }}{{- $hDind = $th.dind }}{{- else if hasKey $gh "dind" }}{{- $hDind = $gh.dind }}{{- end }}
+{{- $hDind := eq (include "ploeg.roleUsesDind" (dict "root" $root "team" $team "role" $role)) "true" }}
 {{- if and $root.Values.security.workerAdmission.enabled $hDind }}
 {{- fail (printf "team %s: security.workerAdmission forbids privileged DinD; set harness.dind=false at every applicable override" $team.name) }}
 {{- end }}
@@ -422,7 +458,6 @@ global executor.harness defaults field-by-field (explicit hasKey checks, so
 metadata:
   labels:
     app.kubernetes.io/name: ploeg-worker
-    app.kubernetes.io/instance: {{ include "ploeg.instance" $root }}
     ploeg.webgrip.dev/team: {{ $team.name }}
     {{- if $role.name }}
     ploeg.webgrip.dev/role: {{ $role.name }}
@@ -554,6 +589,15 @@ spec:
         {{- if $hTelemetry }}
         - name: PLOEG_TELEMETRY
           value: {{ toJson $hTelemetry | replace "$(" "$$(" | quote }}
+        {{- end }}
+        {{- if $ccPluginJson }}
+        - name: PLOEG_CLAUDE_PLUGINS
+          value: {{ toJson $ccPluginJson | replace "$(" "$$(" | quote }}
+        {{- range $ccPluginSecrets }}
+        - name: {{ .var }}
+          valueFrom:
+            secretKeyRef: {name: {{ .secret.name | quote }}, key: {{ .secret.key | quote }}}
+        {{- end }}
         {{- end }}
         {{- if eq $hName "acp" }}
         {{- if $acpProfile }}
@@ -815,9 +859,17 @@ admission while the PolicyException looked correct.
 {{- $gh := .root.Values.executor.harness | default dict }}
 {{- $th := .team.harness | default dict }}
 {{- $rh := (.role | default dict).harness | default dict }}
-{{- $d := true }}
+{{- $d := false }}
 {{- if hasKey $rh "dind" }}{{- $d = $rh.dind }}{{- else if hasKey $th "dind" }}{{- $d = $th.dind }}{{- else if hasKey $gh "dind" }}{{- $d = $gh.dind }}{{- end }}
-{{- if $d }}true{{- end }}
+{{- if $d }}
+{{- $acknowledged := false }}
+{{- if hasKey $rh "acknowledgePrivilegedDind" }}{{- $acknowledged = $rh.acknowledgePrivilegedDind }}{{- else if hasKey $th "acknowledgePrivilegedDind" }}{{- $acknowledged = $th.acknowledgePrivilegedDind }}{{- else if hasKey $gh "acknowledgePrivilegedDind" }}{{- $acknowledged = $gh.acknowledgePrivilegedDind }}{{- end }}
+{{- if not $acknowledged }}
+{{- $who := .team.name }}{{- with (.role | default dict).name }}{{- $who = printf "%s/%s" $who . }}{{- end }}
+{{- fail (printf "team %s: harness.dind is true without harness.acknowledgePrivilegedDind: true. With DinD the harness container receives the client certificates of a privileged Docker daemon (DOCKER_HOST, DOCKER_CERT_PATH, /certs), which is root on the node, and the chart turns both credential proxies off for it (PLOEG_CREDENTIAL_ISOLATION_OFF_REASON=dind) unless harness.credentialIsolation is proxy, so the harness also receives the real per-Run model key in LLM_API_KEY and, when it writes, the real forge token in AGENT_BUILDER_TOKEN. Set harness.acknowledgePrivilegedDind: true in the same block to accept this, or keep harness.dind: false (the default) for the strict profile" $who) }}
+{{- end -}}
+true
+{{- end }}
 {{- end -}}
 
 {{- define "ploeg.goMemLimitEnv" -}}

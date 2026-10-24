@@ -8,9 +8,9 @@
   },
   "nativeAdmissionMinimumKubernetes": "1.30.0",
   "nativeAdmissionDefault": false,
-  "workerNetworkPolicyDefault": false,
   "runtimeClassInstalledByChart": false,
   "cniInstalledByChart": false,
   "runtimeSensorInstalledByChart": false,
-  "qualification": "offline-render-and-CEL-mutations; live API server, runtime, CNI and identity checks required"
+  "qualification": "offline-render-and-CEL-mutations; live API server, runtime, CNI and identity checks required",
+  "networkPolicyDefault": true
 }

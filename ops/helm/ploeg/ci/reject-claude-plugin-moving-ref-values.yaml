@@ -1,0 +1,17 @@
+# CI-only values: a Claude Code plugin pinned to a branch must be refused by
+# values.schema.json; a plugin is pinned to a full commit id (ADR-0139).
+executor:
+  enabled: true
+  teams:
+    - name: bronze
+      model: litellm_proxy/claude-sonnet-5
+      budget: "2"
+      harness:
+        name: claude-code
+        image: harbor.webgrip.dev/webgrip/agent:0.1.0
+        claudeCode:
+          plugins:
+            - name: session-link
+              marketplace:
+                url: https://forgejo.example.com/team/claude-plugins.git
+                commit: main

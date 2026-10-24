@@ -10,9 +10,11 @@ Ploeg is a self-hosted service for authorizing and coordinating agent work. Trac
 
 ## Start here
 
+- [Quickstart](docs/quickstart.md): install a signed release on a local kind cluster and complete your first Run, with no outside accounts.
 - [Documentation](docs/index.md): current guides, contracts and design history.
 - [Architecture](docs/architecture.md): what runs where and who holds authority.
 - [Managed workers](docs/ops/managed-workers.md): required configuration and recovery.
+- [Network policies](docs/ops/network.md): what every Ploeg pod may reach, and what your CNI must enforce.
 
 ## How it works
 
@@ -42,7 +44,18 @@ See [release instructions](docs/ops/release-versioning.md) and [CI and infrastru
 
 ## License
 
-Code: [Apache-2.0](LICENSE).
+Code: [Apache-2.0](LICENSE). Documentation: [CC-BY-4.0](LICENSES/CC-BY-4.0.txt).
+
+[REUSE.toml](REUSE.toml) says which licence covers each file. Markdown pages,
+`llms.txt` and images under `docs/` are CC-BY-4.0. Everything else is
+Apache-2.0, including the API specifications in `docs/contracts/` and the
+brand files in `docs/brand/`. Code samples inside the documentation are also
+available under Apache-2.0, so you can paste them into your own code. When you
+republish the documentation, credit it as *Ploeg documentation*, link
+<https://github.com/ploeg-hq/ploeg>, keep the copyright notice, name CC BY 4.0
+and say if you changed it. The split follows the CNCF charter, §11(b)(iii) for
+code and §11(b)(iv) for documentation; see
+[ADR-0140](docs/adrs/0140-documentation-is-cc-by-4-0-and-code-and-api-specifications-stay-apache-2-0.md).
 
 The name *Ploeg* and the Ploeg mark are trademarks — §6 of that licence grants
 no rights in them, deliberately. [docs/brand/TRADEMARK.md](docs/brand/TRADEMARK.md)

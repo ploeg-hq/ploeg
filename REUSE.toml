@@ -8,3 +8,29 @@ path = "**"
 precedence = "aggregate"
 SPDX-FileCopyrightText = "2026 Ryan Grippeling / WebGrip"
 SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = [
+  "**/*.md",
+  "llms.txt",
+  "docs/**/*.png",
+  "docs/**/*.svg",
+  "docs/**/*.jpg",
+  "docs/**/*.jpeg",
+  "docs/**/*.gif",
+  "docs/**/*.webp",
+]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Ryan Grippeling / WebGrip"
+SPDX-License-Identifier = "CC-BY-4.0"
+
+[[annotations]]
+path = [
+  "docs/contracts/**",
+  "docs/brand/**",
+  "pkg/**",
+  "CHANGELOG.md",
+]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Ryan Grippeling / WebGrip"
+SPDX-License-Identifier = "Apache-2.0"

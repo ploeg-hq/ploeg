@@ -21,6 +21,7 @@ import (
 
 	"github.com/ploeg-hq/ploeg/pkg/boardview"
 	"github.com/ploeg-hq/ploeg/pkg/harness"
+	"github.com/ploeg-hq/ploeg/pkg/harness/claudeplugins"
 	"github.com/ploeg-hq/ploeg/pkg/harness/skills"
 	"github.com/ploeg-hq/ploeg/pkg/knowledge"
 	"github.com/ploeg-hq/ploeg/pkg/litellm"
@@ -110,6 +111,12 @@ type Config struct {
 	// includes the agent's reasoning (PLOEG_RUN_TRANSCRIPT_THOUGHTS).
 	Transcript         bool
 	TranscriptThoughts bool
+	// ClaudePlugins are the Claude Code plugins a claude-code Run installs
+	// (PLOEG_CLAUDE_PLUGINS, ADR-0139); empty installs none.
+	ClaudePlugins []claudeplugins.Plugin
+	// PluginHookGuard is the absolute path of the program that runs a
+	// plugin's hooks under the guard: this worker binary.
+	PluginHookGuard string
 }
 
 // IsolationRequested reports whether either credential isolation flag keeps a
@@ -125,6 +132,8 @@ type Worker struct {
 	Adapter harness.Adapter
 	Broker  llmbroker.Broker
 	agent   observedAgent
+	// pluginFetch replaces the git fetch of plugin marketplaces in tests.
+	pluginFetch claudeplugins.Fetcher
 }
 
 // profiledAdapter is a harness adapter that launches one of several agent
@@ -523,7 +532,8 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 			}
 		}
 	}
-	w.Log.Info("prepared the Run's sandbox", "skills", len(skillSet), "toolchains", len(w.Cfg.Toolchains), "verify_commands", len(verifyCommands))
+	pluginDirs := w.installClaudePlugins(ctx, scratchDir)
+	w.Log.Info("prepared the Run's sandbox", "skills", len(skillSet), "claude_plugins", len(pluginDirs), "toolchains", len(w.Cfg.Toolchains), "verify_commands", len(verifyCommands))
 	// The Shift's authorization is the ceiling the credential must be minted
 	// at: min(roleCap, poolRemaining), computed under the Shift row lock
 	// (ADR-0012). Zero = no Shift authorized this run, so the env budget
@@ -572,7 +582,8 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 				w.Log.Warn("prompt start not recorded; the Run's limits stay unknown", "err", err)
 			}
 		},
-		CatchUp: board.catchUp,
+		CatchUp:    board.catchUp,
+		PluginDirs: pluginDirs,
 	}
 
 	env.BaseEnv = append(env.BaseEnv, gitEnv...)

@@ -1,0 +1,152 @@
+{{- if .Values.networkPolicy.enabled }}
+{{- $root := . }}
+{{- $np := .Values.networkPolicy }}
+{{- $ex := .Values.executor }}
+{{- $ploegdPort := dict "protocol" "TCP" "port" 8080 }}
+{{- $claudeTeams := include "ploeg.netpol.claudeEnvironmentTeams" . | fromJsonArray }}
+{{- $ploegdEgress := list (include "ploeg.netpol.dnsRule" .) }}
+{{- $ploegdEgress = append $ploegdEgress (dict "to" ($np.database.peers | default (list (dict "podSelector" dict))) "ports" (list (dict "protocol" "TCP" "port" (int $np.database.port))) | toJson) }}
+{{- range $url := list $ex.litellm.adminUrl $ex.litellm.baseUrl }}
+{{- with $url }}{{- $ploegdEgress = append $ploegdEgress (include "ploeg.netpol.endpointRule" (dict "root" $root "url" . "endpoint" $np.gateway)) }}{{- end }}
+{{- end }}
+{{- range (include "ploeg.netpol.forgeUrls" (dict "root" . "side" "ploegd") | fromJsonArray) }}
+{{- $ploegdEgress = append $ploegdEgress (include "ploeg.netpol.endpointRule" (dict "root" $root "url" . "endpoint" $np.forge)) }}
+{{- end }}
+{{- range (include "ploeg.netpol.trackerUrls" . | fromJsonArray) }}
+{{- $ploegdEgress = append $ploegdEgress (include "ploeg.netpol.endpointRule" (dict "root" $root "url" . "endpoint" $np.tracker)) }}
+{{- end }}
+{{- with (.Values.knowledgeGraph | default dict).url }}
+{{- $ploegdEgress = append $ploegdEgress (include "ploeg.netpol.endpointRule" (dict "root" $root "url" . "endpoint" $np.knowledgeGraph)) }}
+{{- end }}
+{{- if $claudeTeams }}
+{{- $ploegdEgress = append $ploegdEgress (include "ploeg.netpol.endpointRule" (dict "root" $root "url" (.Values.env.PLOEG_CLAUDE_SESSION_JWKS_URL | default "https://api.anthropic.com") "endpoint" dict)) }}
+{{- end }}
+{{- $ploegdIngress := list }}
+{{- if $np.ploegd.ingressFrom }}
+{{- $ploegdIngress = append $ploegdIngress (dict "from" $np.ploegd.ingressFrom "ports" (list $ploegdPort)) }}
+{{- $callers := list "ploeg-worker" "ploeg-sandbox-launcher" (include "ploeg.mcpName" .) (include "ploeg.claudeRunnerName" .) }}
+{{- $ploegdIngress = append $ploegdIngress (dict "from" (list (dict "podSelector" (dict "matchExpressions" (list (dict "key" "app.kubernetes.io/name" "operator" "In" "values" $callers))))) "ports" (list $ploegdPort)) }}
+{{- else }}
+{{- $ploegdIngress = append $ploegdIngress (dict "ports" (list $ploegdPort)) }}
+{{- end }}
+{{- range $np.ploegd.extraIngress }}{{- $ploegdIngress = append $ploegdIngress . }}{{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "ploeg.netpol.name" (dict "root" . "suffix" "ploegd") }}
+  labels: {{- include "ploeg.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "ploeg.selectorLabels" . | nindent 6 }}
+      ploeg.webgrip.dev/component: daemon
+  policyTypes: [Ingress, Egress]
+  ingress: {{- toYaml $ploegdIngress | nindent 4 }}
+  egress: {{- include "ploeg.netpol.rules" (dict "rules" $ploegdEgress "extra" $np.ploegd.extraEgress) | fromJsonArray | toYaml | nindent 4 }}
+{{- if $ex.enabled }}
+{{- $workerEgress := list (include "ploeg.netpol.dnsRule" .) (include "ploeg.netpol.ploegdRule" (dict "root" . "url" $ex.apiUrl)) }}
+{{- with $ex.litellm.baseUrl }}
+{{- $workerEgress = append $workerEgress (include "ploeg.netpol.endpointRule" (dict "root" $root "url" . "endpoint" $np.gateway)) }}
+{{- end }}
+{{- range (include "ploeg.netpol.forgeUrls" (dict "root" . "side" "worker") | fromJsonArray) }}
+{{- $workerEgress = append $workerEgress (include "ploeg.netpol.endpointRule" (dict "root" $root "url" . "endpoint" $np.forge)) }}
+{{- end }}
+{{- range (include "ploeg.netpol.telemetryUrls" . | fromJsonArray) }}
+{{- $workerEgress = append $workerEgress (include "ploeg.netpol.endpointRule" (dict "root" $root "url" . "endpoint" $np.telemetry)) }}
+{{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "ploeg.netpol.name" (dict "root" . "suffix" "worker") }}
+  labels: {{- include "ploeg.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: ploeg-worker
+  policyTypes: [Ingress, Egress]
+  ingress: []
+  egress: {{- include "ploeg.netpol.rules" (dict "rules" $workerEgress "extra" $np.worker.extraEgress) | fromJsonArray | toYaml | nindent 4 }}
+{{- range $team := $claudeTeams }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "ploeg.netpol.name" (dict "root" $root "suffix" (printf "worker-%s-anthropic" $team)) }}
+  labels: {{- include "ploeg.labels" $root | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: ploeg-worker
+      ploeg.webgrip.dev/team: {{ $team }}
+  policyTypes: [Egress]
+  egress: {{- list (include "ploeg.netpol.internetRule" (dict "root" $root "port" 443) | fromJson) | toYaml | nindent 4 }}
+{{- end }}
+{{- if include "ploeg.anyTeamOnSandbox" . }}
+{{- $launcherEgress := list (include "ploeg.netpol.dnsRule" .) (include "ploeg.netpol.ploegdRule" (dict "root" . "url" $ex.apiUrl)) }}
+{{- $apiRule := dict "ports" $np.kubernetesApi.ports }}
+{{- with $np.kubernetesApi.peers }}{{- $_ := set $apiRule "to" . }}{{- end }}
+{{- $launcherEgress = append $launcherEgress ($apiRule | toJson) }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "ploeg.netpol.name" (dict "root" . "suffix" "sandbox-launcher") }}
+  labels: {{- include "ploeg.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: ploeg-sandbox-launcher
+  policyTypes: [Ingress, Egress]
+  ingress: []
+  egress: {{- include "ploeg.netpol.rules" (dict "rules" $launcherEgress "extra" $np.sandboxLauncher.extraEgress) | fromJsonArray | toYaml | nindent 4 }}
+{{- end }}
+{{- end }}
+{{- if .Values.claudeRunner.enabled }}
+{{- $r := .Values.claudeRunner }}
+{{- $runnerEgress := list (include "ploeg.netpol.dnsRule" .) (include "ploeg.netpol.ploegdRule" (dict "root" . "url" $r.ploegUrl)) }}
+{{- range (include "ploeg.netpol.forgeUrls" (dict "root" . "side" "ploegd") | fromJsonArray) }}
+{{- $runnerEgress = append $runnerEgress (include "ploeg.netpol.endpointRule" (dict "root" $root "url" . "endpoint" $np.forge)) }}
+{{- end }}
+{{- $runnerEgress = append $runnerEgress (include "ploeg.netpol.internetRule" (dict "root" . "port" 443)) }}
+{{- with ($r.env | default dict).OTEL_EXPORTER_OTLP_ENDPOINT }}
+{{- $runnerEgress = append $runnerEgress (include "ploeg.netpol.endpointRule" (dict "root" $root "url" . "endpoint" $np.telemetry)) }}
+{{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "ploeg.netpol.name" (dict "root" . "suffix" "claude-runner") }}
+  labels: {{- include "ploeg.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "ploeg.claudeRunnerName" . }}
+  policyTypes: [Ingress, Egress]
+  ingress: []
+  egress: {{- include "ploeg.netpol.rules" (dict "rules" $runnerEgress "extra" $np.claudeRunner.extraEgress) | fromJsonArray | toYaml | nindent 4 }}
+{{- end }}
+{{- if .Values.mcp.enabled }}
+{{- $m := .Values.mcp }}
+{{- $mcpEgress := list (include "ploeg.netpol.dnsRule" .) (include "ploeg.netpol.ploegdRule" (dict "root" . "url" $m.ploegUrl)) }}
+{{- with ($m.env | default dict).PLOEG_MCP_ISSUER }}
+{{- $mcpEgress = append $mcpEgress (include "ploeg.netpol.endpointRule" (dict "root" $root "url" . "endpoint" dict)) }}
+{{- end }}
+{{- $mcpIngress := dict "ports" (list (dict "protocol" "TCP" "port" (int $m.port))) }}
+{{- with $np.mcp.ingressFrom }}{{- $_ := set $mcpIngress "from" . }}{{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "ploeg.netpol.name" (dict "root" . "suffix" "mcp") }}
+  labels: {{- include "ploeg.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "ploeg.mcpName" . }}
+  policyTypes: [Ingress, Egress]
+  ingress: {{- list $mcpIngress | toYaml | nindent 4 }}
+  egress: {{- include "ploeg.netpol.rules" (dict "rules" $mcpEgress "extra" $np.mcp.extraEgress) | fromJsonArray | toYaml | nindent 4 }}
+{{- end }}
+{{- end }}

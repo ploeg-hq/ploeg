@@ -1,4 +1,119 @@
 ---
+# Source: ploeg/templates/networkpolicy.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ploeg-ploegd
+  labels:
+    app.kubernetes.io/name: ploeg
+    app.kubernetes.io/instance: ploeg
+    app.kubernetes.io/version: "CHART-VERSION"
+    helm.sh/chart: ploeg-CHART-VERSION
+    app.kubernetes.io/managed-by: Helm
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: ploeg
+      app.kubernetes.io/instance: ploeg
+      ploeg.webgrip.dev/component: daemon
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - ports:
+      - port: 8080
+        protocol: TCP
+  egress:
+    - ports:
+      - port: 53
+        protocol: UDP
+      - port: 53
+        protocol: TCP
+      to:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: kube-system
+        podSelector:
+          matchLabels:
+            k8s-app: kube-dns
+    - ports:
+      - port: 5432
+        protocol: TCP
+      to:
+      - podSelector: {}
+    - ports:
+      - port: 4000
+        protocol: TCP
+      to:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: ai
+    - ports:
+      - port: 443
+        protocol: TCP
+      to:
+      - ipBlock:
+          cidr: 0.0.0.0/0
+          except:
+          - 10.0.0.0/8
+          - 172.16.0.0/12
+          - 192.168.0.0/16
+---
+# Source: ploeg/templates/networkpolicy.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ploeg-worker
+  labels:
+    app.kubernetes.io/name: ploeg
+    app.kubernetes.io/instance: ploeg
+    app.kubernetes.io/version: "CHART-VERSION"
+    helm.sh/chart: ploeg-CHART-VERSION
+    app.kubernetes.io/managed-by: Helm
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: ploeg-worker
+  policyTypes: [Ingress, Egress]
+  ingress: []
+  egress:
+    - ports:
+      - port: 53
+        protocol: UDP
+      - port: 53
+        protocol: TCP
+      to:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: kube-system
+        podSelector:
+          matchLabels:
+            k8s-app: kube-dns
+    - ports:
+      - port: 8080
+        protocol: TCP
+      to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/instance: ploeg
+            app.kubernetes.io/name: ploeg
+            ploeg.webgrip.dev/component: daemon
+    - ports:
+      - port: 4000
+        protocol: TCP
+      to:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: ai
+    - ports:
+      - port: 443
+        protocol: TCP
+      to:
+      - ipBlock:
+          cidr: 0.0.0.0/0
+          except:
+          - 10.0.0.0/8
+          - 172.16.0.0/12
+          - 192.168.0.0/16
+---
 # Source: ploeg/templates/serviceaccount.yaml
 apiVersion: v1
 kind: ServiceAccount
@@ -273,7 +388,6 @@ spec:
       metadata:
         labels:
           app.kubernetes.io/name: ploeg-worker
-          app.kubernetes.io/instance: ploeg
           ploeg.webgrip.dev/team: silver
           ploeg.webgrip.dev/role: builder
       spec:
@@ -334,6 +448,11 @@ spec:
                 value: "100m"
               - name: PLOEG_HARNESS_IDLE_TIMEOUT
                 value: "15m"
+              - name: PLOEG_CLAUDE_PLUGINS
+                value: "[{\"env\":[{\"name\":\"LINK_URL\",\"value\":\"https://link.example.com\"},{\"fromEnv\":\"PLOEG_CLAUDE_PLUGIN_ENV_0_1\",\"name\":\"LINK_TOKEN\"}],\"hookTimeout\":\"15s\",\"marketplace\":{\"commit\":\"0123456789abcdef0123456789abcdef01234567\",\"url\":\"https://github.com/example/claude-plugins.git\"},\"name\":\"session-link\"}]"
+              - name: PLOEG_CLAUDE_PLUGIN_ENV_0_1
+                valueFrom:
+                  secretKeyRef: {name: "session-link-plugin", key: "token"}
               - name: LLM_MODEL
                 value: "litellm_proxy/claude-sonnet-5"
               - name: LITELLM_KEY_BUDGET
@@ -482,7 +601,6 @@ spec:
       metadata:
         labels:
           app.kubernetes.io/name: ploeg-worker
-          app.kubernetes.io/instance: ploeg
           ploeg.webgrip.dev/team: silver
           ploeg.webgrip.dev/role: reviewer
       spec:
@@ -543,6 +661,11 @@ spec:
                 value: "100m"
               - name: PLOEG_HARNESS_IDLE_TIMEOUT
                 value: "15m"
+              - name: PLOEG_CLAUDE_PLUGINS
+                value: "[{\"env\":[{\"name\":\"LINK_URL\",\"value\":\"https://link.example.com\"},{\"fromEnv\":\"PLOEG_CLAUDE_PLUGIN_ENV_0_1\",\"name\":\"LINK_TOKEN\"}],\"hookTimeout\":\"15s\",\"marketplace\":{\"commit\":\"0123456789abcdef0123456789abcdef01234567\",\"url\":\"https://github.com/example/claude-plugins.git\"},\"name\":\"session-link\"}]"
+              - name: PLOEG_CLAUDE_PLUGIN_ENV_0_1
+                valueFrom:
+                  secretKeyRef: {name: "session-link-plugin", key: "token"}
               - name: LLM_MODEL
                 value: "litellm_proxy/claude-sonnet-5"
               - name: LITELLM_KEY_BUDGET

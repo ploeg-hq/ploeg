@@ -16,7 +16,6 @@ spec:
     objectSelector:
       matchLabels:
         app.kubernetes.io/name: ploeg-worker
-        app.kubernetes.io/instance: {{ include "ploeg.instance" . }}
     resourceRules:
       - apiGroups: [""]
         apiVersions: ["v1"]

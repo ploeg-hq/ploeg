@@ -10,16 +10,6 @@ security:
   workerAdmission:
     enabled: false
     runtimeClassNames: []
-  workerNetworkPolicy:
-    enabled: false
-    dns:
-      namespaceSelector:
-        matchLabels:
-          kubernetes.io/metadata.name: kube-system
-      podSelector:
-        matchLabels:
-          k8s-app: kube-dns
-    egress: []
 
 image:
   # The public release image. Point repository at a copy of the same digest,
@@ -36,6 +26,60 @@ imagePullSecrets: [] # e.g. [{name: harbor-pull}] for a private registry
 
 service:
   port: 8080
+
+# Default-deny NetworkPolicies for every Ploeg pod, with the egress each one
+# needs derived from the URLs above and below (docs/ops/network.md). Only a
+# CNI that enforces NetworkPolicy applies them; kind's kindnet does not.
+networkPolicy:
+  enabled: true
+  dns:
+    peers:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: kube-system
+        podSelector:
+          matchLabels:
+            k8s-app: kube-dns
+    ports:
+      - {protocol: UDP, port: 53}
+      - {protocol: TCP, port: 53}
+  privateCidrs: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16]
+  database:
+    peers: []
+    port: 5432
+  gateway:
+    peers: []
+    port: ""
+  forge:
+    peers: []
+    port: ""
+  tracker:
+    peers: []
+    port: ""
+  knowledgeGraph:
+    peers: []
+    port: ""
+  telemetry:
+    peers: []
+    port: ""
+  kubernetesApi:
+    peers: []
+    ports:
+      - {protocol: TCP, port: 6443}
+      - {protocol: TCP, port: 443}
+  ploegd:
+    ingressFrom: []
+    extraIngress: []
+    extraEgress: []
+  worker:
+    extraEgress: []
+  sandboxLauncher:
+    extraEgress: []
+  claudeRunner:
+    extraEgress: []
+  mcp:
+    ingressFrom: []
+    extraEgress: []
 
 # ploeg-mcp: Ploeg's MCP tools over Streamable HTTP for people's AI clients
 # (ADR-0081), run from the ploegd image as `ploeg-mcp http`. Off by default.
@@ -93,8 +137,8 @@ mcp:
 # claude-environment Runs as Claude Code sessions (ADR-0084), from the
 # release's claude-runner image. Off by default. ops/claude-runner/README.md
 # explains the runner settings. The pod reaches Anthropic, the forge's HTTPS
-# host and ploegd; write that egress policy for your CNI, because it names
-# hosts a NetworkPolicy cannot.
+# host and ploegd; networkPolicy renders that egress, with Anthropic as the
+# internet on 443 because a NetworkPolicy cannot name a host.
 claudeRunner:
   enabled: false
   name: "" # empty = <fullname>-claude-runner; Deployment and the pods' app.kubernetes.io/name
@@ -104,6 +148,10 @@ claudeRunner:
     repository: ghcr.io/ploeg-hq/claude-runner
     tag: ""
     digest: ""
+  claudeCode:
+    install: true
+    version: ""
+    sha256: ""
   replicas: 1
   # REQUIRED when enabled: the Secret with SELF_HOSTED_RUNNER_ENVIRONMENT_SECRET,
   # the environment key from the claude.ai admin page. Loaded with envFrom.
@@ -423,7 +471,14 @@ executor:
     entrypoint: ""  # binary override (PLOEG_HARNESS_ENTRYPOINT); "" = adapter default
     args: []        # exec harness only: argv template with {taskspec}/{taskfile}
     outcomeFile: "" # exec harness only: OutcomeReport JSON path override
-    dind: true      # privileged DinD sidecar + DOCKER_* wiring (OpenHands + gates need it)
+    # false (the default) is the strict profile: no privileged sidecar, both
+    # credential proxies on for a qualified harness. true adds the privileged
+    # docker:dind sidecar and DOCKER_* wiring for gate builds inside a
+    # container, mounts the daemon's client certificates into the harness and
+    # turns both proxies off for that workload; the render refuses it unless
+    # acknowledgePrivilegedDind is true in the same chain (ADR-0136).
+    dind: false
+    acknowledgePrivilegedDind: false
     timeout: 100m
     idleTimeout: 15m
     # Language toolchains mounted read-only at /opt/ploeg/toolchains/<name>
@@ -461,6 +516,24 @@ executor:
     # logToolDetails: false
     # allowHarnesses: [openhands]  # only once the agent image's lmnr is compatible
     telemetry: {}
+    # claude-code harness only (ADR-0139): Claude Code plugins every Run of the
+    # Team loads, each fetched by the worker from a plugin marketplace at a
+    # pinned commit. Set at executor, team or Role level; the most specific
+    # list wins whole. Each hook runs under ploeg-worker's guard with only the
+    # plugin's declared env and cannot block or stop the Run; MCP and LSP
+    # servers, monitors, bin/ and settings.json are left out. A marketplace
+    # off the forge needs networkPolicy.worker.extraEgress. Empty loads none,
+    # and the Run's Claude Code reads the clone's settings as before.
+    claudeCode:
+      plugins: []
+      # - name: session-link
+      #   marketplace:
+      #     url: https://forgejo.example.com/team/claude-plugins.git
+      #     commit: 0123456789abcdef0123456789abcdef01234567  # a full commit id, never a branch or tag
+      #   env:
+      #     - {name: LINK_URL, value: https://link.example.com}
+      #     - {name: LINK_TOKEN, secret: {name: session-link-plugin, key: token}}
+      #   hookTimeout: 10s  # one hook's bound; at most 60s
     # acp harness only. One adapter speaks Zed's Agent CLIENT Protocol (stdio
     # JSON-RPC, wire version 1) to any ACP-capable agent. Unrelated to IBM's
     # former Agent COMMUNICATION Protocol, which merged into A2A — see ADR-0007.
@@ -538,11 +611,12 @@ executor:
     # launcher fails with the controller's reason, instead of holding the
     # Team's slot until the shutdown deadline. Covers a cold image pull.
     startTimeoutSeconds: 600
-    # {} = Unmanaged: the cluster's own policies, selected by the worker's
-    # labels, apply. A NetworkPolicy spec here (ingress/egress rules) makes
-    # agent-sandbox manage one policy per template with exactly these rules.
-    # Allow at least DNS, ploegd, the model gateway and the forge; the
-    # controller's secure default is never used, because it blocks all three.
+    # {} = Unmanaged: the chart's worker policy (networkPolicy) and the
+    # cluster's own, selected by the worker's labels, apply. A NetworkPolicy
+    # spec here (ingress/egress rules) makes agent-sandbox manage one more
+    # policy per template with exactly these rules, added to those; the
+    # controller's secure default is never used, because it blocks DNS,
+    # ploegd, the model gateway and the forge alike.
     networkPolicy: {}
     launcherResources:
       requests: {cpu: 10m, memory: 32Mi}
