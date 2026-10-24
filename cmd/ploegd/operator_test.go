@@ -64,3 +64,30 @@ func TestOperatorConfigReadsEachRolesHarness(t *testing.T) {
 		t.Fatal("a malformed PLOEG_TEAM_HARNESSES must stop the boot")
 	}
 }
+
+func TestPersonTokensComeFromTheEnvironment(t *testing.T) {
+	t.Setenv("PLOEG_OPERATOR_DELIVERY_POLICIES", "")
+	t.Setenv("PLOEG_TEAM_MAP", "")
+	t.Setenv("PLOEG_TEAM_HARNESSES", "")
+	t.Setenv("CONSUMER_TOKEN", "0123456789abcdef0123456789abcdef")
+	t.Setenv("PLOEG_OPERATOR_CONSUMERS", `[{"name":"acting","tokenEnv":"CONSUMER_TOKEN","execute":true,"clientIds":["acting-app"]}]`)
+	t.Setenv("PLOEG_OPERATOR_PERSON_ISSUER", "")
+	if _, err := operatorConfig(&config.File{}, nil); err == nil {
+		t.Fatal("clientIds without a person token issuer must stop the boot")
+	}
+	t.Setenv("PLOEG_OPERATOR_PERSON_ISSUER", "https://id.example/application/o/ploeg/")
+	t.Setenv("PLOEG_OPERATOR_PERSON_AUDIENCE", "ploeg")
+	t.Setenv("PLOEG_OPERATOR_PERSON_MAX_LIFETIME", "forever")
+	if _, err := operatorConfig(&config.File{}, nil); err == nil {
+		t.Fatal("a malformed lifetime must stop the boot")
+	}
+	t.Setenv("PLOEG_OPERATOR_PERSON_MAX_LIFETIME", "2m")
+	operator, err := operatorConfig(&config.File{}, nil)
+	if err != nil || operator.PersonTokens == nil {
+		t.Fatalf("person tokens: %v %v", operator.PersonTokens, err)
+	}
+	t.Setenv("PLOEG_OPERATOR_PERSON_AUDIENCE", "")
+	if _, err := operatorConfig(&config.File{}, nil); err == nil {
+		t.Fatal("an issuer without an audience must stop the boot")
+	}
+}

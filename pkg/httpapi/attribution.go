@@ -21,7 +21,9 @@ type attributionError struct {
 // operatorAttribution reads who makes an operator change and how (ADR-0108):
 // X-Ploeg-Actor, X-Ploeg-Acting-User, X-Ploeg-Via and X-Ploeg-Confirmation.
 // Each header is optional here and may appear at most once; a present one
-// must be valid. Routes that change work require the actor themselves.
+// must be valid. Routes that change work require the actor themselves. When a
+// verified person token named the person, the actor is that person and the
+// attribution is proven (ADR-0150); otherwise a named actor is asserted.
 func operatorAttribution(r *http.Request, consumer string) (store.Attribution, *attributionError) {
 	a := store.Attribution{Consumer: consumer}
 	actor := r.Header.Values("X-Ploeg-Actor")
@@ -54,6 +56,14 @@ func operatorAttribution(r *http.Request, consumer string) (store.Attribution, *
 	}
 	if a.Actor == "" && (a.ActingUser != "" || a.Via != "" || a.Confirmation != "") {
 		return a, &attributionError{"actor_required", "X-Ploeg-Acting-User, X-Ploeg-Via and X-Ploeg-Confirmation need an X-Ploeg-Actor."}
+	}
+	if proven, ok := ProvenPersonFromContext(r.Context()); ok {
+		if (a.Actor != "" && a.Actor != proven.ID) || (a.ActingUser != "" && a.ActingUser != proven.ID) {
+			return a, &attributionError{"actor_conflict", "X-Ploeg-Actor and X-Ploeg-Acting-User must name the person the person token proves."}
+		}
+		a.Actor, a.ActingUser, a.Proof, a.Act = proven.ID, "", ProofProven, proven.Act
+	} else if a.Actor != "" {
+		a.Proof = ProofAsserted
 	}
 	return a, nil
 }

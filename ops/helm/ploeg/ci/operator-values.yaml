@@ -5,6 +5,8 @@ operator:
         - silver
       execute: true
       maxBudgetUsd: 3
+      clientIds:
+        - console-app
       tokenSecret:
         name: ploeg-console-operator
         key: token
@@ -15,6 +17,10 @@ operator:
       tokenSecret:
         name: ploeg-console-verifier
         key: token
+  personTokens:
+    issuer: https://id.example.com/application/o/ploeg/
+    audience: ploeg
+    maxLifetime: 5m
   deliveryPolicies:
     - repositoryId: example
       policySha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa

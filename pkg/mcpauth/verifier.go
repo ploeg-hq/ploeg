@@ -1,8 +1,8 @@
-// Package mcpauth makes an MCP server an OAuth 2.1 resource server for an
-// OpenID Connect issuer such as Authentik. It verifies signed JWT access
-// tokens against the issuer's published keys, answers RFC 6750 challenges
-// that point at RFC 9728 protected resource metadata, and never forwards the
-// caller's token anywhere.
+// Package mcpauth makes an MCP server, or any Ploeg API, an OAuth 2.1
+// resource server for an OpenID Connect issuer such as Authentik. It verifies
+// signed JWT access tokens against the issuer's published keys, answers
+// RFC 6750 challenges that point at RFC 9728 protected resource metadata,
+// and exchanges a verified token for another audience with RFC 8693.
 package mcpauth
 
 import (
@@ -31,9 +31,17 @@ const DefaultMaxLifetime = 10 * time.Minute
 type Config struct {
 	// Issuer is matched byte for byte against the token's iss.
 	Issuer string
-	// Audiences are the pre-registered client ids; aud must name one and azp
-	// must be one.
+	// Audiences are what aud must name one of. Without AuthorizedParties
+	// they are the pre-registered client ids and azp must be one of them too.
 	Audiences []string
+	// AuthorizedParties, when set, are the client ids azp (or client_id when
+	// the token has no azp) must be one of, independently of Audiences: a
+	// token exchanged for one audience on behalf of a known client.
+	AuthorizedParties []string
+	// ScopeOptional accepts a token without a scope claim. Set it only with
+	// AuthorizedParties that never equal an audience, so an ID token issued
+	// to the audience's own client is still refused.
+	ScopeOptional bool
 	// JWKSURL is where the signing keys live. Empty means the jwks_uri of the
 	// issuer's OpenID discovery document.
 	JWKSURL string
@@ -73,6 +81,19 @@ func NewVerifier(cfg Config) (*Verifier, error) {
 	if len(cfg.Audiences) == 0 || slices.Contains(cfg.Audiences, "") {
 		return nil, errors.New("at least one non-empty client id is required as audience")
 	}
+	if slices.Contains(cfg.AuthorizedParties, "") {
+		return nil, errors.New("authorized parties must be non-empty client ids")
+	}
+	if cfg.ScopeOptional {
+		if len(cfg.AuthorizedParties) == 0 {
+			return nil, errors.New("an optional scope needs authorized parties")
+		}
+		for _, party := range cfg.AuthorizedParties {
+			if slices.Contains(cfg.Audiences, party) {
+				return nil, fmt.Errorf("authorized party %q is also an audience, so an ID token could pass as an access token", party)
+			}
+		}
+	}
 	if len(cfg.Algorithms) == 0 {
 		cfg.Algorithms = []string{"RS256", "ES256"}
 	}
@@ -107,15 +128,23 @@ func (v *Verifier) Ready(ctx context.Context) error {
 
 type claims struct {
 	jwt.RegisteredClaims
-	AuthorizedParty string   `json:"azp"`
-	Scope           string   `json:"scope"`
-	Groups          []string `json:"groups"`
-	Username        string   `json:"preferred_username"`
+	AuthorizedParty string    `json:"azp"`
+	ClientID        string    `json:"client_id"`
+	Scope           string    `json:"scope"`
+	Groups          []string  `json:"groups"`
+	Username        string    `json:"preferred_username"`
+	Act             *actClaim `json:"act"`
+}
+
+type actClaim struct {
+	Subject string `json:"sub"`
 }
 
 // Verify is an auth.TokenVerifier. Every rejection wraps auth.ErrInvalidToken
 // except an unreachable key set, which wraps ErrKeysUnavailable. TokenInfo
-// carries the subject as UserID and the groups and username in Extra.
+// carries the subject as UserID and, in Extra, "groups", "username", "client"
+// (azp, or client_id without azp) and "act" (the RFC 8693 act claim's sub, or
+// empty when the token has no act).
 func (v *Verifier) Verify(ctx context.Context, token string, _ *http.Request) (*auth.TokenInfo, error) {
 	var c claims
 	parser := jwt.NewParser(
@@ -150,11 +179,26 @@ func (v *Verifier) Verify(ctx context.Context, token string, _ *http.Request) (*
 	if c.Subject == "" {
 		return nil, invalid("the token has no sub")
 	}
-	if c.AuthorizedParty == "" || c.Scope == "" {
+	client := c.AuthorizedParty
+	if client == "" && len(v.cfg.AuthorizedParties) > 0 {
+		client = c.ClientID
+	}
+	if client == "" || (c.Scope == "" && !v.cfg.ScopeOptional) {
 		return nil, invalid("the token has no azp or scope; an ID token is not an access token")
 	}
-	if !slices.Contains(v.cfg.Audiences, c.AuthorizedParty) {
+	parties := v.cfg.Audiences
+	if len(v.cfg.AuthorizedParties) > 0 {
+		parties = v.cfg.AuthorizedParties
+	}
+	if !slices.Contains(parties, client) {
 		return nil, invalid("the token was issued to a client this server does not accept")
+	}
+	act := ""
+	if c.Act != nil {
+		if c.Act.Subject == "" {
+			return nil, invalid("the token's act claim names no sub")
+		}
+		act = c.Act.Subject
 	}
 	groups := make([]string, 0, len(c.Groups))
 	for _, g := range c.Groups {
@@ -166,7 +210,7 @@ func (v *Verifier) Verify(ctx context.Context, token string, _ *http.Request) (*
 		Scopes:     strings.Fields(c.Scope),
 		Expiration: c.ExpiresAt.Time,
 		UserID:     c.Subject,
-		Extra:      map[string]any{"groups": groups, "username": c.Username, "client": c.AuthorizedParty},
+		Extra:      map[string]any{"groups": groups, "username": c.Username, "client": client, "act": act},
 	}, nil
 }
 
