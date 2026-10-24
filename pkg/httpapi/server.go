@@ -21,6 +21,7 @@ import (
 	"github.com/ploeg-hq/ploeg/pkg/gate"
 	"github.com/ploeg-hq/ploeg/pkg/harness"
 	"github.com/ploeg-hq/ploeg/pkg/provider"
+	"github.com/ploeg-hq/ploeg/pkg/runidentity"
 	"github.com/ploeg-hq/ploeg/pkg/store"
 	"github.com/ploeg-hq/ploeg/pkg/target"
 	"github.com/ploeg-hq/ploeg/pkg/work"
@@ -49,6 +50,9 @@ type Server struct {
 	ScopeTeams map[string]string
 	LeaseTTL   time.Duration
 	Log        *slog.Logger
+	// RunIdentity signs the Run identities a Team's declared plugins receive
+	// and publishes its key set (ADR-0149). Nil = both routes answer 404.
+	RunIdentity *runidentity.Signer
 	// Engine is the Shift lifecycle fast path (run-multi-agent-shifts): ingest
 	// opens, an outcome report evaluates. Nil = no shift engine configured,
 	// dispatch unchanged. Engine errors are logged, never returned to the
@@ -97,6 +101,9 @@ type Server struct {
 	// FollowUps holds each Team's opt-in to acting on forge events. A Team
 	// that is missing acts on nothing; its forge events are only recorded.
 	FollowUps map[string]work.ForgeFollowUps
+	// FastChecks is each repository's fast check, keyed by FastCheckRoute
+	// (ADR-0146). A writing Run's claim carries its repository's.
+	FastChecks map[string][]string
 	// ForgeBots are the forge logins Ploeg itself acts as. A review from one
 	// of them never sends work back to a Team.
 	ForgeBots []string
@@ -257,6 +264,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/deploys", s.handleDeploy)
 	mux.Handle("/api/v1/operator/", s.operatorHandler())
 	s.RegisterLLMControl(mux)
+	s.registerRunIdentity(mux)
 	return s.WorkerHandler(mux)
 }
 
@@ -600,7 +608,21 @@ type claimResponse struct {
 	// Handback is set on a writing Run of the Round a person's hand back
 	// reopened (ADR-0142): where to continue and the commit the taken-over
 	// Run yielded at.
-	Handback *work.Handback `json:"handback,omitempty"`
+	Handback  *work.Handback `json:"handback,omitempty"`
+	FastCheck []string       `json:"fastCheck,omitempty"`
+}
+
+// FastCheckRoute keys Server.FastChecks: a repository "owner/name" on a forge
+// instance, empty for the deployment's default forge, compared without case.
+func FastCheckRoute(forge, repo string) string {
+	return strings.ToLower(strings.TrimSpace(forge)) + " " + strings.ToLower(strings.TrimSpace(repo))
+}
+
+func (s *Server) fastCheckFor(item work.WorkItem, writes bool) []string {
+	if !writes || item.Target == nil {
+		return nil
+	}
+	return s.FastChecks[FastCheckRoute(item.Target.Forge, item.Target.Owner+"/"+item.Target.Repo)]
 }
 
 // handleClaim leases the next unit of work for a team. 204 = empty-handed
@@ -659,7 +681,8 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 	s.Log.Info("lease acquired", "team", req.Team, "work_item", claimed.Item.ID, "deadline", claimed.Deadline)
 	writeJSON(w, http.StatusOK, claimResponse{RunToken: claimed.RunToken, Deadline: claimed.Deadline, WorkItem: claimed.Item,
 		Context: s.claimContext(r.Context(), claimed.RunToken), Board: s.recordBoardClaim(r.Context(), claimed.RunToken),
-		Briefing: s.consumeOperatorNotes(r.Context(), claimed.Item.ID, claimed.RunToken, 0)})
+		Briefing:  s.consumeOperatorNotes(r.Context(), claimed.Item.ID, claimed.RunToken, 0),
+		FastCheck: s.fastCheckFor(claimed.Item, true)})
 }
 
 // claimRole serves a Shift-scoped claim, carrying everything the Run needs
@@ -717,6 +740,7 @@ func (s *Server) respondClaimedRun(w http.ResponseWriter, r *http.Request, req c
 	if run.Writes {
 		resp.Handback = s.claimHandback(r.Context(), run.ShiftID, run.Round)
 	}
+	resp.FastCheck = s.fastCheckFor(run.Item, run.Writes)
 	// Push rights are minted per writing Run, so holding the Lease and being
 	// able to push are one fact rather than two that can disagree. A reader
 	// gets nothing here — it has no Lease and no business pushing.

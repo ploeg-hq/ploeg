@@ -8,11 +8,16 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+
+	"github.com/ploeg-hq/ploeg/pkg/harness/claudeplugins"
 )
 
 const concealedSecretEnv = "PLOEG_TEST_CONCEALED_SECRET"
 
 func TestMain(m *testing.M) {
+	if len(os.Args) >= 3 && os.Args[1] == claudeplugins.GuardSubcommand {
+		os.Exit(claudeplugins.Guard(os.Args[2], os.Stdin, os.Stdout, os.Stderr, os.Environ()))
+	}
 	if os.Getenv("PLOEG_TEST_CONCEAL_CHILD") == "1" {
 		os.Exit(runConcealChild())
 	}

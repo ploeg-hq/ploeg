@@ -319,3 +319,33 @@ func TestComposePrompt_TrackerReferenceFollowsTheProvider(t *testing.T) {
 		t.Errorf("clickup prompt carries a Vikunja reference:\n%s", clickup)
 	}
 }
+
+func TestComposePrompt_WriterRebasesOntoTheBaseBeforeItsLastPush(t *testing.T) {
+	writer := ComposePrompt(roleSpec("builder", nil), true, "https://forgejo.example/acme/shop/pulls/7", true)
+	for _, want := range []string{
+		`"git fetch origin development"`,
+		`"git rebase origin/development"`,
+		`"git push --force-with-lease"`,
+		`"git rebase --abort"`,
+		"name the\n  conflicting paths",
+	} {
+		if !strings.Contains(writer, want) {
+			t.Errorf("writer prompt missing %q:\n%s", want, writer)
+		}
+	}
+	if reader := ComposePrompt(roleSpec("security", nil), false, "", true); strings.Contains(reader, "git rebase") {
+		t.Errorf("a reader was told to rebase:\n%s", reader)
+	}
+}
+
+func TestFastCheckSection_NamesTheScriptAndItsCommandsOnlyWhenDeclared(t *testing.T) {
+	if got := fastCheckSection(nil); got != "" {
+		t.Errorf("section without a fast check = %q, want none", got)
+	}
+	got := fastCheckSection([]string{"go vet ./...", "go test -short ./..."})
+	for _, want := range []string{"$" + fastCheckScriptEnv, "      go vet ./...\n", "      go test -short ./...\n", "after every rebase"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("section lacks %q:\n%s", want, got)
+		}
+	}
+}

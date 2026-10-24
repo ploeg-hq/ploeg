@@ -56,21 +56,45 @@ func (s *Server) repairFailedCheck(ctx context.Context, providerName string, ev 
 	if !policy.RepairFailedChecks {
 		return
 	}
-	id, item, result, err := s.Store.CreateRepairFollowUp(ctx, store.RepairRequest{
+	s.queueRepair(ctx, owner, store.RepairRequest{
 		SourceWorkItemID: owner.WorkItemID, Provider: providerName, Repo: ev.Repo,
 		Branch: ev.Branch, PR: ev.PR, Detail: ev.Body, Cap: policy.RepairCap(),
 	})
+}
+
+// RebaseConflicted queues a rebase Follow-Up on a pull request a Team owns
+// once the forge has confirmed that it conflicts with its base branch, when
+// that Team sets forgeFollowUps.rebaseOnConflict (ADR-0146).
+func (s *Server) RebaseConflicted(ctx context.Context, forge, repo, branch string, pr int, base string) {
+	owner, ok := s.forgeEventOwner(ctx, forge, provider.ForgeEvent{Kind: provider.ForgeMergeStateDirty, Repo: repo, Branch: branch, PR: pr})
+	if !ok {
+		return
+	}
+	policy := s.FollowUps[owner.Team]
+	if !policy.RebaseOnConflict {
+		s.Log.Info("pull request conflicts with its base; the Team does not rebase on conflict", "work_item", owner.WorkItemID,
+			"team", owner.Team, "repo", repo, "pr", pr, "base", base)
+		return
+	}
+	s.queueRepair(ctx, owner, store.RepairRequest{
+		SourceWorkItemID: owner.WorkItemID, Provider: forge, Repo: repo,
+		Branch: branch, PR: pr, Cap: policy.RepairCap(), Kind: store.RepairConflict, Base: base,
+	})
+}
+
+func (s *Server) queueRepair(ctx context.Context, owner store.BranchOwner, req store.RepairRequest) {
+	id, item, result, err := s.Store.CreateRepairFollowUp(ctx, req)
 	if err != nil {
-		s.Log.Error("repair follow-up failed", "source", owner.WorkItemID, "branch", ev.Branch, "err", err)
+		s.Log.Error("repair follow-up failed", "source", owner.WorkItemID, "branch", req.Branch, "kind", string(req.Kind), "err", err)
 		return
 	}
 	if result != store.FollowUpCreated {
-		s.Log.Info("repair follow-up not created", "source", owner.WorkItemID, "branch", ev.Branch,
-			"pr", ev.PR, "reason", string(result))
+		s.Log.Info("repair follow-up not created", "source", owner.WorkItemID, "branch", req.Branch,
+			"pr", req.PR, "kind", string(req.Kind), "reason", string(result))
 		return
 	}
 	s.Log.Info("repair follow-up queued", "id", id, "source", owner.WorkItemID, "team", item.Team,
-		"branch", ev.Branch, "pr", ev.PR)
+		"branch", req.Branch, "pr", req.PR, "kind", string(req.Kind))
 	if s.Engine != nil {
 		if err := s.Engine.EnsureShift(ctx, id, item); err != nil {
 			s.Log.Error("shift open failed; sweeper will repair", "id", id, "err", err)

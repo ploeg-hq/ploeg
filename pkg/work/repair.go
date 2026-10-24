@@ -32,3 +32,26 @@ func RepairBrief(source WorkItem, branch string, pr int, detail string) (title, 
 	}
 	return title, b.String()
 }
+
+// RebaseBrief composes the title and description of a rebase Follow-Up for
+// source's pull request, which the forge reports as conflicting with base
+// (ADR-0146).
+func RebaseBrief(source WorkItem, branch string, pr int, base string) (title, description string) {
+	title = "Rebase onto " + base + ": " + source.Title
+	var b strings.Builder
+	where := "branch " + branch
+	if pr > 0 {
+		where = fmt.Sprintf("pull request #%d (branch %s)", pr, branch)
+	}
+	fmt.Fprintf(&b, "The forge reports that %s, opened for Work Item %s, conflicts with its base branch %s.\n\n", where, Reference(source), base)
+	fmt.Fprintf(&b, "Check out %s, rebase it onto origin/%s and resolve every conflict so that both sides' intent survives. ", branch, base)
+	b.WriteString("Do not change what the original Work Item asked for. Run the fast check and the checks on the rebased branch, ")
+	fmt.Fprintf(&b, "then push it to %s with --force-with-lease so the existing pull request is updated. ", branch)
+	b.WriteString("If a conflict needs a choice between two different behaviours, abort the rebase, push nothing, and name the conflicting paths.\n\n")
+	if source.Description != "" {
+		b.WriteString("Original Work Item:\n\n")
+		b.WriteString(source.Description)
+		b.WriteString("\n")
+	}
+	return title, b.String()
+}

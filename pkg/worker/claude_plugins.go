@@ -4,6 +4,7 @@ import (
 	"context"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/ploeg-hq/ploeg/pkg/harness/claudeplugins"
 )
@@ -20,7 +21,7 @@ func ClaudePluginsWithheldReason(harnessName string) string {
 	return "only the claude-code harness loads Claude Code plugins"
 }
 
-func (w *Worker) installClaudePlugins(ctx context.Context, scratchDir string) []string {
+func (w *Worker) installClaudePlugins(ctx context.Context, scratchDir string) []claudeplugins.Result {
 	if len(w.Cfg.ClaudePlugins) == 0 || w.Adapter == nil || w.Adapter.Name() != claudePluginHarness {
 		return nil
 	}
@@ -33,7 +34,24 @@ func (w *Worker) installClaudePlugins(ctx context.Context, scratchDir string) []
 			continue
 		}
 		w.Log.Info("Claude Code plugin installed", "plugin", r.Name, "version", r.Version,
-			"guarded_hooks", r.Hooks, "dropped", strings.Join(r.Dropped, ", "))
+			"guarded_hooks", r.Hooks, "dropped", strings.Join(r.Dropped, ", "), "run_identity", r.RunIdentityFile != "")
 	}
-	return claudeplugins.Dirs(results)
+	return results
+}
+
+// startPluginRunIdentity hands each plugin that opted in its Run identity
+// (ADR-0149) and keeps it current at a third of the lease, the renewal
+// cadence, so a token never expires between two refreshes.
+func (w *Worker) startPluginRunIdentity(ctx context.Context, claimed *ClaimResponse, results []claudeplugins.Result) *runIdentityKeeper {
+	if w.API == nil {
+		return nil
+	}
+	every := time.Until(claimed.Deadline) / 3
+	if every <= 0 {
+		every = 20 * time.Second
+	}
+	if every < 5*time.Second {
+		every = 5 * time.Second
+	}
+	return startRunIdentity(ctx, w.API, claimed.RunToken, results, every, w.Log)
 }

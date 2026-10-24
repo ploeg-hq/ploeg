@@ -12,6 +12,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/ploeg-hq/ploeg/pkg/runidentity"
 )
 
 // SecretEnvPrefix is the prefix of the worker variables a declared plugin
@@ -36,6 +38,21 @@ type Plugin struct {
 	Env []EnvVar `json:"env,omitempty"`
 	// HookTimeout bounds one hook invocation; zero is DefaultHookTimeout.
 	HookTimeout Duration `json:"hookTimeout,omitempty"`
+	// RunIdentity opts the plugin's hooks into the Run identity
+	// (ADR-0149): a short-lived token ploegd signs for Audience, handed to
+	// every hook as RunIdentityEnv. Nil hands them none.
+	RunIdentity *RunIdentity `json:"runIdentity,omitempty"`
+}
+
+// RunIdentityEnv is the variable the guard sets to the Run identity of a
+// plugin that opted in. A declaration may not set it.
+const RunIdentityEnv = "AGENT_RUN_IDENTITY_TOKEN"
+
+// RunIdentity is a plugin's opt-in to the Run identity.
+type RunIdentity struct {
+	// Audience is the one service the plugin reports to: the token's aud,
+	// so a token for one service is refused by every other.
+	Audience string `json:"audience"`
 }
 
 // Marketplace is a git repository holding .claude-plugin/marketplace.json,
@@ -105,6 +122,7 @@ var reservedEnvNames = map[string]bool{
 	"BASH_ENV": true, "ENV": true, "IFS": true, "SSL_CERT_FILE": true, "SSL_CERT_DIR": true,
 	"HTTP_PROXY": true, "HTTPS_PROXY": true, "NO_PROXY": true, "ALL_PROXY": true,
 	"http_proxy": true, "https_proxy": true, "no_proxy": true, "all_proxy": true,
+	RunIdentityEnv: true,
 }
 
 // ReservedEnvName reports why name may not be declared for a plugin, or "".
@@ -170,6 +188,11 @@ func validate(p Plugin) error {
 	}
 	if p.HookTimeout < 0 || time.Duration(p.HookTimeout) > MaxHookTimeout {
 		return fmt.Errorf("hookTimeout must be between 0 and %s", MaxHookTimeout)
+	}
+	if p.RunIdentity != nil {
+		if why := runidentity.ValidAudience(p.RunIdentity.Audience); why != "" {
+			return fmt.Errorf("runIdentity.audience %q %s", p.RunIdentity.Audience, why)
+		}
 	}
 	names := map[string]bool{}
 	for _, e := range p.Env {
