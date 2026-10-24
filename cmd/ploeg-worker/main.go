@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/ploeg-hq/ploeg/pkg/harness"
+	"github.com/ploeg-hq/ploeg/pkg/harness/claudeplugins"
 	"github.com/ploeg-hq/ploeg/pkg/llmbroker"
 	"github.com/ploeg-hq/ploeg/pkg/worker"
 )
@@ -29,6 +30,9 @@ import (
 var version = "0.0.0-dev"
 
 func main() {
+	if len(os.Args) >= 3 && os.Args[1] == claudeplugins.GuardSubcommand {
+		os.Exit(claudeplugins.Guard(os.Args[2], os.Stdin, os.Stdout, os.Stderr, os.Environ()))
+	}
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 
 	// `ploeg-worker install <dst>`: self-copy out of the distroless ploegd
@@ -218,6 +222,14 @@ func run(log *slog.Logger) error {
 	if cfg.Telemetry, err = worker.ParseTelemetry(os.Getenv("PLOEG_TELEMETRY")); err != nil {
 		return err
 	}
+	if cfg.ClaudePlugins, err = claudeplugins.Parse(os.Getenv("PLOEG_CLAUDE_PLUGINS"), os.LookupEnv); err != nil {
+		return err
+	}
+	if len(cfg.ClaudePlugins) > 0 {
+		if cfg.PluginHookGuard, err = os.Executable(); err != nil {
+			return fmt.Errorf("PLOEG_CLAUDE_PLUGINS: cannot locate the worker binary for the hook guard: %w", err)
+		}
+	}
 	if cfg.VerifyCommands, err = worker.ParseVerifyCommands(os.Getenv("PLOEG_VERIFY_COMMANDS")); err != nil {
 		return err
 	}
@@ -242,6 +254,7 @@ func run(log *slog.Logger) error {
 	log.Info("ploeg-worker starting", "version", version, "team", cfg.Team, "harness", hc.Name, "node", nodeName, "pod_uid", podUID)
 	warnWhenCredentialIsolationOff(log, cfg, hc)
 	logTelemetryReach(log, cfg, hc)
+	logClaudePluginReach(log, cfg, hc)
 
 	// A worker pod is killed for reasons that have nothing to do with the
 	// agent: an eviction, a drain, a Job deadline, a node going away. Without
@@ -253,6 +266,24 @@ func run(log *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	return worker.New(cfg, adapter, broker, log).RunContext(ctx)
+}
+
+// logClaudePluginReach says which declared Claude Code plugins this harness
+// loads, or why it loads none of them.
+func logClaudePluginReach(log *slog.Logger, cfg worker.Config, hc worker.HarnessConfig) {
+	if len(cfg.ClaudePlugins) == 0 {
+		return
+	}
+	names := make([]string, 0, len(cfg.ClaudePlugins))
+	for _, p := range cfg.ClaudePlugins {
+		names = append(names, p.Name+"@"+p.Marketplace.Commit[:12])
+	}
+	if reason := worker.ClaudePluginsWithheldReason(hc.Name); reason != "" {
+		log.Warn("Claude Code plugins are declared but withheld from this harness",
+			"harness", hc.Name, "plugins", strings.Join(names, ","), "reason", reason)
+		return
+	}
+	log.Info("Claude Code plugins load into every Run", "harness", hc.Name, "plugins", strings.Join(names, ","))
 }
 
 func warnWhenCredentialIsolationOff(log *slog.Logger, cfg worker.Config, hc worker.HarnessConfig) {

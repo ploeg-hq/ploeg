@@ -634,3 +634,41 @@ func TestPrepare_NoMCPConfigWithoutAKey(t *testing.T) {
 		t.Fatalf("argv names an MCP config with no key to authenticate it: %q", inv.Argv)
 	}
 }
+
+func TestPrepare_TeamPluginsLoadWithoutTheClonesSettings(t *testing.T) {
+	env := testEnv()
+	env.RepoDir = "/work/clone"
+	env.PluginDirs = []string{"/scratch/claude-plugins/one", "/scratch/claude-plugins/two"}
+	inv, err := New("", "").Prepare(harness.TaskSpec{}, env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{DefaultBin, "-p", "# Ticket VIK-596\n", "--output-format", "json", "--permission-mode", DefaultPermissionMode,
+		"--setting-sources", "user", "--add-dir", "/work/clone",
+		"--plugin-dir", "/scratch/claude-plugins/one", "--plugin-dir", "/scratch/claude-plugins/two",
+		"--strict-mcp-config"}
+	if !slices.Equal(inv.Argv, want) {
+		t.Errorf("argv = %v, want %v", inv.Argv, want)
+	}
+	if slices.Contains(inv.Argv, TargetHooksDisabled) {
+		t.Error("disableAllHooks would also switch the plugins' guarded hooks off")
+	}
+	if !slices.Contains(inv.ExtraEnv, RepositoryInstructions) {
+		t.Errorf("without %s the clone's CLAUDE.md is not read once project settings are off: %v", RepositoryInstructions, inv.ExtraEnv)
+	}
+}
+
+func TestPrepare_NoPluginsKeepsTheTargetHooksOff(t *testing.T) {
+	inv, err := New("", "").Prepare(harness.TaskSpec{}, testEnv())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, flag := range []string{"--setting-sources", "--plugin-dir", "--add-dir"} {
+		if slices.Contains(inv.Argv, flag) {
+			t.Errorf("a Run without plugins received %s: %q", flag, inv.Argv)
+		}
+	}
+	if slices.Contains(inv.ExtraEnv, RepositoryInstructions) {
+		t.Errorf("a Run without plugins received %s", RepositoryInstructions)
+	}
+}

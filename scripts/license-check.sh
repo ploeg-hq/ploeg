@@ -33,6 +33,10 @@ grep -q '^COPY LICENSE NOTICE THIRD-PARTY-NOTICES /usr/share/doc/ploeg/' ops/doc
   || note "the ploegd image no longer carries LICENSE, NOTICE and THIRD-PARTY-NOTICES"
 grep -q '^COPY LICENSE NOTICE /usr/share/doc/ploeg/' ops/claude-runner/Dockerfile \
   || note "the claude-runner image no longer carries LICENSE and NOTICE"
+grep -qiE 'downloads\.claude\.ai|claude-code-releases|@anthropic-ai/claude-code|claude\.ai/install' ops/claude-runner/Dockerfile \
+  && note "ops/claude-runner/Dockerfile copies Claude Code into a published image; it installs at container start instead (ADR-0141)"
+grep -q '^COPY --chmod=0755 ops/claude-runner/install-claude-code /usr/local/bin/ploeg-install-claude-code' ops/claude-runner/Dockerfile \
+  || note "the claude-runner image no longer carries the installer that fetches Claude Code at start"
 grep -q '^notices=(LICENSE NOTICE THIRD-PARTY-NOTICES)' scripts/release.sh \
   && grep -q 'ploegd ploeg-worker "${notices\[@\]}"' scripts/release.sh \
   || note "the release tarball no longer carries LICENSE, NOTICE and THIRD-PARTY-NOTICES"

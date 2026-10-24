@@ -31,6 +31,14 @@ const (
 	// LiteLLM prices advisor tokens at the executor model's rate and the
 	// key's model scope does not cover the advisor model (Ploeg ADR-0039).
 	AdvisorDisabled = "CLAUDE_CODE_DISABLE_ADVISOR_TOOL=1"
+	// UserSettingsOnly is the --setting-sources value of a Run that loads
+	// Team plugins: the clone's .claude/settings.json and
+	// settings.local.json, and with them their hooks, are not read, while
+	// the plugins' guarded hooks run (Ploeg ADR-0139).
+	UserSettingsOnly = "user"
+	// RepositoryInstructions makes Claude Code read CLAUDE.md from the
+	// clone, passed with --add-dir, when project settings are not loaded.
+	RepositoryInstructions = "CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1"
 )
 
 // ModelAliasEnv names the variables Claude Code resolves its model aliases
@@ -92,9 +100,17 @@ func (a *Adapter) Prepare(spec harness.TaskSpec, env harness.RunEnv) (harness.In
 	argv := []string{bin, "-p", env.Prompt,
 		"--output-format", "json",
 		"--permission-mode", mode,
-		"--settings", TargetHooksDisabled,
-		"--strict-mcp-config",
 	}
+	if len(env.PluginDirs) == 0 {
+		argv = append(argv, "--settings", TargetHooksDisabled)
+	} else {
+		argv = append(argv, "--setting-sources", UserSettingsOnly, "--add-dir", env.RepoDir)
+		for _, dir := range env.PluginDirs {
+			argv = append(argv, "--plugin-dir", dir)
+		}
+		extraEnv = append(extraEnv, RepositoryInstructions)
+	}
+	argv = append(argv, "--strict-mcp-config")
 	// --strict-mcp-config stays: the gateway's server is the only one the Run
 	// loads, never the target repository's .mcp.json (ADR-0030, ADR-0078).
 	if env.LLM.MCPURL != "" && env.LLM.APIKey != "" {
