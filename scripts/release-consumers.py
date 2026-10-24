@@ -18,6 +18,9 @@ TAG = re.compile(r'^v(?P<version>(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]
 REPOSITORY = re.compile(r'^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$')
 BRANCH = re.compile(r'^[A-Za-z0-9_./-]+$')
 MERGE_STYLES = {'merge', 'rebase', 'rebase-merge', 'squash', 'fast-forward-only'}
+MERGE_ON_GREEN = 'on-green'
+MERGE_BY_CONSUMER = 'by-consumer'
+MERGE_MODES = {MERGE_ON_GREEN, MERGE_BY_CONSUMER}
 SUPPORTED_FORGES = {'forgejo'}
 DEFAULT_MESSAGE = 'chore(deps): update ' + PRODUCER + ' to {version}'
 LOOPBACK_HOSTS = {'127.0.0.1', 'localhost', '::1'}
@@ -38,6 +41,7 @@ class Consumer:
     recipe: str
     message: str
     merge_style: str
+    merge: str
 
     @property
     def clone_url(self):
@@ -54,7 +58,7 @@ def parse_consumer(text):
     missing = [field for field in ('forge', 'url', 'repo', 'base', 'recipe') if not isinstance(entry.get(field), str) or not entry[field]]
     if missing:
         raise ConsumerError(f'the consumer entry lacks {", ".join(missing)}')
-    unknown = sorted(set(entry) - {'forge', 'url', 'repo', 'base', 'recipe', 'message', 'merge_style'})
+    unknown = sorted(set(entry) - {'forge', 'url', 'repo', 'base', 'recipe', 'message', 'merge_style', 'merge'})
     if unknown:
         raise ConsumerError(f'the consumer entry has unknown fields: {", ".join(unknown)}')
     if entry['forge'] not in SUPPORTED_FORGES:
@@ -77,7 +81,12 @@ def parse_consumer(text):
     merge_style = entry.get('merge_style', 'merge')
     if merge_style not in MERGE_STYLES:
         raise ConsumerError(f'merge_style must be one of {", ".join(sorted(MERGE_STYLES))}')
-    return Consumer(entry['forge'], urllib.parse.urlunsplit(url), entry['repo'], entry['base'], str(recipe), message, merge_style)
+    merge = entry.get('merge', MERGE_ON_GREEN)
+    if merge not in MERGE_MODES:
+        raise ConsumerError(f'merge must be one of {", ".join(sorted(MERGE_MODES))}')
+    if merge == MERGE_BY_CONSUMER and 'merge_style' in entry:
+        raise ConsumerError('merge_style has no effect when the consumer merges its own pull request; drop it or set merge to on-green')
+    return Consumer(entry['forge'], urllib.parse.urlunsplit(url), entry['repo'], entry['base'], str(recipe), message, merge_style, merge)
 
 
 def release_version(tag):
@@ -181,12 +190,18 @@ def git(checkout, *arguments, environment=None, capture=False):
     return result.stdout if capture else None
 
 
+def merge_sentence(consumer):
+    if consumer.merge == MERGE_BY_CONSUMER:
+        return f'{consumer.repo} merges this pull request itself; the release does not ask the forge to merge it.'
+    return 'The merge waits for the required checks of the base branch.'
+
+
 def pull_request_body(consumer, tag, version, release_url):
     released = f'{PRODUCER} {tag} was released: {release_url}' if release_url else f'{PRODUCER} {tag} was released.'
     return (
         f'{released}\n\n'
         f'{PRODUCER}\'s release workflow ran `{consumer.recipe} {version}` on `{consumer.base}` and committed what it changed. '
-        'A newer release supersedes this pull request with its own. The merge waits for the required checks of the base branch.'
+        f'A newer release supersedes this pull request with its own. {merge_sentence(consumer)}'
     )
 
 
@@ -219,13 +234,14 @@ def deliver(consumer, tag, token, release_url, dry_run, retry_delay):
         git(checkout, '-c', f'user.name={login}', '-c', f'user.email={email}', 'commit', '--quiet', '-m', title, '-m', body)
         print(git(checkout, 'show', '--stat', '--format=%an <%ae>%n%s', 'HEAD', capture=True), flush=True)
         if dry_run:
-            print(f'Dry run: would push {branch}, open or update its pull request into {consumer.base} and ask {consumer.forge} to merge it ({consumer.merge_style}) when its checks succeed')
+            handoff = f'leave its merge to {consumer.repo}' if consumer.merge == MERGE_BY_CONSUMER else f'ask {consumer.forge} to merge it ({consumer.merge_style}) when its checks succeed'
+            print(f'Dry run: would push {branch}, open or update its pull request into {consumer.base} and {handoff}')
             return 'dry run'
         if forge is None:
             raise ConsumerError('RELEASE_CONSUMER_TOKEN is required to push and open the pull request')
         git(checkout, 'push', '--quiet', '--force', 'origin', f'HEAD:refs/heads/{branch}', environment=authenticated)
         number, created = forge.upsert_pull(branch, consumer.base, title, body)
-        merge = forge.merge_when_checks_succeed(number, consumer.merge_style, retry_delay)
+        merge = 'left to the consumer' if consumer.merge == MERGE_BY_CONSUMER else forge.merge_when_checks_succeed(number, consumer.merge_style, retry_delay)
         closed = forge.close_superseded(f'{PRODUCER}/', branch, login, number)
         superseded = f', closed superseded {", ".join(f"#{n}" for n in closed)}' if closed else ''
         print(f'{consumer.repo}#{number} {"opened" if created else "updated"}, merge {merge}{superseded}')
