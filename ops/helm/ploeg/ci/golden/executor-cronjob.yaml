@@ -251,6 +251,7 @@ spec:
         metadata:
           labels:
             app.kubernetes.io/name: ploeg-worker
+            app.kubernetes.io/instance: ploeg
             ploeg.webgrip.dev/team: bronze
             # Names the HAZARD, not the workload: this pod carries a privileged
             # docker:dind sidecar, and the ploeg-worker PolicyException is keyed on

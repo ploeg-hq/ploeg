@@ -6,6 +6,21 @@
 fullnameOverride: ""
 instanceOverride: ""
 
+security:
+  workerAdmission:
+    enabled: false
+    runtimeClassNames: []
+  workerNetworkPolicy:
+    enabled: false
+    dns:
+      namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    egress: []
+
 image:
   # The public release image. Point repository at a copy of the same digest,
   # with imagePullSecrets, when the cluster pulls from a private registry.

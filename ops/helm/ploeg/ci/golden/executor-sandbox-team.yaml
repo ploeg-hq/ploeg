@@ -281,6 +281,7 @@ spec:
   podTemplate:
     metadata:
       labels:
+        app.kubernetes.io/instance: ploeg
         app.kubernetes.io/name: ploeg-worker
         ploeg.webgrip.dev/team: copper
     spec:
@@ -467,6 +468,7 @@ spec:
       metadata:
         labels:
           app.kubernetes.io/name: ploeg-worker
+          app.kubernetes.io/instance: ploeg
           ploeg.webgrip.dev/team: silver
       spec:
         restartPolicy: Never

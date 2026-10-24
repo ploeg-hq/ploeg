@@ -259,6 +259,7 @@ spec:
       metadata:
         labels:
           app.kubernetes.io/name: ploeg-worker
+          app.kubernetes.io/instance: ploeg
           ploeg.webgrip.dev/team: qualified
       spec:
         restartPolicy: Never

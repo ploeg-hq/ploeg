@@ -283,6 +283,7 @@ spec:
   podTemplate:
     metadata:
       labels:
+        app.kubernetes.io/instance: ploeg
         app.kubernetes.io/name: ploeg-worker
         ploeg.webgrip.dev/privileged-dind: "true"
         ploeg.webgrip.dev/team: bronze
@@ -507,6 +508,7 @@ spec:
   podTemplate:
     metadata:
       labels:
+        app.kubernetes.io/instance: ploeg
         app.kubernetes.io/name: ploeg-worker
         ploeg.webgrip.dev/privileged-dind: "true"
         ploeg.webgrip.dev/role: builder
@@ -730,6 +732,7 @@ spec:
   podTemplate:
     metadata:
       labels:
+        app.kubernetes.io/instance: ploeg
         app.kubernetes.io/name: ploeg-worker
         ploeg.webgrip.dev/role: reviewer
         ploeg.webgrip.dev/team: gold

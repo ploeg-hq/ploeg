@@ -3,6 +3,71 @@
   "title": "ploeg chart values",
   "type": "object",
   "properties": {
+    "security": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "workerAdmission",
+        "workerNetworkPolicy"
+      ],
+      "properties": {
+        "workerAdmission": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "enabled",
+            "runtimeClassNames"
+          ],
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "runtimeClassNames": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 253,
+                "pattern": "^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$"
+              }
+            }
+          }
+        },
+        "workerNetworkPolicy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "enabled",
+            "dns",
+            "egress"
+          ],
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "dns": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "namespaceSelector": {
+                  "type": "object"
+                },
+                "podSelector": {
+                  "type": "object"
+                }
+              }
+            },
+            "egress": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
     "fullnameOverride": {
       "type": "string",
       "description": "Object name prefix; empty = the Helm release name"

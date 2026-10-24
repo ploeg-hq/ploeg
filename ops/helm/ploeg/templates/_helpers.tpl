@@ -387,6 +387,9 @@ global executor.harness defaults field-by-field (explicit hasKey checks, so
 {{- end }}
 {{- $hDind := true }}
 {{- if hasKey $rh "dind" }}{{- $hDind = $rh.dind }}{{- else if hasKey $th "dind" }}{{- $hDind = $th.dind }}{{- else if hasKey $gh "dind" }}{{- $hDind = $gh.dind }}{{- end }}
+{{- if and $root.Values.security.workerAdmission.enabled $hDind }}
+{{- fail (printf "team %s: security.workerAdmission forbids privileged DinD; set harness.dind=false at every applicable override" $team.name) }}
+{{- end }}
 {{- $dt := $root.Values.executor.defaultTarget | default dict }}
 {{/* acp harness: same field-by-field override, one level deeper. */}}
 {{- $ga := $gh.acp | default dict }}
@@ -419,6 +422,7 @@ global executor.harness defaults field-by-field (explicit hasKey checks, so
 metadata:
   labels:
     app.kubernetes.io/name: ploeg-worker
+    app.kubernetes.io/instance: {{ include "ploeg.instance" $root }}
     ploeg.webgrip.dev/team: {{ $team.name }}
     {{- if $role.name }}
     ploeg.webgrip.dev/role: {{ $role.name }}

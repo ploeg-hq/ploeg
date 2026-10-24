@@ -524,6 +524,12 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `resources.limits.memory` |  | `256Mi` |  | values.yaml |
 | `resources.requests.cpu` |  | `100m` |  | values.yaml |
 | `resources.requests.memory` |  | `256Mi` |  | values.yaml |
+| `security.workerAdmission.enabled` | boolean | `false` |  | values.yaml, values.schema.json |
+| `security.workerAdmission.runtimeClassNames` | array | `[]` |  | values.yaml, values.schema.json |
+| `security.workerNetworkPolicy.dns.namespaceSelector.matchLabels.kubernetes.io/metadata.name` |  | `kube-system` |  | values.yaml |
+| `security.workerNetworkPolicy.dns.podSelector.matchLabels.k8s-app` |  | `kube-dns` |  | values.yaml |
+| `security.workerNetworkPolicy.egress` | array | `[]` |  | values.yaml, values.schema.json |
+| `security.workerNetworkPolicy.enabled` | boolean | `false` |  | values.yaml, values.schema.json |
 | `service.port` |  | `8080` |  | values.yaml |
 | `tracker` | object |  | Tracker write-backs (backlog #31): how a closed Shift reaches a person with the pull request link. Unset = the Vikunja provider keeps its logging no-op — runs still finish, the board simply is not updated. Ingest (the webhook) is configured separately and needs no token. | values.yaml, values.schema.json |
 | `tracker.clickup` | object or null |  | The ClickUp tracker (pkg/provider/clickup). Ingest and write-backs are independent: webhookSecret alone verifies deliveries, tokenSecret alone enables reads and write-backs, either without the other degrades rather than fails. ClickUp GENERATES the webhook secret on registration — capture it from the create-webhook response; there is nothing to invent. | values.yaml, values.schema.json |

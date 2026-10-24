@@ -288,6 +288,7 @@ spec:
       metadata:
         labels:
           app.kubernetes.io/name: ploeg-worker
+          app.kubernetes.io/instance: ploeg
           ploeg.webgrip.dev/team: silver
           ploeg.webgrip.dev/role: analyst
       spec:
@@ -496,6 +497,7 @@ spec:
       metadata:
         labels:
           app.kubernetes.io/name: ploeg-worker
+          app.kubernetes.io/instance: ploeg
           ploeg.webgrip.dev/team: silver
           ploeg.webgrip.dev/role: builder
       spec:
@@ -704,6 +706,7 @@ spec:
       metadata:
         labels:
           app.kubernetes.io/name: ploeg-worker
+          app.kubernetes.io/instance: ploeg
           ploeg.webgrip.dev/team: silver
           ploeg.webgrip.dev/role: reviewer
       spec:

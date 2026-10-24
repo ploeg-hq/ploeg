@@ -279,6 +279,7 @@ spec:
       metadata:
         labels:
           app.kubernetes.io/name: ploeg-worker
+          app.kubernetes.io/instance: ploeg
           ploeg.webgrip.dev/team: bronze
           # Names the HAZARD, not the workload: this pod carries a privileged
           # docker:dind sidecar, and the ploeg-worker PolicyException is keyed on
@@ -530,6 +531,7 @@ spec:
       metadata:
         labels:
           app.kubernetes.io/name: ploeg-worker
+          app.kubernetes.io/instance: ploeg
           ploeg.webgrip.dev/team: copper
       spec:
         restartPolicy: Never
@@ -737,6 +739,7 @@ spec:
       metadata:
         labels:
           app.kubernetes.io/name: ploeg-worker
+          app.kubernetes.io/instance: ploeg
           ploeg.webgrip.dev/team: pewter
       spec:
         restartPolicy: Never
@@ -953,6 +956,7 @@ spec:
       metadata:
         labels:
           app.kubernetes.io/name: ploeg-worker
+          app.kubernetes.io/instance: ploeg
           ploeg.webgrip.dev/team: tin
           # Names the HAZARD, not the workload: this pod carries a privileged
           # docker:dind sidecar, and the ploeg-worker PolicyException is keyed on
@@ -1215,6 +1219,7 @@ spec:
       metadata:
         labels:
           app.kubernetes.io/name: ploeg-worker
+          app.kubernetes.io/instance: ploeg
           ploeg.webgrip.dev/team: zinc
           # Names the HAZARD, not the workload: this pod carries a privileged
           # docker:dind sidecar, and the ploeg-worker PolicyException is keyed on
@@ -1472,6 +1477,7 @@ spec:
       metadata:
         labels:
           app.kubernetes.io/name: ploeg-worker
+          app.kubernetes.io/instance: ploeg
           ploeg.webgrip.dev/team: lead
           # Names the HAZARD, not the workload: this pod carries a privileged
           # docker:dind sidecar, and the ploeg-worker PolicyException is keyed on
@@ -1723,6 +1729,7 @@ spec:
       metadata:
         labels:
           app.kubernetes.io/name: ploeg-worker
+          app.kubernetes.io/instance: ploeg
           ploeg.webgrip.dev/team: gold
           ploeg.webgrip.dev/role: analyst
       spec:
@@ -1933,6 +1940,7 @@ spec:
       metadata:
         labels:
           app.kubernetes.io/name: ploeg-worker
+          app.kubernetes.io/instance: ploeg
           ploeg.webgrip.dev/team: gold
           ploeg.webgrip.dev/role: tests
       spec:
@@ -2151,6 +2159,7 @@ spec:
       metadata:
         labels:
           app.kubernetes.io/name: ploeg-worker
+          app.kubernetes.io/instance: ploeg
           ploeg.webgrip.dev/team: gold
           ploeg.webgrip.dev/role: builder
           # Names the HAZARD, not the workload: this pod carries a privileged
@@ -2409,6 +2418,7 @@ spec:
       metadata:
         labels:
           app.kubernetes.io/name: ploeg-worker
+          app.kubernetes.io/instance: ploeg
           ploeg.webgrip.dev/team: gold
           ploeg.webgrip.dev/role: reviewer
       spec:
