@@ -2,7 +2,8 @@ ARG REGISTRY_CHAINGUARD=cgr.dev
 
 FROM ${REGISTRY_CHAINGUARD}/chainguard/wolfi-base:latest@sha256:360896efb0753a5701c48f860e17130c205eae5a264797aa3e7ea126ee2923a7
 
-RUN apk add --no-cache bash ca-certificates-bundle coreutils curl gawk git gpgv grep jq openssh-client sed
+RUN printf 'https://packages.wolfi.dev/os\n' > /etc/apk/repositories \
+ && apk add --no-cache bash ca-certificates-bundle coreutils curl gawk git gpgv grep jq openssh-client sed
 RUN git config --system user.name "Claude" \
  && git config --system user.email "noreply@anthropic.com" \
  && git config --system --add safe.directory '*'

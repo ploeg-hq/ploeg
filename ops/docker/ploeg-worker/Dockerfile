@@ -16,7 +16,8 @@ RUN GOOS=$TARGETOS GOARCH=$TARGETARCH \
     -o /out/ploeg-worker ./cmd/ploeg-worker
 
 FROM ${REGISTRY_CHAINGUARD}/chainguard/wolfi-base:latest@sha256:360896efb0753a5701c48f860e17130c205eae5a264797aa3e7ea126ee2923a7 AS rootfs
-RUN apk add --no-cache --no-scripts --root /rootfs --initdb --keys-dir /etc/apk/keys --repositories-file /etc/apk/repositories \
+RUN printf 'https://packages.wolfi.dev/os\n' > /etc/apk/repositories \
+ && apk add --no-cache --no-scripts --root /rootfs --initdb --keys-dir /etc/apk/keys --repositories-file /etc/apk/repositories \
       wolfi-baselayout ca-certificates-bundle git \
  && rm -rf /rootfs/var/cache/apk /rootfs/etc/apk/repositories \
  && printf 'nonroot:x:65532:65532:nonroot:/home/nonroot:/sbin/nologin\n' >> /rootfs/etc/passwd \
