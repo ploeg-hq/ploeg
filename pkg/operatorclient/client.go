@@ -70,9 +70,10 @@ func (e *Error) Is(target error) bool {
 
 // Client calls one ploegd's operator API as one Operator Consumer.
 type Client struct {
-	base  *url.URL
-	token string
-	http  *http.Client
+	base   *url.URL
+	token  string
+	http   *http.Client
+	proven bool
 }
 
 // New returns a Client for baseURL (scheme and host, optionally a path
@@ -89,6 +90,18 @@ func New(baseURL, token string) (*Client, error) {
 		Timeout:       DefaultTimeout,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}}, nil
+}
+
+// AsPerson returns a Client for the same ploegd that authenticates with a
+// person token instead of the consumer's own credential: a JWT an identity
+// provider issued for Ploeg's audience on behalf of a person, obtained by
+// RFC 8693 token exchange (ADR-0150). ploegd then takes the person from the
+// token, so this Client sends no X-Ploeg-Actor or X-Ploeg-Acting-User.
+func (c *Client) AsPerson(personToken string) (*Client, error) {
+	if len(personToken) < 32 || len(personToken) > 8192 || strings.ContainsAny(personToken, " \t\r\n,") {
+		return nil, errors.New("person token must be 32 to 8192 bytes without whitespace or commas")
+	}
+	return &Client{base: c.base, token: personToken, http: c.http, proven: true}, nil
 }
 
 // Teams answers GET /teams.
@@ -270,6 +283,10 @@ func (c *Client) do(ctx context.Context, method, path string, q url.Values, who 
 	}
 	if who != nil {
 		who.apply(req.Header)
+	}
+	if c.proven {
+		req.Header.Del("X-Ploeg-Actor")
+		req.Header.Del("X-Ploeg-Acting-User")
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {

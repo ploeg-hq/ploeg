@@ -34,6 +34,7 @@ type person struct {
 	ID       string
 	Subject  string
 	Username string
+	token    string
 }
 
 type personKey struct{}
@@ -111,6 +112,39 @@ type action[In any] struct {
 	commandID func(In) string
 	describe  func(ctx context.Context, who operatorclient.Attribution, in In) (string, error)
 	act       func(ctx context.Context, who operatorclient.Attribution, commandID string, in In) (actionOut, error)
+	prove     func(ctx context.Context, p person) (context.Context, error)
+}
+
+type writerKey struct{}
+
+// prove exchanges the person's token for Ploeg's audience and returns ctx
+// carrying a client that writes with it, or ctx unchanged when ploeg-mcp has
+// no exchange configured (ADR-0150).
+func (s *server) prove(ctx context.Context, p person) (context.Context, error) {
+	if s.exchange == nil {
+		return ctx, nil
+	}
+	if p.token == "" {
+		return ctx, errors.New("ploeg-mcp has no token of yours to show Ploeg; nothing changed")
+	}
+	exchanged, err := s.exchange.Exchange(ctx, p.token)
+	if err != nil {
+		return ctx, fmt.Errorf("the identity provider would not vouch for you to Ploeg (%v); nothing changed. Sign in again, or ask an administrator to check PLOEG_MCP_EXCHANGE_*", err)
+	}
+	w, err := s.c.AsPerson(exchanged)
+	if err != nil {
+		return ctx, fmt.Errorf("the identity provider's token for Ploeg is unusable (%v); nothing changed", err)
+	}
+	return context.WithValue(ctx, writerKey{}, w), nil
+}
+
+// writer is the client that makes changes: the person's own exchanged token
+// when prove set one, else the consumer's.
+func (s *server) writer(ctx context.Context) *operatorclient.Client {
+	if w, ok := ctx.Value(writerKey{}).(*operatorclient.Client); ok {
+		return w
+	}
+	return s.c
 }
 
 func (a action[In]) handler(ctx context.Context, req *mcp.CallToolRequest, in In) (*mcp.CallToolResult, actionOut, error) {
@@ -157,6 +191,11 @@ func (a action[In]) handler(ctx context.Context, req *mcp.CallToolRequest, in In
 		return nil, actionOut{Summary: notConfirmed}, nil
 	}
 	who.Confirmation = state.ID + ":" + state.Effect
+	if a.prove != nil {
+		if ctx, err = a.prove(ctx, p); err != nil {
+			return nil, out, err
+		}
+	}
 	out, err = a.act(ctx, who, state.CommandID, in)
 	if err != nil {
 		return nil, out, explainWrite(err, state.CommandID)
@@ -182,7 +221,7 @@ func explainWrite(err error, commandID string) error {
 	case errors.Is(err, operatorclient.ErrTimeout):
 		return fmt.Errorf("Ploeg did not answer within 5 seconds, so the change may or may not have happened. Call the tool again with commandId %s to find out without acting twice", commandID)
 	case errors.Is(err, operatorclient.ErrUnauthorized):
-		return errors.New("Ploeg refused this group's consumer token; nothing changed. Ask an administrator to check PLOEG_MCP_GROUPS")
+		return errors.New("Ploeg refused the credential ploeg-mcp called it with; nothing changed. Ask an administrator to check PLOEG_MCP_GROUPS, or the consumer's clientIds when PLOEG_MCP_EXCHANGE_TOKEN_URL is set")
 	case errors.As(err, &apiErr) && apiErr.Message != "":
 		return fmt.Errorf("Ploeg refused (%d %s): %s Nothing changed", apiErr.Status, apiErr.Code, apiErr.Message)
 	}
@@ -194,32 +233,33 @@ func destructive(v bool) *mcp.ToolAnnotations {
 	return &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: &v, OpenWorldHint: &closed}
 }
 
-func addAction[In any](srv *mcp.Server, tool *mcp.Tool, a action[In]) {
+func addAction[In any](srv *mcp.Server, s *server, tool *mcp.Tool, a action[In]) {
 	tool.Annotations.Title = tool.Title
 	a.name = tool.Name
+	a.prove = s.prove
 	mcp.AddTool(srv, tool, a.handler)
 }
 
 func registerActions(srv *mcp.Server, s *server) {
-	addAction(srv, &mcp.Tool{Name: "ploeg_submit_work", Title: "Submit work", Annotations: destructive(false),
+	addAction(srv, s, &mcp.Tool{Name: "ploeg_submit_work", Title: "Submit work", Annotations: destructive(false),
 		Description: "Submit a new Work Item to a Team on a registered target; Ploeg queues it and starts a budgeted Shift. Asks the person to confirm first."},
 		action[submitIn]{commandID: func(in submitIn) string { return in.CommandID }, describe: s.describeSubmit, act: s.submit})
-	addAction(srv, &mcp.Tool{Name: "ploeg_approve_work", Title: "Approve proposed work", Annotations: destructive(false),
+	addAction(srv, s, &mcp.Tool{Name: "ploeg_approve_work", Title: "Approve proposed work", Annotations: destructive(false),
 		Description: "Approve a proposed Work Item so its Team starts it. Asks the person to confirm first."},
 		action[decideIn]{commandID: func(decideIn) string { return "" }, describe: s.describeDecision(true), act: s.decide(true)})
-	addAction(srv, &mcp.Tool{Name: "ploeg_reject_work", Title: "Reject proposed work", Annotations: destructive(true),
+	addAction(srv, s, &mcp.Tool{Name: "ploeg_reject_work", Title: "Reject proposed work", Annotations: destructive(true),
 		Description: "Reject a proposed Work Item with a reason; it closes as done and its budget is released. Asks the person to confirm first."},
 		action[decideIn]{commandID: func(decideIn) string { return "" }, describe: s.describeDecision(false), act: s.decide(false)})
-	addAction(srv, &mcp.Tool{Name: "ploeg_retry_work", Title: "Retry work", Annotations: destructive(false),
+	addAction(srv, s, &mcp.Tool{Name: "ploeg_retry_work", Title: "Retry work", Annotations: destructive(false),
 		Description: "Restart a needs_human, stale or awaiting_review Work Item, optionally from a later Round, with an optional note. Asks the person to confirm first."},
 		action[retryIn]{commandID: func(in retryIn) string { return in.CommandID }, describe: s.describeRetry, act: s.retry})
-	addAction(srv, &mcp.Tool{Name: "ploeg_stop_work", Title: "Stop work", Annotations: destructive(true),
+	addAction(srv, s, &mcp.Tool{Name: "ploeg_stop_work", Title: "Stop work", Annotations: destructive(true),
 		Description: "Stop a Work Item: withdraw it, cancel its pending Runs and stop its running ones. Asks the person to confirm first."},
 		action[refIn]{commandID: func(in refIn) string { return in.CommandID }, describe: s.describeStop, act: s.stop})
-	addAction(srv, &mcp.Tool{Name: "ploeg_add_note", Title: "Add a note", Annotations: destructive(false),
+	addAction(srv, s, &mcp.Tool{Name: "ploeg_add_note", Title: "Add a note", Annotations: destructive(false),
 		Description: "Leave an instruction that the next Run of a live Work Item reads. Asks the person to confirm first."},
 		action[noteIn]{commandID: func(in noteIn) string { return in.CommandID }, describe: s.describeNote, act: s.note})
-	addAction(srv, &mcp.Tool{Name: "ploeg_steer_execution", Title: "Steer an attended execution", Annotations: destructive(true),
+	addAction(srv, s, &mcp.Tool{Name: "ploeg_steer_execution", Title: "Steer an attended execution", Annotations: destructive(true),
 		Description: "Send a message to, pause, resume or cancel an attended execution you own, whichever application started it, when its Team is in your access. Find its executionId in ploeg_get_work, which lists a Work Item's executions and marks yours. Asks the person to confirm first."},
 		action[steerIn]{commandID: func(in steerIn) string { return in.CommandID }, describe: s.describeSteer, act: s.steer})
 }
@@ -243,7 +283,7 @@ func (s *server) describeSubmit(_ context.Context, _ operatorclient.Attribution,
 }
 
 func (s *server) submit(ctx context.Context, who operatorclient.Attribution, commandID string, in submitIn) (actionOut, error) {
-	got, err := s.c.SubmitWorkItem(ctx, who, operatorclient.Submission{RequestID: commandID, Team: in.Team, Target: in.Target, Title: in.Title, Description: in.Description, BudgetUSD: in.BudgetUSD})
+	got, err := s.writer(ctx).SubmitWorkItem(ctx, who, operatorclient.Submission{RequestID: commandID, Team: in.Team, Target: in.Target, Title: in.Title, Description: in.Description, BudgetUSD: in.BudgetUSD})
 	if err != nil {
 		return actionOut{}, err
 	}
@@ -302,9 +342,9 @@ func (s *server) decide(approve bool) func(context.Context, operatorclient.Attri
 		if err != nil {
 			return actionOut{}, err
 		}
-		call, verb := s.c.Reject, "Rejected"
+		call, verb := s.writer(ctx).Reject, "Rejected"
 		if approve {
-			call, verb = s.c.Approve, "Approved"
+			call, verb = s.writer(ctx).Approve, "Approved"
 		}
 		d, err := call(ctx, who, i.ID, in.Reason)
 		if err != nil {
@@ -340,7 +380,7 @@ func (s *server) retry(ctx context.Context, who operatorclient.Attribution, comm
 	if err != nil {
 		return actionOut{}, err
 	}
-	r, err := s.c.Requeue(ctx, who, i.ID, operatorclient.Requeue{CommandID: commandID, FromRound: in.round(), Note: strings.TrimSpace(in.Note)})
+	r, err := s.writer(ctx).Requeue(ctx, who, i.ID, operatorclient.Requeue{CommandID: commandID, FromRound: in.round(), Note: strings.TrimSpace(in.Note)})
 	if err != nil {
 		return actionOut{}, err
 	}
@@ -364,7 +404,7 @@ func (s *server) stop(ctx context.Context, who operatorclient.Attribution, comma
 	if err != nil {
 		return actionOut{}, err
 	}
-	c, err := s.c.Cancel(ctx, who, i.ID, commandID, "")
+	c, err := s.writer(ctx).Cancel(ctx, who, i.ID, commandID, "")
 	if err != nil {
 		return actionOut{}, err
 	}
@@ -401,7 +441,7 @@ func (s *server) note(ctx context.Context, who operatorclient.Attribution, comma
 	if err != nil {
 		return actionOut{}, err
 	}
-	n, err := s.c.AddNote(ctx, who, i.ID, commandID, strings.TrimSpace(in.Text), "")
+	n, err := s.writer(ctx).AddNote(ctx, who, i.ID, commandID, strings.TrimSpace(in.Text), "")
 	if err != nil {
 		return actionOut{}, err
 	}
@@ -451,7 +491,7 @@ func (s *server) steer(ctx context.Context, who operatorclient.Attribution, comm
 		return actionOut{}, explainExecution(err)
 	}
 	cmd := store.OperatorExecutionCommand{ID: commandID, Action: in.Action, ExpectedRevision: e.Revision, Generation: e.Generation, Text: strings.TrimSpace(in.Text)}
-	after, err := s.c.ExecutionCommand(ctx, who, e.ID, cmd)
+	after, err := s.writer(ctx).ExecutionCommand(ctx, who, e.ID, cmd)
 	if err != nil {
 		return actionOut{}, err
 	}
