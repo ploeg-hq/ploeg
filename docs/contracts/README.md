@@ -213,9 +213,9 @@ The worker looks for `openspec/changes/<change-id>` at the repository root and
 in nested directories (for example `services/api/openspec`), without
 following symbolic links. It fills the Task Spec's `openSpec` field with a
 brief: from `openspec instructions apply --change <id> --json` when an
-`openspec` executable is on the worker's PATH, otherwise from the change's
-`proposal.md`, `design.md` and `tasks.md`. The prompt ranks the brief below the
-delivery contract.
+`openspec` executable is on the PATH of the container the harness runs in
+(ADR-0138), otherwise from the change's `proposal.md`, `design.md` and
+`tasks.md`. The prompt ranks the brief below the delivery contract.
 
 After a writing Run opens or updates a pull request, and after a reading Run
 on the branch under review, the worker checks out the pushed branch and runs
@@ -623,6 +623,55 @@ like an administrator's credential.
 Managed workers use the [worker control contract](worker-control.md); deployment and conservative accounting recovery are documented in [managed worker operations](../ops/managed-workers.md).
 
 The [operator delivery contract](operator-delivery.md) and [versioned schema](operator-delivery.schema.json) govern canonical candidates, trusted verification, human approval and durable publication barriers for a completed Operator Execution.
+
+## A person takes over a running Run
+
+[ADR-0142](../adrs/0142-a-person-takes-over-a-running-run-at-its-next-safe-point-and-hands-it-back-on-the-same-branch.md)
+(proposed) lets a person take over a worker-dispatched Run and hand it back.
+`take-control` and `handback` above stay the Operator Execution's commands;
+this is the worker Run's.
+
+`POST /api/v1/operator/work-items/{id}/take-over` takes `{commandId,
+expectedShiftId?}` from an execute-capable consumer with `X-Ploeg-Actor`.
+When the Work Item acts for a known person, only that person takes it over
+(403 `person_forbidden`); an administrator acts for them with
+`X-Ploeg-Acting-User`. ploegd asks every running Run of the open Shift to
+yield, cancels the Shift's Runs nobody claimed yet, audits
+`operator.work_item.taken_over` and answers 202 with `takeOver` (`state`
+`yielding`, the Runs asked, `cancelledPendingRuns`). A repeated `commandId`
+answers 202 with `replayed: true`; the same id with another Work Item, actor
+or `expectedShiftId` answers 409 `command_conflict`. It refuses before
+anything changes with 409 `nothing_running` (no open Shift or no running
+Run), `run_client_carried`, `yield_unsupported` (a running Run's Harness
+cannot stop at a safe point; the message names it), `take_over_pending`,
+`shift_changed` or `operator_owned`.
+
+The worker says at its claim whether its Harness can yield (`yields: true`);
+a Run claimed without it cannot be taken over. Every ACP profile yields: once
+no tool call is pending or in progress (at most two minutes), the adapter
+ends the prompt turn with `session/cancel`. `claude-code`,
+`claude-environment`, `openhands` and `exec` do not. The lease renewal
+answers `yield: true` once a person asked. The worker then commits what the
+agent left uncommitted as one commit marked `wip: work in progress handed to
+a person` with a `Ploeg-Yield` trailer, scans every commit since the Run
+started for the Run's credentials, pushes to the Work Item's branch without
+forcing, and reports the outcome `yielded` with `yield: {branch, commit,
+workInProgress, pushed, detail}`. ploegd answers 400 to `yielded` from a Run
+nobody asked to yield.
+
+When the Round ends, the Shift closes with `taken_over` and the Work Item
+settles at `needs_human`, also when its Run finished another way first. The
+Work Item detail carries `takeOver` (`state` `yielding`, `taken_over`,
+`handed_back` or `ended`, `by`, `branch`, `commit`, `workInProgress`,
+`pushed`, `detail`) and a `resume` offer with `reason: taken_over`. The
+person hands it back with `POST .../requeue` and `resume: true`, and `note`
+for the next Run. While they hold it, any requeue is accepted only when
+`X-Ploeg-Actor` names them (409 `taken_over_by_another`). The resumed Shift
+gets the parked Shift's unspent pool, including what the yielded Runs were
+authorized and did not spend while their accounts are unsettled, and the
+first writing Run of the reopened Round gets `handback: {branch,
+yieldedCommit}` on its claim: the worker checks the branch out at the
+person's head and names the commits they added.
 
 ## Notes and their provenance
 

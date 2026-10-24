@@ -7,9 +7,21 @@ import (
 	"syscall"
 )
 
-func killProcessGroupOnCancel(cmd *exec.Cmd) {
+func ownGroup(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.Cancel = func() error {
-		return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-	}
+}
+
+func signalGroup(group int, sig syscall.Signal) error {
+	return syscall.Kill(-group, sig)
+}
+
+func killGroup(group int) {
+	_ = syscall.Kill(-group, syscall.SIGKILL)
+}
+
+// KillProcessGroupOnCancel makes cancelling cmd's context kill the whole
+// process group it starts, not only its first process.
+func KillProcessGroupOnCancel(cmd *exec.Cmd) {
+	ownGroup(cmd)
+	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
 }

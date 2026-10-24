@@ -18,7 +18,7 @@ The symlink-escape and hidden-Unicode instruction vectors, and the git-configura
 
 | Tier | Needs | Runs | What it asserts |
 | --- | --- | --- | --- |
-| Binary-free | nothing but Go | every `mise run verify` and the drill workflow | Each ACP profile's generated launch config neutralises the repository (`TestHostileConfig`). Under both credential-isolation proxies, the real model key and forge token never enter the harness environment (`TestAttackDrill`). |
+| Binary-free | nothing but Go | every `mise run verify` and the drill workflow | Each ACP profile's generated launch config neutralises the repository (`TestHostileConfig`). Under both credential-isolation proxies, the real model key and forge token never enter the harness environment (`TestAttackDrill`). With the harness in its own container, a hostile harness that reads every `/proc/*/environ`, every `cmdline` and every file under the work directory finds none of the bootstrap token, the builder token, the per-Run key or the per-Run forge token while a credentialed worker child runs, and the launcher ends a `setsid` survivor before verification (`TestHarnessContainerSeesNoCredential`, `TestLauncherAsFirstProcessEndsAHarnessThatLeftItsGroup`, ADR-0138). These two need an unprivileged user and PID namespace; they skip without one unless `PLOEG_REQUIRE_PID_NAMESPACE=1`, which CI and the drill set. |
 | Real-binary | the agent binaries | the drill workflow (opt-in `PLOEG_HOSTILE_REPOSITORY=1`) | Each agent, started and driven to `session/new`, runs none of the repository's plugins, MCP servers or hooks (`TestHostileRepository`). |
 
 Run them locally:
@@ -27,13 +27,14 @@ Run them locally:
 mise exec -- go test -run TestHostileConfig ./pkg/harness/adapters/acp/
 mise exec -- go test -run TestAttackDrill ./pkg/worker/
 PLOEG_HOSTILE_REPOSITORY=1 mise exec -- go test -run TestHostileRepository ./pkg/harness/adapters/acp/
+PLOEG_REQUIRE_PID_NAMESPACE=1 mise exec -- go test -run 'TestHarnessContainer|TestLauncherAsFirstProcess' ./pkg/worker/
 ```
 
 The real-binary tier skips a harness whose binary is not on `PATH`, and fails loudly if an agent never answers `session/new` (a check that never created a session proves nothing).
 
 ## Cadence and failures
 
-The workflow [`.github/workflows/attack-drill.yml`](../../.github/workflows/attack-drill.yml) runs weekly on a cron, on manual dispatch, and on every change to `pkg/harness/`, `pkg/worker/` or the workflow itself. The binary-free tier also runs inside `mise run verify`, so it gates every pull request. On a **scheduled** failure only, the workflow opens or updates one tracking issue (label `attack-drill`) through the default `GITHUB_TOKEN`, so a regression on the untended schedule is not lost.
+The workflow [`.github/workflows/attack-drill.yml`](../../.github/workflows/attack-drill.yml) runs weekly on a cron, on manual dispatch, and on every change to `pkg/harness/`, `pkg/worker/`, `cmd/ploeg-worker/` or the workflow itself. The binary-free tier also runs inside `mise run verify`, so it gates every pull request. On a **scheduled** failure only, the workflow opens or updates one tracking issue (label `attack-drill`) through the default `GITHUB_TOKEN`, so a regression on the untended schedule is not lost.
 
 ## What the drill found
 

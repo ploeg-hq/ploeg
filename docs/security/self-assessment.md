@@ -2,7 +2,7 @@
 type: explanation
 audience: [owner, operator, contributor, reviewer]
 owner: ploeg
-last_verified: 2026-10-23
+last_verified: 2026-10-24
 verified_by: "Source read at development c37de7f; repository settings, rulesets, releases and signatures read through the GitHub API and cosign on 2026-10-23"
 ---
 
@@ -35,7 +35,7 @@ This document follows the [CNCF TAG Security and Compliance self-assessment outl
 | Software | <https://github.com/ploeg-hq/ploeg> |
 | Security Provider | No. Ploeg authorizes, budgets and records AI-agent work. Credential scoping and isolation are central to its design, but securing other systems is not its primary function. |
 | Languages | Go (controller, worker, MCP server), Helm templates, Shell, Python (documentation generators), SQL (migrations) |
-| SBOM | Each released image (`ghcr.io/ploeg-hq/ploegd`, `ghcr.io/ploeg-hq/claude-runner`) carries a BuildKit SPDX SBOM and build provenance as OCI attestations in its signed index. Source dependencies are pinned in [go.mod](../../go.mod) and [go.sum](../../go.sum). Release binaries and the chart archive have no separate SBOM asset ([F-20](threat-model.md#findings)). |
+| SBOM | Each released image (`ghcr.io/ploeg-hq/ploegd`, `ghcr.io/ploeg-hq/claude-runner`, `ghcr.io/ploeg-hq/ploeg-worker`) carries a BuildKit SPDX SBOM and build provenance as OCI attestations in its signed index. Source dependencies are pinned in [go.mod](../../go.mod) and [go.sum](../../go.sum). Release binaries and the chart archive have no separate SBOM asset ([F-20](threat-model.md#findings)). |
 
 ### Security links
 
@@ -74,8 +74,8 @@ The actors below are separated by an isolation mechanism. The [threat model's tr
 | --- | --- | --- |
 | **ploegd** (controller) | Admission, Shift engine, claims and Leases, credential minting, settlement, sweeps, operator API, webhooks | Its own pod: distroless, non-root, read-only root filesystem, no capabilities, no service-account token. Sole holder of management credentials: LiteLLM master key, worker signing key, bootstrap registry, forge bot password or GitHub App key, tracker tokens, webhook secrets, operator consumer token hashes. |
 | **PostgreSQL** | Durable state: Work Items, Shifts, Runs, Leases, accounts, audit | Reached only by ploegd and by KEDA's scaler role. Minted keys are stored as hashes or ids, not plaintext. |
-| **ploeg-worker** | Claims one Run, prepares the clone, starts the harness, runs the credential proxies, scans for leaks, verifies, reports | Ephemeral pod with no service-account token. Holds only its team's bootstrap token, the Run's signed capability and the Run's keys. Marks itself non-dumpable and sheds `CAP_SYS_PTRACE`. |
-| **Harness** (the agent: OpenHands, an ACP agent, or `exec`) | Reads the task, edits the clone, calls the model, pushes the Run's branch | A child process of ploeg-worker in the same container and uid. It gets an allowlisted environment, a private HOME and placeholders. This is a process boundary only. |
+| **ploeg-worker** | Claims one Run, prepares the clone, starts the harness through the launcher, runs the credential proxies, scans for leaks, verifies, reports | The Job's main container of an ephemeral pod with no service-account token, from the ploeg-worker image. Holds only its team's bootstrap token, the forge token, the Run's signed capability and the Run's keys. Marks itself non-dumpable and sheds `CAP_SYS_PTRACE`. |
+| **Harness** (the agent: OpenHands, an ACP agent, or `exec`) | Reads the task, edits the clone, calls the model, pushes the Run's branch | Runs in its own container of the pod (a native sidecar from the harness image) behind `ploeg-worker harness-serve`, with no Secret mounted and no environment of its own ([ADR-0138](../adrs/0138-a-harness-runs-in-its-own-container-and-no-credential-enters-it.md)). It gets an allowlisted environment, a private HOME and placeholders. A workload with DinD, a proxy off, `claude-environment` or `harnessContainer: shared` keeps it as a child process of ploeg-worker in one container, a process boundary only. |
 | **LiteLLM gateway** | Model routing, per-key budgets, spend logs | Separate deployment. Workers hold only per-Run keys scoped to one model, a budget and a TTL. |
 | **Forge** (GitHub, Forgejo; GitLab partially) | Repositories, pull requests, CI facts | External. Per-Run tokens limited to one repository; the push fence limits pushes to the Run's branch. |
 | **Tracker** | Source of requested work and write-backs | External. Events are HMAC-verified. |
@@ -144,7 +144,7 @@ These are design elements the product's security depends on and that a deploymen
 | Inference accounts | Authorize before mint; one durable mint; settlement from gateway evidence | [llm_accounts.go](../../pkg/store/llm_accounts.go); [worker control](../contracts/worker-control.md#accounting-states) |
 | Per-Run forge credential broker | Per-repository push rights, revoked on settle and on Lease lapse | [pkg/forgebroker](../../pkg/forgebroker/); [ADR-0013](../adrs/0013-push-rights-are-minted-per-run.md) |
 | Credential proxies and push fence | The harness sees placeholders; pushes only to its branch; Role allowlist | [llmproxy.go](../../pkg/worker/llmproxy.go), [forgeproxy.go](../../pkg/worker/forgeproxy.go), [pushfence.go](../../pkg/worker/pushfence.go); [ADR-0034](../adrs/0034-the-harness-gets-placeholders-the-worker-keeps-credentials.md) |
-| Harness environment allowlist and process concealment | Keeps the worker's own credentials out of the harness | [environment.go](../../pkg/worker/environment.go), [conceal_linux.go](../../pkg/worker/conceal_linux.go), [capabilities_linux.go](../../pkg/worker/capabilities_linux.go) |
+| Separate harness container, environment allowlist and process concealment | Keeps the worker's own credentials, and its credentialed `git` children, out of the harness | [pkg/harness/launch](../../pkg/harness/launch/), chart `executor.harnessContainer`, [environment.go](../../pkg/worker/environment.go), [conceal_linux.go](../../pkg/worker/conceal_linux.go), [capabilities_linux.go](../../pkg/worker/capabilities_linux.go); `TestHarnessContainerSeesNoCredential` |
 | Worker-private git | Harness-written git configuration cannot redirect or run inside the worker's credentialed git after the harness exits | [workergit.go](../../pkg/worker/workergit.go) |
 | Leak watch | Stops a Run that wrote a credential into a commit, request or learning | [leakwatch.go](../../pkg/worker/leakwatch.go); [ADR-0105](../adrs/0105-a-credential-leak-parks-the-work-item-and-closes-its-pull-request.md) |
 | Webhook authentication | Only the configured tracker or forge can admit or settle work | Provider `ParseWebhook` implementations in [pkg/provider](../../pkg/provider/) |
@@ -199,7 +199,13 @@ The facts below were read from the repository and the GitHub API on 2026-10-23.
   - The binary-free attack drill: `TestAttackDrill`, which proves that neither credential reaches the harness environment under both proxies, and `TestHostileConfig`, which proves each ACP profile neutralises a hostile repository's configuration. These run on every pull request.
   - The real-binary tier (OpenCode and Goose driven to `session/new` against a hostile repository) runs weekly, on dispatch and on harness or worker changes, and opens an issue on a scheduled failure ([attack drill](../ops/attack-drill.md)).
   - The worker-auth, forge-proxy, key-proxy, push-fence, instruction-scan, worker-git and leak-watch suites run with `go test`.
-- **Not in CI:** static analysis (CodeQL, gosec), vulnerability scanning (govulncheck, OSV, image scanning), secret scanning in CI, fuzzing and the race detector. GitHub secret scanning with push protection is enabled on the repository ([F-17](threat-model.md#findings)).
+- **Vulnerability scanning and SAST in CI** ([ADR 0145](../adrs/0145-a-release-publishes-no-image-over-its-cve-budget-and-attaches-signed-openvex-to-every-digest.md)):
+  - Every published image is built on each pull request, on each push and daily, then scanned with Grype (pinned, with a fresh database under 120 hours old). It fails on any Critical or High finding that a reviewed OpenVEX statement in `ops/vex/statements/` does not cover. The budget is zero for every image ([cve-budgets.yaml](../../ops/security/cve-budgets.yaml)). A missing scan or statement fails closed.
+  - `govulncheck ./...` fails on a known vulnerability the code can reach.
+  - CodeQL (`security-extended`) fails on a finding of security severity 7.0 or more.
+  - The OpenSSF Scorecard workflow publishes the repository's score.
+  - The release scans each image's pushed digest and tags and signs it only when every image is within budget.
+- **Not in CI:** secret scanning in CI, fuzzing and the race detector. GitHub secret scanning with push protection is enabled on the repository.
 - **Workflow hardening.**
   - No workflow uses `pull_request_target`, and every checkout sets `persist-credentials: false`.
   - Third-party actions are pinned by full commit SHA. The repository does not enforce pinning.
@@ -210,9 +216,10 @@ The facts below were read from the repository and the GitHub API on 2026-10-23.
   - The toolchain is pinned with checksums in `mise.lock`.
 - **Release integrity.**
   - Release candidates are cut automatically from `development`; a stable release is a reviewed tag on `main` ([releases](../ops/release-versioning.md)).
-  - Images are built with `-trimpath` and `CGO_ENABLED=0` on digest-pinned base images (`ploegd`: distroless static, non-root).
-  - The release job signs both images and the OCI chart by digest with keyless cosign (GitHub OIDC identity, Fulcio certificate, Rekor log) and verifies each signature before publishing. Verified on 2026-10-23 for `ploegd` 0.2.0-rc.47.
+  - Images are built with `-trimpath` and `CGO_ENABLED=0` on digest-pinned base images (`ploegd`: distroless static, non-root; `ploeg-worker`: Wolfi git on an empty base without a shell, non-root; `claude-runner`: Wolfi, [ADR 0144](../adrs/0144-every-published-image-is-built-on-a-base-that-scans-clean-and-pulls-without-credentials.md)).
+  - The release job signs every image and the OCI chart by digest with keyless cosign (GitHub OIDC identity, Fulcio certificate, Rekor log) and verifies each signature before publishing. Verified on 2026-10-23 for `ploegd` 0.2.0-rc.47.
   - BuildKit SBOM and provenance attestations ride in each signed image index.
+  - Each image digest carries a keyless cosign attestation of type `openvex`, and the same document is a release asset. It lists every finding the project judged not exploitable, with its justification. Consumers verify it and apply it with `grype --vex` or `trivy --vex` ([ops/vex](../../ops/vex/README.md#verify-and-apply-it)).
   - The chart is stamped with both image digests.
   - Release tarballs, the chart archive and `SHA256SUMS` are not signed, and the only stable release, v0.1.0, predates signing ([F-20](threat-model.md#findings)).
 - **Container images.** `ploegd` runs as uid 65532 on distroless with a read-only root filesystem. The worker container is restricted by default. Ploeg publishes no agent image; the installer supplies one.
@@ -272,9 +279,9 @@ A project-level procedure for triage, confirmation, notification and patch relea
 | ID | Severity | Summary |
 | --- | --- | --- |
 | F-01 | Critical | Chart default privileged DinD hands the harness node-level control and turns both credential proxies off (fixed in PR #231: the default is `dind: false`, and `dind: true` needs an explicit acknowledgement) |
-| F-24 | Critical | The board watch sent the real forge token from inside the harness-writable clone while the harness ran (fixed in PR #230: the `ls-remote` now runs outside any repository) |
+| F-24 | Critical | The board watch sent the real forge token from inside the harness-writable clone while the harness ran (fixed in PR #230: the `ls-remote` now runs outside any repository; its token in that process's environment is out of the harness's reach since ADR-0138, #221) |
 | F-02 | High | No NetworkPolicy for ploegd or worker pods |
-| F-03 | High | Shared builder forge token and bootstrap token sit in every writer container, guarded by one in-process control |
+| F-03 | High | Shared builder forge token and bootstrap token sat in the harness's container, guarded by one in-process control that did not cover the worker's `git` children (fixed in PR #240, ADR-0138: the harness runs in its own container with no credential, and `shared` is deprecated) |
 | F-04 | Medium | Proxy qualification predates the current proxy code; no Run has used it |
 | F-08 | High | ploeg-mcp action confirmation can be skipped by the client (blocking only if ploeg-mcp `execute` groups join the profile) |
 | F-36 | High | Any reviewer can re-queue paid Shifts without limit when rework is on (blocking only if the profile allows rework where outsiders can review) |
@@ -283,7 +290,7 @@ Each finding still needs a disposition, an owner and a date (issue #34). They ar
 
 ### OpenSSF Best Practices
 
-Ploeg has no [OpenSSF Best Practices](https://www.bestpractices.dev/en) badge and no published OpenSSF Scorecard result; the Scorecard API returned 404 on 2026-10-23. Against the passing criteria, the project already has:
+Ploeg has no [OpenSSF Best Practices](https://www.bestpractices.dev/en) badge. The Scorecard API returned 404 on 2026-10-23; the [Scorecard workflow](../../.github/workflows/scorecard.yml) publishes a result from its first run on `development`. Against the passing criteria, the project already has:
 
 - a public repository with version control, Apache-2.0 and a contribution guide
 - a documented private reporting process
@@ -294,13 +301,11 @@ Ploeg has no [OpenSSF Best Practices](https://www.bestpractices.dev/en) badge an
 To reach the passing badge it still needs to:
 
 - state a vulnerability response time it meets, with a working private channel (enabled) and a backup
-- enable at least one static analysis tool, such as CodeQL or `go vet` plus gosec, and a dependency vulnerability scanner such as govulncheck
-- address warnings from those tools
+- address warnings from CodeQL and govulncheck, which CI now runs and which block on High findings and reachable vulnerabilities
 - complete the badge questionnaire
 
 Scorecard would also reward:
 
-- a Scorecard workflow
 - required code review
 - branch protection without admin bypass
 - fuzzing

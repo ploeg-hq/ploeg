@@ -40,6 +40,8 @@ const (
 	defaultPromptTimeout  = 45 * time.Minute
 	defaultIdleTimeout    = 10 * time.Minute
 	defaultCancelGrace    = 30 * time.Second
+	defaultYieldGrace     = 2 * time.Minute
+	yieldPoll             = 200 * time.Millisecond
 	defaultTermGrace      = 10 * time.Second
 )
 
@@ -52,6 +54,9 @@ type Options struct {
 	IdleTimeout    time.Duration
 	CancelGrace    time.Duration
 	TermGrace      time.Duration
+	// YieldGrace is how long a yield waits for the agent's running tool
+	// calls to finish before it cancels the turn anyway (ADR-0142).
+	YieldGrace time.Duration
 }
 
 // Adapter drives one ACP agent per run.
@@ -88,11 +93,19 @@ func withDefaults(o Options) Options {
 	if o.TermGrace <= 0 {
 		o.TermGrace = defaultTermGrace
 	}
+	if o.YieldGrace <= 0 {
+		o.YieldGrace = defaultYieldGrace
+	}
 	return o
 }
 
 func (a *Adapter) Name() string     { return "acp" }
 func (a *Adapter) ExpectsLLM() bool { return true }
+
+// Yields reports that an ACP agent can stop at a safe point: once its running
+// tool calls finished, a session/cancel ends the prompt turn between two
+// steps (ADR-0142).
+func (a *Adapter) Yields() bool { return true }
 
 // PromptLimits returns the prompt wall and the idle watchdog over protocol
 // activity (harness.PromptLimiter).
@@ -177,7 +190,7 @@ func (a *Adapter) Run(ctx context.Context, spec harness.TaskSpec, env harness.Ru
 			transcribe(env.Transcript, line)
 		}
 	}
-	proc, err := a.launch.launch(ctx, argv, env.RepoDir, append(append([]string{}, env.BaseEnv...), extraEnv...), noise, onRaw)
+	proc, err := a.launch.launch(ctx, env.Spawner, argv, env.RepoDir, append(append([]string{}, env.BaseEnv...), extraEnv...), noise, onRaw)
 	if err != nil {
 		res.err = err
 		return finish()
@@ -266,14 +279,14 @@ func (a *Adapter) Run(ctx context.Context, spec harness.TaskSpec, env harness.Ru
 			})
 			done <- promptOutcome{resp, err}
 		}(done)
-		return a.awaitPrompt(ctx, done, cl, state, conn, sess.SessionId, log)
+		return a.awaitPrompt(ctx, done, cl, state, conn, env.Yield, log)
 	}
 
 	stop, why := turn(env.Prompt)
 	// The agent's turn ended on its own: before it finishes, it catches up
 	// with the board once, in a further turn, when anything changed
 	// (ADR-0124).
-	if why == stopNormal && stop.err == nil && env.CatchUp != nil &&
+	if why == stopNormal && stop.err == nil && env.CatchUp != nil && !closed(env.Yield) &&
 		ParseStopReason(string(stop.resp.StopReason)) == StopEndTurn {
 		if text := env.CatchUp(ctx); text != "" {
 			env.Transcript.Stage("Catching up with the board before finishing")
@@ -296,6 +309,8 @@ func (a *Adapter) Run(ctx context.Context, spec harness.TaskSpec, env harness.Ru
 		res.permStorm = true
 	case stopCancelled:
 		// ctx.Err() is picked up in finish(); the lease was lost.
+	case stopYield:
+		res.phase = phaseCompleted
 	}
 
 	env.Transcript.Stage(turnEnded(why, stop, a.opts))
@@ -321,10 +336,26 @@ func (a *Adapter) Run(ctx context.Context, spec harness.TaskSpec, env harness.Ru
 			"values", strings.Join(unknown, ","))
 	}
 	shutdown()
-	if code, _ := proc.Wait(); code > 0 {
+	if code, _ := proc.Wait(); code > 0 && why != stopYield {
 		res.exitCode = code
 	}
-	return finish()
+	rep, err := finish()
+	if why == stopYield || (why == stopNormal && closed(env.Yield)) {
+		return rep, errors.Join(harness.ErrYielded, err)
+	}
+	return rep, err
+}
+
+func closed(ch <-chan struct{}) bool {
+	if ch == nil {
+		return false
+	}
+	select {
+	case <-ch:
+		return true
+	default:
+		return false
+	}
 }
 
 type stopWhy int
@@ -335,6 +366,7 @@ const (
 	stopPromptWall
 	stopStorm
 	stopCancelled
+	stopYield
 )
 
 type promptOutcome struct {
@@ -344,13 +376,16 @@ type promptOutcome struct {
 
 // awaitPrompt waits for the turn, racing it against three independent
 // watchdogs. They run on their own timers precisely so a wedged read loop
-// cannot also wedge the escalation.
+// cannot also wedge the escalation. When yield closes, it waits until no tool
+// call is running, at most YieldGrace, and returns stopYield.
 func (a *Adapter) awaitPrompt(
 	ctx context.Context,
 	done <-chan promptOutcome,
 	cl *client, state *sessionState, conn *sdk.ClientSideConnection,
-	_ sdk.SessionId, log *slog.Logger,
+	yield <-chan struct{}, log *slog.Logger,
 ) (promptOutcome, stopWhy) {
+	var settle <-chan time.Time
+	var settleBy time.Time
 
 	hard := time.NewTimer(a.opts.PromptTimeout)
 	defer hard.Stop()
@@ -369,6 +404,27 @@ func (a *Adapter) awaitPrompt(
 
 		case <-cl.stormed():
 			return promptOutcome{}, stopStorm
+
+		case <-yield:
+			yield = nil
+			settleBy = time.Now().Add(a.opts.YieldGrace)
+			poll := time.NewTicker(yieldPoll)
+			defer poll.Stop()
+			settle = poll.C
+			log.Info("acp: a person asked the Run to yield; stopping at the next safe point",
+				"tools_running", state.toolsInFlight())
+			if state.toolsInFlight() == 0 {
+				return promptOutcome{}, stopYield
+			}
+
+		case <-settle:
+			if n := state.toolsInFlight(); n == 0 || time.Now().After(settleBy) {
+				if n > 0 {
+					log.Warn("acp: tool calls still running after the yield grace; cancelling the turn anyway",
+						"tools_running", n, "grace", a.opts.YieldGrace)
+				}
+				return promptOutcome{}, stopYield
+			}
 
 		case <-hard.C:
 			log.Warn("acp: prompt exceeded its hard wall", "timeout", a.opts.PromptTimeout)
@@ -408,6 +464,8 @@ func turnEnded(why stopWhy, stop promptOutcome, opts Options) string {
 		return "Stopped: the agent asked for too many permissions"
 	case stopCancelled:
 		return "Stopped: the Run was cancelled"
+	case stopYield:
+		return "Stopped: a person took over the Run"
 	}
 	if stop.err != nil {
 		return "Agent turn failed: " + stop.err.Error()

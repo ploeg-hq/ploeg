@@ -258,6 +258,29 @@
         }
       }
     },
+    "worker": {
+      "type": "object",
+      "properties": {
+        "image": {
+          "type": "object",
+          "description": "The ploeg-worker image (ADR-0138): ploeg-worker, git and CA certificates from Wolfi on an empty base, with no shell (ADR-0144). It runs the worker container when the harness runs in its own container and provides the launcher binary the harness container runs; executor.workerImage overrides it.",
+          "properties": {
+            "repository": {
+              "type": "string",
+              "minLength": 1
+            },
+            "tag": {
+              "type": "string"
+            },
+            "digest": {
+              "type": "string",
+              "pattern": "^(sha256:[a-f0-9]{64})?$",
+              "description": "Digest of the appVersion image; the release writes it into the published chart"
+            }
+          }
+        }
+      }
+    },
     "mcp": {
       "type": "object",
       "additionalProperties": false,
@@ -1135,6 +1158,21 @@
         "workerImage": {
           "type": "string"
         },
+        "harnessContainer": {
+          "enum": [
+            "separate",
+            "shared"
+          ],
+          "description": "separate (the default) runs the harness in its own container of the Run's pod, behind ploeg-worker harness-serve, with no credential in its environment, while the worker container keeps every credential and both proxies (ADR-0138). A workload with DinD, a credential proxy off or harness claude-environment keeps shared. shared runs the harness in the worker's container; deprecated, removed in the minor after 0.2."
+        },
+        "workerContainerResources": {
+          "type": "object",
+          "description": "Resources of the worker container when the harness runs in its own container; the harness container keeps workerResources."
+        },
+        "workerContainerSecurityContext": {
+          "type": "object",
+          "description": "Merged over the worker container's default context when the harness runs in its own container: restricted, a read-only root filesystem, and the uid and gid of workerSecurityContext (1000 when it names none), because both containers write the shared work directory."
+        },
         "apiUrl": {
           "type": "string"
         },
@@ -1816,6 +1854,13 @@
             "acp",
             "claude-environment"
           ]
+        },
+        "harnessContainer": {
+          "enum": [
+            "separate",
+            "shared"
+          ],
+          "description": "Per team or Role: overrides executor.harnessContainer for this workload. separate on a workload with DinD, a credential proxy off or harness claude-environment fails the render (ADR-0138)."
         },
         "image": {
           "type": "string"

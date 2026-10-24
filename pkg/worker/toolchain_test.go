@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/ploeg-hq/ploeg/pkg/harness"
 )
 
 func TestParseToolchainsAcceptsTheChartShape(t *testing.T) {
@@ -40,10 +42,10 @@ func TestParseToolchainsRejectsWhatCouldMisleadOrLeak(t *testing.T) {
 
 func TestCheckToolchainsRefusesAMissingMount(t *testing.T) {
 	dir := t.TempDir()
-	if err := CheckToolchains([]Toolchain{{Name: "go", Path: []string{dir}}}); err != nil {
+	if err := CheckToolchains([]Toolchain{{Name: "go", Path: []string{dir}}}, harness.CheckDir); err != nil {
 		t.Fatalf("mounted toolchain refused: %v", err)
 	}
-	err := CheckToolchains([]Toolchain{{Name: "go", Path: []string{filepath.Join(dir, "absent")}}})
+	err := CheckToolchains([]Toolchain{{Name: "go", Path: []string{filepath.Join(dir, "absent")}}}, harness.CheckDir)
 	if err == nil || !strings.Contains(err.Error(), `"go"`) {
 		t.Fatalf("missing toolchain: err = %v, want one naming it", err)
 	}
@@ -51,7 +53,7 @@ func TestCheckToolchainsRefusesAMissingMount(t *testing.T) {
 	if err := os.WriteFile(file, nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := CheckToolchains([]Toolchain{{Name: "go", Path: []string{file}}}); err == nil {
+	if err := CheckToolchains([]Toolchain{{Name: "go", Path: []string{file}}}, harness.CheckDir); err == nil {
 		t.Fatal("a file was accepted as a toolchain directory")
 	}
 }

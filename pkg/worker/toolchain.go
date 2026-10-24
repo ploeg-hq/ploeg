@@ -65,16 +65,12 @@ func ParseToolchains(raw string) ([]Toolchain, error) {
 
 // CheckToolchains fails when a toolchain's directory is missing, so a pod
 // whose image volume did not mount refuses to claim instead of running an
-// agent that cannot run its checks.
-func CheckToolchains(tcs []Toolchain) error {
+// agent that cannot run its checks. checkDir looks where the harness runs.
+func CheckToolchains(tcs []Toolchain, checkDir func(string) error) error {
 	for _, tc := range tcs {
 		for _, p := range tc.Path {
-			info, err := os.Stat(p)
-			if err != nil {
+			if err := checkDir(p); err != nil {
 				return fmt.Errorf("toolchain %q: %w", tc.Name, err)
-			}
-			if !info.IsDir() {
-				return fmt.Errorf("toolchain %q: %s is not a directory", tc.Name, p)
 			}
 		}
 	}

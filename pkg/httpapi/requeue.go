@@ -54,6 +54,7 @@ func (s *Server) handleOperatorRequeue(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	cmd.Person = actor
 	if acting := r.Header.Get("X-Ploeg-Acting-User"); acting != "" {
 		actor = acting
 	}
@@ -137,7 +138,7 @@ func (s *Server) requeueWithoutShifts(ctx context.Context, id int64, teams []str
 	if cmd.FromRound != 1 {
 		return store.Requeued{WorkItemID: id}, store.ErrRoundNotInPlan
 	}
-	req := store.RequeueRequest{WorkItemID: id, Teams: teams, Team: item.Team, Actor: actor, Command: cmd, Branch: work.Branch(item)}
+	req := store.RequeueRequest{WorkItemID: id, Teams: teams, Team: item.Team, Actor: actor, Command: cmd, Branch: work.Branch(item), Person: cmd.Person}
 	if cmd.PoolUSD != nil {
 		req.PoolUSD = *cmd.PoolUSD
 	}
@@ -166,11 +167,13 @@ func requeueError(w http.ResponseWriter, err error) bool {
 	case errors.Is(err, store.ErrRoundNotInPlan):
 		operatorError(w, 422, "round_not_in_plan", "fromRound is not a Round in the team's current plan.")
 	case errors.Is(err, store.ErrNothingToResume):
-		operatorError(w, 409, "nothing_to_resume", "The work item's last Shift did not stop on a question to a person, or the Team's plan has no Round to reopen.")
+		operatorError(w, 409, "nothing_to_resume", "The work item's last Shift did not stop on a question to a person or for a person who took it over, or the Team's plan has no Round to reopen.")
 	case errors.Is(err, store.ErrQuestionUnanswered):
 		operatorError(w, 409, "question_unanswered", "A question of the parked Round has no answer yet. Answer it first.")
 	case errors.Is(err, store.ErrPoolAboveLimit):
 		operatorError(w, 400, "pool_above_limit", "The pool exceeds the consumer's maxBudgetUsd.")
+	case errors.Is(err, store.ErrNotTaker):
+		operatorError(w, 409, "taken_over_by_another", "Another person took this work item over; only they hand it back.")
 	default:
 		operatorError(w, 503, "unavailable", "Ploeg could not confirm the requeue.")
 	}
@@ -218,6 +221,10 @@ func restartBriefing(b store.RestartBrief) harness.Finding {
 				fmt.Fprintf(&text, ". Summary: %s", summary)
 			}
 		}
+	}
+	if h := b.HandedBack; h != nil {
+		fmt.Fprintf(&text, "\n\n%s had taken over a Run and handed the Work Item back to round %d on branch %s. "+
+			"The first writing Run stands on the branch as they left it and is told the commits they added.", h.Actor, h.Round, h.Branch)
 	}
 	if b.Note != "" {
 		fmt.Fprintf(&text, "\n\nNote from the person who restarted it:\n\n%s", b.Note)

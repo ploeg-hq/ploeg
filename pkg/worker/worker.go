@@ -131,9 +131,18 @@ type Worker struct {
 	API     *APIClient
 	Adapter harness.Adapter
 	Broker  llmbroker.Broker
-	agent   observedAgent
+	// Spawner starts the harness, its verification commands and the OpenSpec
+	// CLI where the harness runs; nil starts them as the worker's children.
+	Spawner harness.Spawner
+	// HarnessEnviron is the environment of the container the harness runs in,
+	// the source of its allowlisted variables; nil is the worker's own.
+	HarnessEnviron []string
+	agent          observedAgent
 	// pluginFetch replaces the git fetch of plugin marketplaces in tests.
 	pluginFetch claudeplugins.Fetcher
+	// yield is the current Run's yield signal (ADR-0142); nil outside
+	// RunContext, so a Run executed directly never yields.
+	yield *yieldSignal
 }
 
 // profiledAdapter is a harness adapter that launches one of several agent
@@ -150,6 +159,7 @@ func New(cfg Config, adapter harness.Adapter, broker llmbroker.Broker, log *slog
 			api.HarnessProfile = p.Profile()
 		}
 		api.HarnessVersion = cfg.HarnessVersion
+		api.Yields = harness.AdapterYields(adapter)
 	}
 	if broker == nil {
 		broker = api
@@ -228,7 +238,9 @@ func (w *Worker) RunContext(parent context.Context) error {
 	if ttl <= 0 {
 		ttl = time.Minute
 	}
-	go renewLoop(ctx, cancel, w.API, claimed.RunToken, ttl/3, w.Log)
+	w.yield = newYieldSignal()
+	defer func() { w.yield = nil }()
+	go renewLoop(ctx, cancel, w.API, claimed.RunToken, ttl/3, w.Log, w.yield.raise)
 
 	// From here on, every terminal path must report an outcome; failing to
 	// report leaves the lease to the sweeper (recorded failed/lease expired).
@@ -325,6 +337,15 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	}
 
 	writes := claimed.Writes || claimed.Role == ""
+	var handedBack *harness.Finding
+	if writes && claimed.Handback != nil && claimed.Handback.Branch != "" {
+		if err := checkoutHandback(ctx, cloneDir, cloneURL, forgeToken, *claimed.Handback); err != nil {
+			return stuckReport("could not check out the branch a person handed back", err.Error())
+		}
+		brief := handbackBriefing(ctx, cloneDir, *claimed.Handback, claimed.Round)
+		handedBack = &brief
+		w.Log.Info("standing on the branch a person handed back", "branch", claimed.Handback.Branch, "yielded_at", claimed.Handback.YieldedCommit)
+	}
 	var baseline writerBaseline
 	if writes {
 		recorded, err := recordWriterBaseline(ctx, cloneDir, cloneURL, forgeToken, branch)
@@ -378,7 +399,7 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 		Repo:     ref,
 		Branch:   branch,
 		TraceID:  trace,
-		Briefing: claimed.Briefing,
+		Briefing: withHandback(claimed.Briefing, handedBack),
 
 		ReviewFindings: claimed.ReviewFindings,
 		ActiveWork:     claimed.ActiveWork,
@@ -433,7 +454,7 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 		model = w.Cfg.LLMModels[0]
 	}
 	if openSpec != nil {
-		brief := openSpecBriefFor(ctx, *openSpec, home)
+		brief := openSpecBriefFor(ctx, w.side(), *openSpec, home)
 		spec.OpenSpec = &brief
 		w.Log.Info("briefed from the OpenSpec change", "change", brief.Change, "source", brief.Source, "bytes", len(brief.Brief))
 	}
@@ -563,7 +584,7 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 		RepoDir:    cloneDir,
 		ScratchDir: scratchDir,
 		Prompt:     taskPrompt(harnessSpec, planner, writes, priorPR, onReviewBranch) + support,
-		BaseEnv:    append(append(withToolchains(harnessEnvironment(os.Environ(), home, scratchDir, writes, harnessForgeToken, w.Cfg.LLMBaseURL, harnessModelName(w.Cfg)), w.Cfg.Toolchains), runEnv...), w.runTelemetryEnvironment(claimed.Role, trace)...),
+		BaseEnv:    append(append(withToolchains(harnessEnvironment(w.side().environ, home, scratchDir, writes, harnessForgeToken, w.Cfg.LLMBaseURL, harnessModelName(w.Cfg)), w.Cfg.Toolchains), runEnv...), w.runTelemetryEnvironment(claimed.Role, trace)...),
 		LLM:        harness.LLMEnv{BaseURL: w.Cfg.LLMBaseURL, Model: model, TraceID: trace},
 		Stdout:     io.MultiWriter(os.Stdout, &logTail),
 		Stderr:     io.MultiWriter(os.Stderr, &logTail),
@@ -584,6 +605,8 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 		},
 		CatchUp:    board.catchUp,
 		PluginDirs: pluginDirs,
+		Spawner:    w.side().spawner,
+		Yield:      w.yield.channel(),
 	}
 
 	env.BaseEnv = append(env.BaseEnv, gitEnv...)
@@ -599,6 +622,9 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 		Models:    w.Cfg.LLMModels,
 		TTL:       w.Cfg.KeyTTL,
 	}, w.Cfg.HarnessTimeout, w.Cfg.LLMKeyIsolation, leaks.watch)
+	if err := w.side().spawner.KillAll(context.WithoutCancel(ctx)); err != nil {
+		w.Log.Warn("could not end the processes the harness left behind", "err", err)
+	}
 	env.Transcript.Stage(harnessFinished(w.Adapter.Name(), report, mintErr, runErr))
 	closeTranscript(env.Transcript)
 	notesLive.Close(context.WithoutCancel(ctx))
@@ -609,6 +635,10 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	}
 
 	forgeToken = forgeCred.current(context.WithoutCancel(ctx))
+	if errors.Is(runErr, harness.ErrYielded) {
+		return w.yielded(ctx, report, yieldCheck{writes: writes, dir: cloneDir, cloneURL: cloneURL, token: forgeToken, branch: branch,
+			baseline: baseline, leaks: leaks, trace: trace, reference: work.Reference(item)}, ref, prior, priorErr)
+	}
 	// The PR is the ground truth (git/forge state stays the durable medium).
 	after, prErr := readChangeRequest(ref, forgeToken, branch)
 	if prErr != nil {
@@ -623,13 +653,13 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	})
 	final.Delivery = observedDelivery(ref, branch, prior, after, errors.Join(priorErr, prErr))
 	if openSpec != nil && openSpecGateApplies(final, writes, onReviewBranch) {
-		gate := runOpenSpecGate(ctx, *openSpec, cloneURL, forgeToken, branch, home)
+		gate := runOpenSpecGate(ctx, w.side(), *openSpec, cloneURL, forgeToken, branch, home)
 		w.Log.Info("OpenSpec gate", "change", openSpec.ID, "ran", gate.Ran, "passed", gate.Passed)
 		final = applyOpenSpecGate(final, openSpec.ID, gate, writes)
 	}
 	if writes && len(verifyCommands) > 0 && verifiesOutcome(final.Outcome) && ctx.Err() == nil {
-		verifyEnv := withToolchains(harnessEnvironment(os.Environ(), home, scratchDir, false, "", w.Cfg.LLMBaseURL, harnessModelName(w.Cfg)), w.Cfg.Toolchains)
-		v := verifyPushedCommit(ctx, pushedCandidate{
+		verifyEnv := withToolchains(harnessEnvironment(w.side().environ, home, scratchDir, false, "", w.Cfg.LLMBaseURL, harnessModelName(w.Cfg)), w.Cfg.Toolchains)
+		v := verifyPushedCommit(ctx, w.side(), pushedCandidate{
 			dir: filepath.Join(w.Cfg.WorkDir, "verify-vik-"+item.ExternalID), cloneURL: cloneURL, token: forgeToken,
 			branch: branch, commit: after.HeadSHA,
 		}, verifyEnv, verifyCommands, w.Cfg.VerifyTimeout)
@@ -1095,7 +1125,7 @@ func abortOnTermination(parent, runCtx context.Context, cancel context.CancelCau
 	}
 }
 
-func renewLoop(ctx context.Context, cancel context.CancelCauseFunc, api *APIClient, token string, every time.Duration, log *slog.Logger) {
+func renewLoop(ctx context.Context, cancel context.CancelCauseFunc, api *APIClient, token string, every time.Duration, log *slog.Logger, yield func()) {
 	if every < 5*time.Second {
 		every = 5 * time.Second
 	}
@@ -1107,9 +1137,9 @@ func renewLoop(ctx context.Context, cancel context.CancelCauseFunc, api *APIClie
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			gone, err := api.Renew(token)
+			renewal, err := api.Renew(token)
 			switch {
-			case gone:
+			case renewal.Gone:
 				log.Error("lease no longer ours; cancelling run")
 				cancel(errLeaseLost)
 				return
@@ -1123,6 +1153,10 @@ func renewLoop(ctx context.Context, cancel context.CancelCauseFunc, api *APIClie
 				}
 			default:
 				strikes = 0
+				if renewal.Yield && yield != nil {
+					log.Info("a person asked the Run to yield; stopping at the next safe point")
+					yield()
+				}
 			}
 		}
 	}

@@ -1,0 +1,51 @@
+name: CodeQL
+on:
+  pull_request:
+  push:
+    branches: [main, development]
+  schedule:
+    - cron: '41 4 * * 2'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  analyze:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@7a4e45a543138629540c9a1616d08632b893e492 # v5.0.1
+        with:
+          version: 2026.9.18
+          install_args: go
+          cache: false
+      - uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          languages: go
+          build-mode: manual
+          queries: security-extended
+      - name: Build every package
+        run: mise exec -- go build ./...
+      - uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          category: /language:go
+          output: ${{ runner.temp }}/codeql
+          upload: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && 'always' || 'never' }}
+      - name: No High or Critical security finding
+        run: |
+          findings=$(jq '[.runs[] as $run
+            | ([$run.tool.driver.rules[]?, $run.tool.extensions[]?.rules[]?] | map({key: .id, value: ((.properties["security-severity"] // "0") | tonumber)}) | from_entries) as $severity
+            | $run.results[]
+            | select((.suppressions // []) | length == 0)
+            | select(($severity[.ruleId] // 0) >= 7.0)
+            | {rule: .ruleId, file: .locations[0].physicalLocation.artifactLocation.uri, line: .locations[0].physicalLocation.region.startLine, message: .message.text}]' "$RUNNER_TEMP"/codeql/*.sarif)
+          echo "$findings" | jq -r '.[] | "::error file=\(.file),line=\(.line)::\(.rule): \(.message)"'
+          [ "$(echo "$findings" | jq length)" -eq 0 ]

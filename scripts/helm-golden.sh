@@ -66,6 +66,7 @@ for case in ":default" \
 	"ops/helm/ploeg/ci/executor-isolation-disabled-values.yaml:executor-isolation-disabled" \
 	"ops/helm/ploeg/ci/executor-default-worker-values.yaml:executor-default-worker" \
 	"ops/helm/ploeg/ci/executor-acknowledged-dind-values.yaml:executor-acknowledged-dind" \
+	"ops/helm/ploeg/ci/executor-harness-container-shared-values.yaml:executor-harness-container-shared" \
 	"ops/helm/ploeg/ci/executor-harness-selection-values.yaml:executor-harness-selection" \
 	"ops/helm/ploeg/ci/monitoring-values.yaml:monitoring" \
 	"ops/helm/ploeg/ci/knowledge-graph-values.yaml:knowledge-graph" \
@@ -111,7 +112,9 @@ for case in "ops/helm/ploeg/ci/reject-reader-without-read-token-values.yaml:read
 	"ops/helm/ploeg/ci/reject-claude-environment-without-login-values.yaml:requires harness.claudeEnvironment.environmentId and loginSecret or loginVolume" \
 	"ops/helm/ploeg/ci/reject-client-carrier-without-environment-values.yaml:carrier client requires harness.claudeEnvironment.environmentId" \
 	"ops/helm/ploeg/ci/reject-claude-runner-without-environment-secret-values.yaml:claudeRunner.environmentSecret.name is required" \
-	"ops/helm/ploeg/ci/reject-dind-without-acknowledgement-values.yaml:harness.dind is true without harness.acknowledgePrivilegedDind: true"; do
+	"ops/helm/ploeg/ci/reject-dind-without-acknowledgement-values.yaml:harness.dind is true without harness.acknowledgePrivilegedDind: true" \
+	"ops/helm/ploeg/ci/reject-separate-harness-container-with-dind-values.yaml:a separate harness container needs both credential proxies and no DinD" \
+	"ops/helm/ploeg/ci/reject-unknown-harness-container-values.yaml:value must be one of 'separate', 'shared'"; do
 	values=${case%%:*}
 	expected=${case#*:}
 	if out=$(helm template ploeg ops/helm/ploeg -f "$REQUIRED" -f "$values" 2>&1); then
@@ -155,6 +158,20 @@ must_render_with ops/helm/ploeg/ci/executor-default-worker-values.yaml \
 must_render_with ops/helm/ploeg/ci/executor-acknowledged-dind-values.yaml \
 	'name: dind' 'privileged: true' 'ploeg.webgrip.dev/privileged-dind: "true"' 'name: PLOEG_CREDENTIAL_ISOLATION_OFF_REASON' 'value: "dind"' 'name: DOCKER_CERT_PATH' \
 	-- 'name: PLOEG_LLM_KEY_ISOLATION' 'name: PLOEG_FORGE_TOKEN_ISOLATION'
+
+if ! uv run --no-project --with pyyaml==6.0.3 python scripts/check-harness-container.py "$GOLDEN"; then
+	status=1
+fi
+notes=$(helm install --dry-run=client ploeg ops/helm/ploeg -f "$REQUIRED" -f ops/helm/ploeg/ci/executor-harness-container-shared-values.yaml 2>&1)
+if ! printf '%s' "$notes" | grep -qF 'DEPRECATED: harnessContainer is shared'; then
+	echo "the shared harness container renders without its deprecation note"
+	status=1
+fi
+notes=$(helm install --dry-run=client ploeg ops/helm/ploeg -f "$REQUIRED" -f ops/helm/ploeg/ci/executor-default-worker-values.yaml 2>&1)
+if printf '%s' "$notes" | grep -qF 'DEPRECATED: harnessContainer'; then
+	echo "the default render carries the shared harness container's deprecation note"
+	status=1
+fi
 
 if [ "$mode" = "check" ] && [ "$status" -ne 0 ]; then
 	echo

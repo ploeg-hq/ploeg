@@ -534,6 +534,9 @@ type claimRequest struct {
 	// HarnessVersion is the version the worker read from its Harness binary
 	// at startup; ploegd records it once on the claimed Run (ADR-0097).
 	HarnessVersion string `json:"harnessVersion,omitempty"`
+	// Yields says the worker's Harness can stop at a safe point for a person
+	// (ADR-0142); ploegd records it on the claimed Run. Absent is false.
+	Yields bool `json:"yields,omitempty"`
 }
 
 func (r claimRequest) harnessKey() string {
@@ -594,6 +597,10 @@ type claimResponse struct {
 	// Board is the half of the Run's version vector ploegd recorded at the
 	// claim (ADR-0124); absent when it could not be recorded.
 	Board *work.BoardVersions `json:"board,omitempty"`
+	// Handback is set on a writing Run of the Round a person's hand back
+	// reopened (ADR-0142): where to continue and the commit the taken-over
+	// Run yielded at.
+	Handback *work.Handback `json:"handback,omitempty"`
 }
 
 // handleClaim leases the next unit of work for a team. 204 = empty-handed
@@ -692,6 +699,7 @@ func (s *Server) respondClaimedRun(w http.ResponseWriter, r *http.Request, req c
 		return
 	}
 	s.recordRunConfig(r.Context(), run.RunToken, req.Team, run.Role, true, runHarness{Name: req.Harness, Profile: req.HarnessProfile, Version: req.HarnessVersion, Model: run.Model})
+	s.recordRunYields(r.Context(), run.RunToken, req.Yields)
 	resp := claimResponse{
 		RunToken: run.RunToken, Deadline: run.Deadline, WorkItem: run.Item,
 		Shift: run.ShiftID, Role: run.Role, Round: run.Round,
@@ -706,6 +714,9 @@ func (s *Server) respondClaimedRun(w http.ResponseWriter, r *http.Request, req c
 	resp.Briefing, resp.ReviewFindings, resp.Questions = s.runBriefing(r.Context(), run)
 	resp.Context = s.claimContext(r.Context(), run.RunToken)
 	resp.ActiveWork = s.activeWork(r.Context(), run.Item.ID)
+	if run.Writes {
+		resp.Handback = s.claimHandback(r.Context(), run.ShiftID, run.Round)
+	}
 	// Push rights are minted per writing Run, so holding the Lease and being
 	// able to push are one fact rather than two that can disagree. A reader
 	// gets nothing here — it has no Lease and no business pushing.
@@ -810,12 +821,17 @@ func (s *Server) stopUnreadyTarget(ctx context.Context, team, runToken string, i
 }
 
 func (s *Server) handleRenew(w http.ResponseWriter, r *http.Request) {
-	deadline, err := s.Store.Renew(r.Context(), r.PathValue("token"), s.LeaseTTL)
+	token := r.PathValue("token")
+	deadline, err := s.Store.Renew(r.Context(), token, s.LeaseTTL)
 	if err != nil {
 		runError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"deadline": deadline})
+	body := map[string]any{"deadline": deadline}
+	if s.yieldRequested(r.Context(), token) {
+		body["yield"] = true
+	}
+	writeJSON(w, http.StatusOK, body)
 }
 
 func (s *Server) handleCheckpoint(w http.ResponseWriter, r *http.Request) {
@@ -873,6 +889,9 @@ func validateOutcomeReport(req harness.OutcomeReport) error {
 	}
 	if req.Delivery != nil && !req.Delivery.Observed.Valid() {
 		return errors.New("delivery.observed must be opened, updated, none or unknown")
+	}
+	if err := store.ValidateYieldReport(req.Yield); err != nil {
+		return err
 	}
 	if err := harness.ValidateBlackboard(req); err != nil {
 		return err
@@ -952,6 +971,18 @@ func (s *Server) applyOutcome(ctx context.Context, token string, req harness.Out
 			case errors.Is(err, store.ErrUnknownRun):
 				return err
 			case err != nil:
+				return fmt.Errorf("%w: %w", errOutcomeStore, err)
+			}
+		}
+	}
+	if req.Outcome == work.OutcomeYielded {
+		if err := s.Store.RecordYield(ctx, token, req.Yield); err != nil {
+			switch {
+			case errors.Is(err, store.ErrUnknownRun):
+				return err
+			case errors.Is(err, store.ErrYieldNotRequested):
+				return errors.New("a Run reports yielded only after a person asked it to yield")
+			default:
 				return fmt.Errorf("%w: %w", errOutcomeStore, err)
 			}
 		}

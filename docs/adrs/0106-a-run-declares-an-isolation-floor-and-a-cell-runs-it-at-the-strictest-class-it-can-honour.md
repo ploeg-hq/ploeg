@@ -165,3 +165,4 @@ the maximum rule means nobody has to decide per team to get the strongest availa
   [0107](0107-execution-runs-in-cells-that-pull-from-one-hub.md) (the executor that
   advertises a maximum).
 * Backlog items absorbed: #74 (RuntimeClass per team).
+* 2026-10-24: [ADR 0138](0138-a-harness-runs-in-its-own-container-and-no-credential-enters-it.md) adds a rung to the `standard` class's credential column: the placeholders and proxies live in a worker container separate from the harness's, so no credential enters the harness's container. `hardened` and above still move the credentials out of the pod. The table above is unchanged.

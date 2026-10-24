@@ -351,9 +351,11 @@ terms:
   - name: Outcome
     definition: >
       The terminal result of a Run, one of: pr_opened, pr_updated,
-      issue_updated, follow_up_created, stuck, failed, no_change_needed.
-      A stuck Outcome carries a mandatory reason and moves the Work Item to
-      needs_human on the tracker path. A failed Outcome follows the applicable
+      issue_updated, follow_up_created, stuck, failed, no_change_needed,
+      yielded. A stuck Outcome carries a mandatory reason and moves the Work
+      Item to needs_human on the tracker path. A yielded Outcome is a Run that
+      stopped at a safe point because a person took it over (ADR-0142,
+      proposed); the Work Item waits at needs_human for that person. A failed Outcome follows the applicable
       tracker or operator recovery policy; it does not universally authorize retry.
     context: Dispatch
     not_to_be_confused_with:
@@ -743,6 +745,9 @@ entities:
         to: needs_human
         trigger: stuck Outcome reported (mandatory reason)
       - from: active
+        to: needs_human
+        trigger: A person took over its running Run and the Round ended (ADR-0142, proposed)
+      - from: active
         to: done
         trigger: Terminal Outcome reported (issue_updated, follow_up_created, no_change_needed)
       - from: active
@@ -916,7 +921,7 @@ entities:
         type: timestamp
         description: This Run's own liveness deadline. Not the Lease's — a reader has no Lease to expire.
       - name: outcome
-        type: "enum(pr_opened, pr_updated, issue_updated, follow_up_created, stuck, failed, no_change_needed)"
+        type: "enum(pr_opened, pr_updated, issue_updated, follow_up_created, stuck, failed, no_change_needed, yielded)"
         description: Reported terminal result, or failure recorded by controller recovery when the applicable expiry rule fires.
       - name: started_at
         type: timestamp

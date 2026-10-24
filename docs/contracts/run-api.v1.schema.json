@@ -27,6 +27,10 @@
           "minLength": 1,
           "maxLength": 128,
           "description": "The first line the worker's Harness binary printed for --version at startup (ADR-0097, proposed). ploegd records it once on the claimed Run, so a Run that dies before reporting keeps it. Absent leaves it unknown: the worker skipped the probe (exec, or a binary it cannot resolve before the clone) or the probe failed."
+        },
+        "yields": {
+          "type": "boolean",
+          "description": "True when the worker's Harness can stop its agent at a safe point for a person (ADR-0142, proposed). ploegd records it on the claimed Run and refuses a take-over of a running Run without it. Absent is false."
         }
       },
       "required": ["team"],
@@ -103,6 +107,16 @@
         "board": {
           "$ref": "#/$defs/boardVersions",
           "description": "The part of the Run's version vector ploegd recorded at the claim (ADR-0124): ploegSequence and trackerRevision. Absent from an older Ploeg, or when it could not be recorded; the worker then neither reports its briefing nor catches up."
+        },
+        "handback": {
+          "type": "object",
+          "description": "Set on a writing Run of the Round a person's hand back reopened (ADR-0142, proposed). The worker checks branch out at its head on the forge before the agent starts, and briefs the Run with the commits the person added since yieldedCommit. Absent on every other Run and from an older Ploeg.",
+          "properties": {
+            "branch": { "type": "string", "minLength": 1 },
+            "yieldedCommit": { "type": "string", "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$", "description": "The branch head the taken-over Run left; absent when it pushed nothing." }
+          },
+          "required": ["branch"],
+          "additionalProperties": false
         }
       },
       "required": ["runToken", "deadline", "workItem"],
@@ -142,7 +156,10 @@
     "renewResponse": {
       "description": "HTTP 200 body; HTTP 404 = lease no longer ours, cancel the run.",
       "type": "object",
-      "properties": { "deadline": { "type": "string", "format": "date-time" } },
+      "properties": {
+        "deadline": { "type": "string", "format": "date-time" },
+        "yield": { "const": true, "description": "Present once a person asked the Run to yield (ADR-0142, proposed): a worker whose Harness yields stops the agent at its next safe point, pushes its work and reports the outcome yielded. Absent otherwise and from an older Ploeg." }
+      },
       "required": ["deadline"],
       "additionalProperties": false
     },

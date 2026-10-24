@@ -380,6 +380,22 @@ type OutcomeReport struct {
 	// QuestionAnswers are the Run's answers to questions it was briefed
 	// with that were addressed to a reviewer or the next Run.
 	QuestionAnswers []QuestionAnswer `json:"questionAnswers,omitempty"`
+	// Yield is where a yielded Run left its work (ADR-0142). Only the worker
+	// sets it, on a yielded outcome, from what it read on the forge.
+	Yield *YieldReport `json:"yield,omitempty"`
+}
+
+// YieldReport is where a Run that yielded to a person left its work. Commit
+// is the head of Branch on the forge after the worker pushed, and
+// WorkInProgress the commit the worker made of the agent's uncommitted
+// changes, empty when there were none. Pushed is false when the worker could
+// not put the work on the forge; Detail then says why.
+type YieldReport struct {
+	Branch         string `json:"branch"`
+	Commit         string `json:"commit,omitempty"`
+	WorkInProgress string `json:"workInProgress,omitempty"`
+	Pushed         bool   `json:"pushed"`
+	Detail         string `json:"detail,omitempty"`
 }
 
 // RunHarness names the Harness a Run ran with. A field the worker does not

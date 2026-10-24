@@ -8,7 +8,6 @@ import (
 	"io"
 	"log/slog"
 	"os"
-	"os/exec"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -82,7 +81,34 @@ type RunEnv struct {
 	// from the Team's declaration (ADR-0139). An adapter that cannot load
 	// Claude Code plugins ignores them.
 	PluginDirs []string
+	// Spawner starts the harness and every process it needs where the
+	// harness runs (ADR-0138). Nil starts them as the worker's children.
+	Spawner Spawner
+	// Yield is closed when a person asked the Run to yield (ADR-0142). An
+	// adapter that implements Yielder stops the agent at its next safe point
+	// and returns ErrYielded; any other adapter ignores it. Nil never closes.
+	Yield <-chan struct{}
 }
+
+// Yielder is implemented by an Adapter that can stop its agent at a safe
+// point when RunEnv.Yield closes, leaving the checkout as the agent left it
+// between two steps (ADR-0142). The worker tells ploegd at its claim, so a
+// take-over of a Run whose Harness cannot yield is refused before anything
+// changes.
+type Yielder interface {
+	Yields() bool
+}
+
+// AdapterYields reports whether a can stop at a safe point for a person.
+func AdapterYields(a Adapter) bool {
+	y, ok := a.(Yielder)
+	return ok && y.Yields()
+}
+
+// ErrYielded is what an Adapter returns when it stopped its agent because
+// RunEnv.Yield closed. The report it returns with it describes the agent's
+// work up to that point.
+var ErrYielded = errors.New("the Run yielded to a person")
 
 // PromptStart is when a Run's prompt started and the limits that stop it.
 // Prompt is the most the prompt may run from At and Idle how long the agent
@@ -226,11 +252,6 @@ func (r commandRunner) Run(ctx context.Context, spec TaskSpec, env RunEnv) (Outc
 
 	runCtx, stop := context.WithCancelCause(ctx)
 	defer stop(nil)
-	cmd := exec.CommandContext(runCtx, inv.Argv[0], inv.Argv[1:]...)
-	cmd.Dir = env.RepoDir
-	cmd.Env = append(append([]string{}, env.BaseEnv...), inv.ExtraEnv...)
-	killProcessGroupOnCancel(cmd)
-	cmd.WaitDelay = processWaitDelay
 
 	var tail TailBuffer
 	activity := env.Activity
@@ -244,25 +265,27 @@ func (r commandRunner) Run(ctx context.Context, spec TaskSpec, env RunEnv) (Outc
 		captured = &limitBuffer{max: maxCapturedStdout}
 		stdout = io.MultiWriter(nonNil(env.Stdout), &tail, captured, activity)
 	}
-	cmd.Stdout = stdout
-	cmd.Stderr = io.MultiWriter(nonNil(env.Stderr), &tail, activity)
 
 	if env.IdleTimeout > 0 {
 		go watchIdle(runCtx, stop, activity, env.IdleTimeout)
 	}
-	runErr := cmd.Start()
+	res := ExecResult{ExitCode: -1}
+	proc, runErr := env.spawner().Start(runCtx, Command{
+		Argv:   inv.Argv,
+		Dir:    env.RepoDir,
+		Env:    append(append([]string{}, env.BaseEnv...), inv.ExtraEnv...),
+		Stdout: stdout,
+		Stderr: io.MultiWriter(nonNil(env.Stderr), &tail, activity),
+	})
 	if runErr == nil {
 		ReportPromptStart(runCtx, env, 0, env.IdleTimeout)
-		runErr = cmd.Wait()
+		res.ExitCode, runErr = proc.Wait()
 	}
 	if errors.Is(context.Cause(runCtx), ErrIdle) {
 		runErr = fmt.Errorf("%w after %s: %v", ErrIdle, env.IdleTimeout, runErr)
 	}
 
-	res := ExecResult{ExitCode: -1, Err: runErr, LogTail: tail.Bytes()}
-	if cmd.ProcessState != nil {
-		res.ExitCode = cmd.ProcessState.ExitCode()
-	}
+	res.Err, res.LogTail = runErr, tail.Bytes()
 	if captured != nil {
 		res.Stdout = captured.buf.Bytes()
 	}
@@ -390,10 +413,9 @@ func (l *limitBuffer) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// KillProcessGroupOnCancel makes cancelling cmd's context kill the whole
-// process group it starts, not only its first process.
-func KillProcessGroupOnCancel(cmd *exec.Cmd) { killProcessGroupOnCancel(cmd) }
-
-// ProcessWaitDelay bounds how long a cancelled command's output pipes stay
-// open after its process group was killed.
-const ProcessWaitDelay = processWaitDelay
+func (env RunEnv) spawner() Spawner {
+	if env.Spawner != nil {
+		return env.Spawner
+	}
+	return NewLocalSpawner()
+}
