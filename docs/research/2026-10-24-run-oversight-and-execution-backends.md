@@ -140,6 +140,31 @@ It decides what a Run *can* do. The layers below decide what to do about what it
 
 A harness that cannot call a hook is not refused. It runs with the kernel and network guards only, and its Run records `guard: partial`, so its posture is visible.
 
+#### The pre-tool gate, harness by harness
+
+Read on 2026-10-24 from Ploeg at `21aebc5` and each harness's documentation and source at the versions Ploeg pins.
+
+| Harness | Mechanism | Fails | Recommended gate | Guard |
+| --- | --- | --- | --- | --- |
+| `claude-code` | `PreToolUse` hook of type `http` | Open by default; closed with `onFailure: "block"` | A managed settings file written before the CLI starts, calling the worker's loopback policy endpoint, with `allowedHttpHookUrls` pinned to it. A probe must first prove that a hook's deny holds under `bypassPermissions`. ADR-0139 plugin hooks must then be force-enabled in managed settings, because `allowManagedHooksOnly` blocks the rest | full, after the probe |
+| `claude-environment` | The same, but read from the Team's runner image | As above | Only if the runner attests the managed file | partial |
+| `acp/openhands` | ACP `session/request_permission` for every action | The adapter answers `cancelled` when nothing fits | The ACP gate in the adapter. OpenHands' own hooks are not used: it loads `.openhands/hooks.json` from the working directory, which is the cloned repository | full |
+| `acp/opencode` | ACP permission requests, only for what its rules mark `ask` | As above | The ACP gate, after the profile writes `permission: {"*": "ask"}`. Today the profile ignores the permission mode, so `allow_read_only` and `deny_all` do not restrict opencode | full, after the fix |
+| `acp/qwen-code` | ACP permission requests; folder trust already forces approval | As above | The ACP gate | full |
+| `acp/goose` | ACP permission requests only in `GOOSE_MODE=approve` | As above | The ACP gate with `approve` always | full |
+| Codex, via `codex-acp` (planned) | ACP permission requests; its own hooks fail open | As above | The ACP gate, plus a managed `requirements.toml` hook as a second layer that exits 2 on any error | full |
+| `openhands` native, `exec`, `acp/custom` | None Ploeg can rely on | n/a | Kernel and network guards only | partial |
+
+What the ACP gate needs:
+
+- `PermissionPolicy.Decide` evaluates the Team's CEL policy over the tool kind, title, `rawInput` and `locations`, in-process and synchronously. Today it sees only the kind and title.
+- A missing `rawInput` on `execute`, `edit` or `delete` is a deny.
+- The storm caps (200 requests, 60 a minute) must be redesigned, because a gated Run asks for every call.
+
+Two findings for the attack drill (ADR-0126) follow from this:
+- It does not yet cover repository-level `.openhands/hooks.json`.
+- Its read-only checks should include an opencode Run.
+
 ### Layer 2: Watch (seconds, two judge stages, can hold a Run)
 
 **Events.** Every source publishes to NATS subject `ploeg.run.<run>.<kind>`, deduplicated on `<run>:<source>:<seq>`. A Run cannot forge or suppress the server-side and kernel sources:
@@ -268,12 +293,18 @@ What the cell layer adds:
 
 Rootless BuildKit as a sidecar is unverified in either runtime.
 
-## 6. Open questions
+## 6. Owner answers, 2026-10-24
 
-1. Is the Kata extension's lag on Talos (3.32 against upstream 4.3.1) acceptable for production, or should a cell carry its own Kata build?
-2. Does the Watch's stage 1 run on our own GPU, or on a hosted open-weight model through the gateway until there is a GPU?
-3. Should the `vm` backend be built at all before a Team asks for it, given Kata on bare metal covers `isolated`?
-4. Which harnesses Ploeg supports cannot call a pre-tool hook today, and what replaces it for them?
+1. **Kata version: not acceptable.** Production stays on current Kata.
+   - The Talos extension pins 3.32, the last 3.x release. A plain bump to 4.x breaks the extension: 4.x moved its Go runtime configs into a separate archive and changed its confidential images.
+   - The bump is contributed upstream to siderolabs/extensions, in two steps: first the `kata-containers` extension, then the SNP variants.
+   - Until it merges, a cell carries its own extension built with `imager`, signed and mirrored.
+2. **Stage 1 runs through the model gateway** until there is a GPU.
+3. **The `vm` backend is documented, not built.** Section 5.2 is its design. It is built when a Team needs it.
+4. **Answered per harness** in [the table in section 3](#the-pre-tool-gate-harness-by-harness).
+   - ACP's permission requests become Ploeg's universal gate, because the adapter already answers them and fails closed.
+   - Claude Code gets a managed HTTP hook.
+   - Everything else runs with kernel and network guards and records `guard: partial`.
 
 ## 7. Decision records this proposes
 
