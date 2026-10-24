@@ -62,6 +62,17 @@ Explicit legacy mode retains the old authentication behavior.
   chart): `PLOEG_API_URL`, `PLOEG_TEAM`, repo/forge/LLM wiring, and the
   `PLOEG_HARNESS*` selection.
 
+## Runtime class
+
+The chart gives every worker pod the RuntimeClass its Role resolves, under
+every executor type: a Role's `runtimeClassName`, else its team's, else
+`executor.runtimeClassName`. Empty at every tier renders no
+`runtimeClassName`, and the pod runs on the node's default runtime. Under the
+sandbox executor each tier first reads its older `sandbox.runtimeClassName`,
+so existing values render unchanged; the launcher pod never takes one, because
+it runs no agent code. The RuntimeClass object and the node runtime behind it
+are installed outside this chart.
+
 ## Explicit non-obligations
 
 - **Mutual exclusion** — the lease (`FOR UPDATE SKIP LOCKED` + single
@@ -118,8 +129,8 @@ clusters that have none; include DNS, ploegd, the model gateway and the forge.
 agent-sandbox's own secure default is never used, because it blocks all three.
 
 Prerequisites, installed outside this chart: agent-sandbox v1.0.x with its
-extensions, and the RuntimeClass named in `executor.sandbox.runtimeClassName`
-when one is set. Qualify that RuntimeClass with the daemonless worker pod
+extensions, and the RuntimeClass the worker pod resolves (see *Runtime
+class* above) when one is set. Qualify that RuntimeClass with the daemonless worker pod
 shape — `ploeg.workerPodTemplate`, the same template the ScaledJob uses, run
 under the RuntimeClass until one Run reaches a terminal outcome. The privileged
 DinD sidecar is not part of that qualification; it belongs only to harnesses

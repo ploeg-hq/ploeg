@@ -335,6 +335,7 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `executor.nodeSelector` | object or null | `{}` | Node selector for WORKER pods, not ploegd (that is the top-level nodeSelector). Empty by default, so workers schedule on any node. Set your own label to keep agent Jobs and their privileged DinD sidecar off control-plane nodes (ADR-0002: no DinD beside etcd). | values.yaml, values.schema.json |
 | `executor.pollingInterval` |  | `30` |  | values.yaml |
 | `executor.runnerImage` | string | `""` | DEPRECATED in favor of harness.image (kept as the fallback so existing value overrides keep working). agent-runner >=1.0.1 only: 1.0.0 mints LiteLLM keys without key_alias (400). | values.yaml, values.schema.json |
+| `executor.runtimeClassName` | string | `""` | RuntimeClass for every worker pod under every executor type; a team's or Role's runtimeClassName overrides it. Empty = the node's default runtime. Under the sandbox executor, executor.sandbox.runtimeClassName is read first. | values.yaml, values.schema.json |
 | `executor.sandbox` | object |  | type=sandbox only: runs each Run in a kubernetes-sigs/agent-sandbox v1beta1 Sandbox created by a launcher pod. | values.yaml, values.schema.json |
 | `executor.sandbox.launcherGoMemLimit` | [goMemLimit](#gomemlimit) | `""` | "" = 90% of launcherResources.limits.memory; a Go size sets it; off renders none | values.yaml, values.schema.json |
 | `executor.sandbox.launcherResources.limits.cpu` |  | `50m` |  | values.yaml |
@@ -344,7 +345,7 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `executor.sandbox.networkPolicy` | object | `{}` | {} = Unmanaged: the chart's worker policy (networkPolicy) and the cluster's own, selected by the worker's labels, apply. A NetworkPolicy spec here (ingress/egress rules) makes agent-sandbox manage one more policy per template with exactly these rules, added to those; the controller's secure default is never used, because it blocks DNS, ploegd, the model gateway and the forge alike. | values.yaml, values.schema.json |
 | `executor.sandbox.networkPolicy.egress` | array |  |  | values.schema.json |
 | `executor.sandbox.networkPolicy.ingress` | array |  |  | values.schema.json |
-| `executor.sandbox.runtimeClassName` | string | `""` | type=sandbox only. Global fallback RuntimeClass for every team and role; a team's (or a Role's) own `sandbox.runtimeClassName` overrides it field by field. "" = the node's default runtime; set kata or gvisor only after qualifying it with the privileged DinD sidecar on your nodes. Place Kata on bare metal (its own kernel, no nested-virt requirement). Place gVisor systrap on VMs without nested virt, accepting its file-I/O penalty on clone-heavy runs. | values.yaml, values.schema.json |
+| `executor.sandbox.runtimeClassName` | string | `""` | type=sandbox only. The sandbox executor's spelling of executor.runtimeClassName, kept for existing values: under the sandbox executor it is read before executor.runtimeClassName, and a team's (or a Role's) `sandbox.runtimeClassName` before its `runtimeClassName`. New values set executor.runtimeClassName, which every executor honours. "" = fall back to executor.runtimeClassName. | values.yaml, values.schema.json |
 | `executor.sandbox.shutdownMarginSeconds` | integer | `600` | The claim's shutdownTime is activeDeadlineSeconds plus this margin, and the launcher Job's own deadline matches it. | values.yaml, values.schema.json |
 | `executor.sandbox.startTimeoutSeconds` | integer | `600` | A claim that is not Ready this long after creation is deleted and its launcher fails with the controller's reason, instead of holding the Team's slot until the shutdown deadline. Covers a cold image pull. | values.yaml, values.schema.json |
 | `executor.sandbox.ttlSecondsAfterFinished` | integer | `60` | A finished claim is deleted by its launcher; this TTL is the fallback. | values.yaml, values.schema.json |
@@ -377,6 +378,7 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `executor.teams[].plan[].roles` | array |  |  | values.schema.json |
 | `executor.teams[].repoName` | string |  | Deprecated per-team fallback repository name. The repository belongs to the Work Item. | values.schema.json |
 | `executor.teams[].repoOwner` | string |  | Deprecated per-team fallback repository owner. The repository belongs to the Work Item. | values.schema.json |
+| `executor.teams[].runtimeClassName` | string |  | This team's worker RuntimeClass under every executor type; a Role's runtimeClassName overrides it. Empty = executor.runtimeClassName. | values.schema.json |
 | `executor.teams[].sandbox` | [sandboxOverride](#sandboxoverride) |  |  | values.schema.json |
 | `executor.teams[].targetSource` | one of `"claim"`, `"env"` |  | `env` ignores the claim's target and uses the fallback repository. | values.schema.json |
 | `executor.terminationGracePeriodSeconds` |  | `90` | Long enough for ploeg-worker to abort the harness, revoke the per-run key, settle its spend and POST the outcome — not long enough to be a hiding place. A worker that needs more than this is not shutting down, and the kubelet's SIGKILL is the right answer. | values.yaml |
@@ -668,11 +670,11 @@ GOMEMLIMIT for a Go container: empty = 90% of its memory limit, a Go size sets i
 
 ### sandboxOverride
 
-type=sandbox only: overrides executor.sandbox for one team's or Role's SandboxTemplate, field by field. An unset field falls back to the team, then the global block.
+type=sandbox only: overrides executor.sandbox for one team's or Role's SandboxTemplate, field by field. An unset field falls back to the same tier's runtimeClassName, then the next tier.
 
 | Key | Type | Description |
 | --- | --- | --- |
-| `runtimeClassName` | string | RuntimeClass for the agent-sandbox pod; empty = fall back to the team, then executor.sandbox.runtimeClassName. |
+| `runtimeClassName` | string | RuntimeClass for the agent-sandbox pod, read before the same tier's runtimeClassName under the sandbox executor only; empty = that runtimeClassName, then the next tier (Role, team, executor.sandbox, executor). |
 
 ### planRole
 
@@ -688,6 +690,7 @@ name becomes the workload suffix (ploeg-worker-<team>-<role>); writes marks the 
 | `model` | string |  |
 | `maxReplicaCount` | integer |  |
 | `harness` | [harness](#harness) |  |
+| `runtimeClassName` | string | This Role's worker RuntimeClass under every executor type. Empty = the team's, then executor.runtimeClassName. |
 | `sandbox` | [sandboxOverride](#sandboxoverride) |  |
 | `workerResources` | object | Overrides executor.workerResources for this role's workload. Readers do not build, so a fan-out round need not book writer-sized pods. |
 | `dindResources` | object | Overrides executor.dindResources for this role's DinD sidecar (only rendered when the role runs harness.dind). |

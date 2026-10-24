@@ -1,0 +1,40 @@
+# CI-only values: worker RuntimeClass under the default keda executor. Team
+# `plain` declares none and takes the global `gvisor`; team `vm` overrides it
+# with `kata`, and vm's reviewer Role overrides once more with
+# `gvisor-systrap`. Team `mixed` runs under the sandbox executor with both
+# spellings set: its SandboxTemplate must carry the sandbox-only
+# `sandbox.runtimeClassName` (`kata-legacy`), read first at the team tier.
+executor:
+  enabled: true
+  type: keda
+  runtimeClassName: gvisor
+  forgejo:
+    readTokenSecret:
+      name: agent-reader-token
+      key: FORGEJO_TOKEN
+  teams:
+    - name: plain
+      model: litellm_proxy/deepseek-chat
+      budget: "2"
+      maxReplicaCount: 1
+      harness: {dind: false}
+    - name: vm
+      model: litellm_proxy/deepseek-chat
+      budget: "4"
+      maxReplicaCount: 1
+      harness: {dind: false}
+      runtimeClassName: kata
+      plan:
+        - roles:
+            - {name: builder, writes: true, cap: "3.00"}
+        - roles:
+            - {name: reviewer, writes: false, cap: "0.75", runtimeClassName: gvisor-systrap}
+    - name: mixed
+      model: litellm_proxy/deepseek-chat
+      budget: "1"
+      maxReplicaCount: 1
+      executorType: sandbox
+      harness: {dind: false}
+      runtimeClassName: kata
+      sandbox:
+        runtimeClassName: kata-legacy

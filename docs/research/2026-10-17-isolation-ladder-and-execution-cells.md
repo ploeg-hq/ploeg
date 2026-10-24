@@ -351,6 +351,8 @@ Product, in order of dependency:
 - **P2. Worker pod shape knobs.** A worker `securityContext` (gap G2), `hostUsers`, and
   `runtimeClassName` for KEDA and CronJob pods (gap G7). Confirmation: a golden with
   `hostUsers: false` and `runtimeClassName: gvisor` on one Role.
+  *Update 2026-10-24:* the `runtimeClassName` part (gap G7) is implemented for every
+  executor type. That change leaves `hostUsers` and the worker `securityContext` as they were.
 - **P3. Isolation classes.** The `isolationClass` value per team and Role, render-time
   prerequisite checks, the pod label. Confirmation: a render of `isolated` without a
   `runtimeClassName` fails; every golden pod carries the label.
