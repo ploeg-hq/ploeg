@@ -170,8 +170,10 @@ func (s *Server) reworkRefusal(ctx context.Context, providerName string, policy 
 	}
 	writes, err := provider.HasWriteAccess(ctx, fp, ev.Repo, ev.Actor)
 	if err != nil {
+		safeErr := strings.ReplaceAll(err.Error(), "\n", "")
+		safeErr = strings.ReplaceAll(safeErr, "\r", "")
 		s.Log.Warn("reviewer write access unreadable", "provider", providerName, "repo", ev.Repo,
-			"reviewer", ev.Actor, "err", err)
+			"reviewer", ev.Actor, "err", safeErr)
 		return store.ReworkPermissionUnknown, true
 	}
 	if !writes {
