@@ -105,5 +105,5 @@ func (s *Server) resumeOffer(ctx context.Context, workItemID int64) *store.Opera
 		waiting = []string{}
 	}
 	return &store.OperatorResume{ShiftID: strconv.FormatInt(plan.ShiftID, 10), AskedRound: plan.AskedRound, FromRound: plan.FromRound,
-		RoundCapUSD: plan.RoundCapUSD, PoolUSD: plan.PoolUSD, Ready: len(plan.Waiting) == 0, WaitingQuestionIDs: waiting}
+		RoundCapUSD: plan.RoundCapUSD, PoolUSD: plan.PoolUSD, Ready: len(plan.Waiting) == 0, WaitingQuestionIDs: waiting, Reason: plan.Reason}
 }

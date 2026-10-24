@@ -140,6 +140,9 @@ type Worker struct {
 	agent          observedAgent
 	// pluginFetch replaces the git fetch of plugin marketplaces in tests.
 	pluginFetch claudeplugins.Fetcher
+	// yield is the current Run's yield signal (ADR-0142); nil outside
+	// RunContext, so a Run executed directly never yields.
+	yield *yieldSignal
 }
 
 // profiledAdapter is a harness adapter that launches one of several agent
@@ -156,6 +159,7 @@ func New(cfg Config, adapter harness.Adapter, broker llmbroker.Broker, log *slog
 			api.HarnessProfile = p.Profile()
 		}
 		api.HarnessVersion = cfg.HarnessVersion
+		api.Yields = harness.AdapterYields(adapter)
 	}
 	if broker == nil {
 		broker = api
@@ -234,7 +238,9 @@ func (w *Worker) RunContext(parent context.Context) error {
 	if ttl <= 0 {
 		ttl = time.Minute
 	}
-	go renewLoop(ctx, cancel, w.API, claimed.RunToken, ttl/3, w.Log)
+	w.yield = newYieldSignal()
+	defer func() { w.yield = nil }()
+	go renewLoop(ctx, cancel, w.API, claimed.RunToken, ttl/3, w.Log, w.yield.raise)
 
 	// From here on, every terminal path must report an outcome; failing to
 	// report leaves the lease to the sweeper (recorded failed/lease expired).
@@ -331,6 +337,15 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	}
 
 	writes := claimed.Writes || claimed.Role == ""
+	var handedBack *harness.Finding
+	if writes && claimed.Handback != nil && claimed.Handback.Branch != "" {
+		if err := checkoutHandback(ctx, cloneDir, cloneURL, forgeToken, *claimed.Handback); err != nil {
+			return stuckReport("could not check out the branch a person handed back", err.Error())
+		}
+		brief := handbackBriefing(ctx, cloneDir, *claimed.Handback, claimed.Round)
+		handedBack = &brief
+		w.Log.Info("standing on the branch a person handed back", "branch", claimed.Handback.Branch, "yielded_at", claimed.Handback.YieldedCommit)
+	}
 	var baseline writerBaseline
 	if writes {
 		recorded, err := recordWriterBaseline(ctx, cloneDir, cloneURL, forgeToken, branch)
@@ -384,7 +399,7 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 		Repo:     ref,
 		Branch:   branch,
 		TraceID:  trace,
-		Briefing: claimed.Briefing,
+		Briefing: withHandback(claimed.Briefing, handedBack),
 
 		ReviewFindings: claimed.ReviewFindings,
 		ActiveWork:     claimed.ActiveWork,
@@ -591,6 +606,7 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 		CatchUp:    board.catchUp,
 		PluginDirs: pluginDirs,
 		Spawner:    w.side().spawner,
+		Yield:      w.yield.channel(),
 	}
 
 	env.BaseEnv = append(env.BaseEnv, gitEnv...)
@@ -619,6 +635,10 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	}
 
 	forgeToken = forgeCred.current(context.WithoutCancel(ctx))
+	if errors.Is(runErr, harness.ErrYielded) {
+		return w.yielded(ctx, report, yieldCheck{writes: writes, dir: cloneDir, cloneURL: cloneURL, token: forgeToken, branch: branch,
+			baseline: baseline, leaks: leaks, trace: trace, reference: work.Reference(item)}, ref, prior, priorErr)
+	}
 	// The PR is the ground truth (git/forge state stays the durable medium).
 	after, prErr := readChangeRequest(ref, forgeToken, branch)
 	if prErr != nil {
@@ -1105,7 +1125,7 @@ func abortOnTermination(parent, runCtx context.Context, cancel context.CancelCau
 	}
 }
 
-func renewLoop(ctx context.Context, cancel context.CancelCauseFunc, api *APIClient, token string, every time.Duration, log *slog.Logger) {
+func renewLoop(ctx context.Context, cancel context.CancelCauseFunc, api *APIClient, token string, every time.Duration, log *slog.Logger, yield func()) {
 	if every < 5*time.Second {
 		every = 5 * time.Second
 	}
@@ -1117,9 +1137,9 @@ func renewLoop(ctx context.Context, cancel context.CancelCauseFunc, api *APIClie
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			gone, err := api.Renew(token)
+			renewal, err := api.Renew(token)
 			switch {
-			case gone:
+			case renewal.Gone:
 				log.Error("lease no longer ours; cancelling run")
 				cancel(errLeaseLost)
 				return
@@ -1133,6 +1153,10 @@ func renewLoop(ctx context.Context, cancel context.CancelCauseFunc, api *APIClie
 				}
 			default:
 				strikes = 0
+				if renewal.Yield && yield != nil {
+					log.Info("a person asked the Run to yield; stopping at the next safe point")
+					yield()
+				}
 			}
 		}
 	}

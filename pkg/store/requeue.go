@@ -87,6 +87,9 @@ type RequeueCommand struct {
 	Note          string   `json:"note"`
 	CommandID     string   `json:"commandId"`
 	ExpectedState string   `json:"expectedState"`
+	// Person is the person the request names (X-Ploeg-Actor). It is not
+	// part of the command's fingerprint.
+	Person string `json:"-"`
 }
 
 // RequeueRequest is a validated requeue. PoolUSD is the resolved pool,
@@ -112,6 +115,10 @@ type RequeueRequest struct {
 	// Command.FromRound, which stays as the caller sent it so a replay of
 	// the command matches.
 	ResumeFromRound int
+	// Person is the person the request names (X-Ploeg-Actor). While a
+	// person holds the Work Item after a take-over, only they requeue it,
+	// which hands it back (ADR-0142).
+	Person string
 }
 
 // Requeued is the result of a requeue, or of its replay.
@@ -197,6 +204,10 @@ func (s *Store) RequeueWorkItem(ctx context.Context, req RequeueRequest) (Requeu
 	if live || req.Team != team || !restartableByOperator(state) {
 		return out, ErrNotRequeueable
 	}
+	taken, err := activeTakeOverFor(ctx, tx, req.WorkItemID, req.Person)
+	if err != nil {
+		return out, err
+	}
 	if req.NeedsPullRequest {
 		var delivered bool
 		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM agent_runs
@@ -243,6 +254,11 @@ func (s *Store) RequeueWorkItem(ctx context.Context, req RequeueRequest) (Requeu
 		}
 	}
 
+	if taken.ID != 0 {
+		if err := recordHandBack(ctx, tx, taken.ID, out.ShiftID); err != nil {
+			return out, err
+		}
+	}
 	resumes := 0
 	if req.Command.Resume {
 		resumes = req.ResumesRound
@@ -270,6 +286,9 @@ func (s *Store) RequeueWorkItem(ctx context.Context, req RequeueRequest) (Requeu
 	if out.ShiftID != 0 {
 		detail["shift"] = out.ShiftID
 	}
+	if taken.ID != 0 {
+		detail["handed_back"] = taken.ID
+	}
 	if err := audit(ctx, tx, req.Actor, AuditWorkItemRequeued, &req.WorkItemID, detail); err != nil {
 		return out, err
 	}
@@ -294,6 +313,9 @@ type RestartBrief struct {
 	PreviousShiftID     int64
 	PreviousCloseReason string
 	FailedRuns          []RestartFailedRun
+	// HandedBack is set when the Shift opened from a hand back after a
+	// take-over (ADR-0142).
+	HandedBack *Handback
 }
 
 // RestartFailedRun is one Run of the previous Shift that failed or reported
@@ -318,6 +340,11 @@ func (s *Store) ShiftRestartBrief(ctx context.Context, shiftID int64) (RestartBr
 	}
 	if err != nil {
 		return b, false, err
+	}
+	if h, ok, err := s.HandbackFor(ctx, shiftID); err != nil {
+		return b, false, err
+	} else if ok {
+		b.HandedBack = &h
 	}
 	if b.PreviousShiftID == 0 {
 		return b, true, nil

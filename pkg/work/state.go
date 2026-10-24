@@ -11,11 +11,12 @@ func Terminal(s State) bool {
 
 // StateForOutcome maps a terminal Outcome to the Work Item state it produces:
 // stuck routes to a human queue (R4), failed releases the lease for retry
-// (R5), a pull request opened or updated awaits human review, and everything
-// else completes the item.
+// (R5), a yielded Run waits for the person who took it over, a pull request
+// opened or updated awaits human review, and everything else completes the
+// item.
 func StateForOutcome(o Outcome) State {
 	switch o {
-	case OutcomeStuck:
+	case OutcomeStuck, OutcomeYielded:
 		return StateNeedsHuman
 	case OutcomeFailed:
 		return StateQueued

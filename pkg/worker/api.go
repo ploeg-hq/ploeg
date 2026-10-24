@@ -32,7 +32,11 @@ type APIClient struct {
 	// HarnessVersion is sent with each claim when the worker knows it, so a
 	// Run that dies before reporting still records it (ADR-0097).
 	HarnessVersion string
-	controlTokens  sync.Map
+	// Yields is sent with each claim when the worker's Harness can stop at
+	// a safe point for a person (ADR-0142), so ploegd refuses a take-over of
+	// a Run that cannot.
+	Yields        bool
+	controlTokens sync.Map
 }
 
 type ClaimResponse struct {
@@ -89,6 +93,10 @@ type ClaimResponse struct {
 	// claim (ADR-0124). Nil from an older ploegd: the Run then neither
 	// reports its briefing nor catches up.
 	Board *work.BoardVersions `json:"board,omitempty"`
+	// Handback is set on the first writing Run of a Shift a person handed
+	// back (ADR-0142): the worker checks the branch out as the person left
+	// it and names the commits they added. Nil from an older ploegd.
+	Handback *work.Handback `json:"handback,omitempty"`
 }
 
 // Claim returns nil when the queue is empty (HTTP 204) — the empty-handed
@@ -97,7 +105,7 @@ type ClaimResponse struct {
 //
 // An empty role is the pre-Shift claim.
 func (a *APIClient) Claim(team, role string) (*ClaimResponse, error) {
-	req := map[string]string{"team": team}
+	req := map[string]any{"team": team}
 	if role != "" {
 		req["role"] = role
 	}
@@ -109,6 +117,9 @@ func (a *APIClient) Claim(team, role string) (*ClaimResponse, error) {
 	}
 	if a.HarnessVersion != "" {
 		req["harnessVersion"] = a.HarnessVersion
+	}
+	if a.Yields {
+		req["yields"] = true
 	}
 	body, _ := json.Marshal(req)
 	resp, err := a.request(context.Background(), http.MethodPost, "/api/v1/claim", body, a.BootstrapToken)
@@ -136,20 +147,32 @@ func (a *APIClient) Claim(team, role string) (*ClaimResponse, error) {
 	}
 }
 
-// Renew returns gone=true when the lease is not ours anymore (404).
-func (a *APIClient) Renew(token string) (bool, error) {
+// Renewal is ploegd's answer to a lease renewal. Gone is true when the lease
+// is not ours anymore (404); Yield is true once a person asked the Run to
+// yield (ADR-0142).
+type Renewal struct {
+	Gone  bool
+	Yield bool
+}
+
+// Renew renews the Run's lease.
+func (a *APIClient) Renew(token string) (Renewal, error) {
 	resp, err := a.request(context.Background(), http.MethodPost, "/api/v1/runs/"+token+"/renew", nil, a.runCredential(token))
 	if err != nil {
-		return false, err
+		return Renewal{}, err
 	}
 	defer resp.Body.Close()
 	switch resp.StatusCode {
 	case http.StatusOK:
-		return false, nil
+		var body struct {
+			Yield bool `json:"yield"`
+		}
+		_ = json.NewDecoder(io.LimitReader(resp.Body, 4096)).Decode(&body)
+		return Renewal{Yield: body.Yield}, nil
 	case http.StatusNotFound, http.StatusUnauthorized, http.StatusForbidden:
-		return true, nil
+		return Renewal{Gone: true}, nil
 	default:
-		return false, fmt.Errorf("renew: HTTP %d", resp.StatusCode)
+		return Renewal{}, fmt.Errorf("renew: HTTP %d", resp.StatusCode)
 	}
 }
 

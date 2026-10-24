@@ -11,6 +11,7 @@ import (
 
 	"github.com/ploeg-hq/ploeg/pkg/findings"
 	"github.com/ploeg-hq/ploeg/pkg/harness"
+	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
 // Findings by id, their answers and questions (ADR-0121).
@@ -416,11 +417,14 @@ type ParkedQuestion struct {
 	Round      int
 	Remaining  float64
 	Waiting    []string
+	// Reason is why the Shift parked: question_for_person, or taken_over
+	// when a person took its Run over (ADR-0142).
+	Reason string
 }
 
 // ParkedOnQuestion returns the Work Item's parked Shift, or false when its
-// last Shift is open, did not stop on a question to a person, or the Work
-// Item is no longer needs_human.
+// last Shift is open, did not stop on a question to a person or for a person
+// who took it over, or the Work Item is no longer needs_human.
 func (s *Store) ParkedOnQuestion(ctx context.Context, workItemID int64) (ParkedQuestion, bool, error) {
 	p := ParkedQuestion{WorkItemID: workItemID}
 	var state, reason string
@@ -434,14 +438,22 @@ func (s *Store) ParkedOnQuestion(ctx context.Context, workItemID int64) (ParkedQ
 	if err != nil {
 		return p, false, err
 	}
-	if !closed || reason != CloseReasonQuestionForPerson || state != "needs_human" {
+	if !closed || (reason != CloseReasonQuestionForPerson && reason != work.CloseReasonTakenOver) || state != "needs_human" {
 		return p, false, nil
 	}
+	p.Reason = reason
 	ledger, err := s.Ledger(ctx, p.ShiftID)
 	if err != nil {
 		return p, false, err
 	}
 	p.Remaining = max(ledger.Remaining(), 0)
+	if reason == work.CloseReasonTakenOver {
+		unspent, err := s.yieldedUnspent(ctx, p.ShiftID)
+		if err != nil {
+			return p, false, err
+		}
+		p.Remaining += unspent
+	}
 	waiting, err := s.QuestionsForPerson(ctx, workItemID, p.ShiftID, p.Round)
 	if err != nil {
 		return p, false, err
@@ -510,4 +522,7 @@ type ResumePlan struct {
 	RoundCapUSD float64
 	PoolUSD     float64
 	Waiting     []string
+	// Reason is why the parked Shift stopped: question_for_person or
+	// taken_over (ADR-0142).
+	Reason string
 }

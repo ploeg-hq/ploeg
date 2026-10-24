@@ -198,6 +198,7 @@ func (s *Server) operatorHandler() http.Handler {
 	mux.HandleFunc("POST /api/v1/operator/work-items/{id}/cancel", s.handleOperatorCancel)
 	mux.HandleFunc("POST /api/v1/operator/work-items/{id}/requeue", s.handleOperatorRequeue)
 	mux.HandleFunc("POST /api/v1/operator/work-items/{id}/notes", s.handleOperatorNote)
+	mux.HandleFunc("POST /api/v1/operator/work-items/{id}/take-over", s.handleOperatorTakeOver)
 	mux.HandleFunc("POST /api/v1/operator/work-items/{id}/claim", s.handleClientClaim)
 	mux.HandleFunc("POST /api/v1/operator/work-items/{id}/questions/{question}/answer", s.handleOperatorQuestionAnswer)
 	mux.HandleFunc("GET /api/v1/operator/summary", s.handleOperatorSummary)
@@ -293,6 +294,7 @@ func (s *Server) handleOperatorItem(w http.ResponseWriter, r *http.Request) {
 	}
 	s.linkTask(&detail.Item)
 	detail.Resume = s.resumeOffer(r.Context(), id)
+	detail.TakeOver = s.takeOverDetail(r.Context(), id)
 	operatorJSON(w, 200, struct {
 		SchemaVersion string `json:"schemaVersion"`
 		store.OperatorDetail

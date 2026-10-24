@@ -105,6 +105,9 @@
     },
     {
       "$ref": "#/$defs/connectionsResponse"
+    },
+    {
+      "$ref": "#/$defs/takeOverResponse"
     }
   ],
   "$defs": {
@@ -878,7 +881,8 @@
                 "follow_up_created",
                 "stuck",
                 "failed",
-                "no_change_needed"
+                "no_change_needed",
+                "yielded"
               ]
             },
             {
@@ -1467,6 +1471,17 @@
             }
           ],
           "description": "Set when the Work Item's last Shift stopped on a question to a person and the Team's plan can reopen its Round; null otherwise. Absent from an older ploegd."
+        },
+        "takeOver": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/takeOver"
+            }
+          ],
+          "description": "The Work Item's newest take-over by a person (ADR-0142, proposed); null when nobody took it over. Absent from an older ploegd."
         }
       }
     },
@@ -1674,7 +1689,7 @@
         },
         "resume": {
           "type": "boolean",
-          "description": "True resumes a Work Item whose last Shift stopped on a question to a person (ADR-0121): the new Shift reopens the plan Round that asked (the detail's resume.fromRound) on the parked Shift's branch, keeps the earlier Rounds' work, findings and answers in its briefing, and gets the parked Shift's unspent pool, at least that Round's cap, unless poolUsd is given. It cannot be combined with fromRound (400). 409 nothing_to_resume when the last Shift did not stop on such a question, 409 question_unanswered while one of its questions has no answer. Absent or false is the full restart."
+          "description": "True resumes a Work Item whose last Shift stopped on a question to a person (ADR-0121), or hands back one a person took over (ADR-0142, proposed): the new Shift reopens the plan Round that asked (the detail's resume.fromRound) on the parked Shift's branch, keeps the earlier Rounds' work, findings and answers in its briefing, and gets the parked Shift's unspent pool, at least that Round's cap, unless poolUsd is given. It cannot be combined with fromRound (400). 409 nothing_to_resume when the last Shift did not stop on such a question, 409 question_unanswered while one of its questions has no answer. Absent or false is the full restart. While a person holds a Work Item they took over, any requeue, resume or not, is accepted only when X-Ploeg-Actor names that person (409 taken_over_by_another otherwise), and it hands the Work Item back."
         }
       }
     },
@@ -5950,7 +5965,7 @@
     "resumeOffer": {
       "type": "object",
       "additionalProperties": false,
-      "description": "What POST .../requeue with resume true would do (ADR-0121).",
+      "description": "What POST .../requeue with resume true would do (ADR-0121, ADR-0142).",
       "required": [
         "shiftId",
         "askedRound",
@@ -5969,7 +5984,7 @@
         "askedRound": {
           "type": "integer",
           "minimum": 1,
-          "description": "the parked Shift's Round whose Run asked"
+          "description": "the parked Shift's Round whose Run asked, or whose Run a person took over"
         },
         "fromRound": {
           "type": "integer",
@@ -5997,6 +6012,13 @@
             "pattern": "^q[1-9][0-9]{0,18}-[1-9][0-9]{0,3}$"
           },
           "description": "the questions of the parked Round still without an answer"
+        },
+        "reason": {
+          "enum": [
+            "question_for_person",
+            "taken_over"
+          ],
+          "description": "Why the parked Shift stopped: a Run asked a person a question (ADR-0121), or a person took its Run over and the resume is their hand back (ADR-0142, proposed). Absent from an older ploegd, which only parks on a question."
         }
       }
     },
@@ -7212,6 +7234,224 @@
                   }
                 }
               }
+            }
+          }
+        }
+      }
+    },
+    "takeOver": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "A person's take-over of a Work Item's running Runs (ADR-0142, proposed).",
+      "required": [
+        "id",
+        "state",
+        "by",
+        "shiftId",
+        "round",
+        "branch",
+        "requestedAt",
+        "yieldedAt",
+        "commit",
+        "workInProgress",
+        "pushed",
+        "detail",
+        "handedBackAt",
+        "handedBackShiftId"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]{0,18}$"
+        },
+        "state": {
+          "enum": [
+            "yielding",
+            "taken_over",
+            "handed_back",
+            "ended"
+          ],
+          "description": "yielding while the Shift's Runs stop at their next safe point; taken_over once the Shift closed and the Work Item waits at needs_human for the person; handed_back after their requeue; ended when the Shift closed for another reason first, such as a credential leak or a cancel."
+        },
+        "by": {
+          "type": "string",
+          "description": "The person who took it over (X-Ploeg-Actor), the only one who hands it back"
+        },
+        "shiftId": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]{0,18}$",
+          "description": "The Shift whose Runs were asked to yield"
+        },
+        "round": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "The Shift's Round when it was taken over"
+        },
+        "branch": {
+          "type": "string",
+          "description": "The Work Item's branch, where the yielded work is"
+        },
+        "requestedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "yieldedAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time",
+          "description": "When a Run reported yielded; null until then, and when the Run finished another way"
+        },
+        "commit": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$",
+          "description": "The branch head on the forge after the yielded Run pushed; null until it yielded or when it pushed nothing"
+        },
+        "workInProgress": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$",
+          "description": "The marked work in progress commit the worker made of the agent's uncommitted changes; null when there were none"
+        },
+        "pushed": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "False when the worker could not put the work on the forge; null until a Run yielded"
+        },
+        "detail": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Why the work is not on the forge, when pushed is false"
+        },
+        "handedBackAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "handedBackShiftId": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[1-9][0-9]{0,18}$",
+          "description": "The Shift the hand back opened"
+        }
+      }
+    },
+    "takeOverRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "commandId"
+      ],
+      "description": "Body of POST /api/v1/operator/work-items/{id}/take-over (ADR-0142, proposed). Needs X-Ploeg-Actor; when the Work Item acts for a known person, it must name that person.",
+      "properties": {
+        "commandId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+          "description": "Idempotency key, unique per consumer. A replay returns the first take-over with replayed true; the same commandId with another Work Item, actor or expectedShiftId answers 409 command_conflict."
+        },
+        "expectedShiftId": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]{0,18}$",
+          "description": "The Shift the caller saw. When the item's open Shift differs, or none is open, the take-over answers 409 shift_changed and changes nothing."
+        }
+      }
+    },
+    "takeOverResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "takeOver"
+      ],
+      "description": "HTTP 202 answer of POST /api/v1/operator/work-items/{id}/take-over: the Runs were asked to yield, and the Work Item detail's takeOver follows the yield.",
+      "properties": {
+        "schemaVersion": {
+          "const": "1.0"
+        },
+        "takeOver": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "workItemId",
+            "shiftId",
+            "round",
+            "branch",
+            "state",
+            "runs",
+            "cancelledPendingRuns",
+            "commandId",
+            "replayed"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,18}$"
+            },
+            "workItemId": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,18}$"
+            },
+            "shiftId": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,18}$"
+            },
+            "round": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "branch": {
+              "type": "string"
+            },
+            "state": {
+              "$ref": "#/$defs/takeOver/properties/state"
+            },
+            "runs": {
+              "type": "array",
+              "description": "The running Runs asked to yield",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "role"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "pattern": "^[1-9][0-9]{0,18}$"
+                  },
+                  "role": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "cancelledPendingRuns": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Runs of the Shift nobody had claimed, cancelled so the Round ends with the yield; 0 on a replay"
+            },
+            "commandId": {
+              "type": "string"
+            },
+            "replayed": {
+              "type": "boolean",
+              "description": "True when commandId repeated an earlier take-over and nothing changed"
             }
           }
         }

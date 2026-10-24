@@ -51,7 +51,7 @@ func (e *Engine) parkForQuestions(ctx context.Context, si store.ShiftInfo, repor
 }
 
 // ResumePlan returns the resume of a Work Item parked on a question to a
-// person, or false when there is nothing to resume or the Team's plan no
+// person or for a person who took its Run over (ADR-0142), or false when there is nothing to resume or the Team's plan no
 // longer has a Round for it.
 func (e *Engine) ResumePlan(ctx context.Context, workItemID int64) (store.ResumePlan, bool, error) {
 	parked, ok, err := e.Store.ParkedOnQuestion(ctx, workItemID)
@@ -72,7 +72,7 @@ func (e *Engine) ResumePlan(ctx context.Context, workItemID int64) (store.Resume
 	if from < 1 {
 		return store.ResumePlan{}, false, nil
 	}
-	p := store.ResumePlan{ShiftID: parked.ShiftID, AskedRound: parked.Round, FromRound: from, Waiting: parked.Waiting}
+	p := store.ResumePlan{ShiftID: parked.ShiftID, AskedRound: parked.Round, FromRound: from, Waiting: parked.Waiting, Reason: parked.Reason}
 	for _, role := range tp.Rounds[from-1].Roles {
 		p.RoundCapUSD += role.CapUSD()
 	}

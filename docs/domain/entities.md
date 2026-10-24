@@ -87,6 +87,7 @@ stateDiagram-v2
     active --> queued : Lease expired or Run failed, retries remaining
     active --> stale : Lease expired repeatedly without an Outcome (threshold reached)
     active --> needs_human : stuck Outcome reported (mandatory reason)
+    active --> needs_human : A person took over its running Run and the Round ended (ADR-0142, proposed)
     active --> done : Terminal Outcome reported (issue_updated, follow_up_created, no_change_needed)
     active --> awaiting_review : A pull request was opened or updated and the Shift closed successfully
     awaiting_review --> queued : Re-assignment in the tracker is a fresh mandate
@@ -166,7 +167,7 @@ One execution of one Role, realized as a Kubernetes Job or as an execution deleg
 | `state` | `enum(pending, running, finished)` |  | A Round materialises its Runs as pending rows; pending rows are also the scale signal. |
 | `authorized` | `decimal` |  | The ceiling this Run may spend, min(role cap, pool remaining). While the Run is unsettled it is held against the Shift pool, and the sum over its Runs is the Shift's Hold (ADR-0012). |
 | `expires_at` | `timestamp` |  | This Run's own liveness deadline. Not the Lease's — a reader has no Lease to expire. |
-| `outcome` | `enum(pr_opened, pr_updated, issue_updated, follow_up_created, stuck, failed, no_change_needed)` |  | Reported terminal result, or failure recorded by controller recovery when the applicable expiry rule fires. |
+| `outcome` | `enum(pr_opened, pr_updated, issue_updated, follow_up_created, stuck, failed, no_change_needed, yielded)` |  | Reported terminal result, or failure recorded by controller recovery when the applicable expiry rule fires. |
 | `started_at` | `timestamp` |  |  |
 | `finished_at` | `timestamp` |  |  |
 

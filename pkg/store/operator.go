@@ -365,6 +365,31 @@ type OperatorDetail struct {
 	// stopped on a question to a person; nil otherwise. The shift engine
 	// fills it.
 	Resume *OperatorResume `json:"resume"`
+	// TakeOver is the Work Item's newest take-over by a person (ADR-0142);
+	// nil when nobody took it over.
+	TakeOver *OperatorTakeOver `json:"takeOver"`
+}
+
+// OperatorTakeOver is a take-over as the Work Item detail shows it (ADR-0142).
+// Commit is the branch head the yielded Run left on the forge, WorkInProgress
+// the commit the worker made of its uncommitted changes, and Pushed false
+// with Detail when the work is not on the forge; all three are null until
+// the Run yielded, and stay null when it finished another way.
+type OperatorTakeOver struct {
+	ID                string     `json:"id"`
+	State             string     `json:"state"`
+	By                string     `json:"by"`
+	ShiftID           string     `json:"shiftId"`
+	Round             int        `json:"round"`
+	Branch            string     `json:"branch"`
+	RequestedAt       time.Time  `json:"requestedAt"`
+	YieldedAt         *time.Time `json:"yieldedAt"`
+	Commit            *string    `json:"commit"`
+	WorkInProgress    *string    `json:"workInProgress"`
+	Pushed            *bool      `json:"pushed"`
+	Detail            *string    `json:"detail"`
+	HandedBackAt      *time.Time `json:"handedBackAt"`
+	HandedBackShiftID *string    `json:"handedBackShiftId"`
 }
 
 // OperatorResume is a resume a consumer can offer (ADR-0121).
@@ -376,6 +401,9 @@ type OperatorResume struct {
 	PoolUSD            float64  `json:"poolUsd"`
 	Ready              bool     `json:"ready"`
 	WaitingQuestionIDs []string `json:"waitingQuestionIds"`
+	// Reason is why the parked Shift stopped: question_for_person, or
+	// taken_over when the resume is a person's hand back (ADR-0142).
+	Reason string `json:"reason,omitempty"`
 }
 
 type OperatorTruncated struct {

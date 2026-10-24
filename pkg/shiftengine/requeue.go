@@ -23,7 +23,7 @@ func (e *Engine) Requeue(ctx context.Context, workItemID int64, teams []string, 
 		return store.Requeued{WorkItemID: workItemID}, err
 	}
 	req := store.RequeueRequest{WorkItemID: workItemID, Teams: teams, Team: item.Team, Actor: actor,
-		Command: cmd, Branch: work.Branch(item)}
+		Command: cmd, Branch: work.Branch(item), Person: cmd.Person}
 	var resumePool *float64
 	if cmd.Resume {
 		plan, ok, err := e.ResumePlan(ctx, workItemID)
