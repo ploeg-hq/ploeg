@@ -1,0 +1,28 @@
+accepted:
+  - rule: go/weak-sensitive-data-hashing
+    file: pkg/llmbroker/litellm.go
+    dismissal: false positive
+    reason: >-
+      SHA-256 of a LiteLLM virtual key is the identifier LiteLLM's own API uses for that key, not a stored
+      password hash. The key is 256 bits of gateway-generated randomness, so a slow password hash adds no
+      resistance and would break the lookup.
+  - rule: go/weak-sensitive-data-hashing
+    file: pkg/httpapi/llm_control.go
+    dismissal: false positive
+    reason: >-
+      Ploeg records the SHA-256 of the minted LiteLLM key so it can meter and revoke the key without
+      keeping it. That is the identifier LiteLLM's API expects; the key is gateway-generated randomness,
+      not a password.
+  - rule: go/clear-text-logging
+    file: pkg/httpapi/server.go
+    dismissal: false positive
+    reason: >-
+      The logged value is the forge's webhook delivery ID (X-Forgejo-Delivery, X-Gitea-Delivery,
+      X-GitHub-Delivery), a public per-delivery UUID that operators need to trace redeliveries. CodeQL
+      treats every request header as sensitive; this one carries no credential.
+  - rule: go/clear-text-logging
+    file: pkg/httpapi/operator_proposed.go
+    dismissal: false positive
+    reason: >-
+      The logged value is the acting user an authenticated operator consumer names in X-Ploeg-Acting-User,
+      written to the audit log on purpose. It is a user name, not a credential, and slog quotes it.
