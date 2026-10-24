@@ -50,17 +50,21 @@ func ParseVerifyCommands(raw string) ([]string, error) {
 // writeVerifyScript writes the script the harness runs as $PLOEG_VERIFY_SCRIPT.
 // It runs the same commands, in the same order, as runVerification.
 func writeVerifyScript(dir string, cmds []string) (string, error) {
+	return writeCheckScript(dir, verifyScriptName, cmds)
+}
+
+func writeCheckScript(dir, name string, cmds []string) (string, error) {
 	var b strings.Builder
 	b.WriteString("#!/bin/sh\n")
 	b.WriteString("run() {\n")
 	b.WriteString("\tprintf '+ %s\\n' \"$1\" >&2\n")
-	b.WriteString("\tsh -c \"$1\" || { status=$?; printf 'ploeg-verify: \"%s\" failed with exit status %s\\n' \"$1\" \"$status\" >&2; exit \"$status\"; }\n")
+	fmt.Fprintf(&b, "\tsh -c \"$1\" || { status=$?; printf '%s: \"%%s\" failed with exit status %%s\\n' \"$1\" \"$status\" >&2; exit \"$status\"; }\n", name)
 	b.WriteString("}\n")
 	for _, c := range cmds {
 		fmt.Fprintf(&b, "run %s\n", shellQuote(c))
 	}
-	fmt.Fprintf(&b, "printf 'ploeg-verify: all %d checks passed\\n' >&2\n", len(cmds))
-	path := filepath.Join(dir, verifyScriptName)
+	fmt.Fprintf(&b, "printf '%s: all %d checks passed\\n' >&2\n", name, len(cmds))
+	path := filepath.Join(dir, name)
 	if err := os.WriteFile(path, []byte(b.String()), 0o755); err != nil {
 		return "", err
 	}
@@ -302,7 +306,14 @@ func (v verification) markdown() string {
 	if v.Dirty {
 		b.WriteString(" The working tree had uncommitted changes, so the result may not match what was pushed.")
 	}
-	b.WriteString("\n\n| Check | Result |\n| --- | --- |\n")
+	b.WriteString("\n\n")
+	b.WriteString(v.checkTable())
+	return b.String()
+}
+
+func (v verification) checkTable() string {
+	var b strings.Builder
+	b.WriteString("| Check | Result |\n| --- | --- |\n")
 	for _, c := range v.Checks {
 		result := "passed"
 		switch {

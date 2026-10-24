@@ -24,7 +24,7 @@ Existing WebGrip desired state remains in [homelab-cluster](https://forgejo.webg
 ## Vulnerability and static analysis gates
 
 - [image-security.yml](../../.github/workflows/image-security.yml) builds every image listed in [images.yaml](../../ops/security/images.yaml) and runs the [CVE gate](../../ops/vex/README.md) on it. It also runs the gate's self-test and `govulncheck ./...`. It runs on pull requests, on pushes and daily, and fails on any Critical or High finding that no reviewed OpenVEX statement covers, and on any reachable Go vulnerability.
-- [codeql.yml](../../.github/workflows/codeql.yml) runs CodeQL for Go with `security-extended` and fails on a result of security severity 7.0 or more.
+- [codeql.yml](../../.github/workflows/codeql.yml) runs CodeQL for Go with `security-extended` and fails on a result of security severity 7.0 or more that [codeql-accepted.yaml](../../ops/security/codeql-accepted.yaml) does not accept with a written reason. Pull requests are judged on changed lines, pushes on the whole tree.
 - [scorecard.yml](../../.github/workflows/scorecard.yml) publishes the OpenSSF Scorecard of `development`.
 - The release runs the same CVE gate against each pushed digest before tagging or signing it ([ADR 0145](../adrs/0145-a-release-publishes-no-image-over-its-cve-budget-and-attaches-signed-openvex-to-every-digest.md)).
 
