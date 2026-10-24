@@ -42,6 +42,7 @@ type httpConfig struct {
 	servers         []*mcp.Server
 	verifier        *mcpauth.Verifier
 	exchanger       *mcpauth.Exchanger
+	confirmations   *confirmations
 }
 
 var tokenEnvName = regexp.MustCompile(`^[A-Z][A-Z0-9_]{0,127}$`)
@@ -100,6 +101,12 @@ func loadHTTPConfig(getenv func(string) string, lookup func(string) (string, boo
 	if cfg.exchanger, err = loadExchanger(getenv); err != nil {
 		return nil, err
 	}
+	if cfg.confirmations, err = loadConfirmations(getenv); err != nil {
+		return nil, err
+	}
+	if cfg.confirmations == nil && slices.ContainsFunc(cfg.groups, func(g groupConsumer) bool { return g.Execute }) {
+		return nil, fmt.Errorf("a group in PLOEG_MCP_GROUPS is marked execute, so %s must hold the key that signs each person's confirmation; set it from a Secret", confirmationKeyEnv)
+	}
 	base := getenv("PLOEG_URL")
 	for _, g := range cfg.groups {
 		token, _ := lookup(g.TokenEnv)
@@ -107,7 +114,11 @@ func loadHTTPConfig(getenv func(string) string, lookup func(string) (string, boo
 		if err != nil {
 			return nil, fmt.Errorf("group %q: PLOEG_URL or %s: %w", g.Group, g.TokenEnv, err)
 		}
-		cfg.servers = append(cfg.servers, newExchangingServer(client, g.Execute, cfg.exchanger))
+		var confirm *confirmations
+		if g.Execute {
+			confirm = cfg.confirmations
+		}
+		cfg.servers = append(cfg.servers, newExchangingServer(client, confirm, cfg.exchanger))
 	}
 	return cfg, nil
 }
@@ -206,7 +217,7 @@ func (cfg *httpConfig) admit(next http.Handler, logger *slog.Logger) http.Handle
 				id := operatorclient.PersonID(cfg.personNamespace, info.UserID)
 				logger.Info("mcp request", "sub", info.UserID, "person", id, "username", username, "group", g.Group, "method", r.Method)
 				ctx := context.WithValue(r.Context(), consumerKey{}, i)
-				p := person{ID: id, Subject: info.UserID, Username: username}
+				p := person{ID: id, Username: username}
 				if cfg.exchanger != nil && g.Execute {
 					if fields := strings.Fields(r.Header.Get("Authorization")); len(fields) == 2 {
 						p.token = fields[1]

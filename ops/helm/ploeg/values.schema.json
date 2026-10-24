@@ -277,6 +277,9 @@
             "type": "object"
           }
         },
+        "confirmationKeySecret": {
+          "$ref": "#/definitions/secretRef"
+        },
         "annotations": {
           "type": "object",
           "additionalProperties": {
@@ -1256,6 +1259,11 @@
               "harness": {
                 "$ref": "#/definitions/harness"
               },
+              "runtimeClassName": {
+                "type": "string",
+                "pattern": "^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*)?$",
+                "description": "This team's worker RuntimeClass under every executor type; a Role's runtimeClassName overrides it. Empty = executor.runtimeClassName."
+              },
               "sandbox": {
                 "$ref": "#/definitions/sandboxOverride"
               },
@@ -1427,6 +1435,11 @@
         "workerSecurityContext": {
           "type": "object",
           "description": "The harness container's securityContext. The default meets the restricted Pod Security Standard; {} drops it for a harness image that must run as root."
+        },
+        "runtimeClassName": {
+          "type": "string",
+          "pattern": "^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*)?$",
+          "description": "RuntimeClass for every worker pod under every executor type; a team's or Role's runtimeClassName overrides it. Empty = the node's default runtime. Under the sandbox executor, executor.sandbox.runtimeClassName is read first."
         },
         "nodeSelector": {
           "type": [
@@ -1733,12 +1746,12 @@
     },
     "sandboxOverride": {
       "type": "object",
-      "description": "type=sandbox only: overrides executor.sandbox for one team's or Role's SandboxTemplate, field by field. An unset field falls back to the team, then the global block.",
+      "description": "type=sandbox only: overrides executor.sandbox for one team's or Role's SandboxTemplate, field by field. An unset field falls back to the same tier's runtimeClassName, then the next tier.",
       "additionalProperties": false,
       "properties": {
         "runtimeClassName": {
           "type": "string",
-          "description": "RuntimeClass for the agent-sandbox pod; empty = fall back to the team, then executor.sandbox.runtimeClassName."
+          "description": "RuntimeClass for the agent-sandbox pod, read before the same tier's runtimeClassName under the sandbox executor only; empty = that runtimeClassName, then the next tier (Role, team, executor.sandbox, executor)."
         }
       }
     },
@@ -1776,6 +1789,11 @@
         },
         "harness": {
           "$ref": "#/definitions/harness"
+        },
+        "runtimeClassName": {
+          "type": "string",
+          "pattern": "^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*)?$",
+          "description": "This Role's worker RuntimeClass under every executor type. Empty = the team's, then executor.runtimeClassName."
         },
         "sandbox": {
           "$ref": "#/definitions/sandboxOverride"

@@ -1,0 +1,21 @@
+# CI-only values: worker RuntimeClass under the CronJob executor. Team `plain`
+# takes the global `gvisor`; team `vm` overrides it with `kata`. The global
+# executor.sandbox.runtimeClassName must not reach a CronJob pod: it is read
+# under the sandbox executor only.
+executor:
+  enabled: true
+  type: cronjob
+  runtimeClassName: gvisor
+  sandbox:
+    runtimeClassName: sandbox-only
+  teams:
+    - name: plain
+      model: litellm_proxy/deepseek-chat
+      budget: "2"
+      repoOwner: example-org
+      repoName: example
+      baseBranch: development
+    - name: vm
+      model: litellm_proxy/deepseek-chat
+      budget: "2"
+      runtimeClassName: kata

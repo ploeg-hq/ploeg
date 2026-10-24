@@ -412,6 +412,11 @@ spec:
               value: "http://ploeg:8080"
             - name: PLOEG_MCP_LISTEN
               value: ":8090"
+            - name: PLOEG_MCP_CONFIRMATION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ploeg-mcp-confirmation
+                  key: key
             - name: GOMEMLIMIT
               value: "115MiB"
             - name: PLOEG_MCP_CLIENT_IDS
