@@ -26,6 +26,9 @@ func (a *Adapter) Name() string     { return "openhands" }
 func (a *Adapter) ExpectsLLM() bool { return true }
 
 func (a *Adapter) Prepare(spec harness.TaskSpec, env harness.RunEnv) (harness.Invocation, error) {
+	if err := RefuseRepositoryHooks(env.RepoDir); err != nil {
+		return harness.Invocation{}, err
+	}
 	taskPath := filepath.Join(env.ScratchDir, "task.md")
 	if err := os.WriteFile(taskPath, []byte(env.Prompt), 0o644); err != nil {
 		return harness.Invocation{}, err

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/ploeg-hq/ploeg/pkg/harness"
+	"github.com/ploeg-hq/ploeg/pkg/harness/adapters/openhands"
 )
 
 // Profile is how the ACP adapter launches one kind of agent: its command, the
@@ -112,13 +113,17 @@ func opencodeProfile(configJSON string) Profile {
 		Name: "opencode",
 		Argv: []string{"opencode", "acp"},
 		Env:  openAICompatEnv,
-		Configure: func(spec harness.TaskSpec, env harness.RunEnv, _ PermissionMode) ([]string, error) {
+		Configure: func(spec harness.TaskSpec, env harness.RunEnv, mode PermissionMode) ([]string, error) {
 			doc := configJSON
 			if doc == "" {
 				var err error
 				if doc, err = opencodeConfigDoc(env.LLM); err != nil {
 					return nil, err
 				}
+			}
+			doc, err := withOpencodePermission(doc, mode)
+			if err != nil {
+				return nil, err
 			}
 			path := filepath.Join(env.ScratchDir, "opencode-"+safeSuffix(spec.TraceID)+".json")
 			if err := os.WriteFile(path, []byte(doc), 0o600); err != nil {
@@ -156,6 +161,103 @@ func opencodeConfigDoc(l harness.LLMEnv) (string, error) {
 			},
 		},
 		"model": "litellm/" + model,
+	}
+	b, err := json.MarshalIndent(cfg, "", "  ")
+	return string(b), err
+}
+
+// opencodeRule is one entry of an opencode permission block. opencode turns the
+// block into an ordered ruleset and the LAST rule that matches a tool decides
+// (permission/index.ts at 1.18.30), so the order is part of the meaning and a
+// Go map, which marshals in key order, cannot carry it.
+type opencodeRule struct {
+	permission string
+	action     string
+}
+
+type opencodeRules []opencodeRule
+
+func (rs opencodeRules) MarshalJSON() ([]byte, error) {
+	var b strings.Builder
+	b.WriteByte('{')
+	for i, r := range rs {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		k, err := json.Marshal(r.permission)
+		if err != nil {
+			return nil, err
+		}
+		v, err := json.Marshal(r.action)
+		if err != nil {
+			return nil, err
+		}
+		b.Write(k)
+		b.WriteByte(':')
+		b.Write(v)
+	}
+	b.WriteByte('}')
+	return []byte(b.String()), nil
+}
+
+// opencodeReadOnlyTools are the opencode permissions that only read the
+// working tree. Under allow_read_only the profile grants them in opencode
+// itself, because the adapter's policy grants ToolRead and ToolSearch anyway
+// and a reviewer reads far more often than the permission caps allow requests.
+// A read outside the working directory still asks: opencode checks it as the
+// separate external_directory permission, which stays "ask".
+var opencodeReadOnlyTools = []string{"read", "grep", "glob"}
+
+// opencodePermission is the permission block for a Run's mode, or nil when the
+// mode leaves opencode's own defaults in place. opencode's default ruleset is
+// "*": "allow" and it asks over ACP only for paths outside the working
+// directory, .env reads and doom loops, so without this block an
+// allow_read_only or deny_all Run would edit files and run commands that the
+// adapter's PermissionPolicy never sees. "*": "ask" as the first rule makes
+// every other tool call a session/request_permission the policy answers.
+func opencodePermission(mode PermissionMode) opencodeRules {
+	switch mode {
+	case PermissionAllowAll:
+		return nil
+	case PermissionReadOnly:
+		rules := opencodeRules{{permission: "*", action: "ask"}}
+		for _, tool := range opencodeReadOnlyTools {
+			rules = append(rules, opencodeRule{permission: tool, action: "allow"})
+		}
+		return rules
+	default:
+		return opencodeRules{{permission: "*", action: "ask"}}
+	}
+}
+
+// withOpencodePermission writes the mode's permission block into an opencode
+// config document, replacing any block the document carries, including an
+// operator's configJson override: under a mode other than allow_always the
+// Run's permission mode decides, not the document. Under allow_read_only it
+// also sets experimental.continue_loop_on_deny, so a rejected edit or command
+// reaches the model as a failed tool call and the review continues, instead of
+// opencode ending the turn at the first rejection. A deny_all Run keeps
+// opencode's default and stops at its first rejected call.
+func withOpencodePermission(doc string, mode PermissionMode) (string, error) {
+	rules := opencodePermission(mode)
+	if rules == nil {
+		return doc, nil
+	}
+	var cfg map[string]any
+	if err := json.Unmarshal([]byte(doc), &cfg); err != nil {
+		return "", fmt.Errorf("opencode config is not a JSON object: %w", err)
+	}
+	if cfg == nil {
+		cfg = map[string]any{}
+	}
+	cfg["permission"] = rules
+	if mode == PermissionReadOnly {
+		experimental, _ := cfg["experimental"].(map[string]any)
+		if experimental == nil {
+			experimental = map[string]any{}
+		}
+		experimental["continue_loop_on_deny"] = true
+		cfg["experimental"] = experimental
 	}
 	b, err := json.MarshalIndent(cfg, "", "  ")
 	return string(b), err
@@ -365,6 +467,9 @@ func openhandsProfile() Profile {
 		Configure: func(spec harness.TaskSpec, env harness.RunEnv, _ PermissionMode) ([]string, error) {
 			if env.LLM.Model == "" {
 				return nil, fmt.Errorf("acp profile \"openhands\" needs a model for its agent settings")
+			}
+			if err := openhands.RefuseRepositoryHooks(env.RepoDir); err != nil {
+				return nil, err
 			}
 			dir := filepath.Join(env.ScratchDir, "openhands-"+safeSuffix(spec.TraceID))
 			if err := os.MkdirAll(dir, 0o700); err != nil {

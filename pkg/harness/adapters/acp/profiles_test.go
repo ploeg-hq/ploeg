@@ -2,6 +2,7 @@ package acp
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -9,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/ploeg-hq/ploeg/pkg/harness"
+	"github.com/ploeg-hq/ploeg/pkg/harness/adapters/openhands"
 )
 
 func profileEnv(t *testing.T) harness.RunEnv {
@@ -451,5 +453,196 @@ func TestProfile_GooseWritesNoConfigWhenTheRepositoryShipsNoPlugins(t *testing.T
 	}
 	if _, err := os.Stat(filepath.Join(envValue(t, extra, "GOOSE_PATH_ROOT"), "config", "config.yaml")); !os.IsNotExist(err) {
 		t.Errorf("goose config written for a repository without plugins: %v", err)
+	}
+}
+
+// opencodeDocument prepares the opencode profile under mode and returns the
+// generated config's raw bytes and its parsed form.
+func opencodeDocument(t *testing.T, override string, mode PermissionMode) ([]byte, map[string]any) {
+	t.Helper()
+	p, err := Lookup("opencode", ProfileOverrides{ConfigJSON: override})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, extra, err := p.Prepare(testSpec(), profileEnv(t), mode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(envValue(t, extra, "OPENCODE_CONFIG"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cfg map[string]any
+	if err := json.Unmarshal(raw, &cfg); err != nil {
+		t.Fatalf("opencode config is not JSON: %v\n%s", err, raw)
+	}
+	return raw, cfg
+}
+
+// opencodeRulesIn reads the permission block of a generated document in the
+// order opencode reads it.
+func opencodeRulesIn(t *testing.T, raw []byte) []opencodeRule {
+	t.Helper()
+	var doc struct {
+		Permission json.RawMessage `json:"permission"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	if len(doc.Permission) == 0 {
+		return nil
+	}
+	dec := json.NewDecoder(strings.NewReader(string(doc.Permission)))
+	if _, err := dec.Token(); err != nil {
+		t.Fatal(err)
+	}
+	var rules []opencodeRule
+	for dec.More() {
+		key, err := dec.Token()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var action string
+		if err := dec.Decode(&action); err != nil {
+			t.Fatalf("permission %v is not a plain action: %v", key, err)
+		}
+		rules = append(rules, opencodeRule{permission: key.(string), action: action})
+	}
+	return rules
+}
+
+// opencodeDefaults is the build agent's ruleset in opencode 1.18.30
+// (agent/agent.ts), reduced to the permission names the tests ask about. The
+// generated config's rules come after it, and the last match decides.
+var opencodeDefaults = []opencodeRule{
+	{"*", "allow"}, {"doom_loop", "ask"}, {"external_directory", "ask"},
+	{"question", "deny"}, {"plan_enter", "deny"}, {"plan_exit", "deny"}, {"read", "allow"},
+	{"question", "allow"}, {"plan_enter", "allow"},
+}
+
+func opencodeAction(rules []opencodeRule, permission string) string {
+	action := "ask"
+	for _, r := range rules {
+		if r.permission == "*" || r.permission == permission {
+			action = r.action
+		}
+	}
+	return action
+}
+
+// TestProfile_OpenCodePermissionModeReachesThePolicy follows each opencode tool
+// through the generated config and, when opencode asks, through the adapter's
+// policy with the options opencode offers (acp/permission.ts at 1.18.30).
+// Before the fix the profile ignored the mode, so every one of these ran
+// without asking.
+func TestProfile_OpenCodePermissionModeReachesThePolicy(t *testing.T) {
+	opencodeOptions := []PermissionOption{
+		{ID: "once", Name: "Allow once", Kind: "allow_once"},
+		{ID: "always", Name: "Always allow", Kind: "allow_always"},
+		{ID: "reject", Name: "Reject", Kind: "reject_once"},
+	}
+	tools := []struct {
+		permission string
+		kind       ToolKind
+	}{
+		{"edit", ToolEdit},
+		{"bash", ToolExecute},
+		{"webfetch", ToolFetch},
+		{"task", ToolThink},
+		{"todowrite", ToolOther},
+		{"external_directory", ToolOther},
+		{"read", ToolRead},
+		{"grep", ToolSearch},
+		{"glob", ToolSearch},
+	}
+	runs := func(mode PermissionMode, rules []opencodeRule, permission string, kind ToolKind) bool {
+		switch opencodeAction(append(append([]opencodeRule{}, opencodeDefaults...), rules...), permission) {
+		case "allow":
+			return true
+		case "deny":
+			return false
+		}
+		d := NewPermissionPolicy(mode, 0, 0).Decide(PermissionRequest{ToolKind: kind, Options: opencodeOptions})
+		return d.OptionID == "once" || d.OptionID == "always"
+	}
+	for _, mode := range []PermissionMode{PermissionAllowAll, PermissionReadOnly, PermissionDenyAll} {
+		raw, _ := opencodeDocument(t, "", mode)
+		rules := opencodeRulesIn(t, raw)
+		for _, tool := range tools {
+			got := runs(mode, rules, tool.permission, tool.kind)
+			want := NewPermissionPolicy(mode, 0, 0).allows(tool.kind)
+			if got != want {
+				t.Errorf("under %s opencode %s runs=%v, want %v (the adapter's policy for %s); rules %v", mode, tool.permission, got, want, tool.kind, rules)
+			}
+		}
+	}
+}
+
+func TestProfile_OpenCodeLeavesItsDefaultsUnderAllowAlways(t *testing.T) {
+	raw, cfg := opencodeDocument(t, "", PermissionAllowAll)
+	if _, ok := cfg["permission"]; ok {
+		t.Errorf("an allow_always Run changed opencode's permissions:\n%s", raw)
+	}
+	if _, ok := cfg["experimental"]; ok {
+		t.Errorf("an allow_always Run changed opencode's experimental settings:\n%s", raw)
+	}
+}
+
+func TestProfile_OpenCodeAsksFirstAndGrantsOnlyReadsOnAReadOnlyRun(t *testing.T) {
+	raw, cfg := opencodeDocument(t, "", PermissionReadOnly)
+	rules := opencodeRulesIn(t, raw)
+	want := []opencodeRule{{"*", "ask"}, {"read", "allow"}, {"grep", "allow"}, {"glob", "allow"}}
+	if !slices.Equal(rules, want) {
+		t.Errorf("read-only permission rules = %v, want %v in that order", rules, want)
+	}
+	experimental, _ := cfg["experimental"].(map[string]any)
+	if experimental["continue_loop_on_deny"] != true {
+		t.Errorf("a rejected call would end a read-only Run's turn: %s", raw)
+	}
+}
+
+func TestProfile_OpenCodeAsksForEverythingOnADenyAllRun(t *testing.T) {
+	raw, _ := opencodeDocument(t, "", PermissionDenyAll)
+	if rules := opencodeRulesIn(t, raw); !slices.Equal(rules, []opencodeRule{{"*", "ask"}}) {
+		t.Errorf("deny-all permission rules = %v, want only \"*\": \"ask\"", rules)
+	}
+}
+
+func TestProfile_OpenCodeConfigOverrideCannotWidenTheRunsPermissions(t *testing.T) {
+	override := `{"model":"litellm/hand-written","permission":{"*":"allow","bash":"allow"},"experimental":{"mcp_timeout":5}}`
+	raw, cfg := opencodeDocument(t, override, PermissionReadOnly)
+	if cfg["model"] != "litellm/hand-written" {
+		t.Errorf("override ignored: %s", raw)
+	}
+	if rules := opencodeRulesIn(t, raw); len(rules) == 0 || rules[0] != (opencodeRule{"*", "ask"}) || opencodeAction(rules, "bash") != "ask" {
+		t.Errorf("the override's permissions survived a read-only Run: %v", rules)
+	}
+	experimental, _ := cfg["experimental"].(map[string]any)
+	if experimental["mcp_timeout"] != float64(5) || experimental["continue_loop_on_deny"] != true {
+		t.Errorf("experimental settings = %v, want the override's kept and continue_loop_on_deny added", experimental)
+	}
+	p, _ := Lookup("opencode", ProfileOverrides{ConfigJSON: `not json`})
+	if _, _, err := p.Prepare(testSpec(), profileEnv(t), PermissionDenyAll); err == nil {
+		t.Error("a config override that is not JSON was written unchanged on a deny-all Run")
+	}
+	raw, _ = opencodeDocument(t, `{"hand":"written"}`, PermissionAllowAll)
+	if string(raw) != `{"hand":"written"}` {
+		t.Errorf("an allow_always Run rewrote the override: %s", raw)
+	}
+}
+
+func TestProfile_OpenHandsRefusesARepositoryThatShipsHooks(t *testing.T) {
+	p, _ := Lookup("openhands", ProfileOverrides{})
+	env := profileEnv(t)
+	if err := os.MkdirAll(filepath.Join(env.RepoDir, ".openhands"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(env.RepoDir, ".openhands", "hooks.json"), []byte(`{"SessionStart":[]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, mode := range []PermissionMode{PermissionAllowAll, PermissionReadOnly, PermissionDenyAll} {
+		if _, _, err := p.Prepare(testSpec(), env, mode); !errors.Is(err, openhands.ErrRepositoryHooks) {
+			t.Errorf("under %s the openhands profile prepared a Run on a repository with %s: %v", mode, openhands.RepositoryHooksPath, err)
+		}
 	}
 }
