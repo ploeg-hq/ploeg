@@ -48,6 +48,30 @@ Chosen option: "Run each configured consumer's recipe", because the consumer kee
 
 `bash scripts/test-release-consumers.sh`, run by `mise run verify`, drives the script against a local bare repository and a fake Forgejo. It fails when the branch lacks the recipe's change or the bot's identity, when the recipe can read the token, when a rerun opens a second pull request, when the merge is not retried after 405 or an existing schedule is refused, when a person's `ploeg/` pull request is closed or the bot's older one is not, when an unchanged consumer or a dry run is written to, and when an unsupported forge, a plain-HTTP URL, a URL with credentials, a recipe outside the repository, an unknown field or a non-release tag is accepted. `actionlint` and `zizmor` pass on the workflow. The first candidate after the variable and the secret are set shows a `consumers` job and a pull request on each consumer.
 
+## Amendment 2026-10-24: a consumer may merge its own pull request
+
+A consumer whose release run checks one head of its base branch for longer than releases arrive never released: every merge-when-green pin pull request moved the base branch during the check, so the run found a different head at the end and cut nothing. Three candidates in one afternoon of 2026-10-24 kept the first consumer from releasing for seven hours. The owner decided on 2026-10-24 that such a consumer merges the waiting pin pull request itself, as the first step of its own release run, and that the release stops asking the forge to merge for that consumer only.
+
+* Each `RELEASE_CONSUMERS` entry takes an optional `merge`: `on-green` (the default, the behaviour above) or `by-consumer`. With `by-consumer` the script still pushes `ploeg/<version>`, opens or updates the pull request and closes the bot's superseded `ploeg/` pull requests, but it never calls the merge endpoint, and the pull request body says the consumer merges it.
+* A `by-consumer` entry that also sets `merge_style` is refused, because nothing would read it. An unknown `merge` value is refused.
+* Ploeg still names no consumer: which consumer merges its own pin is configuration in the variable, not code.
+
+### Consequences of the amendment
+
+* Good, because a consumer with a long release check decides when its base branch moves, so its check and its release see the same head.
+* Good, because every other consumer keeps today's behaviour without changing its entry.
+* Bad, because a `by-consumer` pin waits for the consumer's next release run or a person, so it reaches the consumer later than a merge-when-green pin would.
+* Bad, because a consumer that sets `by-consumer` and never merges falls behind silently on Ploeg's side; the consumer's own scheduled check against the newest release is what catches it.
+
+### Confirmation of the amendment
+
+`bash scripts/test-release-consumers.sh`, run by `mise run verify`, fails when an explicit `on-green` entry is not merged when checks succeed, when a `by-consumer` entry calls the merge endpoint, says in its dry run or summary that it merges, keeps the merge-when-green sentence in its body or stops closing the bot's superseded pull request, and when an unknown `merge` value or `merge_style` together with `by-consumer` is accepted.
+
+### Re-evaluation triggers of the amendment
+
+* Forgejo gains a merge queue that keeps a consumer's checked head stable while pins arrive.
+* A second consumer sets `by-consumer`, or a `by-consumer` pin waits more than a day for its consumer.
+
 ## Pros and Cons of the Options
 
 ### Trigger the consumer's Renovate run
@@ -67,4 +91,5 @@ A second forge needs a consumer, Forgejo changes or removes `merge_when_checks_s
 ## More Information
 
 * Owner decisions of 2026-10-18 on the RFC "One delivery contract for every project", phase P1b (homelab-cluster `docs/techdocs/docs/rfc/rfc-unfold-release-train.md`): pattern 3, the producer opens the bump pull request; decision 1B, a dedicated Forgejo user with write access to the one consumer repository.
+* 2026-10-24 — Amended: an entry's optional `merge` may be `by-consumer`, so a consumer whose release run checks one head merges its own pin pull request; `on-green` stays the default.
 * Builds on [ADR 0116](0116-every-releasable-merge-to-development-cuts-a-candidate.md) and [ADR 0117](0117-every-release-publishes-a-contract-bundle-for-consumers.md); keeps [ADR 0069](0069-ploeg-names-none-of-its-consumers.md): consumers are configuration.
