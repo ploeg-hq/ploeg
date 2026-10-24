@@ -348,6 +348,7 @@ Each tree is an OR of branches unless a node says AND. A branch marked **closed 
 - Reach the Kubernetes API with a service-account token — **closed** (no token mounted; verified in golden renders)
 - Reach unrelated services, ploegd internals or cloud metadata over the network — **closed by the chart's worker NetworkPolicy on an enforcing CNI**; open where the CNI ignores it (F-02)
 - Container breakout through the shared kernel — residual; a Kata runtime class reduces it
+- Override the Kata configuration with `io.katacontainers.*` pod annotations and reach node root — **open on Kata Containers up to 4.2.0 installed by kata-deploy**, whose containerd forwards every such annotation to the runtime ([GHSA-37rf-pj8c-g5g3](https://github.com/kata-containers/kata-containers/security/advisories/GHSA-37rf-pj8c-g5g3), fixed in 4.3.0). The chart renders no such annotation, but anyone who can create a pod in a Kata namespace can. Run Kata 4.3.0 or later, or narrow containerd's `pod_annotations` by hand, and refuse the annotations at admission ([ADR-0106](../adrs/0106-a-run-declares-an-isolation-floor-and-a-cell-runs-it-at-the-strictest-class-it-can-honour.md)); **doc only**, estate-side
 
 ### AT3: spend money nobody authorized (denial of wallet)
 

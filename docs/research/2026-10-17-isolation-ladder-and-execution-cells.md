@@ -173,6 +173,14 @@ exception shows on the Run's label. A Role may raise its floor above its team's 
 lower it. On the axes that need no hardware, B, C and D, the chart defaults to the top rung
 it can render, so the product supports every rung and ships the strict one.
 
+> **Update (2026-10-24).** The owner replaced the strictest-class rule above: gVisor
+> (`hardened`) and Kata (`isolated`) are alternatives chosen by fit, not rungs. A team or Role
+> declares the class it wants and a floor below which it waits, and a cell honours the
+> declared class instead of upgrading it. The reasons, and the refusal of `io.katacontainers.*`
+> pod annotations, are in the amended
+> [ADR-0106](../adrs/0106-a-run-declares-an-isolation-floor-and-a-cell-runs-it-at-the-strictest-class-it-can-honour.md).
+> The text above records the 2026-10-17 proposal.
+
 Both writing and reading Roles execute repository code, so they take the same class. The
 difference between them is authority and budget, which the D and E axes already express.
 
@@ -386,6 +394,7 @@ Estate, alongside:
    floor** below which a Run waits rather than degrades. A team lowers its ceiling only with
    a written reason. This is the owner's steer of 2026-10-17, "support many ways, default to
    the most stringent", made mechanical. Recommended.
+   *Replaced 2026-10-24: see the update note in section 6 and ADR-0106.*
 3. **Credentials default to the cell-gateway mode**, with the zero-secret mode per cell.
    Recommended.
 4. **Chart split into hub and cell**, and the product's defaults become the safe shape.
