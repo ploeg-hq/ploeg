@@ -140,6 +140,7 @@ env:
     ploeg-worker: "`off` records no transcript of the agent's session (ADR-0090). Default on: the worker sends the ACP session as typed entries every two seconds, and a transcript that cannot be delivered never changes the Run."
   PLOEG_RUN_TRANSCRIPT_THOUGHTS: "`off` leaves the agent's reasoning (ACP thought chunks) out of the Run's transcript (ADR-0090). Default on."
 helm:
+  claudeRunner.claudeCode: "Where the runner's Claude Code comes from. Ploeg's claude-runner image carries none (ADR-0141): an init container installs the pinned version from Anthropic's GPG-signed release into an emptyDir, which the runner mounts read-only at `/opt/claude-code`. Needs egress to `downloads.claude.ai:443`."
   executor.enabled: Turns on the executor. Requires `executor.litellm.baseUrl`, the forge's `url`, an agent image and, for the keda and sandbox executors, `executor.scaler.host`; the render fails without them. Also requires the LiteLLM and agent-builder secrets and, for DinD harnesses, the privileged-DinD PolicyException.
   executor.workerAuth.mode: "`managed` by default; `legacy` is explicit compatibility and sets the controller's `PLOEG_WORKER_AUTH_MODE=legacy` and the worker's `PLOEG_LLM_CREDENTIAL_MODE=static-compatibility`."
   executor.workerAuth.signingKeySecret: Secret name and key for the controller-only signing material; at least 32 bytes.
