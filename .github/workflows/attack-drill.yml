@@ -1,9 +1,11 @@
 name: Attack drill
 # A recurring drill (ADR-0126) that exercises every supported harness against a
 # hostile repository: prompt-injection instruction files, repository plugins and
-# config that try to auto-start code, and the credential-isolation proxies. It
-# makes no model call — agents stop at session/new and the gateway is
-# unroutable — so it costs no model spend.
+# config that try to auto-start code, the permission mode, and the
+# credential-isolation proxies. It makes no call to a real model — agents stop
+# at session/new or a first prompt against an unroutable gateway, and the
+# permission checks answer from a fake gateway in the test — so it costs no
+# model spend.
 on:
   schedule:
     - cron: "17 5 * * 1" # Mondays 05:17 UTC
@@ -62,6 +64,7 @@ jobs:
       GOOSE_VERSION: 1.52.0
       GOOSE_SHA256: fdc86653285a89f7dcad6e76736af1688ab2cde44661b089328b2fc40bb79f9f
       OPENCODE_VERSION: 1.18.30
+      OPENHANDS_VERSION: 1.16.0
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -83,6 +86,10 @@ jobs:
           npm install -g "opencode-ai@${OPENCODE_VERSION}"
           npm config get prefix >/dev/null
           echo "$(npm config get prefix)/bin" >> "$GITHUB_PATH"
+      - name: Install openhands
+        run: |
+          mise exec -- uv tool install --python 3.12 "openhands==${OPENHANDS_VERSION}"
+          mise exec -- uv tool dir --bin >> "$GITHUB_PATH"
       - name: No repository-supplied code starts in any harness
         run: PLOEG_HOSTILE_REPOSITORY=1 mise exec -- go test -v -count=1 -run TestHostileRepository ./pkg/harness/adapters/acp/
 

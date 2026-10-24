@@ -287,6 +287,17 @@ monitoring:
 operator:
   consumers: []
   deliveryPolicies: []
+  # ADR-0150: an Operator Consumer acting for a person may present that
+  # person's token, exchanged at the identity provider (RFC 8693) for Ploeg's
+  # audience, instead of naming the person in X-Ploeg-Actor. Each consumer
+  # that does lists its identity provider client ids as clientIds. Unset =
+  # no person tokens; clientIds then refuse to start.
+  personTokens: {}
+  #   issuer: https://id.example.com/application/o/ploeg/
+  #   audience: ploeg
+  #   jwksUrl: ""            # empty = the issuer's discovery document
+  #   maxLifetime: 5m        # exp minus iat, at most 1h
+  #   subjectNamespace: ""   # empty = issuer; set it to keep person ids across issuers
 
 # ADR-0047: POST /api/v1/deploys, where a pipeline reports "commit X is live
 # in environment Y". tokenSecret names an existing Secret key holding the

@@ -53,9 +53,26 @@ type acting struct {
 // ploeg-readers to the read-only consumer mcp-reader.
 func newActingRemote(t *testing.T) acting {
 	t.Helper()
+	return newActingRemoteWith(t, actingOptions{})
+}
+
+// actingOptions let a test give mcp-steward clientIds, ploegd person tokens
+// and ploeg-mcp more environment.
+type actingOptions struct {
+	stewardClientIDs []string
+	personTokens     func([]httpapi.OperatorConsumer) *httpapi.PersonTokens
+	env              map[string]string
+}
+
+func newActingRemoteWith(t *testing.T, o actingOptions) acting {
+	t.Helper()
 	stewards, readers, admitter := randomToken(t), randomToken(t), randomToken(t)
+	steward := map[string]any{"name": "mcp-steward", "tokenEnv": "STEWARD", "teams": []string{"pewter", "brass"}, "execute": true}
+	if o.stewardClientIDs != nil {
+		steward["clientIds"] = o.stewardClientIDs
+	}
 	raw, _ := json.Marshal([]map[string]any{
-		{"name": "mcp-steward", "tokenEnv": "STEWARD", "teams": []string{"pewter", "brass"}, "execute": true},
+		steward,
 		{"name": "mcp-reader", "tokenEnv": "READER", "teams": []string{"pewter"}, "execute": false},
 		{"name": "another-consumer", "tokenEnv": "ADMITTER", "teams": []string{"pewter", "tin"}, "execute": true},
 	})
@@ -71,16 +88,23 @@ func newActingRemote(t *testing.T) acting {
 	if err != nil {
 		t.Fatal(err)
 	}
+	var personTokens *httpapi.PersonTokens
+	if o.personTokens != nil {
+		personTokens = o.personTokens(consumers)
+	}
 	log := slog.New(slog.DiscardHandler)
 	app := work.Target{Forge: "forgejo", Owner: "webgrip", Repo: "app", BaseBranch: "development"}
 	ploegd := (&httpapi.Server{Store: testStore, Log: log, LeaseTTL: time.Minute, RoleCaps: plans,
 		Engine:         &shiftengine.Engine{Store: testStore, Plans: plans, Log: log},
 		Readiness:      target.NewGate(map[string]work.Target{"app": app}, map[string]provider.RepositoryInspector{"forgejo": readyForge{}}),
 		WorkerSecurity: &httpapi.WorkerSecurity{AllowLegacy: true},
-		OperatorConfig: httpapi.OperatorConfig{Consumers: consumers, Teams: map[string][]string{"pewter": {"builder"}, "brass": {}, "tin": {}}}}).Handler()
+		OperatorConfig: httpapi.OperatorConfig{Consumers: consumers, PersonTokens: personTokens, Teams: map[string][]string{"pewter": {"builder"}, "brass": {}, "tin": {}}}}).Handler()
+	env := map[string]string{"PLOEG_MCP_SUBJECT_NAMESPACE": personNamespace}
+	for k, v := range o.env {
+		env[k] = v
+	}
 	r := newRemoteTokens(t, func(*remote) http.Handler { return ploegd },
-		`[{"group":"ploeg-stewards","tokenEnv":"ADMINS_TOKEN","execute":true},{"group":"ploeg-readers","tokenEnv":"READERS_TOKEN"}]`, stewards, readers,
-		map[string]string{"PLOEG_MCP_SUBJECT_NAMESPACE": personNamespace})
+		`[{"group":"ploeg-stewards","tokenEnv":"ADMINS_TOKEN","execute":true},{"group":"ploeg-readers","tokenEnv":"READERS_TOKEN"}]`, stewards, readers, env)
 	return acting{remote: r, ploegd: ploegd}
 }
 

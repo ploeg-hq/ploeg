@@ -279,8 +279,11 @@ optional `publisherLogin`. Publication remains disabled when
 must have opened a published pull request. Policies and
 verifier credentials stay in the controller deployment.
 
-The token is supplied as `Authorization: Bearer …`. No consumers configured
-means every operator request is refused. Consumer names and policies may live
+The token is supplied as `Authorization: Bearer …`. An entry may also list
+`clientIds`, the identity provider clients whose person tokens make it the
+caller (ADR-0150); they need `PLOEG_OPERATOR_PERSON_ISSUER` and
+`PLOEG_OPERATOR_PERSON_AUDIENCE`, and no client id may equal that audience.
+No consumers configured means every operator request is refused. Consumer names and policies may live
 in configuration; bearer values belong in the deployment's existing secret
 provisioning path, supplied through environment references.
 
@@ -642,9 +645,27 @@ A person's execution command (`message`, `pause`, `resume`, `cancel`,
 execution's Work Item; the executor's `start`, `heartbeat`, `report` and
 `close` are not. `GET /api/v1/operator/events?actor=<identity>` keeps the
 events whose attribution names that identity as `actor` or `actingUser`;
-events recorded before attribution existed carry none and never match. Ploeg
-trusts the consumer to name the person truthfully: guard a consumer's token
-like an administrator's credential.
+events recorded before attribution existed carry none and never match.
+
+A consumer acting for a person can prove the person instead of naming them
+([ADR-0150](../adrs/0150-an-operator-consumer-proves-the-person-it-acts-for-with-a-token-exchanged-for-ploegs-audience.md)). It exchanges the person's token at the identity
+provider (RFC 8693) for a token whose `aud` is Ploeg's audience
+(`PLOEG_OPERATOR_PERSON_AUDIENCE`) and sends it as `Authorization: Bearer …`;
+ploegd takes the caller from the token's `azp` (or `client_id`), which must be
+one of exactly one consumer's `clientIds`. A consumer may instead keep its own
+bearer and send the person token in `X-Ploeg-Person-Token`; the token's `azp`
+must then be one of that consumer's `clientIds`. ploegd verifies the signature
+against the configured issuer's keys (asymmetric algorithms only), `iss`, `aud`,
+`exp` and `iat` with a lifetime of at most `PLOEG_OPERATOR_PERSON_MAX_LIFETIME`
+(default five minutes) and `sub`; any failure answers 401 `invalid_token` and
+nothing changes. The person is Ploeg's `oidc-` id of `sub` under the issuer or
+`PLOEG_OPERATOR_PERSON_SUBJECT_NAMESPACE`. ploegd then sets `X-Ploeg-Actor` to
+that person; an `X-Ploeg-Actor` or `X-Ploeg-Acting-User` naming anyone else
+answers 403 `actor_conflict`. `detail.attribution.proof` is `proven` for such a
+request and `asserted` when only headers named the person, and `act` holds the
+token's `act.sub`. Header-only attribution keeps working for one release, and
+for it Ploeg trusts the consumer to name the person truthfully: guard a
+consumer's token like an administrator's credential.
 
 Managed workers use the [worker control contract](worker-control.md); deployment and conservative accounting recovery are documented in [managed worker operations](../ops/managed-workers.md).
 
