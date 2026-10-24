@@ -16,6 +16,9 @@ func TestMain(m *testing.M) {
 	if os.Getenv("PLOEG_TEST_CONCEAL_CHILD") == "1" {
 		os.Exit(runConcealChild())
 	}
+	if socket := os.Getenv(harnessContainerEnv); socket != "" {
+		os.Exit(runHarnessContainer(socket))
+	}
 	os.Exit(m.Run())
 }
 

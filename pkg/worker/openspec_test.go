@@ -139,7 +139,7 @@ func TestOpenSpecBriefFromTheCLI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	brief := openSpecBriefFor(context.Background(), ch, home)
+	brief := openSpecBriefFor(context.Background(), localHarnessSide(), ch, home)
 	if brief.Source != harness.OpenSpecSourceCLI || brief.Change != "add-widget" || brief.Root != "services/engine" {
 		t.Fatalf("brief = %+v, want a CLI brief for services/engine", brief)
 	}
@@ -176,7 +176,7 @@ func TestOpenSpecCLIGetsNoCredentials(t *testing.T) {
 	t.Setenv("LLM_API_KEY", "model-canary")
 	repo, home := t.TempDir(), t.TempDir()
 	writeTree(t, repo, changeFiles(".", "add-widget", "why"))
-	if gate := validateOpenSpecChange(context.Background(), repo, "add-widget", home); !gate.Passed {
+	if gate := validateOpenSpecChange(context.Background(), localHarnessSide(), repo, "add-widget", home); !gate.Passed {
 		t.Fatalf("gate = %+v, want passed", gate)
 	}
 	env, err := os.ReadFile(filepath.Join(home, "openspec-env"))
@@ -201,7 +201,7 @@ func TestOpenSpecBriefFallsBackToTheChangeFiles(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			brief := openSpecBriefFor(context.Background(), ch, t.TempDir())
+			brief := openSpecBriefFor(context.Background(), localHarnessSide(), ch, t.TempDir())
 			if brief.Source != harness.OpenSpecSourceFiles {
 				t.Fatalf("source = %q, want files", brief.Source)
 			}
@@ -223,7 +223,7 @@ func TestOpenSpecBriefIsCapped(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	brief := openSpecBriefFor(context.Background(), ch, t.TempDir())
+	brief := openSpecBriefFor(context.Background(), localHarnessSide(), ch, t.TempDir())
 	if len(brief.Brief) > maxOpenSpecBriefBytes+100 || !strings.Contains(brief.Brief, "_(truncated)_") {
 		t.Fatalf("brief is %d bytes, want it capped near %d", len(brief.Brief), maxOpenSpecBriefBytes)
 	}
@@ -234,7 +234,7 @@ func TestValidateOpenSpecChange(t *testing.T) {
 		fakeOpenSpec(t, fakeOpenSpecScript)
 		repo := t.TempDir()
 		writeTree(t, repo, changeFiles(".", "add-widget", "fine"))
-		gate := validateOpenSpecChange(context.Background(), repo, "add-widget", t.TempDir())
+		gate := validateOpenSpecChange(context.Background(), localHarnessSide(), repo, "add-widget", t.TempDir())
 		if !gate.Ran || !gate.Passed || !strings.Contains(gate.Output, "--strict") {
 			t.Fatalf("gate = %+v, want passed", gate)
 		}
@@ -243,7 +243,7 @@ func TestValidateOpenSpecChange(t *testing.T) {
 		fakeOpenSpec(t, fakeOpenSpecScript)
 		repo := t.TempDir()
 		writeTree(t, repo, changeFiles(".", "add-widget", "BROKEN"))
-		gate := validateOpenSpecChange(context.Background(), repo, "add-widget", t.TempDir())
+		gate := validateOpenSpecChange(context.Background(), localHarnessSide(), repo, "add-widget", t.TempDir())
 		if !gate.Ran || gate.Passed || !strings.Contains(gate.Output, "ERROR file: Change must have at least one delta.") {
 			t.Fatalf("gate = %+v, want failed with the issue", gate)
 		}
@@ -252,21 +252,21 @@ func TestValidateOpenSpecChange(t *testing.T) {
 		fakeOpenSpec(t, `#!/bin/sh
 echo '{"items":[{"id":"add-widget","valid":false,"issues":[]}],"summary":{"totals":{"items":1,"failed":1}}}'
 `)
-		gate := validateOpenSpecChange(context.Background(), t.TempDir(), "add-widget", t.TempDir())
+		gate := validateOpenSpecChange(context.Background(), localHarnessSide(), t.TempDir(), "add-widget", t.TempDir())
 		if !gate.Ran || gate.Passed {
 			t.Fatalf("gate = %+v, want failed", gate)
 		}
 	})
 	t.Run("CLI absent", func(t *testing.T) {
 		noOpenSpec(t)
-		gate := validateOpenSpecChange(context.Background(), t.TempDir(), "add-widget", t.TempDir())
-		if gate.Ran || gate.Passed || !strings.Contains(gate.Output, "not on the worker's PATH") {
+		gate := validateOpenSpecChange(context.Background(), localHarnessSide(), t.TempDir(), "add-widget", t.TempDir())
+		if gate.Ran || gate.Passed || !strings.Contains(gate.Output, "not on the harness's PATH") {
 			t.Fatalf("gate = %+v, want not run", gate)
 		}
 	})
 	t.Run("unreadable output", func(t *testing.T) {
 		fakeOpenSpec(t, "#!/bin/sh\necho 'Validating...'\n")
-		gate := validateOpenSpecChange(context.Background(), t.TempDir(), "add-widget", t.TempDir())
+		gate := validateOpenSpecChange(context.Background(), localHarnessSide(), t.TempDir(), "add-widget", t.TempDir())
 		if gate.Ran || gate.Passed || !strings.Contains(gate.Output, "no readable result") {
 			t.Fatalf("gate = %+v, want not run", gate)
 		}
@@ -279,7 +279,7 @@ func TestApplyOpenSpecGate(t *testing.T) {
 	reader := harness.OutcomeReport{Outcome: work.OutcomeNoChangeNeeded, Summary: "reviewed", Findings: "looks good", Verdict: harness.VerdictApprove}
 	passed := openSpecGate{Ran: true, Passed: true, Output: "`openspec validate x` passed"}
 	failed := openSpecGate{Ran: true, Output: "`openspec validate x` failed:\n\n- ERROR file: no deltas"}
-	notRun := openSpecGate{Output: "the openspec CLI is not on the worker's PATH"}
+	notRun := openSpecGate{Output: "the openspec CLI is not on the harness's PATH"}
 
 	if got := applyOpenSpecGate(writer, "x", passed, true); got.Outcome != work.OutcomePROpened || !strings.Contains(got.Summary, "passed") {
 		t.Errorf("passing writer = %+v", got)
@@ -288,7 +288,7 @@ func TestApplyOpenSpecGate(t *testing.T) {
 		!strings.Contains(got.StuckReason, "no deltas") || len(got.Links) != 1 || got.Links[0] != pr {
 		t.Errorf("failing writer = %+v, want stuck with the output and the pull request", got)
 	}
-	if got := applyOpenSpecGate(writer, "x", notRun, true); got.Outcome != work.OutcomeStuck || !strings.Contains(got.StuckReason, "not on the worker's PATH") {
+	if got := applyOpenSpecGate(writer, "x", notRun, true); got.Outcome != work.OutcomeStuck || !strings.Contains(got.StuckReason, "not on the harness's PATH") {
 		t.Errorf("writer without CLI = %+v, want stuck", got)
 	}
 	if got := applyOpenSpecGate(reader, "x", passed, false); got.Verdict != harness.VerdictApprove || got.Findings != "looks good" {
@@ -485,7 +485,7 @@ func TestOpenSpecWorkItem_WriterBriefedAndGated(t *testing.T) {
 			!strings.Contains(adapter.spec.OpenSpec.Brief, "Widgets.") {
 			t.Fatalf("brief = %+v, want one read from the change's files", adapter.spec.OpenSpec)
 		}
-		if report.Outcome != work.OutcomeStuck || !strings.Contains(report.StuckReason, "not on the worker's PATH") {
+		if report.Outcome != work.OutcomeStuck || !strings.Contains(report.StuckReason, "not on the harness's PATH") {
 			t.Fatalf("report = %+v, want stuck because the gate could not run", report)
 		}
 	})

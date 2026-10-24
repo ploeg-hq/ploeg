@@ -68,7 +68,7 @@ func TestRunVerificationReportsTheFailingCheckAndSkipsTheRest(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "untracked.go"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	v := runVerification(context.Background(), dir, os.Environ(), []string{"true", "echo broken; exit 2", "true"}, time.Minute)
+	v := runVerification(context.Background(), localHarnessSide(), dir, os.Environ(), []string{"true", "echo broken; exit 2", "true"}, time.Minute)
 	if len(v.Commit) != 40 || !v.Dirty {
 		t.Errorf("commit = %q, dirty = %v; want a full object name and a dirty tree", v.Commit, v.Dirty)
 	}
@@ -94,7 +94,7 @@ func TestRunVerificationReportsTheFailingCheckAndSkipsTheRest(t *testing.T) {
 func TestVerificationRecordCarriesEachCheckAndTheFullCommit(t *testing.T) {
 	dir := gitRepo(t, map[string]string{"main.go": "package main\n"})
 	before := time.Now()
-	v := runVerification(context.Background(), dir, os.Environ(), []string{"true", "exit 3", "true"}, time.Minute)
+	v := runVerification(context.Background(), localHarnessSide(), dir, os.Environ(), []string{"true", "exit 3", "true"}, time.Minute)
 	rec := v.record()
 	if err := rec.Validate(); err != nil {
 		t.Fatalf("the worker's record breaks the contract: %v\n%+v", err, rec)
@@ -126,7 +126,7 @@ func TestVerificationRecordCarriesEachCheckAndTheFullCommit(t *testing.T) {
 func TestRunVerificationStopsAtItsTimeLimit(t *testing.T) {
 	dir := gitRepo(t, map[string]string{"a": "a"})
 	started := time.Now()
-	v := runVerification(context.Background(), dir, os.Environ(), []string{"sleep 30", "true"}, 200*time.Millisecond)
+	v := runVerification(context.Background(), localHarnessSide(), dir, os.Environ(), []string{"sleep 30", "true"}, 200*time.Millisecond)
 	if time.Since(started) > 15*time.Second {
 		t.Fatal("verification outlived its limit")
 	}

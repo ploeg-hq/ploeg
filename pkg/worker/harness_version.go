@@ -5,13 +5,13 @@ import (
 	"bytes"
 	"context"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/ploeg-hq/ploeg/pkg/harness"
 	"github.com/ploeg-hq/ploeg/pkg/harness/adapters/execbin"
 )
 
@@ -52,20 +52,37 @@ func HarnessVersion(hc HarnessConfig, lookPath func(string) (string, error), pro
 	return firstVersionLine(out)
 }
 
-// CommandVersionProbe runs path --version with no credentials in its
-// environment and a throwaway HOME, so the probe neither sees the worker's
-// secrets nor writes into its home.
+// CommandVersionProbe runs path --version in the worker's own container with
+// no credentials in its environment and a throwaway HOME, so the probe
+// neither sees the worker's secrets nor writes into its home.
 func CommandVersionProbe(ctx context.Context, path string) ([]byte, error) {
-	home, err := os.MkdirTemp("", "ploeg-harness-version-*")
-	if err != nil {
-		return nil, err
+	return SpawnedVersionProbe(harness.NewLocalSpawner(), os.Environ(), "")(ctx, path)
+}
+
+// SpawnedVersionProbe runs path --version through spawner, on the PATH of
+// environ, with a throwaway HOME made under scratch ("" is the system's
+// temporary directory). With the harness in its own container (ADR-0138)
+// scratch is the work directory both containers mount.
+func SpawnedVersionProbe(spawner harness.Spawner, environ []string, scratch string) VersionProbe {
+	return func(ctx context.Context, path string) ([]byte, error) {
+		home, err := os.MkdirTemp(scratch, "ploeg-harness-version-*")
+		if err != nil {
+			return nil, err
+		}
+		defer os.RemoveAll(home)
+		searchPath, _ := lookupEnv(environ, "PATH")
+		var out lockedBuffer
+		proc, err := spawner.Start(ctx, harness.Command{
+			Argv: []string{path, "--version"}, Dir: home,
+			Env:    []string{"PATH=" + searchPath, "HOME=" + home, "NO_COLOR=1", "TERM=dumb"},
+			Stdout: &out, Stderr: &out,
+		})
+		if err != nil {
+			return nil, err
+		}
+		_, err = proc.Wait()
+		return out.Bytes(), err
 	}
-	defer os.RemoveAll(home)
-	cmd := exec.CommandContext(ctx, path, "--version")
-	cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + home, "NO_COLOR=1", "TERM=dumb"}
-	cmd.Dir = home
-	cmd.WaitDelay = time.Second
-	return cmd.CombinedOutput()
 }
 
 func firstVersionLine(out []byte) string {

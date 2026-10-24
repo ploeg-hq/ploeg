@@ -7,6 +7,8 @@ import (
 	"errors"
 	"io"
 	"os"
+
+	"github.com/ploeg-hq/ploeg/pkg/harness"
 )
 
 // Ploeg's workers run in Linux pods and development happens on macOS; both are
@@ -14,7 +16,7 @@ import (
 // than the whole module failing to compile on an unsupported host.
 type execLauncher struct{}
 
-func (execLauncher) launch(context.Context, []string, string, []string, io.Writer, func([]byte)) (*process, error) {
+func (execLauncher) launch(context.Context, harness.Spawner, []string, string, []string, io.Writer, func([]byte)) (*process, error) {
 	return nil, errors.New("acp: the subprocess launcher requires a unix host")
 }
 

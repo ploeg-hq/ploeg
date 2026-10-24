@@ -24,8 +24,8 @@ The generator follows each binary's imports inside the module and records every 
 | `KUBECONFIG` | ploeg-worker |  | Administrative configuration. The worker refuses to start when it is set. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `KUBERNETES_SERVICE_HOST` | ploeg-worker |  |  | [launcher.go](../../pkg/sandboxlaunch/launcher.go) |
 | `KUBERNETES_SERVICE_PORT` | ploeg-worker |  |  | [launcher.go](../../pkg/sandboxlaunch/launcher.go) |
-| `LANG` | ploeg-worker |  |  | [fetch.go](../../pkg/harness/claudeplugins/fetch.go), [git.go](../../pkg/worker/git.go), [openspec.go](../../pkg/worker/openspec.go) |
-| `LC_ALL` | ploeg-worker |  |  | [git.go](../../pkg/worker/git.go), [openspec.go](../../pkg/worker/openspec.go) |
+| `LANG` | ploeg-worker |  |  | [git.go](../../pkg/worker/git.go), [fetch.go](../../pkg/harness/claudeplugins/fetch.go) |
+| `LC_ALL` | ploeg-worker |  |  | [git.go](../../pkg/worker/git.go) |
 | `LITELLM_ADMIN_URL` | ploeg-worker |  | Controller-only. The worker refuses to start when it is set. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `LITELLM_ADMIN_URL` | ploegd |  | LiteLLM management URL (chart `executor.litellm.adminUrl`). Unset disables key revocation, and managed worker mode then refuses to start. | [main.go](../../cmd/ploegd/main.go) |
 | `LITELLM_KEY_BUDGET` | ploeg-worker |  | USD budget the per-run inference key is minted at when no Shift authorized the Run; a Shift's authorization replaces it (ADR-0012). The Run's prompt states the amount (ADR-0133). It must be a number: `0` mints an uncapped key, and the prompt then states no budget. | [main.go](../../cmd/ploeg-worker/main.go) |
@@ -36,7 +36,7 @@ The generator follows each binary's imports inside the module and records every 
 | `LLM_BASE_URL` | ploeg-worker |  | Model gateway URL (chart `executor.litellm.baseUrl`). | [main.go](../../cmd/ploeg-worker/main.go) |
 | `LLM_MODEL` | ploeg-worker |  |  | [main.go](../../cmd/ploeg-worker/main.go) |
 | `NODE_NAME` | ploeg-worker |  |  | [main.go](../../cmd/ploeg-worker/main.go), [worker.go](../../pkg/worker/worker.go) |
-| `PATH` | ploeg-worker |  | Passed to `git` and `openspec` subprocesses; also on the harness allowlist. | [fetch.go](../../pkg/harness/claudeplugins/fetch.go), [git.go](../../pkg/worker/git.go), [harness_version.go](../../pkg/worker/harness_version.go), [openspec.go](../../pkg/worker/openspec.go) |
+| `PATH` | ploeg-worker |  | Passed to the worker's `git` subprocesses. The harness, its verification commands and the `openspec` CLI take `PATH` from the container the harness runs in (ADR-0138). | [git.go](../../pkg/worker/git.go), [fetch.go](../../pkg/harness/claudeplugins/fetch.go) |
 | `PLOEG_ACP_ARGV` | ploeg-worker |  | `acp` harness only: the whole launch command as a JSON array; required when the profile is `custom`. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_ACP_CONFIG_JSON` | ploeg-worker |  | `acp` harness only: replaces the generated agent configuration of the `opencode` or `qwen-code` profile wholesale. The `goose` and `openhands` profiles refuse it at startup. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_ACP_IDLE_TIMEOUT` | ploeg-worker |  | `acp` harness only: timeout without protocol traffic. Empty means the adapter default (10m). The Run's prompt states it (ADR-0133). | [main.go](../../cmd/ploeg-worker/main.go) |
@@ -109,6 +109,7 @@ The generator follows each binary's imports inside the module and records every 
 | `PLOEG_HARNESS_ARGS` | ploeg-worker |  | `exec` harness only: JSON argv template with `{taskspec}` and `{taskfile}` (chart `executor.harness.args`). | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_HARNESS_ENTRYPOINT` | ploeg-worker |  | Harness binary override (chart `executor.harness.entrypoint`). Empty means the adapter default. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_HARNESS_IDLE_TIMEOUT` | ploeg-worker | `15m` | Stops a harness that prints nothing and makes no model call for this long, with failure reason `idle`. The Run's prompt states it unless the adapter keeps its own idle limit (ADR-0133). | [main.go](../../cmd/ploeg-worker/main.go) |
+| `PLOEG_HARNESS_LAUNCHER` | ploeg-worker |  | Unix socket the worker listens on for `ploeg-worker harness-serve` in the harness's own container (ADR-0138). The worker accepts one connection, removes the socket and runs the harness, its verification commands and the OpenSpec CLI there; set by the chart with `executor.harnessContainer: separate`. Unset runs them in the worker's own container. | [launcher.go](../../cmd/ploeg-worker/launcher.go) |
 | `PLOEG_HARNESS_TIMEOUT` | ploeg-worker | `100m` | Stops a harness that runs longer than this, with failure reason `timeout`. The Run's prompt states it, or the adapter's own shorter prompt limit (ADR-0133). | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_KNOWLEDGE_BUDGET_BYTES` | ploeg-worker |  |  | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_KNOWLEDGE_DIRS` | ploeg-worker |  |  | [main.go](../../cmd/ploeg-worker/main.go) |
@@ -183,7 +184,7 @@ The generator follows each binary's imports inside the module and records every 
 | `REPO_OWNER` | ploeg-worker |  | Fallback repository owner for a team that pins one. The repository normally comes from the claimed Work Item. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `SSL_CERT_DIR` | ploeg-worker |  | Passed to `git` when the worker fetches a Claude Code plugin marketplace. | [fetch.go](../../pkg/harness/claudeplugins/fetch.go) |
 | `SSL_CERT_FILE` | ploeg-worker |  | Passed to `git` when the worker fetches a Claude Code plugin marketplace. | [fetch.go](../../pkg/harness/claudeplugins/fetch.go) |
-| `TZ` | ploeg-worker |  |  | [fetch.go](../../pkg/harness/claudeplugins/fetch.go), [git.go](../../pkg/worker/git.go), [openspec.go](../../pkg/worker/openspec.go) |
+| `TZ` | ploeg-worker |  |  | [git.go](../../pkg/worker/git.go), [fetch.go](../../pkg/harness/claudeplugins/fetch.go) |
 | `WORK_DIR` | ploeg-worker | `/mnt/ci-shared` |  | [main.go](../../cmd/ploeg-worker/main.go) |
 
 ## Helm values

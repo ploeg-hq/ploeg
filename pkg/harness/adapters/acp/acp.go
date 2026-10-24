@@ -177,7 +177,7 @@ func (a *Adapter) Run(ctx context.Context, spec harness.TaskSpec, env harness.Ru
 			transcribe(env.Transcript, line)
 		}
 	}
-	proc, err := a.launch.launch(ctx, argv, env.RepoDir, append(append([]string{}, env.BaseEnv...), extraEnv...), noise, onRaw)
+	proc, err := a.launch.launch(ctx, env.Spawner, argv, env.RepoDir, append(append([]string{}, env.BaseEnv...), extraEnv...), noise, onRaw)
 	if err != nil {
 		res.err = err
 		return finish()
