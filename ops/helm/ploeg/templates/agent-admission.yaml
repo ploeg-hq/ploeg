@@ -56,4 +56,3 @@ spec:
   policyName: {{ $name }}
   validationActions: [Deny]
 {{- end }}
-
