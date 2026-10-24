@@ -1027,7 +1027,19 @@
                 "type": "array",
                 "maxItems": 20,
                 "uniqueItems": true,
-                "description": "Client ids whose person tokens (ADR-0150) make this consumer the caller; needs operator.personTokens.",
+                "description": "Client ids whose person tokens (ADR-0150) make this consumer the caller when the token's azp names them and its aud is operator.personTokens.audience; needs operator.personTokens.",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[!-~]+$"
+                }
+              },
+              "audiences": {
+                "type": "array",
+                "maxItems": 20,
+                "uniqueItems": true,
+                "description": "Audiences of person tokens (ADR-0150) issued for this consumer alone; a token whose aud names one makes this consumer the caller, and its azp may equal that audience. No other consumer may list it or name it as a client id. Needs operator.personTokens.",
                 "items": {
                   "type": "string",
                   "minLength": 1,
@@ -1060,7 +1072,7 @@
         "personTokens": {
           "type": "object",
           "additionalProperties": false,
-          "description": "ADR-0150: verify person tokens, JWTs an identity provider issued for Ploeg's audience on a person's behalf. Forwarded as PLOEG_OPERATOR_PERSON_*; issuer and audience are required once any field is set.",
+          "description": "ADR-0150: verify person tokens, JWTs an identity provider issued on a person's behalf for a consumer's audiences or for Ploeg's shared audience. Forwarded as PLOEG_OPERATOR_PERSON_*; issuer is required once any field is set, and audience once a consumer names clientIds.",
           "properties": {
             "issuer": {
               "type": "string",

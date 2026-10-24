@@ -80,7 +80,7 @@ func personTokens(consumers []httpapi.OperatorConsumer) (*httpapi.PersonTokens, 
 	issuer := strings.TrimSpace(os.Getenv("PLOEG_OPERATOR_PERSON_ISSUER"))
 	if issuer == "" {
 		if httpapi.OperatorConsumersNameClientIDs(consumers) {
-			return nil, errors.New("PLOEG_OPERATOR_CONSUMERS names clientIds, which need PLOEG_OPERATOR_PERSON_ISSUER and PLOEG_OPERATOR_PERSON_AUDIENCE")
+			return nil, errors.New("PLOEG_OPERATOR_CONSUMERS names clientIds or audiences, which need PLOEG_OPERATOR_PERSON_ISSUER")
 		}
 		return nil, nil
 	}

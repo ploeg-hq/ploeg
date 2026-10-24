@@ -90,9 +90,9 @@ env:
   PLOEG_REPORT_TEAM_DASHBOARD_URL: Link template for a dashboard filtered to the Shift's Team; `{team}` is the escaped Team. Unset omits the link.
   PLOEG_REPORT_RUN_DASHBOARD_URL: Link template for the usage of the Run behind the report; `{run}` is its escaped gateway alias. Unset omits the link.
   PLOEG_REPORT_SPEND_DASHBOARD_URL: Link to spend across Runs. Unset omits the link.
-  PLOEG_OPERATOR_CONSUMERS: JSON array of operator read consumers. Each entry names a `tokenEnv`, a further variable that holds that consumer's bearer token (chart `operator.consumers`), and may list `clientIds`, the identity provider clients whose person tokens make it the caller (ADR-0150). No consumers refuses every operator request.
-  PLOEG_OPERATOR_PERSON_ISSUER: Issuer of person tokens, matched byte for byte against `iss` (ADR-0150, chart `operator.personTokens.issuer`). Unset accepts no person tokens; a consumer that lists `clientIds` then stops the boot.
-  PLOEG_OPERATOR_PERSON_AUDIENCE: Ploeg's own audience; a person token's `aud` must name it. Required with the issuer, and no consumer client id may equal it (chart `operator.personTokens.audience`).
+  PLOEG_OPERATOR_CONSUMERS: JSON array of operator read consumers. Each entry names a `tokenEnv`, a further variable that holds that consumer's bearer token (chart `operator.consumers`), and may list `audiences`, the audiences of person tokens exchanged for that consumer alone, and `clientIds`, the identity provider clients whose person tokens for Ploeg's shared audience make it the caller (ADR-0150). No consumers refuses every operator request.
+  PLOEG_OPERATOR_PERSON_ISSUER: Issuer of person tokens, matched byte for byte against `iss` (ADR-0150, chart `operator.personTokens.issuer`). One issuer serves every consumer; with authentik, give the exchange targets the global issuer mode and set the global issuer here. Unset accepts no person tokens; a consumer that lists `audiences` or `clientIds` then stops the boot.
+  PLOEG_OPERATOR_PERSON_AUDIENCE: Ploeg's shared audience for person tokens whose `azp` names a consumer's `clientIds`. Required when a consumer lists `clientIds`, optional when consumers list only `audiences`; no client id or consumer audience may equal it (chart `operator.personTokens.audience`).
   PLOEG_OPERATOR_PERSON_JWKS_URL: The issuer's signing keys. Unset reads `jwks_uri` from the issuer's discovery document (chart `operator.personTokens.jwksUrl`).
   PLOEG_OPERATOR_PERSON_MAX_LIFETIME: Longest accepted `exp` minus `iat` of a person token, a Go duration of at most `1h`; default `5m` (chart `operator.personTokens.maxLifetime`).
   PLOEG_OPERATOR_PERSON_SUBJECT_NAMESPACE: What person ids are derived under in place of the issuer, so a proven person keeps the id consumers send and that earlier records hold; set it to the same value as `PLOEG_MCP_SUBJECT_NAMESPACE` (chart `operator.personTokens.subjectNamespace`).
@@ -166,7 +166,7 @@ helm:
   operator.personTokens.jwksUrl: Forwarded as `PLOEG_OPERATOR_PERSON_JWKS_URL`.
   operator.personTokens.maxLifetime: Forwarded as `PLOEG_OPERATOR_PERSON_MAX_LIFETIME`.
   operator.personTokens.subjectNamespace: Forwarded as `PLOEG_OPERATOR_PERSON_SUBJECT_NAMESPACE`.
-  operator.personTokens: Person token verification (ADR-0150) with `issuer`, `audience`, optional `jwksUrl`, `maxLifetime` and `subjectNamespace`, forwarded as `PLOEG_OPERATOR_PERSON_*`. Empty accepts no person tokens.
+  operator.personTokens: Person token verification (ADR-0150) with `issuer`, `audience` (needed when a consumer lists `clientIds`), optional `jwksUrl`, `maxLifetime` and `subjectNamespace`, forwarded as `PLOEG_OPERATOR_PERSON_*`. Empty accepts no person tokens.
   runIdentity.issuer: "The URL consumers reach ploegd at, the `iss` of every Run identity (`PLOEG_RUN_IDENTITY_ISSUER`, ADR-0149). Required with `runIdentity.signingKeySecret`."
   runIdentity.signingKeySecret: "Secret name and key of the PEM P-256 private key ploegd signs Run identities with (`PLOEG_RUN_IDENTITY_SIGNING_KEY`, ADR-0149). Unset issues none. The chart refuses a Claude Code plugin env that reads this Secret."
   runIdentity.retiredKeysSecret: "Secret name and key of the PEM public keys ploegd still publishes after a rotation (`PLOEG_RUN_IDENTITY_RETIRED_KEYS`, ADR-0149). Keep a retired key at least 15 minutes, the longest a Run identity lives."

@@ -88,6 +88,14 @@ func TestPersonTokensComeFromTheEnvironment(t *testing.T) {
 	}
 	t.Setenv("PLOEG_OPERATOR_PERSON_AUDIENCE", "")
 	if _, err := operatorConfig(&config.File{}, nil); err == nil {
-		t.Fatal("an issuer without an audience must stop the boot")
+		t.Fatal("clientIds without Ploeg's audience must stop the boot")
+	}
+	t.Setenv("PLOEG_OPERATOR_CONSUMERS", `[{"name":"acting","tokenEnv":"CONSUMER_TOKEN","execute":true,"audiences":["ploeg-acting"]}]`)
+	if operator, err := operatorConfig(&config.File{}, nil); err != nil || operator.PersonTokens == nil {
+		t.Fatalf("audiences need no shared audience: %v %v", operator.PersonTokens, err)
+	}
+	t.Setenv("PLOEG_OPERATOR_PERSON_ISSUER", "")
+	if _, err := operatorConfig(&config.File{}, nil); err == nil {
+		t.Fatal("audiences without a person token issuer must stop the boot")
 	}
 }
