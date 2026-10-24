@@ -70,7 +70,19 @@ const (
 	FollowUpSourceNotInReview FollowUpResult = "source_not_in_review"
 )
 
-// RepairRequest asks for a repair Follow-Up after a failed check.
+// RepairKind says what a repair Follow-Up repairs.
+type RepairKind string
+
+const (
+	// RepairFailedCheck repairs a check that failed on the pull request.
+	RepairFailedCheck RepairKind = ""
+	// RepairConflict rebases a pull request that conflicts with its base
+	// branch (ADR-0146).
+	RepairConflict RepairKind = "conflict"
+)
+
+// RepairRequest asks for a repair Follow-Up after a failed check, or a rebase
+// Follow-Up after a confirmed conflict.
 type RepairRequest struct {
 	SourceWorkItemID int64
 	Provider         string
@@ -79,6 +91,10 @@ type RepairRequest struct {
 	PR               int
 	Detail           string
 	Cap              int
+	Kind             RepairKind
+	// Base is the branch the pull request conflicts with; read for
+	// RepairConflict only.
+	Base string
 }
 
 // CreateRepairFollowUp creates a queued Follow-Up Work Item that repairs the
@@ -145,6 +161,9 @@ func (s *Store) CreateRepairFollowUp(ctx context.Context, req RepairRequest) (in
 	}
 
 	title, description := work.RepairBrief(src, req.Branch, req.PR, req.Detail)
+	if req.Kind == RepairConflict {
+		title, description = work.RebaseBrief(src, req.Branch, req.PR, req.Base)
+	}
 	item := work.WorkItem{
 		Provider:         work.FollowUpProvider,
 		ExternalID:       fmt.Sprintf("%d-repair-%d", req.SourceWorkItemID, forSource+1),
@@ -180,7 +199,7 @@ func (s *Store) CreateRepairFollowUp(ctx context.Context, req RepairRequest) (in
 	item.ID = fmt.Sprint(id)
 	if err := audit(ctx, tx, "webhook:"+req.Provider, "follow_up.created", &id, map[string]any{
 		"source_work_item": req.SourceWorkItemID, "repo": req.Repo, "branch": req.Branch, "pr": req.PR,
-		"team": item.Team, "repair": forPR + 1, "cap": req.Cap,
+		"team": item.Team, "repair": forPR + 1, "cap": req.Cap, "kind": repairKindName(req.Kind),
 	}); err != nil {
 		return 0, work.WorkItem{}, "", err
 	}
@@ -345,4 +364,11 @@ func bindPendingReviews(ctx context.Context, tx pgx.Tx, workItemID, shiftID int6
 		UPDATE work_item_reviews SET shift_id = $2, round = $3
 		WHERE work_item_id = $1 AND shift_id IS NULL`, workItemID, shiftID, round)
 	return err
+}
+
+func repairKindName(k RepairKind) string {
+	if k == RepairConflict {
+		return string(RepairConflict)
+	}
+	return "failed_check"
 }

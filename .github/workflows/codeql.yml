@@ -39,13 +39,28 @@ jobs:
           category: /language:go
           output: ${{ runner.temp }}/codeql
           upload: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && 'always' || 'never' }}
-      - name: No High or Critical security finding
+      - name: No High or Critical security finding outside ops/security/codeql-accepted.yaml
+        env:
+          SARIF_DIR: ${{ runner.temp }}/codeql
+          SCOPE: ${{ github.event_name == 'pull_request' && 'diff-informed' || 'complete' }}
+        run: mise exec -- go run ./internal/codeqlgate/cmd/codeql-gate
+      - name: Code scanning shows every accepted finding as dismissed
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF: ${{ github.ref }}
+          SHA: ${{ github.sha }}
         run: |
-          findings=$(jq '[.runs[] as $run
-            | ([$run.tool.driver.rules[]?, $run.tool.extensions[]?.rules[]?] | map({key: .id, value: ((.properties["security-severity"] // "0") | tonumber)}) | from_entries) as $severity
-            | $run.results[]
-            | select((.suppressions // []) | length == 0)
-            | select(($severity[.ruleId] // 0) >= 7.0)
-            | {rule: .ruleId, file: .locations[0].physicalLocation.artifactLocation.uri, line: .locations[0].physicalLocation.region.startLine, message: .message.text}]' "$RUNNER_TEMP"/codeql/*.sarif)
-          echo "$findings" | jq -r '.[] | "::error file=\(.file),line=\(.line)::\(.rule): \(.message)"'
-          [ "$(echo "$findings" | jq length)" -eq 0 ]
+          mise exec -- go run ./internal/codeqlgate/cmd/codeql-gate dismissals | jq -c '.[]' | while read -r accepted; do
+            rule=$(jq -r .rule <<<"$accepted")
+            file=$(jq -r .file <<<"$accepted")
+            dismissal=$(jq -r .dismissal <<<"$accepted")
+            gh api --paginate "repos/$GITHUB_REPOSITORY/code-scanning/alerts?tool_name=CodeQL&state=open&ref=$REF&per_page=100" \
+              --jq ".[] | select(.rule.id == \"$rule\" and .most_recent_instance.location.path == \"$file\") | .number" |
+            while read -r alert; do
+              gh api --method PATCH "repos/$GITHUB_REPOSITORY/code-scanning/alerts/$alert" \
+                -f state=dismissed -f dismissed_reason="$dismissal" \
+                -f dismissed_comment="Accepted in ops/security/codeql-accepted.yaml at $SHA" > /dev/null
+              echo "dismissed alert $alert: $rule in $file"
+            done
+          done

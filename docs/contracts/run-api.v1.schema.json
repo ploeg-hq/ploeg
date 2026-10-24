@@ -117,6 +117,12 @@
           },
           "required": ["branch"],
           "additionalProperties": false
+        },
+        "fastCheck": {
+          "type": "array",
+          "description": "The fast check the Work Item's repository declares (ADR-0146, proposed): shell command lines, run in order from the repository root. Sent to a writing Run only. The worker hands them to the harness as the script $PLOEG_FAST_CHECK_SCRIPT and runs them itself on a rebase it pushes. Absent when the repository declares none and from an older Ploeg; the worker then rebases without a fast check and records it as skipped.",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1
         }
       },
       "required": ["runToken", "deadline", "workItem"],
