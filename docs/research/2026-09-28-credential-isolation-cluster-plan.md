@@ -42,6 +42,8 @@ Both proxies first shipped in release `glide-v0.4.0-rc.1` (commits `10d98b1`, `0
 6. **`keyIsolation` has no enum in `values.schema.json`.** `forgeTokenIsolation` does. No golden renders either flag.
 7. **`runtimeClassName` renders only for `executor.type: sandbox`.** KEDA and CronJob worker pods cannot use gVisor or Kata.
 
+> **Update (2026-10-24).** Gap 7 is closed: `executor.runtimeClassName`, a team's `runtimeClassName` and a Role's `runtimeClassName` reach the worker pod under the keda, cronjob and sandbox executors ([executor contract](../contracts/executor.md#runtime-class)). The finding above describes the chart as of this record.
+
 ## 2. What the cluster has, checked against homelab-cluster `0111413`
 
 | Need | Found | Verified how |

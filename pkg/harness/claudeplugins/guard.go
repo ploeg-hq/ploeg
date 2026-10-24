@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ploeg-hq/ploeg/pkg/harness"
+	"github.com/ploeg-hq/ploeg/pkg/runidentity"
 )
 
 // Bounds on what one guarded hook reads and returns.
@@ -97,8 +98,32 @@ func hookEnv(environ []string, spec GuardSpec) []string {
 	for k, v := range spec.Env {
 		env = append(env, k+"="+v)
 	}
+	if token := currentRunIdentity(spec.RunIdentityFile); token != "" {
+		env = append(env, RunIdentityEnv+"="+token)
+	}
 	return env
 }
+
+// currentRunIdentity reads the plugin's Run identity at the moment the hook
+// starts, so every hook gets the token the worker last refreshed. A missing,
+// malformed or expired token gives the hook none.
+func currentRunIdentity(path string) string {
+	if path == "" {
+		return ""
+	}
+	body, err := os.ReadFile(path)
+	if err != nil || len(body) > maxRunIdentityBytes {
+		return ""
+	}
+	token := strings.TrimSpace(string(body))
+	exp, ok := runidentity.UnverifiedExpiry(token)
+	if !ok || !time.Now().Before(exp) {
+		return ""
+	}
+	return token
+}
+
+const maxRunIdentityBytes = 8 << 10
 
 // Sanitize keeps only what a hook may say to the Run. JSON output keeps
 // systemMessage, suppressOutput and, of hookSpecificOutput, hookEventName and

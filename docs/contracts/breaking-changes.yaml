@@ -15,3 +15,7 @@ exceptions:
     surface: ops/helm/ploeg/values.yaml
     pointer: executor.harnessContainer
     adr: "0138"
+  - base: v0.2.0-rc.52
+    surface: ghcr.io/ploeg-hq/claude-runner
+    pointer: /usr/bin/apt-get
+    adr: "0144"

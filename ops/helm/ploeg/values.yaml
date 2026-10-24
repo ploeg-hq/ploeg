@@ -103,6 +103,12 @@ mcp:
   #     valueFrom: {secretKeyRef: {name: ploeg-mcp-reader, key: token}}
   extraEnv: []
   envFrom: [] # e.g. [{secretRef: {name: ploeg-mcp-consumers}}]
+  # The Secret key ploeg-mcp signs each person's confirmation of an action
+  # with (ADR-0152), set as PLOEG_MCP_CONFIRMATION_KEY. Required once a group
+  # in PLOEG_MCP_GROUPS is marked execute: ploeg-mcp refuses to start without
+  # it. At least 32 bytes, such as `openssl rand -base64 48`; every replica
+  # reads the same Secret.
+  confirmationKeySecret: {} # e.g. {name: ploeg-mcp-confirmation, key: key}; key defaults to key
   annotations: {} # on the Deployment, e.g. {reloader.stakater.com/auto: "true"}
   podAnnotations: {}
   nodeSelector: {} # empty = nodeSelector
@@ -287,6 +293,17 @@ monitoring:
 operator:
   consumers: []
   deliveryPolicies: []
+  # ADR-0150: an Operator Consumer acting for a person may present that
+  # person's token, exchanged at the identity provider (RFC 8693) for Ploeg's
+  # audience, instead of naming the person in X-Ploeg-Actor. Each consumer
+  # that does lists its identity provider client ids as clientIds. Unset =
+  # no person tokens; clientIds then refuse to start.
+  personTokens: {}
+  #   issuer: https://id.example.com/application/o/ploeg/
+  #   audience: ploeg
+  #   jwksUrl: ""            # empty = the issuer's discovery document
+  #   maxLifetime: 5m        # exp minus iat, at most 1h
+  #   subjectNamespace: ""   # empty = issuer; set it to keep person ids across issuers
 
 # ADR-0047: POST /api/v1/deploys, where a pipeline reports "commit X is live
 # in environment Y". tokenSecret names an existing Secret key holding the
@@ -296,6 +313,23 @@ deploys: {}
 #   tokenSecret:
 #     name: ploeg-deploy-token
 #     key: token
+
+# ADR-0149 (proposed): ploegd signs a short-lived Run identity (ES256 JWT) for
+# each Claude Code plugin that opts in with harness.claudeCode.plugins[].runIdentity,
+# and publishes its public keys at /api/v1/run-identity/jwks. The token names
+# the Run and authorizes nothing in Ploeg. Empty issues none. The signing key
+# is a PEM P-256 private key (openssl genpkey -algorithm EC -pkeyopt
+# ec_paramgen_curve:P-256); a plugin env may never read its Secret. To rotate,
+# move the old public key into retiredKeysSecret for one lease longer than
+# the longest Run identity (15 minutes) before you drop it.
+runIdentity: {}
+#   issuer: https://ploeg.example.com   # the URL consumers reach ploegd at; the token's iss
+#   signingKeySecret:
+#     name: ploeg-run-identity
+#     key: signing-key.pem
+#   retiredKeysSecret:                  # optional: concatenated PEM PUBLIC KEY blocks
+#     name: ploeg-run-identity
+#     key: retired-keys.pem
 
 # ADR-0087/0088 (proposed): the Tenant's graphs on an Omnigraph server. With
 # notesGraph, ploegd writes each learning a Run keeps as a Work Item Note and
@@ -461,6 +495,15 @@ executor:
   # Node selector for worker pods, e.g. {node-role.example/agents: "true"} to
   # keep privileged DinD off control-plane nodes. Empty = any schedulable node.
   nodeSelector: {}
+  # RuntimeClass for every worker pod, under every executor type (keda,
+  # cronjob, sandbox). A team's or a Role's own `runtimeClassName` overrides it.
+  # "" = the node's default runtime (runc). The RuntimeClass must exist on the
+  # cluster, and qualify it with the worker pod shape first: Kata needs
+  # hardware virtualization (bare metal or nested virt); gVisor runs on any
+  # node but pays a file-I/O penalty on clone-heavy runs. Under the sandbox
+  # executor, executor.sandbox.runtimeClassName (and a team's or Role's
+  # `sandbox.runtimeClassName`) is read first at each tier.
+  runtimeClassName: ""
   # DEPRECATED: shared, which runs the harness in the worker's container; it is removed in the minor after 0.2 (ADR-0138).
   harnessContainer: separate
   # Global harness defaults; a team's optional `harness:` block overrides
@@ -537,6 +580,8 @@ executor:
       #     - {name: LINK_URL, value: https://link.example.com}
       #     - {name: LINK_TOKEN, secret: {name: session-link-plugin, key: token}}
       #   hookTimeout: 10s  # one hook's bound; at most 60s
+      #   runIdentity:      # ADR-0149: hand every hook a Run identity in AGENT_RUN_IDENTITY_TOKEN
+      #     audience: https://link.example.com  # the one service that accepts it; needs runIdentity.signingKeySecret
     # acp harness only. One adapter speaks Zed's Agent CLIENT Protocol (stdio
     # JSON-RPC, wire version 1) to any ACP-capable agent. Unrelated to IBM's
     # former Agent COMMUNICATION Protocol, which merged into A2A — see ADR-0007.
@@ -597,13 +642,12 @@ executor:
     # free (empty-handed claim = exit 0).
     schedule: "*/2 * * * *"
   sandbox:
-    # type=sandbox only. Global fallback RuntimeClass for every team and role;
-    # a team's (or a Role's) own `sandbox.runtimeClassName` overrides it field
-    # by field. "" = the node's default runtime; set kata or gvisor only after
-    # qualifying it with the privileged DinD sidecar on your nodes.
-    # Place Kata on bare metal (its own kernel, no nested-virt requirement).
-    # Place gVisor systrap on VMs without nested virt, accepting its file-I/O
-    # penalty on clone-heavy runs.
+    # type=sandbox only. The sandbox executor's spelling of
+    # executor.runtimeClassName, kept for existing values: under the sandbox
+    # executor it is read before executor.runtimeClassName, and a team's (or a
+    # Role's) `sandbox.runtimeClassName` before its `runtimeClassName`. New
+    # values set executor.runtimeClassName, which every executor honours.
+    # "" = fall back to executor.runtimeClassName.
     runtimeClassName: ""
     # A finished claim is deleted by its launcher; this TTL is the fallback.
     ttlSecondsAfterFinished: 60
@@ -870,8 +914,11 @@ executor:
   #     - {name: openhands, default: true}
   #     - {name: acp, image: registry.example/opencode-runner:0.1.0, dind: false, acp: {profile: opencode}}
   #   allowUnqualifiedHarnesses: false
-  #   # Optional: this team's RuntimeClass under the sandbox executor; a Role's
-  #   # `sandbox.runtimeClassName` overrides it. Unset = executor.sandbox above.
+  #   # Optional: this team's worker RuntimeClass under every executor type; a
+  #   # Role's `runtimeClassName` overrides it. Unset = executor.runtimeClassName.
+  #   runtimeClassName: gvisor
+  #   # The sandbox executor's older spelling, read before `runtimeClassName`
+  #   # under that executor only. Prefer `runtimeClassName` above.
   #   sandbox:
   #     runtimeClassName: gvisor
   #   # Optional, ADR-0078: read-only MCP tools through the LiteLLM gateway.
@@ -903,7 +950,8 @@ executor:
   #         # this Role; `model` stays its default and must be listed.
   #         - {name: builder, writes: true, cap: "3.00", model: litellm_proxy/claude-sonnet-5, models: [claude-sonnet-5, deepseek-v4]}
   #     - roles:
-  #         - {name: reviewer, writes: false, cap: "0.75", model: litellm_proxy/claude-sonnet-5, harness: {dind: false}}
+  #         # A Role's runtimeClassName overrides its team's for this Role's pods.
+  #         - {name: reviewer, writes: false, cap: "0.75", model: litellm_proxy/claude-sonnet-5, harness: {dind: false}, runtimeClassName: kata}
   #         # ADR-0096: a second reviewer whose verdict is recorded and never acts.
   #         - {name: shadow-reviewer, writes: false, shadow: true, cap: "0.40", model: litellm_proxy/claude-haiku-5-5, harness: {dind: false}}
 

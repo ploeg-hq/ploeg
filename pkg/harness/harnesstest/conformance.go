@@ -378,10 +378,12 @@ func (fx Fixture) writingRunAccountSurvivesGarbageOnStdout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	account := filepath.Join(t.TempDir(), "account.json")
+	if err := os.WriteFile(account, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	bin := script(t, `[ -n "$PLOEG_OUTCOME_FILE" ] || { echo "PLOEG_OUTCOME_FILE unset" >&2; exit 3; }
-cat >"$PLOEG_OUTCOME_FILE" <<'JSON'
-`+string(body)+`
-JSON
+cp '`+account+`' "$PLOEG_OUTCOME_FILE"
 echo "not json {{{"; echo '{"type":"result","total_cost_usd":'
 exit 0`)
 

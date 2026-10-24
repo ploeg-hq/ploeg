@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://webgrip.dev/ploeg/contracts/run-api.v1.schema.json",
   "title": "Run API",
-  "description": "Message bodies of ploegd's run API — the executor contract surface (docs/contracts/executor.md). Endpoints: POST /api/v1/claim, POST /api/v1/runs/{token}/renew, POST /api/v1/runs/{token}/checkpoint, POST /api/v1/runs/{token}/outcome, POST /api/v1/runs/{token}/forge-credential (ADR-0086: a writing Run refreshes an expiring push credential; 409 when the deployment mints none), POST /api/v1/runs/{token}/transcript (ADR-0090: a batch of the Run's transcript; 404 when PLOEG_RUN_TRANSCRIPTS is off), POST /api/v1/runs/{token}/board (ADR-0124: what changed on the board since the Run's briefing; 409 for a Run claimed without recorded versions, 404 from an older Ploeg), POST and GET /api/v1/runs/{token}/claude-session, POST /api/v1/claude-sessions/forge-credential and POST /api/v1/claude-sessions/report (ADR-0084; all answer 404 unless PLOEG_CLAUDE_ENVIRONMENTS is true), POST /api/v1/runs/{token}/claude-session and POST /api/v1/claude-sessions/forge-credential (ADR-0084; both answer 404 unless PLOEG_CLAUDE_ENVIRONMENTS is true). GET /api/v1/queue/depth and its queueDepthResponse were removed on 2026-09-23 because nothing consumed them; executors read the scale signal by SQL (docs/contracts/executor.md). Each JSON body has a size cap and a body over it answers 413: claim 64 KiB, checkpoint 1 MiB, outcome 8 MiB (the largest Outcome Report the schemas bound is about 1.6 million characters), transcript 1 MiB, notes 64 KiB, board 4 KiB, claude-session 4 KiB and claude-sessions/report 72 KiB.",
+  "description": "Message bodies of ploegd's run API — the executor contract surface (docs/contracts/executor.md). Endpoints: POST /api/v1/claim, POST /api/v1/runs/{token}/renew, POST /api/v1/runs/{token}/checkpoint, POST /api/v1/runs/{token}/outcome, POST /api/v1/runs/{token}/forge-credential (ADR-0086: a writing Run refreshes an expiring push credential; 409 when the deployment mints none), POST /api/v1/runs/{token}/transcript (ADR-0090: a batch of the Run's transcript; 404 when PLOEG_RUN_TRANSCRIPTS is off), POST /api/v1/runs/{token}/board (ADR-0124: what changed on the board since the Run's briefing; 409 for a Run claimed without recorded versions, 404 from an older Ploeg), POST /api/v1/runs/{token}/identity (ADR-0149, proposed: one Run identity per audience a declared plugin opted into; 404 when ploegd has no PLOEG_RUN_IDENTITY_SIGNING_KEY, 409 when the Run is not running or a person's client carries it), GET /api/v1/run-identity/jwks (ADR-0149: the public keys that verify a Run identity, unauthenticated; 404 when ploegd issues none), POST and GET /api/v1/runs/{token}/claude-session, POST /api/v1/claude-sessions/forge-credential and POST /api/v1/claude-sessions/report (ADR-0084; all answer 404 unless PLOEG_CLAUDE_ENVIRONMENTS is true), POST /api/v1/runs/{token}/claude-session and POST /api/v1/claude-sessions/forge-credential (ADR-0084; both answer 404 unless PLOEG_CLAUDE_ENVIRONMENTS is true). GET /api/v1/queue/depth and its queueDepthResponse were removed on 2026-09-23 because nothing consumed them; executors read the scale signal by SQL (docs/contracts/executor.md). Each JSON body has a size cap and a body over it answers 413: claim 64 KiB, checkpoint 1 MiB, outcome 8 MiB (the largest Outcome Report the schemas bound is about 1.6 million characters), transcript 1 MiB, notes 64 KiB, board 4 KiB, identity 4 KiB, claude-session 4 KiB and claude-sessions/report 72 KiB.",
   "$defs": {
     "claimRequest": {
       "type": "object",
@@ -117,6 +117,12 @@
           },
           "required": ["branch"],
           "additionalProperties": false
+        },
+        "fastCheck": {
+          "type": "array",
+          "description": "The fast check the Work Item's repository declares (ADR-0146, proposed): shell command lines, run in order from the repository root. Sent to a writing Run only. The worker hands them to the harness as the script $PLOEG_FAST_CHECK_SCRIPT and runs them itself on a rebase it pushes. Absent when the repository declares none and from an older Ploeg; the worker then rebases without a fast check and records it as skipped.",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1
         }
       },
       "required": ["runToken", "deadline", "workItem"],
@@ -151,6 +157,218 @@
         "forgeTokenExpiresAt": { "type": "string", "format": "date-time" }
       },
       "required": ["forgeToken"],
+      "additionalProperties": false
+    },
+    "runIdentityRequest": {
+      "type": "object",
+      "description": "Body of POST /api/v1/runs/{token}/identity (ADR-0149, proposed). The worker names only the audiences its declared plugins opted into; every fact in the tokens comes from ploegd's own records of the Run.",
+      "properties": {
+        "audiences": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/runIdentityAudience"
+          }
+        }
+      },
+      "required": [
+        "audiences"
+      ],
+      "additionalProperties": false
+    },
+    "runIdentityAudience": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "description": "The one service that accepts the token: an https URL without credentials, query or fragment, or a URN.",
+      "pattern": "^(https://[^\\s@?#]+|urn:[^\\s:]+:[^\\s]+)$"
+    },
+    "runIdentityResponse": {
+      "type": "object",
+      "description": "Response of POST /api/v1/runs/{token}/identity: one Run identity per requested audience, in request order. Each expires with the Run's current lease, at most 15 minutes after it was issued; the worker asks again after each lease renewal. A Run identity authorizes nothing in Ploeg. Sent with Cache-Control: no-store and never logged.",
+      "properties": {
+        "identities": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "audience": {
+                "$ref": "#/$defs/runIdentityAudience"
+              },
+              "token": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$",
+                "description": "A compact JWS (RFC 7515): header {alg: ES256, typ: run-identity+jwt, kid}, payload runIdentityClaims."
+              },
+              "expiresAt": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "audience",
+              "token",
+              "expiresAt"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "identities"
+      ],
+      "additionalProperties": false
+    },
+    "runIdentityClaims": {
+      "type": "object",
+      "description": "The JWT claims (RFC 7519) of a Run identity. A consumer checks the ES256 signature against runIdentityKeySet by kid, typ = run-identity+jwt, iss = the ploegd URL it is configured with, aud = its own audience, and exp; it may read the Run through GET /api/v1/operator/runs/{run.id} with its own operator credential.",
+      "properties": {
+        "iss": {
+          "type": "string",
+          "description": "PLOEG_RUN_IDENTITY_ISSUER: the URL consumers know ploegd by."
+        },
+        "sub": {
+          "type": "string",
+          "pattern": "^run:[0-9]+$",
+          "description": "run:<run.id>."
+        },
+        "aud": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "items": {
+            "$ref": "#/$defs/runIdentityAudience"
+          }
+        },
+        "iat": {
+          "type": "integer"
+        },
+        "nbf": {
+          "type": "integer"
+        },
+        "exp": {
+          "type": "integer",
+          "description": "The Run's lease deadline when the token was issued, at most iat + 900."
+        },
+        "jti": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "run": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "pattern": "^[0-9]+$",
+              "description": "The Run's id, as the operator API writes it."
+            },
+            "workItemId": {
+              "type": "string",
+              "pattern": "^[0-9]+$",
+              "description": "Absent for a chat Run, which is about no Work Item."
+            },
+            "shiftId": {
+              "type": "string",
+              "pattern": "^[0-9]+$",
+              "description": "Absent for a Run no Shift opened."
+            },
+            "round": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "role": {
+              "type": "string"
+            },
+            "team": {
+              "type": "string",
+              "minLength": 1
+            },
+            "harness": {
+              "type": "string",
+              "description": "The Harness the worker reported at its claim; absent when it reported none."
+            },
+            "branch": {
+              "type": "string",
+              "description": "The Shift's branch; absent when ploegd derived none."
+            },
+            "trace": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The Agent-Trace-Id trailer the Run writes on each commit, and the alias of its model key."
+            }
+          },
+          "required": [
+            "id",
+            "round",
+            "team",
+            "trace"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "iss",
+        "sub",
+        "aud",
+        "iat",
+        "nbf",
+        "exp",
+        "jti",
+        "run"
+      ],
+      "additionalProperties": false
+    },
+    "runIdentityKeySet": {
+      "type": "object",
+      "description": "Response of GET /api/v1/run-identity/jwks: a JWK Set (RFC 7517) of the P-256 keys that verify a Run identity, the current key first and then the retired ones (PLOEG_RUN_IDENTITY_RETIRED_KEYS). Each kid is the key's RFC 7638 thumbprint. Content-Type application/jwk-set+json, Cache-Control public, max-age=300.",
+      "properties": {
+        "keys": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "kty": {
+                "const": "EC"
+              },
+              "crv": {
+                "const": "P-256"
+              },
+              "x": {
+                "type": "string"
+              },
+              "y": {
+                "type": "string"
+              },
+              "kid": {
+                "type": "string",
+                "minLength": 1
+              },
+              "use": {
+                "const": "sig"
+              },
+              "alg": {
+                "const": "ES256"
+              }
+            },
+            "required": [
+              "kty",
+              "crv",
+              "x",
+              "y",
+              "kid",
+              "use",
+              "alg"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "keys"
+      ],
       "additionalProperties": false
     },
     "renewResponse": {

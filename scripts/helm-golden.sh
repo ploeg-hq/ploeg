@@ -57,6 +57,8 @@ status=0
 for case in ":default" \
 	"ops/helm/ploeg/ci/executor-values.yaml:executor" \
 	"ops/helm/ploeg/ci/executor-cronjob-values.yaml:executor-cronjob" \
+	"ops/helm/ploeg/ci/executor-cronjob-runtimeclass-values.yaml:executor-cronjob-runtimeclass" \
+	"ops/helm/ploeg/ci/executor-runtimeclass-values.yaml:executor-runtimeclass" \
 	"ops/helm/ploeg/ci/executor-gitlab-values.yaml:executor-gitlab" \
 	"ops/helm/ploeg/ci/executor-github-values.yaml:executor-github" \
 	"ops/helm/ploeg/ci/executor-sandbox-values.yaml:executor-sandbox" \
@@ -96,9 +98,11 @@ for case in "ops/helm/ploeg/ci/reject-reader-without-read-token-values.yaml:read
 	"ops/helm/ploeg/ci/reject-team-executor-type-under-cronjob-values.yaml:executorType is only honoured" \
 	"ops/helm/ploeg/ci/reject-forge-admin-token-values.yaml:adminTokenSecret is not supported" \
 	"ops/helm/ploeg/ci/reject-runtimeclass-non-string-values.yaml:runtimeClassName" \
+	"ops/helm/ploeg/ci/reject-runtimeclass-invalid-name-values.yaml:runtimeClassName" \
 	"ops/helm/ploeg/ci/reject-telemetry-without-endpoint-values.yaml:endpoint" \
 	"ops/helm/ploeg/ci/reject-telemetry-unknown-opt-in-values.yaml:allowHarnesses" \
 	"ops/helm/ploeg/ci/reject-claude-plugin-ploeg-secret-values.yaml:holds a Ploeg credential" \
+	"ops/helm/ploeg/ci/reject-claude-plugin-run-identity-key-values.yaml:holds a Ploeg credential" \
 	"ops/helm/ploeg/ci/reject-claude-plugin-moving-ref-values.yaml:commit" \
 	"ops/helm/ploeg/ci/reject-missing-database-values.yaml:database.existingSecret.name is required" \
 	"ops/helm/ploeg/ci/reject-missing-litellm-admin-url-values.yaml:executor.litellm.adminUrl is required" \
@@ -158,6 +162,12 @@ must_render_with ops/helm/ploeg/ci/executor-default-worker-values.yaml \
 must_render_with ops/helm/ploeg/ci/executor-acknowledged-dind-values.yaml \
 	'name: dind' 'privileged: true' 'ploeg.webgrip.dev/privileged-dind: "true"' 'name: PLOEG_CREDENTIAL_ISOLATION_OFF_REASON' 'value: "dind"' 'name: DOCKER_CERT_PATH' \
 	-- 'name: PLOEG_LLM_KEY_ISOLATION' 'name: PLOEG_FORGE_TOKEN_ISOLATION'
+
+must_render_with ops/helm/ploeg/ci/executor-cronjob-runtimeclass-values.yaml \
+	'runtimeClassName: "gvisor"' 'runtimeClassName: "kata"' \
+	-- 'sandbox-only'
+must_render_with ops/helm/ploeg/ci/executor-runtimeclass-values.yaml \
+	'runtimeClassName: "gvisor"' 'runtimeClassName: "kata"' 'runtimeClassName: "gvisor-systrap"' 'runtimeClassName: kata-legacy'
 
 if ! uv run --no-project --with pyyaml==6.0.3 python scripts/check-harness-container.py "$GOLDEN"; then
 	status=1

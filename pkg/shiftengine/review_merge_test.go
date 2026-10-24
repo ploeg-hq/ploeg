@@ -188,3 +188,62 @@ func TestReviewWatch_ReconcileForgeWithoutMergeabilityIsUnknown(t *testing.T) {
 		t.Errorf("pullRequest = %+v, want number 49, unknown, never checked", pr)
 	}
 }
+
+type conflictCall struct {
+	forge, repo, branch, base string
+	pr                        int
+}
+
+type recordedConflicts struct{ calls []conflictCall }
+
+func (r *recordedConflicts) RebaseConflicted(_ context.Context, forge, repo, branch string, pr int, base string) {
+	r.calls = append(r.calls, conflictCall{forge: forge, repo: repo, branch: branch, base: base, pr: pr})
+}
+
+func TestReviewWatch_AConfirmedConflictAsksForARebaseOncePerConflict(t *testing.T) {
+	ctx := context.Background()
+	resetTables(t)
+	awaitingReview(t, "2397", "50")
+	forge := &mergeForge{fakeForge: &fakeForge{}, polls: []mergePoll{
+		{mergeable: no(), head: "aaa"},
+		{mergeable: no(), head: "aaa"},
+		{mergeable: no(), head: "aaa"},
+		{mergeable: yes(), head: "bbb"},
+		{mergeable: no(), head: "bbb"},
+		{mergeable: no(), head: "bbb"},
+	}}
+	w := reviewWatchOn(forge)
+	conflicts := &recordedConflicts{}
+	w.Conflicts = conflicts
+
+	for range 3 {
+		w.Reconcile(ctx)
+	}
+	want := conflictCall{forge: forge.Name(), repo: "webgrip/ploeg", branch: "agent/vik-2397", base: "development", pr: 50}
+	if len(conflicts.calls) != 1 || conflicts.calls[0] != want {
+		t.Fatalf("calls after three conflicted polls = %+v, want one %+v: a conflict that stays is not asked about again", conflicts.calls, want)
+	}
+	for range 3 {
+		w.Reconcile(ctx)
+	}
+	if len(conflicts.calls) != 2 {
+		t.Errorf("calls = %+v, want a second rebase after the pull request conflicted again at a new head", conflicts.calls)
+	}
+}
+
+func TestReviewWatch_AnUnconfirmedConflictAsksForNothing(t *testing.T) {
+	ctx := context.Background()
+	resetTables(t)
+	awaitingReview(t, "2398", "51")
+	w := reviewWatchOn(&mergeForge{fakeForge: &fakeForge{}, polls: []mergePoll{
+		{mergeable: no(), head: "aaa"},
+		{mergeable: no(), head: "bbb"},
+	}})
+	conflicts := &recordedConflicts{}
+	w.Conflicts = conflicts
+	w.Reconcile(ctx)
+	w.Reconcile(ctx)
+	if len(conflicts.calls) != 0 {
+		t.Errorf("calls = %+v, want none before two polls at one head agree", conflicts.calls)
+	}
+}

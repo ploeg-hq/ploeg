@@ -1,0 +1,552 @@
+{
+  "schemaVersion": 1,
+  "consumer": "unfold",
+  "line": "0.4",
+  "requires": [
+    {"contract": "operator-api", "version": 1},
+    {"contract": "operator-delivery", "version": 1},
+    {"contract": "tracker-execution", "version": 1}
+  ],
+  "interactions": [
+    {
+      "contract": "operator-api",
+      "method": "GET",
+      "path": "/api/v1/operator/version",
+      "response": "versionResponse",
+      "reads": [
+        {"pointer": "/schemaVersion", "types": ["string"], "required": true},
+        {"pointer": "/ploeg", "types": ["string"], "required": true},
+        {"pointer": "/contracts", "types": ["array"], "required": true},
+        {"pointer": "/contracts/*/name", "types": ["string"], "required": true},
+        {"pointer": "/contracts/*/versions", "types": ["array"], "required": true},
+        {"pointer": "/contracts/*/versions/*", "types": ["integer"]}
+      ]
+    },
+    {
+      "contract": "operator-api",
+      "method": "GET",
+      "path": "/api/v1/operator/teams",
+      "response": "teamsResponse",
+      "reads": [
+        {"pointer": "/schemaVersion", "types": ["string"], "required": true},
+        {"pointer": "/teams", "types": ["array"], "required": true},
+        {"pointer": "/teams/*/id", "types": ["string"], "required": true},
+        {"pointer": "/teams/*/paused", "types": ["boolean", "null"], "required": true},
+        {"pointer": "/teams/*/queueDepth", "types": ["integer"], "required": true},
+        {"pointer": "/teams/*/roles", "types": ["array"], "required": true},
+        {"pointer": "/teams/*/roles/*/id", "types": ["string"], "required": true},
+        {"pointer": "/teams/*/roles/*/queueDepth", "types": ["integer"], "required": true},
+        {"pointer": "/teams/*/assignees", "types": ["array", "null"]},
+        {"pointer": "/teams/*/pinnedScopes", "types": ["array", "null"]}
+      ]
+    },
+    {
+      "contract": "operator-api",
+      "method": "GET",
+      "path": "/api/v1/operator/work-items",
+      "response": "itemsResponse",
+      "reads": [
+        {"pointer": "/schemaVersion", "types": ["string"], "required": true},
+        {"pointer": "/items", "types": ["array"], "required": true},
+        {"pointer": "/items/*/id", "types": ["string"], "required": true},
+        {"pointer": "/items/*/provider", "types": ["string"], "required": true},
+        {"pointer": "/items/*/externalId", "types": ["string"], "required": true},
+        {"pointer": "/items/*/revision", "types": ["string"], "required": true},
+        {"pointer": "/items/*/team", "types": ["string"], "required": true},
+        {"pointer": "/items/*/state", "types": ["string"], "required": true},
+        {"pointer": "/items/*/title", "types": ["string"], "required": true},
+        {"pointer": "/items/*/description", "types": ["string"], "required": true},
+        {"pointer": "/items/*/url", "types": ["string"], "required": true},
+        {"pointer": "/items/*/priority", "types": ["integer"], "required": true},
+        {"pointer": "/items/*/attempts", "types": ["integer"], "required": true},
+        {"pointer": "/items/*/infraFailures", "types": ["integer"], "required": true},
+        {"pointer": "/items/*/nextEligibleAt", "types": ["string", "null"], "required": true},
+        {"pointer": "/items/*/createdAt", "types": ["string"], "required": true},
+        {"pointer": "/items/*/updatedAt", "types": ["string"], "required": true},
+        {"pointer": "/items/*/target", "types": ["object", "null"], "required": true},
+        {"pointer": "/items/*/latestShift", "types": ["object", "null"], "required": true},
+        {"pointer": "/items/*/lease", "types": ["object", "null"], "required": true},
+        {"pointer": "/nextCursor", "types": ["string", "null"], "required": true}
+      ]
+    },
+    {
+      "contract": "operator-api",
+      "method": "GET",
+      "path": "/api/v1/operator/work-items/{id}",
+      "response": "itemResponse",
+      "reads": [
+        {"pointer": "/schemaVersion", "types": ["string"], "required": true},
+        {"pointer": "/item/id", "types": ["string"], "required": true},
+        {"pointer": "/item/provider", "types": ["string"], "required": true},
+        {"pointer": "/item/externalId", "types": ["string"], "required": true},
+        {"pointer": "/item/revision", "types": ["string"], "required": true},
+        {"pointer": "/item/team", "types": ["string"], "required": true},
+        {"pointer": "/item/state", "types": ["string"], "required": true},
+        {"pointer": "/item/title", "types": ["string"], "required": true},
+        {"pointer": "/item/description", "types": ["string"], "required": true},
+        {"pointer": "/item/url", "types": ["string"], "required": true},
+        {"pointer": "/item/priority", "types": ["integer"], "required": true},
+        {"pointer": "/item/attempts", "types": ["integer"], "required": true},
+        {"pointer": "/item/infraFailures", "types": ["integer"], "required": true},
+        {"pointer": "/item/nextEligibleAt", "types": ["string", "null"], "required": true},
+        {"pointer": "/item/createdAt", "types": ["string"], "required": true},
+        {"pointer": "/item/updatedAt", "types": ["string"], "required": true},
+        {"pointer": "/item/target", "types": ["object", "null"], "required": true},
+        {"pointer": "/item/latestShift", "types": ["object", "null"], "required": true},
+        {"pointer": "/item/lease", "types": ["object", "null"], "required": true},
+        {"pointer": "/shifts", "types": ["array"], "required": true},
+        {"pointer": "/runs", "types": ["array"], "required": true},
+        {"pointer": "/checkpoints", "types": ["array"], "required": true},
+        {"pointer": "/events", "types": ["array"], "required": true},
+        {"pointer": "/runs/*/id", "types": ["string"], "required": true},
+        {"pointer": "/runs/*/workItemId", "types": ["string"], "required": true},
+        {"pointer": "/runs/*/team", "types": ["string"], "required": true},
+        {"pointer": "/runs/*/role", "types": ["string"], "required": true},
+        {"pointer": "/runs/*/round", "types": ["integer"], "required": true},
+        {"pointer": "/runs/*/writes", "types": ["boolean"], "required": true},
+        {"pointer": "/runs/*/state", "types": ["string"], "required": true},
+        {"pointer": "/runs/*/costStatus", "types": ["string"], "required": true}
+      ]
+    },
+    {
+      "contract": "operator-api",
+      "method": "GET",
+      "path": "/api/v1/operator/runs",
+      "response": "runsResponse",
+      "reads": [
+        {"pointer": "/schemaVersion", "types": ["string"], "required": true},
+        {"pointer": "/runs", "types": ["array"], "required": true},
+        {"pointer": "/runs/*/id", "types": ["string"], "required": true},
+        {"pointer": "/runs/*/workItemId", "types": ["string"], "required": true},
+        {"pointer": "/runs/*/team", "types": ["string"], "required": true},
+        {"pointer": "/runs/*/state", "types": ["string"], "required": true},
+        {"pointer": "/nextBefore", "types": ["string", "null"], "required": true}
+      ]
+    },
+    {
+      "contract": "operator-api",
+      "method": "GET",
+      "path": "/api/v1/operator/runs/{id}",
+      "response": "runResponse",
+      "reads": [
+        {"pointer": "/schemaVersion", "types": ["string"], "required": true},
+        {"pointer": "/run", "types": ["object"], "required": true}
+      ]
+    },
+    {
+      "contract": "operator-api",
+      "method": "GET",
+      "path": "/api/v1/operator/runs/{id}/transcript",
+      "response": "transcriptResponse",
+      "reads": [
+        {"pointer": "/schemaVersion", "types": ["string"], "required": true},
+        {"pointer": "/entries", "types": ["array"], "required": true},
+        {"pointer": "/nextAfter", "types": ["integer"], "required": true},
+        {"pointer": "/hasMore", "types": ["boolean"], "required": true},
+        {"pointer": "/truncated", "types": ["boolean"], "required": true},
+        {"pointer": "/complete", "types": ["boolean"], "required": true}
+      ]
+    },
+    {
+      "contract": "operator-api",
+      "method": "GET",
+      "path": "/api/v1/operator/events",
+      "response": "eventsResponse",
+      "reads": [
+        {"pointer": "/schemaVersion", "types": ["string"], "required": true},
+        {"pointer": "/events", "types": ["array"], "required": true},
+        {"pointer": "/events/*/id", "types": ["string"], "required": true},
+        {"pointer": "/events/*/at", "types": ["string"], "required": true},
+        {"pointer": "/events/*/actor", "types": ["string"], "required": true},
+        {"pointer": "/events/*/action", "types": ["string"], "required": true},
+        {"pointer": "/events/*/workItemId", "types": ["string"], "required": true},
+        {"pointer": "/events/*/team", "types": ["string"], "required": true},
+        {"pointer": "/nextCursor", "types": ["string", "null"], "required": true},
+        {"pointer": "/lastCursor", "types": ["string"], "required": true},
+        {"pointer": "/hasMore", "types": ["boolean"], "required": true}
+      ]
+    },
+    {
+      "contract": "operator-api",
+      "method": "GET",
+      "path": "/api/v1/operator/summary",
+      "response": "summaryResponse",
+      "reads": [
+        {"pointer": "/schemaVersion", "types": ["string"], "required": true},
+        {"pointer": "/generatedAt", "types": ["string"], "required": true},
+        {"pointer": "/teams", "types": ["array"], "required": true},
+        {"pointer": "/teams/*/team", "types": ["string"], "required": true},
+        {"pointer": "/totals", "types": ["object"], "required": true}
+      ]
+    },
+    {
+      "contract": "operator-api",
+      "method": "GET",
+      "path": "/api/v1/operator/unsettled-accounts",
+      "response": "unsettledAccountsResponse",
+      "reads": [
+        {"pointer": "/schemaVersion", "types": ["string"], "required": true},
+        {"pointer": "/accounts", "types": ["array"], "required": true},
+        {"pointer": "/totals", "types": ["object"], "required": true}
+      ]
+    },
+    {
+      "contract": "operator-api",
+      "method": "GET",
+      "path": "/api/v1/operator/route-refusals",
+      "response": "routeRefusalsResponse",
+      "reads": [
+        {"pointer": "/schemaVersion", "types": ["string"], "required": true},
+        {"pointer": "/refusals", "types": ["array"], "required": true},
+        {"pointer": "/refusals/*/provider", "types": ["string"], "required": true},
+        {"pointer": "/refusals/*/externalId", "types": ["string"], "required": true},
+        {"pointer": "/refusals/*/externalScope", "types": ["string"], "required": true},
+        {"pointer": "/refusals/*/team", "types": ["string"], "required": true},
+        {"pointer": "/refusals/*/title", "types": ["string"], "required": true},
+        {"pointer": "/refusals/*/code", "types": ["string"], "required": true},
+        {"pointer": "/refusals/*/reason", "types": ["string"], "required": true},
+        {"pointer": "/refusals/*/refusedAt", "types": ["string"], "required": true},
+        {"pointer": "/refusals/*/labels", "types": ["array"], "required": true},
+        {"pointer": "/refusals/*/allowedLabels", "types": ["array"], "required": true}
+      ]
+    },
+    {
+      "contract": "operator-api",
+      "method": "GET",
+      "path": "/api/v1/operator/connections",
+      "response": "connectionsResponse",
+      "reads": [
+        {"pointer": "/schemaVersion", "types": ["string"], "required": true},
+        {"pointer": "/repositories", "types": ["array"], "required": true},
+        {"pointer": "/boards", "types": ["array"], "required": true},
+        {"pointer": "/repositories/*/key", "types": ["string"], "required": true},
+        {"pointer": "/repositories/*/forge", "types": ["string"], "required": true},
+        {"pointer": "/repositories/*/owner", "types": ["string"], "required": true},
+        {"pointer": "/repositories/*/repo", "types": ["string"], "required": true},
+        {"pointer": "/repositories/*/baseBranch", "types": ["string"], "required": true},
+        {"pointer": "/repositories/*/readiness", "types": ["string"], "required": true},
+        {"pointer": "/repositories/*/reason", "types": ["string"], "required": true},
+        {"pointer": "/repositories/*/label", "types": ["string", "null"], "required": true},
+        {"pointer": "/repositories/*/lastForgeEventAt", "types": ["string", "null"], "required": true},
+        {"pointer": "/repositories/*/boards", "types": ["array"], "required": true},
+        {"pointer": "/boards/*/tracker", "types": ["string"], "required": true},
+        {"pointer": "/boards/*/name", "types": ["string"], "required": true},
+        {"pointer": "/boards/*/webhook", "types": ["string"], "required": true},
+        {"pointer": "/boards/*/projectId", "types": ["string", "null"], "required": true},
+        {"pointer": "/boards/*/team", "types": ["string", "null"], "required": true},
+        {"pointer": "/boards/*/repository", "types": ["string", "null"], "required": true},
+        {"pointer": "/boards/*/default", "types": ["string", "null"], "required": true},
+        {"pointer": "/boards/*/allow", "types": ["array"], "required": true},
+        {"pointer": "/boards/*/teams", "types": ["array"], "required": true},
+        {"pointer": "/boards/*/teams/*/team", "types": ["string"], "required": true},
+        {"pointer": "/boards/*/teams/*/assignees", "types": ["array"], "required": true},
+        {"pointer": "/boards/*/teams/*/assignees/*/username", "types": ["string"], "required": true},
+        {"pointer": "/boards/*/teams/*/assignees/*/shared", "types": ["boolean", "null"], "required": true}
+      ]
+    },
+    {
+      "contract": "operator-api",
+      "method": "GET",
+      "path": "/api/v1/operator/facts",
+      "response": "factsListResponse",
+      "reads": [
+        {"pointer": "/schemaVersion", "types": ["string"], "required": true},
+        {"pointer": "/facts", "types": ["array"], "required": true},
+        {"pointer": "/nextBefore", "types": ["string", "null"], "required": true}
+      ]
+    },
+    {
+      "contract": "operator-api",
+      "method": "GET",
+      "path": "/api/v1/operator/work-items/{id}/facts",
+      "response": "factsResponse",
+      "reads": [
+        {"pointer": "/schemaVersion", "types": ["string"], "required": true},
+        {"pointer": "/facts", "types": ["object"], "required": true}
+      ]
+    },
+    {
+      "contract": "operator-api",
+      "method": "GET",
+      "path": "/api/v1/operator/allowances",
+      "response": "allowanceResponse",
+      "reads": [
+        {"pointer": "/schemaVersion", "types": ["string"], "required": true},
+        {"pointer": "/allowance", "types": ["object"], "required": true}
+      ]
+    },
+    {
+      "contract": "operator-api",
+      "method": "POST",
+      "path": "/api/v1/operator/work-items/{id}/cancel",
+      "request": {"definition": "cancelRequest", "example": {"commandId": "cancel-command-1", "expectedShiftId": "12"}},
+      "response": "cancelResponse",
+      "reads": [
+        {"pointer": "/schemaVersion", "types": ["string"], "required": true},
+        {"pointer": "/cancellation", "types": ["object"], "required": true}
+      ]
+    },
+    {
+      "contract": "operator-api",
+      "method": "POST",
+      "path": "/api/v1/operator/work-items/{id}/approve",
+      "response": "decisionResponse",
+      "reads": [
+        {"pointer": "/schemaVersion", "types": ["string"], "required": true},
+        {"pointer": "/decision", "types": ["object"], "required": true}
+      ]
+    },
+    {
+      "contract": "operator-api",
+      "method": "POST",
+      "path": "/api/v1/operator/work-items/{id}/reject",
+      "response": "decisionResponse",
+      "reads": [
+        {"pointer": "/schemaVersion", "types": ["string"], "required": true},
+        {"pointer": "/decision", "types": ["object"], "required": true}
+      ]
+    },
+    {
+      "contract": "operator-api",
+      "method": "POST",
+      "path": "/api/v1/operator/work-items/{id}/requeue",
+      "request": {"definition": "requeueRequest", "example": {"commandId": "requeue-command-1", "expectedState": "needs_human", "note": "Try again with the fixed base branch.", "poolUsd": 2.5, "resume": true}},
+      "response": "requeueResponse",
+      "reads": [
+        {"pointer": "/schemaVersion", "types": ["string"], "required": true},
+        {"pointer": "/requeue", "types": ["object"], "required": true}
+      ]
+    },
+    {
+      "contract": "operator-api",
+      "method": "POST",
+      "path": "/api/v1/operator/work-items/{id}/notes",
+      "request": {"definition": "noteRequest", "example": {"commandId": "note-command-1", "text": "Keep the migration additive.", "expectedShiftId": "12"}},
+      "response": "noteResponse",
+      "reads": [
+        {"pointer": "/schemaVersion", "types": ["string"], "required": true},
+        {"pointer": "/note", "types": ["object"], "required": true}
+      ]
+    },
+    {
+      "contract": "operator-api",
+      "method": "POST",
+      "path": "/api/v1/operator/work-items/{id}/questions/{question}/answer",
+      "request": {"definition": "questionAnswerRequest", "example": {"commandId": "answer-command-1", "answer": "Use the existing helper."}},
+      "response": "questionAnswerResponse",
+      "reads": [
+        {"pointer": "/schemaVersion", "types": ["string"], "required": true},
+        {"pointer": "/answer", "types": ["object"], "required": true}
+      ]
+    },
+    {
+      "contract": "operator-api",
+      "method": "POST",
+      "path": "/api/v1/operator/work-items",
+      "request": {"definition": "workItemAdmissionRequest", "example": {"requestId": "admit-command-1", "team": "builder", "target": "app", "title": "Add a health check", "description": "Add GET /healthz.", "budgetUsd": 5}},
+      "response": "workItemAdmissionResponse",
+      "reads": [
+        {"pointer": "/schemaVersion", "types": ["string"], "required": true},
+        {"pointer": "/workItem", "types": ["object"], "required": true},
+        {"pointer": "/created", "types": ["boolean"], "required": true},
+        {"pointer": "/replayed", "types": ["boolean"], "required": true}
+      ]
+    },
+    {
+      "contract": "operator-api",
+      "method": "POST",
+      "path": "/api/v1/operator/work-items/{id}/claim",
+      "response": "clientClaimResponse",
+      "reads": [
+        {"pointer": "/schemaVersion", "types": ["string"], "required": true},
+        {"pointer": "/run", "types": ["object"], "required": true},
+        {"pointer": "/dispatch", "types": ["object"], "required": true}
+      ]
+    },
+    {
+      "contract": "operator-api",
+      "method": "GET",
+      "path": "/api/v1/operator/work-items/{id}/context"
+    },
+    {
+      "contract": "operator-api",
+      "method": "POST",
+      "path": "/api/v1/operator/work-items/{id}/context"
+    },
+    {
+      "contract": "operator-api",
+      "method": "PUT",
+      "path": "/api/v1/operator/work-items/{id}/pull-request-comments/{key}",
+      "request": {"definition": "pullRequestCommentRequest", "example": {"markdown": "Run card"}},
+      "response": "pullRequestCommentResponse",
+      "reads": [
+        {"pointer": "/schemaVersion", "types": ["string"], "required": true},
+        {"pointer": "/comment", "types": ["object"], "required": true},
+        {"pointer": "/comment/created", "types": ["boolean"], "required": true}
+      ]
+    },
+    {
+      "contract": "operator-api",
+      "method": "POST",
+      "path": "/api/v1/operator/work-items/{id}/asks",
+      "request": {"definition": "askAdmitRequest", "example": {"askId": "ask-command-1", "question": "Why did the review fail?"}},
+      "response": "askAdmitResponse",
+      "reads": [
+        {"pointer": "/schemaVersion", "types": ["string"], "required": true},
+        {"pointer": "/created", "types": ["boolean"], "required": true},
+        {"pointer": "/ask", "types": ["object"], "required": true},
+        {"pointer": "/allowance", "types": ["object"], "required": true}
+      ]
+    },
+    {
+      "contract": "operator-api",
+      "method": "GET",
+      "path": "/api/v1/operator/work-items/{id}/asks/{ask}",
+      "response": "askResponse",
+      "reads": [
+        {"pointer": "/schemaVersion", "types": ["string"], "required": true},
+        {"pointer": "/ask", "types": ["object"], "required": true}
+      ]
+    },
+    {
+      "contract": "operator-api",
+      "method": "POST",
+      "path": "/api/v1/operator/work-items/{id}/asks/{ask}/finish",
+      "response": "askFinishResponse",
+      "reads": [
+        {"pointer": "/schemaVersion", "types": ["string"], "required": true},
+        {"pointer": "/ask", "types": ["object"], "required": true},
+        {"pointer": "/blocked", "types": ["boolean"], "required": true}
+      ]
+    },
+    {
+      "contract": "operator-api",
+      "method": "POST",
+      "path": "/api/v1/operator/teams/{team}/chats",
+      "request": {"definition": "chatAdmitRequest", "example": {"chatId": "chat-command-1", "message": "What is queued for this team?"}},
+      "response": "chatAdmitResponse",
+      "reads": [
+        {"pointer": "/schemaVersion", "types": ["string"], "required": true},
+        {"pointer": "/created", "types": ["boolean"], "required": true},
+        {"pointer": "/chat", "types": ["object"], "required": true},
+        {"pointer": "/allowance", "types": ["object"], "required": true}
+      ]
+    },
+    {
+      "contract": "operator-api",
+      "method": "GET",
+      "path": "/api/v1/operator/teams/{team}/chats/{chat}",
+      "response": "chatResponse",
+      "reads": [
+        {"pointer": "/schemaVersion", "types": ["string"], "required": true},
+        {"pointer": "/chat", "types": ["object"], "required": true}
+      ]
+    },
+    {
+      "contract": "operator-api",
+      "method": "POST",
+      "path": "/api/v1/operator/teams/{team}/chats/{chat}/finish",
+      "response": "chatResponse",
+      "reads": [
+        {"pointer": "/schemaVersion", "types": ["string"], "required": true},
+        {"pointer": "/chat", "types": ["object"], "required": true}
+      ]
+    },
+    {
+      "contract": "tracker-execution",
+      "method": "GET",
+      "path": "/api/v1/operator/work-items/lookup"
+    },
+    {
+      "contract": "operator-api",
+      "method": "POST",
+      "path": "/api/v1/operator/executions"
+    },
+    {
+      "contract": "operator-api",
+      "method": "GET",
+      "path": "/api/v1/operator/executions/{execution}"
+    },
+    {
+      "contract": "operator-api",
+      "method": "POST",
+      "path": "/api/v1/operator/executions/{execution}/commands"
+    },
+    {
+      "contract": "operator-api",
+      "method": "GET",
+      "path": "/api/v1/operator/executions/{execution}/events"
+    },
+    {
+      "contract": "operator-api",
+      "method": "POST",
+      "path": "/api/v1/operator/executions/{execution}/credential"
+    },
+    {
+      "contract": "operator-api",
+      "method": "POST",
+      "path": "/api/v1/operator/executions/{execution}/block"
+    },
+    {
+      "contract": "operator-api",
+      "method": "GET",
+      "path": "/api/v1/operator/executions/{execution}/spend"
+    },
+    {
+      "contract": "operator-delivery",
+      "method": "GET",
+      "path": "/api/v1/operator/executions/{execution}/delivery",
+      "response": "deliveryResponse",
+      "reads": [
+        {"pointer": "/schemaVersion", "types": ["string"], "required": true},
+        {"pointer": "/delivery", "types": ["object"], "required": true}
+      ]
+    },
+    {
+      "contract": "operator-delivery",
+      "method": "POST",
+      "path": "/api/v1/operator/executions/{execution}/delivery/candidates",
+      "response": "candidateResponse",
+      "reads": [
+        {"pointer": "/schemaVersion", "types": ["string"], "required": true}
+      ]
+    },
+    {
+      "contract": "operator-delivery",
+      "method": "POST",
+      "path": "/api/v1/operator/executions/{execution}/delivery/verification",
+      "response": "receiptResponse",
+      "reads": [
+        {"pointer": "/schemaVersion", "types": ["string"], "required": true}
+      ]
+    },
+    {
+      "contract": "operator-delivery",
+      "method": "POST",
+      "path": "/api/v1/operator/executions/{execution}/delivery/approval",
+      "response": "approvalResponse",
+      "reads": [
+        {"pointer": "/schemaVersion", "types": ["string"], "required": true}
+      ]
+    },
+    {
+      "contract": "operator-delivery",
+      "method": "POST",
+      "path": "/api/v1/operator/executions/{execution}/delivery/publication",
+      "response": "reserveResponse",
+      "reads": [
+        {"pointer": "/schemaVersion", "types": ["string"], "required": true}
+      ]
+    },
+    {
+      "contract": "operator-delivery",
+      "method": "POST",
+      "path": "/api/v1/operator/executions/{execution}/delivery/publication/{operation}/status",
+      "response": "statusResponse",
+      "reads": [
+        {"pointer": "/schemaVersion", "types": ["string"], "required": true},
+        {"pointer": "/operation", "types": ["object"], "required": true}
+      ]
+    }
+  ]
+}

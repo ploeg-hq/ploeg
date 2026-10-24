@@ -422,6 +422,7 @@ global executor.harness defaults field-by-field (explicit hasKey checks, so
 {{- $forgeCfg := include "ploeg.forge" $root | fromJson }}
 {{- with $forgeCfg.tokenSecret.name }}{{- $ploegSecrets = append $ploegSecrets . }}{{- end }}
 {{- with $forgeCfg.readTokenSecret.name }}{{- $ploegSecrets = append $ploegSecrets . }}{{- end }}
+{{- with $root.Values.runIdentity }}{{- with .signingKeySecret }}{{- $ploegSecrets = append $ploegSecrets .name }}{{- end }}{{- end }}
 {{- range $i, $p := $ccPlugins }}
 {{- $envJson := list }}
 {{- range $j, $e := ($p.env | default list) }}
@@ -439,6 +440,7 @@ global executor.harness defaults field-by-field (explicit hasKey checks, so
 {{- $entry := dict "name" $p.name "marketplace" $p.marketplace }}
 {{- if $envJson }}{{- $_ := set $entry "env" $envJson }}{{- end }}
 {{- if $p.hookTimeout }}{{- $_ := set $entry "hookTimeout" $p.hookTimeout }}{{- end }}
+{{- with $p.runIdentity }}{{- $_ := set $entry "runIdentity" (dict "audience" .audience) }}{{- end }}
 {{- $ccPluginJson = append $ccPluginJson $entry }}
 {{- end }}
 {{- end }}
@@ -522,6 +524,9 @@ spec:
   {{- end }}
   {{- with $root.Values.executor.nodeSelector }}
   nodeSelector: {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with include "ploeg.runtimeClassName" (dict "root" $root "team" $team "role" $role) }}
+  runtimeClassName: {{ . | quote }}
   {{- end }}
   securityContext:
     fsGroup: 1000

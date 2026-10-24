@@ -89,6 +89,11 @@ type Target struct {
 	// CI sets how long a Shift on this repository waits for the forge's CI
 	// (ADR-0119). Omitted = 60 minutes.
 	CI *CI `yaml:"ci"`
+	// FastCheck is the repository's fast check: shell command lines a
+	// writing Run runs after it rebases onto the base branch, and the worker
+	// runs before it pushes a rebase of its own (ADR-0146). Omitted = none,
+	// and a rebase is pushed with the check recorded as skipped.
+	FastCheck []string `yaml:"fastCheck"`
 }
 
 // Project routes one tracker container to one repository, or to the
@@ -125,6 +130,8 @@ type Project struct {
 	// CI sets how long a Shift on Repo waits for the forge's CI (ADR-0119).
 	// Omitted = 60 minutes.
 	CI *CI `yaml:"ci"`
+	// FastCheck is Repo's fast check, as Target.FastCheck (ADR-0146).
+	FastCheck []string `yaml:"fastCheck"`
 }
 
 // Team is a roster entry: who works, at what cost, in what order.
@@ -306,6 +313,9 @@ func (f *File) Validate() error {
 		}
 	}
 	if err := f.validatePeople(); err != nil {
+		return err
+	}
+	if err := f.validateFastChecks(); err != nil {
 		return err
 	}
 	if err := f.validateCI(); err != nil {
