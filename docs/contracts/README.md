@@ -10,7 +10,7 @@ change either side and the test tells you.
 | [outcomereport.v1.schema.json](outcomereport.v1.schema.json) | Harness output and the body of `POST /api/v1/runs/{token}/outcome`. Stuck requires a reason (R4). The optional `createdWorkItems` carries the Work Items a Run proposes ([ADR-0031](../adrs/0031-runs-create-work-items-held-for-approval-within-limits.md)). The optional `verification` is the worker's own record of the checks it ran on a writing Run; the worker discards any value an agent sent. |
 | [checkpoint.v1.schema.json](checkpoint.v1.schema.json) | The durable progress record (shared by TaskSpec, OutcomeReport, and the checkpoint endpoint). |
 | [run-api.v1.schema.json](run-api.v1.schema.json) | All run-API message bodies (claim/renew/checkpoint/outcome/transcript), and the Run identity a declared plugin receives: its claims and the key set that verifies it ([ADR-0149](../adrs/0149-a-declared-plugin-may-receive-a-signed-run-identity-that-names-its-run-and-authorizes-nothing.md)). |
-| [operator-api.v1.schema.json](operator-api.v1.schema.json) | Authenticated, team-scoped read projections of teams, activity summaries, work items, shifts, runs, the Run list, a Run's transcript ([ADR-0090](../adrs/0090-a-runs-agent-session-is-kept-as-a-bounded-redacted-transcript.md)), checkpoints and snapshot audit pages; the delivery facts of a Work Item and the facts list, and the keyed pull request comment ([ADR-0079](../adrs/0079-run-cards-belong-to-the-consumer-and-ploeg-supplies-delivery-facts.md)); Asks and the Ask Allowance ([ADR-0082](../adrs/0082-an-ask-is-a-read-only-run-outside-the-shift-paid-from-a-periodic-allowance.md)); the Admission of a manual-origin Work Item ([ADR-0102](../adrs/0102-an-operator-consumer-admits-work-items-that-ploeg-worker-executes.md)); the claim of a client-carried Run by the person it acts for ([ADR-0112](../adrs/0112-a-claude-environment-run-uses-the-claude-login-of-the-person-it-acts-for.md)). |
+| [operator-api.v1.schema.json](operator-api.v1.schema.json) | Authenticated, team-scoped read projections of teams, activity summaries, work items, shifts, runs, the Run list, a Run's transcript ([ADR-0090](../adrs/0090-a-runs-agent-session-is-kept-as-a-bounded-redacted-transcript.md)), checkpoints and snapshot audit pages; the delivery facts of a Work Item and the facts list, and the keyed pull request comment ([ADR-0079](../adrs/0079-run-cards-belong-to-the-consumer-and-ploeg-supplies-delivery-facts.md)); Asks and the Ask Allowance ([ADR-0082](../adrs/0082-an-ask-is-a-read-only-run-outside-the-shift-paid-from-a-periodic-allowance.md)); the Admission of a manual-origin Work Item ([ADR-0102](../adrs/0102-an-operator-consumer-admits-work-items-that-ploeg-worker-executes.md)); the claim of a client-carried Run by the person it acts for ([ADR-0112](../adrs/0112-a-claude-environment-run-uses-the-claude-login-of-the-person-it-acts-for.md)); the release and served contract versions ([ADR-0147](../adrs/0147-ploeg-serves-the-major-of-each-contract-and-keeps-its-consumers-two-newest-lines-working.md)). |
 | [deploy-api.v1.schema.json](deploy-api.v1.schema.json) | `POST /api/v1/deploys`: a pipeline reports that a commit is live in an environment, with its own bearer token ([ADR-0047](../adrs/0047-ploeg-learns-where-a-merged-change-is-deployed-from-a-generic-deploy-endpoint.md), [how-to](../how-to/send-deploys-from-a-pipeline.md)). |
 | [tracker-execution.md](tracker-execution.md), [v1 schema](tracker-execution.v1.schema.json) | Scoped source lookup and exclusive operator binding of an existing pristine tracker Work Item. |
 | [acp-profiles.md](acp-profiles.md) | The `acp` harness profiles: launch command, gateway wiring, instruction files and approval mapping per agent, and what an image needs to run them. |
@@ -38,6 +38,32 @@ Every release also publishes these contracts as one OCI artifact, so a consumer 
 - The `contract-bundle-reproducible` CI job runs [scripts/reproduce-published-contract-bundle.sh](../../scripts/reproduce-published-contract-bundle.sh) on every pull request and trunk push. It takes the newest `v*` tag that is an ancestor of `HEAD` (`git describe --tags --match 'v*' --abbrev=0`) and runs `reproduce` for it, so it follows each release without anyone moving a pin. A tag whose bundle is not published yet, because its release is still running, gives way to the tag before it; any other registry error, and any digest mismatch, fails the job. A pull request that alters the bundle on purpose fails this job and says so; it changes future digests only and never republishes a tag.
 
 The workflow publishes the bundle only once `proxy.golang.org` lists the tag and serves its `.info` and `.mod`, and `sum.golang.org` records it, so a consumer that sees the bundle can also resolve the Go module at the same version. [scripts/go-module-published.sh](../../scripts/go-module-published.sh) polls every 15 seconds for up to 10 minutes and fails the job, so no bundle and no consumer update follow, when the module never appears. [scripts/test-go-module-published.sh](../../scripts/test-go-module-published.sh), part of `mise run verify`, runs it against a local fake proxy.
+
+## Contract versions and consumer expectations
+
+Each contract's version is its major: `<name>.v<N>.schema.json` is major N, and a file without `.v<N>.` names its major in its title ([ADR 0147](../adrs/0147-ploeg-serves-the-major-of-each-contract-and-keeps-its-consumers-two-newest-lines-working.md)). [pkg/contracts](../../pkg/contracts/contracts.go) lists every served contract and major; `go test ./pkg/contracts/` fails when it and these files disagree.
+
+`GET /api/v1/operator/version` answers `versionResponse` to any configured operator consumer, whatever its team scope:
+
+```json
+{"schemaVersion": "1.0", "ploeg": "0.2.0-rc.51", "contracts": [{"name": "operator-api", "versions": [1]}]}
+```
+
+`ploeg` is the release `ploegd` was built with, or `unknown`. A consumer compares `contracts` with the majors it requires and refuses to run against a Ploeg that does not serve one of them. A Ploeg that answers 404 here predates the route and serves major 1 of every contract it has. Two majors of one contract are listed only during the overlap minor of a breaking change.
+
+A consumer records what it relies on in `consumers/<consumer>/<major>.<minor>.json`, one file per release line, at most its two newest lines. Every change to Ploeg runs every file (`TestEveryRecordedConsumerExpectationHolds` in `pkg/httpapi`), so a change that breaks a recorded consumer fails CI with the consumer, the request and the value named. The format, decoded strictly:
+
+| Field | Meaning |
+| --- | --- |
+| `schemaVersion` | `1` |
+| `consumer`, `line` | the directory and file name, such as `acme` and `0.4` |
+| `requires[]` | `{"contract": "operator-api", "version": 1}`: each contract and major the consumer needs |
+| `interactions[].contract`, `method`, `path` | one request the consumer sends; `{name}` marks a path parameter, and a path has no query |
+| `interactions[].request` | `{"definition": "requeueRequest", "example": {…}}`: a body the consumer sends, which must still validate |
+| `interactions[].response` | the response definition the consumer parses |
+| `interactions[].reads[]` | `{"pointer": "/items/*/title", "types": ["string"], "required": true}`: a value the consumer reads (`*` is every array item or map value), the JSON types it accepts there, and whether it needs the value present |
+
+The check does not compare enum values: a consumer must treat an unknown value as unknown. A consumer adds its new line by pull request and removes its oldest in the same change. When its expectation fails, fix the change or add a new major; editing the expectation to pass needs that consumer's agreement. A consumer can run the same check against a released Ploeg from the Go module with `consumers.Provider` and `(*httpapi.Server).ServesRoute`.
 
 ## Versioning policy
 
@@ -253,8 +279,11 @@ optional `publisherLogin`. Publication remains disabled when
 must have opened a published pull request. Policies and
 verifier credentials stay in the controller deployment.
 
-The token is supplied as `Authorization: Bearer …`. No consumers configured
-means every operator request is refused. Consumer names and policies may live
+The token is supplied as `Authorization: Bearer …`. An entry may also list
+`clientIds`, the identity provider clients whose person tokens make it the
+caller (ADR-0150); they need `PLOEG_OPERATOR_PERSON_ISSUER` and
+`PLOEG_OPERATOR_PERSON_AUDIENCE`, and no client id may equal that audience.
+No consumers configured means every operator request is refused. Consumer names and policies may live
 in configuration; bearer values belong in the deployment's existing secret
 provisioning path, supplied through environment references.
 
@@ -616,9 +645,27 @@ A person's execution command (`message`, `pause`, `resume`, `cancel`,
 execution's Work Item; the executor's `start`, `heartbeat`, `report` and
 `close` are not. `GET /api/v1/operator/events?actor=<identity>` keeps the
 events whose attribution names that identity as `actor` or `actingUser`;
-events recorded before attribution existed carry none and never match. Ploeg
-trusts the consumer to name the person truthfully: guard a consumer's token
-like an administrator's credential.
+events recorded before attribution existed carry none and never match.
+
+A consumer acting for a person can prove the person instead of naming them
+([ADR-0150](../adrs/0150-an-operator-consumer-proves-the-person-it-acts-for-with-a-token-exchanged-for-ploegs-audience.md)). It exchanges the person's token at the identity
+provider (RFC 8693) for a token whose `aud` is Ploeg's audience
+(`PLOEG_OPERATOR_PERSON_AUDIENCE`) and sends it as `Authorization: Bearer …`;
+ploegd takes the caller from the token's `azp` (or `client_id`), which must be
+one of exactly one consumer's `clientIds`. A consumer may instead keep its own
+bearer and send the person token in `X-Ploeg-Person-Token`; the token's `azp`
+must then be one of that consumer's `clientIds`. ploegd verifies the signature
+against the configured issuer's keys (asymmetric algorithms only), `iss`, `aud`,
+`exp` and `iat` with a lifetime of at most `PLOEG_OPERATOR_PERSON_MAX_LIFETIME`
+(default five minutes) and `sub`; any failure answers 401 `invalid_token` and
+nothing changes. The person is Ploeg's `oidc-` id of `sub` under the issuer or
+`PLOEG_OPERATOR_PERSON_SUBJECT_NAMESPACE`. ploegd then sets `X-Ploeg-Actor` to
+that person; an `X-Ploeg-Actor` or `X-Ploeg-Acting-User` naming anyone else
+answers 403 `actor_conflict`. `detail.attribution.proof` is `proven` for such a
+request and `asserted` when only headers named the person, and `act` holds the
+token's `act.sub`. Header-only attribution keeps working for one release, and
+for it Ploeg trusts the consumer to name the person truthfully: guard a
+consumer's token like an administrator's credential.
 
 Managed workers use the [worker control contract](worker-control.md); deployment and conservative accounting recovery are documented in [managed worker operations](../ops/managed-workers.md).
 

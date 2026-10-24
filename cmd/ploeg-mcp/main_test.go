@@ -71,7 +71,7 @@ func connect(t *testing.T, handler http.Handler, token string) *mcp.ClientSessio
 	}
 	serverSide, clientSide := mcp.NewInMemoryTransports()
 	ctx := context.Background()
-	ss, err := newServer(client, false).Connect(ctx, serverSide, nil)
+	ss, err := newServer(client).Connect(ctx, serverSide, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -11,11 +11,15 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/modelcontextprotocol/go-sdk/auth"
+
+	"github.com/ploeg-hq/ploeg/pkg/mcpauth"
 	"github.com/ploeg-hq/ploeg/pkg/provider"
 	"github.com/ploeg-hq/ploeg/pkg/store"
 	"github.com/ploeg-hq/ploeg/pkg/work"
@@ -44,10 +48,12 @@ func (p OperatorPrincipal) AllowsTeam(team string) bool {
 type OperatorConsumer struct {
 	Principal OperatorPrincipal
 	tokenHash [sha256.Size]byte
+	clientIDs []string
 }
 
 type OperatorConfig struct {
 	Consumers        []OperatorConsumer
+	PersonTokens     *PersonTokens
 	Teams            map[string][]string
 	TeamAssignees    map[string][]string
 	TeamScopes       map[string][]string
@@ -79,11 +85,12 @@ func ParseOperatorConsumers(raw string, lookup func(string) (string, bool)) ([]O
 		Execute      bool     `json:"execute"`
 		Verify       bool     `json:"verify"`
 		MaxBudgetUSD *float64 `json:"maxBudgetUsd"`
+		ClientIDs    []string `json:"clientIds"`
 	}
 	decoder := json.NewDecoder(strings.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&configs); err != nil {
-		return nil, errors.New("operator consumers must be a JSON array of name, tokenEnv, teams and execute")
+		return nil, errors.New("operator consumers must be a JSON array of name, tokenEnv, teams, execute, verify, maxBudgetUsd and clientIds")
 	}
 	if err := decoder.Decode(new(any)); err != io.EOF {
 		return nil, errors.New("operator consumers must contain one JSON value")
@@ -123,37 +130,61 @@ func ParseOperatorConsumers(raw string, lookup func(string) (string, bool)) ([]O
 		if hashes[hash] {
 			return nil, errors.New("operator consumers must not share a bearer credential")
 		}
-		consumers = append(consumers, OperatorConsumer{Principal: OperatorPrincipal{Name: cfg.Name, Teams: cfg.Teams, CanExecute: cfg.Execute, CanVerify: cfg.Verify, BudgetLimitUSD: budgetLimit}, tokenHash: hash})
+		if len(cfg.ClientIDs) > 20 {
+			return nil, fmt.Errorf("operator consumer %s has more than 20 clientIds", cfg.Name)
+		}
+		clients := map[string]bool{}
+		for _, id := range cfg.ClientIDs {
+			if id == "" || len(id) > 256 || clients[id] || strings.ContainsFunc(id, func(r rune) bool { return r <= 0x20 || r >= 0x7f }) {
+				return nil, fmt.Errorf("operator consumer %s has an empty, duplicated or non-printable client id", cfg.Name)
+			}
+			clients[id] = true
+		}
+		consumers = append(consumers, OperatorConsumer{Principal: OperatorPrincipal{Name: cfg.Name, Teams: cfg.Teams, CanExecute: cfg.Execute, CanVerify: cfg.Verify, BudgetLimitUSD: budgetLimit}, tokenHash: hash, clientIDs: cfg.ClientIDs})
 		names[cfg.Name], hashes[hash] = true, true
 	}
 	return consumers, nil
+}
+
+// OperatorConsumersNameClientIDs reports whether any consumer accepts person
+// tokens, so a deployment that names clientIds without an issuer is refused.
+func OperatorConsumersNameClientIDs(consumers []OperatorConsumer) bool {
+	for _, c := range consumers {
+		if len(c.clientIDs) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) operatorAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
-		values := r.Header.Values("Authorization")
-		var token string
-		if len(values) == 1 {
-			scheme, credential, ok := strings.Cut(values[0], " ")
-			if ok && strings.EqualFold(scheme, "Bearer") && len(credential) >= 32 && len(credential) <= 4096 && !strings.ContainsAny(credential, " \t\r\n,") {
-				token = credential
+		principal, proven, refusal := s.operatorCaller(r)
+		if refusal != nil {
+			if refusal.status == http.StatusUnauthorized {
+				challenge := `Bearer realm="ploeg-operator"`
+				if refusal.code == "invalid_token" {
+					challenge += `, error="invalid_token"`
+				}
+				w.Header().Set("WWW-Authenticate", challenge)
 			}
-		}
-		hash := sha256.Sum256([]byte(token))
-		var principal *OperatorPrincipal
-		for i := range s.OperatorConfig.Consumers {
-			consumer := &s.OperatorConfig.Consumers[i]
-			if subtle.ConstantTimeCompare(hash[:], consumer.tokenHash[:]) == 1 && token != "" {
-				copy := consumer.Principal
-				principal = &copy
-			}
-		}
-		if principal == nil {
-			w.Header().Set("WWW-Authenticate", `Bearer realm="ploeg-operator"`)
-			operatorError(w, http.StatusUnauthorized, "unauthorized", "A configured operator bearer credential is required.")
+			operatorError(w, refusal.status, refusal.code, refusal.message)
 			return
+		}
+		if proven != nil {
+			for _, name := range []string{"X-Ploeg-Actor", "X-Ploeg-Acting-User"} {
+				for _, named := range r.Header.Values(name) {
+					if named != proven.ID {
+						operatorError(w, http.StatusForbidden, "actor_conflict", name+" names someone other than the person the person token proves.")
+						return
+					}
+				}
+			}
+			r = r.Clone(context.WithValue(r.Context(), provenPersonKey{}, *proven))
+			r.Header.Set("X-Ploeg-Actor", proven.ID)
+			r.Header.Del("X-Ploeg-Acting-User")
 		}
 		if len(r.URL.RawQuery) > 8192 {
 			operatorError(w, http.StatusRequestURITooLong, "invalid_request", "Operator query exceeds 8 KiB.")
@@ -189,8 +220,95 @@ func (s *Server) operatorAuth(next http.Handler) http.Handler {
 	})
 }
 
+type callerRefusal struct {
+	status        int
+	code, message string
+}
+
+// operatorCaller authenticates the Operator Consumer of r (ADR-0150). The
+// bearer is the consumer's static credential, or a person token whose azp is
+// one of exactly one consumer's clientIds. A person token may instead ride in
+// X-Ploeg-Person-Token next to the static credential; its azp must then be
+// one of that consumer's clientIds. A presented person token that does not
+// verify refuses the request.
+func (s *Server) operatorCaller(r *http.Request) (*OperatorPrincipal, *ProvenPerson, *callerRefusal) {
+	unauthorized := &callerRefusal{http.StatusUnauthorized, "unauthorized", "A configured operator bearer credential is required."}
+	values := r.Header.Values("Authorization")
+	if len(values) != 1 {
+		return nil, nil, unauthorized
+	}
+	scheme, credential, ok := strings.Cut(values[0], " ")
+	if !ok || !strings.EqualFold(scheme, "Bearer") || len(credential) < 32 || len(credential) > maxPersonTokenBytes || strings.ContainsAny(credential, " \t\r\n,") {
+		return nil, nil, unauthorized
+	}
+	extra := r.Header.Values(PersonTokenHeader)
+	if len(extra) > 1 {
+		return nil, nil, &callerRefusal{http.StatusUnauthorized, "invalid_token", "Send at most one " + PersonTokenHeader + "."}
+	}
+	var consumer *OperatorConsumer
+	if len(credential) <= 4096 {
+		hash := sha256.Sum256([]byte(credential))
+		for i := range s.OperatorConfig.Consumers {
+			if subtle.ConstantTimeCompare(hash[:], s.OperatorConfig.Consumers[i].tokenHash[:]) == 1 {
+				consumer = &s.OperatorConfig.Consumers[i]
+			}
+		}
+	}
+	personToken := ""
+	switch {
+	case consumer != nil && len(extra) == 1:
+		personToken = extra[0]
+	case consumer == nil && len(extra) == 0 && s.OperatorConfig.PersonTokens != nil && looksLikeJWT(credential):
+		personToken = credential
+	case consumer == nil:
+		return nil, nil, unauthorized
+	}
+	if personToken == "" {
+		principal := consumer.Principal
+		return &principal, nil, nil
+	}
+	if s.OperatorConfig.PersonTokens == nil {
+		return nil, nil, &callerRefusal{http.StatusUnauthorized, "invalid_token", "This deployment accepts no person tokens."}
+	}
+	if !looksLikeJWT(personToken) {
+		return nil, nil, &callerRefusal{http.StatusUnauthorized, "invalid_token", "The person token was refused: it is not a JWT."}
+	}
+	proven, err := s.OperatorConfig.PersonTokens.verify(r.Context(), personToken)
+	if errors.Is(err, mcpauth.ErrKeysUnavailable) {
+		return nil, nil, &callerRefusal{http.StatusServiceUnavailable, "unavailable", "The identity provider's signing keys are unavailable; try again shortly."}
+	}
+	if err != nil {
+		reason := strings.TrimPrefix(err.Error(), auth.ErrInvalidToken.Error()+": ")
+		return nil, nil, &callerRefusal{http.StatusUnauthorized, "invalid_token", "The person token was refused: " + reason + "."}
+	}
+	if consumer != nil {
+		if !slices.Contains(consumer.clientIDs, proven.Client) {
+			return nil, nil, &callerRefusal{http.StatusUnauthorized, "invalid_token", "The person token was issued to a client this consumer does not name."}
+		}
+	} else {
+		for i := range s.OperatorConfig.Consumers {
+			if slices.Contains(s.OperatorConfig.Consumers[i].clientIDs, proven.Client) {
+				if consumer != nil {
+					return nil, nil, &callerRefusal{http.StatusUnauthorized, "invalid_token", "The person token's client is named by more than one consumer; send the consumer's own credential with the person token in " + PersonTokenHeader + "."}
+				}
+				consumer = &s.OperatorConfig.Consumers[i]
+			}
+		}
+		if consumer == nil {
+			return nil, nil, &callerRefusal{http.StatusUnauthorized, "invalid_token", "The person token was issued to a client no consumer names."}
+		}
+	}
+	principal := consumer.Principal
+	return &principal, &proven, nil
+}
+
 func (s *Server) operatorHandler() http.Handler {
+	return s.operatorAuth(s.operatorRoutes())
+}
+
+func (s *Server) operatorRoutes() *http.ServeMux {
 	mux := http.NewServeMux()
+	s.registerOperatorVersion(mux)
 	mux.HandleFunc("GET /api/v1/operator/teams", s.handleOperatorTeams)
 	mux.HandleFunc("GET /api/v1/operator/work-items", s.handleOperatorItems)
 	mux.HandleFunc("GET /api/v1/operator/work-items/lookup", s.handleOperatorSourceLookup)
@@ -220,7 +338,7 @@ func (s *Server) operatorHandler() http.Handler {
 	s.registerContext(mux)
 	s.registerFacts(mux)
 	s.registerOperatorKnowledge(mux)
-	return s.operatorAuth(mux)
+	return mux
 }
 
 func (s *Server) handleOperatorTeams(w http.ResponseWriter, r *http.Request) {

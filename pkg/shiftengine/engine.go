@@ -42,6 +42,9 @@ type Engine struct {
 	// registered, guessing would post an internal review onto whichever
 	// instance happened to answer.
 	DefaultForge string
+	// ReworkCaps is each Team's cap on re-queues by requests for changes per
+	// Work Item (F-36). Nil applies work.DefaultMaxReworks to every Team.
+	ReworkCaps store.ReworkCaps
 	// Trackers asks a person to merge when a Shift closes. Keyed by provider
 	// name, matching the Work Item's. Nil = no write-back.
 	Trackers map[string]provider.TrackerProvider
@@ -469,7 +472,7 @@ func settleState(si store.ShiftInfo, closeReason string, synthesized bool, repor
 }
 
 func (e *Engine) remandForReview(ctx context.Context, workItemID int64) bool {
-	requeued, err := e.Store.RequeueForPendingReview(ctx, workItemID)
+	requeued, err := e.Store.RequeueForPendingReview(ctx, workItemID, e.ReworkCaps)
 	if err != nil {
 		e.Log.Error("review remand failed", "work_item", workItemID, "err", err)
 		return false

@@ -10,10 +10,6 @@
 {{- $pod := include "ploeg.workerPodTemplate" (dict "root" $root "team" $team "role" $role) | fromYaml }}
 {{- $_ := set $pod.spec "activeDeadlineSeconds" $root.Values.executor.activeDeadlineSeconds }}
 {{- $_ := set $pod.spec "dnsPolicy" "ClusterFirst" }}
-{{- $runtimeClassName := include "ploeg.runtimeClassName" (dict "root" $root "team" $team "role" $role) }}
-{{- if $runtimeClassName }}
-{{- $_ := set $pod.spec "runtimeClassName" $runtimeClassName }}
-{{- end }}
 ---
 apiVersion: extensions.agents.x-k8s.io/v1beta1
 kind: SandboxTemplate

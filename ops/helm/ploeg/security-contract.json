@@ -1,7 +1,7 @@
 {
   "contractRevision": 1,
   "identity": {
-    "operator": "trusted-consumer-asserted-person",
+    "operator": "optional-verified-person-token; consumer-asserted-person-still-accepted",
     "run": "signed-team-role-worker-capability",
     "delegatedUserAccessToken": false,
     "personalForgeAclInheritance": false

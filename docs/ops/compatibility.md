@@ -2,7 +2,7 @@
 type: reference
 audience: [operator, integrator, contributor]
 owner: ploeg
-last_verified: 2026-10-23
+last_verified: 2026-10-24
 verified_by: "go test ./internal/compat/ against v0.2.0-rc.47; read pkg/store/store.go (Migrate), pkg/config/config.go (KnownFields), ops/helm/ploeg/values.schema.json, docs/contracts/README.md"
 ---
 
@@ -28,7 +28,7 @@ A breaking change raises the minor version, never the major ([ADR 0115](../adrs/
 
 | Surface | Promise | Checked by |
 | --- | --- | --- |
-| HTTP APIs: run API, worker control, operator API, deploy API, tracker execution, operator delivery (`docs/contracts/*.json`) | v1 is frozen: only optional additions. A consumer ignores unknown fields and treats an unknown enum value as unknown, never as an error. | `go test ./internal/compat/` (schemas against the last release), `go test ./pkg/harness/` (Go types against schemas) |
+| HTTP APIs: run API, worker control, operator API, deploy API, tracker execution, operator delivery (`docs/contracts/*.json`) | v1 is frozen: only optional additions. A consumer ignores unknown fields and treats an unknown enum value as unknown, never as an error. | `go test ./internal/compat/` (schemas against the last release), `go test ./pkg/harness/` (Go types against schemas), `go test ./pkg/httpapi/` (every recorded consumer expectation) |
 | Harness contract: Task Spec, Outcome Report, checkpoint | The same v1 rule. | the same |
 | MCP tools of `ploeg-mcp` | A tool name is never removed or renamed without deprecation. Tool inputs follow the HTTP rule. | `go test ./internal/compat/` (tool names); inputs by review |
 | Database schema (`pkg/store/migrations/`) | Forward-only and append-only. A released migration is never edited, removed or preceded by a new one. Each migration leaves the previous release working on the new schema. | `go test ./internal/compat/` |
@@ -76,11 +76,13 @@ The removal is a `feat!` with a `BREAKING CHANGE:` footer and an ADR, and adds a
 | `ploeg-worker` newer than `ploegd` | no; upgrade `ploegd` first, as Kubernetes requires of the kubelet ([version skew policy](https://kubernetes.io/releases/version-skew-policy/)) |
 | `ploeg-mcp` and `claude-runner` with `ploegd` | same release; they ship in the same release and the chart pins all images by digest |
 | Chart N with images N | same release |
-| An operator consumer built against the contract bundle of N or the previous minor, with `ploegd` N | yes |
+| An operator consumer built against the contract bundle of N or the previous minor, with `ploegd` N | yes; checked for every consumer that records its expectations ([ADR 0147](../adrs/0147-ploeg-serves-the-major-of-each-contract-and-keeps-its-consumers-two-newest-lines-working.md)) |
 | Database migrated by N with `ploegd` from the previous release | yes (rollback) |
 | Database migrated by N with anything older | no; restore |
 
 Upgrade order: database backup, then `ploegd` (which migrates), then workers (they follow the chart's image), then consumers. A consumer pins Ploeg by version and contract-bundle digest and states the Ploeg version it supports in its own repository.
+
+A consumer asks `GET /api/v1/operator/version` which contract majors this Ploeg serves and refuses to run when one it requires is missing. Ploeg keeps each consumer's two newest release lines working: a consumer records what each line relies on under [docs/contracts/consumers/](../contracts/README.md#contract-versions-and-consumer-expectations), and every pull request runs those expectations. A change that a recorded consumer reads needs a new contract major, served beside the old one for one stable minor.
 
 Today an older worker against a newer `ploegd` gets the HTTP status of whatever route it misses (404, 405 or 400). Ploeg does not yet name the supported range in that error; a version handshake on `POST /api/v1/claim` is the follow-up ADR 0134 records.
 

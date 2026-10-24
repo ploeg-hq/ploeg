@@ -73,6 +73,19 @@ trivy image --vex ploegd.openvex.json "$image"
 
 The release asset is the same document; check it against `SHA256SUMS` before use. Dependency-Track imports CycloneDX VEX only, and the release ships SPDX SBOMs, so these documents do not load there yet ([ADR 0145](../../docs/adrs/0145-a-release-publishes-no-image-over-its-cve-budget-and-attaches-signed-openvex-to-every-digest.md), point 8).
 
+### The gate's verdict, for admission control
+
+The gate also writes `cve-budget.json`: the image reference, `verdict` (`pass` or `fail`), `mode`, the budget, the Critical and High counts left after OpenVEX, how many findings OpenVEX suppressed, and the scanner. A release attaches it to each digest as a keyless cosign attestation of predicate type `https://github.com/ploeg-hq/ploeg/attestations/cve-budget/v1` and uploads it as the `<image>.cve-budget.json` release asset. The release refuses to attest a verdict that is not `pass` under `enforce` for that exact digest.
+
+An admission controller can require it instead of re-deriving the budget. A Kyverno `verifyImages` rule matches `ghcr.io/ploeg-hq/*`, uses a keyless attestor with the issuer and identity above, sets `predicateType` to the URI above, and checks `{{ verdict }}` equals `pass` and `{{ mode }}` equals `enforce`. An image with no such attestation, which includes every release before this attestation existed, does not satisfy that rule.
+
+```sh
+cosign verify-attestation --type https://github.com/ploeg-hq/ploeg/attestations/cve-budget/v1 \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity-regexp '^https://github\.com/ploeg-hq/ploeg/\.github/workflows/release\.yml@' \
+  "$image" | jq -r '.payload' | base64 -d | jq '.predicate'
+```
+
 ## Current statements
 
 None. On 2026-10-24 each image built from `development` scanned at zero findings of any severity with Grype 0.121.0 ([evidence](../../docs/research/2026-10-24-hardened-image-bases.md)).

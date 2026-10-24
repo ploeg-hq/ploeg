@@ -41,6 +41,8 @@ type httpConfig struct {
 	groups          []groupConsumer
 	servers         []*mcp.Server
 	verifier        *mcpauth.Verifier
+	exchanger       *mcpauth.Exchanger
+	confirmations   *confirmations
 }
 
 var tokenEnvName = regexp.MustCompile(`^[A-Z][A-Z0-9_]{0,127}$`)
@@ -96,6 +98,15 @@ func loadHTTPConfig(getenv func(string) string, lookup func(string) (string, boo
 	if cfg.groups, err = parseGroups(getenv("PLOEG_MCP_GROUPS")); err != nil {
 		return nil, err
 	}
+	if cfg.exchanger, err = loadExchanger(getenv); err != nil {
+		return nil, err
+	}
+	if cfg.confirmations, err = loadConfirmations(getenv); err != nil {
+		return nil, err
+	}
+	if cfg.confirmations == nil && slices.ContainsFunc(cfg.groups, func(g groupConsumer) bool { return g.Execute }) {
+		return nil, fmt.Errorf("a group in PLOEG_MCP_GROUPS is marked execute, so %s must hold the key that signs each person's confirmation; set it from a Secret", confirmationKeyEnv)
+	}
 	base := getenv("PLOEG_URL")
 	for _, g := range cfg.groups {
 		token, _ := lookup(g.TokenEnv)
@@ -103,9 +114,31 @@ func loadHTTPConfig(getenv func(string) string, lookup func(string) (string, boo
 		if err != nil {
 			return nil, fmt.Errorf("group %q: PLOEG_URL or %s: %w", g.Group, g.TokenEnv, err)
 		}
-		cfg.servers = append(cfg.servers, newServer(client, g.Execute))
+		var confirm *confirmations
+		if g.Execute {
+			confirm = cfg.confirmations
+		}
+		cfg.servers = append(cfg.servers, newExchangingServer(client, confirm, cfg.exchanger))
 	}
 	return cfg, nil
+}
+
+func loadExchanger(getenv func(string) string) (*mcpauth.Exchanger, error) {
+	tokenURL := strings.TrimSpace(getenv("PLOEG_MCP_EXCHANGE_TOKEN_URL"))
+	if tokenURL == "" {
+		return nil, nil
+	}
+	ex, err := mcpauth.NewExchanger(mcpauth.ExchangeConfig{
+		TokenURL:     tokenURL,
+		ClientID:     strings.TrimSpace(getenv("PLOEG_MCP_EXCHANGE_CLIENT_ID")),
+		ClientSecret: strings.TrimSpace(getenv("PLOEG_MCP_EXCHANGE_CLIENT_SECRET")),
+		Audience:     strings.TrimSpace(getenv("PLOEG_MCP_EXCHANGE_AUDIENCE")),
+		Scope:        strings.TrimSpace(getenv("PLOEG_MCP_EXCHANGE_SCOPE")),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("PLOEG_MCP_EXCHANGE_TOKEN_URL, _CLIENT_ID, _CLIENT_SECRET or _AUDIENCE: %w", err)
+	}
+	return ex, nil
 }
 
 func parseGroups(raw string) ([]groupConsumer, error) {
@@ -184,7 +217,13 @@ func (cfg *httpConfig) admit(next http.Handler, logger *slog.Logger) http.Handle
 				id := operatorclient.PersonID(cfg.personNamespace, info.UserID)
 				logger.Info("mcp request", "sub", info.UserID, "person", id, "username", username, "group", g.Group, "method", r.Method)
 				ctx := context.WithValue(r.Context(), consumerKey{}, i)
-				next.ServeHTTP(w, r.WithContext(withPerson(ctx, person{ID: id, Subject: info.UserID, Username: username})))
+				p := person{ID: id, Username: username}
+				if cfg.exchanger != nil && g.Execute {
+					if fields := strings.Fields(r.Header.Get("Authorization")); len(fields) == 2 {
+						p.token = fields[1]
+					}
+				}
+				next.ServeHTTP(w, r.WithContext(withPerson(ctx, p)))
 				return
 			}
 		}
@@ -217,7 +256,7 @@ func serveHTTP(ctx context.Context, cfg *httpConfig, logger *slog.Logger) error 
 	}
 	errs := make(chan error, 1)
 	go func() { errs <- srv.ListenAndServe() }()
-	logger.Info("ploeg-mcp serving streamable HTTP", "listen", cfg.listen, "resource", cfg.resource.String(), "issuer", cfg.issuer, "groups", len(cfg.groups))
+	logger.Info("ploeg-mcp serving streamable HTTP", "listen", cfg.listen, "resource", cfg.resource.String(), "issuer", cfg.issuer, "groups", len(cfg.groups), "exchangesForActions", cfg.exchanger != nil)
 	select {
 	case err := <-errs:
 		return err

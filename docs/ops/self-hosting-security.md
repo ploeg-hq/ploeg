@@ -58,15 +58,21 @@ the isolation mode from the rendered workload and worker's startup record.
 
 ## Identity is an application boundary
 
-**End-to-end delegated user access tokens and automatic personal forge ACL
-inheritance are not implemented.** Ploeg authenticates the consumer and trusts its
-asserted person. A recorded person is not independent proof of that person's
-authority. Worker capabilities identify a Run, team, role and worker; they are
-not human OIDC credentials.
+**End-to-end user delegation into agent actions and automatic personal forge ACL
+inheritance are not implemented.** Ploeg can verify an operator's exchanged
+person token when `operator.personTokens` and the consumer's `clientIds` are
+configured. It checks the issuer, signature, audience, client and lifetime, and
+records proven attribution; see [ADR-0150](../adrs/0150-an-operator-consumer-proves-the-person-it-acts-for-with-a-token-exchanged-for-ploegs-audience.md).
+Consumer credentials with asserted person headers remain accepted for
+compatibility, so configuring token verification does not by itself require
+proof on every mutation. A recorded person is not independent proof of that
+person's repository authority. Worker capabilities and optional signed Run
+identities are not human OIDC credentials or personal forge permissions.
 
-The required next integration is verified user-and-actor delegation, audience
-checking, and a grant bound to the Run, repository/branch, permitted actions and
-expiry. Effective permission must fit the person, team policy and role. Re-check
+Complete the consumer/IdP exchange integration and require proven attribution
+for deployments that need it. Bind downstream grants to the verified person
+and actor, Run, repository/branch, permitted actions and expiry. Effective
+permission must fit the person, team policy and role. Re-check
 authorization at renewal and consequential actions, and test stale/revoked
 grants. Keep browser ID tokens, refresh tokens and broad upstream credentials out
 of the sandbox. Authentik documents OBO from 2026.8.0; a chart cannot add it to an

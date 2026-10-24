@@ -1,0 +1,10 @@
+# CI-only values: a team's runtimeClassName must be a RuntimeClass object name
+# (a DNS subdomain); values.schema.json refuses anything else before it reaches
+# a worker pod.
+executor:
+  enabled: true
+  teams:
+    - name: bronze
+      model: litellm_proxy/deepseek-chat
+      budget: "2"
+      runtimeClassName: Kata_VM

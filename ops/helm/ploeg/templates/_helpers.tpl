@@ -528,6 +528,9 @@ spec:
   {{- with $root.Values.executor.nodeSelector }}
   nodeSelector: {{- toYaml . | nindent 4 }}
   {{- end }}
+  {{- with include "ploeg.runtimeClassName" (dict "root" $root "team" $team "role" $role) }}
+  runtimeClassName: {{ . | quote }}
+  {{- end }}
   securityContext:
     fsGroup: 1000
     seccompProfile:

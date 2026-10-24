@@ -240,6 +240,10 @@ type ShiftEngine interface {
 }
 
 func (s *Server) Handler() http.Handler {
+	return s.WorkerHandler(s.routes())
+}
+
+func (s *Server) routes() *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 	mux.HandleFunc("GET /readyz", s.handleReady)
@@ -262,10 +266,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/v1/claude-sessions/report", s.handleClaudeSessionReport)
 	mux.HandleFunc("GET /api/v1/queue/{team}", s.handleQueue)
 	mux.HandleFunc("/api/v1/deploys", s.handleDeploy)
-	mux.Handle("/api/v1/operator/", s.operatorHandler())
+	mux.Handle(operatorPrefix, s.operatorHandler())
 	s.RegisterLLMControl(mux)
 	s.registerRunIdentity(mux)
-	return s.WorkerHandler(mux)
+	return mux
 }
 
 func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {

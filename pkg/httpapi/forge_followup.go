@@ -110,7 +110,8 @@ func (s *Server) reworkOnChangesRequested(ctx context.Context, providerName stri
 	if !ok {
 		return
 	}
-	if !s.FollowUps[owner.Team].ReworkOnChangesRequested {
+	policy := s.FollowUps[owner.Team]
+	if !policy.ReworkOnChangesRequested {
 		return
 	}
 	if s.Engine == nil {
@@ -118,9 +119,20 @@ func (s *Server) reworkOnChangesRequested(ctx context.Context, providerName stri
 			"work_item", owner.WorkItemID, "pr", ev.PR)
 		return
 	}
+	if refusal, refused := s.reworkRefusal(ctx, providerName, policy, ev); refused {
+		s.Log.Warn("changes requested by a reviewer who may not send work back; review refused",
+			"work_item", owner.WorkItemID, "team", owner.Team, "pr", ev.PR, "reviewer", ev.Actor, "reason", string(refusal))
+		if err := s.Store.RecordReworkRefused(ctx, store.RefusedRework{
+			WorkItemID: owner.WorkItemID, Provider: providerName, Repo: ev.Repo, PR: ev.PR,
+			Reviewer: ev.Actor, Reason: refusal,
+		}); err != nil {
+			s.Log.Error("recording a refused review failed", "work_item", owner.WorkItemID, "pr", ev.PR, "err", err)
+		}
+		return
+	}
 	action, err := s.Store.RecordChangesRequested(ctx, store.ChangesRequested{
 		WorkItemID: owner.WorkItemID, Provider: providerName, Repo: ev.Repo, PR: ev.PR,
-		Reviewer: ev.Actor, Body: ev.Body, HeadSHA: ev.PullRequest.HeadSHA,
+		Reviewer: ev.Actor, Body: ev.Body, HeadSHA: ev.PullRequest.HeadSHA, MaxReworks: policy.ReworkCap(),
 	})
 	if err != nil {
 		s.Log.Error("recording requested changes failed", "work_item", owner.WorkItemID, "pr", ev.PR, "err", err)
@@ -129,6 +141,9 @@ func (s *Server) reworkOnChangesRequested(ctx context.Context, providerName stri
 	s.Log.Info("changes requested", "work_item", owner.WorkItemID, "team", owner.Team, "pr", ev.PR,
 		"reviewer", ev.Actor, "action", string(action))
 	switch action {
+	case store.ReviewCapped:
+		s.Log.Warn("changes requested but the Work Item reached its rework cap; a person decides what happens next",
+			"work_item", owner.WorkItemID, "team", owner.Team, "pr", ev.PR, "max_reworks", policy.ReworkCap())
 	case store.ReviewLiveShift:
 		if err := s.Engine.EvaluateItem(ctx, owner.WorkItemID); err != nil {
 			s.Log.Error("shift evaluate failed; sweeper will repair", "work_item", owner.WorkItemID, "err", err)
@@ -143,6 +158,28 @@ func (s *Server) reworkOnChangesRequested(ctx context.Context, providerName stri
 			s.Log.Error("shift open failed; sweeper will repair", "work_item", owner.WorkItemID, "err", err)
 		}
 	}
+}
+
+func (s *Server) reworkRefusal(ctx context.Context, providerName string, policy work.ForgeFollowUps, ev provider.ForgeEvent) (store.ReworkRefusal, bool) {
+	if policy.ListsReworkReviewer(ev.Actor) {
+		return "", false
+	}
+	fp, ok := s.Forges[providerName]
+	if !ok {
+		return store.ReworkPermissionUnknown, true
+	}
+	writes, err := provider.HasWriteAccess(ctx, fp, ev.Repo, ev.Actor)
+	if err != nil {
+		safeErr := strings.ReplaceAll(err.Error(), "\n", "")
+		safeErr = strings.ReplaceAll(safeErr, "\r", "")
+		s.Log.Warn("reviewer write access unreadable", "provider", providerName, "repo", ev.Repo,
+			"reviewer", ev.Actor, "err", safeErr)
+		return store.ReworkPermissionUnknown, true
+	}
+	if !writes {
+		return store.ReworkReviewerNotAllowed, true
+	}
+	return "", false
 }
 
 func (s *Server) isForgeBot(login string) bool {

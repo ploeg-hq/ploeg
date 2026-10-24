@@ -295,6 +295,14 @@ func (f *File) Validate() error {
 		if t.ForgeFollowUps.MaxRepairs < 0 {
 			return fmt.Errorf("teams.%s.forgeFollowUps.maxRepairs: must not be negative", name)
 		}
+		if t.ForgeFollowUps.MaxReworks < 0 {
+			return fmt.Errorf("teams.%s.forgeFollowUps.maxReworks: must not be negative", name)
+		}
+		for i, reviewer := range t.ForgeFollowUps.ReworkReviewers {
+			if strings.TrimSpace(reviewer) == "" {
+				return fmt.Errorf("teams.%s.forgeFollowUps.reworkReviewers[%d]: must name a forge login", name, i)
+			}
+		}
 		if t.Plan == nil {
 			continue
 		}

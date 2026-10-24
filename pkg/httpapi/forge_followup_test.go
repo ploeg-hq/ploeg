@@ -25,6 +25,11 @@ const followUpSecret = "shh"
 
 func followUpServer(t *testing.T, policies map[string]work.ForgeFollowUps) http.Handler {
 	t.Helper()
+	return followUpServerOn(t, policies, "")
+}
+
+func followUpServerOn(t *testing.T, policies map[string]work.ForgeFollowUps, forgeURL string) http.Handler {
+	t.Helper()
 	reset(t)
 	if _, err := testPool.Exec(context.Background(), "DELETE FROM forge_deliveries"); err != nil {
 		t.Fatal(err)
@@ -36,7 +41,7 @@ func followUpServer(t *testing.T, policies map[string]work.ForgeFollowUps) http.
 		LeaseTTL:       time.Minute,
 		WorkerSecurity: &WorkerSecurity{AllowLegacy: true},
 		Forges: map[string]provider.ForgeProvider{
-			"forgejo": &forgejo.Provider{Secret: followUpSecret, Log: log},
+			"forgejo": &forgejo.Provider{BaseURL: forgeURL, Token: "tok", Secret: followUpSecret, Log: log},
 		},
 		Engine:    &shiftengine.Engine{Store: testStore, Plans: plan.Plans{}, Uniform: true, Log: log},
 		FollowUps: policies,
@@ -68,6 +73,7 @@ func forgeEvent(t *testing.T, h http.Handler, delivery string, body map[string]a
 func enabled(maxRepairs int) map[string]work.ForgeFollowUps {
 	return map[string]work.ForgeFollowUps{"bronze": {
 		RepairFailedChecks: true, MaxRepairs: maxRepairs, ReworkOnChangesRequested: true,
+		ReworkReviewers: []string{"ryan"},
 	}}
 }
 
