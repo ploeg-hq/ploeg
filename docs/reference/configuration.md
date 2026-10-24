@@ -593,6 +593,8 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `runIdentity.signingKeySecret` | object |  | Secret name and key of the PEM P-256 private key ploegd signs Run identities with (`PLOEG_RUN_IDENTITY_SIGNING_KEY`, ADR-0149). Unset issues none. The chart refuses a Claude Code plugin env that reads this Secret. | values.schema.json |
 | `runIdentity.signingKeySecret.key` | string |  |  | values.schema.json |
 | `runIdentity.signingKeySecret.name` | string |  |  | values.schema.json |
+| `security.workerAdmission.enabled` | boolean | `false` |  | values.yaml, values.schema.json |
+| `security.workerAdmission.runtimeClassNames` | array | `[]` |  | values.yaml, values.schema.json |
 | `service.port` |  | `8080` |  | values.yaml |
 | `tracker` | object |  | Tracker write-backs (backlog #31): how a closed Shift reaches a person with the pull request link. Unset = the Vikunja provider keeps its logging no-op — runs still finish, the board simply is not updated. Ingest (the webhook) is configured separately and needs no token. | values.yaml, values.schema.json |
 | `tracker.clickup` | object or null |  | The ClickUp tracker (pkg/provider/clickup). Ingest and write-backs are independent: webhookSecret alone verifies deliveries, tokenSecret alone enables reads and write-backs, either without the other degrades rather than fails. ClickUp GENERATES the webhook secret on registration — capture it from the create-webhook response; there is nothing to invent. | values.yaml, values.schema.json |

@@ -1,0 +1,16 @@
+{
+  "contractRevision": 1,
+  "identity": {
+    "operator": "optional-verified-person-token; consumer-asserted-person-still-accepted",
+    "run": "signed-team-role-worker-capability",
+    "delegatedUserAccessToken": false,
+    "personalForgeAclInheritance": false
+  },
+  "nativeAdmissionMinimumKubernetes": "1.30.0",
+  "nativeAdmissionDefault": false,
+  "runtimeClassInstalledByChart": false,
+  "cniInstalledByChart": false,
+  "runtimeSensorInstalledByChart": false,
+  "qualification": "offline-render-and-CEL-mutations; live API server, runtime, CNI and identity checks required",
+  "networkPolicyDefault": true
+}

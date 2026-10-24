@@ -1,3 +1,10 @@
+Ploeg {{ .Chart.AppVersion }} / chart {{ .Chart.Version }}
+Security contract: revision {{ (fromJson (.Files.Get "security-contract.json")).contractRevision }}
+Native worker admission: {{ .Values.security.workerAdmission.enabled }}
+Default-deny NetworkPolicies: {{ .Values.networkPolicy.enabled }}
+Delegated user access tokens and automatic personal forge ACL inheritance: NOT IMPLEMENTED.
+Read SECURITY.md and security-contract.json from this exact chart package.
+RuntimeClass handlers, CNI enforcement and runtime monitoring require cluster-level setup and live qualification.
 {{- $shared := list }}
 {{- if .Values.executor.enabled }}
 {{- if eq (.Values.executor.harnessContainer | default "separate") "shared" }}

@@ -16,6 +16,8 @@ Use these sources for the current implementation. The [architecture](architectur
 
 ## Operate
 
+- [Self-hosting security contract](ops/self-hosting-security.md): chart controls, cluster responsibilities, identity gaps and version-specific qualification
+
 - [Operator runbooks](how-to/index.md): stuck Leases and Runs, credential rotation, draining, spend, database recovery
 - [Managed workers and recovery](ops/managed-workers.md)
 - [Network policies](ops/network.md): what every Ploeg pod may reach, how the chart derives it, and what your CNI must enforce
