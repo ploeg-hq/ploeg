@@ -1,0 +1,12 @@
+Package: libexpat1
+Status: install ok installed
+Priority: optional
+Section: libs
+Installed-Size: 300
+Maintainer: Debian XML/SGML Group <debian-xml-sgml-pkgs@lists.alioth.debian.org>
+Architecture: amd64
+Multi-Arch: same
+Source: expat
+Version: 2.5.0-1
+Description: XML parsing C library - runtime library
+

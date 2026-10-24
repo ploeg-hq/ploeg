@@ -1,0 +1,98 @@
+name: Image security
+on:
+  pull_request:
+  push:
+    branches: [main, development]
+  schedule:
+    - cron: '17 5 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: image-security-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  catalogue:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      images: ${{ steps.list.outputs.images }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@7a4e45a543138629540c9a1616d08632b893e492 # v5.0.1
+        with:
+          version: 2026.9.18
+          install_args: go
+          cache: false
+      - name: List every image the release builds
+        id: list
+        run: echo "images=$(mise exec -- go run ./internal/cvegate/cmd/cve-gate matrix)" >> "$GITHUB_OUTPUT"
+  cve-budget:
+    needs: catalogue
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ${{ fromJSON(needs.catalogue.outputs.images) }}
+    name: cve-budget (${{ matrix.image.name }})
+    env:
+      IMAGE_NAME: ${{ matrix.image.name }}
+      REPOSITORY: ${{ matrix.image.repository }}
+      DOCKERFILE: ${{ matrix.image.dockerfile }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@7a4e45a543138629540c9a1616d08632b893e492 # v5.0.1
+        with:
+          version: 2026.9.18
+          install_args: go grype
+          cache: false
+      - name: Build the image as the release does
+        run: docker build --file "$DOCKERFILE" --tag "$REPOSITORY:ci" .
+      - name: Every Go binary in the image is built with go.mod's toolchain
+        if: matrix.image.ships_go
+        run: mise exec -- bash scripts/check-go-toolchain.sh "$REPOSITORY:ci"
+      - name: The image is within its CVE budget after its OpenVEX statements
+        run: |
+          mkdir -p "$RUNNER_TEMP/cve/$IMAGE_NAME"
+          IMAGE_REF="docker:$REPOSITORY:ci" OUT_DIR="$RUNNER_TEMP/cve/$IMAGE_NAME" \
+            mise exec -- go run ./internal/cvegate/cmd/cve-gate gate
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: cve-${{ matrix.image.name }}
+          path: ${{ runner.temp }}/cve/${{ matrix.image.name }}
+          if-no-files-found: ignore
+          retention-days: 30
+  cve-gate-self-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@7a4e45a543138629540c9a1616d08632b893e492 # v5.0.1
+        with:
+          version: 2026.9.18
+          install_args: go grype
+          cache: false
+      - name: The gate fails a known Critical, honours a justified OpenVEX statement and fails closed
+        run: mise exec -- bash scripts/test-cve-gate.sh
+  govulncheck:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@7a4e45a543138629540c9a1616d08632b893e492 # v5.0.1
+        with:
+          version: 2026.9.18
+          install_args: go go:golang.org/x/vuln/cmd/govulncheck
+          cache: false
+      - name: No reachable known vulnerability in the Go code or its standard library
+        run: mise exec -- govulncheck ./...
