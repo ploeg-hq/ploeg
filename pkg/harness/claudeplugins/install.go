@@ -40,7 +40,16 @@ type Result struct {
 	Dropped []string
 	// Refused says why the plugin was left out of the Run; "" when installed.
 	Refused string
+	// RunIdentityFile is where the worker keeps the plugin's current Run
+	// identity for the guard to read; "" when the plugin did not opt in.
+	RunIdentityFile string
+	// Audience is the plugin's Run identity audience.
+	Audience string
 }
+
+// RunIdentityFileName is the file next to a plugin's guard specifications
+// that holds its current Run identity.
+const RunIdentityFileName = "run-identity.jwt"
 
 // Installer installs declared plugins for one Run.
 type Installer struct {
@@ -81,7 +90,8 @@ func (in Installer) Install(ctx context.Context, plugins []Plugin, root string) 
 		}
 		if err := in.installOne(p, mdir, root, &r); err != nil {
 			_ = os.RemoveAll(filepath.Join(root, p.Name))
-			r.Dir, r.Hooks, r.Refused = "", 0, err.Error()
+			_ = os.RemoveAll(filepath.Join(root, ".guard", p.Name))
+			r.Dir, r.Hooks, r.Refused, r.RunIdentityFile, r.Audience = "", 0, err.Error(), "", ""
 		}
 		results = append(results, r)
 	}
@@ -338,6 +348,10 @@ func (in Installer) shape(p Plugin, dir string, r *Result) error {
 		return err
 	}
 	r.Dir, r.Hooks = dir, n
+	if p.RunIdentity != nil && n > 0 {
+		r.RunIdentityFile = filepath.Join(filepath.Dir(dir), ".guard", p.Name, RunIdentityFileName)
+		r.Audience = p.RunIdentity.Audience
+	}
 	for d := range dropped {
 		r.Dropped = append(r.Dropped, d)
 	}
@@ -514,6 +528,9 @@ type GuardSpec struct {
 	Timeout    time.Duration     `json:"timeout"`
 	Env        map[string]string `json:"env,omitempty"`
 	PluginRoot string            `json:"pluginRoot"`
+	// RunIdentityFile holds the plugin's current Run identity, which the
+	// guard passes as RunIdentityEnv while it has not expired.
+	RunIdentityFile string `json:"runIdentityFile,omitempty"`
 }
 
 func (in Installer) guardHooks(p Plugin, dir string, hooks map[string][]hookGroup) (map[string][]map[string]any, int, error) {
@@ -524,6 +541,10 @@ func (in Installer) guardHooks(p Plugin, dir string, hooks map[string][]hookGrou
 	env := map[string]string{}
 	for _, e := range p.Env {
 		env[e.Name] = e.Value
+	}
+	identityFile := ""
+	if p.RunIdentity != nil {
+		identityFile = filepath.Join(specDir, RunIdentityFileName)
 	}
 	events := make([]string, 0, len(hooks))
 	for e := range hooks {
@@ -544,7 +565,7 @@ func (in Installer) guardHooks(p Plugin, dir string, hooks map[string][]hookGrou
 				if strings.ContainsAny(spec, "'\n") {
 					return nil, 0, fmt.Errorf("the guard spec path %q cannot be quoted", spec)
 				}
-				if err := writeJSON(spec, GuardSpec{Command: h.Command, Timeout: p.Timeout(), Env: env, PluginRoot: dir}, 0o600); err != nil {
+				if err := writeJSON(spec, GuardSpec{Command: h.Command, Timeout: p.Timeout(), Env: env, PluginRoot: dir, RunIdentityFile: identityFile}, 0o600); err != nil {
 					return nil, 0, err
 				}
 				entry := map[string]any{

@@ -564,7 +564,9 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 			}
 		}
 	}
-	pluginDirs := w.installClaudePlugins(ctx, scratchDir)
+	plugins := w.installClaudePlugins(ctx, scratchDir)
+	pluginDirs := claudeplugins.Dirs(plugins)
+	defer w.startPluginRunIdentity(ctx, claimed, plugins).Close()
 	w.Log.Info("prepared the Run's sandbox", "skills", len(skillSet), "claude_plugins", len(pluginDirs), "toolchains", len(w.Cfg.Toolchains), "verify_commands", len(verifyCommands))
 	// The Shift's authorization is the ceiling the credential must be minted
 	// at: min(roleCap, poolRemaining), computed under the Shift row lock
