@@ -40,6 +40,10 @@ jobs:
         run: |
           docker build --file ops/docker/ploeg-worker/Dockerfile --tag ploeg-worker-ci:${GITHUB_SHA} .
           docker run --rm --user 1000:1000 --entrypoint /usr/bin/git ploeg-worker-ci:${GITHUB_SHA} --version
+      - name: Every Go binary in the images is built with go.mod's toolchain
+        run: |
+          mise exec -- bash scripts/check-go-toolchain.sh ploeg-ci:${GITHUB_SHA}
+          mise exec -- bash scripts/check-go-toolchain.sh ploeg-worker-ci:${GITHUB_SHA}
   dco:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04

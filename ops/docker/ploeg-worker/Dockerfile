@@ -2,7 +2,8 @@
 ARG REGISTRY_DOCKERHUB=docker.io
 ARG REGISTRY_GCR=gcr.io
 
-FROM --platform=$BUILDPLATFORM ${REGISTRY_DOCKERHUB}/golang:1.27-trixie@sha256:3b77fc618ec235a1ab412de7737f120dd507c57e8d87de4cbb7994fb94275ed5 AS builder
+FROM --platform=$BUILDPLATFORM ${REGISTRY_DOCKERHUB}/golang:1.27.3-trixie@sha256:fbb7ae40b62ff8afe31662df570d39b4f5052ac32b90dae8e60d7657a20a74f4 AS builder
+ENV GOTOOLCHAIN=auto
 WORKDIR /src
 COPY go.* ./
 RUN go mod download
