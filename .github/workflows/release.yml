@@ -43,7 +43,14 @@ jobs:
           version: 2026.9.18
           cache: false
       - run: mise run setup
+      - name: Allow the unprivileged user and PID namespace the harness container drill runs in
+        run: |
+          if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
       - run: mise run verify
+        env:
+          PLOEG_REQUIRE_PID_NAMESPACE: "1"
       - run: mise run docs-check
       - name: Publish versioned artifacts
         env:
