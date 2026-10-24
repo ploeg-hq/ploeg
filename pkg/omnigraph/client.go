@@ -57,6 +57,10 @@ func Retryable(err error) bool {
 	return err != nil
 }
 
+// HTTPAPIContract is the Omnigraph HTTP contract every request declares. An
+// Omnigraph 0.14 server refuses a request without it; older servers ignore it.
+const HTTPAPIContract = "0.14"
+
 var queryName = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 
 // Read invokes the stored read query name on graph.
@@ -128,6 +132,7 @@ func (c *Client) invokeAt(ctx context.Context, graph, name string, params map[st
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "Bearer "+c.Token)
+	req.Header.Set("Omnigraph-Http-Api", HTTPAPIContract)
 	hc := c.HTTP
 	if hc == nil {
 		hc = http.DefaultClient

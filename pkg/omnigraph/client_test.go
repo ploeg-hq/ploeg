@@ -40,3 +40,33 @@ func TestMutateIf_UsesTheConditionalRouteAndReportsAMovedBranch(t *testing.T) {
 		t.Errorf("an unconditional write carried %q to %s", header, path)
 	}
 }
+
+// Every request declares the HTTP contract, which an Omnigraph 0.14 server
+// requires before it reads a single field.
+func TestInvoke_DeclaresTheHTTPContract(t *testing.T) {
+	var contracts []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		contracts = append(contracts, r.Header.Get("Omnigraph-Http-Api"))
+		_, _ = io.Copy(io.Discard, r.Body)
+		_, _ = w.Write([]byte(`{"rows":[],"graph_commit_id":"c1","commit":{"graph_commit_id":"c2"}}`))
+	}))
+	defer srv.Close()
+	c := &Client{BaseURL: srv.URL, Token: "t"}
+	if _, err := c.Read(context.Background(), "notes", "notes_for_task", nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Mutate(context.Background(), "notes", "add_note", nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.MutateIf(context.Background(), "notes", "add_note", nil, "c1"); err != nil {
+		t.Fatal(err)
+	}
+	for i, contract := range contracts {
+		if contract != "0.14" {
+			t.Errorf("request %d declared contract %q", i, contract)
+		}
+	}
+	if len(contracts) != 3 {
+		t.Errorf("saw %d requests", len(contracts))
+	}
+}
