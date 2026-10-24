@@ -53,7 +53,7 @@ Chosen option: "Wolfi packages" for `claude-runner` and `ploeg-worker`, and dist
 
 ### Confirmation
 
-* `ops/security/cve-budgets.yaml` sets a budget of zero Critical and zero High findings in `enforce` mode for every published image. The scans behind this record are in the research note. Until a CI gate enforces the budget, a reviewer reruns `grype` on each image built from the change.
+* The CVE gate builds every image in `ops/security/images.yaml`, scans it with the pinned Grype, and applies `ops/vex/statements/<image>.openvex.json`. It fails a pull request, the daily run or a release that exceeds the zero budget in `ops/security/cve-budgets.yaml` ([ADR 0145](0145-a-release-publishes-no-image-over-its-cve-budget-and-attaches-signed-openvex-to-every-digest.md)).
 * `go test ./internal/licenses/` fails when a `FROM` line names an image that no inventory component lists, so a base change without an inventory entry cannot merge.
 * CI runs `git --version` as uid 1000 in the built `ploeg-worker` image, and `scripts/check-go-toolchain.sh` on every image that ships Go.
 * `scripts/test-claude-code-install.sh` passed inside the Wolfi `claude-runner` (with `gnupg` and `python3` added for the fixture) on 2026-10-24. The real installer verified and ran Claude Code 2.1.296, also with a read-only `/opt/claude-code` and no network.
