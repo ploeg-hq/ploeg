@@ -27,16 +27,32 @@ opt-in; the chart already enables its baseline NetworkPolicies and strict
 credential-isolation profile by default. This fragment is not a complete
 deployment or proof of enforcement.
 
-Admission covers every Pod labelled `ploeg-worker` in the release namespace,
-including sandbox worker Pods and init/ephemeral containers. Dedicate the
-namespace to one Ploeg installation; admission is not separated by release label.
-It refuses host namespaces, shared process namespaces, hostPath, automatic API
-tokens, root/privileged containers, escalation, added capabilities and unconfined
-seccomp. It does not make the root filesystem read-only or restrict arbitrary
-shell commands. Privileged DinD is incompatible and fails Helm rendering when
-admission is enabled. A nonempty RuntimeClass allowlist requires a selected name
-but does not install its handler. Apply it only with executor/runtime settings
-that actually produce that RuntimeClass.
+Admission covers every Pod labelled `ploeg-worker` in the release namespace:
+the KEDA and CronJob worker Pods of [profile P1](../security/threat-model.md#profile-p1-unattended-workers-without-docker-credential-proxies-on)
+and the experimental sandbox worker Pods, including their init, native sidecar
+and ephemeral containers, on create and on update. Dedicate the namespace to one
+Ploeg installation; admission is not separated by release label.
+
+It refuses:
+
+- host networking, host PID, host IPC and a shared process namespace;
+- an automatically mounted or implicit service-account token;
+- hostPath volumes, host ports and pod sysctls;
+- a privileged container, privilege escalation, a capability not dropped or one added;
+- a container or pod running as uid 0, or without `runAsNonRoot`;
+- seccomp other than `RuntimeDefault` or `Localhost`, and unconfined AppArmor
+  (field or legacy annotation);
+- any `io.katacontainers.*` annotation, which Kata Containers up to 4.2.0
+  forwards to the runtime ([GHSA-37rf-pj8c-g5g3](https://github.com/kata-containers/kata-containers/security/advisories/GHSA-37rf-pj8c-g5g3));
+- with a non-empty `runtimeClassNames`, a Pod without one of the listed RuntimeClasses.
+
+It does not make the root filesystem read-only, check SELinux options or volume
+types other than hostPath, or restrict arbitrary shell commands. It complements
+Pod Security Admission `enforce: restricted` on the namespace, which P1 still
+requires, and does not replace it. Privileged DinD is incompatible and fails
+Helm rendering when admission is enabled. A RuntimeClass allowlist does not
+install its handler; apply it only with executor settings that render that
+RuntimeClass.
 
 The policy does not cover ploegd, sandbox launchers, the separate Claude runner
 or client-carried sessions. Secure these independently. A launcher needs limited
@@ -60,12 +76,16 @@ the isolation mode from the rendered workload and worker's startup record.
 
 **End-to-end user delegation into agent actions and automatic personal forge ACL
 inheritance are not implemented.** Ploeg can verify an operator's exchanged
-person token when `operator.personTokens` and the consumer's `clientIds` are
-configured. It checks the issuer, signature, audience, client and lifetime, and
-records proven attribution; see [ADR-0150](../adrs/0150-an-operator-consumer-proves-the-person-it-acts-for-with-a-token-exchanged-for-ploegs-audience.md).
-Consumer credentials with asserted person headers remain accepted for
-compatibility, so configuring token verification does not by itself require
-proof on every mutation. A recorded person is not independent proof of that
+person token when `operator.personTokens` is configured and the consumer lists
+its own `audiences` or, for an identity provider that names the requesting
+client, `clientIds`. It checks the issuer, signature, audience, client, lifetime
+and that the token is not an ID token, and records the attribution as `proven`;
+see [ADR-0150](../adrs/0150-an-operator-consumer-proves-the-person-it-acts-for-with-a-token-exchanged-for-ploegs-audience.md).
+Give every consumer its own audience: a token issued for one consumer's audience
+cannot then be replayed as another consumer. Consumer credentials with asserted
+person headers remain accepted for compatibility and are recorded as `asserted`,
+so configuring token verification does not by itself require proof on every
+mutation; audit records say which kind each mutation holds. A recorded person is not independent proof of that
 person's repository authority. Worker capabilities and optional signed Run
 identities are not human OIDC credentials or personal forge permissions.
 
@@ -121,7 +141,8 @@ agent Pods to trusted provisioners.
    rendering or a file in Git is not proof of enforcement.
 3. Prove a normal agent Pod passes and hostile variants fail: root, privileged
    init/ephemeral containers, SYS_PTRACE, shared process/host namespaces,
-   hostPath/socket, API token and an unapproved RuntimeClass.
+   hostPath/socket, host ports, sysctls, unconfined AppArmor,
+   `io.katacontainers.*` annotations, API token and an unapproved RuntimeClass.
 4. From a disposable agent identity, prove necessary services work and database,
    admin/IdP, other tenants, LAN, metadata and arbitrary internet access fail.
    Test DNS exfiltration and every overlapping allow policy. NetworkPolicies
@@ -134,10 +155,18 @@ agent Pods to trusted provisioners.
    or exception changes. Keep both positive and refused cases with the
    installation revision and a rollback plan.
 
-The CI check `scripts/check-security-profile.py` renders the real policy and
-evaluates its CEL against a real agent Pod plus hostile mutations. An independent
-CEL evaluator is not the Kubernetes API server; server type-checking and live
-CNI/runtime qualification remain required. The guide packaged with the exact
+Two checks qualify the policy for every chart change. `scripts/check-security-profile.py`
+renders it for the KEDA, CronJob and sandbox executors and evaluates its CEL
+offline: each rendered worker Pod passes, and each hostile variant is refused by
+exactly the rule that names it. The `worker-admission` CI job runs
+`scripts/check-worker-admission-live.py` against real API servers in kind at
+Kubernetes 1.30 and 1.37: the API server must type-check the policy without
+warnings, admit every rendered worker Pod and a restricted ephemeral container,
+refuse every hostile Pod, ephemeral container and annotation update with the
+named rule's message, and leave unlabelled Pods and other namespaces alone. The
+script refuses any kubectl context that is not a `kind-` cluster. Neither
+check exercises your CNI, runtime handler, Kyverno or identity provider, so the
+live qualification above remains required. The guide packaged with the exact
 release takes precedence over development documentation for that installation.
 
 References: [OAuth token exchange](https://www.rfc-editor.org/rfc/rfc8693.html),
