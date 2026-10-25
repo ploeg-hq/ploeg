@@ -18,6 +18,7 @@ bash scripts/test-claude-code-install.sh
 bash scripts/test-check-go-toolchain.sh
 openspec validate --all --strict
 required=ops/helm/ploeg/ci/required-values.yaml
+uv run --no-project --with pyyaml==6.0.3 --with cel-python==0.4.0 python scripts/check-security-profile.py
 helm lint ops/helm/ploeg -f "$required"
 for variant in executor executor-cronjob executor-gitlab executor-github monitoring knowledge-graph mcp claude-runner name-overrides; do
   values="ops/helm/ploeg/ci/${variant}-values.yaml"

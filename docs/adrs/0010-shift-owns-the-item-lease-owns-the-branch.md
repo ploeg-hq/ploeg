@@ -233,6 +233,14 @@ is dissolved rather than guarded against.
 
 ## More Information
 
+* 2026-10-25 — a writer's exclusivity now ends at the Lease deadline on both
+  sides. ploegd refuses renewal, checkpoint and outcome once the deadline has
+  passed, swept or not. The worker renews every quarter of the TTL (was a
+  third), times its Lease from each request's send time plus the
+  `expiresInMs` ploegd returns, and stops its harness a sixth of the TTL
+  before the Lease ends, so it no longer outlives a Lease that can be
+  reclaimed. This also changes the cadence ADR-0143 states for personal
+  cells ([leases and cancellation](../reference/leases-and-cancellation.md)).
 * Closes the `run vs job` ambiguity in
   [domain/model.yaml](../domain/model.yaml), open since 2026-07-22.
 * Domain rules cited: R2 (crash-safety), R6 (durable state), R4 (stuck carries a

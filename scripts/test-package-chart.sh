@@ -21,6 +21,8 @@ source_values=$(sha256sum < "$root/ops/helm/ploeg/values.yaml")
 bash "$root/scripts/package-chart.sh" 9.9.9 "$ploegd_digest" "$runner_digest" "$worker_digest" "$work" > /dev/null
 chart="$work/ploeg-9.9.9.tgz"
 [[ -f "$chart" ]] || fail "no chart at $chart"
+tar -xOf "$chart" ploeg/SECURITY.md | cmp - "$root/docs/ops/self-hosting-security.md" || fail 'release security guide does not match its source'
+tar -xOf "$chart" ploeg/security-contract.json | cmp - "$root/ops/helm/ploeg/security-contract.json" || fail 'release security contract does not match its source'
 [[ "$(sha256sum < "$root/ops/helm/ploeg/values.yaml")" == "$source_values" ]] || fail 'packaging changed the source values.yaml'
 
 assert_every_image_pinned() { # <label> <helm template args...>

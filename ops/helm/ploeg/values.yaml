@@ -6,6 +6,11 @@
 fullnameOverride: ""
 instanceOverride: ""
 
+security:
+  workerAdmission:
+    enabled: false
+    runtimeClassNames: []
+
 image:
   # The public release image. Point repository at a copy of the same digest,
   # with imagePullSecrets, when the cluster pulls from a private registry.
@@ -109,6 +114,13 @@ mcp:
   # it. At least 32 bytes, such as `openssl rand -base64 48`; every replica
   # reads the same Secret.
   confirmationKeySecret: {} # e.g. {name: ploeg-mcp-confirmation, key: key}; key defaults to key
+  # The Secret key holding the client secret of ploeg-mcp's own confidential
+  # client at the identity provider, set as PLOEG_MCP_CONFIRMATION_CLIENT_SECRET.
+  # Used with env PLOEG_MCP_CONFIRMATION_MODE: login, where a person confirms
+  # each action by signing in afresh at ploeg-mcp's confirmation page
+  # (ADR-0153). Login mode keeps open confirmations in memory, so the chart
+  # refuses it with more than one replica.
+  confirmationClientSecret: {} # e.g. {name: ploeg-mcp-confirmation-client, key: client-secret}; key defaults to client-secret
   annotations: {} # on the Deployment, e.g. {reloader.stakater.com/auto: "true"}
   podAnnotations: {}
   nodeSelector: {} # empty = nodeSelector

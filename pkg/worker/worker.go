@@ -146,6 +146,11 @@ type Worker struct {
 	// yield is the current Run's yield signal (ADR-0142); nil outside
 	// RunContext, so a Run executed directly never yields.
 	yield *yieldSignal
+	// RenewTicks paces lease renewal: it returns a channel that fires once
+	// per renewal and a function that stops it. Nil ticks every interval on
+	// the wall clock; tests drive renewal with their own channel.
+	RenewTicks func(interval time.Duration) (<-chan time.Time, func())
+	clock      leaseClock
 }
 
 // profiledAdapter is a harness adapter that launches one of several agent
@@ -200,6 +205,7 @@ var (
 // killed pod from stranding its Lease for the full TTL and charging the Round
 // an attempt it never spent.
 func (w *Worker) RunContext(parent context.Context) error {
+	claimSent := w.leaseClock().Now()
 	claimed, err := w.API.Claim(w.Cfg.Team, w.Cfg.Role)
 	var unsupported *UnsupportedWorkerVersion
 	if errors.As(err, &unsupported) {
@@ -243,15 +249,20 @@ func (w *Worker) RunContext(parent context.Context) error {
 	defer cancel(nil)
 	go abortOnTermination(parent, ctx, cancel, w.Log, item.ID, claimed.Role)
 
-	// Lease renewal at TTL/3; three consecutive failures (or a 404 = lease
+	// Lease renewal at TTL/4; three consecutive failures (or a 404 = lease
 	// stolen) cancel the run — another worker may own the item now.
-	ttl := time.Until(claimed.Deadline)
+	ttl := claimed.leaseValidity()
 	if ttl <= 0 {
 		ttl = time.Minute
 	}
+	guard := &leaseGuard{clock: w.leaseClock(), margin: leaseStopMargin(ttl), cancel: cancel, log: w.Log}
+	guard.holdUntil(claimSent.Add(ttl))
+	defer guard.release()
 	w.yield = newYieldSignal()
 	defer func() { w.yield = nil }()
-	go renewLoop(ctx, cancel, w.API, claimed.RunToken, ttl/3, w.Log, w.yield.raise)
+	ticks, stopTicks := w.renewTicks(renewInterval(ttl))
+	defer stopTicks()
+	go renewLoop(ctx, cancel, w.API, claimed.RunToken, ticks, guard, ttl, w.Log, w.yield.raise)
 
 	// From here on, every terminal path must report an outcome; failing to
 	// report leaves the lease to the sweeper (recorded failed/lease expired).
@@ -1072,10 +1083,14 @@ func resolveOutcome(adapterName string, report harness.OutcomeReport, runErr, ct
 			FailureReason: string(work.FailureInfraNode),
 		})
 	case ctxErr != nil:
+		var links []string
+		if prURL != "" {
+			links = []string{prURL}
+		}
 		return resolved(harness.OutcomeReport{
-			Outcome:       work.OutcomeStuck,
-			Summary:       "run aborted (lease lost)",
-			StuckReason:   "lease renewal failed; run cancelled to avoid a double claim",
+			Outcome:       work.OutcomeFailed,
+			Summary:       adapterName + " run was cancelled: lease renewal failed, so another worker may own the Work Item",
+			Links:         links,
 			FailureReason: string(work.FailureLeaseLost),
 		})
 	default:
@@ -1160,43 +1175,6 @@ func abortOnTermination(parent, runCtx context.Context, cancel context.CancelCau
 			"work_item", workItemID, "role", role)
 		cancel(errTerminated)
 	case <-runCtx.Done():
-	}
-}
-
-func renewLoop(ctx context.Context, cancel context.CancelCauseFunc, api *APIClient, token string, every time.Duration, log *slog.Logger, yield func()) {
-	if every < 5*time.Second {
-		every = 5 * time.Second
-	}
-	t := time.NewTicker(every)
-	defer t.Stop()
-	strikes := 0
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.C:
-			renewal, err := api.Renew(token)
-			switch {
-			case renewal.Gone:
-				log.Error("lease no longer ours; cancelling run")
-				cancel(errLeaseLost)
-				return
-			case err != nil:
-				strikes++
-				log.Warn("lease renewal failed", "strikes", strikes, "err", err)
-				if strikes >= 3 {
-					log.Error("renewal failed 3 times; cancelling run")
-					cancel(errLeaseLost)
-					return
-				}
-			default:
-				strikes = 0
-				if renewal.Yield && yield != nil {
-					log.Info("a person asked the Run to yield; stopping at the next safe point")
-					yield()
-				}
-			}
-		}
 	}
 }
 

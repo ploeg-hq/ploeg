@@ -1,0 +1,7 @@
+# CI-only values: login confirmations are held in one ploeg-mcp process, so
+# the chart refuses them with two replicas.
+mcp:
+  enabled: true
+  replicas: 2
+  env:
+    PLOEG_MCP_CONFIRMATION_MODE: login

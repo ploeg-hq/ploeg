@@ -16,6 +16,8 @@ Use these sources for the current implementation. The [architecture](architectur
 
 ## Operate
 
+- [Self-hosting security contract](ops/self-hosting-security.md): chart controls, cluster responsibilities, identity gaps and version-specific qualification
+
 - [Operator runbooks](how-to/index.md): stuck Leases and Runs, credential rotation, draining, spend, database recovery
 - [Managed workers and recovery](ops/managed-workers.md)
 - [Network policies](ops/network.md): what every Ploeg pod may reach, how the chart derives it, and what your CNI must enforce
@@ -23,6 +25,8 @@ Use these sources for the current implementation. The [architecture](architectur
 - [Briefings: versions, catch-up, usefulness and replay](ops/briefings.md)
 - [Tracker configuration](ops/board.md)
 - [Configuration reference](reference/configuration.md): every environment variable and Helm value, generated from the source
+- [Accounting invariants](reference/accounting-invariants.md): the rules Ploeg keeps for inference budgets, holds and settlement, and the tests that check them
+- [Leases and cancellation](reference/leases-and-cancellation.md): the Lease lifecycle, fencing, the three-strike rule and timing bounds, with the tests that prove them
 - [CI and infrastructure](ops/ci-and-infra.md)
 - [Experimental releases](ops/release-versioning.md)
 - [Compatibility policy](ops/compatibility.md): what each release keeps working, deprecation, rollback and version pairs
@@ -50,6 +54,8 @@ Use these sources for the current implementation. The [architecture](architectur
 - [Decision ledger](adrs/README.md)
 - [Product intent and design history](design.md)
 - [Brand identity](brand/README.md) and [trademark policy](brand/TRADEMARK.md)
+- [CNCF Sandbox eligibility](cncf/eligibility.md): the earliest filing date and the maintainer blocker
+- [Capacity and work in progress](cncf/capacity.md): weekly hours, the work-in-progress cap and who approves paid qualification spend
 - [Licence inventory](cncf/license-inventory.md): every distributed component against the CNCF licence policy
 - [Baseline verification record](cncf/evidence/baseline.md): the commit, commands, environment and results of a fresh-clone `mise run verify`
 

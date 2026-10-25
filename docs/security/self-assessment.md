@@ -31,7 +31,7 @@ This document follows the [CNCF TAG Security and Compliance self-assessment outl
 
 | | |
 | -- | -- |
-| Assessment Stage | Incomplete. One release-blocking finding is open ([F-04](threat-model.md#findings), #225), and the reviewer sign-off asked for in issue #34 is pending. |
+| Assessment Stage | Incomplete. Every release-blocking finding is fixed (F-04 on 2026-10-25, #225); the reviewer sign-off asked for in issue #34 is pending. |
 | Software | <https://github.com/ploeg-hq/ploeg> |
 | Security Provider | No. Ploeg authorizes, budgets and records AI-agent work. Credential scoping and isolation are central to its design, but securing other systems is not its primary function. |
 | Languages | Go (controller, worker, MCP server), Helm templates, Shell, Python (documentation generators), SQL (migrations) |
@@ -94,7 +94,7 @@ The actors below are separated by an isolation mechanism. The [threat model's tr
 
 **Running the harness.** The worker clones the repository and scans instruction files for hidden Unicode and escaping symlinks. It starts the harness with an allowlisted environment. With both proxies on, the harness gets a random placeholder and a loopback URL for the model, and a placeholder forge URL that git reaches through `insteadOf`. The proxies swap in the real credentials. The forge proxy allows only the Role's API calls in the Run's repository, and only pushes to the Run's branch. Every check is made on each request, and a request without the placeholder is refused.
 
-**Renewing and stopping.** The worker renews its Lease every third of the TTL. Three failures or a definitive rejection cancel the harness. The harness is also stopped by a total timeout and an idle timeout, after which the model key is blocked. ploegd's sweep expires Runs whose Lease lapsed, blocks their keys and revokes their forge tokens.
+**Renewing and stopping.** The worker renews its Lease every quarter of the TTL. Three failures, a definitive rejection, or reaching a sixth of the TTL before the Lease ends without a successful renewal cancel the harness, so the worker stops before its Lease can be reclaimed. The harness is also stopped by a total timeout and an idle timeout, after which the model key is blocked. ploegd's sweep expires Runs whose Lease lapsed, blocks their keys and revokes their forge tokens.
 
 **Reporting and delivering.** The worker scans the pushed commits for the real key, the real token and a canary. A hit fails the Run, parks the Work Item and closes the pull request. The worker reads delivery facts from the forge and runs the configured verification commands on a fresh clone of the pushed commit, with no credential in their environment. It then reports the outcome. ploegd accepts an outcome only while the Run is running, and accepts a replay only with the same digest. A pull request is marked ready for review only when the forge's CI passed on its head. A person merges.
 
@@ -152,7 +152,7 @@ These are design elements the product's security depends on and that a deploymen
 
 ### Security relevant
 
-These are settings and components a deployment configures. The threat model's [supported profile](threat-model.md#the-supported-deployment-profile) fixes their values.
+These are settings and components a deployment configures. The threat model's [supported profile](threat-model.md#the-supported-deployment-profile), P1, which the maintainer confirmed on 2026-10-25, fixes their values.
 
 | Setting or component | Effect |
 | --- | --- |
@@ -274,7 +274,7 @@ A project-level procedure for triage, confirmation, notification and patch relea
   - The first real-binary attack drill found that OpenCode 1.18.30 started a repository's plugin and MCP server at `session/new`; the profile now sets `OPENCODE_DISABLE_PROJECT_CONFIG=true` ([ADR-0126](../adrs/0126-a-recurring-attack-drill-runs-every-harness-against-a-hostile-repository.md)).
   - The proxies were changed to refuse any request that does not present the Run's placeholder (Ploeg #64).
   - The worker container gained a restricted security context after a server dry run reported three `restricted` violations ([ADR-0120](../adrs/0120-a-worker-container-meets-the-restricted-pod-security-standard-by-default.md)).
-- **This assessment's findings.** This assessment produced 39 findings, listed in the [threat model](threat-model.md#findings). Seven are release-blocking for the supported profile, two of them only if the profile admits a feature it currently excludes. Six are fixed; F-04 is the only one still open:
+- **This assessment's findings.** This assessment produced 39 findings, listed in the [threat model](threat-model.md#findings). Seven are release-blocking for the supported profile, two of them only if the profile admits a feature it currently excludes. All seven are fixed:
 
 | ID | Severity | Summary |
 | --- | --- | --- |
@@ -282,7 +282,7 @@ A project-level procedure for triage, confirmation, notification and patch relea
 | F-24 | Critical | The board watch sent the real forge token from inside the harness-writable clone while the harness ran (fixed in PR #230: the `ls-remote` now runs outside any repository; its token in that process's environment is out of the harness's reach since ADR-0138, #221) |
 | F-02 | High | No NetworkPolicy for ploegd or worker pods (fixed in PR #233, ADR-0137: the chart renders a default-deny policy for every pod it creates, with the allowlist derived from its own URLs) |
 | F-03 | High | Shared builder forge token and bootstrap token sat in the harness's container, guarded by one in-process control that did not cover the worker's `git` children (fixed in PR #240, ADR-0138: the harness runs in its own container with no credential, and `shared` is deprecated) |
-| F-04 | Medium | Proxy qualification predates the current proxy code; no Run has used it (open, #225: requalification needs a live Run) |
+| F-04 | Medium | Proxy qualification predated the current proxy code (fixed 2026-10-25: [hostile requalification at 0.2.0-rc.68](../research/2026-10-25-credential-proxy-requalification.md), #225) |
 | F-08 | High | ploeg-mcp action confirmation can be skipped by the client (blocking only if ploeg-mcp `execute` groups join the profile; fixed in PR #260, ADR-0152: the confirmation state is signed and acted on once) |
 | F-36 | High | Any reviewer could re-queue paid Shifts without limit when rework was on (fixed in PR #261: rework only from listed or writing reviewers, capped by `maxReworks`) |
 

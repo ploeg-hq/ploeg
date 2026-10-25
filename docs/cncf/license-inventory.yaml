@@ -63,13 +63,14 @@ go:
     detected: MIT
     concluded: MIT
     disposition: exception-needed
-    note: 'MIT is on the allowlist, but allowlist condition 3 fails: on 2026-10-23 github.com/jackc/pgpassfile had 6 stars and 4 forks (the policy asks for at least 10 of either) and is not in the CNCF exceptions database. pgx needs it to read .pgpass files. The exception request is drafted in docs/cncf/exceptions/jackc-pgpassfile.md for the maintainer to file once Ploeg is a CNCF project; the disposition stays exception-needed until the Governing Board decides.'
+    note: 'MIT is on the allowlist, but allowlist condition 3 fails: on 2026-10-25 github.com/jackc/pgpassfile had 6 stars and 4 forks (the policy asks for at least 10 of either) and is not in the CNCF exceptions database. pgx imports it unconditionally to read .pgpass files; Harbor, SPIFFE/SPIRE, Dapr and OpenFGA ship it too, also without an exception. The maintainer decided on 2026-10-25 to request one covering this module and pgservicefile (#9); the request is ready in docs/cncf/exceptions/jackc-pgpassfile.md and is filed once Ploeg is a CNCF project. The disposition stays exception-needed until the Governing Board decides.'
   - module: github.com/jackc/pgservicefile
     version: v0.0.0-20240606120523-5a60cdf6a761
     shipped: true
     detected: MIT
     concluded: MIT
     disposition: allowlisted
+    note: 'Passes allowlist condition 3 at the threshold: 10 stars and 6 forks on 2026-10-25. It is included in the pgpassfile exception request so that one lost star does not reopen the question.'
   - module: github.com/jackc/pgx/v5
     version: v5.11.0
     shipped: true

@@ -62,10 +62,13 @@ func (u *UnsupportedWorkerVersion) Error() string {
 }
 
 type ClaimResponse struct {
-	RunToken     string        `json:"runToken"`
-	ControlToken string        `json:"controlToken,omitempty"`
-	Deadline     time.Time     `json:"deadline"`
-	WorkItem     work.WorkItem `json:"workItem"`
+	RunToken     string    `json:"runToken"`
+	ControlToken string    `json:"controlToken,omitempty"`
+	Deadline     time.Time `json:"deadline"`
+	// ExpiresInMs is how long the Lease lasts from ploegd's answer, so the
+	// worker can time it on its own clock. Zero from an older ploegd.
+	ExpiresInMs int64         `json:"expiresInMs,omitempty"`
+	WorkItem    work.WorkItem `json:"workItem"`
 	// Shift fields, all zero on a pre-Shift claim.
 	Shift  int64  `json:"shift,omitempty"`
 	Role   string `json:"role,omitempty"`
@@ -180,17 +183,34 @@ func (a *APIClient) Claim(team, role string) (*ClaimResponse, error) {
 	}
 }
 
-// Renewal is ploegd's answer to a lease renewal. Gone is true when the lease
-// is not ours anymore (404); Yield is true once a person asked the Run to
-// yield (ADR-0142).
-type Renewal struct {
-	Gone  bool
-	Yield bool
+func (c *ClaimResponse) leaseValidity() time.Duration {
+	if c.ExpiresInMs > 0 {
+		return time.Duration(c.ExpiresInMs) * time.Millisecond
+	}
+	return time.Until(c.Deadline)
 }
 
-// Renew renews the Run's lease.
-func (a *APIClient) Renew(token string) (Renewal, error) {
-	resp, err := a.request(context.Background(), http.MethodPost, "/api/v1/runs/"+token+"/renew", nil, a.runCredential(token))
+// Renewal is ploegd's answer to a lease renewal. Gone is true when the lease
+// is not ours anymore (404); Yield is true once a person asked the Run to
+// yield (ADR-0142); ExpiresIn is how long the renewed Lease lasts from the
+// answer, zero from an older ploegd.
+type Renewal struct {
+	Gone      bool
+	Yield     bool
+	ExpiresIn time.Duration
+}
+
+func (r Renewal) validFor(fallback time.Duration) time.Duration {
+	if r.ExpiresIn > 0 {
+		return r.ExpiresIn
+	}
+	return fallback
+}
+
+// Renew renews the Run's lease. Cancelling ctx abandons a renewal still in
+// flight.
+func (a *APIClient) Renew(ctx context.Context, token string) (Renewal, error) {
+	resp, err := a.request(ctx, http.MethodPost, "/api/v1/runs/"+token+"/renew", nil, a.runCredential(token))
 	if err != nil {
 		return Renewal{}, err
 	}
@@ -198,10 +218,11 @@ func (a *APIClient) Renew(token string) (Renewal, error) {
 	switch resp.StatusCode {
 	case http.StatusOK:
 		var body struct {
-			Yield bool `json:"yield"`
+			Yield       bool  `json:"yield"`
+			ExpiresInMs int64 `json:"expiresInMs"`
 		}
 		_ = json.NewDecoder(io.LimitReader(resp.Body, 4096)).Decode(&body)
-		return Renewal{Yield: body.Yield}, nil
+		return Renewal{Yield: body.Yield, ExpiresIn: time.Duration(max(body.ExpiresInMs, 0)) * time.Millisecond}, nil
 	case http.StatusNotFound, http.StatusUnauthorized, http.StatusForbidden:
 		return Renewal{Gone: true}, nil
 	default:

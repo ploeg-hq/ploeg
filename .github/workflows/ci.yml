@@ -75,6 +75,32 @@ jobs:
           cache: false
       - name: This change still builds the published bundle of the newest release tag byte for byte
         run: mise exec -- bash scripts/reproduce-published-contract-bundle.sh
+  worker-admission:
+    name: worker-admission (Kubernetes ${{ matrix.kubernetes }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - kubernetes: "1.30"
+            node-image: kindest/node:v1.30.13@sha256:397209b3d947d154f6641f2d0ce8d473732bd91c87d9575ade99049aa33cd648
+          - kubernetes: "1.37"
+            node-image: kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@7a4e45a543138629540c9a1616d08632b893e492 # v5.0.1
+        with:
+          version: 2026.9.18
+          cache: false
+      - name: Start a disposable cluster at the policy's oldest and newest supported Kubernetes
+        env:
+          NODE_IMAGE: ${{ matrix.node-image }}
+        run: mise exec -- kind create cluster --name worker-admission --image "$NODE_IMAGE" --wait 180s
+      - name: The API server type-checks the worker admission policy, admits every rendered worker pod and refuses each hostile variant by its own rule
+        run: mise exec -- uv run --no-project --with pyyaml==6.0.3 python scripts/check-worker-admission-live.py
   hostile-repository:
     runs-on: ubuntu-24.04
     timeout-minutes: 15

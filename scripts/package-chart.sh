@@ -12,6 +12,7 @@ done
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 cp -R "$root/ops/helm/ploeg" "$work/ploeg"
+cp "$root/docs/ops/self-hosting-security.md" "$work/ploeg/SECURITY.md"
 if ! awk -v ploegd="\"$ploegd_digest\"" -v runner="\"$runner_digest\"" -v worker="\"$worker_digest\"" '
   /^[^ #]/ { section = $1; sub(/:.*/, "", section); nested_image = 0 }
   (section == "claudeRunner" || section == "worker") && /^  [^ #]/ { nested_image = ($1 == "image:") }

@@ -10,8 +10,9 @@
 // PLOEG_MCP_GROUPS, and calls ploegd with that consumer's token, never the
 // caller's. A group marked execute also gets action tools, which name the
 // person and their client to ploegd and act only after the person confirms
-// the exact effect through an MCP elicitation (ADR-0108). Stdio mode only
-// reads.
+// the exact effect through an MCP elicitation (ADR-0108), or, with
+// PLOEG_MCP_CONFIRMATION_MODE=login, after the person signs in afresh at
+// ploeg-mcp's confirmation page (ADR-0153). Stdio mode only reads.
 package main
 
 import (

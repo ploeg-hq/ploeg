@@ -561,9 +561,10 @@ func (r claimRequest) harnessKey() string {
 }
 
 type claimResponse struct {
-	RunToken string        `json:"runToken"`
-	Deadline time.Time     `json:"deadline"`
-	WorkItem work.WorkItem `json:"workItem"`
+	RunToken    string        `json:"runToken"`
+	Deadline    time.Time     `json:"deadline"`
+	ExpiresInMs int64         `json:"expiresInMs,omitempty"`
+	WorkItem    work.WorkItem `json:"workItem"`
 	// Shift fields; all absent on a pre-Shift claim, so an old worker sees
 	// exactly today's body.
 	Shift      int64             `json:"shift,omitempty"`
@@ -688,7 +689,7 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 	}
 	s.recordRunConfig(r.Context(), claimed.RunToken, req.Team, "", true, runHarness{Name: req.Harness, Profile: req.HarnessProfile, Version: req.HarnessVersion})
 	s.Log.Info("lease acquired", "team", req.Team, "work_item", claimed.Item.ID, "deadline", claimed.Deadline)
-	writeJSON(w, http.StatusOK, claimResponse{RunToken: claimed.RunToken, Deadline: claimed.Deadline, WorkItem: claimed.Item,
+	writeJSON(w, http.StatusOK, claimResponse{RunToken: claimed.RunToken, Deadline: claimed.Deadline, ExpiresInMs: leaseExpiresInMs(claimed.Deadline), WorkItem: claimed.Item,
 		Context: s.claimContext(r.Context(), claimed.RunToken), Board: s.recordBoardClaim(r.Context(), claimed.RunToken),
 		Briefing:  s.consumeOperatorNotes(r.Context(), claimed.Item.ID, claimed.RunToken, 0),
 		FastCheck: s.fastCheckFor(claimed.Item, true)})
@@ -733,7 +734,7 @@ func (s *Server) respondClaimedRun(w http.ResponseWriter, r *http.Request, req c
 	s.recordRunConfig(r.Context(), run.RunToken, req.Team, run.Role, true, runHarness{Name: req.Harness, Profile: req.HarnessProfile, Version: req.HarnessVersion, Model: run.Model})
 	s.recordRunYields(r.Context(), run.RunToken, req.Yields)
 	resp := claimResponse{
-		RunToken: run.RunToken, Deadline: run.Deadline, WorkItem: run.Item,
+		RunToken: run.RunToken, Deadline: run.Deadline, ExpiresInMs: leaseExpiresInMs(run.Deadline), WorkItem: run.Item,
 		Shift: run.ShiftID, Role: run.Role, Round: run.Round,
 		Writes: run.Writes, Branch: run.Branch, Authorized: run.Authorized,
 		PreAuthor: run.PreAuthor, Model: run.Model,
@@ -853,6 +854,10 @@ func (s *Server) stopUnreadyTarget(ctx context.Context, team, runToken string, i
 	return true
 }
 
+func leaseExpiresInMs(deadline time.Time) int64 {
+	return max(time.Until(deadline).Milliseconds(), 0)
+}
+
 func (s *Server) handleRenew(w http.ResponseWriter, r *http.Request) {
 	token := r.PathValue("token")
 	deadline, err := s.Store.Renew(r.Context(), token, s.LeaseTTL)
@@ -860,7 +865,7 @@ func (s *Server) handleRenew(w http.ResponseWriter, r *http.Request) {
 		runError(w, err)
 		return
 	}
-	body := map[string]any{"deadline": deadline}
+	body := map[string]any{"deadline": deadline, "expiresInMs": leaseExpiresInMs(deadline)}
 	if s.yieldRequested(r.Context(), token) {
 		body["yield"] = true
 	}
