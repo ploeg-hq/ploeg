@@ -17,7 +17,7 @@ jobs:
     outputs:
       tag: ${{ steps.semantic-release.outputs.tag }}
     container:
-      image: ghcr.io/webgrip/semantic-release:2.1.0@sha256:9fa6ddc14d1a126fe14a7a63b88bf49cb2ee9053b88b4939db60d7761d492d2d
+      image: ghcr.io/webgrip/semantic-release:2.1.2@sha256:1fd0856cbfe52386712060bda1d84b9efa3de3d903d1754914d8cf6486d6fd37
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
