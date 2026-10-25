@@ -44,6 +44,7 @@ var observerRefusals = []string{
 	`SELECT count(*) FROM claude_sessions`,
 	`SELECT count(*) FROM asks`,
 	`SELECT count(*) FROM chats`,
+	`SELECT count(*) FROM run_llm_operator_settlements`,
 }
 
 func TestObserverRoleReadsMetadataAndNeverText(t *testing.T) {

@@ -360,6 +360,7 @@ func (s *Server) operatorRoutes() *http.ServeMux {
 	mux.HandleFunc("POST /api/v1/operator/work-items/{id}/questions/{question}/answer", s.handleOperatorQuestionAnswer)
 	mux.HandleFunc("GET /api/v1/operator/summary", s.handleOperatorSummary)
 	mux.HandleFunc("GET /api/v1/operator/unsettled-accounts", s.handleOperatorUnsettledAccounts)
+	mux.HandleFunc("POST /api/v1/operator/unsettled-accounts/{id}/settle", s.handleOperatorSettleFromEvidence)
 	mux.HandleFunc("GET /api/v1/operator/runs", s.handleOperatorRuns)
 	mux.HandleFunc("GET /api/v1/operator/runs/{id}", s.handleOperatorRun)
 	mux.HandleFunc("GET /api/v1/operator/runs/{id}/transcript", s.handleOperatorRunTranscript)
