@@ -244,7 +244,7 @@ WHERE r.state = 'finished' AND a.state IN ('reserved', 'blocked')
 ORDER BY a.updated_at;
 ```
 
-See [reconcile uncertainty](managed-workers.md#reconcile-uncertainty) before settling anything by hand.
+Fix the gateway first; the sweep then clears the backlog itself. When the gateway can no longer answer for an account, follow [reconcile uncertainty](managed-workers.md#reconcile-uncertainty) and settle it from evidence with `POST /api/v1/operator/unsettled-accounts/{runId}/settle` ([how-to](../how-to/investigate-a-runs-spend.md#7-settle-an-account-from-evidence)). Never edit `shifts.spent` or `run_llm_accounts` by hand.
 
 ## PloegWorkItemNotesUnwritten
 

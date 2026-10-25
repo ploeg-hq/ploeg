@@ -67,7 +67,7 @@ Both are off by default and create no Secret or route host of their own: the clu
 | `networkPolicy.enabled: false` | `true` |
 | `executor.workerAuth.mode: legacy` | `managed` |
 | `claudeRunner.enabled: true` | `false` |
-| `executor.type: sandbox`, or a team's `executorType: sandbox` | `keda` or `cronjob` |
+| `executor.type: sandbox`, or a team's `executorType: sandbox`, on a workload that resolves no `runtimeClassName` | a `runtimeClassName` (role, team or `executor`, `sandbox.runtimeClassName` first) naming a VM runtime such as Kata Containers, or `keda` or `cronjob` |
 | `executor.litellm.keyIsolation` or `executor.forgeTokenIsolation` other than `proxy` | `proxy` |
 | `harness.credentialIsolation` set at any level | unset |
 | a harness other than `openhands`, `acp/openhands` or `exec` | one of those |

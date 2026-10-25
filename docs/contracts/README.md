@@ -222,6 +222,16 @@ The check does not compare enum values: a consumer must treat an unknown value a
   `unsettledAccountsResponse`, `workItemId` is null for a chat Run, so a
   consumer that assumed a string must accept null. Ploeg keeps only the
   message's SHA-256. An older Ploeg answers 404.
+- An operator consumer with execute permission settles an account that
+  `GET /api/v1/operator/unsettled-accounts` lists with `POST
+  /api/v1/operator/unsettled-accounts/{runId}/settle` and `X-Ploeg-Actor`.
+  The body is `settleFromEvidenceRequest` (`commandId`, `amountUsd`,
+  `evidence`), the answer `settlementResponse`: 201 for a new settlement, 200
+  with `replayed: true` when the `commandId` repeats it. The settlement is
+  final at once, charges the Run's Shift, releases its Hold and audits
+  `llm.reconciled` under the operator with `operatorEvidence: true`. It
+  answers 409 `below_observation`, `already_settled`, `not_unsettled` or
+  `command_conflict` and changes nothing. An older Ploeg answers 404 or 405.
 - `deploy-api.v1` is the body of a pipeline's deploy report. It refuses
   unknown fields, unlike the response contracts, so a misspelled field fails
   the pipeline step instead of being dropped.

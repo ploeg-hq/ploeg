@@ -3,10 +3,14 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 )
 
 const pendingBlockSelection = `r.state='finished' AND a.state IN ('minting','issued','unknown')`
+
+var unsettledFinishedSelection = fmt.Sprintf(`((%s) OR (r.state='finished' AND a.state='blocked' AND r.finished_at<now()-make_interval(secs=>%d)))`,
+	pendingBlockSelection, int64(StuckBlockedAfter.Seconds()))
 
 type PendingLLMBlock struct {
 	RunID    int64
@@ -71,9 +75,9 @@ func (s *Store) UnsettledFinishedAccounts(ctx context.Context, teams []string, l
 	rows, err := s.pool.Query(ctx, `SELECT r.id,r.work_item_id::text,r.team,a.state,h.reserved::float8,a.updated_at,
 		count(*) OVER (),(sum(h.reserved) OVER ())::float8
 		FROM run_llm_accounts a JOIN agent_runs r USING(run_token) JOIN run_budget_holds h USING(run_token)
-		WHERE ((`+pendingBlockSelection+`) OR (r.state='finished' AND a.state='blocked' AND r.finished_at<now()-make_interval(secs=>$3)))
+		WHERE `+unsettledFinishedSelection+`
 		AND ($1::text[] IS NULL OR r.team=ANY($1))
-		ORDER BY a.updated_at,r.id LIMIT $2`, teams, limit, StuckBlockedAfter.Seconds())
+		ORDER BY a.updated_at,r.id LIMIT $2`, teams, limit)
 	if err != nil {
 		return page, err
 	}
