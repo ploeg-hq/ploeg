@@ -2,15 +2,15 @@
 type: how-to
 audience: [operator]
 owner: ploeg
-last_verified: 2026-09-28
-verified_by: "Read migrations 0008 and 0012 (shifts, agent_runs.authorized, run_llm_accounts, run_budget_holds), pkg/store/{llm_accounts,llm_settlement,llm_block_queue,store,shift,operator}.go, pkg/httpapi/llm_control.go (Block, Settle), pkg/llmbroker/litellm.go, pkg/litellm/client.go and cmd/ploegd/sweep.go"
+last_verified: 2026-10-25
+verified_by: "Read migrations 0008, 0012 and 0075 (shifts, agent_runs.authorized, run_llm_accounts, run_budget_holds, run_llm_operator_settlements), pkg/store/{llm_accounts,llm_settlement,llm_block_queue,llm_operator_settlement,store,shift,operator}.go, pkg/httpapi/operator_settlement.go, pkg/httpapi/llm_control.go (Block, Settle), pkg/llmbroker/litellm.go, pkg/litellm/client.go and cmd/ploegd/sweep.go"
 ---
 
 # Investigate a Run's spend
 
 **Symptom:** a Shift reports more or less spend than you expect, its budget looks used up while nothing runs, or you need to show what one Run cost.
 
-**Goal:** separate what Ploeg has **reserved** (held against the budget) from what it has **settled** (charged), trace a Run's inference account through its states, compare it with the gateway's spend logs, and tell whether the settlement sweep will finish the job or you must act.
+**Goal:** separate what Ploeg has **reserved** (held against the budget) from what it has **settled** (charged), trace a Run's inference account through its states, compare it with the gateway's spend logs, tell whether the settlement sweep will finish the job or you must act, and settle an account from evidence when the gateway can no longer answer for it.
 
 Read [Before you start](index.md#before-you-start) for names and the database session. The rules for uncertain cost are in [Reconcile uncertainty](../ops/managed-workers.md#reconcile-uncertainty).
 
@@ -143,8 +143,40 @@ WHERE a.run_token = '<run_token>' ORDER BY j.id;
    `managed settlement unresolved … gateway spend logs unavailable: <cause>` means reading the gateway's spend failed; the cause after the colon says which call and why (`/key/list`, `/spend/logs`, or `/spend/logs/ui` for an account whose key identity was never recorded). Fix the gateway; the sweep retries every interval.
 
    If `unchanged_for` never grows, something keeps raising the account's observed spend, and each `llm.observed` restarts the quiet period. Before 0.2.0-rc.15, every operator spend read did that even when nothing was spent, so a finished operator execution's account never settled. `GET /api/v1/operator/unsettled-accounts` lists a `blocked` account once its Run finished more than an hour ago, so it shows up there with its hold.
-3. **The account is `minting`, `issued` or `unknown` on a finished Run.** The block sweep retries it. `managed key block retry unresolved` repeating means the gateway cannot revoke the key or report its spend, often because the key is already gone. The account keeps its full hold. `GET /api/v1/operator/unsettled-accounts` lists every such Run in the consumer's Teams, oldest first, with its Work Item, account state, held amount and since when, plus the count and held total. **Not implemented yet:** a command that settles such an account from evidence you have gathered. Follow [Reconcile uncertainty](../ops/managed-workers.md#reconcile-uncertainty): keep the hold, collect the gateway and provider evidence, and record it.
+3. **The account is `minting`, `issued` or `unknown` on a finished Run.** The block sweep retries it. `managed key block retry unresolved` repeating means the gateway cannot revoke the key or report its spend, often because the key is already gone. The account keeps its full hold. `GET /api/v1/operator/unsettled-accounts` lists every such Run in the consumer's Teams, oldest first, with its Work Item, account state, held amount and since when, plus the count and held total. While the gateway can still answer, wait for the sweep. When it can no longer answer for the key, follow [Reconcile uncertainty](../ops/managed-workers.md#reconcile-uncertainty) and settle the account from your evidence (step 7).
 4. **The Run is still `running`.** Its hold is its authorization. See [Recover a stuck Lease or Run](recover-a-stuck-lease-or-run.md) if it should have ended.
+
+## 7. Settle an account from evidence
+
+Use this only for an account that `GET /api/v1/operator/unsettled-accounts` lists and that the gateway can no longer answer for: its spend logs stay unreadable, or the key is gone in a way the block sweep cannot confirm. While the sweeps can still settle an account, they do, and the command refuses it.
+
+1. Confirm the key can no longer spend. For an account in `minting`, `issued` or `unknown`, check in the gateway that no key with the alias `ploeg-<12 hex>` exists or that it is blocked. Settling stops the block sweep retrying the key.
+2. Gather the amount and where it comes from: the provider's invoice or usage export for the key's requests, or a gateway export you trust. Write the evidence so someone else can find the source again, for example `provider invoice 2026-10 line 14, project ploeg, 0.42 USD`. Never put a credential in it.
+3. List the accounts with an execute-capable operator consumer, then settle one by its `runId`:
+
+   ```sh
+   curl -s -H "Authorization: Bearer $PLOEG_OPERATOR_TOKEN" \
+     https://<ploeg>/api/v1/operator/unsettled-accounts | jq '.accounts'
+
+   curl -s -X POST -H "Authorization: Bearer $PLOEG_OPERATOR_TOKEN" \
+     -H "X-Ploeg-Actor: <your id>" -H 'Content-Type: application/json' \
+     -d '{"commandId":"settle-run-1234","amountUsd":0.42,"evidence":"provider invoice 2026-10 line 14, project ploeg, 0.42 USD"}' \
+     https://<ploeg>/api/v1/operator/unsettled-accounts/1234/settle
+   ```
+
+The answer is 201 with `settlement`: the amount charged (`settledUsd`, rounded to four decimals), the spend Ploeg had observed (`observedUsd`), the Hold it released (`releasedUsd`) and the state it replaced. Repeating the same request answers 200 with `replayed: true` and changes nothing, so a retry after a timeout is safe. Reusing the `commandId` for another Run, amount or evidence answers 409 `command_conflict`.
+
+The command refuses, and changes nothing, when:
+
+| Answer | Why |
+| --- | --- |
+| 409 `below_observation` | `amountUsd` is below the spend Ploeg observed while the Run ran. Ploeg never settles below its own observation; find the missing usage. |
+| 409 `not_unsettled` | The account is not listed: it is `reserved`, its Run still runs, or it was blocked less than an hour ago. The sweeps still own it. |
+| 409 `already_settled` | The account is `reconciled`. A correction after the window is not this command. |
+| 404 `not_found` | No such Run with an account in the consumer's teams. |
+| 403 `execution_forbidden` | The consumer lacks execute permission. |
+
+The settlement is final at once: no correction sweep re-reads it. The account shows `reconciled`, `cost_known` true and evidence starting `operator:evidence consumer=… command=…`. The audit trail of step 4 gains one `llm.reconciled` event whose actor is `operator:<consumer>:<your id>`, with `"operatorEvidence": true` and your attribution. The Shift's `spent` rises by the amount and its Hold falls by `releasedUsd`.
 
 ## Verify
 
@@ -160,7 +192,7 @@ WHERE a.run_token = '<run_token>' ORDER BY j.id;
 | Shift parked at `needs_human` with `budget exhausted: …` | `budget − spent − reserved` fell below the minimum for a Run | Check that the holds are real. A Shift's pool is fixed when it opens: raise the team's budget in configuration for new Shifts, then re-assign the ticket |
 | Shift parked at `needs_human` with `budget held by unsettled runs: …` | Finished Runs kept their holds for 24 hours because their keys could not be blocked or settled, usually because the model gateway was down | Fix the gateway and check `ploegd` for `managed key block retry unresolved` or `managed settlement unresolved`. Once the holds are released, re-assign the ticket |
 | Account `blocked` for hours | Gateway spend logs or key list unavailable | Fix the gateway; the sweep retries |
-| Account `unknown` for hours | Key already deleted, or the gateway cannot report it | Keep the hold; reconcile from evidence (no command yet) |
+| Account `unknown` for hours | Key already deleted, or the gateway cannot report it | Confirm the key is blocked or gone, then settle from evidence (step 7) |
 | `spent` lower than the gateway total | Entries arrived after settlement | Record the correction with evidence (no command yet) |
 | `spent` differs from `harness_reported_usd` | The harness figure is self-reported; managed Runs settle from the gateway | Expected; trust the account |
 | Account settled at zero with `ploegd:mint-never-began` | The Run ended before any mint began | Expected; the audit trail has no `llm.minting` for it |
