@@ -35,7 +35,9 @@ When the repository variable `RELEASE_CONSUMERS` is set, the `consumers` job of 
 [{"forge": "forgejo", "url": "https://forge.example", "repo": "owner/name", "base": "development", "recipe": "scripts/consume-release.sh", "message": "fix(deps): update ploeg to {version}"}]
 ```
 
-For each entry, [scripts/release-consumers.py](../../scripts/release-consumers.py) clones `base`, runs `<recipe> <version>` from the checkout root, commits what changed on `ploeg/<version>` as the token's user, opens or updates the pull request and asks the forge to merge it when the base branch's required checks succeed. It closes the same user's older `ploeg/` pull requests. `message` and `merge_style` (`merge` by default) are optional. A recipe gets git, a POSIX shell, Python 3 and mise, and never the token.
+For each entry, [scripts/release-consumers.py](../../scripts/release-consumers.py) clones `base`, runs `<recipe> <version>` from the checkout root, commits what changed on `ploeg/<version>` as the token's user, opens or updates the pull request and asks the forge to merge it when the base branch's required checks succeed. It closes the same user's older `ploeg/` pull requests. `message`, `merge_style` (`merge` by default) and `merge` are optional.
+
+`merge` decides who merges the pull request. `on-green`, the default, asks the forge to merge it when the base branch's required checks succeed. `by-consumer` opens or updates the pull request and closes the superseded ones but never asks the forge to merge, for a consumer that merges its pin itself, for example at the start of its own release run. A `by-consumer` entry must not set `merge_style`, because nothing would read it. A recipe gets git, a POSIX shell, Python 3 and mise, and never the token.
 
 The token is the repository secret `RELEASE_CONSUMER_TOKEN_FORGEJO`: a Forgejo access token of a user with write access to the consumer repositories only, with the `write:repository`, `write:issue` (the superseded comment) and `read:user` scopes, allowed to merge into `base` by its branch protection. Without the variable the job is skipped.
 

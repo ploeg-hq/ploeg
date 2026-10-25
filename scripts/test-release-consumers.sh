@@ -157,6 +157,20 @@ grep -q '^Dry run: would push ploeg/0.1.0-rc.5' "$fixture/dry.out" || fail 'a dr
 [[ "$(tail -n +"$((before + 1))" "$fixture/requests.log" | grep -vc '"path": "/api/v1/user"' || true)" == 0 ]] || fail 'a dry run wrote to the forge'
 git --git-dir="$fixture/app.git" rev-parse --verify --quiet refs/heads/ploeg/0.1.0-rc.5 >/dev/null && fail 'a dry run pushed'
 
+before=$(wc -l < "$fixture/requests.log")
+RELEASE_CONSUMERS_DRY_RUN=true run "$(consumer ',"merge":"on-green"')" v0.1.0-rc.6 > "$fixture/dry-on-green.out"
+grep -q 'and ask forgejo to merge it (merge) when its checks succeed$' "$fixture/dry-on-green.out" || fail 'an explicit on-green consumer must be merged when checks succeed'
+RELEASE_CONSUMERS_DRY_RUN=true run "$(consumer ',"merge":"by-consumer"')" v0.1.0-rc.6 > "$fixture/dry-by-consumer.out"
+grep -q 'and leave its merge to acme/app$' "$fixture/dry-by-consumer.out" || fail 'a dry run must say a by-consumer merge is left to the consumer'
+[[ "$(tail -n +"$((before + 1))" "$fixture/requests.log" | grep -vc '"path": "/api/v1/user"' || true)" == 0 ]] || fail 'a dry run wrote to the forge'
+
+run "$(consumer ',"merge":"by-consumer"')" v0.1.0-rc.7 > "$fixture/by-consumer.out"
+[[ "$(state '[p["number"] for p in s["pulls"].values() if p["head"]["ref"] == "ploeg/0.1.0-rc.7" and p["state"] == "open"]')" == '[4]' ]] || fail 'a by-consumer release did not open its pull request'
+[[ "$(requests 'r["path"].endswith("/pulls/4/merge")')" == 0 ]] || fail 'a by-consumer pull request was asked to merge'
+grep -q 'acme/app merges this pull request itself' <<<"$(state 's["pulls"]["4"]["body"]')" || fail 'a by-consumer pull request must say the consumer merges it'
+[[ "$(state '[s["pulls"]["3"]["state"], s["pulls"]["2"]["state"]]')" == '["closed", "open"]' ]] || fail 'a by-consumer release must still close the bot'\''s superseded pull request and keep a person'\''s'
+grep -q 'acme/app#4 opened, merge left to the consumer, closed superseded #3' "$fixture/by-consumer.out" || fail 'the by-consumer summary does not say the merge is left to the consumer'
+
 rejects() {
   local output
   if output=$(run "$1" "$2" 2>&1); then fail "accepted $1 $2"; fi
@@ -175,5 +189,7 @@ rejects "${valid/acme\/app/acme},\"recipe\":\"r.sh\"}" v0.1.0-rc.6 'is not an ow
 rejects "$valid,\"recipe\":\"r.sh\",\"message\":\"no placeholder\"}" v0.1.0-rc.6 'must be one line that contains {version}'
 rejects "$valid,\"recipe\":\"r.sh\",\"token\":\"inline\"}" v0.1.0-rc.6 'unknown fields: token'
 rejects "$valid}" v0.1.0-rc.6 'lacks recipe'
+rejects "$(consumer ',"merge":"when-i-feel-like-it"')" v0.1.0-rc.6 'merge must be one of by-consumer, on-green'
+rejects "$(consumer ',"merge":"by-consumer","merge_style":"squash"')" v0.1.0-rc.6 'merge_style has no effect when the consumer merges its own pull request'
 for tag in 0.1.0 v1 v0.1.0-rc.6/../x latest; do rejects "$(consumer)" "$tag" 'is not a release tag'; done
-echo 'Release consumer delivery, reruns, supersession, dry runs and input checks passed'
+echo 'Release consumer delivery, reruns, supersession, dry runs, merge modes and input checks passed'
