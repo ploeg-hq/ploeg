@@ -8,14 +8,10 @@ package runidentity
 
 import (
 	"crypto/ecdsa"
-	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/sha256"
-	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"encoding/pem"
 	"errors"
 	"fmt"
 	"net/url"
@@ -23,6 +19,8 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+
+	"github.com/ploeg-hq/ploeg/pkg/signingkeys"
 )
 
 // TokenType is the JOSE "typ" header of every Run identity (RFC 8725 §3.11),
@@ -30,7 +28,7 @@ import (
 const TokenType = "run-identity+jwt"
 
 // Algorithm is the only signing algorithm a Run identity uses.
-const Algorithm = "ES256"
+const Algorithm = signingkeys.Algorithm
 
 // MaxLifetime bounds a Run identity however long the Run's lease is.
 const MaxLifetime = 15 * time.Minute
@@ -114,67 +112,15 @@ func NewSigner(issuer, privatePEM, retiredPEM string) (*Signer, error) {
 	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || u.RawQuery != "" || u.Fragment != "" {
 		return nil, fmt.Errorf("run identity issuer %q must be the http(s) URL consumers reach ploegd at", issuer)
 	}
-	key, err := parsePrivateKey(privatePEM)
+	key, err := signingkeys.ParsePrivateKey(privatePEM)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("run identity: %w", err)
 	}
-	s := &Signer{issuer: issuer, key: key, kid: Thumbprint(&key.PublicKey), now: time.Now}
-	rest := []byte(retiredPEM)
-	for {
-		var block *pem.Block
-		block, rest = pem.Decode(rest)
-		if block == nil {
-			break
-		}
-		if block.Type != "PUBLIC KEY" {
-			return nil, fmt.Errorf("a retired run identity key must be a PEM PUBLIC KEY, not %s", block.Type)
-		}
-		pub, err := x509.ParsePKIXPublicKey(block.Bytes)
-		if err != nil {
-			return nil, fmt.Errorf("retired run identity key: %w", err)
-		}
-		ec, ok := pub.(*ecdsa.PublicKey)
-		if !ok || ec.Curve != elliptic.P256() {
-			return nil, errors.New("a retired run identity key must be a P-256 key")
-		}
-		s.retired = append(s.retired, ec)
+	retired, err := signingkeys.ParsePublicKeys(retiredPEM)
+	if err != nil {
+		return nil, fmt.Errorf("run identity: %w", err)
 	}
-	if strings.TrimSpace(string(rest)) != "" {
-		return nil, errors.New("the retired run identity keys hold text that is not PEM")
-	}
-	return s, nil
-}
-
-func parsePrivateKey(privatePEM string) (*ecdsa.PrivateKey, error) {
-	block, rest := pem.Decode([]byte(privatePEM))
-	if block == nil || strings.TrimSpace(string(rest)) != "" {
-		return nil, errors.New("the run identity signing key must be exactly one PEM block")
-	}
-	var key *ecdsa.PrivateKey
-	switch block.Type {
-	case "PRIVATE KEY":
-		k, err := x509.ParsePKCS8PrivateKey(block.Bytes)
-		if err != nil {
-			return nil, fmt.Errorf("run identity signing key: %w", err)
-		}
-		ec, ok := k.(*ecdsa.PrivateKey)
-		if !ok {
-			return nil, errors.New("the run identity signing key must be an ECDSA P-256 key")
-		}
-		key = ec
-	case "EC PRIVATE KEY":
-		k, err := x509.ParseECPrivateKey(block.Bytes)
-		if err != nil {
-			return nil, fmt.Errorf("run identity signing key: %w", err)
-		}
-		key = k
-	default:
-		return nil, fmt.Errorf("the run identity signing key must be a PEM PRIVATE KEY or EC PRIVATE KEY, not %s", block.Type)
-	}
-	if key.Curve != elliptic.P256() {
-		return nil, errors.New("the run identity signing key must be a P-256 key")
-	}
-	return key, nil
+	return &Signer{issuer: issuer, key: key, kid: Thumbprint(&key.PublicKey), retired: retired, now: time.Now}, nil
 }
 
 // Issuer is the "iss" of every token s signs.
@@ -228,74 +174,23 @@ func (s *Signer) Sign(run Run, audience string, expires time.Time) (string, time
 }
 
 // JWK is one public key of a JWK Set (RFC 7517).
-type JWK struct {
-	Kty string `json:"kty"`
-	Crv string `json:"crv"`
-	X   string `json:"x"`
-	Y   string `json:"y"`
-	Kid string `json:"kid"`
-	Use string `json:"use"`
-	Alg string `json:"alg"`
-}
+type JWK = signingkeys.JWK
 
 // JWKS is a JWK Set.
-type JWKS struct {
-	Keys []JWK `json:"keys"`
-}
+type JWKS = signingkeys.JWKS
 
 // KeySet is the JWK Set ploegd publishes: the current key first, then the
 // retired ones, so a token signed just before a rotation still verifies.
 func (s *Signer) KeySet() JWKS {
-	set := JWKS{Keys: []JWK{jwk(&s.key.PublicKey)}}
-	for _, k := range s.retired {
-		set.Keys = append(set.Keys, jwk(k))
-	}
-	return set
-}
-
-func jwk(k *ecdsa.PublicKey) JWK {
-	x, y := coordinates(k)
-	return JWK{Kty: "EC", Crv: "P-256", X: x, Y: y, Kid: Thumbprint(k), Use: "sig", Alg: Algorithm}
-}
-
-func coordinates(k *ecdsa.PublicKey) (string, string) {
-	raw, _ := k.Bytes()
-	return base64.RawURLEncoding.EncodeToString(raw[1:33]), base64.RawURLEncoding.EncodeToString(raw[33:65])
+	return signingkeys.Set(&s.key.PublicKey, s.retired)
 }
 
 // Thumbprint is the RFC 7638 JWK thumbprint of a P-256 key.
-func Thumbprint(k *ecdsa.PublicKey) string {
-	x, y := coordinates(k)
-	sum := sha256.Sum256([]byte(`{"crv":"P-256","kty":"EC","x":"` + x + `","y":"` + y + `"}`))
-	return base64.RawURLEncoding.EncodeToString(sum[:])
-}
+func Thumbprint(k *ecdsa.PublicKey) string { return signingkeys.Thumbprint(k) }
 
 // ParseKeySet reads a JWK Set and keeps its P-256 signing keys by kid.
 func ParseKeySet(body []byte) (map[string]*ecdsa.PublicKey, error) {
-	var set JWKS
-	if err := json.Unmarshal(body, &set); err != nil {
-		return nil, fmt.Errorf("key set: %w", err)
-	}
-	keys := map[string]*ecdsa.PublicKey{}
-	for _, k := range set.Keys {
-		if k.Kty != "EC" || k.Crv != "P-256" || (k.Use != "" && k.Use != "sig") || (k.Alg != "" && k.Alg != Algorithm) || k.Kid == "" {
-			continue
-		}
-		x, errX := base64.RawURLEncoding.DecodeString(k.X)
-		y, errY := base64.RawURLEncoding.DecodeString(k.Y)
-		if errX != nil || errY != nil || len(x) != 32 || len(y) != 32 {
-			continue
-		}
-		pub, err := ecdsa.ParseUncompressedPublicKey(elliptic.P256(), append(append([]byte{4}, x...), y...))
-		if err != nil {
-			continue
-		}
-		keys[k.Kid] = pub
-	}
-	if len(keys) == 0 {
-		return nil, errors.New("the key set holds no P-256 signing key")
-	}
-	return keys, nil
+	return signingkeys.ParseKeySet(body)
 }
 
 // Expect is what a consumer pins before it trusts a Run identity.
