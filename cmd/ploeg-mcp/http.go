@@ -43,6 +43,8 @@ type httpConfig struct {
 	verifier        *mcpauth.Verifier
 	exchanger       *mcpauth.Exchanger
 	confirmations   *confirmations
+	confirmMode     string
+	warnings        []string
 }
 
 var tokenEnvName = regexp.MustCompile(`^[A-Z][A-Z0-9_]{0,127}$`)
@@ -104,8 +106,22 @@ func loadHTTPConfig(getenv func(string) string, lookup func(string) (string, boo
 	if cfg.confirmations, err = loadConfirmations(getenv); err != nil {
 		return nil, err
 	}
-	if cfg.confirmations == nil && slices.ContainsFunc(cfg.groups, func(g groupConsumer) bool { return g.Execute }) {
+	executes := slices.ContainsFunc(cfg.groups, func(g groupConsumer) bool { return g.Execute })
+	if cfg.confirmations == nil && executes {
 		return nil, fmt.Errorf("a group in PLOEG_MCP_GROUPS is marked execute, so %s must hold the key that signs each person's confirmation; set it from a Secret", confirmationKeyEnv)
+	}
+	mode, deprecated, err := loadConfirmationMode(getenv, executes)
+	if err != nil {
+		return nil, err
+	}
+	cfg.confirmMode = mode
+	if deprecated {
+		cfg.warnings = append(cfg.warnings, deprecatedDefaultMode)
+	}
+	if mode == modeLogin && cfg.confirmations != nil {
+		if cfg.confirmations.pages, err = loadConfirmationPages(getenv, cfg.issuer, cfg.resource, cfg.personNamespace, cfg.clientIDs); err != nil {
+			return nil, err
+		}
 	}
 	base := getenv("PLOEG_URL")
 	for _, g := range cfg.groups {
@@ -204,6 +220,10 @@ func (cfg *httpConfig) handler(logger *slog.Logger) http.Handler {
 		mcpPath = "/"
 	}
 	mux.Handle(mcpPath, guard.Wrap(cfg.admit(stream, logger)))
+	if cfg.confirmations != nil && cfg.confirmations.pages != nil {
+		cfg.confirmations.pages.log = logger
+		cfg.confirmations.pages.register(mux)
+	}
 	return mux
 }
 
@@ -256,7 +276,10 @@ func serveHTTP(ctx context.Context, cfg *httpConfig, logger *slog.Logger) error 
 	}
 	errs := make(chan error, 1)
 	go func() { errs <- srv.ListenAndServe() }()
-	logger.Info("ploeg-mcp serving streamable HTTP", "listen", cfg.listen, "resource", cfg.resource.String(), "issuer", cfg.issuer, "groups", len(cfg.groups), "exchangesForActions", cfg.exchanger != nil)
+	for _, warning := range cfg.warnings {
+		logger.Warn(warning)
+	}
+	logger.Info("ploeg-mcp serving streamable HTTP", "listen", cfg.listen, "resource", cfg.resource.String(), "issuer", cfg.issuer, "groups", len(cfg.groups), "exchangesForActions", cfg.exchanger != nil, "confirmation", cfg.confirmMode)
 	select {
 	case err := <-errs:
 		return err

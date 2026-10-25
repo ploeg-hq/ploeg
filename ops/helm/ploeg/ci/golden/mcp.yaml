@@ -417,10 +417,21 @@ spec:
                 secretKeyRef:
                   name: ploeg-mcp-confirmation
                   key: key
+            - name: PLOEG_MCP_CONFIRMATION_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: ploeg-mcp-confirmation-client
+                  key: client-secret
             - name: GOMEMLIMIT
               value: "115MiB"
             - name: PLOEG_MCP_CLIENT_IDS
               value: "ploeg-mcp"
+            - name: PLOEG_MCP_CONFIRMATION_AMR
+              value: "mfa"
+            - name: PLOEG_MCP_CONFIRMATION_CLIENT_ID
+              value: "ploeg-mcp-confirm"
+            - name: PLOEG_MCP_CONFIRMATION_MODE
+              value: "login"
             - name: PLOEG_MCP_GROUPS
               value: "[{\"group\":\"ploeg-operators\",\"tokenEnv\":\"PLOEG_MCP_TOKEN_OPERATORS\",\"execute\":true},{\"group\":\"ploeg-readers\",\"tokenEnv\":\"PLOEG_MCP_TOKEN_READERS\"}]"
             - name: PLOEG_MCP_ISSUER

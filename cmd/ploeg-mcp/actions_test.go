@@ -62,6 +62,7 @@ type actingOptions struct {
 	stewardClientIDs []string
 	personTokens     func([]httpapi.OperatorConsumer) *httpapi.PersonTokens
 	env              map[string]string
+	configure        func(*httpConfig)
 }
 
 func newActingRemoteWith(t *testing.T, o actingOptions) acting {
@@ -104,7 +105,11 @@ func newActingRemoteWith(t *testing.T, o actingOptions) acting {
 		env[k] = v
 	}
 	r := newRemoteTokens(t, func(*remote) http.Handler { return ploegd },
-		`[{"group":"ploeg-stewards","tokenEnv":"ADMINS_TOKEN","execute":true},{"group":"ploeg-readers","tokenEnv":"READERS_TOKEN"}]`, stewards, readers, env)
+		`[{"group":"ploeg-stewards","tokenEnv":"ADMINS_TOKEN","execute":true},{"group":"ploeg-readers","tokenEnv":"READERS_TOKEN"}]`, stewards, readers, env, func(cfg *httpConfig) {
+			if o.configure != nil {
+				o.configure(cfg)
+			}
+		})
 	return acting{remote: r, ploegd: ploegd}
 }
 

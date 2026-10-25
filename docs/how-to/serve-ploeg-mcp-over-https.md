@@ -2,8 +2,8 @@
 type: how-to
 audience: [operator, owner]
 owner: ploeg
-last_verified: 2026-10-17
-verified_by: "Read cmd/ploeg-mcp and pkg/mcpauth; go test ./cmd/ploeg-mcp ./pkg/mcpauth (2026-10-17, action tools); the MCP conformance suite 0.2.0-alpha.11 and the Inspector CLI --strict against the binary behind a token-injecting proxy. Not checked against a live identity provider or a running client."
+last_verified: 2026-10-25
+verified_by: "Read cmd/ploeg-mcp and pkg/mcpauth; go test ./cmd/ploeg-mcp ./pkg/mcpauth (2026-10-17, action tools; 2026-10-25, login confirmations against a fake OpenID Connect issuer); authentik's OAuth2 provider source read at 7ff197b for prompt, max_age, acr and amr; the MCP conformance suite 0.2.0-alpha.11 and the Inspector CLI --strict against the binary behind a token-injecting proxy. Not checked against a live identity provider or a running client."
 ---
 
 # Serve Ploeg's MCP tools over HTTPS with a browser sign-in
@@ -52,6 +52,14 @@ The Ploeg image ships the binary at `/usr/local/bin/ploeg-mcp`. The Ploeg chart 
 | `PLOEG_MCP_CLIENT_IDS` | yes | Comma-separated client ids whose tokens are accepted (`aud` and `azp`) |
 | `PLOEG_MCP_GROUPS` | yes | JSON array of `{"group", "tokenEnv", "execute"}`. The first entry whose group the person is in decides the consumer; `tokenEnv` names the variable holding that consumer's token. `execute: true` also offers that group the action tools; its consumer then needs `execute: true` in ploegd too (see [Act on work](ask-ploeg-from-an-ai-client.md#act-on-work-over-https)) |
 | `PLOEG_MCP_CONFIRMATION_KEY` | with an `execute` group | The key ploeg-mcp signs each person's confirmation state with (HMAC-SHA256, [ADR-0152](../adrs/0152-ploeg-mcp-signs-each-confirmation-and-acts-on-it-once.md)), at least 32 bytes, such as `openssl rand -base64 48`. ploeg-mcp refuses to start when a group is marked `execute` without it. Keep it in a Secret (the chart's `mcp.confirmationKeySecret`); every replica must read the same key. Changing it voids confirmations still open, which ask to be called again |
+| `PLOEG_MCP_CONFIRMATION_MODE` | with an `execute` group | `login`: a person confirms each action by signing in afresh at ploeg-mcp's confirmation page ([ADR-0153](../adrs/0153-a-person-confirms-a-ploeg-mcp-action-by-signing-in-afresh-at-a-ploeg-mcp-page.md), section 5 below). `elicitation`: the client shows a checkbox and answers it, which a client can do without the person ([ADR-0152](../adrs/0152-ploeg-mcp-signs-each-confirmation-and-acts-on-it-once.md)). Unset with an `execute` group behaves as `elicitation` and logs a `DEPRECATED` warning at start; from the next minor it refuses to start |
+| `PLOEG_MCP_CONFIRMATION_CLIENT_ID` | with `login` | ploeg-mcp's own confidential client at the provider, for the confirmation sign-in; not one of `PLOEG_MCP_CLIENT_IDS` |
+| `PLOEG_MCP_CONFIRMATION_CLIENT_SECRET` | with `login` | That client's secret; the chart sets it from `mcp.confirmationClientSecret` |
+| `PLOEG_MCP_CONFIRMATION_ISSUER` | no | The issuer of the confirmation client; default `PLOEG_MCP_ISSUER`. Its `sub` for a person must equal the access token's, because the person id is derived from it under the same namespace |
+| `PLOEG_MCP_CONFIRMATION_AMR` | no | Space-separated `amr` values the confirmation's ID token must all carry, such as `mfa` |
+| `PLOEG_MCP_CONFIRMATION_ACR_VALUES` | no | Space-separated `acr` values: sent as `acr_values`, and the ID token's `acr` must be one of them. authentik ignores `acr_values`; use `PLOEG_MCP_CONFIRMATION_AMR` there |
+| `PLOEG_MCP_CONFIRMATION_LOGIN_MAX_AGE` | no | How old the sign-in (`auth_time`) may be when the page receives it, 10s to 10m; default `2m` |
+| `PLOEG_MCP_CONFIRMATION_TTL` | no | How long a confirmation stays open, in both modes, 1m to 1h; default `10m` |
 | `PLOEG_MCP_SUBJECT_NAMESPACE` | no | What person ids are derived under in place of the issuer: `oidc-` and the first 32 hex characters of the SHA-256 of `<namespace>\|<subject>`, with one trailing `/` removed. Set it to the issuer person ids were first recorded under when this provider application's issuer differs, or after the issuer changed, so a person keeps owning their executions ([steering](ask-ploeg-from-an-ai-client.md#steer-your-attended-executions)) |
 | `PLOEG_MCP_JWKS_URL` | no | The provider's key set; default is the `jwks_uri` of the issuer's discovery document |
 | `PLOEG_MCP_SCOPE` | no | The scope a token must carry; default `ploeg:read` |
@@ -103,7 +111,32 @@ env:
 
 Probe `GET /healthz` for liveness and `GET /readyz` for readiness; readiness waits until the provider's keys have been fetched once. The pod needs egress to ploegd and to the provider's discovery and key URLs, and ingress from your gateway. Route the public host to the Service without stripping the `Authorization` header and without any authentication at the gateway: `ploeg-mcp` answers the 401 that starts the client's sign-in.
 
-## 4. Connect a client
+## 4. Require a fresh sign-in for each action
+
+With an `execute` group, set `PLOEG_MCP_CONFIRMATION_MODE: login`. An action then answers the client with a link (an MCP URL elicitation) to `https://<PLOEG_MCP_RESOURCE's host>/confirmations/<token>`. The page shows the action, its arguments and the person; **Sign in to confirm** sends the browser to the provider with `prompt=login` and `max_age=0`, and ploeg-mcp acts only when the person signed in afresh, as the person the action is for, with the required method, in the browser that opened the page. A client that does not declare URL elicitation can still read but cannot act. Open confirmations live in ploeg-mcp's memory, so run one replica (the chart refuses `login` with `mcp.replicas` above 1); a restart asks clients to call again.
+
+Register a second client at the provider, confidential this time. In authentik:
+
+1. **Provider.** An OAuth2/OpenID provider, client type *Confidential*, client id such as `ploeg-mcp-confirm`, redirect URI `https://ploeg-mcp.example.com/confirmations/callback` (strict, the exact host of `PLOEG_MCP_RESOURCE`), scopes `openid` and `profile`, signing key set (RS256 or ES256). Use the same *Subject mode* as the `ploeg-mcp` provider, so `sub` is the same for a person in both; if its issuer differs, `PLOEG_MCP_SUBJECT_NAMESPACE` must already be set (see the variable above), because person ids are derived from it.
+2. **Application.** Bind the provider to an application, and the application to the groups that may act.
+3. **Authentication flow.** Give the provider an authentication flow that ends in an **Authenticator Validation** stage restricted to the WebAuthn device class, with *WebAuthn user verification* set to **required**, and no "not configured" fallback that skips it. authentik honours `prompt=login` and `max_age` by sending the person through that flow again even with a session; the ID token's `auth_time` is the time of that login, and its `amr` holds `mfa` after an authenticator validation stage (`user` after a passwordless WebAuthn login). Set `PLOEG_MCP_CONFIRMATION_AMR: mfa` (or `user` for a passwordless flow). authentik's `amr` does not name the device class, so the stage's restriction to WebAuthn is what makes the sign-in phishing-resistant; keep it.
+4. **Secret.** Put the client secret in a Secret, for example `ploeg-mcp-confirmation-client` with key `client-secret`, and point `mcp.confirmationClientSecret` at it.
+
+Another provider works the same way: a confidential client, the callback above, and, if it supports them, `acr_values` for a phishing-resistant method (`PLOEG_MCP_CONFIRMATION_ACR_VALUES`) or the `amr` values its WebAuthn login emits.
+
+```yaml
+mcp:
+  env:
+    PLOEG_MCP_CONFIRMATION_MODE: login
+    PLOEG_MCP_CONFIRMATION_CLIENT_ID: ploeg-mcp-confirm
+    PLOEG_MCP_CONFIRMATION_AMR: mfa
+  confirmationKeySecret: {name: ploeg-mcp-confirmation}
+  confirmationClientSecret: {name: ploeg-mcp-confirmation-client}
+```
+
+The gateway route must send `/confirmations/` on the public host to ploeg-mcp as well (the chart's `mcp.httpRoute` sends every path), and the pod needs egress to the provider's token endpoint.
+
+## 5. Connect a client
 
 Each client finds the provider through `/.well-known/oauth-protected-resource/mcp`, opens the browser for sign-in, and stores and refreshes the token itself. Name the pre-registered client id, because the provider does not accept dynamic registration.
 
@@ -163,6 +196,13 @@ The first answers 401 with `resource_metadata` and `scope`; the second names the
 | 403 "none of your groups gives access to Ploeg" | The token's `groups` hold none of `PLOEG_MCP_GROUPS` | Add the person to a mapped group, or check that the `ploeg:read` mapping returns groups |
 | 503 "signing keys are unavailable" | `ploeg-mcp` cannot reach the provider's key set | Check egress to the provider and `PLOEG_MCP_JWKS_URL` |
 | An action tool answers "This client cannot ask you to confirm" | The client does not declare elicitation, or speaks a protocol older than 2026-07-28, which cannot carry a confirmation over stateless HTTP | Use a client that supports elicitation on the 2026-07-28 protocol, or act through the operator API or a consumer application |
+| ploeg-mcp logs "DEPRECATED: a group in PLOEG_MCP_GROUPS is marked execute and PLOEG_MCP_CONFIRMATION_MODE is unset" | An `execute` group runs on client-answered confirmations by default | Set up section 4 and `PLOEG_MCP_CONFIRMATION_MODE: login`, or set `elicitation` to keep the current behaviour knowingly |
+| An action tool answers "This client cannot open a confirmation page" | `login` mode, and the client does not declare URL elicitation | Use a client with URL elicitation on the 2026-07-28 protocol, or act through the operator API or a consumer application |
+| The confirmation page says "someone other than the person this action is for" | The browser signed in as another account, or the two providers give a person different `sub` values | Sign in as the person the client is signed in as; give both providers the same subject mode |
+| The page says "did not sign you in afresh" | The provider reused a session despite `prompt=login`, or the callback came more than `PLOEG_MCP_CONFIRMATION_LOGIN_MAX_AGE` after the sign-in | Check the provider honours `prompt=login`; check the clocks of ploeg-mcp and the provider |
+| The page says "did not use the method this Ploeg requires" | The ID token's `amr` lacks a value of `PLOEG_MCP_CONFIRMATION_AMR`, or its `acr` is not in `PLOEG_MCP_CONFIRMATION_ACR_VALUES` | Make the provider's flow end in the WebAuthn validation stage; in authentik, require `amr` values rather than `acr` |
+| The page says "was not started in this browser" | The sign-in link was opened in another browser than the confirmation page, for example a link an agent passed on | Open the confirmation link itself and sign in from there |
+| An action tool answers "no longer open on ploeg-mcp" | The confirmation expired, ploeg-mcp restarted, or another replica issued it | Call the tool again; run one replica in `login` mode |
 | ploeg-mcp exits with "a group in PLOEG_MCP_GROUPS is marked execute, so PLOEG_MCP_CONFIRMATION_KEY must hold the key" | An `execute` group has no confirmation key | Create a Secret with at least 32 random bytes and set `mcp.confirmationKeySecret`, or remove `execute` from the group |
 | An action tool answers "this confirmation does not belong to this call" or "was already used" | The client sent a confirmation ploeg-mcp did not issue for this person, tool and arguments, or one already answered; or replicas read different keys | Call the tool again. If it repeats on every call, check that every replica reads the same `PLOEG_MCP_CONFIRMATION_KEY` |
 | An action tool answers "Ploeg refused (403 execution_forbidden)" | The group is marked `execute` in `PLOEG_MCP_GROUPS`, but its consumer is not `execute` in ploegd | Make the consumer execute-capable, or remove `execute` from the group |

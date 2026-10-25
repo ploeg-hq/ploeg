@@ -111,6 +111,7 @@ for case in "ops/helm/ploeg/ci/reject-reader-without-read-token-values.yaml:read
 	"ops/helm/ploeg/ci/reject-missing-scaler-host-values.yaml:executor.scaler.host is required" \
 	"ops/helm/ploeg/ci/reject-missing-agent-image-values.yaml:no agent image" \
 	"ops/helm/ploeg/ci/reject-mcp-groups-without-team-values.yaml:mcpAccessGroups needs" \
+	"ops/helm/ploeg/ci/reject-mcp-login-replicas-values.yaml:mcp.replicas must be 1" \
 	"ops/helm/ploeg/ci/reject-harnesses-without-plan-values.yaml:harnesses needs a plan" \
 	"ops/helm/ploeg/ci/reject-models-without-default-values.yaml:lists models without its default model" \
 	"ops/helm/ploeg/ci/reject-claude-environment-without-login-values.yaml:requires harness.claudeEnvironment.environmentId and loginSecret or loginVolume" \

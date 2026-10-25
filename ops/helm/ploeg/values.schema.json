@@ -280,6 +280,9 @@
         "confirmationKeySecret": {
           "$ref": "#/definitions/secretRef"
         },
+        "confirmationClientSecret": {
+          "$ref": "#/definitions/secretRef"
+        },
         "annotations": {
           "type": "object",
           "additionalProperties": {
