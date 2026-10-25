@@ -1083,10 +1083,14 @@ func resolveOutcome(adapterName string, report harness.OutcomeReport, runErr, ct
 			FailureReason: string(work.FailureInfraNode),
 		})
 	case ctxErr != nil:
+		var links []string
+		if prURL != "" {
+			links = []string{prURL}
+		}
 		return resolved(harness.OutcomeReport{
-			Outcome:       work.OutcomeStuck,
-			Summary:       "run aborted (lease lost)",
-			StuckReason:   "lease renewal failed; run cancelled to avoid a double claim",
+			Outcome:       work.OutcomeFailed,
+			Summary:       adapterName + " run was cancelled: lease renewal failed, so another worker may own the Work Item",
+			Links:         links,
 			FailureReason: string(work.FailureLeaseLost),
 		})
 	default:

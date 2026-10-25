@@ -19,9 +19,8 @@ import (
 
 func discardLog() *slog.Logger { return slog.New(slog.DiscardHandler) }
 
-// --- resolveOutcome: the outcome-precedence table, pinning the historical
-// exit-code mapping byte-for-byte (VIK-596 owns changing it) plus the new
-// structured-report and usage-merge branches. ---
+// --- resolveOutcome: the outcome-precedence table, pinning the exit-code
+// mapping plus the structured-report and usage-merge branches. ---
 
 func TestResolveOutcome_Precedence(t *testing.T) {
 	usage := &harness.Usage{CostUSD: 0.5, SessionID: "s"}
@@ -106,14 +105,14 @@ func TestResolveOutcome_Precedence(t *testing.T) {
 			wantPhase:   "pr_updated",
 		},
 		{
-			name:        "lost lease on a pre-existing PR stays stuck",
+			name:        "lost lease on a pre-existing PR fails as the sweeper would, keeping the PR link",
 			runErr:      errors.New("signal: killed"),
 			ctxErr:      context.Canceled,
 			prURL:       "http://forge/pr/7",
 			prExisted:   true,
-			wantOutcome: work.OutcomeStuck,
-			wantSummary: "run aborted (lease lost)",
-			wantReason:  "lease renewal failed; run cancelled to avoid a double claim",
+			wantOutcome: work.OutcomeFailed,
+			wantSummary: "openhands run was cancelled: lease renewal failed, so another worker may own the Work Item",
+			wantLinks:   []string{"http://forge/pr/7"},
 			wantFailure: "lease_lost",
 		},
 		{
@@ -177,12 +176,11 @@ func TestResolveOutcome_Precedence(t *testing.T) {
 			wantSummary: "openhands run finished without opening a PR",
 		},
 		{
-			name:        "ctx cancelled = stuck (lease lost)",
+			name:        "ctx cancelled = failed (lease lost), the sweeper's verdict, never stuck",
 			runErr:      errors.New("signal: killed"),
 			ctxErr:      context.Canceled,
-			wantOutcome: work.OutcomeStuck,
-			wantSummary: "run aborted (lease lost)",
-			wantReason:  "lease renewal failed; run cancelled to avoid a double claim",
+			wantOutcome: work.OutcomeFailed,
+			wantSummary: "openhands run was cancelled: lease renewal failed, so another worker may own the Work Item",
 			wantFailure: "lease_lost",
 		},
 		{
@@ -664,10 +662,10 @@ func TestAbortOnTermination_CancelsRunWithTerminatedCause(t *testing.T) {
 
 	<-runCtx.Done()
 	if cause := context.Cause(runCtx); !errors.Is(cause, errTerminated) {
-		t.Fatalf("cause = %v, want errTerminated — a lease_lost cause would send this to stuck and park the Shift", cause)
+		t.Fatalf("cause = %v, want errTerminated — a lease_lost cause would blame the Lease for an eviction", cause)
 	}
-	// The distinction is load-bearing: resolveOutcome maps the two causes to
-	// opposite verdicts, one retryable and one requiring a person.
+	// The distinction is load-bearing: resolveOutcome reports the two causes
+	// under different failure reasons.
 	if errors.Is(context.Cause(runCtx), errLeaseLost) {
 		t.Fatal("a terminated pod must not be reported as a lost lease")
 	}

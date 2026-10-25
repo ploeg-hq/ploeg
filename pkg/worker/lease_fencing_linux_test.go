@@ -664,8 +664,71 @@ func TestThreeConsecutiveFailedRenewalsStopTheHarnessThreeQuartersOfALeaseAfterT
 	if err := rw.result(); err != nil {
 		t.Fatalf("the stopped Run's report: %v", err)
 	}
-	if got := cp.run(rw.token); got.State != "finished" || got.FailureReason != string(work.FailureLeaseLost) {
-		t.Fatalf("the stopped Run = %+v, want it finished as a lost lease", got)
+	if got := cp.run(rw.token); got != (runRow{State: "finished", Outcome: string(work.OutcomeFailed), FailureReason: string(work.FailureLeaseLost)}) {
+		t.Fatalf("the stopped Run = %+v, want it failed as a lost lease", got)
+	}
+}
+
+type leaseLossVerdict struct {
+	Run            runRow
+	ItemState      string
+	OpenShifts     int
+	PendingRetries int
+	Attempts       int
+	InfraFailures  int
+	BackedOff      bool
+}
+
+func (cp *controlPlane) leaseLossVerdict(workItemID int64, runToken string) leaseLossVerdict {
+	cp.t.Helper()
+	v := leaseLossVerdict{
+		Run:            cp.run(runToken),
+		ItemState:      cp.itemState(workItemID),
+		OpenShifts:     cp.count(`SELECT count(*) FROM shifts WHERE work_item_id = $1 AND closed_at IS NULL`, workItemID),
+		PendingRetries: cp.count(`SELECT count(*) FROM agent_runs WHERE work_item_id = $1 AND state = 'pending'`, workItemID),
+	}
+	if err := cp.pool.QueryRow(context.Background(),
+		`SELECT attempts, infra_failures, COALESCE(next_eligible_at > now(), false) FROM work_items WHERE id = $1`, workItemID).
+		Scan(&v.Attempts, &v.InfraFailures, &v.BackedOff); err != nil {
+		cp.t.Fatal(err)
+	}
+	return v
+}
+
+func TestAWorkerThatLosesItsLeaseReportsTheSweepersVerdict(t *testing.T) {
+	for _, shape := range dispatchShapes {
+		t.Run(shape.name, func(t *testing.T) {
+			swept := newControlPlane(t)
+			sweptItem := shape.item(swept, "7")
+			claimed, err := swept.client().Claim(shape.team, shape.role)
+			if err != nil || claimed == nil {
+				t.Fatalf("claim: %+v %v", claimed, err)
+			}
+			swept.expireRun(claimed.RunToken)
+			swept.sweep()
+			sweeper := swept.leaseLossVerdict(sweptItem, claimed.RunToken)
+
+			cp := newControlPlane(t)
+			id := shape.item(cp, "7")
+			rw := startWorker(t, cp, newWriterForge(t, false, pullsNone), shape.team, shape.role)
+			rw.net.renewOnly.Store(true)
+			rw.net.cut.Store(true)
+			rw.renew()
+			rw.renew()
+			rw.renew()
+			rw.awaitStop()
+			if err := rw.result(); err != nil {
+				t.Fatalf("the worker could not report its lost lease: %v", err)
+			}
+			cp.sweep()
+
+			if worker := cp.leaseLossVerdict(id, rw.token); worker != sweeper {
+				t.Fatalf("the same lost lease ends differently by who noticed it:\nworker  %+v\nsweeper %+v", worker, sweeper)
+			}
+			if sweeper.Run.Outcome != string(work.OutcomeFailed) || sweeper.ItemState == string(work.StateNeedsHuman) {
+				t.Fatalf("the sweeper's verdict %+v parks the item for a person", sweeper)
+			}
+		})
 	}
 }
 
@@ -703,8 +766,8 @@ func cutOffBeforeTheLeaseEnds(t *testing.T, shape dispatchShape) {
 	if err := rw.result(); err != nil {
 		t.Fatalf("the worker stopped before its lease ended, so its report must land: %v", err)
 	}
-	if got := cp.run(rw.token); got.State != "finished" || got.FailureReason != string(work.FailureLeaseLost) {
-		t.Fatalf("the stopped Run = %+v, want it finished as a lost lease", got)
+	if got := cp.run(rw.token); got != (runRow{State: "finished", Outcome: string(work.OutcomeFailed), FailureReason: string(work.FailureLeaseLost)}) {
+		t.Fatalf("the stopped Run = %+v, want the sweeper's verdict", got)
 	}
 	if holder := cp.leaseHolder(id); holder != "" {
 		t.Fatalf("lease still held by %q after the report", holder)
