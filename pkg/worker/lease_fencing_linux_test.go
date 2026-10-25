@@ -246,6 +246,7 @@ func (cp *controlPlane) client() *APIClient {
 type partition struct {
 	cut       atomic.Bool
 	renewOnly atomic.Bool
+	hang      atomic.Bool
 	renewals  atomic.Int32
 	settled   atomic.Int32
 }
@@ -260,10 +261,67 @@ func (p *partition) RoundTrip(r *http.Request) (*http.Response, error) {
 	if renewal {
 		defer p.settled.Add(1)
 	}
+	if renewal && p.hang.Load() {
+		<-r.Context().Done()
+		return nil, r.Context().Err()
+	}
 	if p.cut.Load() && (renewal || !p.renewOnly.Load()) {
 		return nil, errPartitioned
 	}
 	return http.DefaultTransport.RoundTrip(r)
+}
+
+type manualClock struct {
+	mu     sync.Mutex
+	now    time.Time
+	timers []*manualTimer
+}
+
+type manualTimer struct {
+	at            time.Time
+	fire          func()
+	stopped, done bool
+}
+
+func newManualClock() *manualClock {
+	return &manualClock{now: time.Date(2026, 10, 25, 12, 0, 0, 0, time.UTC)}
+}
+
+func (c *manualClock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.now
+}
+
+func (c *manualClock) AfterFunc(d time.Duration, f func()) func() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	t := &manualTimer{at: c.now.Add(d), fire: f}
+	c.timers = append(c.timers, t)
+	return func() bool {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		pending := !t.stopped && !t.done
+		t.stopped = true
+		return pending
+	}
+}
+
+func (c *manualClock) advanceTo(at time.Time) int {
+	c.mu.Lock()
+	c.now = at
+	var due []func()
+	for _, t := range c.timers {
+		if !t.stopped && !t.done && !t.at.After(at) {
+			t.done = true
+			due = append(due, t.fire)
+		}
+	}
+	c.mu.Unlock()
+	for _, fire := range due {
+		fire()
+	}
+	return len(due)
 }
 
 type manualTicks struct {
@@ -310,6 +368,7 @@ type runningWorker struct {
 	adapter *leaseHoldingAdapter
 	net     *partition
 	ticks   *manualTicks
+	clock   *manualClock
 	done    chan error
 	token   string
 	sent    int32
@@ -325,7 +384,9 @@ func startWorker(t *testing.T, cp *controlPlane, forge *writerForge, team, role 
 		adapter, llmbroker.Static{}, discardLog())
 	w.API.HC = &http.Client{Transport: net, Timeout: 10 * time.Second}
 	w.RenewTicks = ticks.start
-	rw := &runningWorker{t: t, worker: w, adapter: adapter, net: net, ticks: ticks, done: make(chan error, 1)}
+	clock := newManualClock()
+	w.clock = clock
+	rw := &runningWorker{t: t, worker: w, adapter: adapter, net: net, ticks: ticks, clock: clock, done: make(chan error, 1)}
 	go func() { rw.done <- w.RunContext(context.Background()) }()
 	select {
 	case <-adapter.started:
@@ -420,7 +481,7 @@ func TestLateReportsFromASupersededAttemptAreRefusedAndChangeNothing(t *testing.
 				t.Fatalf("attempt N+1 does not hold the item: %+v", before)
 			}
 
-			if renewal, err := late.Renew(first.RunToken); err != nil || !renewal.Gone {
+			if renewal, err := late.Renew(context.Background(), first.RunToken); err != nil || !renewal.Gone {
 				t.Errorf("late renewal: %+v %v, want gone", renewal, err)
 			}
 			wantHTTPStatus(t, "late checkpoint", late.Checkpoint(first.RunToken, work.Checkpoint{Phase: "branch_created", Branch: writerBranch}), http.StatusNotFound)
@@ -527,7 +588,7 @@ func partitionPastTheLease(t *testing.T, shape dispatchShape) {
 	if state := cp.itemState(id); state != string(work.StateActive) {
 		t.Fatalf("item state %q, want active under the new attempt", state)
 	}
-	if renewal, err := cp.client().Renew(fresh.RunToken); err != nil || renewal.Gone {
+	if renewal, err := cp.client().Renew(context.Background(), fresh.RunToken); err != nil || renewal.Gone {
 		t.Fatalf("the re-dispatched attempt cannot renew: %+v %v", renewal, err)
 	}
 }
@@ -574,12 +635,12 @@ func TestRacingClaimsForOneItemDispatchItExactlyOnce(t *testing.T) {
 	}
 }
 
-func TestThreeConsecutiveFailedRenewalsStopTheHarnessOneLeaseTTLAfterTheLastSuccess(t *testing.T) {
+func TestThreeConsecutiveFailedRenewalsStopTheHarnessThreeQuartersOfALeaseAfterTheLastSuccess(t *testing.T) {
 	cp := newControlPlane(t)
 	cp.plannedItem("7")
 	rw := startWorker(t, cp, newWriterForge(t, false, pullsNone), leaseTeam, leaseRole)
-	if interval := time.Duration(rw.ticks.interval.Load()); interval > leaseTestTTL/3 || interval < leaseTestTTL/3-time.Second {
-		t.Fatalf("renewal interval %v, want a third of the %v lease", interval, leaseTestTTL)
+	if interval := time.Duration(rw.ticks.interval.Load()); interval > leaseTestTTL/4 || interval < leaseTestTTL/4-time.Second {
+		t.Fatalf("renewal interval %v, want a quarter of the %v lease", interval, leaseTestTTL)
 	}
 	rw.net.renewOnly.Store(true)
 
@@ -603,8 +664,144 @@ func TestThreeConsecutiveFailedRenewalsStopTheHarnessOneLeaseTTLAfterTheLastSucc
 	if err := rw.result(); err != nil {
 		t.Fatalf("the stopped Run's report: %v", err)
 	}
-	if got := cp.run(rw.token); got.State != "finished" || got.FailureReason != string(work.FailureLeaseLost) {
-		t.Fatalf("the stopped Run = %+v, want it finished as a lost lease", got)
+	if got := cp.run(rw.token); got != (runRow{State: "finished", Outcome: string(work.OutcomeFailed), FailureReason: string(work.FailureLeaseLost)}) {
+		t.Fatalf("the stopped Run = %+v, want it failed as a lost lease", got)
+	}
+}
+
+type leaseLossVerdict struct {
+	Run            runRow
+	ItemState      string
+	OpenShifts     int
+	PendingRetries int
+	Attempts       int
+	InfraFailures  int
+	BackedOff      bool
+}
+
+func (cp *controlPlane) leaseLossVerdict(workItemID int64, runToken string) leaseLossVerdict {
+	cp.t.Helper()
+	v := leaseLossVerdict{
+		Run:            cp.run(runToken),
+		ItemState:      cp.itemState(workItemID),
+		OpenShifts:     cp.count(`SELECT count(*) FROM shifts WHERE work_item_id = $1 AND closed_at IS NULL`, workItemID),
+		PendingRetries: cp.count(`SELECT count(*) FROM agent_runs WHERE work_item_id = $1 AND state = 'pending'`, workItemID),
+	}
+	if err := cp.pool.QueryRow(context.Background(),
+		`SELECT attempts, infra_failures, COALESCE(next_eligible_at > now(), false) FROM work_items WHERE id = $1`, workItemID).
+		Scan(&v.Attempts, &v.InfraFailures, &v.BackedOff); err != nil {
+		cp.t.Fatal(err)
+	}
+	return v
+}
+
+func TestAWorkerThatLosesItsLeaseReportsTheSweepersVerdict(t *testing.T) {
+	for _, shape := range dispatchShapes {
+		t.Run(shape.name, func(t *testing.T) {
+			swept := newControlPlane(t)
+			sweptItem := shape.item(swept, "7")
+			claimed, err := swept.client().Claim(shape.team, shape.role)
+			if err != nil || claimed == nil {
+				t.Fatalf("claim: %+v %v", claimed, err)
+			}
+			swept.expireRun(claimed.RunToken)
+			swept.sweep()
+			sweeper := swept.leaseLossVerdict(sweptItem, claimed.RunToken)
+
+			cp := newControlPlane(t)
+			id := shape.item(cp, "7")
+			rw := startWorker(t, cp, newWriterForge(t, false, pullsNone), shape.team, shape.role)
+			rw.net.renewOnly.Store(true)
+			rw.net.cut.Store(true)
+			rw.renew()
+			rw.renew()
+			rw.renew()
+			rw.awaitStop()
+			if err := rw.result(); err != nil {
+				t.Fatalf("the worker could not report its lost lease: %v", err)
+			}
+			cp.sweep()
+
+			if worker := cp.leaseLossVerdict(id, rw.token); worker != sweeper {
+				t.Fatalf("the same lost lease ends differently by who noticed it:\nworker  %+v\nsweeper %+v", worker, sweeper)
+			}
+			if sweeper.Run.Outcome != string(work.OutcomeFailed) || sweeper.ItemState == string(work.StateNeedsHuman) {
+				t.Fatalf("the sweeper's verdict %+v parks the item for a person", sweeper)
+			}
+		})
+	}
+}
+
+func TestACutOffWorkerStopsBeforeItsLeaseCanBeReclaimed(t *testing.T) {
+	for _, shape := range dispatchShapes {
+		t.Run(shape.name, func(t *testing.T) { cutOffBeforeTheLeaseEnds(t, shape) })
+	}
+}
+
+func cutOffBeforeTheLeaseEnds(t *testing.T, shape dispatchShape) {
+	cp := newControlPlane(t)
+	id := shape.item(cp, "7")
+	rw := startWorker(t, cp, newWriterForge(t, false, pullsNone), shape.team, shape.role)
+
+	lastRenewal := rw.clock.Now().Add(renewInterval(leaseTestTTL))
+	rw.clock.advanceTo(lastRenewal)
+	rw.renew()
+	rw.net.hang.Store(true)
+	if !rw.tick() {
+		t.Fatal("the harness stopped before the partition")
+	}
+	leaseEnds := lastRenewal.Add(leaseTestTTL)
+	stopBy := leaseEnds.Add(-leaseStopMargin(leaseTestTTL))
+	if fired := rw.clock.advanceTo(stopBy.Add(-time.Second)); fired != 0 {
+		t.Fatalf("the worker gave up its lease %v before the margin", leaseEnds.Sub(stopBy.Add(-time.Second)))
+	}
+	if fired := rw.clock.advanceTo(stopBy); fired != 1 {
+		t.Fatalf("with a renewal hung since %v, nothing stopped the harness %v before the lease ends at %v",
+			lastRenewal.Add(renewInterval(leaseTestTTL)), leaseStopMargin(leaseTestTTL), leaseEnds)
+	}
+	rw.awaitStop()
+	if !errors.Is(rw.adapter.cause, errLeaseLost) {
+		t.Fatalf("the harness stopped for %v, want a lost lease", rw.adapter.cause)
+	}
+	if err := rw.result(); err != nil {
+		t.Fatalf("the worker stopped before its lease ended, so its report must land: %v", err)
+	}
+	if got := cp.run(rw.token); got != (runRow{State: "finished", Outcome: string(work.OutcomeFailed), FailureReason: string(work.FailureLeaseLost)}) {
+		t.Fatalf("the stopped Run = %+v, want the sweeper's verdict", got)
+	}
+	if holder := cp.leaseHolder(id); holder != "" {
+		t.Fatalf("lease still held by %q after the report", holder)
+	}
+}
+
+func TestAnExpiredLeaseIsRefusedBeforeTheSweeperRuns(t *testing.T) {
+	for _, shape := range dispatchShapes {
+		t.Run(shape.name, func(t *testing.T) {
+			cp := newControlPlane(t)
+			id := shape.item(cp, "7")
+			late := cp.client()
+			claimed, err := late.Claim(shape.team, shape.role)
+			if err != nil || claimed == nil {
+				t.Fatalf("claim: %+v %v", claimed, err)
+			}
+			cp.expireRun(claimed.RunToken)
+			before := cp.fencedState(id, claimed.RunToken, claimed.RunToken)
+
+			if renewal, err := late.Renew(context.Background(), claimed.RunToken); err != nil || !renewal.Gone {
+				t.Errorf("renewal after the deadline: %+v %v, want gone", renewal, err)
+			}
+			wantHTTPStatus(t, "checkpoint after the deadline", late.Checkpoint(claimed.RunToken, work.Checkpoint{Phase: "branch_created", Branch: writerBranch}), http.StatusNotFound)
+			wantHTTPStatus(t, "outcome after the deadline", late.Outcome(claimed.RunToken, harness.OutcomeReport{
+				Outcome: work.OutcomeNoChangeNeeded, Summary: "late completion after the deadline"}), http.StatusNotFound)
+			if after := cp.fencedState(id, claimed.RunToken, claimed.RunToken); after != before {
+				t.Fatalf("a call after the deadline changed authoritative state:\nbefore %+v\nafter  %+v", before, after)
+			}
+
+			cp.sweep()
+			if got := cp.run(claimed.RunToken); got != (runRow{State: "finished", Outcome: string(work.OutcomeFailed), FailureReason: string(work.FailureLeaseLost)}) {
+				t.Fatalf("the swept Run = %+v, want the sweeper's verdict", got)
+			}
+		})
 	}
 }
 
@@ -676,14 +873,26 @@ func (rw *runningWorker) result() error {
 	}
 }
 
-func TestRenewalIntervalIsAThirdOfTheLeaseAndNeverUnderFiveSeconds(t *testing.T) {
+func TestRenewalIntervalIsAQuarterOfTheLeaseAndNeverUnderFiveSeconds(t *testing.T) {
 	for ttl, want := range map[time.Duration]time.Duration{
-		5 * time.Minute:  100 * time.Second,
-		60 * time.Second: 20 * time.Second,
+		5 * time.Minute:  75 * time.Second,
+		60 * time.Second: 15 * time.Second,
 		9 * time.Second:  5 * time.Second,
 	} {
 		if got := renewInterval(ttl); got != want {
 			t.Errorf("renewInterval(%v) = %v, want %v", ttl, got, want)
+		}
+	}
+}
+
+func TestThreeFastStrikesComeBeforeTheStopMarginAndTheMarginBeforeTheLeaseEnds(t *testing.T) {
+	for _, ttl := range []time.Duration{5 * time.Minute, 60 * time.Second, leaseTestTTL, 20 * time.Second} {
+		stop := ttl - leaseStopMargin(ttl)
+		if strikes := renewalStrikes * renewInterval(ttl); strikes >= stop {
+			t.Errorf("TTL %v: three strikes land at %v, not before the stop at %v", ttl, strikes, stop)
+		}
+		if stop >= ttl || leaseStopMargin(ttl) < ttl/6 {
+			t.Errorf("TTL %v: the worker stops at %v, want at least a sixth of the lease before it ends", ttl, stop)
 		}
 	}
 }

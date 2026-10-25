@@ -182,6 +182,13 @@ Go/SQL agreement the split rests on.
 
 ## More Information
 
+* 2026-10-25 — a worker that lost its Lease and can still reach ploegd
+  reports `failed` with `lease_lost`, the sweeper's verdict, instead of
+  `stuck`: it no longer parks the Work Item for a person. A Shift re-opens the
+  Round under the infrastructure budget, and a shift-less Work Item is
+  re-queued with the sweeper's backoff and `infra_failures` count. The same
+  lost Lease now ends the same way whoever notices it first
+  ([leases and cancellation](../reference/leases-and-cancellation.md)).
 * 2026-10-17 — refined by
   [ADR-0111](0111-a-spent-litellm-budget-wider-than-the-runs-key-parks-the-work-item.md):
   a Run the gateway refused because a LiteLLM budget wider than its own key
