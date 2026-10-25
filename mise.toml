@@ -31,6 +31,10 @@ description = "Check PROVENANCE.md's record against this history and its frozen 
 run = "bash scripts/test-alert-rules.sh"
 description = "Make every chart alert fire, and stay quiet, on synthetic series (promtool test rules)"
 
+[tasks.restore-drill]
+run = "go test -race -count=1 -v -run TestRestoreDrill ./pkg/worker/"
+description = "Back up a live database, destroy it, restore it and prove ploegd reconciles and fences every older lease; prints the measured RTO and RPO"
+
 [tasks.docs-check]
 run = "go test ./internal/ledger/ ./pkg/harness/ && uv run --no-project --with pyyaml==6.0.3 python scripts/docs-configuration.py --check && uv run --no-project --with pyyaml==6.0.3 python scripts/check-domain.py"
 description = "Validate decisions, contracts and generated configuration"
