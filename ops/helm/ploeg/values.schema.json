@@ -6,24 +6,22 @@
     "security": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "workerAdmission"
-      ],
+      "required": ["workerAdmission"],
       "properties": {
         "workerAdmission": {
           "type": "object",
           "additionalProperties": false,
-          "required": [
-            "enabled",
-            "runtimeClassNames"
-          ],
+          "required": ["enabled", "runtimeClassNames"],
+          "description": "Native ValidatingAdmissionPolicy over every ploeg-worker Pod in the release namespace (Kubernetes 1.30 or later); see docs/ops/self-hosting-security.md.",
           "properties": {
             "enabled": {
-              "type": "boolean"
+              "type": "boolean",
+              "description": "Install the policy and its Deny binding. The render fails on Kubernetes older than 1.30 and on any team or Role that keeps privileged DinD. Installing it needs cluster-scoped RBAC for admissionregistration.k8s.io."
             },
             "runtimeClassNames": {
               "type": "array",
               "uniqueItems": true,
+              "description": "RuntimeClass names a worker Pod must select. Empty leaves the runtime class unchecked; a non-empty list refuses a worker Pod without one of them. The chart does not install the handler.",
               "items": {
                 "type": "string",
                 "minLength": 1,
@@ -81,10 +79,7 @@
               "$ref": "#/definitions/networkPolicyPeers"
             },
             "port": {
-              "type": [
-                "integer",
-                "string"
-              ],
+              "type": ["integer", "string"],
               "description": "The PostgreSQL port as the pod listens on it."
             }
           }
@@ -197,17 +192,11 @@
           "description": "ploegd's connection pool as the PLOEG_DB_* variables; a setting the connection URI names wins; null leaves ploegd's default",
           "properties": {
             "maxConns": {
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": ["integer", "null"],
               "minimum": 0
             },
             "minIdleConns": {
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": ["integer", "null"],
               "minimum": 0
             },
             "maxConnLifetime": {
@@ -226,10 +215,7 @@
               "$ref": "#/definitions/poolDuration"
             },
             "applicationName": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             },
             "statementTimeout": {
               "$ref": "#/definitions/poolDuration"
@@ -928,57 +914,26 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "url": {
-          "type": "string",
-          "pattern": "^https?://"
-        },
-        "notesGraph": {
-          "type": "string",
-          "minLength": 1,
-          "pattern": "^[a-z0-9][a-z0-9-]*$"
-        },
-        "conceptsGraph": {
-          "type": "string",
-          "minLength": 1,
-          "pattern": "^[a-z0-9][a-z0-9-]*$"
-        },
+        "url": { "type": "string", "pattern": "^https?://" },
+        "notesGraph": { "type": "string", "minLength": 1, "pattern": "^[a-z0-9][a-z0-9-]*$" },
+        "conceptsGraph": { "type": "string", "minLength": 1, "pattern": "^[a-z0-9][a-z0-9-]*$" },
         "runTokenSecret": {
           "type": "object",
           "additionalProperties": false,
-          "required": [
-            "name"
-          ],
+          "required": ["name"],
           "properties": {
-            "name": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 253,
-              "pattern": "^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$"
-            },
-            "key": {
-              "type": "string",
-              "minLength": 1
-            }
+            "name": { "type": "string", "minLength": 1, "maxLength": 253, "pattern": "^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$" },
+            "key": { "type": "string", "minLength": 1 }
           }
         },
         "reviewTokenSecret": {
           "description": "ADR-0122: the Secret holding the Tenant's review actor token, which writes accepted Client and Tenant promotions to conceptsGraph. Unset leaves them waiting.",
           "type": "object",
           "additionalProperties": false,
-          "required": [
-            "name"
-          ],
+          "required": ["name"],
           "properties": {
-            "name": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 253,
-              "pattern": "^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$"
-            },
-            "key": {
-              "type": "string",
-              "minLength": 1
-            }
+            "name": { "type": "string", "minLength": 1, "maxLength": 253, "pattern": "^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$" },
+            "key": { "type": "string", "minLength": 1 }
           }
         }
       }
@@ -988,52 +943,23 @@
       "description": "ADR-0149: the key ploegd signs Run identities with (PLOEG_RUN_IDENTITY_*). Empty issues none.",
       "additionalProperties": false,
       "properties": {
-        "issuer": {
-          "type": "string",
-          "pattern": "^https?://[^\\s?#]+$"
-        },
+        "issuer": { "type": "string", "pattern": "^https?://[^\\s?#]+$" },
         "signingKeySecret": {
           "type": "object",
           "additionalProperties": false,
-          "required": [
-            "name",
-            "key"
-          ],
+          "required": ["name", "key"],
           "properties": {
-            "name": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 253,
-              "pattern": "^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$"
-            },
-            "key": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 253,
-              "pattern": "^[A-Za-z0-9._-]+$"
-            }
+            "name": { "type": "string", "minLength": 1, "maxLength": 253, "pattern": "^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$" },
+            "key": { "type": "string", "minLength": 1, "maxLength": 253, "pattern": "^[A-Za-z0-9._-]+$" }
           }
         },
         "retiredKeysSecret": {
           "type": "object",
           "additionalProperties": false,
-          "required": [
-            "name",
-            "key"
-          ],
+          "required": ["name", "key"],
           "properties": {
-            "name": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 253,
-              "pattern": "^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$"
-            },
-            "key": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 253,
-              "pattern": "^[A-Za-z0-9._-]+$"
-            }
+            "name": { "type": "string", "minLength": 1, "maxLength": 253, "pattern": "^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$" },
+            "key": { "type": "string", "minLength": 1, "maxLength": 253, "pattern": "^[A-Za-z0-9._-]+$" }
           }
         }
       }
@@ -1344,10 +1270,7 @@
                 "//": "ADR-0078: read-only LiteLLM MCP access groups granted to this team's Run keys; needs litellmTeamId. Optional; empty = no MCP tools.",
                 "type": "array",
                 "uniqueItems": true,
-                "items": {
-                  "type": "string",
-                  "pattern": "^[^\\s]+$"
-                }
+                "items": {"type": "string", "pattern": "^[^\\s]+$"}
               },
               "repoOwner": {
                 "type": "string",
@@ -1414,18 +1337,13 @@
               },
               "executorType": {
                 "type": "string",
-                "enum": [
-                  "keda",
-                  "sandbox"
-                ],
+                "enum": ["keda", "sandbox"],
                 "description": "Optional: this team's executor while executor.type is keda or sandbox; unset = executor.type. Lets one team run under the experimental sandbox executor while the others stay on keda."
               },
               "harnesses": {
                 "type": "array",
                 "minItems": 1,
-                "items": {
-                  "$ref": "#/definitions/allowedHarness"
-                },
+                "items": {"$ref": "#/definitions/allowedHarness"},
                 "description": "ADR-0098/ADR-0099, planned teams only: the Harnesses an operator admission may choose per Run. Each entry renders its own workload per Role and replaces the Role's harness block; unset = the one configured harness."
               },
               "allowUnqualifiedHarnesses": {
@@ -1853,10 +1771,7 @@
           "$ref": "#/definitions/networkPolicyPeers"
         },
         "port": {
-          "type": [
-            "integer",
-            "string"
-          ]
+          "type": ["integer", "string"]
         }
       }
     },
@@ -1866,14 +1781,10 @@
       "description": "GOMEMLIMIT for a Go container: empty = 90% of its memory limit, a Go size sets it, off renders none"
     },
     "poolDuration": {
-      "type": [
-        "string",
-        "integer",
-        "null"
-      ],
+      "type": ["string", "integer", "null"],
       "minimum": 0,
       "maximum": 0,
-      "pattern": "^(0|([0-9]+(\\.[0-9]+)?(ns|us|\u00b5s|ms|s|m|h))+)$"
+      "pattern": "^(0|([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h))+)$"
     },
     "sandboxOverride": {
       "type": "object",
@@ -1941,10 +1852,7 @@
           "type": "array",
           "minItems": 1,
           "uniqueItems": true,
-          "items": {
-            "type": "string",
-            "pattern": "^(acp/)?[a-z0-9][a-z0-9._-]{0,63}$"
-          },
+          "items": {"type": "string", "pattern": "^(acp/)?[a-z0-9][a-z0-9._-]{0,63}$"},
           "description": "ADR-0098: narrows the team's harnesses for this Role, by key (acp/<profile> or the Harness name)."
         },
         "defaultHarness": {
@@ -1956,10 +1864,7 @@
           "type": "array",
           "minItems": 1,
           "uniqueItems": true,
-          "items": {
-            "type": "string",
-            "minLength": 1
-          },
+          "items": {"type": "string", "minLength": 1},
           "description": "ADR-0103: the model aliases an admission may choose for this Role's Runs. It must contain the Role's default, model or the team's model. Unset = that model alone."
         }
       },
@@ -2050,12 +1955,8 @@
           "type": "string",
           "pattern": "^$|^0$|^[0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h)$"
         },
-        "telemetry": {
-          "$ref": "#/definitions/telemetry"
-        },
-        "claudeCode": {
-          "$ref": "#/definitions/claudeCode"
-        }
+        "telemetry": { "$ref": "#/definitions/telemetry" },
+        "claudeCode": { "$ref": "#/definitions/claudeCode" }
       },
       "additionalProperties": false
     },
@@ -2136,9 +2037,7 @@
           "type": "string",
           "pattern": "^$|^0$|^[0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h)$"
         },
-        "telemetry": {
-          "$ref": "#/definitions/telemetry"
-        }
+        "telemetry": { "$ref": "#/definitions/telemetry" }
       },
       "additionalProperties": false
     },
@@ -2153,32 +2052,16 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": [
-              "name",
-              "marketplace"
-            ],
+            "required": ["name", "marketplace"],
             "properties": {
-              "name": {
-                "type": "string",
-                "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
-                "maxLength": 64
-              },
+              "name": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$", "maxLength": 64 },
               "marketplace": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": [
-                  "url",
-                  "commit"
-                ],
+                "required": ["url", "commit"],
                 "properties": {
-                  "url": {
-                    "type": "string",
-                    "pattern": "^(https://[^\\s@?#]+|/[^\\s]*)$"
-                  },
-                  "commit": {
-                    "type": "string",
-                    "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"
-                  }
+                  "url": { "type": "string", "pattern": "^(https://[^\\s@?#]+|/[^\\s]*)$" },
+                  "commit": { "type": "string", "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$" }
                 }
               },
               "env": {
@@ -2186,64 +2069,35 @@
                 "items": {
                   "type": "object",
                   "additionalProperties": false,
-                  "required": [
-                    "name"
-                  ],
+                  "required": ["name"],
                   "properties": {
                     "name": {
                       "type": "string",
                       "pattern": "^[A-Z_][A-Z0-9_]*$",
-                      "not": {
-                        "pattern": "^(ANTHROPIC_|CLAUDE|PLOEG_|LLM_|LITELLM_|OPENAI_|OTEL_|GIT_|AGENT_BUILDER|FORGE_|DOCKER_|XDG_|LD_|DYLD_)"
-                      }
+                      "not": { "pattern": "^(ANTHROPIC_|CLAUDE|PLOEG_|LLM_|LITELLM_|OPENAI_|OTEL_|GIT_|AGENT_BUILDER|FORGE_|DOCKER_|XDG_|LD_|DYLD_)" }
                     },
-                    "value": {
-                      "type": "string"
-                    },
+                    "value": { "type": "string" },
                     "secret": {
                       "type": "object",
                       "additionalProperties": false,
-                      "required": [
-                        "name",
-                        "key"
-                      ],
+                      "required": ["name", "key"],
                       "properties": {
-                        "name": {
-                          "type": "string",
-                          "minLength": 1
-                        },
-                        "key": {
-                          "type": "string",
-                          "minLength": 1
-                        }
+                        "name": { "type": "string", "minLength": 1 },
+                        "key": { "type": "string", "minLength": 1 }
                       }
                     }
                   },
-                  "not": {
-                    "required": [
-                      "value",
-                      "secret"
-                    ]
-                  }
+                  "not": { "required": ["value", "secret"] }
                 }
               },
-              "hookTimeout": {
-                "type": "string",
-                "pattern": "^$|^0$|^[0-9]+(\\.[0-9]+)?(ms|s|m)$"
-              },
+              "hookTimeout": { "type": "string", "pattern": "^$|^0$|^[0-9]+(\\.[0-9]+)?(ms|s|m)$" },
               "runIdentity": {
                 "type": "object",
                 "description": "ADR-0149: every hook of the plugin receives a Run identity for this audience in AGENT_RUN_IDENTITY_TOKEN. Needs the top-level runIdentity.signingKeySecret.",
                 "additionalProperties": false,
-                "required": [
-                  "audience"
-                ],
+                "required": ["audience"],
                 "properties": {
-                  "audience": {
-                    "type": "string",
-                    "maxLength": 256,
-                    "pattern": "^(https://[^\\s@?#]+|urn:[^\\s:]+:[^\\s]+)$"
-                  }
+                  "audience": { "type": "string", "maxLength": 256, "pattern": "^(https://[^\\s@?#]+|urn:[^\\s:]+:[^\\s]+)$" }
                 }
               }
             }
@@ -2255,70 +2109,21 @@
       "type": "object",
       "description": "OpenTelemetry collector the harness exports to (PLOEG_TELEMETRY). Empty exports nothing; a non-empty block needs endpoint.",
       "properties": {
-        "endpoint": {
-          "type": "string",
-          "pattern": "^https?://[^\\s]+$"
-        },
-        "protocol": {
-          "enum": [
-            "http/protobuf",
-            "http/json",
-            "grpc"
-          ]
-        },
-        "signals": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "enum": [
-              "metrics",
-              "logs",
-              "traces"
-            ]
-          }
-        },
+        "endpoint": { "type": "string", "pattern": "^https?://[^\\s]+$" },
+        "protocol": { "enum": ["http/protobuf", "http/json", "grpc"] },
+        "signals": { "type": "array", "uniqueItems": true, "items": { "enum": ["metrics", "logs", "traces"] } },
         "resourceAttributes": {
           "type": "object",
-          "propertyNames": {
-            "pattern": "^[^=, ]+$",
-            "not": {
-              "enum": [
-                "ploeg.team",
-                "ploeg.role",
-                "ploeg.run.alias"
-              ]
-            }
-          },
-          "additionalProperties": {
-            "type": "string",
-            "pattern": "^[^=,]*$"
-          }
+          "propertyNames": { "pattern": "^[^=, ]+$", "not": { "enum": ["ploeg.team", "ploeg.role", "ploeg.run.alias"] } },
+          "additionalProperties": { "type": "string", "pattern": "^[^=,]*$" }
         },
-        "logPrompts": {
-          "type": "boolean"
-        },
-        "logToolDetails": {
-          "type": "boolean"
-        },
-        "allowHarnesses": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "enum": [
-              "openhands"
-            ]
-          }
-        }
+        "logPrompts": { "type": "boolean" },
+        "logToolDetails": { "type": "boolean" },
+        "allowHarnesses": { "type": "array", "uniqueItems": true, "items": { "enum": ["openhands"] } }
       },
       "additionalProperties": false,
-      "if": {
-        "minProperties": 1
-      },
-      "then": {
-        "required": [
-          "endpoint"
-        ]
-      }
+      "if": { "minProperties": 1 },
+      "then": { "required": ["endpoint"] }
     },
     "toolchain": {
       "type": "object",
@@ -2356,29 +2161,11 @@
       "description": "claude-environment harness only (ADR-0084): the Team's self-hosted Claude environment and the Secret holding the Team member login that dispatches to it.",
       "type": "object",
       "properties": {
-        "environmentId": {
-          "type": "string",
-          "pattern": "^$|^ccpool_.+"
-        },
-        "loginSecret": {
-          "type": "string",
-          "description": "Secret with the keys refreshToken and scopes (CLAUDE_CODE_OAUTH_REFRESH_TOKEN, CLAUDE_CODE_OAUTH_SCOPES)."
-        },
-        "loginVolume": {
-          "type": "string",
-          "description": "PersistentVolumeClaim holding a signed-in Claude config directory, mounted as PLOEG_CLAUDE_CONFIG_DIR. Wins over loginSecret."
-        },
-        "pollInterval": {
-          "type": "string",
-          "pattern": "^$|^[0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h)$"
-        },
-        "carrier": {
-          "enum": [
-            "",
-            "client"
-          ],
-          "description": "client: the person's own Claude Code carries the Runs (ADR-0112); the chart renders no worker for them and needs no login, only environmentId."
-        }
+        "environmentId": { "type": "string", "pattern": "^$|^ccpool_.+" },
+        "loginSecret": { "type": "string", "description": "Secret with the keys refreshToken and scopes (CLAUDE_CODE_OAUTH_REFRESH_TOKEN, CLAUDE_CODE_OAUTH_SCOPES)." },
+        "loginVolume": { "type": "string", "description": "PersistentVolumeClaim holding a signed-in Claude config directory, mounted as PLOEG_CLAUDE_CONFIG_DIR. Wins over loginSecret." },
+        "pollInterval": { "type": "string", "pattern": "^$|^[0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h)$" },
+        "carrier": { "enum": ["", "client"], "description": "client: the person's own Claude Code carries the Runs (ADR-0112); the chart renders no worker for them and needs no login, only environmentId." }
       },
       "additionalProperties": false
     },
@@ -2425,22 +2212,11 @@
     "readTokenSecretRef": {
       "description": "Either empty (no reading Role anywhere) or a complete secretRef. A half-set reference would fail at pod start instead of at render.",
       "allOf": [
-        {
-          "$ref": "#/definitions/secretRef"
-        },
+        { "$ref": "#/definitions/secretRef" },
         {
           "anyOf": [
-            {
-              "type": "object",
-              "maxProperties": 0
-            },
-            {
-              "type": "object",
-              "required": [
-                "name",
-                "key"
-              ]
-            }
+            { "type": "object", "maxProperties": 0 },
+            { "type": "object", "required": ["name", "key"] }
           ]
         }
       ]
