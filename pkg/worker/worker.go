@@ -146,6 +146,10 @@ type Worker struct {
 	// yield is the current Run's yield signal (ADR-0142); nil outside
 	// RunContext, so a Run executed directly never yields.
 	yield *yieldSignal
+	// RenewTicks paces lease renewal: it returns a channel that fires once
+	// per renewal and a function that stops it. Nil ticks every interval on
+	// the wall clock; tests drive renewal with their own channel.
+	RenewTicks func(interval time.Duration) (<-chan time.Time, func())
 }
 
 // profiledAdapter is a harness adapter that launches one of several agent
@@ -251,7 +255,9 @@ func (w *Worker) RunContext(parent context.Context) error {
 	}
 	w.yield = newYieldSignal()
 	defer func() { w.yield = nil }()
-	go renewLoop(ctx, cancel, w.API, claimed.RunToken, ttl/3, w.Log, w.yield.raise)
+	ticks, stopTicks := w.renewTicks(renewInterval(ttl))
+	defer stopTicks()
+	go renewLoop(ctx, cancel, w.API, claimed.RunToken, ticks, w.Log, w.yield.raise)
 
 	// From here on, every terminal path must report an outcome; failing to
 	// report leaves the lease to the sweeper (recorded failed/lease expired).
@@ -1163,18 +1169,30 @@ func abortOnTermination(parent, runCtx context.Context, cancel context.CancelCau
 	}
 }
 
-func renewLoop(ctx context.Context, cancel context.CancelCauseFunc, api *APIClient, token string, every time.Duration, log *slog.Logger, yield func()) {
-	if every < 5*time.Second {
-		every = 5 * time.Second
+const (
+	renewalStrikes   = 3
+	minRenewInterval = 5 * time.Second
+)
+
+func renewInterval(ttl time.Duration) time.Duration {
+	return max(ttl/3, minRenewInterval)
+}
+
+func (w *Worker) renewTicks(interval time.Duration) (<-chan time.Time, func()) {
+	if w.RenewTicks != nil {
+		return w.RenewTicks(interval)
 	}
-	t := time.NewTicker(every)
-	defer t.Stop()
+	t := time.NewTicker(interval)
+	return t.C, t.Stop
+}
+
+func renewLoop(ctx context.Context, cancel context.CancelCauseFunc, api *APIClient, token string, ticks <-chan time.Time, log *slog.Logger, yield func()) {
 	strikes := 0
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-t.C:
+		case <-ticks:
 			renewal, err := api.Renew(token)
 			switch {
 			case renewal.Gone:
@@ -1184,8 +1202,8 @@ func renewLoop(ctx context.Context, cancel context.CancelCauseFunc, api *APIClie
 			case err != nil:
 				strikes++
 				log.Warn("lease renewal failed", "strikes", strikes, "err", err)
-				if strikes >= 3 {
-					log.Error("renewal failed 3 times; cancelling run")
+				if strikes >= renewalStrikes {
+					log.Error("renewal failed repeatedly; cancelling run", "strikes", strikes)
 					cancel(errLeaseLost)
 					return
 				}
