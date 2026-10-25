@@ -423,6 +423,7 @@ global executor.harness defaults field-by-field (explicit hasKey checks, so
 {{- with $forgeCfg.tokenSecret.name }}{{- $ploegSecrets = append $ploegSecrets . }}{{- end }}
 {{- with $forgeCfg.readTokenSecret.name }}{{- $ploegSecrets = append $ploegSecrets . }}{{- end }}
 {{- with $root.Values.runIdentity }}{{- with .signingKeySecret }}{{- $ploegSecrets = append $ploegSecrets .name }}{{- end }}{{- end }}
+{{- with $root.Values.transactionToken }}{{- with .signingKeySecret }}{{- $ploegSecrets = append $ploegSecrets .name }}{{- end }}{{- end }}
 {{- range $i, $p := $ccPlugins }}
 {{- $envJson := list }}
 {{- range $j, $e := ($p.env | default list) }}

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://webgrip.dev/ploeg/contracts/run-api.v1.schema.json",
   "title": "Run API",
-  "description": "Message bodies of ploegd's run API — the executor contract surface (docs/contracts/executor.md). Endpoints: POST /api/v1/claim, POST /api/v1/runs/{token}/renew, POST /api/v1/runs/{token}/checkpoint, POST /api/v1/runs/{token}/outcome, POST /api/v1/runs/{token}/forge-credential (ADR-0086: a writing Run refreshes an expiring push credential; 409 when the deployment mints none), POST /api/v1/runs/{token}/transcript (ADR-0090: a batch of the Run's transcript; 404 when PLOEG_RUN_TRANSCRIPTS is off), POST /api/v1/runs/{token}/board (ADR-0124: what changed on the board since the Run's briefing; 409 for a Run claimed without recorded versions, 404 from an older Ploeg), POST /api/v1/runs/{token}/identity (ADR-0149, proposed: one Run identity per audience a declared plugin opted into; 404 when ploegd has no PLOEG_RUN_IDENTITY_SIGNING_KEY, 409 when the Run is not running or a person's client carries it), GET /api/v1/run-identity/jwks (ADR-0149: the public keys that verify a Run identity, unauthenticated; 404 when ploegd issues none), POST and GET /api/v1/runs/{token}/claude-session, POST /api/v1/claude-sessions/forge-credential and POST /api/v1/claude-sessions/report (ADR-0084; all answer 404 unless PLOEG_CLAUDE_ENVIRONMENTS is true), POST /api/v1/runs/{token}/claude-session and POST /api/v1/claude-sessions/forge-credential (ADR-0084; both answer 404 unless PLOEG_CLAUDE_ENVIRONMENTS is true). GET /api/v1/queue/depth and its queueDepthResponse were removed on 2026-09-23 because nothing consumed them; executors read the scale signal by SQL (docs/contracts/executor.md). Each JSON body has a size cap and a body over it answers 413: claim 64 KiB, checkpoint 1 MiB, outcome 8 MiB (the largest Outcome Report the schemas bound is about 1.6 million characters), transcript 1 MiB, notes 64 KiB, board 4 KiB, identity 4 KiB, claude-session 4 KiB and claude-sessions/report 72 KiB.",
+  "description": "Message bodies of ploegd's run API — the executor contract surface (docs/contracts/executor.md). Endpoints: POST /api/v1/claim, POST /api/v1/runs/{token}/renew, POST /api/v1/runs/{token}/checkpoint, POST /api/v1/runs/{token}/outcome, POST /api/v1/runs/{token}/forge-credential (ADR-0086: a writing Run refreshes an expiring push credential; 409 when the deployment mints none), POST /api/v1/runs/{token}/transcript (ADR-0090: a batch of the Run's transcript; 404 when PLOEG_RUN_TRANSCRIPTS is off), POST /api/v1/runs/{token}/board (ADR-0124: what changed on the board since the Run's briefing; 409 for a Run claimed without recorded versions, 404 from an older Ploeg), POST /api/v1/runs/{token}/identity (ADR-0149, proposed: one Run identity per audience a declared plugin opted into; 404 when ploegd has no PLOEG_RUN_IDENTITY_SIGNING_KEY, 409 when the Run is not running or a person's client carries it), GET /api/v1/run-identity/jwks (ADR-0149: the public keys that verify a Run identity, unauthenticated; 404 when ploegd issues none), GET /.well-known/jwks.json (ADR-0156, proposed: the public keys that verify a Run's transaction token, unauthenticated; 404 when ploegd signs none), POST and GET /api/v1/runs/{token}/claude-session, POST /api/v1/claude-sessions/forge-credential and POST /api/v1/claude-sessions/report (ADR-0084; all answer 404 unless PLOEG_CLAUDE_ENVIRONMENTS is true), POST /api/v1/runs/{token}/claude-session and POST /api/v1/claude-sessions/forge-credential (ADR-0084; both answer 404 unless PLOEG_CLAUDE_ENVIRONMENTS is true). GET /api/v1/queue/depth and its queueDepthResponse were removed on 2026-09-23 because nothing consumed them; executors read the scale signal by SQL (docs/contracts/executor.md). Each JSON body has a size cap and a body over it answers 413: claim 64 KiB, checkpoint 1 MiB, outcome 8 MiB (the largest Outcome Report the schemas bound is about 1.6 million characters), transcript 1 MiB, notes 64 KiB, board 4 KiB, identity 4 KiB, claude-session 4 KiB and claude-sessions/report 72 KiB.",
   "$defs": {
     "claimRequest": {
       "type": "object",
@@ -144,7 +144,9 @@
           "description": "The fast check the Work Item's repository declares (ADR-0146, proposed): shell command lines, run in order from the repository root. Sent to a writing Run only. The worker hands them to the harness as the script $PLOEG_FAST_CHECK_SCRIPT and runs them itself on a rebase it pushes. Absent when the repository declares none and from an older Ploeg; the worker then rebases without a fast check and records it as skipped.",
           "items": { "type": "string", "minLength": 1 },
           "minItems": 1
-        }
+        },
+        "controlToken": { "type": "string", "minLength": 1, "deprecated": true, "description": "Managed mode: the 24-hour HMAC worker capability bound to the Run, the worker id, the Team and the Role (worker-control.md). Deprecated by ADR-0156 for transactionToken; absent with PLOEG_WORKER_HMAC_CAPABILITY=off and in legacy mode." },
+        "transactionToken": { "type": "string", "minLength": 1, "description": "The Run's transaction token (ADR-0156, proposed): a compact JWS, header {alg: ES256, typ: txntoken+jwt, kid}, payload transactionTokenClaims, signed for the claiming worker and expiring at deadline. The worker presents it as Authorization: Bearer on every Run route in place of controlToken and replaces it with the one each renewal answers. Absent when ploegd signs none (no PLOEG_TRANSACTION_TOKEN_SIGNING_KEY)." }
       },
       "required": ["runToken", "deadline", "workItem"],
       "additionalProperties": false
@@ -341,6 +343,53 @@
       ],
       "additionalProperties": false
     },
+    "transactionTokenClaims": {
+      "type": "object",
+      "description": "The JWT claims of a Run's transaction token (ADR-0156, proposed), shaped like an OAuth Transaction Token (draft-ietf-oauth-transaction-tokens-11). A verifier checks the ES256 signature against transactionTokenKeySet by kid, typ = txntoken+jwt, iss, aud = Ploeg's trust domain, and exp. It authenticates a worker to ploegd only together with X-Ploeg-Worker-ID equal to req_wl; it is never an access token for anything outside Ploeg.",
+      "properties": {
+        "iss": { "type": "string", "description": "PLOEG_TRANSACTION_TOKEN_ISSUER: the URL ploegd is reached at." },
+        "aud": { "type": "array", "minItems": 1, "maxItems": 1, "items": { "type": "string" }, "description": "PLOEG_TRANSACTION_TOKEN_AUDIENCE: Ploeg's trust domain." },
+        "sub": { "type": "string", "minLength": 1, "description": "The person the Run acts for, as Ploeg's person id: who handed the Work Item over, else the Team's sponsor. tctx.subjectProof says which." },
+        "iat": { "type": "integer" },
+        "nbf": { "type": "integer" },
+        "exp": { "type": "integer", "description": "The Run's lease deadline when the token was issued." },
+        "jti": { "type": "string", "pattern": "^[0-9a-f]{32}$" },
+        "txn": { "type": "string", "pattern": "^[0-9]+$", "description": "The Run's id, as the operator API writes it." },
+        "scope": { "enum": ["ploeg.run.write", "ploeg.run.read"], "description": "Whether the Run writes." },
+        "req_wl": { "type": "string", "minLength": 1, "description": "The worker id that claimed the Run, or client:<person> for a client-carried Run; the X-Ploeg-Worker-ID the token is accepted with." },
+        "act": { "$ref": "#/$defs/transactionTokenActor" },
+        "tctx": {
+          "type": "object",
+          "properties": {
+            "workItem": { "type": "string", "pattern": "^[0-9]+$" },
+            "shift": { "type": "string", "pattern": "^[0-9]+$" },
+            "team": { "type": "string", "minLength": 1 },
+            "role": { "type": "string" },
+            "repository": { "type": "string", "description": "<forge>/<owner>/<repo>; forge is empty for the deployment's default forge. Absent without a resolved repository." },
+            "branch": { "type": "string" },
+            "allowance": { "type": "string", "pattern": "^[0-9]+(\\.[0-9]+)?$", "description": "The Run's authorized spend in USD; absent when none is authorized." },
+            "isolation": { "type": "string", "description": "The isolation class the Run executes at (ADR-0106); absent while ploegd records none." },
+            "subjectProof": { "enum": ["proven", "asserted", "sponsor"], "description": "proven: a person token the identity provider signed named sub at admission (ADR-0150); asserted: an Operator Consumer's header or the tracker's people mapping named sub; sponsor: nobody handed the work over and sub is the Team's sponsor." }
+          },
+          "required": ["team", "subjectProof"]
+        }
+      },
+      "required": ["iss", "aud", "sub", "iat", "exp", "txn", "scope", "req_wl", "act", "tctx"]
+    },
+    "transactionTokenActor": {
+      "type": "object",
+      "description": "An RFC 8693 act claim: the agent acting for sub, <team>/<role>, with the Run's id; act nests the actor the identity provider named when the work was handed over.",
+      "properties": {
+        "sub": { "type": "string", "minLength": 1 },
+        "run": { "type": "string", "pattern": "^[0-9]+$" },
+        "act": { "$ref": "#/$defs/transactionTokenActor" }
+      },
+      "required": ["sub"]
+    },
+    "transactionTokenKeySet": {
+      "description": "Response of GET /.well-known/jwks.json (ADR-0156, proposed): the JWK Set of the P-256 keys that verify a transaction token, the current key first and then PLOEG_TRANSACTION_TOKEN_RETIRED_KEYS, unauthenticated. Same shape and caching as runIdentityKeySet; 404 when ploegd signs none.",
+      "$ref": "#/$defs/runIdentityKeySet"
+    },
     "runIdentityKeySet": {
       "type": "object",
       "description": "Response of GET /api/v1/run-identity/jwks: a JWK Set (RFC 7517) of the P-256 keys that verify a Run identity, the current key first and then the retired ones (PLOEG_RUN_IDENTITY_RETIRED_KEYS). Each kid is the key's RFC 7638 thumbprint. Content-Type application/jwk-set+json, Cache-Control public, max-age=300.",
@@ -398,7 +447,8 @@
       "properties": {
         "deadline": { "type": "string", "format": "date-time" },
         "expiresInMs": { "type": "integer", "minimum": 0, "description": "Milliseconds from ploegd's answer to deadline. A worker adds it to the time it sent the request, on its own clock, and stops the Run a sixth of the Lease before that, so a clock skew with ploegd cannot keep a Run going past its Lease. Absent from an older Ploeg, which leaves the worker timing the Lease from the claim's deadline." },
-        "yield": { "const": true, "description": "Present once a person asked the Run to yield (ADR-0142, proposed): a worker whose Harness yields stops the agent at its next safe point, pushes its work and reports the outcome yielded. Absent otherwise and from an older Ploeg." }
+        "yield": { "const": true, "description": "Present once a person asked the Run to yield (ADR-0142, proposed): a worker whose Harness yields stops the agent at its next safe point, pushes its work and reports the outcome yielded. Absent otherwise and from an older Ploeg." },
+        "transactionToken": { "type": "string", "minLength": 1, "description": "A fresh transaction token expiring at the renewed deadline (ADR-0156, proposed); the worker presents it from now on. Absent when ploegd signs none." }
       },
       "required": ["deadline"],
       "additionalProperties": false

@@ -152,6 +152,36 @@ metadata:
     app.kubernetes.io/managed-by: Helm
 automountServiceAccountToken: false
 ---
+# Source: ploeg/templates/config.yaml
+# ploegd's routing and roster, as a reviewable file rather than three env-var
+# DSLs. Mounted read-only at /etc/ploeg/ploeg.yaml.
+#
+# The reason this exists rather than PLOEG_TARGET_MAP="11/bronze=webgrip/..."
+# is that a bare `11` in cluster config says nothing about which board it is,
+# cannot be reviewed, and silently routes work to the wrong repository the day
+# the project is rebuilt with a new id. Here a project is NAMED; ploegd asks
+# the tracker for the id at boot and refuses to start if the name matches
+# nothing.
+#
+# A checksum annotation on the Deployment restarts ploegd when this changes —
+# the config is read once, at boot, on purpose: routing that mutates under a
+# running dispatch plane is not something anyone wants to debug.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ploeg-config
+  labels:
+    app.kubernetes.io/name: ploeg
+    app.kubernetes.io/instance: ploeg
+    app.kubernetes.io/version: "CHART-VERSION"
+    helm.sh/chart: ploeg-CHART-VERSION
+    app.kubernetes.io/managed-by: Helm
+data:
+  ploeg.yaml: |
+    teams:
+      silver:
+        sponsor: oidc-0123456789abcdef0123456789abcdef
+---
 # Source: ploeg/templates/service.yaml
 apiVersion: v1
 kind: Service
@@ -201,6 +231,9 @@ spec:
         app.kubernetes.io/name: ploeg
         app.kubernetes.io/instance: ploeg
         ploeg.webgrip.dev/component: daemon
+      annotations:
+        # Config is read once at boot, so a change has to restart the pod.
+        ploeg.webgrip.dev/config-checksum: 9beb6f852806638f
     spec:
       serviceAccountName: ploeg
       automountServiceAccountToken: false
@@ -221,7 +254,13 @@ spec:
           ports:
             - name: http
               containerPort: 8080
+          volumeMounts:
+            - name: config
+              mountPath: /etc/ploeg
+              readOnly: true
           env:
+            - name: PLOEG_CONFIG
+              value: /etc/ploeg/ploeg.yaml
             - name: PLOEG_LISTEN
               value: ":8080"
             - name: PLOEG_DATABASE_URL
@@ -315,13 +354,24 @@ spec:
                 secretKeyRef:
                   name: ploeg-run-identity
                   key: retired-keys.pem
-            - name: PLOEG_WORKER_AUTH_MODE
-              value: "managed"
-            - name: PLOEG_WORKER_SIGNING_KEY
+            - name: PLOEG_TRANSACTION_TOKEN_ISSUER
+              value: "https://ploeg.example.com"
+            - name: PLOEG_TRANSACTION_TOKEN_AUDIENCE
+              value: "urn:ploeg:example"
+            - name: PLOEG_TRANSACTION_TOKEN_SIGNING_KEY
               valueFrom:
                 secretKeyRef:
-                  name: ploeg-worker-signing
-                  key: key
+                  name: ploeg-transaction-token
+                  key: signing-key.pem
+            - name: PLOEG_TRANSACTION_TOKEN_RETIRED_KEYS
+              valueFrom:
+                secretKeyRef:
+                  name: ploeg-transaction-token
+                  key: retired-keys.pem
+            - name: PLOEG_WORKER_AUTH_MODE
+              value: "managed"
+            - name: PLOEG_WORKER_HMAC_CAPABILITY
+              value: "off"
             - name: PLOEG_WORKER_BOOTSTRAPS
               valueFrom:
                 secretKeyRef:
@@ -357,6 +407,10 @@ spec:
             requests:
               cpu: 100m
               memory: 256Mi
+      volumes:
+        - name: config
+          configMap:
+            name: ploeg-config
 ---
 # Source: ploeg/templates/scaledjob.yaml
 # One ScaledJob per (team, Role) — the flagship executor. A team without a

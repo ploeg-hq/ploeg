@@ -13,6 +13,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/ploeg-hq/ploeg/pkg/store"
+	"github.com/ploeg-hq/ploeg/pkg/txntoken"
 )
 
 type WorkerBootstrap struct {
@@ -22,7 +25,11 @@ type WorkerBootstrap struct {
 }
 
 type WorkerSecurity struct {
-	AllowLegacy     bool
+	AllowLegacy bool
+	// RetireHMAC stops ploegd issuing and accepting the HMAC worker
+	// capability, so a Run is controlled with its transaction token alone
+	// (ADR-0156, PLOEG_WORKER_HMAC_CAPABILITY=off).
+	RetireHMAC      bool
 	bootstraps      []WorkerBootstrap
 	signingKey      []byte
 	mu              sync.Mutex
@@ -50,20 +57,32 @@ func NewWorkerSecurity(bootstrapJSON, signingKey string, allowLegacy bool) (*Wor
 	if len(signingKey) < 32 {
 		return nil, fmt.Errorf("worker capability signing key must contain at least 32 bytes")
 	}
+	return a, a.readBootstraps(bootstrapJSON)
+}
+
+// NewTransactionTokenWorkerSecurity is managed worker security without the
+// HMAC capability (ADR-0156): a claim answers a transaction token only, and a
+// Run route accepts nothing else, so no worker signing key is needed.
+func NewTransactionTokenWorkerSecurity(bootstrapJSON string) (*WorkerSecurity, error) {
+	a := &WorkerSecurity{RetireHMAC: true}
+	return a, a.readBootstraps(bootstrapJSON)
+}
+
+func (a *WorkerSecurity) readBootstraps(bootstrapJSON string) error {
 	if err := json.Unmarshal([]byte(bootstrapJSON), &a.bootstraps); err != nil {
-		return nil, fmt.Errorf("invalid worker bootstrap registry")
+		return fmt.Errorf("invalid worker bootstrap registry")
 	}
 	for i, b := range a.bootstraps {
 		if b.Team == "" || len(b.Token) < 32 {
-			return nil, fmt.Errorf("invalid worker bootstrap scope")
+			return fmt.Errorf("invalid worker bootstrap scope")
 		}
 		for j := 0; j < i; j++ {
 			if a.bootstraps[j].Token == b.Token {
-				return nil, fmt.Errorf("worker bootstrap credentials must be unique per scope")
+				return fmt.Errorf("worker bootstrap credentials must be unique per scope")
 			}
 		}
 	}
-	return a, nil
+	return nil
 }
 
 func (a *WorkerSecurity) bootstrap(token string) (WorkerBootstrap, bool) {
@@ -87,7 +106,7 @@ func (a *WorkerSecurity) sign(c workerCapability) string {
 
 func (a *WorkerSecurity) verify(token string) (workerCapability, bool) {
 	var c workerCapability
-	if len(token) > 4096 {
+	if a.RetireHMAC || len(a.signingKey) == 0 || len(token) > 4096 {
 		return c, false
 	}
 	payload, signature, ok := strings.Cut(token, ".")
@@ -158,7 +177,18 @@ func (s *Server) WorkerHandler(next http.Handler) http.Handler {
 					http.Error(w, "inference policy could not reserve claim", http.StatusServiceUnavailable)
 					return
 				}
-				result["controlToken"] = a.sign(workerCapability{Audience: "ploeg-worker-run", RunToken: claimed.RunToken, WorkerID: worker, Team: b.Team, Role: b.Role, Expires: time.Now().Add(24 * time.Hour).Unix()})
+				if !a.RetireHMAC {
+					result["controlToken"] = a.sign(workerCapability{Audience: "ploeg-worker-run", RunToken: claimed.RunToken, WorkerID: worker, Team: b.Team, Role: b.Role, Expires: time.Now().Add(24 * time.Hour).Unix()})
+				}
+				if s.TransactionTokens != nil {
+					token, _, err := s.issueTransactionToken(r.Context(), claimed.RunToken, worker)
+					if err != nil {
+						s.Log.Error("claimed run got no transaction token", "team", b.Team, "role", b.Role, "err", err)
+						http.Error(w, "transaction token unavailable", http.StatusServiceUnavailable)
+						return
+					}
+					result["transactionToken"] = token
+				}
 				w.Header().Set("Cache-Control", "no-store")
 				writeJSON(w, http.StatusOK, result)
 				return
@@ -171,18 +201,37 @@ func (s *Server) WorkerHandler(next http.Handler) http.Handler {
 			return
 		}
 		parts := strings.Split(strings.TrimPrefix(path, "/api/v1/runs/"), "/")
-		c, ok := a.verify(token)
-		if !ok || len(parts) < 2 || c.RunToken != parts[0] || c.WorkerID != r.Header.Get("X-Ploeg-Worker-ID") {
+		worker := r.Header.Get("X-Ploeg-Worker-ID")
+		if len(parts) < 2 || worker == "" {
 			s.rejectWorker(w, r)
 			return
 		}
-		run, err := s.Store.RunControl(r.Context(), c.RunToken)
+		run, err := s.Store.RunControl(r.Context(), parts[0])
+		if err != nil {
+			s.rejectWorker(w, r)
+			return
+		}
+		ctx := r.Context()
+		if txntoken.LooksSigned(token) {
+			actor, ok := s.verifyTransactionToken(token, worker, run)
+			if !ok {
+				s.rejectWorker(w, r)
+				return
+			}
+			ctx = store.WithRunActor(ctx, actor)
+		} else {
+			c, ok := a.verify(token)
+			if !ok || c.RunToken != parts[0] || c.WorkerID != worker || run.Team != c.Team || run.Role != c.Role {
+				s.rejectWorker(w, r)
+				return
+			}
+		}
 		terminalReplay := len(parts) == 2 && parts[1] == "outcome" && run.State == "finished"
-		if err != nil || run.Team != c.Team || run.Role != c.Role || (!terminalReplay && (run.State != "running" || !run.Deadline.After(time.Now()))) {
+		if !terminalReplay && (run.State != "running" || !run.Deadline.After(time.Now())) {
 			s.rejectWorker(w, r)
 			return
 		}
-		next.ServeHTTP(w, r)
+		next.ServeHTTP(w, r.WithContext(withRunWorker(ctx, worker)))
 	})
 }
 

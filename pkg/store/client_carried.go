@@ -103,7 +103,8 @@ func (s *Store) ClaimClientCarriedRun(ctx context.Context, workItemID int64, per
 // Ploeg and the person configuration maps them to, empty when it maps them
 // to none. The Work Item's client-carried Runs act for that person.
 func (s *Store) RecordHandedBy(ctx context.Context, workItemID int64, trackerUser, person string) error {
-	_, err := s.pool.Exec(ctx, `UPDATE work_items SET handed_by = $2, acts_for = $3
+	_, err := s.pool.Exec(ctx, `UPDATE work_items SET handed_by = $2, acts_for = $3,
+			acts_for_proof = CASE WHEN $3 = '' THEN '' ELSE 'asserted' END, acts_for_act = ''
 		WHERE id = $1 AND NOT operator_owned AND origin <> 'operator'`, workItemID, trackerUser, person)
 	return err
 }

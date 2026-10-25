@@ -57,6 +57,10 @@ func (s *Server) handleAdmitWorkItem(w http.ResponseWriter, r *http.Request) {
 	}
 	var target work.Target
 	if !admitted {
+		if s.TransactionTokens != nil && s.TeamSponsors[input.Team] == "" {
+			operatorError(w, 409, "team_without_sponsor", unsponsoredTeam(input.Team))
+			return
+		}
 		if target, ok = s.admissionTarget(r.Context(), w, input); !ok {
 			return
 		}

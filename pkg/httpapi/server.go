@@ -24,6 +24,7 @@ import (
 	"github.com/ploeg-hq/ploeg/pkg/runidentity"
 	"github.com/ploeg-hq/ploeg/pkg/store"
 	"github.com/ploeg-hq/ploeg/pkg/target"
+	"github.com/ploeg-hq/ploeg/pkg/txntoken"
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
@@ -53,6 +54,14 @@ type Server struct {
 	// RunIdentity signs the Run identities a Team's declared plugins receive
 	// and publishes its key set (ADR-0149). Nil = both routes answer 404.
 	RunIdentity *runidentity.Signer
+	// TransactionTokens signs each Run's transaction token at its claim and
+	// renewals and publishes its key set (ADR-0156). Nil = none is issued,
+	// none is accepted and the key set answers 404.
+	TransactionTokens *txntoken.Signer
+	// TeamSponsors maps a Team to the person its Runs act for when no person
+	// handed their work over (ADR-0156). While TransactionTokens is set, a
+	// Team absent here runs nothing.
+	TeamSponsors map[string]string
 	// Engine is the Shift lifecycle fast path (run-multi-agent-shifts): ingest
 	// opens, an outcome report evaluates. Nil = no shift engine configured,
 	// dispatch unchanged. Engine errors are logged, never returned to the
@@ -269,6 +278,7 @@ func (s *Server) routes() *http.ServeMux {
 	mux.Handle(operatorPrefix, s.operatorHandler())
 	s.RegisterLLMControl(mux)
 	s.registerRunIdentity(mux)
+	s.registerTransactionTokens(mux)
 	return mux
 }
 
@@ -651,6 +661,9 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 	if s.refuseUnservedWorker(w, r, req) {
 		return
 	}
+	if s.refuseUnsponsoredTeam(w, req.Team) {
+		return
+	}
 	if req.Role != "" {
 		s.claimRole(w, r, req)
 		return
@@ -866,6 +879,16 @@ func (s *Server) handleRenew(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	body := map[string]any{"deadline": deadline, "expiresInMs": leaseExpiresInMs(deadline)}
+	if worker := runWorkerFrom(r.Context()); s.TransactionTokens != nil && worker != "" {
+		renewed, _, err := s.issueTransactionToken(r.Context(), token, worker)
+		if err != nil {
+			s.Log.Error("renewed run got no transaction token", "err", err)
+			http.Error(w, "transaction token unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		body["transactionToken"] = renewed
+		w.Header().Set("Cache-Control", "no-store")
+	}
 	if s.yieldRequested(r.Context(), token) {
 		body["yield"] = true
 	}

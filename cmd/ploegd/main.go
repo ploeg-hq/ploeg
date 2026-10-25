@@ -324,7 +324,16 @@ func run(ctx context.Context, log *slog.Logger) error {
 		log.Info("shift engine disabled (no plans, PLOEG_SHIFTS_UNIFORM=false)")
 	}
 
-	workerSecurity, err := httpapi.NewWorkerSecurity(os.Getenv("PLOEG_WORKER_BOOTSTRAPS"), os.Getenv("PLOEG_WORKER_SIGNING_KEY"), os.Getenv("PLOEG_WORKER_AUTH_MODE") == "legacy")
+	transactionTokens, err := transactionTokenSigner(log)
+	if err != nil {
+		return err
+	}
+	teamNames := make([]string, 0, len(cfg.Teams))
+	for name := range cfg.Teams {
+		teamNames = append(teamNames, name)
+	}
+	warnUnsponsoredTeams(transactionTokens, teamNames, cfg.Sponsors(), log)
+	workerSecurity, err := workerSecurityFromEnv(transactionTokens, log)
 	if err != nil {
 		return fmt.Errorf("worker security: %w", err)
 	}
@@ -432,6 +441,8 @@ func run(ctx context.Context, log *slog.Logger) error {
 
 		DisableRunTranscripts: !runTranscripts,
 		RunIdentity:           identities,
+		TransactionTokens:     transactionTokens,
+		TeamSponsors:          cfg.Sponsors(),
 	}
 	if notes != nil {
 		srv.Notes = notes

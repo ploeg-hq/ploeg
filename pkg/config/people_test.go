@@ -30,3 +30,22 @@ func TestTrackerPeopleRefusesAnInvalidOrRepeatedMapping(t *testing.T) {
 		}
 	}
 }
+
+func TestATeamNamesItsSponsor(t *testing.T) {
+	f, err := Load(write(t, `
+teams:
+  bronze:
+    sponsor: oidc-0123456789abcdef0123456789abcdef
+  silver: {}
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := f.Sponsors()
+	if len(got) != 1 || got["bronze"] != "oidc-0123456789abcdef0123456789abcdef" {
+		t.Fatalf("Sponsors = %v, want bronze only", got)
+	}
+	if _, err := Load(write(t, "teams:\n  bronze:\n    sponsor: \"not a person\"\n")); err == nil || !strings.Contains(err.Error(), "teams.bronze.sponsor") {
+		t.Fatalf("an invalid sponsor: %v", err)
+	}
+}

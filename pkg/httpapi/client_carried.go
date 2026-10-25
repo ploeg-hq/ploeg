@@ -56,10 +56,13 @@ type clientClaimRepository struct {
 }
 
 type clientClaimCredential struct {
-	RunToken     string    `json:"runToken"`
-	ControlToken string    `json:"controlToken,omitempty"`
-	WorkerID     string    `json:"workerId,omitempty"`
-	Deadline     time.Time `json:"deadline"`
+	RunToken     string `json:"runToken"`
+	ControlToken string `json:"controlToken,omitempty"`
+	// TransactionToken is the Run's transaction token (ADR-0156), signed
+	// for WorkerID; absent when ploegd signs none.
+	TransactionToken string    `json:"transactionToken,omitempty"`
+	WorkerID         string    `json:"workerId,omitempty"`
+	Deadline         time.Time `json:"deadline"`
 }
 
 // clientWorkerPrefix starts the worker id a client-carried Run's control
@@ -86,6 +89,10 @@ func (s *Server) handleClientClaim(w http.ResponseWriter, r *http.Request) {
 		return
 	case err != nil:
 		operatorError(w, 503, "unavailable", "Ploeg could not read the Work Item.")
+		return
+	}
+	if s.TransactionTokens != nil && s.TeamSponsors[item.Team] == "" {
+		operatorError(w, 409, "team_without_sponsor", unsponsoredTeam(item.Team))
 		return
 	}
 	if !s.clientCarriesTeam(item.Team) {
@@ -172,8 +179,19 @@ func (s *Server) handleClientClaim(w http.ResponseWriter, r *http.Request) {
 	}
 	if a := s.WorkerSecurity; a != nil && !(a.AllowLegacy && s.LLMControl == nil) {
 		resp.Credential.WorkerID = clientWorkerPrefix + person
-		resp.Credential.ControlToken = a.sign(workerCapability{Audience: "ploeg-worker-run", RunToken: claim.RunToken, WorkerID: resp.Credential.WorkerID,
-			Team: claim.Team, Role: claim.Role, Expires: time.Now().Add(24 * time.Hour).Unix()})
+		if !a.RetireHMAC {
+			resp.Credential.ControlToken = a.sign(workerCapability{Audience: "ploeg-worker-run", RunToken: claim.RunToken, WorkerID: resp.Credential.WorkerID,
+				Team: claim.Team, Role: claim.Role, Expires: time.Now().Add(24 * time.Hour).Unix()})
+		}
+		if s.TransactionTokens != nil {
+			token, _, err := s.issueTransactionToken(r.Context(), claim.RunToken, resp.Credential.WorkerID)
+			if err != nil {
+				s.Log.Error("client-carried run got no transaction token", "work_item", id, "err", err)
+				operatorError(w, 503, "unavailable", "Ploeg could not sign the Run's transaction token.")
+				return
+			}
+			resp.Credential.TransactionToken = token
+		}
 	}
 	s.Log.Info("client-carried run claimed", "team", claim.Team, "role", claim.Role, "work_item", claim.Item.ID,
 		"shift", claim.ShiftID, "round", claim.Round, "consumer", p.Name, "briefing", len(briefing))

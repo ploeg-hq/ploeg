@@ -7049,7 +7049,7 @@
         "credential": {
           "type": "object",
           "additionalProperties": false,
-          "description": "The Run credential of the worker run API (worker-control.md): POST /api/v1/runs/{runToken}/claude-session records the dispatched session, /renew keeps the Lease and /outcome reports. In managed worker mode each call sends Authorization: Bearer <controlToken> and X-Ploeg-Worker-ID: <workerId>.",
+          "description": "The Run credential of the worker run API (worker-control.md): POST /api/v1/runs/{runToken}/claude-session records the dispatched session, /renew keeps the Lease and /outcome reports. In managed worker mode each call sends Authorization: Bearer <transactionToken, else controlToken> and X-Ploeg-Worker-ID: <workerId>.",
           "required": [
             "runToken",
             "deadline"
@@ -7061,7 +7061,11 @@
             },
             "controlToken": {
               "type": "string",
-              "description": "The Run's worker capability, valid for 24 hours; absent in legacy worker mode."
+              "description": "The Run's HMAC worker capability, valid for 24 hours; absent in legacy worker mode and with PLOEG_WORKER_HMAC_CAPABILITY=off. Deprecated by ADR-0156 for transactionToken."
+            },
+            "transactionToken": {
+              "type": "string",
+              "description": "The Run's transaction token (ADR-0156, proposed; run-api transactionTokenClaims), signed for workerId and expiring at deadline; send it instead of controlToken and replace it with the one each renew answers. Absent when ploegd signs none."
             },
             "workerId": {
               "type": "string",

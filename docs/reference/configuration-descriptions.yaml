@@ -73,7 +73,7 @@ env:
     ploeg-worker: Controller-only. The worker refuses to start when it is set.
   PLOEG_WORKER_AUTH_MODE: "`legacy` opts into historical worker authentication; anything else is managed mode (chart `executor.workerAuth.mode`)."
   PLOEG_WORKER_SIGNING_KEY:
-    ploegd: Controller-only signing material for worker control capabilities, at least 32 bytes (chart `executor.workerAuth.signingKeySecret`).
+    ploegd: "Controller-only signing material for the HMAC worker control capability, at least 32 bytes (chart `executor.workerAuth.signingKeySecret`). Deprecated by ADR-0156 with that capability; must be unset with `PLOEG_WORKER_HMAC_CAPABILITY=off`."
     ploeg-worker: Controller-only. The worker refuses to start when it is set.
   PLOEG_WORKER_BOOTSTRAPS:
     ploegd: Bootstrap registry, a JSON array of `token`, `team` and `role` entries (chart `executor.workerAuth.bootstrapSecret`).
@@ -147,6 +147,11 @@ env:
   PLOEG_RUN_IDENTITY_SIGNING_KEY: "PEM P-256 private key (PKCS#8 or SEC 1) ploegd signs Run identities with (ADR-0149, chart `runIdentity.signingKeySecret`): the ES256 JWT a Claude Code plugin that opted in receives in `AGENT_RUN_IDENTITY_TOKEN`. Unset issues none: `POST /api/v1/runs/{token}/identity` and `GET /api/v1/run-identity/jwks` answer 404. Only ploegd holds it; a plugin env may never read its Secret."
   PLOEG_RUN_IDENTITY_ISSUER: "The http(s) URL consumers reach ploegd at, written as every Run identity's `iss` (ADR-0149, chart `runIdentity.issuer`). Required with `PLOEG_RUN_IDENTITY_SIGNING_KEY`; either without the other stops ploegd at boot."
   PLOEG_RUN_IDENTITY_RETIRED_KEYS: "Concatenated PEM `PUBLIC KEY` blocks of P-256 keys ploegd no longer signs with but still publishes in its key set, so a token signed just before a rotation verifies until it expires (ADR-0149, chart `runIdentity.retiredKeysSecret`)."
+  PLOEG_TRANSACTION_TOKEN_SIGNING_KEY: "PEM P-256 private key (PKCS#8 or SEC 1) ploegd signs each Run's transaction token with (ADR-0156, chart `transactionToken.signingKeySecret`): an ES256 JWT shaped like an OAuth Transaction Token, issued at the claim and every renewal, that the worker presents on every Run route. Unset signs none and `GET /.well-known/jwks.json` answers 404. Set, a Team without `teams.<name>.sponsor` in the config file runs nothing: its claims answer 403 and its admissions 409. Use a key of its own, not the Run identity's."
+  PLOEG_TRANSACTION_TOKEN_ISSUER: "The http(s) URL ploegd is reached at, written as every transaction token's `iss` (ADR-0156, chart `transactionToken.issuer`). Required with `PLOEG_TRANSACTION_TOKEN_SIGNING_KEY`; either without the other stops ploegd at boot."
+  PLOEG_TRANSACTION_TOKEN_AUDIENCE: "Ploeg's trust domain, every transaction token's `aud`: an http(s) URL or a `urn:` (ADR-0156, chart `transactionToken.audience`). Empty is the issuer."
+  PLOEG_TRANSACTION_TOKEN_RETIRED_KEYS: "Concatenated PEM `PUBLIC KEY` blocks of P-256 keys ploegd no longer signs transaction tokens with but still publishes at `/.well-known/jwks.json`, so a token signed before a rotation verifies until its lease ends (ADR-0156, chart `transactionToken.retiredKeysSecret`)."
+  PLOEG_WORKER_HMAC_CAPABILITY: "`issue` (default) still hands each claimed Run the 24-hour HMAC capability as `controlToken` and accepts it, deprecated by ADR-0156 and removed no earlier than the next minor (ADR-0134). `off` issues and accepts the transaction token only; it needs managed mode and `PLOEG_TRANSACTION_TOKEN_SIGNING_KEY`, and refuses a `PLOEG_WORKER_SIGNING_KEY` (chart `executor.workerAuth.hmacCapability`)."
   PLOEG_RUN_TRANSCRIPT_THOUGHTS: "`off` leaves the agent's reasoning (ACP thought chunks) out of the Run's transcript (ADR-0090). Default on."
 helm:
   claudeRunner.claudeCode: "Where the runner's Claude Code comes from. Ploeg's claude-runner image carries none (ADR-0141): an init container installs the pinned version from Anthropic's GPG-signed release into an emptyDir, which the runner mounts read-only at `/opt/claude-code`. Needs egress to `downloads.claude.ai:443`."

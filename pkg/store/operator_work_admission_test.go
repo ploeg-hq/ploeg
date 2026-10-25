@@ -251,3 +251,34 @@ func TestOperatorWorkAdmissionIsNotExcludedLikeAnOperatorExecution(t *testing.T)
 		t.Fatalf("the Operator Execution's Run was claimable: %+v %v", again, err)
 	}
 }
+
+func TestAnAdmissionRecordsHowPloegKnowsThePersonItsRunsActFor(t *testing.T) {
+	resetTables(t)
+	ctx := context.Background()
+	for _, tc := range []struct {
+		name               string
+		attribution        *Attribution
+		person, proof, act string
+	}{
+		{"proven", &Attribution{Consumer: "workbench", Actor: "oidc-alice", Proof: "proven", Act: "authentik-actor"}, "oidc-alice", "proven", "authentik-actor"},
+		{"asserted", &Attribution{Consumer: "workbench", Actor: "oidc-alice", Proof: "asserted"}, "oidc-alice", "asserted", ""},
+		{"acting user", &Attribution{Consumer: "workbench", Actor: "oidc-alice", ActingUser: "oidc-bob", Proof: "proven", Act: "x"}, "oidc-bob", "asserted", ""},
+		{"no attribution", nil, "oidc-alice", "asserted", ""},
+	} {
+		c := ctx
+		if tc.attribution != nil {
+			c = WithAttribution(ctx, *tc.attribution)
+		}
+		a, err := testStore.AdmitOperatorWorkItem(c, "workbench", "oidc-alice", admissionInput("req-proof-"+tc.name), admissionTarget, 5)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var person, proof, act string
+		if err := testStore.pool.QueryRow(ctx, `SELECT acts_for, acts_for_proof, acts_for_act FROM work_items WHERE id=$1`, a.WorkItemID).Scan(&person, &proof, &act); err != nil {
+			t.Fatal(err)
+		}
+		if person != tc.person || proof != tc.proof || act != tc.act {
+			t.Errorf("%s: %q %q %q", tc.name, person, proof, act)
+		}
+	}
+}
