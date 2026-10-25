@@ -95,8 +95,8 @@ func TestManagedSettlementRequiresTrustedEvidenceAndNeverWorkerCost(t *testing.T
 		t.Fatal(err)
 	}
 	l, _ = testStore.Ledger(ctx, shift)
-	if math.Abs(l.Reserved-0.2) > 0.00001 || l.Spent != 0.7 {
-		t.Fatalf("late observed spend disappeared before reconciliation: %+v", l)
+	if l.Reserved != 0 || l.Spent != 0.7 {
+		t.Fatalf("a reading after a final settlement held budget no sweep releases: %+v", l)
 	}
 	if err := testStore.ReconcileLLMAccount(ctx, run.RunToken, 0.9, "late-provider-adjustment"); err != nil {
 		t.Fatal(err)
