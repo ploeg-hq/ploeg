@@ -37,6 +37,10 @@
 {{- if hasKey $rh "harnessContainer" -}}{{- $layoutOverride = dict "value" $rh.harnessContainer -}}{{- else if hasKey $th "harnessContainer" -}}{{- $layoutOverride = dict "value" $th.harnessContainer -}}{{- end -}}
 {{- $layout := include "ploeg.harnessContainer" (dict "root" $root "name" $identity.name "dind" $dind "isolation" $isolation "override" $layoutOverride "who" $who) -}}
 {{- $out := list -}}
+{{- $sandbox := eq (include "ploeg.teamExecutorType" (dict "root" $root "team" $team)) "sandbox" -}}
+{{- if and $sandbox (not (include "ploeg.runtimeClassName" (dict "root" $root "team" $team "role" $role))) -}}
+{{- $out = append $out (printf "team %s: the sandbox executor resolves no runtimeClassName; P1 runs it only under a runtime class that gives each pod its own VM, such as Kata Containers" $who) -}}
+{{- end -}}
 {{- if $dind -}}
 {{- $out = append $out (printf "%s: harness.dind is true; P1 needs dind: false on every team and Role" $label) -}}
 {{- end -}}
@@ -66,9 +70,6 @@
 {{- $out = append $out "claudeRunner.enabled is true; P1 excludes the claude-runner, whose Runs execute outside the pod" -}}
 {{- end -}}
 {{- if $e.enabled -}}
-{{- if eq ($e.type | default "keda") "sandbox" -}}
-{{- $out = append $out "executor.type is sandbox, which is experimental; P1 needs keda or cronjob" -}}
-{{- end -}}
 {{- if ne (($e.litellm | default dict).keyIsolation | default "") "proxy" -}}
 {{- $out = append $out "executor.litellm.keyIsolation is not proxy; P1 needs proxy" -}}
 {{- end -}}
@@ -82,9 +83,6 @@
 {{- $out = append $out . -}}
 {{- end -}}
 {{- range $team := $e.teams -}}
-{{- if and $team.executorType (eq (include "ploeg.teamExecutorType" (dict "root" $root "team" $team)) "sandbox") -}}
-{{- $out = append $out (printf "team %s: executorType is sandbox, which is experimental; P1 needs keda or cronjob" $team.name) -}}
-{{- end -}}
 {{- range $planRole := (include "ploeg.teamRoles" $team | fromJsonArray) -}}
 {{- range $w := (include "ploeg.roleWorkloads" (dict "root" $root "team" $team "role" $planRole) | fromJsonArray) -}}
 {{- $out = concat $out (include "ploeg.workloadSupportProfileDepartures" (dict "root" $root "team" $team "role" $w.role) | fromJsonArray) -}}
