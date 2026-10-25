@@ -19,3 +19,7 @@ exceptions:
     surface: ghcr.io/ploeg-hq/claude-runner
     pointer: /usr/bin/apt-get
     adr: "0144"
+  - base: v0.2.0-rc.61
+    surface: ops/helm/ploeg/values.yaml
+    pointer: mcp.confirmationKeySecret
+    adr: "0152"
