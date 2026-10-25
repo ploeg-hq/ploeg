@@ -152,7 +152,7 @@ These are design elements the product's security depends on and that a deploymen
 
 ### Security relevant
 
-These are settings and components a deployment configures. The threat model's [supported profile](threat-model.md#the-supported-deployment-profile) fixes their values.
+These are settings and components a deployment configures. The threat model's [supported profile](threat-model.md#the-supported-deployment-profile), P1, which the maintainer confirmed on 2026-10-25, fixes their values.
 
 | Setting or component | Effect |
 | --- | --- |
