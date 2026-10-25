@@ -246,6 +246,7 @@ func (cp *controlPlane) client() *APIClient {
 type partition struct {
 	cut       atomic.Bool
 	renewOnly atomic.Bool
+	hang      atomic.Bool
 	renewals  atomic.Int32
 	settled   atomic.Int32
 }
@@ -260,10 +261,67 @@ func (p *partition) RoundTrip(r *http.Request) (*http.Response, error) {
 	if renewal {
 		defer p.settled.Add(1)
 	}
+	if renewal && p.hang.Load() {
+		<-r.Context().Done()
+		return nil, r.Context().Err()
+	}
 	if p.cut.Load() && (renewal || !p.renewOnly.Load()) {
 		return nil, errPartitioned
 	}
 	return http.DefaultTransport.RoundTrip(r)
+}
+
+type manualClock struct {
+	mu     sync.Mutex
+	now    time.Time
+	timers []*manualTimer
+}
+
+type manualTimer struct {
+	at            time.Time
+	fire          func()
+	stopped, done bool
+}
+
+func newManualClock() *manualClock {
+	return &manualClock{now: time.Date(2026, 10, 25, 12, 0, 0, 0, time.UTC)}
+}
+
+func (c *manualClock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.now
+}
+
+func (c *manualClock) AfterFunc(d time.Duration, f func()) func() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	t := &manualTimer{at: c.now.Add(d), fire: f}
+	c.timers = append(c.timers, t)
+	return func() bool {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		pending := !t.stopped && !t.done
+		t.stopped = true
+		return pending
+	}
+}
+
+func (c *manualClock) advanceTo(at time.Time) int {
+	c.mu.Lock()
+	c.now = at
+	var due []func()
+	for _, t := range c.timers {
+		if !t.stopped && !t.done && !t.at.After(at) {
+			t.done = true
+			due = append(due, t.fire)
+		}
+	}
+	c.mu.Unlock()
+	for _, fire := range due {
+		fire()
+	}
+	return len(due)
 }
 
 type manualTicks struct {
@@ -310,6 +368,7 @@ type runningWorker struct {
 	adapter *leaseHoldingAdapter
 	net     *partition
 	ticks   *manualTicks
+	clock   *manualClock
 	done    chan error
 	token   string
 	sent    int32
@@ -325,7 +384,9 @@ func startWorker(t *testing.T, cp *controlPlane, forge *writerForge, team, role 
 		adapter, llmbroker.Static{}, discardLog())
 	w.API.HC = &http.Client{Transport: net, Timeout: 10 * time.Second}
 	w.RenewTicks = ticks.start
-	rw := &runningWorker{t: t, worker: w, adapter: adapter, net: net, ticks: ticks, done: make(chan error, 1)}
+	clock := newManualClock()
+	w.clock = clock
+	rw := &runningWorker{t: t, worker: w, adapter: adapter, net: net, ticks: ticks, clock: clock, done: make(chan error, 1)}
 	go func() { rw.done <- w.RunContext(context.Background()) }()
 	select {
 	case <-adapter.started:
@@ -420,7 +481,7 @@ func TestLateReportsFromASupersededAttemptAreRefusedAndChangeNothing(t *testing.
 				t.Fatalf("attempt N+1 does not hold the item: %+v", before)
 			}
 
-			if renewal, err := late.Renew(first.RunToken); err != nil || !renewal.Gone {
+			if renewal, err := late.Renew(context.Background(), first.RunToken); err != nil || !renewal.Gone {
 				t.Errorf("late renewal: %+v %v, want gone", renewal, err)
 			}
 			wantHTTPStatus(t, "late checkpoint", late.Checkpoint(first.RunToken, work.Checkpoint{Phase: "branch_created", Branch: writerBranch}), http.StatusNotFound)
@@ -527,7 +588,7 @@ func partitionPastTheLease(t *testing.T, shape dispatchShape) {
 	if state := cp.itemState(id); state != string(work.StateActive) {
 		t.Fatalf("item state %q, want active under the new attempt", state)
 	}
-	if renewal, err := cp.client().Renew(fresh.RunToken); err != nil || renewal.Gone {
+	if renewal, err := cp.client().Renew(context.Background(), fresh.RunToken); err != nil || renewal.Gone {
 		t.Fatalf("the re-dispatched attempt cannot renew: %+v %v", renewal, err)
 	}
 }
@@ -574,12 +635,12 @@ func TestRacingClaimsForOneItemDispatchItExactlyOnce(t *testing.T) {
 	}
 }
 
-func TestThreeConsecutiveFailedRenewalsStopTheHarnessOneLeaseTTLAfterTheLastSuccess(t *testing.T) {
+func TestThreeConsecutiveFailedRenewalsStopTheHarnessThreeQuartersOfALeaseAfterTheLastSuccess(t *testing.T) {
 	cp := newControlPlane(t)
 	cp.plannedItem("7")
 	rw := startWorker(t, cp, newWriterForge(t, false, pullsNone), leaseTeam, leaseRole)
-	if interval := time.Duration(rw.ticks.interval.Load()); interval > leaseTestTTL/3 || interval < leaseTestTTL/3-time.Second {
-		t.Fatalf("renewal interval %v, want a third of the %v lease", interval, leaseTestTTL)
+	if interval := time.Duration(rw.ticks.interval.Load()); interval > leaseTestTTL/4 || interval < leaseTestTTL/4-time.Second {
+		t.Fatalf("renewal interval %v, want a quarter of the %v lease", interval, leaseTestTTL)
 	}
 	rw.net.renewOnly.Store(true)
 
@@ -608,26 +669,45 @@ func TestThreeConsecutiveFailedRenewalsStopTheHarnessOneLeaseTTLAfterTheLastSucc
 	}
 }
 
-func TestWithdrawnRunStopsItsHarnessAtTheNextRenewal(t *testing.T) {
-	cp := newControlPlane(t)
-	id := cp.plannedItem("7")
-	rw := startWorker(t, cp, newWriterForge(t, false, pullsNone), leaseTeam, leaseRole)
-	withdrawal, err := cp.store.WithdrawWorkItem(context.Background(), id, []string{leaseTeam}, "operator:test", store.CloseReasonWithdrawnByOperator)
-	if err != nil || len(withdrawal.StoppedRunTokens) != 1 || withdrawal.StoppedRunTokens[0] != rw.token {
-		t.Fatalf("withdrawal %+v %v", withdrawal, err)
+func TestACutOffWorkerStopsBeforeItsLeaseCanBeReclaimed(t *testing.T) {
+	for _, shape := range dispatchShapes {
+		t.Run(shape.name, func(t *testing.T) { cutOffBeforeTheLeaseEnds(t, shape) })
 	}
-	withdrawn := cp.run(rw.token)
+}
 
-	rw.tick()
+func cutOffBeforeTheLeaseEnds(t *testing.T, shape dispatchShape) {
+	cp := newControlPlane(t)
+	id := shape.item(cp, "7")
+	rw := startWorker(t, cp, newWriterForge(t, false, pullsNone), shape.team, shape.role)
+
+	lastRenewal := rw.clock.Now().Add(renewInterval(leaseTestTTL))
+	rw.clock.advanceTo(lastRenewal)
+	rw.renew()
+	rw.net.hang.Store(true)
+	if !rw.tick() {
+		t.Fatal("the harness stopped before the partition")
+	}
+	leaseEnds := lastRenewal.Add(leaseTestTTL)
+	stopBy := leaseEnds.Add(-leaseStopMargin(leaseTestTTL))
+	if fired := rw.clock.advanceTo(stopBy.Add(-time.Second)); fired != 0 {
+		t.Fatalf("the worker gave up its lease %v before the margin", leaseEnds.Sub(stopBy.Add(-time.Second)))
+	}
+	if fired := rw.clock.advanceTo(stopBy); fired != 1 {
+		t.Fatalf("with a renewal hung since %v, nothing stopped the harness %v before the lease ends at %v",
+			lastRenewal.Add(renewInterval(leaseTestTTL)), leaseStopMargin(leaseTestTTL), leaseEnds)
+	}
 	rw.awaitStop()
-	if rw.adapter.renewals != 1 || !errors.Is(rw.adapter.cause, errLeaseLost) {
-		t.Fatalf("the harness stopped after %d renewals for %v, want the first renewal to stop it", rw.adapter.renewals, rw.adapter.cause)
+	if !errors.Is(rw.adapter.cause, errLeaseLost) {
+		t.Fatalf("the harness stopped for %v, want a lost lease", rw.adapter.cause)
 	}
-	if err := rw.result(); err == nil {
-		t.Fatal("the withdrawn Run's outcome was accepted")
+	if err := rw.result(); err != nil {
+		t.Fatalf("the worker stopped before its lease ended, so its report must land: %v", err)
 	}
-	if got := cp.run(rw.token); got != withdrawn {
-		t.Fatalf("the withdrawn Run's late report changed it from %+v to %+v", withdrawn, got)
+	if got := cp.run(rw.token); got.State != "finished" || got.FailureReason != string(work.FailureLeaseLost) {
+		t.Fatalf("the stopped Run = %+v, want it finished as a lost lease", got)
+	}
+	if holder := cp.leaseHolder(id); holder != "" {
+		t.Fatalf("lease still held by %q after the report", holder)
 	}
 }
 
@@ -676,14 +756,26 @@ func (rw *runningWorker) result() error {
 	}
 }
 
-func TestRenewalIntervalIsAThirdOfTheLeaseAndNeverUnderFiveSeconds(t *testing.T) {
+func TestRenewalIntervalIsAQuarterOfTheLeaseAndNeverUnderFiveSeconds(t *testing.T) {
 	for ttl, want := range map[time.Duration]time.Duration{
-		5 * time.Minute:  100 * time.Second,
-		60 * time.Second: 20 * time.Second,
+		5 * time.Minute:  75 * time.Second,
+		60 * time.Second: 15 * time.Second,
 		9 * time.Second:  5 * time.Second,
 	} {
 		if got := renewInterval(ttl); got != want {
 			t.Errorf("renewInterval(%v) = %v, want %v", ttl, got, want)
+		}
+	}
+}
+
+func TestThreeFastStrikesComeBeforeTheStopMarginAndTheMarginBeforeTheLeaseEnds(t *testing.T) {
+	for _, ttl := range []time.Duration{5 * time.Minute, 60 * time.Second, leaseTestTTL, 20 * time.Second} {
+		stop := ttl - leaseStopMargin(ttl)
+		if strikes := renewalStrikes * renewInterval(ttl); strikes >= stop {
+			t.Errorf("TTL %v: three strikes land at %v, not before the stop at %v", ttl, strikes, stop)
+		}
+		if stop >= ttl || leaseStopMargin(ttl) < ttl/6 {
+			t.Errorf("TTL %v: the worker stops at %v, want at least a sixth of the lease before it ends", ttl, stop)
 		}
 	}
 }

@@ -150,6 +150,7 @@ type Worker struct {
 	// per renewal and a function that stops it. Nil ticks every interval on
 	// the wall clock; tests drive renewal with their own channel.
 	RenewTicks func(interval time.Duration) (<-chan time.Time, func())
+	clock      leaseClock
 }
 
 // profiledAdapter is a harness adapter that launches one of several agent
@@ -204,6 +205,7 @@ var (
 // killed pod from stranding its Lease for the full TTL and charging the Round
 // an attempt it never spent.
 func (w *Worker) RunContext(parent context.Context) error {
+	claimSent := w.leaseClock().Now()
 	claimed, err := w.API.Claim(w.Cfg.Team, w.Cfg.Role)
 	var unsupported *UnsupportedWorkerVersion
 	if errors.As(err, &unsupported) {
@@ -247,17 +249,20 @@ func (w *Worker) RunContext(parent context.Context) error {
 	defer cancel(nil)
 	go abortOnTermination(parent, ctx, cancel, w.Log, item.ID, claimed.Role)
 
-	// Lease renewal at TTL/3; three consecutive failures (or a 404 = lease
+	// Lease renewal at TTL/4; three consecutive failures (or a 404 = lease
 	// stolen) cancel the run — another worker may own the item now.
-	ttl := time.Until(claimed.Deadline)
+	ttl := claimed.leaseValidity()
 	if ttl <= 0 {
 		ttl = time.Minute
 	}
+	guard := &leaseGuard{clock: w.leaseClock(), margin: leaseStopMargin(ttl), cancel: cancel, log: w.Log}
+	guard.holdUntil(claimSent.Add(ttl))
+	defer guard.release()
 	w.yield = newYieldSignal()
 	defer func() { w.yield = nil }()
 	ticks, stopTicks := w.renewTicks(renewInterval(ttl))
 	defer stopTicks()
-	go renewLoop(ctx, cancel, w.API, claimed.RunToken, ticks, w.Log, w.yield.raise)
+	go renewLoop(ctx, cancel, w.API, claimed.RunToken, ticks, guard, ttl, w.Log, w.yield.raise)
 
 	// From here on, every terminal path must report an outcome; failing to
 	// report leaves the lease to the sweeper (recorded failed/lease expired).
@@ -1166,55 +1171,6 @@ func abortOnTermination(parent, runCtx context.Context, cancel context.CancelCau
 			"work_item", workItemID, "role", role)
 		cancel(errTerminated)
 	case <-runCtx.Done():
-	}
-}
-
-const (
-	renewalStrikes   = 3
-	minRenewInterval = 5 * time.Second
-)
-
-func renewInterval(ttl time.Duration) time.Duration {
-	return max(ttl/3, minRenewInterval)
-}
-
-func (w *Worker) renewTicks(interval time.Duration) (<-chan time.Time, func()) {
-	if w.RenewTicks != nil {
-		return w.RenewTicks(interval)
-	}
-	t := time.NewTicker(interval)
-	return t.C, t.Stop
-}
-
-func renewLoop(ctx context.Context, cancel context.CancelCauseFunc, api *APIClient, token string, ticks <-chan time.Time, log *slog.Logger, yield func()) {
-	strikes := 0
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticks:
-			renewal, err := api.Renew(token)
-			switch {
-			case renewal.Gone:
-				log.Error("lease no longer ours; cancelling run")
-				cancel(errLeaseLost)
-				return
-			case err != nil:
-				strikes++
-				log.Warn("lease renewal failed", "strikes", strikes, "err", err)
-				if strikes >= renewalStrikes {
-					log.Error("renewal failed repeatedly; cancelling run", "strikes", strikes)
-					cancel(errLeaseLost)
-					return
-				}
-			default:
-				strikes = 0
-				if renewal.Yield && yield != nil {
-					log.Info("a person asked the Run to yield; stopping at the next safe point")
-					yield()
-				}
-			}
-		}
 	}
 }
 
