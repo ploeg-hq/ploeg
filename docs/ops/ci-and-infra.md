@@ -66,7 +66,7 @@ cosign verify ghcr.io/ploeg-hq/ploegd:<version> \
   --certificate-identity-regexp '^https://github\.com/ploeg-hq/ploeg/\.github/workflows/release\.yml@refs/(heads/development|heads/main|tags/v0\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?)$'
 ```
 
-The certificate names `release.yml` at the ref that started the run: `refs/heads/development` for a candidate cut by the release-candidate workflow, `refs/tags/v0.x.y` for a stable tag push, and the dispatching branch for a manual re-publication. BuildKit SBOM and provenance attestations remain unsigned in-index attestations; the cosign signature is the project signature.
+The certificate names `release.yml` at the ref that started the run: `refs/heads/development` for a candidate cut by the release-candidate workflow, `refs/tags/v0.x.y` for a stable tag push, and the dispatching branch for a manual re-publication. BuildKit SBOM and provenance attestations remain unsigned in-index attestations; the cosign signature is the project signature. [Verify a release](verify-a-release.md) runs every check an outsider can make, including the OpenVEX and CVE budget attestations.
 
 Historical WebGrip releases used estate OpenBao credentials and signing infrastructure. Their runbooks remain relevant to those deployments, not authority for the new independent publisher. A local check cannot prove live registry visibility or cluster signature enforcement.
 

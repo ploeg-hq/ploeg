@@ -4,6 +4,8 @@ The new `github.com/ploeg-hq/ploeg` module starts at **v0.1.0**. Ploeg remains e
 
 What each kind of release may change, and for how long a deprecated element keeps working, is the [compatibility policy](compatibility.md).
 
+The step-by-step procedure, with recovery and a rehearsal, is the [release runbook](release-runbook.md). [Verify a release](verify-a-release.md) is how anyone checks what a release published.
+
 ## Release candidates
 
 Every releasable merge to `development`, the trunk, cuts a candidate with no hand step ([ADR 0115](../adrs/0115-candidates-are-calculated-from-conventional-commits-and-a-stable-release-stays-a-reviewed-tag.md), [ADR 0116](../adrs/0116-every-releasable-merge-to-development-cuts-a-candidate.md)).
