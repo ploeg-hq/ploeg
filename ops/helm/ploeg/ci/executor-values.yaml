@@ -153,3 +153,4 @@ executor:
             - {name: reviewer, writes: false, cap: "0.75", model: litellm_proxy/claude-sonnet-5, harness: {dind: false}}
         - roles:
             - {name: builder, writes: true, cap: "3.00", model: litellm_proxy/claude-sonnet-5}
+supportProfile: unsupported

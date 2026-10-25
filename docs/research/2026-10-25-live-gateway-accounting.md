@@ -61,7 +61,7 @@ Usage that is late or missing is visible, not silently zero:
 - A late entry inside the 24-hour window raises the settlement; the difference is charged to the Shift and kept as a `run_llm_adjustments` row.
 - A minted key with no entries settles with its cost reported as `unknown`.
 - An account the gateway cannot answer for keeps its full Hold, appears in `GET /api/v1/operator/unsettled-accounts`, and raises `PloegSettlementBacklog` after an hour.
-- The operator's action for such an account is `POST /api/v1/operator/unsettled-accounts/{runId}/settle`, which settles it from evidence they gathered, never below Ploeg's observation, and audits it under their name ([ADR-0154](../adrs/0154-an-operator-settles-an-account-the-gateway-cannot-answer-for-from-evidence-and-never-below-what-ploeg-observed.md), [how-to](../how-to/investigate-a-runs-spend.md#7-settle-an-account-from-evidence)).
+- The operator's action for such an account is `POST /api/v1/operator/unsettled-accounts/{runId}/settle`, which settles it from evidence they gathered, never below Ploeg's observation, and audits it under their name ([ADR-0155](../adrs/0155-an-operator-settles-an-account-the-gateway-cannot-answer-for-from-evidence-and-never-below-what-ploeg-observed.md), [how-to](../how-to/investigate-a-runs-spend.md#7-settle-an-account-from-evidence)).
 
 ## Test cost
 

@@ -20,3 +20,4 @@ executor:
         name: exec
         args: ["/bin/cat", "{taskspec}"]
         dind: false
+supportProfile: unsupported

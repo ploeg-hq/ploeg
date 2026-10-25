@@ -29,6 +29,8 @@ Use these sources for the current implementation. The [architecture](architectur
 - [Leases and cancellation](reference/leases-and-cancellation.md): the Lease lifecycle, fencing, the three-strike rule and timing bounds, with the tests that prove them
 - [CI and infrastructure](ops/ci-and-infra.md)
 - [Experimental releases](ops/release-versioning.md)
+- [Verify a release](ops/verify-a-release.md): check a release's checksums, signatures, attestations, SBOM and provenance without an account
+- [Release runbook](ops/release-runbook.md): cut, publish, check, recover and rehearse a release
 - [Compatibility policy](ops/compatibility.md): what each release keeps working, deprecation, rollback and version pairs
 - [Stable channel plan](ops/stable-channel-plan.md): proposed gates, promotion, support window and signing for stable releases, with open decisions
 

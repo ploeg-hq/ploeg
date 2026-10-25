@@ -8,3 +8,4 @@ executor:
       model: litellm_proxy/deepseek-chat
       budget: "1"
       harness: {name: openhands, dind: false}
+supportProfile: unsupported

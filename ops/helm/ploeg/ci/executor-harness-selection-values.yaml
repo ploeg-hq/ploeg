@@ -32,3 +32,4 @@ executor:
             - {name: builder, writes: true, cap: "3.00", model: litellm_proxy/deepseek-v4, models: [deepseek-v4, kimi-k3]}
         - roles:
             - {name: reviewer, writes: false, cap: "0.75", harnesses: [openhands]}
+supportProfile: unsupported

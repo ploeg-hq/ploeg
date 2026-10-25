@@ -58,6 +58,25 @@ Both are off by default and create no Secret or route host of their own: the clu
 - **`mcp.enabled`** runs `ploeg-mcp http` from the ploegd image, with a Service on `mcp.port` (8090). `mcp.env` carries the `PLOEG_MCP_*` settings of [Serve Ploeg's MCP tools over HTTPS](../../../docs/how-to/serve-ploeg-mcp-over-https.md), `mcp.extraEnv` and `mcp.envFrom` the consumer tokens from your Secrets. A group marked `execute` also needs `mcp.confirmationKeySecret`, the Secret key that signs each person's confirmation ([ADR-0152](../../../docs/adrs/0152-ploeg-mcp-signs-each-confirmation-and-acts-on-it-once.md)); without it ploeg-mcp refuses to start. `mcp.httpRoute` adds a Gateway API route. Its NetworkPolicy comes from `networkPolicy` below; `mcp.networkPolicy.ingress` and `.egress` are the older per-component form and still render.
 - **`claudeRunner.enabled`** runs the runner of [ADR-0084](../../../docs/adrs/0084-a-claude-code-run-can-execute-in-a-teams-self-hosted-claude-environment.md) ([runner settings](../claude-runner/README.md)). It requires `claudeRunner.environmentSecret.name`, a Secret with `SELF_HOSTED_RUNNER_ENVIRONMENT_SECRET`. `claudeRunner.extraArgs` adds flags such as `--git-host-rewrite`. Its NetworkPolicy allows DNS, ploegd, the forges and the internet on 443, because Anthropic is a hostname a NetworkPolicy cannot name; a CNI with FQDN policy can tighten it. `claudeRunner.loginVolumes` creates the PersistentVolumeClaims that `harness.claudeEnvironment.loginVolume` names; Helm keeps them on uninstall. The image carries no Claude Code: with `claudeRunner.claudeCode.install` (default `true`) an init container installs Anthropic's signed release into a volume the runner mounts read-only, so the pod needs `downloads.claude.ai:443` ([Run Claude Code in the claude-runner](../../../docs/how-to/run-claude-code-in-the-claude-runner.md)).
 
+## Supported profile
+
+`supportProfile` names the deployment profile the values claim. `P1`, the default, is the [profile the threat model covers](../../../docs/security/threat-model.md#the-supported-deployment-profile), and the render fails with every departure listed when a value leaves it:
+
+| Departure | P1 needs |
+| --- | --- |
+| `networkPolicy.enabled: false` | `true` |
+| `executor.workerAuth.mode: legacy` | `managed` |
+| `claudeRunner.enabled: true` | `false` |
+| `executor.type: sandbox`, or a team's `executorType: sandbox` | `keda` or `cronjob` |
+| `executor.litellm.keyIsolation` or `executor.forgeTokenIsolation` other than `proxy` | `proxy` |
+| `harness.credentialIsolation` set at any level | unset |
+| a harness other than `openhands`, `acp/openhands` or `exec` | one of those |
+| `harness.dind: true`, even with `acknowledgePrivilegedDind` | `false` |
+| `harnessContainer` resolving to `shared` | `separate` |
+| `executor.workerSecurityContext` or the derived worker container context below `restricted` | the defaults |
+
+Set `supportProfile: unsupported` to render such values anyway; the install notes then list each departure, and the threat model does not cover the deployment ([ADR-0154](../../../docs/adrs/0154-the-chart-refuses-values-that-leave-profile-p1-unless-they-declare-the-deployment-unsupported.md)). The chart cannot see the namespace's Pod Security level, the CNI, transport encryption or the forge's per-Run minting; those P1 rows stay yours.
+
 ## Network policies
 
 `networkPolicy.enabled` (default `true`) renders a default-deny NetworkPolicy for every pod the chart creates, with the egress each needs derived from the URLs in these values: ploegd reaches the database, the gateway, the forges and the trackers; a worker reaches DNS, ploegd, the gateway and the forge and nothing else. `networkPolicy.<endpoint>.peers` and `.port` name an endpoint exactly, `networkPolicy.<component>.extraEgress` adds what your cluster needs on top, and `networkPolicy.ploegd.ingressFrom` names who may call ploegd. Only a CNI that enforces NetworkPolicy applies them; kind's kindnet does not. [Network policies](../../../docs/ops/network.md) lists every policy and its rows.

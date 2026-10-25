@@ -104,6 +104,7 @@ type controlPlane struct {
 	handler atomic.Pointer[http.Handler]
 	url     string
 	boots   atomic.Int32
+	ttl     time.Duration
 }
 
 func newControlPlane(t *testing.T) *controlPlane {
@@ -112,26 +113,35 @@ func newControlPlane(t *testing.T) *controlPlane {
 	if sharedLeaseDatabase.err != nil {
 		t.Fatal(sharedLeaseDatabase.err)
 	}
+	cp := unbootedControlPlane(t, sharedLeaseDatabase.store, sharedLeaseDatabase.pool, leaseTestTTL)
+	cp.exec(`TRUNCATE work_items, audit_log, inference_allowances, deployments CASCADE`)
+	cp.serve()
+	return cp
+}
+
+func unbootedControlPlane(t *testing.T, st *store.Store, pool *pgxpool.Pool, ttl time.Duration) *controlPlane {
+	t.Helper()
 	plans, err := plan.Parse(`{"` + leaseTeam + `": {"pool": 10, "rounds": [{"roles": [{"name": "` + leaseRole + `", "writes": true, "cap": 3}]}]}}`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	cp := &controlPlane{t: t, store: sharedLeaseDatabase.store, pool: sharedLeaseDatabase.pool, plans: plans}
-	cp.exec(`TRUNCATE work_items, audit_log, inference_allowances, deployments CASCADE`)
+	return &controlPlane{t: t, store: st, pool: pool, plans: plans, ttl: ttl}
+}
+
+func (cp *controlPlane) serve() {
 	cp.boot()
 	front := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		(*cp.handler.Load()).ServeHTTP(w, r)
 	}))
-	t.Cleanup(front.Close)
+	cp.t.Cleanup(front.Close)
 	cp.url = front.URL
-	return cp
 }
 
 func (cp *controlPlane) boot() {
 	cp.engine = &shiftengine.Engine{Store: cp.store, Plans: cp.plans, Log: slog.New(slog.DiscardHandler)}
 	handler := (&httpapi.Server{
 		Store:          cp.store,
-		LeaseTTL:       leaseTestTTL,
+		LeaseTTL:       cp.ttl,
 		Log:            slog.New(slog.DiscardHandler),
 		RoleCaps:       cp.plans,
 		Engine:         cp.engine,

@@ -5,3 +5,4 @@ executor:
     - name: defaults
       model: litellm_proxy/deepseek-chat
       budget: "1"
+supportProfile: unsupported

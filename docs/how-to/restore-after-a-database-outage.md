@@ -2,8 +2,8 @@
 type: how-to
 audience: [operator]
 owner: ploeg
-last_verified: 2026-09-23
-verified_by: "Read apps/ploeg cmd/ploegd/{main,sweep}.go (startup ping retry, Migrate, boot orphan sweeps), pkg/store/store.go (Migrate, ExpireLeases), pkg/store/shift.go (ExpireRuns), pkg/httpapi/server.go (readyz), pkg/worker/worker.go (renewLoop), ops/helm/ploeg and docs/operations/first-cutover.md"
+last_verified: 2026-10-25
+verified_by: "Ran the restore drill (mise run restore-drill) locally and on the CI runner; read apps/ploeg cmd/ploegd/{main,sweep}.go (startup ping retry, Migrate, boot orphan sweeps), pkg/store/store.go (Migrate, ExpireLeases), pkg/store/shift.go (ExpireRuns), pkg/httpapi/server.go (readyz), pkg/worker/worker.go (renewLoop), ops/helm/ploeg and docs/operations/first-cutover.md"
 ---
 
 # Restore Ploeg after a database outage
@@ -117,11 +117,33 @@ Unpause the workers and resume the HelmRelease as in [Drain workers, step 6](dra
 2. The overdue counts in step 4 are 0, and the `ploegd` log shows no `sweep failed` for 15 minutes.
 3. A newly assigned ticket reaches a worker pod and its Run reaches `running`.
 
+## What a restore can promise
+
+The [restore drill](../research/2026-10-25-restore-drill.md) rehearses this procedure on every change to the store, the run API, the Shift engine or the worker, and weekly:
+
+```sh
+mise run restore-drill
+```
+
+It takes a hot base backup of a running database (`pg_backup_start`, a copy of the data directory, `pg_backup_stop`, the WAL written meanwhile), keeps writing, destroys the database and restores the backup into a clean data directory. A fresh `ploegd` then holds exactly the backup point's Work Items, Runs, Leases, LLM accounts, Shift spend, checkpoints and audit log. Every token from before the restore is refused: a Run whose deadline passed during the outage, a Run minted after the backup point, and a second report from a Run that had already settled. A Run whose deadline had not passed yet is still its worker's until that deadline: if the restore takes less than one `PLOEG_LEASE_TTL`, a worker that kept running may renew it, as it could after a plain outage. The sweeper finishes the in-flight Run as `lease_lost`, each item returns to `queued` or keeps `needs_human`, and a new claim gets a new token.
+
+Measured on 2026-10-25, embedded PostgreSQL 18 with a 59 MB data directory, single node:
+
+| Where | RTO, destruction to `ploegd` serving | of which PostgreSQL recovery | RPO, backup point to destruction |
+| --- | --- | --- | --- |
+| CI runner (`ubuntu-24.04`), two runs | 297 ms, 301 ms | 122 ms, 123 ms | 236 ms, 227 ms |
+| A 32-thread workstation, five runs | 0.67–1.39 s | 0.55–1.24 s | 0.21–0.31 s |
+
+The RPO is exactly the backup point: every write before it came back and every write after it, a settled 0.75 USD included, was gone. The drill's window is short only because the drill destroys the database a fraction of a second after the backup.
+
+These numbers time the database and `ploegd`, not a production restore. A CloudNativePG restore also downloads the base backup and replays archived WAL from object storage, both of which grow with the database and the time since the last base backup, and the pod has to be scheduled and its volume bound. With continuous WAL archiving the RPO is the archiving delay, not the age of the base backup. Time a real restore of `ploeg-db` before you promise an operator target.
+
 ## Symptom, cause, fix
 
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
 | `ploegd` crash-loops with `database unreachable after retries` | Database still down or its Service not resolving | Recover the CloudNativePG cluster; then restart `ploegd` |
+| `ploegd` exits with `cannot execute CREATE TABLE in a read-only transaction` | The restored database is still in recovery and accepts only reads | Wait until `SELECT pg_is_in_recovery()` answers `false`, or point `ploegd` at the cluster's read-write Service, which follows the promoted primary |
 | `ploegd` exits with `migration <name>: …` | The schema on the restored database conflicts with a migration | Investigate that migration against the data; never edit `schema_migrations` |
 | Pod running, not ready, `/readyz` says `not ready: waiting for the database` or `applying migrations` | `ploegd` is still starting against a slow or unreachable database | Wait up to two minutes; then see the first row |
 | Pod running, not ready, `/readyz` says `db unreachable` | Connection string or credentials in `ploeg-db-app` no longer valid | Check the Secret the cluster generated; restart `ploegd` after it changes |

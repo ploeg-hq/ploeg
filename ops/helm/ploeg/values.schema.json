@@ -3,6 +3,12 @@
   "title": "ploeg chart values",
   "type": "object",
   "properties": {
+    "supportProfile": {
+      "type": "string",
+      "enum": ["P1", "unsupported"],
+      "default": "P1",
+      "description": "The deployment profile the values claim. P1, the default, is the profile the threat model covers: the render fails, listing each departure, when a value leaves it (DinD, executor.workerAuth.mode legacy, a credential proxy off or a credentialIsolation override, a harness not qualified with both proxies, harnessContainer shared, a worker securityContext below restricted, the sandbox executor, claudeRunner, or networkPolicy.enabled false). unsupported renders such values and lists the departures in the install notes; the threat model does not cover that deployment (ADR-0154, finding F-11)."
+    },
     "security": {
       "type": "object",
       "additionalProperties": false,
