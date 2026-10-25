@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -29,7 +30,12 @@ type llmKeyProxy struct {
 	placeholder string
 }
 
-func startLLMKeyProxy(upstream, key string, activity *harness.Activity) (*llmKeyProxy, error) {
+type proxyRun struct {
+	trace string
+	log   *slog.Logger
+}
+
+func startLLMKeyProxy(upstream, key string, activity *harness.Activity, run proxyRun) (*llmKeyProxy, error) {
 	if key == "" {
 		return nil, errors.New("no model key to isolate")
 	}
@@ -37,14 +43,14 @@ func startLLMKeyProxy(upstream, key string, activity *harness.Activity) (*llmKey
 	if err != nil {
 		return nil, err
 	}
-	return startLLMProxy(upstream, key, placeholder, activity)
+	return startLLMProxy(upstream, key, placeholder, activity, run)
 }
 
 func startLLMObserver(upstream string, activity *harness.Activity) (*llmKeyProxy, error) {
-	return startLLMProxy(upstream, "", "", activity)
+	return startLLMProxy(upstream, "", "", activity, proxyRun{})
 }
 
-func startLLMProxy(upstream, key, placeholder string, activity *harness.Activity) (*llmKeyProxy, error) {
+func startLLMProxy(upstream, key, placeholder string, activity *harness.Activity, run proxyRun) (*llmKeyProxy, error) {
 	target, err := url.Parse(upstream)
 	if err != nil || target.Scheme == "" || target.Host == "" {
 		return nil, fmt.Errorf("model gateway URL %q is not absolute", upstream)
@@ -72,7 +78,12 @@ func startLLMProxy(upstream, key, placeholder string, activity *harness.Activity
 	}
 	var handler http.Handler = proxy
 	if placeholder != "" {
-		handler = requireModelPlaceholder(placeholder, proxy)
+		handler = requireModelPlaceholder(placeholder, proxy, refusalLog{
+			proxy:   modelProxyName,
+			run:     run.trace,
+			log:     run.log,
+			secrets: func() []string { return []string{key, placeholder} },
+		})
 	}
 	p := &llmKeyProxy{
 		server: &http.Server{
@@ -105,10 +116,11 @@ func (b activityBody) Read(p []byte) (int, error) {
 	return n, err
 }
 
-func requireModelPlaceholder(placeholder string, next http.Handler) http.Handler {
+func requireModelPlaceholder(placeholder string, next http.Handler, refusals refusalLog) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !presentsModelPlaceholder(r.Header, placeholder) {
-			http.Error(w, "this Run's model proxy serves only requests that present the Run's placeholder", http.StatusForbidden)
+			refusals.refuse(w, r, placeholderRefusal(carriesModelCredential(r.Header)),
+				"this Run's model proxy serves only requests that present the Run's placeholder")
 			return
 		}
 		next.ServeHTTP(w, r)
@@ -124,6 +136,10 @@ func presentsModelPlaceholder(h http.Header, placeholder string) bool {
 	litellm, isLiteLLM := headerCredential(h, liteLLMKeyHeader, "Bearer")
 	return (isBearer && equalSecret(bearer, placeholder)) || equalSecret(h.Get("X-Api-Key"), placeholder) ||
 		(isLiteLLM && equalSecret(litellm, placeholder))
+}
+
+func carriesModelCredential(h http.Header) bool {
+	return h.Get("Authorization") != "" || h.Get("X-Api-Key") != "" || h.Get(liteLLMKeyHeader) != ""
 }
 
 func authorizationCredential(h http.Header, scheme string) (string, bool) {

@@ -3,7 +3,7 @@ type: reference
 audience: [operator, integrator, contributor]
 owner: ploeg
 last_verified: 2026-10-24
-verified_by: "go test ./internal/compat/ against v0.2.0-rc.47; read pkg/store/store.go (Migrate), pkg/config/config.go (KnownFields), ops/helm/ploeg/values.schema.json, docs/contracts/README.md"
+verified_by: "go test ./internal/compat/ against v0.2.0-rc.47; read pkg/store/store.go (Migrate), pkg/config/config.go (KnownFields), ops/helm/ploeg/values.schema.json, docs/contracts/README.md; go test ./pkg/httpapi/ ./pkg/worker/ (worker version handshake)"
 ---
 
 # Compatibility policy
@@ -84,7 +84,7 @@ Upgrade order: database backup, then `ploegd` (which migrates), then workers (th
 
 A consumer asks `GET /api/v1/operator/version` which contract majors this Ploeg serves and refuses to run when one it requires is missing. Ploeg keeps each consumer's two newest release lines working: a consumer records what each line relies on under [docs/contracts/consumers/](../contracts/README.md#contract-versions-and-consumer-expectations), and every pull request runs those expectations. A change that a recorded consumer reads needs a new contract major, served beside the old one for one stable minor.
 
-Today an older worker against a newer `ploegd` gets the HTTP status of whatever route it misses (404, 405 or 400). Ploeg does not yet name the supported range in that error; a version handshake on `POST /api/v1/claim` is the follow-up ADR 0134 records.
+`ploeg-worker` sends its release as `workerVersion` on `POST /api/v1/claim`. `ploegd` serves a worker of its own minor or the previous one, compared by major and minor only. A worker outside that range gets **426 Upgrade Required** and claims nothing. The body (`workerVersionRefusal` in [run-api.v1.schema.json](../contracts/run-api.v1.schema.json)) names both versions, the oldest and newest worker minor served, and which side to upgrade: `worker` when the worker is too old, `ploegd` when the worker is newer than `ploegd`. The worker logs that at error level and exits without claiming again; the executor's next pod meets the same refusal until the versions are aligned. A claim without `workerVersion`, from a worker released before the handshake, and a version that is not a release (`0.0.0-dev`, a local build) are not judged.
 
 ## Recording a break
 

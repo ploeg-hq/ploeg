@@ -55,8 +55,8 @@
       dependencyDashboardApproval: true,
     },
     {
-      description: 'The semantic-release configuration only runs after a merge to development, so verify on the pull request never exercises it. A bump waits for a dashboard tick and lands as ci(release), which cuts no candidate.',
-      matchPackageNames: ['@webgrip/semantic-release-config'],
+      description: 'The semantic-release toolchain image only runs after a merge to development, so verify on the pull request never exercises it. A bump waits for a dashboard tick and lands as ci(release), which cuts no candidate.',
+      matchPackageNames: ['ghcr.io/webgrip/semantic-release'],
       groupName: null,
       groupSlug: null,
       automerge: false,

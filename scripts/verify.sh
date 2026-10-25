@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+bash scripts/check-provenance.sh
 test -z "$(gofmt -l .)"
 go vet ./...
 go build ./...
@@ -29,3 +30,4 @@ helm lint ops/helm/ploeg -f ops/quickstart/values.yaml
 helm template ploeg ops/helm/ploeg -n ploeg -f ops/quickstart/values.yaml >/dev/null
 sh scripts/helm-golden.sh check
 bash scripts/test-chart-network-policies.sh
+bash scripts/test-alert-rules.sh

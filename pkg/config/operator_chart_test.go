@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -66,6 +67,7 @@ func TestOperatorChartKeepsConsumerCredentialsInController(t *testing.T) {
 			Verify       bool     `json:"verify"`
 			MaxBudgetUSD float64  `json:"maxBudgetUsd"`
 			ClientIDs    []string `json:"clientIds"`
+			Audiences    []string `json:"audiences"`
 		}
 		if err := json.Unmarshal([]byte(env["PLOEG_OPERATOR_CONSUMERS"]["value"].(string)), &policies); err != nil {
 			t.Fatal(err)
@@ -75,6 +77,9 @@ func TestOperatorChartKeepsConsumerCredentialsInController(t *testing.T) {
 		}
 		if len(policies[0].ClientIDs) != 1 || policies[0].ClientIDs[0] != "console-app" || len(policies[1].ClientIDs) != 0 {
 			t.Fatalf("clientIds not forwarded: %+v", policies)
+		}
+		if len(policies[1].Audiences) != 1 || policies[1].Audiences[0] != "ploeg-verifier" || len(policies[0].Audiences) != 0 {
+			t.Fatalf("audiences not forwarded: %+v", policies)
 		}
 		for name, want := range map[string]any{"PLOEG_OPERATOR_PERSON_ISSUER": "https://id.example.com/application/o/ploeg/", "PLOEG_OPERATOR_PERSON_AUDIENCE": "ploeg", "PLOEG_OPERATOR_PERSON_MAX_LIFETIME": "5m"} {
 			if env[name] == nil || env[name]["value"] != want {
@@ -115,7 +120,25 @@ func TestOperatorChartKeepsConsumerCredentialsInController(t *testing.T) {
 	}
 	noAudience := append(append([]string{}, args...), "--set", "operator.personTokens.audience=")
 	if _, err := exec.Command(helm, noAudience...).CombinedOutput(); err == nil {
-		t.Fatal("chart accepts person tokens without an audience")
+		t.Fatal("chart accepts clientIds without Ploeg's audience")
+	}
+	audiencesOnlyValues := filepath.Join(t.TempDir(), "audiences-only.yaml")
+	if err := os.WriteFile(audiencesOnlyValues, []byte(`operator:
+  consumers:
+    - name: console
+      execute: true
+      audiences: [ploeg-console]
+      tokenSecret: {name: ploeg-console-operator, key: token}
+  personTokens:
+    issuer: https://id.example.com/
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	audiencesOnly := append(append([]string{}, args[:len(args)-2]...), "-f", audiencesOnlyValues)
+	if out, err := exec.Command(helm, audiencesOnly...).CombinedOutput(); err != nil {
+		t.Fatalf("chart refuses consumer audiences without Ploeg's audience: %v %s", err, out)
+	} else if strings.Contains(string(out), "PLOEG_OPERATOR_PERSON_AUDIENCE") || !strings.Contains(string(out), `\"audiences\":[\"ploeg-console\"]`) {
+		t.Fatalf("audiences-only render: %s", out)
 	}
 }
 

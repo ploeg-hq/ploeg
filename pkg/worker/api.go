@@ -35,8 +35,30 @@ type APIClient struct {
 	// Yields is sent with each claim when the worker's Harness can stop at
 	// a safe point for a person (ADR-0142), so ploegd refuses a take-over of
 	// a Run that cannot.
-	Yields        bool
+	Yields bool
+	// WorkerVersion is this ploeg-worker's release, sent with each claim so
+	// ploegd can refuse a release it does not serve (ADR-0134).
+	WorkerVersion string
 	controlTokens sync.Map
+}
+
+// UnsupportedWorkerVersion is ploegd's 426 answer to a claim from a worker
+// release it does not serve (ADR-0134). Claiming again cannot succeed until
+// ploegd or the worker is upgraded.
+type UnsupportedWorkerVersion struct {
+	Message      string `json:"message"`
+	Ploegd       string `json:"ploegd"`
+	Worker       string `json:"worker"`
+	OldestWorker string `json:"oldestWorker"`
+	NewestWorker string `json:"newestWorker"`
+	Upgrade      string `json:"upgrade"`
+}
+
+func (u *UnsupportedWorkerVersion) Error() string {
+	if u.Message == "" {
+		return "ploegd does not serve this worker version (HTTP 426)"
+	}
+	return "ploegd does not serve this worker version: " + u.Message
 }
 
 type ClaimResponse struct {
@@ -125,6 +147,9 @@ func (a *APIClient) Claim(team, role string) (*ClaimResponse, error) {
 	if a.Yields {
 		req["yields"] = true
 	}
+	if a.WorkerVersion != "" {
+		req["workerVersion"] = a.WorkerVersion
+	}
 	body, _ := json.Marshal(req)
 	resp, err := a.request(context.Background(), http.MethodPost, "/api/v1/claim", body, a.BootstrapToken)
 	if err != nil {
@@ -146,6 +171,10 @@ func (a *APIClient) Claim(team, role string) (*ClaimResponse, error) {
 			a.controlTokens.Store(c.RunToken, c.ControlToken)
 		}
 		return &c, nil
+	case http.StatusUpgradeRequired:
+		refusal := &UnsupportedWorkerVersion{}
+		_ = json.NewDecoder(io.LimitReader(resp.Body, 4096)).Decode(refusal)
+		return nil, refusal
 	default:
 		return nil, fmt.Errorf("claim: HTTP %d", resp.StatusCode)
 	}

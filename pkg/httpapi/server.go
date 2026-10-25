@@ -549,6 +549,8 @@ type claimRequest struct {
 	// Yields says the worker's Harness can stop at a safe point for a person
 	// (ADR-0142); ploegd records it on the claimed Run. Absent is false.
 	Yields bool `json:"yields,omitempty"`
+
+	WorkerVersion string `json:"workerVersion,omitempty"`
 }
 
 func (r claimRequest) harnessKey() string {
@@ -643,6 +645,9 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil || req.Team == "" {
 		http.Error(w, "body must be {\"team\": \"...\", \"role\": \"...\"}", http.StatusBadRequest)
+		return
+	}
+	if s.refuseUnservedWorker(w, r, req) {
 		return
 	}
 	if req.Role != "" {
