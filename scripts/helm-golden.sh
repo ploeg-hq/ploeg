@@ -155,8 +155,9 @@ leaves_p1() {
 leaves_p1 'networkPolicy.enabled is false' --set networkPolicy.enabled=false
 leaves_p1 'executor.workerAuth.mode is legacy' --set executor.workerAuth.mode=legacy
 leaves_p1 'claudeRunner.enabled is true' --set claudeRunner.enabled=true --set claudeRunner.environmentSecret.name=claude-runner-environment
-leaves_p1 'executor.type is sandbox' --set executor.type=sandbox
-leaves_p1 'team defaults: executorType is sandbox' --set 'executor.teams[0].executorType=sandbox'
+leaves_p1 'team defaults: the sandbox executor resolves no runtimeClassName' --set executor.type=sandbox
+leaves_p1 'team defaults: the sandbox executor resolves no runtimeClassName' --set 'executor.teams[0].executorType=sandbox'
+leaves_p1 'team defaults/reviewer: the sandbox executor resolves no runtimeClassName' --set 'executor.teams[0].executorType=sandbox' --set 'executor.teams[0].plan[0].roles[0].name=builder' --set 'executor.teams[0].plan[0].roles[0].writes=true' --set 'executor.teams[0].plan[0].roles[0].sandbox.runtimeClassName=kata' --set 'executor.teams[0].plan[1].roles[0].name=reviewer' --set 'executor.teams[0].plan[1].roles[0].writes=false' --set executor.forgejo.readTokenSecret.name=agent-reader-token --set executor.forgejo.readTokenSecret.key=FORGEJO_TOKEN
 leaves_p1 'executor.litellm.keyIsolation is not proxy' --set executor.litellm.keyIsolation=
 leaves_p1 'executor.forgeTokenIsolation is not proxy' --set executor.forgeTokenIsolation=
 leaves_p1 'harness.credentialIsolation is set to "proxy"; P1 has no credentialIsolation override' --set 'executor.teams[0].harness.credentialIsolation=proxy'
@@ -172,6 +173,17 @@ if out=$(helm template ploeg ops/helm/ploeg -f "$REQUIRED" --set supportProfile=
 	echo "$out"
 	status=1
 fi
+renders_p1() {
+	if ! out=$(helm template ploeg ops/helm/ploeg -f "$REQUIRED" -f "$P1_VALUES" "$@" 2>&1); then
+		echo "chart refused $* under supportProfile: P1, which it must render:"
+		echo "$out"
+		status=1
+	fi
+}
+
+renders_p1 --set executor.type=sandbox --set executor.sandbox.runtimeClassName=kata
+renders_p1 --set executor.type=sandbox --set executor.runtimeClassName=kata
+renders_p1 --set 'executor.teams[0].executorType=sandbox' --set 'executor.teams[0].sandbox.runtimeClassName=kata'
 for p1 in "" "$P1_VALUES"; do
 	if ! out=$(helm template ploeg ops/helm/ploeg -f "$REQUIRED" ${p1:+-f "$p1"} 2>&1); then
 		echo "chart refused the P1 values ${p1:-defaults}, which it must render:"
