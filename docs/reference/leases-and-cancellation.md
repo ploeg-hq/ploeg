@@ -20,8 +20,8 @@ This page states what a Lease guarantees, how long each failure takes to resolve
 
 | Setting | Binary default | Chart default | Source |
 | --- | --- | --- | --- |
-| Lease TTL `L` (`PLOEG_LEASE_TTL`) | 60s | 5m | [main.go:52](../../cmd/ploegd/main.go#L52), [values.yaml:366](../../ops/helm/ploeg/values.yaml#L366) |
-| Sweep interval `S` (`PLOEG_SWEEP_INTERVAL`) | 15s | 15s | [main.go:53](../../cmd/ploegd/main.go#L53), [values.yaml:367](../../ops/helm/ploeg/values.yaml#L367) |
+| Lease TTL `L` (`PLOEG_LEASE_TTL`) | 60s | 5m | [main.go:52](../../cmd/ploegd/main.go#L52), [values.yaml:373](../../ops/helm/ploeg/values.yaml#L373) |
+| Sweep interval `S` (`PLOEG_SWEEP_INTERVAL`) | 15s | 15s | [main.go:53](../../cmd/ploegd/main.go#L53), [values.yaml:374](../../ops/helm/ploeg/values.yaml#L374) |
 | Renewal interval `I` | `max(L/3, 5s)` = 20s | 100s | [worker.go:1177](../../pkg/worker/worker.go#L1177) |
 | Failed renewals that stop a Run | 3 consecutive | 3 consecutive | [worker.go:1173](../../pkg/worker/worker.go#L1173) |
 | Worker request timeout `H` | 30s | 30s | [worker.go:162](../../pkg/worker/worker.go#L162) |
