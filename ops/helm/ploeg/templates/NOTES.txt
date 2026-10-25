@@ -30,3 +30,17 @@ the forge token and the per-Run key are one process boundary away from it
 (threat-model finding F-03). shared is removed in the minor after 0.2; remove
 the setting to run the harness in its own container (ADR-0138).
 {{- end }}
+{{- $departures := include "ploeg.supportProfileDepartures" . | fromJsonArray }}
+{{- if eq (.Values.supportProfile | default "P1") "unsupported" }}
+{{- if $departures }}
+UNSUPPORTED: supportProfile is unsupported, and this deployment leaves profile P1:
+{{- range $departures }}
+  - {{ . }}
+{{- end }}
+The threat model (docs/security/threat-model.md) covers P1 only; finding F-11
+and ADR-0154 explain what that leaves to your own assessment.
+{{- else }}
+supportProfile is unsupported, but these values meet profile P1. Set
+supportProfile: P1 so the chart refuses a later change that leaves it.
+{{- end }}
+{{- end }}

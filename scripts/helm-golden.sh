@@ -134,6 +134,62 @@ for case in "ops/helm/ploeg/ci/reject-reader-without-read-token-values.yaml:read
 	fi
 done
 
+P1_VALUES=ops/helm/ploeg/ci/executor-default-worker-values.yaml
+leaves_p1() {
+	expected=$1
+	shift
+	if out=$(helm template ploeg ops/helm/ploeg -f "$REQUIRED" -f "$P1_VALUES" "$@" 2>&1); then
+		echo "chart rendered $*, which leaves profile P1 under supportProfile: P1"
+		status=1
+	elif ! printf '%s' "$out" | grep -qF -- "$expected"; then
+		echo "chart refused $* for the wrong reason (want '$expected'):"
+		echo "$out"
+		status=1
+	fi
+	if ! helm template ploeg ops/helm/ploeg -f "$REQUIRED" -f "$P1_VALUES" "$@" --set supportProfile=unsupported >/dev/null 2>&1; then
+		echo "chart refused $* with supportProfile: unsupported, which must render it"
+		status=1
+	fi
+}
+
+leaves_p1 'networkPolicy.enabled is false' --set networkPolicy.enabled=false
+leaves_p1 'executor.workerAuth.mode is legacy' --set executor.workerAuth.mode=legacy
+leaves_p1 'claudeRunner.enabled is true' --set claudeRunner.enabled=true --set claudeRunner.environmentSecret.name=claude-runner-environment
+leaves_p1 'executor.type is sandbox' --set executor.type=sandbox
+leaves_p1 'team defaults: executorType is sandbox' --set 'executor.teams[0].executorType=sandbox'
+leaves_p1 'executor.litellm.keyIsolation is not proxy' --set executor.litellm.keyIsolation=
+leaves_p1 'executor.forgeTokenIsolation is not proxy' --set executor.forgeTokenIsolation=
+leaves_p1 'harness.credentialIsolation is set to "proxy"; P1 has no credentialIsolation override' --set 'executor.teams[0].harness.credentialIsolation=proxy'
+leaves_p1 'team defaults harness claude-code: the harness is not qualified with both credential proxies on' --set 'executor.teams[0].harness.name=claude-code'
+leaves_p1 'team defaults harness acp/opencode: the harness is not qualified with both credential proxies on' --set 'executor.teams[0].harness.name=acp' --set 'executor.teams[0].harness.acp.profile=opencode'
+leaves_p1 'team defaults harness openhands: harness.dind is true' --set 'executor.teams[0].harness.dind=true' --set 'executor.teams[0].harness.acknowledgePrivilegedDind=true'
+leaves_p1 'team defaults harness openhands: harnessContainer resolves to shared' --set executor.harnessContainer=shared
+leaves_p1 'executor.workerSecurityContext (runAsNonRoot is not true, runAsUser is 0' --set executor.workerSecurityContext.runAsNonRoot=false --set executor.workerSecurityContext.runAsUser=0
+leaves_p1 'executor.workerSecurityContext (allowPrivilegeEscalation is not false, capabilities.drop lacks ALL, seccompProfile.type is not RuntimeDefault or Localhost)' --set executor.workerSecurityContext.allowPrivilegeEscalation=true --set 'executor.workerSecurityContext.capabilities.drop=null' --set executor.workerSecurityContext.seccompProfile.type=Unconfined
+leaves_p1 'workerContainerSecurityContext) (privileged is true, capabilities.add is set, readOnlyRootFilesystem is not true)' --set executor.workerContainerSecurityContext.privileged=true --set 'executor.workerContainerSecurityContext.capabilities.add={NET_ADMIN}' --set executor.workerContainerSecurityContext.readOnlyRootFilesystem=false
+if out=$(helm template ploeg ops/helm/ploeg -f "$REQUIRED" --set supportProfile=P2 2>&1) || ! printf '%s' "$out" | grep -qF "value must be one of 'P1', 'unsupported'"; then
+	echo "chart did not refuse supportProfile P2 by its schema:"
+	echo "$out"
+	status=1
+fi
+for p1 in "" "$P1_VALUES"; do
+	if ! out=$(helm template ploeg ops/helm/ploeg -f "$REQUIRED" ${p1:+-f "$p1"} 2>&1); then
+		echo "chart refused the P1 values ${p1:-defaults}, which it must render:"
+		echo "$out"
+		status=1
+	fi
+done
+notes=$(helm install --dry-run=client ploeg ops/helm/ploeg -f "$REQUIRED" -f "$P1_VALUES" --set networkPolicy.enabled=false --set supportProfile=unsupported 2>&1)
+if ! printf '%s' "$notes" | grep -qF -- '- networkPolicy.enabled is false'; then
+	echo "an unsupported render does not list its departures from P1 in the notes"
+	status=1
+fi
+notes=$(helm install --dry-run=client ploeg ops/helm/ploeg -f "$REQUIRED" -f "$P1_VALUES" 2>&1)
+if printf '%s' "$notes" | grep -qF 'UNSUPPORTED'; then
+	echo "the P1 render carries the unsupported profile's note"
+	status=1
+fi
+
 must_render_with() {
 	values=$1
 	shift

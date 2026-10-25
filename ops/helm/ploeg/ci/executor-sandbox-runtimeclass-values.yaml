@@ -68,3 +68,4 @@ executor:
             - {name: builder, writes: true, cap: "3.00"}
         - roles:
             - {name: reviewer, writes: false, cap: "0.75", harness: {dind: false}, sandbox: {runtimeClassName: gvisor-systrap}}
+supportProfile: unsupported

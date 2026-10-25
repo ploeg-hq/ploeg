@@ -23,3 +23,7 @@ exceptions:
     surface: ops/helm/ploeg/values.yaml
     pointer: mcp.confirmationKeySecret
     adr: "0152"
+  - base: v0.2.0-rc.72
+    surface: ops/helm/ploeg/values.yaml
+    pointer: supportProfile
+    adr: "0154"

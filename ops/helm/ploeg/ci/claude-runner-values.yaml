@@ -32,3 +32,4 @@ executor:
         claudeEnvironment:
           environmentId: ccpool_example
           loginVolume: pewter-claude-login
+supportProfile: unsupported
