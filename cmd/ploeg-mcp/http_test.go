@@ -33,6 +33,7 @@ type remote struct {
 	mu         sync.Mutex
 	upstream   []string
 	accessJWTs []string
+	cfg        *httpConfig
 }
 
 func newRemote(t *testing.T) *remote {
@@ -54,7 +55,7 @@ func newRemote(t *testing.T) *remote {
 // newRemoteTokens serves ploeg-mcp http in front of the ploegd that upstream
 // returns; groups is PLOEG_MCP_GROUPS, and ADMINS_TOKEN and READERS_TOKEN hold
 // admins and readers. extra adds or overrides environment variables.
-func newRemoteTokens(t *testing.T, upstream func(*remote) http.Handler, groups, admins, readers string, extra map[string]string) *remote {
+func newRemoteTokens(t *testing.T, upstream func(*remote) http.Handler, groups, admins, readers string, extra map[string]string, configure ...func(*httpConfig)) *remote {
 	t.Helper()
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -93,6 +94,10 @@ func newRemoteTokens(t *testing.T, upstream func(*remote) http.Handler, groups, 
 	if err != nil {
 		t.Fatal(err)
 	}
+	for _, c := range configure {
+		c(cfg)
+	}
+	r.cfg = cfg
 	srv.Config.Handler = cfg.handler(slog.New(slog.NewTextHandler(io.Discard, nil)))
 	srv.Start()
 	t.Cleanup(srv.Close)

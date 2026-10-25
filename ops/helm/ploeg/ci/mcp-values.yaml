@@ -12,6 +12,9 @@ mcp:
     PLOEG_MCP_CLIENT_IDS: ploeg-mcp
     PLOEG_MCP_SCOPE: ploeg:read
     PLOEG_MCP_REQUEST_SCOPES: openid ploeg:read offline_access
+    PLOEG_MCP_CONFIRMATION_MODE: login
+    PLOEG_MCP_CONFIRMATION_CLIENT_ID: ploeg-mcp-confirm
+    PLOEG_MCP_CONFIRMATION_AMR: mfa
     PLOEG_MCP_GROUPS: '[{"group":"ploeg-operators","tokenEnv":"PLOEG_MCP_TOKEN_OPERATORS","execute":true},{"group":"ploeg-readers","tokenEnv":"PLOEG_MCP_TOKEN_READERS"}]'
   extraEnv:
     - name: PLOEG_MCP_TOKEN_OPERATORS
@@ -24,6 +27,8 @@ mcp:
         name: ploeg-mcp-consumers
   confirmationKeySecret:
     name: ploeg-mcp-confirmation
+  confirmationClientSecret:
+    name: ploeg-mcp-confirmation-client
   networkPolicy:
     ingress:
       enabled: true

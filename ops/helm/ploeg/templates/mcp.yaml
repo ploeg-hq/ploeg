@@ -1,6 +1,9 @@
 {{- if .Values.mcp.enabled }}
 {{- $m := .Values.mcp }}
 {{- $name := include "ploeg.mcpName" . }}
+{{- if and (eq (get $m.env "PLOEG_MCP_CONFIRMATION_MODE" | default "") "login") (gt (int $m.replicas) 1) }}
+{{- fail "mcp.env.PLOEG_MCP_CONFIRMATION_MODE is login, which keeps each open confirmation in one ploeg-mcp process, so mcp.replicas must be 1 (ADR-0153)" }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -56,6 +59,15 @@ spec:
                 secretKeyRef:
                   name: {{ .name }}
                   key: {{ .key | default "key" }}
+            {{- end }}
+            {{- end }}
+            {{- with $m.confirmationClientSecret }}
+            {{- if .name }}
+            - name: PLOEG_MCP_CONFIRMATION_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .name }}
+                  key: {{ .key | default "client-secret" }}
             {{- end }}
             {{- end }}
             {{- with include "ploeg.goMemLimitEnv" (dict "goMemLimit" $m.goMemLimit "env" $m.env "resources" $m.resources) | trim }}{{ . | nindent 12 }}{{- end }}

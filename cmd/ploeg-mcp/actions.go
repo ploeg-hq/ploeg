@@ -143,8 +143,13 @@ func (a action[In]) handler(ctx context.Context, req *mcp.CallToolRequest, in In
 		return nil, out, errors.New("ploeg-mcp acts only over HTTP for a signed-in person; nothing changed")
 	}
 	who := operatorclient.Attribution{Actor: p.ID, Via: via(req.ClientInfo())}
-	if caps := req.ClientCapabilities(); caps == nil || caps.Elicitation == nil {
+	pages := a.confirm.pages
+	caps := req.ClientCapabilities()
+	if caps == nil || caps.Elicitation == nil {
 		return nil, out, errors.New(cannotConfirm)
+	}
+	if pages != nil && caps.Elicitation.URL == nil {
+		return nil, out, errors.New(cannotOpenPage)
 	}
 	args, _ := json.Marshal(in)
 	effect, err := a.describe(ctx, who, in)
@@ -157,7 +162,14 @@ func (a action[In]) handler(ctx context.Context, req *mcp.CallToolRequest, in In
 			commandID = randomID("mcp-")
 		}
 		state := confirmState{Tool: a.name, ID: randomID("confirm-"), CommandID: commandID, Effect: digest(effect), Args: digest(string(args)),
-			Actor: p.ID, Expires: a.confirm.now().Add(confirmWindow).Unix()}
+			Actor: p.ID, Expires: a.confirm.now().Add(a.confirm.window).Unix()}
+		if pages != nil {
+			link, err := pages.offer(state, effect, string(args), p)
+			if err != nil {
+				return nil, out, err
+			}
+			return pages.request(state.ID, link, effect, a.confirm.seal(state)), out, nil
+		}
 		return &mcp.CallToolResult{
 			InputRequests: mcp.InputRequestMap{state.ID: &mcp.ElicitParams{Mode: "form", Message: effect, RequestedSchema: confirmSchema}},
 			RequestState:  a.confirm.seal(state),
@@ -170,14 +182,32 @@ func (a action[In]) handler(ctx context.Context, req *mcp.CallToolRequest, in In
 	if state.Tool != a.name || state.Actor != p.ID || state.Args != digest(string(args)) || !identityName.MatchString(state.CommandID) {
 		return nil, out, errForeignConfirmation
 	}
+	answer, _ := req.Params.InputResponses[state.ID].(*mcp.ElicitResult)
+	if pages != nil {
+		if answer == nil || answer.Action != "accept" {
+			pages.forget(state.ID)
+			return nil, actionOut{Summary: notConfirmed}, nil
+		}
+		switch decision, link := pages.awaitDecision(ctx, state.ID); decision {
+		case pageMissing:
+			return nil, out, errPageClosed
+		case pageDeclined:
+			pages.forget(state.ID)
+			return nil, actionOut{Summary: notConfirmed}, nil
+		case pageWaiting:
+			return pages.request(state.ID, link, effect, req.Params.RequestState), out, nil
+		}
+	}
 	if err := a.confirm.spend(state); err != nil {
 		return nil, out, err
+	}
+	if pages != nil {
+		pages.forget(state.ID)
 	}
 	if state.Effect != digest(effect) {
 		return nil, out, errors.New("what this would do changed while you decided; nothing changed. Call the tool again to see the new effect")
 	}
-	answer, _ := req.Params.InputResponses[state.ID].(*mcp.ElicitResult)
-	if answer == nil || answer.Action != "accept" || answer.Content[confirmFieldName] != true {
+	if pages == nil && (answer == nil || answer.Action != "accept" || answer.Content[confirmFieldName] != true) {
 		return nil, actionOut{Summary: notConfirmed}, nil
 	}
 	who.Confirmation = state.ID + ":" + state.Effect

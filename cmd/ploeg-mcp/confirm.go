@@ -37,14 +37,16 @@ type confirmState struct {
 }
 
 type confirmations struct {
-	key   []byte
-	now   func() time.Time
-	mu    sync.Mutex
-	spent map[string]int64
+	key    []byte
+	now    func() time.Time
+	window time.Duration
+	pages  *confirmationPages
+	mu     sync.Mutex
+	spent  map[string]int64
 }
 
 func newConfirmations(key []byte, now func() time.Time) *confirmations {
-	return &confirmations{key: key, now: now, spent: map[string]int64{}}
+	return &confirmations{key: key, now: now, window: confirmWindow, spent: map[string]int64{}}
 }
 
 func loadConfirmations(getenv func(string) string) (*confirmations, error) {
@@ -55,7 +57,15 @@ func loadConfirmations(getenv func(string) string) (*confirmations, error) {
 	if len(key) < minConfirmationKeyBytes {
 		return nil, fmt.Errorf("%s must hold at least %d bytes, such as the output of openssl rand -base64 48", confirmationKeyEnv, minConfirmationKeyBytes)
 	}
-	return newConfirmations([]byte(key), time.Now), nil
+	c := newConfirmations([]byte(key), time.Now)
+	if raw := strings.TrimSpace(getenv("PLOEG_MCP_CONFIRMATION_TTL")); raw != "" {
+		ttl, err := time.ParseDuration(raw)
+		if err != nil || ttl < time.Minute || ttl > time.Hour {
+			return nil, errors.New("PLOEG_MCP_CONFIRMATION_TTL must be a duration between 1m and 1h")
+		}
+		c.window = ttl
+	}
+	return c, nil
 }
 
 func (c *confirmations) mac(payload string) []byte {
