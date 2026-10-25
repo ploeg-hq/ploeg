@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-24
+status: accepted
+date: 2026-10-25
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-04-01
@@ -89,3 +89,4 @@ Chosen option: "Install at start". It is the only option that needs no image of 
 * How-to: [Run Claude Code in the claude-runner](../how-to/run-claude-code-in-the-claude-runner.md).
 * Related: [ADR 0084](0084-a-claude-code-run-can-execute-in-a-teams-self-hosted-claude-environment.md), [ADR 0134](0134-ploeg-keeps-each-release-compatible-with-the-one-before-and-removes-only-after-a-deprecated-minor.md), [ADR 0137](0137-the-chart-renders-a-default-deny-networkpolicy-for-every-pod-with-an-allowlist-derived-from-its-urls.md), [ADR 0138](0138-a-harness-runs-in-its-own-container-and-no-credential-enters-it.md).
 * 2026-10-24: proposed with the change.
+* 2026-10-25: accepted by the owner.

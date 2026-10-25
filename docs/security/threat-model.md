@@ -42,7 +42,7 @@ Likelihood and impact use three levels, and severity is read from this matrix:
 
 ## The supported deployment profile
 
-**Status: proposed. The maintainer has to confirm it.** This model assumes the profile below. A deployment outside it is not covered here, and the chart does not stop anyone leaving it; finding [F-11](#findings) records that gap.
+**Status: confirmed by the maintainer on 2026-10-25 ([#15](https://github.com/ploeg-hq/ploeg/issues/15)).** Profile P1 is the deployment profile Ploeg supports. This model assumes the profile below. A deployment outside it is not covered here, and the chart does not stop anyone leaving it; finding [F-11](#findings) records that gap.
 
 ### Profile P1: unattended workers without Docker, credential proxies on
 

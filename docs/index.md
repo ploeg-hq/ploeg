@@ -50,6 +50,8 @@ Use these sources for the current implementation. The [architecture](architectur
 - [Decision ledger](adrs/README.md)
 - [Product intent and design history](design.md)
 - [Brand identity](brand/README.md) and [trademark policy](brand/TRADEMARK.md)
+- [CNCF Sandbox eligibility](cncf/eligibility.md): the earliest filing date and the maintainer blocker
+- [Capacity and work in progress](cncf/capacity.md): weekly hours, the work-in-progress cap and who approves paid qualification spend
 - [Licence inventory](cncf/license-inventory.md): every distributed component against the CNCF licence policy
 - [Baseline verification record](cncf/evidence/baseline.md): the commit, commands, environment and results of a fresh-clone `mise run verify`
 
