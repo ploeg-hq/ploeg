@@ -774,6 +774,60 @@ func cutOffBeforeTheLeaseEnds(t *testing.T, shape dispatchShape) {
 	}
 }
 
+func TestAnExpiredLeaseIsRefusedBeforeTheSweeperRuns(t *testing.T) {
+	for _, shape := range dispatchShapes {
+		t.Run(shape.name, func(t *testing.T) {
+			cp := newControlPlane(t)
+			id := shape.item(cp, "7")
+			late := cp.client()
+			claimed, err := late.Claim(shape.team, shape.role)
+			if err != nil || claimed == nil {
+				t.Fatalf("claim: %+v %v", claimed, err)
+			}
+			cp.expireRun(claimed.RunToken)
+			before := cp.fencedState(id, claimed.RunToken, claimed.RunToken)
+
+			if renewal, err := late.Renew(context.Background(), claimed.RunToken); err != nil || !renewal.Gone {
+				t.Errorf("renewal after the deadline: %+v %v, want gone", renewal, err)
+			}
+			wantHTTPStatus(t, "checkpoint after the deadline", late.Checkpoint(claimed.RunToken, work.Checkpoint{Phase: "branch_created", Branch: writerBranch}), http.StatusNotFound)
+			wantHTTPStatus(t, "outcome after the deadline", late.Outcome(claimed.RunToken, harness.OutcomeReport{
+				Outcome: work.OutcomeNoChangeNeeded, Summary: "late completion after the deadline"}), http.StatusNotFound)
+			if after := cp.fencedState(id, claimed.RunToken, claimed.RunToken); after != before {
+				t.Fatalf("a call after the deadline changed authoritative state:\nbefore %+v\nafter  %+v", before, after)
+			}
+
+			cp.sweep()
+			if got := cp.run(claimed.RunToken); got != (runRow{State: "finished", Outcome: string(work.OutcomeFailed), FailureReason: string(work.FailureLeaseLost)}) {
+				t.Fatalf("the swept Run = %+v, want the sweeper's verdict", got)
+			}
+		})
+	}
+}
+
+func TestWithdrawnRunStopsItsHarnessAtTheNextRenewal(t *testing.T) {
+	cp := newControlPlane(t)
+	id := cp.plannedItem("7")
+	rw := startWorker(t, cp, newWriterForge(t, false, pullsNone), leaseTeam, leaseRole)
+	withdrawal, err := cp.store.WithdrawWorkItem(context.Background(), id, []string{leaseTeam}, "operator:test", store.CloseReasonWithdrawnByOperator)
+	if err != nil || len(withdrawal.StoppedRunTokens) != 1 || withdrawal.StoppedRunTokens[0] != rw.token {
+		t.Fatalf("withdrawal %+v %v", withdrawal, err)
+	}
+	withdrawn := cp.run(rw.token)
+
+	rw.tick()
+	rw.awaitStop()
+	if rw.adapter.renewals != 1 || !errors.Is(rw.adapter.cause, errLeaseLost) {
+		t.Fatalf("the harness stopped after %d renewals for %v, want the first renewal to stop it", rw.adapter.renewals, rw.adapter.cause)
+	}
+	if err := rw.result(); err == nil {
+		t.Fatal("the withdrawn Run's outcome was accepted")
+	}
+	if got := cp.run(rw.token); got != withdrawn {
+		t.Fatalf("the withdrawn Run's late report changed it from %+v to %+v", withdrawn, got)
+	}
+}
+
 func (rw *runningWorker) renew() {
 	rw.t.Helper()
 	if !rw.tick() {

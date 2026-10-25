@@ -432,6 +432,9 @@ func (s *Store) Renew(ctx context.Context, runToken string, ttl time.Duration) (
 		return time.Time{}, err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
+	if err := refuseExpiredLease(ctx, tx, runToken); err != nil {
+		return time.Time{}, err
+	}
 
 	// A client-carried Run whose runner session ploegd holds keeps the
 	// longer deadline (ADR-0112): a client that still renews never shortens it.
@@ -459,6 +462,20 @@ func (s *Store) Renew(ctx context.Context, runToken string, ttl time.Duration) (
 	return deadline, tx.Commit(ctx)
 }
 
+func refuseExpiredLease(ctx context.Context, q queryRower, runToken string) error {
+	var expired bool
+	if err := q.QueryRow(ctx, `
+		SELECT EXISTS (SELECT 1 FROM leases WHERE run_token = $1 AND expires_at <= now())
+		    OR EXISTS (SELECT 1 FROM agent_runs WHERE run_token = $1 AND state = 'running' AND expires_at <= now())`,
+		runToken).Scan(&expired); err != nil {
+		return err
+	}
+	if expired {
+		return ErrUnknownRun
+	}
+	return nil
+}
+
 // Checkpoint records durable progress for the item owned by the run token.
 // It returns ErrCheckpointRefused for a checkpoint that names another branch
 // than the Run's or a pull request outside the Work Item's repository.
@@ -468,6 +485,9 @@ func (s *Store) Checkpoint(ctx context.Context, runToken string, cp work.Checkpo
 		return err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
+	if err := refuseExpiredLease(ctx, tx, runToken); err != nil {
+		return err
+	}
 
 	// Resolve via the Lease when one exists; a reader holds none (ADR-0010),
 	// so fall back to its running Run — progress records must not be a
@@ -571,6 +591,9 @@ func (s *Store) ReportOutcome(ctx context.Context, runToken string, rep harnessR
 		return OutcomeResult{}, err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
+	if err := refuseExpiredLease(ctx, tx, runToken); err != nil {
+		return OutcomeResult{}, err
+	}
 
 	var admitted deliveryAdmission
 	binding, running, err := loadRunBinding(ctx, tx, runToken)
