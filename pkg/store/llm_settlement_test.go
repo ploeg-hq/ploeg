@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"math"
 	"testing"
 	"time"
 
@@ -229,5 +230,63 @@ func TestCorrectionNeverLowersASettlement(t *testing.T) {
 	var adjustments int
 	if err := testStore.pool.QueryRow(ctx, `SELECT count(*) FROM run_llm_adjustments WHERE run_token=$1`, run.RunToken).Scan(&adjustments); err != nil || adjustments != 0 {
 		t.Fatalf("adjustments=%d err=%v", adjustments, err)
+	}
+}
+
+func settledLedgerAfterObserving(t *testing.T, externalID string, window time.Duration, closeWindow bool, laterReading float64) (ShiftLedger, float64) {
+	t.Helper()
+	ctx := context.Background()
+	run := settlementRunFixture(t, externalID)
+	if _, err := testStore.BeginLLMMint(ctx, run.RunToken); err != nil {
+		t.Fatal(err)
+	}
+	finishManagedRun(t, run)
+	if err := testStore.RecordLLMBlocked(ctx, run.RunToken, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := testStore.SettleLLMAccount(ctx, run.RunToken, LLMSettlement{Spend: 0.5, Evidence: "first", CostKnown: true, CorrectionWindow: window}); err != nil {
+		t.Fatal(err)
+	}
+	if closeWindow {
+		if _, err := testStore.pool.Exec(ctx, `UPDATE run_llm_accounts SET corrections_until=now() WHERE run_token=$1`, run.RunToken); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := testStore.RecordLLMObserved(ctx, run.RunToken, laterReading); err != nil {
+		t.Fatal(err)
+	}
+	l, err := testStore.Ledger(ctx, run.ShiftID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var observed float64
+	if err := testStore.pool.QueryRow(ctx, `SELECT COALESCE(observed_spend,0)::float8 FROM run_llm_accounts WHERE run_token=$1`, run.RunToken).Scan(&observed); err != nil {
+		t.Fatal(err)
+	}
+	return l, observed
+}
+
+func TestAReadingAfterTheCorrectionWindowNeverHoldsBudget(t *testing.T) {
+	resetTables(t)
+	for name, c := range map[string]struct {
+		externalID  string
+		window      time.Duration
+		closeWindow bool
+	}{
+		"no window":     {"964", 0, false},
+		"closed window": {"965", time.Hour, true},
+	} {
+		l, observed := settledLedgerAfterObserving(t, c.externalID, c.window, c.closeWindow, 0.9)
+		if l.Reserved != 0 || l.Spent != 0.5 || observed != 0 {
+			t.Errorf("%s: a final settlement of 0.5 read 0.9 later: spent %v held %v observed %v", name, l.Spent, l.Reserved, observed)
+		}
+	}
+}
+
+func TestAReadingInsideTheCorrectionWindowHoldsUntilCorrected(t *testing.T) {
+	resetTables(t)
+	l, observed := settledLedgerAfterObserving(t, "966", time.Hour, false, 0.9)
+	if observed != 0.9 || l.Spent != 0.5 || math.Abs(l.Reserved-0.4) > 1e-9 {
+		t.Fatalf("a provisional settlement of 0.5 read 0.9: spent %v held %v observed %v", l.Spent, l.Reserved, observed)
 	}
 }
