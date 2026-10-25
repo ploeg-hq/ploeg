@@ -3,6 +3,36 @@
   "title": "ploeg chart values",
   "type": "object",
   "properties": {
+    "security": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workerAdmission"],
+      "properties": {
+        "workerAdmission": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "runtimeClassNames"],
+          "description": "Native ValidatingAdmissionPolicy over every ploeg-worker Pod in the release namespace (Kubernetes 1.30 or later); see docs/ops/self-hosting-security.md.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Install the policy and its Deny binding. The render fails on Kubernetes older than 1.30 and on any team or Role that keeps privileged DinD. Installing it needs cluster-scoped RBAC for admissionregistration.k8s.io."
+            },
+            "runtimeClassNames": {
+              "type": "array",
+              "uniqueItems": true,
+              "description": "RuntimeClass names a worker Pod must select. Empty leaves the runtime class unchecked; a non-empty list refuses a worker Pod without one of them. The chart does not install the handler.",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 253,
+                "pattern": "^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$"
+              }
+            }
+          }
+        }
+      }
+    },
     "fullnameOverride": {
       "type": "string",
       "description": "Object name prefix; empty = the Helm release name"

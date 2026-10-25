@@ -6,6 +6,11 @@
 fullnameOverride: ""
 instanceOverride: ""
 
+security:
+  workerAdmission:
+    enabled: false
+    runtimeClassNames: []
+
 image:
   # The public release image. Point repository at a copy of the same digest,
   # with imagePullSecrets, when the cluster pulls from a private registry.

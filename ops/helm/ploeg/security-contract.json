@@ -1,0 +1,25 @@
+{
+  "contractRevision": 1,
+  "identity": {
+    "operator": "optional-verified-person-token-per-consumer-audience-or-client-id; consumer-asserted-person-still-accepted-and-recorded-as-asserted",
+    "run": "signed-team-role-worker-capability",
+    "delegatedUserAccessToken": false,
+    "personalForgeAclInheritance": false
+  },
+  "nativeAdmissionDefault": false,
+  "nativeAdmissionMinimumKubernetes": "1.30.0",
+  "nativeAdmissionCoveredExecutors": [
+    "keda",
+    "cronjob",
+    "sandbox"
+  ],
+  "nativeAdmissionApiServerQualifiedKubernetes": [
+    "1.30",
+    "1.37"
+  ],
+  "networkPolicyDefault": true,
+  "runtimeClassInstalledByChart": false,
+  "cniInstalledByChart": false,
+  "runtimeSensorInstalledByChart": false,
+  "qualification": "offline CEL and kind API-server checks of the rendered policy and worker pods; your CNI, runtime handler, policy engine and identity provider still require live qualification"
+}

@@ -1,5 +1,12 @@
 # Ploeg Helm chart
 
+Read the [self-hosting security contract](../../../docs/ops/self-hosting-security.md)
+before enabling agent execution. Each release snapshots it as `SECURITY.md` and
+ships `security-contract.json`; install notes report the selected controls and
+the missing delegated-user guarantees. Native admission under `security.workerAdmission` is opt-in. NetworkPolicy
+is enabled by default under `networkPolicy` ([network guide](../../../docs/ops/network.md)). Cluster-owned CNI, runtime,
+Kyverno/Tetragon and identity setup remain required as described in that guide.
+
 This chart installs `ploegd`, Ploeg's controller: a Deployment and a Service on port 8080. With `executor.enabled: true` it also installs the worker workloads that run agent Runs (a KEDA ScaledJob, a CronJob or the experimental agent-sandbox launcher). `mcp.enabled` adds `ploeg-mcp`, the MCP server for people's AI clients, and `claudeRunner.enabled` adds the self-hosted Claude environment runner, so one release of this chart deploys everything a Ploeg release runs.
 
 The chart's defaults point at nothing outside your cluster except the public images. It names no database, model gateway, forge or tracker, and it sets no node selector. You supply each of those. Missing required values make the render fail with a message that names the value.
