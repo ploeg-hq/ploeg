@@ -23,6 +23,7 @@ Use these sources for the current implementation. The [architecture](architectur
 - [Briefings: versions, catch-up, usefulness and replay](ops/briefings.md)
 - [Tracker configuration](ops/board.md)
 - [Configuration reference](reference/configuration.md): every environment variable and Helm value, generated from the source
+- [Leases and cancellation](reference/leases-and-cancellation.md): the Lease lifecycle, fencing, the three-strike rule and timing bounds, with the tests that prove them
 - [CI and infrastructure](ops/ci-and-infra.md)
 - [Experimental releases](ops/release-versioning.md)
 - [Compatibility policy](ops/compatibility.md): what each release keeps working, deprecation, rollback and version pairs
