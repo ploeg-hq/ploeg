@@ -275,16 +275,19 @@ func TestUnauthenticatedClientsAreSentToTheProtectedResourceMetadata(t *testing.
 	}
 }
 
-func TestA20251125ClientStillWorksStatelessly(t *testing.T) {
+func TestA20251125ClientGetsASessionAndStillWorksWithoutOne(t *testing.T) {
 	r := newRemote(t)
 	token := r.token([]string{"ploeg-readers"}, "ploeg:read")
 	resp, body := r.post(token, "", `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"old","version":"1"}}}`)
-	if resp.StatusCode != http.StatusOK || !bytes.Contains(body, []byte(`"protocolVersion":"2025-11-25"`)) || resp.Header.Get("Mcp-Session-Id") != "" {
-		t.Fatalf("initialize: %d %s session=%q", resp.StatusCode, body, resp.Header.Get("Mcp-Session-Id"))
+	session := resp.Header.Get("Mcp-Session-Id")
+	if resp.StatusCode != http.StatusOK || !bytes.Contains(body, []byte(`"protocolVersion":"2025-11-25"`)) || session == "" {
+		t.Fatalf("initialize: %d %s session=%q", resp.StatusCode, body, session)
 	}
-	resp, body = r.post(token, "2025-11-25", `{"jsonrpc":"2.0","id":2,"method":"tools/list"}`)
-	if resp.StatusCode != http.StatusOK || !bytes.Contains(body, []byte("ploeg_get_work")) {
-		t.Fatalf("tools/list: %d %s", resp.StatusCode, body)
+	if resp, body := r.postIn(token, session, `{"jsonrpc":"2.0","id":2,"method":"tools/list"}`); resp.StatusCode != http.StatusOK || !bytes.Contains(body, []byte("ploeg_get_work")) {
+		t.Fatalf("tools/list in the session: %d %s", resp.StatusCode, body)
+	}
+	if resp, body := r.post(token, "2025-11-25", `{"jsonrpc":"2.0","id":3,"method":"tools/list"}`); resp.StatusCode != http.StatusOK || !bytes.Contains(body, []byte("ploeg_get_work")) {
+		t.Fatalf("tools/list without a session: %d %s", resp.StatusCode, body)
 	}
 }
 

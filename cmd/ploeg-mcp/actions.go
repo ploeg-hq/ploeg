@@ -23,7 +23,9 @@ const (
 	fallbackVia      = "mcp:ploeg-mcp"
 	maxVia           = 128
 	notConfirmed     = "Not done: you did not confirm. Nothing changed."
-	cannotConfirm    = "This client cannot ask you to confirm an action, so ploeg-mcp did nothing. Use an MCP client that supports elicitation over the 2026-07-28 protocol, or act through Ploeg's operator API or a consumer application."
+	cannotConfirm    = "This client cannot ask you to confirm an action, so ploeg-mcp did nothing. Use an MCP client that declares elicitation, or act through Ploeg's operator API or a consumer application."
+	modernProtocol   = "2026-07-28"
+	maxSessionRounds = 10
 	confirmFieldName = "confirm"
 )
 
@@ -35,14 +37,16 @@ type person struct {
 	token    string
 }
 
-type personKey struct{}
+const personExtra = "ploeg-mcp/person"
 
-func withPerson(ctx context.Context, p person) context.Context {
-	return context.WithValue(ctx, personKey{}, p)
-}
-
-func personFrom(ctx context.Context) (person, bool) {
-	p, ok := ctx.Value(personKey{}).(person)
+// requester is the signed-in person who sent this request, read from the
+// request itself so that a call in a kept session carries the token of its own
+// HTTP request, never the one the session began with.
+func requester(extra *mcp.RequestExtra) (person, bool) {
+	if extra == nil || extra.TokenInfo == nil {
+		return person{}, false
+	}
+	p, ok := extra.TokenInfo.Extra[personExtra].(person)
 	return p, ok && p.ID != ""
 }
 
@@ -136,9 +140,53 @@ func (s *server) writer(ctx context.Context) *operatorclient.Client {
 	return s.c
 }
 
+// handler confirms and acts. A 2026-07-28 client receives each confirmation as
+// input requests in the result and calls again with the answers. A client on
+// an earlier revision, in a session it initialized, is asked in that session
+// with elicitation/create, and the same steps run on its answers (ADR-0157).
 func (a action[In]) handler(ctx context.Context, req *mcp.CallToolRequest, in In) (*mcp.CallToolResult, actionOut, error) {
+	res, out, err := a.step(ctx, req, in)
+	for round := 0; err == nil && res != nil && res.InputRequests != nil && inSession(req); round++ {
+		if round == maxSessionRounds {
+			return nil, actionOut{}, errors.New("you were asked to confirm too many times without an answer; nothing changed. Call the tool again")
+		}
+		answers, askErr := askInSession(ctx, req.Session, res.InputRequests)
+		if askErr != nil {
+			return nil, actionOut{}, askErr
+		}
+		params := *req.Params
+		params.InputResponses, params.RequestState = answers, res.RequestState
+		again := *req
+		again.Params = &params
+		req = &again
+		res, out, err = a.step(ctx, req, in)
+	}
+	return res, out, err
+}
+
+func inSession(req *mcp.CallToolRequest) bool {
+	return req.Session != nil && req.ProtocolVersion() < modernProtocol
+}
+
+func askInSession(ctx context.Context, session *mcp.ServerSession, requests mcp.InputRequestMap) (mcp.InputResponseMap, error) {
+	answers := make(mcp.InputResponseMap, len(requests))
+	for id, request := range requests {
+		params, ok := request.(*mcp.ElicitParams)
+		if !ok {
+			return nil, fmt.Errorf("ploeg-mcp cannot ask a %T in a session; nothing changed", request)
+		}
+		answer, err := session.Elicit(ctx, params)
+		if err != nil {
+			return nil, fmt.Errorf("your client did not answer the confirmation (%v); nothing changed", err)
+		}
+		answers[id] = answer
+	}
+	return answers, nil
+}
+
+func (a action[In]) step(ctx context.Context, req *mcp.CallToolRequest, in In) (*mcp.CallToolResult, actionOut, error) {
 	var out actionOut
-	p, ok := personFrom(ctx)
+	p, ok := requester(req.Extra)
 	if !ok {
 		return nil, out, errors.New("ploeg-mcp acts only over HTTP for a signed-in person; nothing changed")
 	}
@@ -188,7 +236,11 @@ func (a action[In]) handler(ctx context.Context, req *mcp.CallToolRequest, in In
 			pages.forget(state.ID)
 			return nil, actionOut{Summary: notConfirmed}, nil
 		}
-		switch decision, link := pages.awaitDecision(ctx, state.ID); decision {
+		wait := pages.wait
+		if inSession(req) {
+			wait = time.Unix(state.Expires, 0).Sub(a.confirm.now())
+		}
+		switch decision, link := pages.awaitDecision(ctx, state.ID, wait); decision {
 		case pageMissing:
 			return nil, out, errPageClosed
 		case pageDeclined:

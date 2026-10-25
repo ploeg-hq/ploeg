@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -14,13 +15,18 @@ import (
 	"strings"
 	"time"
 
+	"github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/ploeg-hq/ploeg/pkg/mcpauth"
 	"github.com/ploeg-hq/ploeg/pkg/operatorclient"
 )
 
-const defaultListen = ":8090"
+const (
+	defaultListen = ":8090"
+	maxBody       = 1 << 20
+	sessionIdle   = 30 * time.Minute
+)
 
 type groupConsumer struct {
 	Group    string `json:"group"`
@@ -192,13 +198,20 @@ func (cfg *httpConfig) handler(logger *slog.Logger) http.Handler {
 	metadataURL.Path = mcpauth.MetadataPath(cfg.resource.Path)
 	metadata := mcpauth.ResourceMetadata(resourceURL, []string{cfg.issuer}, cfg.challengeScopes, "Ploeg")
 
-	stream := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
+	serverFor := func(r *http.Request) *mcp.Server {
 		i, ok := r.Context().Value(consumerKey{}).(int)
 		if !ok {
 			return nil
 		}
 		return cfg.servers[i]
-	}, &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true, Logger: logger, MaxRequestBodyBytes: 1 << 20, PropagateRequestCancellation: true})
+	}
+	stateless := mcp.NewStreamableHTTPHandler(serverFor, &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true, Logger: logger, MaxRequestBodyBytes: maxBody, PropagateRequestCancellation: true})
+	sessions := mcp.NewStreamableHTTPHandler(serverFor, &mcp.StreamableHTTPOptions{Logger: logger, MaxRequestBodyBytes: maxBody, SessionTimeout: sessionIdle})
+	var sessionWrites time.Duration
+	if cfg.confirmations != nil {
+		sessionWrites = cfg.confirmations.window + time.Minute
+	}
+	stream := byProtocol(stateless, sessions, sessionWrites)
 
 	guard := mcpauth.Guard{Verify: cfg.verifier.Verify, ResourceMetadataURL: metadataURL.String(), RequiredScopes: []string{cfg.requiredScope}, ChallengeScopes: cfg.challengeScopes}
 
@@ -236,14 +249,15 @@ func (cfg *httpConfig) admit(next http.Handler, logger *slog.Logger) http.Handle
 			if slices.Contains(groups, g.Group) {
 				id := operatorclient.PersonID(cfg.personNamespace, info.UserID)
 				logger.Info("mcp request", "sub", info.UserID, "person", id, "username", username, "group", g.Group, "method", r.Method)
-				ctx := context.WithValue(r.Context(), consumerKey{}, i)
 				p := person{ID: id, Username: username}
 				if cfg.exchanger != nil && g.Execute {
 					if fields := strings.Fields(r.Header.Get("Authorization")); len(fields) == 2 {
 						p.token = fields[1]
 					}
 				}
-				next.ServeHTTP(w, r.WithContext(withPerson(ctx, p)))
+				admitted := &auth.TokenInfo{Scopes: info.Scopes, Expiration: info.Expiration, UserID: id + " " + g.Group, Extra: map[string]any{personExtra: p}}
+				ctx := context.WithValue(context.WithValue(r.Context(), consumerKey{}, i), admittedKey{}, admitted)
+				carryAdmitted(next).ServeHTTP(w, r.WithContext(ctx))
 				return
 			}
 		}
@@ -254,6 +268,58 @@ func (cfg *httpConfig) admit(next http.Handler, logger *slog.Logger) http.Handle
 		}
 		mcpauth.Problem(w, http.StatusForbidden, fmt.Sprintf("Signed in as %s, but none of your groups gives access to Ploeg. Ask an administrator to add you to one of: %s.", who, strings.Join(cfg.groupNames(), ", ")))
 	})
+}
+
+type admittedKey struct{}
+
+// carryAdmitted hands the SDK the person admit chose, so that each request's
+// RequestExtra names its own person and token, and a kept session answers only
+// the person and group that initialized it.
+func carryAdmitted(next http.Handler) http.Handler {
+	return auth.RequireBearerToken(func(_ context.Context, _ string, r *http.Request) (*auth.TokenInfo, error) {
+		if info, ok := r.Context().Value(admittedKey{}).(*auth.TokenInfo); ok {
+			return info, nil
+		}
+		return nil, auth.ErrInvalidToken
+	}, nil)(next)
+}
+
+// byProtocol serves 2026-07-28 requests statelessly. A client on an earlier
+// revision gets a session when it initializes, so that its declared
+// capabilities last and ploeg-mcp can ask it to confirm; its requests in that
+// session may stay open for a confirmation's window. A request on an earlier
+// revision outside any session is served statelessly, as before (ADR-0157).
+func byProtocol(stateless, sessions http.Handler, sessionWrites time.Duration) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Mcp-Protocol-Version") >= modernProtocol || (r.Header.Get("Mcp-Session-Id") == "" && !initializes(r)) {
+			stateless.ServeHTTP(w, r)
+			return
+		}
+		if sessionWrites > 0 {
+			_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(sessionWrites))
+		}
+		sessions.ServeHTTP(w, r)
+	})
+}
+
+// initializes reports whether r is a POST whose body is one initialize
+// request. It leaves r.Body readable from the start.
+func initializes(r *http.Request) bool {
+	if r.Method != http.MethodPost || r.Body == nil {
+		return false
+	}
+	head, err := io.ReadAll(io.LimitReader(r.Body, maxBody+1))
+	r.Body = struct {
+		io.Reader
+		io.Closer
+	}{io.MultiReader(bytes.NewReader(head), r.Body), r.Body}
+	if err != nil || int64(len(head)) > maxBody {
+		return false
+	}
+	var msg struct {
+		Method string `json:"method"`
+	}
+	return json.Unmarshal(head, &msg) == nil && msg.Method == "initialize"
 }
 
 func (cfg *httpConfig) groupNames() []string {

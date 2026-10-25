@@ -36,7 +36,7 @@ const (
 	authTimeLeeway        = 30 * time.Second
 	defaultPageWait       = 45 * time.Second
 	pageInstruction       = "Open the link, check the action and sign in to confirm it; ploeg-mcp acts only after you sign in there."
-	cannotOpenPage        = "This client cannot open a confirmation page (MCP URL elicitation), so ploeg-mcp did nothing. Use an MCP client that supports URL elicitation over the 2026-07-28 protocol, or act through Ploeg's operator API or a consumer application."
+	cannotOpenPage        = "This client cannot open a confirmation page (MCP URL elicitation), so ploeg-mcp did nothing. Use an MCP client that declares URL elicitation, or act through Ploeg's operator API or a consumer application."
 	deprecatedDefaultMode = "DEPRECATED: a group in PLOEG_MCP_GROUPS is marked execute and PLOEG_MCP_CONFIRMATION_MODE is unset, so ploeg-mcp acts on a confirmation the client answers itself (ADR-0152). Set it to login to prove a person confirmed each action at a sign-in page (ADR-0153), or to elicitation to keep this behaviour; unset will refuse to start from the next minor release"
 )
 
@@ -202,12 +202,12 @@ func (p *confirmationPages) status(id string) (pageState, string, <-chan struct{
 	return pending.state, p.link(pending.page), pending.settled
 }
 
-func (p *confirmationPages) awaitDecision(ctx context.Context, id string) (pageState, string) {
+func (p *confirmationPages) awaitDecision(ctx context.Context, id string, wait time.Duration) (pageState, string) {
 	state, link, settled := p.status(id)
-	if state != pageWaiting {
+	if state != pageWaiting || wait <= 0 {
 		return state, link
 	}
-	timer := time.NewTimer(p.wait)
+	timer := time.NewTimer(wait)
 	defer timer.Stop()
 	select {
 	case <-settled:

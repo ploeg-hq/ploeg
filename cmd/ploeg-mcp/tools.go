@@ -287,7 +287,7 @@ type getOut struct {
 	Untrusted     untrustedWork `json:"untrusted"`
 }
 
-func (s *server) getWork(ctx context.Context, _ *mcp.CallToolRequest, in getIn) (*mcp.CallToolResult, getOut, error) {
+func (s *server) getWork(ctx context.Context, req *mcp.CallToolRequest, in getIn) (*mcp.CallToolResult, getOut, error) {
 	var out getOut
 	full := in.Detail == "full"
 	if in.Detail != "" && in.Detail != "brief" && !full {
@@ -305,7 +305,7 @@ func (s *server) getWork(ctx context.Context, _ *mcp.CallToolRequest, in getIn) 
 	out = getOut{ID: i.ID, Team: i.Team, State: i.State, Tracker: i.Provider + ":" + i.ExternalID, TaskURL: i.URL,
 		Attempts: i.Attempts, InfraFailures: i.InfraFailures, Untrusted: untrustedWork{Title: clip(i.Title, 300)},
 		Truncated: d.Truncated.Shifts || d.Truncated.Runs || d.Truncated.Events || d.Truncated.Executions}
-	me, signedIn := personFrom(ctx)
+	me, signedIn := requester(req.Extra)
 	out.Executions = make([]execLine, 0, len(d.Executions))
 	for _, e := range d.Executions {
 		out.Executions = append(out.Executions, execLine{ID: e.ID, State: e.State, Supervision: e.Supervision, Owner: e.Owner,
