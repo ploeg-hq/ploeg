@@ -40,7 +40,33 @@ GitHub Issues can be a runtime tracker: a `ploeg:<team>` label on an issue in a 
 
 ## Releases
 
-See [release instructions](docs/ops/release-versioning.md) and [CI and infrastructure](docs/ops/ci-and-infra.md). Version 0.1.0 remains experimental; it does not claim production qualification or CNCF membership.
+See [release instructions](docs/ops/release-versioning.md), the [release runbook](docs/ops/release-runbook.md) and [CI and infrastructure](docs/ops/ci-and-infra.md). Version 0.1.0 remains experimental; it does not claim production qualification or CNCF membership.
+
+### Verify a release
+
+Anyone can check a release without an account. The images and the Helm chart are signed keyless with cosign by the project's release workflow, and each image carries a signed OpenVEX document, a signed CVE budget verdict, an SBOM and build provenance. With `curl`, `git` and [cosign](https://docs.sigstore.dev/cosign/system_config/installation/):
+
+```sh
+VERSION=0.2.0-rc.72
+mkdir -p "ploeg-$VERSION" && cd "ploeg-$VERSION"
+base="https://github.com/ploeg-hq/ploeg/releases/download/v$VERSION"
+curl -fsSLO "$base/SHA256SUMS"
+awk '{print $2}' SHA256SUMS | xargs -I{} curl -fsSLO "$base/{}"
+sha256sum -c SHA256SUMS
+COMMIT=$(cat source-commit.txt)
+TAG_COMMIT=$(git ls-remote https://github.com/ploeg-hq/ploeg "refs/tags/v$VERSION" "refs/tags/v$VERSION^{}" | tail -n1 | cut -f1)
+[ "$COMMIT" = "$TAG_COMMIT" ] && echo "source-commit.txt $COMMIT is the commit tag v$VERSION names"
+ISSUER=https://token.actions.githubusercontent.com
+IDENTITY='^https://github\.com/ploeg-hq/ploeg/\.github/workflows/release\.yml@refs/(heads/development|heads/main|tags/v0\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?)$'
+while read -r artifact; do
+  cosign verify "$artifact" \
+    --certificate-oidc-issuer "$ISSUER" --certificate-identity-regexp "$IDENTITY" \
+    --certificate-github-workflow-repository ploeg-hq/ploeg \
+    --certificate-github-workflow-sha "$COMMIT" > /dev/null
+done < signed-artifacts.txt
+```
+
+[Verify a release](docs/ops/verify-a-release.md) goes on to tie the chart to the signed images, check the OpenVEX and CVE budget attestations, read the SBOM and provenance, and says what these checks do not cover.
 
 ## License
 
