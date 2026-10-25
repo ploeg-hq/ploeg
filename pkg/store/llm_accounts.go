@@ -247,13 +247,16 @@ func (s *Store) RecordLLMKeyGone(ctx context.Context, token, evidence string) er
 
 // RecordLLMObserved raises a Run's observed spend and records llm.observed.
 // spend is rounded half-up to the column's four decimals first, so a reading
-// that rounds to the stored value records nothing.
+// that rounds to the stored value records nothing. A settlement whose
+// correction window has closed is final, so a reading after it records
+// nothing either: no sweep would ever settle the hold it would open.
 func (s *Store) RecordLLMObserved(ctx context.Context, token string, spend float64) error {
 	if !validSpend(spend) {
 		return ErrLLMAccountState
 	}
 	_, err := s.pool.Exec(ctx, `WITH changed AS (UPDATE run_llm_accounts SET observed_spend=round($2::numeric,4),updated_at=now()
 		WHERE run_token=$1 AND (observed_spend IS NULL OR observed_spend<round($2::numeric,4))
+		AND (state<>'reconciled' OR corrections_until>now())
 		RETURNING run_token,alias,observed_spend)
 		INSERT INTO audit_log(actor,action,work_item_id,detail)
 		SELECT 'ploegd:llm','llm.observed',r.work_item_id,jsonb_build_object('alias',a.alias,'observedSpend',a.observed_spend)
