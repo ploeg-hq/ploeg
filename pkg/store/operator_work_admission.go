@@ -80,13 +80,14 @@ func (s *Store) AdmitOperatorWorkItem(ctx context.Context, consumer, actor strin
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return OperatorWorkAdmission{}, err
 	}
+	person, proof, act := ActingPersonProof(ctx, actor)
 	err = tx.QueryRow(ctx, `INSERT INTO work_items(provider,external_id,revision,team,state,origin,title,description,
-		target_forge,target_owner,target_repo,target_base_branch,route_rule,budget_usd,harness_requested,model_requested,acts_for)
-	VALUES('manual',$1,$2,$3,'queued','operator',$4,$5,$6,$7,$8,$9,$10,$11,NULLIF($12,''),NULLIF($13,''),$14)
+		target_forge,target_owner,target_repo,target_base_branch,route_rule,budget_usd,harness_requested,model_requested,acts_for,acts_for_proof,acts_for_act)
+	VALUES('manual',$1,$2,$3,'queued','operator',$4,$5,$6,$7,$8,$9,$10,$11,NULLIF($12,''),NULLIF($13,''),$14,$15,$16)
 	ON CONFLICT (provider,external_id) DO NOTHING RETURNING id`,
 		key, fingerprint, input.Team, input.Title, input.Description,
 		target.Forge, target.Owner, target.Repo, target.BaseBranch, OperatorWorkAdmissionRouteRule, budgetUSD, input.Harness, input.Model,
-		ActingPerson(ctx, actor)).Scan(&itemID)
+		person, proof, act).Scan(&itemID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return OperatorWorkAdmission{}, ErrRequestConflict
 	}
@@ -144,4 +145,18 @@ func ActingPerson(ctx context.Context, actor string) string {
 		return a.ActingUser
 	}
 	return actor
+}
+
+// ActingPersonProof is ActingPerson with how Ploeg knows them (ADR-0156):
+// "proven" when a verified person token named them, else "asserted", and the
+// person token's act.sub. A person named by X-Ploeg-Acting-User is asserted.
+func ActingPersonProof(ctx context.Context, actor string) (person, proof, act string) {
+	person = ActingPerson(ctx, actor)
+	if person == "" {
+		return "", "", ""
+	}
+	if a, ok := AttributionFrom(ctx); ok && a.ActingUser == "" && a.Proof == "proven" {
+		return person, "proven", a.Act
+	}
+	return person, "asserted", ""
 }

@@ -2,11 +2,20 @@
 - name: PLOEG_WORKER_AUTH_MODE
   value: {{ .Values.executor.workerAuth.mode | quote }}
 {{- if eq .Values.executor.workerAuth.mode "managed" }}
+{{- $hmac := .Values.executor.workerAuth.hmacCapability | default "issue" }}
+{{- if eq $hmac "off" }}
+{{- if not (dig "signingKeySecret" "" (.Values.transactionToken | default dict)) }}
+{{- fail "executor.workerAuth.hmacCapability off needs transactionToken.signingKeySecret: workers would get no credential (ADR-0156)" }}
+{{- end }}
+- name: PLOEG_WORKER_HMAC_CAPABILITY
+  value: "off"
+{{- else }}
 - name: PLOEG_WORKER_SIGNING_KEY
   valueFrom:
     secretKeyRef:
       name: {{ .Values.executor.workerAuth.signingKeySecret.name }}
       key: {{ .Values.executor.workerAuth.signingKeySecret.key }}
+{{- end }}
 - name: PLOEG_WORKER_BOOTSTRAPS
   valueFrom:
     secretKeyRef:

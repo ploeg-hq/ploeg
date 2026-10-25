@@ -351,6 +351,33 @@ spec:
                   key: {{ .key }}
             {{- end }}
             {{- end }}
+            {{- with .Values.transactionToken }}
+            {{- with .signingKeySecret }}
+            {{- range $team := (ternary $.Values.executor.teams list $.Values.executor.enabled) }}
+            {{- if not (dig "teams" $team.name "sponsor" "" ($.Values.config | default dict)) }}
+            {{- fail (printf "config.teams.%s.sponsor is required with transactionToken.signingKeySecret: a Team without a sponsor runs nothing (ADR-0156)" $team.name) }}
+            {{- end }}
+            {{- end }}
+            - name: PLOEG_TRANSACTION_TOKEN_ISSUER
+              value: {{ required "transactionToken.issuer is required with transactionToken.signingKeySecret" $.Values.transactionToken.issuer | quote }}
+            {{- with $.Values.transactionToken.audience }}
+            - name: PLOEG_TRANSACTION_TOKEN_AUDIENCE
+              value: {{ . | quote }}
+            {{- end }}
+            - name: PLOEG_TRANSACTION_TOKEN_SIGNING_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .name }}
+                  key: {{ .key }}
+            {{- end }}
+            {{- with .retiredKeysSecret }}
+            - name: PLOEG_TRANSACTION_TOKEN_RETIRED_KEYS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .name }}
+                  key: {{ .key }}
+            {{- end }}
+            {{- end }}
             {{- with .Values.knowledgeGraph }}
             {{- if .url }}
             - name: PLOEG_OMNIGRAPH_URL

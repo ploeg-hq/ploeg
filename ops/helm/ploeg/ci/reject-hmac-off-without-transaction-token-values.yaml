@@ -1,0 +1,13 @@
+# CI-only values: retiring the HMAC capability without a transaction token
+# signing key would leave workers with no credential at all (ADR-0156).
+executor:
+  enabled: true
+  workerAuth:
+    mode: managed
+    hmacCapability: "off"
+    signingKeySecret:
+      name: ploeg-worker-signing
+      key: key
+    bootstrapSecret:
+      name: ploeg-worker-bootstrap
+      registryKey: registry.json

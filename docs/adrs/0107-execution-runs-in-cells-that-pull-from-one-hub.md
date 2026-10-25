@@ -184,3 +184,4 @@ decision to a reservation. A cell is that design pointed at a hub URL.
   [VIK-1767](https://vikunja.webgrip.dev/tasks/1767). The homelab is no longer
   production's only `isolated` capacity.
 * 2026-10-24 — [ADR-0106](0106-a-run-declares-an-isolation-floor-and-a-cell-runs-it-at-the-strictest-class-it-can-honour.md) amended: a cell advertises the set of isolation classes it can honour, not a maximum, and `hardened` and `isolated` are alternatives. Read "declared above that cell's maximum" in the Confirmation as "declared at a class the cell does not advertise".
+* 2026-10-25 — Amended by [ADR-0156](0156-each-run-carries-a-transaction-token-that-names-its-person-and-a-team-without-a-sponsor-runs-nothing.md): a cell's bootstrap token is exchanged for the Run's ES256 transaction token, not an HMAC capability; the HMAC capability stays issued for one minor and is deprecated. Federation through projected ServiceAccount tokens is still the second step.

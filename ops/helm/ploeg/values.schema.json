@@ -947,6 +947,35 @@
         }
       }
     },
+    "transactionToken": {
+      "type": "object",
+      "description": "ADR-0156: the key ploegd signs each Run's transaction token with (PLOEG_TRANSACTION_TOKEN_*). Empty signs none. With a key, every executor.teams[] Team needs config.teams.<name>.sponsor.",
+      "additionalProperties": false,
+      "properties": {
+        "issuer": { "type": "string", "pattern": "^https?://[^\\s?#]+$", "description": "The URL ploegd is reached at, the token's iss (PLOEG_TRANSACTION_TOKEN_ISSUER). Required with signingKeySecret." },
+        "audience": { "type": "string", "minLength": 1, "maxLength": 256, "description": "Ploeg's trust domain, the token's aud: an http(s) URL or a urn: (PLOEG_TRANSACTION_TOKEN_AUDIENCE). Empty is the issuer." },
+        "signingKeySecret": {
+          "type": "object",
+          "description": "Secret name and key of the PEM P-256 private key ploegd signs transaction tokens with (PLOEG_TRANSACTION_TOKEN_SIGNING_KEY). Unset signs none.",
+          "additionalProperties": false,
+          "required": ["name", "key"],
+          "properties": {
+            "name": { "type": "string", "minLength": 1, "maxLength": 253, "pattern": "^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$" },
+            "key": { "type": "string", "minLength": 1, "maxLength": 253, "pattern": "^[A-Za-z0-9._-]+$" }
+          }
+        },
+        "retiredKeysSecret": {
+          "type": "object",
+          "description": "Secret name and key of the PEM public keys ploegd still publishes after a rotation (PLOEG_TRANSACTION_TOKEN_RETIRED_KEYS). Keep a retired key one lease TTL.",
+          "additionalProperties": false,
+          "required": ["name", "key"],
+          "properties": {
+            "name": { "type": "string", "minLength": 1, "maxLength": 253, "pattern": "^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$" },
+            "key": { "type": "string", "minLength": 1, "maxLength": 253, "pattern": "^[A-Za-z0-9._-]+$" }
+          }
+        }
+      }
+    },
     "runIdentity": {
       "type": "object",
       "description": "ADR-0149: the key ploegd signs Run identities with (PLOEG_RUN_IDENTITY_*). Empty issues none.",
@@ -1505,6 +1534,7 @@
         "workerAuth": {
           "type": "object",
           "properties": {
+            "hmacCapability": { "enum": ["issue", "off"], "description": "ADR-0156: issue (default, deprecated) hands workers the HMAC capability beside the transaction token and accepts it; off issues and accepts the transaction token only and needs transactionToken.signingKeySecret (PLOEG_WORKER_HMAC_CAPABILITY)." },
             "mode": {
               "enum": [
                 "managed",
@@ -1739,7 +1769,7 @@
     },
     "config": {
       "type": "object",
-      "description": "ploegd's routing and roster as a file (mounted at /etc/ploeg/ploeg.yaml). Projects are NAMED and resolved to tracker ids at boot, so no magic numbers live in cluster config. `targets:` registers repositories a `repo/<key>` label may select, and a project's `default:`/`allow:` name them (ADR-0038). A project's `gates:` maps its statuses or bucket titles to the delivery gates development, test, acceptance and done (ADR-0051), and Ploeg records every tracker status move of a project with `gates:` (ADR-0080). A target's or project's `ci.waitTimeout:` is how long a Shift on that repository waits for the forge's CI on its pull request's head before a person is asked, default `60m` (ADR-0119). A target's or project's `fastCheck:` lists the repository's fast check, shell command lines a writing Run runs after it rebases onto the base branch and the worker runs before it pushes a rebase of its own; omitted, a rebase is pushed with the check recorded as skipped (ADR-0146). A team's `forgeFollowUps.rebaseOnConflict: true` queues a rebase Follow-Up when a pull request in review is confirmed conflicting with its base (ADR-0146). A team's `forgeFollowUps.reworkOnChangesRequested: true` sends work back on a request for changes only from a reviewer listed in `reworkReviewers` or reported by the forge with write access, at most `maxReworks` times per Work Item, default 3; any other request is refused and audited (ADR-0151). On a Forgejo target, list the reviewers in `reworkReviewers` rather than give the bot admin: Forgejo shows another login's repository permission only to an administrator. A target's `readPullRequests:` lists routes: the `authors` whose open pull requests a `team` reads and reports on, on the pull request, with the operator's `instructions` and `maxOpen` and `maxReviewsPerPullRequest` caps (ADR-0109). A team's `premiseCheck: {model: <gateway model>}` runs one classifier call on that model before its first writer, and ploegd refuses a model the gateway does not price at zero (ADR-0123). The Run card keys `cards`, a target's or project's `cardStyle`, `release`, `rarity` and `cardShape`, a project's `statusKinds` and a team's `cards` and `workingHours` are unknown keys that fail the boot (ADR-0080). Empty = the legacy PLOEG_TARGET_MAP/PLOEG_TEAM_MAP/PLOEG_TEAM_PLANS env vars still apply."
+      "description": "ploegd's routing and roster as a file (mounted at /etc/ploeg/ploeg.yaml). Projects are NAMED and resolved to tracker ids at boot, so no magic numbers live in cluster config. `targets:` registers repositories a `repo/<key>` label may select, and a project's `default:`/`allow:` name them (ADR-0038). A project's `gates:` maps its statuses or bucket titles to the delivery gates development, test, acceptance and done (ADR-0051), and Ploeg records every tracker status move of a project with `gates:` (ADR-0080). A target's or project's `ci.waitTimeout:` is how long a Shift on that repository waits for the forge's CI on its pull request's head before a person is asked, default `60m` (ADR-0119). A target's or project's `fastCheck:` lists the repository's fast check, shell command lines a writing Run runs after it rebases onto the base branch and the worker runs before it pushes a rebase of its own; omitted, a rebase is pushed with the check recorded as skipped (ADR-0146). A team's `forgeFollowUps.rebaseOnConflict: true` queues a rebase Follow-Up when a pull request in review is confirmed conflicting with its base (ADR-0146). A team's `forgeFollowUps.reworkOnChangesRequested: true` sends work back on a request for changes only from a reviewer listed in `reworkReviewers` or reported by the forge with write access, at most `maxReworks` times per Work Item, default 3; any other request is refused and audited (ADR-0151). On a Forgejo target, list the reviewers in `reworkReviewers` rather than give the bot admin: Forgejo shows another login's repository permission only to an administrator. A target's `readPullRequests:` lists routes: the `authors` whose open pull requests a `team` reads and reports on, on the pull request, with the operator's `instructions` and `maxOpen` and `maxReviewsPerPullRequest` caps (ADR-0109). A team's `premiseCheck: {model: <gateway model>}` runs one classifier call on that model before its first writer, and ploegd refuses a model the gateway does not price at zero (ADR-0123). The Run card keys `cards`, a target's or project's `cardStyle`, `release`, `rarity` and `cardShape`, a project's `statusKinds` and a team's `cards` and `workingHours` are unknown keys that fail the boot (ADR-0080). A team's `sponsor:` is the person (Ploeg's person id) its Runs act for when nobody handed the work over; with transactionToken.signingKeySecret a Team without one runs nothing (ADR-0156). Empty = the legacy PLOEG_TARGET_MAP/PLOEG_TEAM_MAP/PLOEG_TEAM_PLANS env vars still apply."
     }
   },
   "definitions": {

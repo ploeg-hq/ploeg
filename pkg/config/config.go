@@ -153,6 +153,11 @@ type Team struct {
 	// PremiseCheck opts this Team in to the premise check before its
 	// writer (ADR-0123). Omitted = no check.
 	PremiseCheck *PremiseCheck `yaml:"premiseCheck"`
+	// Sponsor is the person a Run of this Team acts for when no person
+	// handed its work over (ADR-0156): Ploeg's person id, the oidc- form,
+	// never a bot. While ploegd signs transaction tokens, a Team without one
+	// runs nothing.
+	Sponsor string `yaml:"sponsor"`
 }
 
 // PremiseCheck names the gateway model a Team's premise check calls. ploegd
@@ -318,6 +323,11 @@ func (f *File) Validate() error {
 	for _, name := range sortedTeamNames(f.Teams) {
 		if _, err := f.createdWorkPolicy(name); err != nil {
 			return fmt.Errorf("teams.%s.createdWork: %w", name, err)
+		}
+	}
+	for _, name := range sortedTeamNames(f.Teams) {
+		if sponsor := f.Teams[name].Sponsor; sponsor != "" && !personID.MatchString(sponsor) {
+			return fmt.Errorf("teams.%s.sponsor: %q is not a person id", name, sponsor)
 		}
 	}
 	if err := f.validatePeople(); err != nil {
@@ -656,6 +666,17 @@ func (f *File) PremiseChecks() map[string]string {
 	for name, t := range f.Teams {
 		if t.PremiseCheck != nil {
 			out[name] = t.PremiseCheck.Model
+		}
+	}
+	return out
+}
+
+// Sponsors maps each Team that names a sponsor to that person (ADR-0156).
+func (f *File) Sponsors() map[string]string {
+	out := map[string]string{}
+	for name, t := range f.Teams {
+		if t.Sponsor != "" {
+			out[name] = t.Sponsor
 		}
 	}
 	return out

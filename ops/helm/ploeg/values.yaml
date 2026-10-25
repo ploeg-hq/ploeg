@@ -352,6 +352,27 @@ runIdentity: {}
 #     name: ploeg-run-identity
 #     key: retired-keys.pem
 
+# ADR-0156 (proposed): ploegd signs each Run a transaction token (ES256 JWT
+# shaped like an OAuth Transaction Token) at its claim and at every lease
+# renewal: sub is the person the Run acts for, act the Team/Role acting for
+# them, txn the Run, tctx its Work Item, repository, branch and allowance, exp
+# its lease deadline. Workers present it on every Run route instead of the
+# deprecated HMAC capability (executor.workerAuth.hmacCapability). Public keys
+# at /.well-known/jwks.json. Empty signs none. With a key, every
+# executor.teams[] Team needs config.teams.<name>.sponsor, the person its
+# Runs act for when nobody handed the work over; a Team without one runs
+# nothing. Use a key of its own, not runIdentity's. To rotate, keep the old
+# public key in retiredKeysSecret for one lease TTL after the switch.
+transactionToken: {}
+#   issuer: https://ploeg.example.com   # the URL ploegd is reached at; the token's iss
+#   audience: urn:ploeg:example         # Ploeg's trust domain, the token's aud; empty = issuer
+#   signingKeySecret:
+#     name: ploeg-transaction-token
+#     key: signing-key.pem
+#   retiredKeysSecret:                  # optional: concatenated PEM PUBLIC KEY blocks
+#     name: ploeg-transaction-token
+#     key: retired-keys.pem
+
 # ADR-0087/0088 (proposed): the Tenant's graphs on an Omnigraph server. With
 # notesGraph, ploegd writes each learning a Run keeps as a Work Item Note and
 # serves later Runs of the same root Work Item their notes. With
@@ -722,6 +743,12 @@ executor:
     keyIsolation: proxy
   workerAuth:
     mode: managed
+    # ADR-0156: "issue" still hands each worker the 24-hour HMAC capability
+    # beside its transaction token and accepts it (deprecated; removed no
+    # earlier than the next minor, ADR-0134). "off" issues and accepts the
+    # transaction token only, needs transactionToken.signingKeySecret, and
+    # stops rendering signingKeySecret.
+    hmacCapability: issue
     signingKeySecret:
       name: ploeg-worker-signing
       key: key
@@ -1025,6 +1052,7 @@ config: {}
 #     bronze:
 #       assignees: [jake, bronze]     # replaces PLOEG_TEAM_MAP
 #       maxRunning: 2                 # concurrency cap; wins over executor.teams[].maxRunning
+#       sponsor: oidc-0123...         # ADR-0156: the person its Runs act for when nobody handed the work over
 #       plan:                         # replaces PLOEG_TEAM_PLANS; omit for one writer
 #         pool: "6"
 #         maxFixRounds: 2

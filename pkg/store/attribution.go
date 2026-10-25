@@ -43,8 +43,13 @@ func AttributionFrom(ctx context.Context) (Attribution, bool) {
 }
 
 func attributedDetail(ctx context.Context, actor string, detail []byte) ([]byte, error) {
-	a, ok := AttributionFrom(ctx)
-	if !ok || !strings.HasPrefix(actor, "operator:") {
+	var key string
+	var value any
+	if a, ok := AttributionFrom(ctx); ok && strings.HasPrefix(actor, "operator:") {
+		key, value = AuditAttributionKey, a
+	} else if r, ok := RunActorFrom(ctx); ok {
+		key, value = AuditRunActorKey, r
+	} else {
 		return detail, nil
 	}
 	fields := map[string]json.RawMessage{}
@@ -53,10 +58,10 @@ func attributedDetail(ctx context.Context, actor string, detail []byte) ([]byte,
 			return detail, nil
 		}
 	}
-	raw, err := json.Marshal(a)
+	raw, err := json.Marshal(value)
 	if err != nil {
 		return nil, err
 	}
-	fields[AuditAttributionKey] = raw
+	fields[key] = raw
 	return json.Marshal(fields)
 }

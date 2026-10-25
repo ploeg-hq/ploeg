@@ -1,0 +1,13 @@
+# CI-only values: with transaction tokens a Team without a sponsor runs
+# nothing, so the chart refuses to render one (ADR-0156).
+transactionToken:
+  issuer: https://ploeg.example.com
+  signingKeySecret:
+    name: ploeg-transaction-token
+    key: signing-key.pem
+executor:
+  enabled: true
+  teams:
+    - name: bronze
+      model: litellm_proxy/claude-sonnet-5
+      budget: "2"

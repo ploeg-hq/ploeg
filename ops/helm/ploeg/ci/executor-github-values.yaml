@@ -6,6 +6,19 @@ runIdentity:
   retiredKeysSecret:
     name: ploeg-run-identity
     key: retired-keys.pem
+transactionToken:
+  issuer: https://ploeg.example.com
+  audience: urn:ploeg:example
+  signingKeySecret:
+    name: ploeg-transaction-token
+    key: signing-key.pem
+  retiredKeysSecret:
+    name: ploeg-transaction-token
+    key: retired-keys.pem
+config:
+  teams:
+    silver:
+      sponsor: oidc-0123456789abcdef0123456789abcdef
 tracker:
   github:
     appId: "123456"
@@ -31,6 +44,15 @@ executor:
       name: ploeg-github-forge-webhook
       key: PLOEG_GITHUB_FORGE_SECRET
     botLogin: ploeg[bot]
+  workerAuth:
+    mode: managed
+    hmacCapability: "off"
+    signingKeySecret:
+      name: ploeg-worker-signing
+      key: key
+    bootstrapSecret:
+      name: ploeg-worker-bootstrap
+      registryKey: registry.json
   teams:
     - name: silver
       model: litellm_proxy/claude-sonnet-5

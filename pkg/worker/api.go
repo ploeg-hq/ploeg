@@ -62,9 +62,13 @@ func (u *UnsupportedWorkerVersion) Error() string {
 }
 
 type ClaimResponse struct {
-	RunToken     string    `json:"runToken"`
-	ControlToken string    `json:"controlToken,omitempty"`
-	Deadline     time.Time `json:"deadline"`
+	RunToken     string `json:"runToken"`
+	ControlToken string `json:"controlToken,omitempty"`
+	// TransactionToken is the Run's transaction token (ADR-0156). The worker
+	// presents it instead of ControlToken, the deprecated HMAC capability,
+	// and replaces it with the one each renewal answers.
+	TransactionToken string    `json:"transactionToken,omitempty"`
+	Deadline         time.Time `json:"deadline"`
 	// ExpiresInMs is how long the Lease lasts from ploegd's answer, so the
 	// worker can time it on its own clock. Zero from an older ploegd.
 	ExpiresInMs int64         `json:"expiresInMs,omitempty"`
@@ -167,10 +171,12 @@ func (a *APIClient) Claim(team, role string) (*ClaimResponse, error) {
 		if err := json.NewDecoder(resp.Body).Decode(&c); err != nil {
 			return nil, err
 		}
-		if a.BootstrapToken != "" && c.ControlToken == "" {
+		if a.BootstrapToken != "" && c.ControlToken == "" && c.TransactionToken == "" {
 			return nil, fmt.Errorf("managed claim returned no run capability")
 		}
-		if c.ControlToken != "" {
+		if c.TransactionToken != "" {
+			a.controlTokens.Store(c.RunToken, c.TransactionToken)
+		} else if c.ControlToken != "" {
 			a.controlTokens.Store(c.RunToken, c.ControlToken)
 		}
 		return &c, nil
@@ -178,6 +184,9 @@ func (a *APIClient) Claim(team, role string) (*ClaimResponse, error) {
 		refusal := &UnsupportedWorkerVersion{}
 		_ = json.NewDecoder(io.LimitReader(resp.Body, 4096)).Decode(refusal)
 		return nil, refusal
+	case http.StatusForbidden:
+		reason, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return nil, fmt.Errorf("claim: HTTP 403: %s", strings.TrimSpace(string(reason)))
 	default:
 		return nil, fmt.Errorf("claim: HTTP %d", resp.StatusCode)
 	}
@@ -218,10 +227,14 @@ func (a *APIClient) Renew(ctx context.Context, token string) (Renewal, error) {
 	switch resp.StatusCode {
 	case http.StatusOK:
 		var body struct {
-			Yield       bool  `json:"yield"`
-			ExpiresInMs int64 `json:"expiresInMs"`
+			Yield            bool   `json:"yield"`
+			ExpiresInMs      int64  `json:"expiresInMs"`
+			TransactionToken string `json:"transactionToken"`
 		}
-		_ = json.NewDecoder(io.LimitReader(resp.Body, 4096)).Decode(&body)
+		_ = json.NewDecoder(io.LimitReader(resp.Body, 16<<10)).Decode(&body)
+		if body.TransactionToken != "" {
+			a.controlTokens.Store(token, body.TransactionToken)
+		}
 		return Renewal{Yield: body.Yield, ExpiresIn: time.Duration(max(body.ExpiresInMs, 0)) * time.Millisecond}, nil
 	case http.StatusNotFound, http.StatusUnauthorized, http.StatusForbidden:
 		return Renewal{Gone: true}, nil
