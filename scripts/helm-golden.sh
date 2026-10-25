@@ -67,6 +67,7 @@ for case in ":default" \
 	"ops/helm/ploeg/ci/executor-isolation-values.yaml:executor-isolation" \
 	"ops/helm/ploeg/ci/executor-isolation-disabled-values.yaml:executor-isolation-disabled" \
 	"ops/helm/ploeg/ci/executor-default-worker-values.yaml:executor-default-worker" \
+	"ops/helm/ploeg/ci/executor-worker-admission-values.yaml:executor-worker-admission" \
 	"ops/helm/ploeg/ci/executor-acknowledged-dind-values.yaml:executor-acknowledged-dind" \
 	"ops/helm/ploeg/ci/executor-harness-container-shared-values.yaml:executor-harness-container-shared" \
 	"ops/helm/ploeg/ci/executor-harness-selection-values.yaml:executor-harness-selection" \
@@ -117,6 +118,7 @@ for case in "ops/helm/ploeg/ci/reject-reader-without-read-token-values.yaml:read
 	"ops/helm/ploeg/ci/reject-client-carrier-without-environment-values.yaml:carrier client requires harness.claudeEnvironment.environmentId" \
 	"ops/helm/ploeg/ci/reject-claude-runner-without-environment-secret-values.yaml:claudeRunner.environmentSecret.name is required" \
 	"ops/helm/ploeg/ci/reject-dind-without-acknowledgement-values.yaml:harness.dind is true without harness.acknowledgePrivilegedDind: true" \
+	"ops/helm/ploeg/ci/reject-worker-admission-with-dind-values.yaml:security.workerAdmission forbids privileged DinD" \
 	"ops/helm/ploeg/ci/reject-separate-harness-container-with-dind-values.yaml:a separate harness container needs both credential proxies and no DinD" \
 	"ops/helm/ploeg/ci/reject-unknown-harness-container-values.yaml:value must be one of 'separate', 'shared'"; do
 	values=${case%%:*}

@@ -1,0 +1,11 @@
+security:
+  workerAdmission:
+    enabled: true
+    runtimeClassNames: []
+executor:
+  enabled: true
+  teams:
+    - name: privileged
+      model: litellm_proxy/deepseek-chat
+      budget: "1"
+      harness: {name: openhands, dind: true, acknowledgePrivilegedDind: true}

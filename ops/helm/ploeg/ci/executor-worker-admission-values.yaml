@@ -1,0 +1,10 @@
+security:
+  workerAdmission:
+    enabled: true
+    runtimeClassNames: []
+executor:
+  enabled: true
+  teams:
+    - name: admitted
+      model: litellm_proxy/deepseek-chat
+      budget: "1"
