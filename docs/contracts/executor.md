@@ -42,8 +42,11 @@ API qualifies — schemas in [run-api.v1.schema.json](run-api.v1.schema.json)):
    means exit non-zero** without claiming again: `ploegd` does not serve the
    worker's `workerVersion`, and the body names the served range
    ([ADR 0134](../adrs/0134-ploeg-keeps-each-release-compatible-with-the-one-before-and-removes-only-after-a-deprecated-minor.md)).
-2. Renew the lease at TTL/3 via `POST /api/v1/runs/{token}/renew`; a 404
-   means the lease is gone — kill the harness and stop.
+2. Renew the lease at TTL/4 via `POST /api/v1/runs/{token}/renew`; a 404
+   means the lease is gone — kill the harness and stop. Kill it too a sixth
+   of the TTL before the lease ends unless a renewal extended it: time the
+   lease from when each claim or renewal was sent plus its `expiresInMs`
+   ([leases and cancellation](../reference/leases-and-cancellation.md)).
 3. Report progress via `.../checkpoint` (best-effort) and exactly one
    terminal `.../outcome` before exit (stuck requires a reason).
 

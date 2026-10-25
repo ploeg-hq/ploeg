@@ -24,7 +24,9 @@ func TestMain(m *testing.M) {
 	if socket := os.Getenv(harnessContainerEnv); socket != "" {
 		os.Exit(runHarnessContainer(socket))
 	}
-	os.Exit(m.Run())
+	code := m.Run()
+	stopLeaseDatabase()
+	os.Exit(code)
 }
 
 func runConcealChild() int {

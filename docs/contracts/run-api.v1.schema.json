@@ -66,6 +66,7 @@
           "description": "Run identifier used by renew/checkpoint/outcome routes; managed mode also requires the scoped control capability and worker identity described in worker-control.md"
         },
         "deadline": { "type": "string", "format": "date-time" },
+        "expiresInMs": { "type": "integer", "minimum": 0, "description": "Milliseconds from ploegd's answer to deadline. A worker adds it to the time it sent the request, on its own clock, and stops the Run a sixth of the Lease before that, so a clock skew with ploegd cannot keep a Run going past its Lease. Absent from an older Ploeg, which leaves the worker timing the Lease from the claim's deadline." },
         "workItem": { "$ref": "taskspec.v1.schema.json#/$defs/workItem" },
         "shift": { "type": "integer", "description": "the Shift this Run belongs to; absent on a pre-Shift claim" },
         "role": { "type": "string" },
@@ -396,6 +397,7 @@
       "type": "object",
       "properties": {
         "deadline": { "type": "string", "format": "date-time" },
+        "expiresInMs": { "type": "integer", "minimum": 0, "description": "Milliseconds from ploegd's answer to deadline. A worker adds it to the time it sent the request, on its own clock, and stops the Run a sixth of the Lease before that, so a clock skew with ploegd cannot keep a Run going past its Lease. Absent from an older Ploeg, which leaves the worker timing the Lease from the claim's deadline." },
         "yield": { "const": true, "description": "Present once a person asked the Run to yield (ADR-0142, proposed): a worker whose Harness yields stops the agent at its next safe point, pushes its work and reports the outcome yielded. Absent otherwise and from an older Ploeg." }
       },
       "required": ["deadline"],

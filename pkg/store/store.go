@@ -432,6 +432,9 @@ func (s *Store) Renew(ctx context.Context, runToken string, ttl time.Duration) (
 		return time.Time{}, err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
+	if err := refuseExpiredLease(ctx, tx, runToken); err != nil {
+		return time.Time{}, err
+	}
 
 	// A client-carried Run whose runner session ploegd holds keeps the
 	// longer deadline (ADR-0112): a client that still renews never shortens it.
@@ -459,6 +462,20 @@ func (s *Store) Renew(ctx context.Context, runToken string, ttl time.Duration) (
 	return deadline, tx.Commit(ctx)
 }
 
+func refuseExpiredLease(ctx context.Context, q queryRower, runToken string) error {
+	var expired bool
+	if err := q.QueryRow(ctx, `
+		SELECT EXISTS (SELECT 1 FROM leases WHERE run_token = $1 AND expires_at <= now())
+		    OR EXISTS (SELECT 1 FROM agent_runs WHERE run_token = $1 AND state = 'running' AND expires_at <= now())`,
+		runToken).Scan(&expired); err != nil {
+		return err
+	}
+	if expired {
+		return ErrUnknownRun
+	}
+	return nil
+}
+
 // Checkpoint records durable progress for the item owned by the run token.
 // It returns ErrCheckpointRefused for a checkpoint that names another branch
 // than the Run's or a pull request outside the Work Item's repository.
@@ -468,6 +485,9 @@ func (s *Store) Checkpoint(ctx context.Context, runToken string, cp work.Checkpo
 		return err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
+	if err := refuseExpiredLease(ctx, tx, runToken); err != nil {
+		return err
+	}
 
 	// Resolve via the Lease when one exists; a reader holds none (ADR-0010),
 	// so fall back to its running Run — progress records must not be a
@@ -571,6 +591,9 @@ func (s *Store) ReportOutcome(ctx context.Context, runToken string, rep harnessR
 		return OutcomeResult{}, err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
+	if err := refuseExpiredLease(ctx, tx, runToken); err != nil {
+		return OutcomeResult{}, err
+	}
 
 	var admitted deliveryAdmission
 	binding, running, err := loadRunBinding(ctx, tx, runToken)
@@ -657,14 +680,25 @@ func (s *Store) ReportOutcome(ctx context.Context, runToken string, rep harnessR
 	}
 	if shiftID == nil {
 		// A failed outcome re-queues until the retry threshold, then stale (R5).
-		if next == work.StateQueued {
+		switch {
+		case rep.Outcome == work.OutcomeFailed && rep.FailureReason != nil && work.FailureReason(*rep.FailureReason) == work.FailureLeaseLost:
+			state, infraFailures, err := requeueAfterInfraFailure(ctx, tx, id)
+			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+				return OutcomeResult{}, err
+			}
+			if state == string(work.StateStale) {
+				if err := audit(ctx, tx, "team:"+team, "infra_cap", &id, map[string]any{"team": team, "infra_failures": infraFailures}); err != nil {
+					return OutcomeResult{}, err
+				}
+			}
+		case next == work.StateQueued:
 			if _, err := tx.Exec(ctx, `
 				UPDATE work_items
 				SET state = CASE WHEN attempts >= $2 THEN 'stale' ELSE 'queued' END, updated_at = now()
 				WHERE id = $1`, id, MaxAttempts); err != nil {
 				return OutcomeResult{}, err
 			}
-		} else {
+		default:
 			if _, err := tx.Exec(ctx,
 				`UPDATE work_items SET state = $2, updated_at = now() WHERE id = $1`, id, string(next)); err != nil {
 				return OutcomeResult{}, err
@@ -1011,27 +1045,11 @@ func (s *Store) ExpireLeases(ctx context.Context) ([]ExpiredLease, error) {
 		// Infra failure: lease expired without a reported outcome — refund the
 		// attempt that Claim already charged and apply the infra-failure backoff.
 		// Agent failures (reported outcomes) go through ReportOutcome instead.
-		var newState string
-		if err := tx.QueryRow(ctx, `
-			UPDATE work_items
-			SET state = CASE WHEN infra_failures + 1 >= $2 THEN 'stale' ELSE 'queued' END,
-			    attempts = GREATEST(attempts - 1, 0),
-			    infra_failures = infra_failures + 1,
-			    next_eligible_at = CASE
-				WHEN infra_failures + 1 >= $2 THEN NULL
-				ELSE now() + (CASE infra_failures
-				    WHEN 0 THEN INTERVAL '1 minute'
-				    WHEN 1 THEN INTERVAL '5 minutes'
-				    WHEN 2 THEN INTERVAL '15 minutes'
-				    ELSE INTERVAL '60 minutes'
-				END)
-			    END,
-			    updated_at = now()
-			WHERE id = $1 AND state = 'active'
-			RETURNING state, infra_failures`,
-			e.WorkItemID, MaxInfraFailures).Scan(&newState, &e.InfraFailures); err != nil {
+		newState, infraFailures, err := requeueAfterInfraFailure(ctx, tx, e.WorkItemID)
+		if err != nil {
 			return nil, err
 		}
+		e.InfraFailures = infraFailures
 		action := "lease.expired"
 		if newState == "stale" {
 			action = "infra_cap"
@@ -1042,6 +1060,28 @@ func (s *Store) ExpireLeases(ctx context.Context) ([]ExpiredLease, error) {
 		}
 	}
 	return exp, tx.Commit(ctx)
+}
+
+func requeueAfterInfraFailure(ctx context.Context, q queryRower, workItemID int64) (state string, infraFailures int, err error) {
+	err = q.QueryRow(ctx, `
+		UPDATE work_items
+		SET state = CASE WHEN infra_failures + 1 >= $2 THEN 'stale' ELSE 'queued' END,
+		    attempts = GREATEST(attempts - 1, 0),
+		    infra_failures = infra_failures + 1,
+		    next_eligible_at = CASE
+			WHEN infra_failures + 1 >= $2 THEN NULL
+			ELSE now() + (CASE infra_failures
+			    WHEN 0 THEN INTERVAL '1 minute'
+			    WHEN 1 THEN INTERVAL '5 minutes'
+			    WHEN 2 THEN INTERVAL '15 minutes'
+			    ELSE INTERVAL '60 minutes'
+			END)
+		    END,
+		    updated_at = now()
+		WHERE id = $1 AND state = 'active'
+		RETURNING state, infra_failures`,
+		workItemID, MaxInfraFailures).Scan(&state, &infraFailures)
+	return state, infraFailures, err
 }
 
 // QueueSnapshot lists a team's queue (and everything else non-done) for
