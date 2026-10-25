@@ -34,3 +34,4 @@ executor:
             - {name: optin, writes: false, cap: "0.50", harness: {name: claude-code, credentialIsolation: proxy}}
         - roles:
             - {name: builder, writes: true, cap: "1.00"}
+supportProfile: unsupported

@@ -48,6 +48,7 @@ VARIANTS = [
         "sandbox",
         {
             **admission([ALLOWED_RUNTIME_CLASS]),
+            "supportProfile": "unsupported",
             "executor": {
                 "enabled": True,
                 "harness": {"name": "exec", "dind": False},

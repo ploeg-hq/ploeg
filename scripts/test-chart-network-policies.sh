@@ -32,7 +32,7 @@ assert_has "$ploegd" 'kubernetes.io/metadata.name: forgejo' 'ploegd cannot reach
 assert_has "$ploegd" 'port: 8080' 'ploegd accepts nothing on its listen port'
 assert_lacks "$ploegd" 'cidr: 0.0.0.0/0' 'a default install with in-cluster URLs lets ploegd reach the internet'
 
-rendered=$(render --set networkPolicy.enabled=false)
+rendered=$(render --set networkPolicy.enabled=false --set supportProfile=unsupported)
 [[ "$(count_policies "$rendered")" == 0 ]] || fail 'networkPolicy.enabled=false still renders a policy'
 
 rendered=$(render -f "$ci/executor-values.yaml")

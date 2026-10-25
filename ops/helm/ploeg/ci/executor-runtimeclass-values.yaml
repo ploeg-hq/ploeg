@@ -38,3 +38,4 @@ executor:
       runtimeClassName: kata
       sandbox:
         runtimeClassName: kata-legacy
+supportProfile: unsupported

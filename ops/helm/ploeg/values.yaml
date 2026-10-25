@@ -6,6 +6,8 @@
 fullnameOverride: ""
 instanceOverride: ""
 
+supportProfile: P1
+
 security:
   workerAdmission:
     enabled: false
