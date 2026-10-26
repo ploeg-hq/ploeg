@@ -105,6 +105,9 @@ type Server struct {
 	// database is read again. Zero means DefaultMetricsCacheTTL; negative
 	// disables the cache.
 	MetricsCacheTTL time.Duration
+	// Loops records how long each pass of ploegd's background loops took,
+	// for /metrics.
+	Loops LoopDurations
 
 	metrics metricsCache
 	// FollowUps holds each Team's opt-in to acting on forge events. A Team

@@ -59,93 +59,113 @@ func orphanSweep(ctx context.Context, log *slog.Logger, st *store.Store, sweeper
 	}
 }
 
-func reconcileAfterBoot(ctx context.Context, log *slog.Logger, st *store.Store, sweeper llmbroker.Sweeper,
-	forgeSweeper forgebroker.Sweeper, server *httpapi.Server, every time.Duration) {
-	orphanSweep(ctx, log, st, sweeper)
-	forgeOrphanSweep(ctx, log, st, forgeSweeper)
-	if err := server.ReconcileOperatorExecutions(ctx); err != nil {
-		log.Error("operator execution reconciliation failed after boot")
-	}
-	managedBlockSweep(ctx, log, server, 0, newAccountRetries(every))
-}
-
-// sweepLoop is the crash-safety mechanic: nothing depends on an agent
-// behaving well at death (design §3). Every expired lease releases the item
-// and revokes the run's gateway credentials (when a sweeper is configured).
+// startSweepLoops starts the crash-safety mechanic: nothing depends on an
+// agent behaving well at death (design §3). Every expired lease releases the
+// item and revokes the run's gateway credentials (when a sweeper is
+// configured).
 //
 // Shift runs live and die by their own expires_at, not a lease: ExpireRuns
 // reclaims dead readers AND writers (a reader holds no lease, so ExpireLeases
 // could never see it die), then the engine advances or repairs every live
 // Shift — the async half of the fast-path/sweeper split (R2).
-func sweepLoop(ctx context.Context, log *slog.Logger, st *store.Store, sweeper llmbroker.Sweeper,
+func startSweepLoops(ctx context.Context, loops *backgroundLoops, log *slog.Logger, st *store.Store, sweeper llmbroker.Sweeper,
 	forgeSweeper forgebroker.Sweeper, engine *shiftengine.Engine, server *httpapi.Server, every, settleAfter time.Duration) {
-	var managedCursor, settlementCursor int64
-	blockRetries, settlementRetries := newAccountRetries(every), newAccountRetries(every)
-	reconcileAfterBoot(ctx, log, st, sweeper, forgeSweeper, server, every)
+	loops.Go(func() {
+		if err := server.ReconcileOperatorExecutions(ctx); err != nil {
+			log.Error("operator execution reconciliation failed after boot")
+		}
+		passLoop(ctx, &server.Loops, "expiry", every, func(ctx context.Context) {
+			expiryPass(ctx, log, st, sweeper, forgeSweeper, server)
+		})
+	})
+	loops.Go(func() {
+		managedBlockSweep(ctx, log, server, 0, newAccountRetries(every))
+		var blockCursor, settlementCursor int64
+		blockRetries, settlementRetries := newAccountRetries(every), newAccountRetries(every)
+		passLoop(ctx, &server.Loops, "credentials", every, func(ctx context.Context) {
+			blockCursor = managedBlockSweep(ctx, log, server, blockCursor, blockRetries)
+			settlementCursor = managedSettlementSweep(ctx, log, server, settlementCursor, settleAfter, settlementRetries)
+		})
+	})
+	loops.Go(func() {
+		passLoop(ctx, &server.Loops, "shifts", every, func(ctx context.Context) {
+			shiftPass(ctx, log, st, engine)
+		})
+	})
+	loops.Go(func() {
+		orphanSweep(ctx, log, st, sweeper)
+		forgeOrphanSweep(ctx, log, st, forgeSweeper)
+		passLoop(ctx, &server.Loops, "orphans", orphanSweepEvery, func(ctx context.Context) {
+			orphanSweep(ctx, log, st, sweeper)
+			forgeOrphanSweep(ctx, log, st, forgeSweeper)
+			managedCorrectionSweep(ctx, log, server)
+		})
+	})
+}
+
+func passLoop(ctx context.Context, timings *httpapi.LoopDurations, name string, every time.Duration, pass func(context.Context)) {
 	t := time.NewTicker(every)
 	defer t.Stop()
-	// A second, much slower ticker: reconciling every credential against the
-	// database is a two-API-call scan, not something to do every 15 seconds
-	// alongside the lease sweep.
-	orphans := time.NewTicker(orphanSweepEvery)
-	defer orphans.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-orphans.C:
-			orphanSweep(ctx, log, st, sweeper)
-			forgeOrphanSweep(ctx, log, st, forgeSweeper)
-			managedCorrectionSweep(ctx, log, server)
 		case <-t.C:
-			if err := server.ReconcileOperatorExecutions(ctx); err != nil {
-				log.Error("operator execution reconciliation failed")
-			}
-			expired, err := st.ExpireLeases(ctx)
-			if err != nil {
-				log.Error("lease sweep failed", "err", err)
-				continue
-			}
-			for _, e := range expired {
-				log.Warn("lease expired, item released", "work_item", e.WorkItemID)
-				blockExpiredRun(ctx, log, sweeper, server, e.RunToken)
-			}
-
-			runs, err := st.ExpireRuns(ctx)
-			if err != nil {
-				log.Error("run sweep failed", "err", err)
-				continue
-			}
-			for _, e := range runs {
-				log.Warn("run deadline expired, run reclaimed",
-					"work_item", e.WorkItemID, "shift", e.ShiftID, "role", e.Role, "writes", e.Writes)
-				blockExpiredRun(ctx, log, sweeper, server, e.RunToken)
-				// The zombie-writer case ADR-0013 tier 2 exists for: the pod
-				// may still be alive and partitioned, so take away its ability
-				// to push, not just its right to.
-				revokeForgeToken(ctx, log, forgeSweeper, e.ForgeTokenID)
-			}
-			managedCursor = managedBlockSweep(ctx, log, server, managedCursor, blockRetries)
-			settlementCursor = managedSettlementSweep(ctx, log, server, settlementCursor, settleAfter, settlementRetries)
-
-			// Delivery ids outlive a forge's retry window by a wide margin;
-			// the table exists to survive a restart, not to be an archive.
-			if n, err := st.SweepDeliveries(ctx, deliveryRetention); err != nil {
-				log.Error("delivery sweep failed", "err", err)
-			} else if n > 0 {
-				log.Debug("swept forge delivery ids", "count", n)
-			}
-
-			if engine != nil {
-				engine.EvaluateAll(ctx)
-			}
+			started := time.Now()
+			pass(ctx)
+			timings.Observe(name, time.Since(started))
 		}
+	}
+}
+
+func expiryPass(ctx context.Context, log *slog.Logger, st *store.Store, sweeper llmbroker.Sweeper,
+	forgeSweeper forgebroker.Sweeper, server *httpapi.Server) {
+	if err := server.ReconcileOperatorExecutions(ctx); err != nil {
+		log.Error("operator execution reconciliation failed")
+	}
+	expired, err := st.ExpireLeases(ctx)
+	if err != nil {
+		log.Error("lease sweep failed", "err", err)
+		return
+	}
+	for _, e := range expired {
+		log.Warn("lease expired, item released", "work_item", e.WorkItemID)
+		blockExpiredRun(ctx, log, sweeper, server, e.RunToken)
+	}
+
+	runs, err := st.ExpireRuns(ctx)
+	if err != nil {
+		log.Error("run sweep failed", "err", err)
+		return
+	}
+	for _, e := range runs {
+		log.Warn("run deadline expired, run reclaimed",
+			"work_item", e.WorkItemID, "shift", e.ShiftID, "role", e.Role, "writes", e.Writes)
+		blockExpiredRun(ctx, log, sweeper, server, e.RunToken)
+		// The zombie-writer case ADR-0013 tier 2 exists for: the pod
+		// may still be alive and partitioned, so take away its ability
+		// to push, not just its right to.
+		revokeForgeToken(ctx, log, forgeSweeper, e.ForgeTokenID)
+	}
+}
+
+func shiftPass(ctx context.Context, log *slog.Logger, st *store.Store, engine *shiftengine.Engine) {
+	// Delivery ids outlive a forge's retry window by a wide margin;
+	// the table exists to survive a restart, not to be an archive.
+	if n, err := st.SweepDeliveries(ctx, deliveryRetention); err != nil {
+		log.Error("delivery sweep failed", "err", err)
+	} else if n > 0 {
+		log.Debug("swept forge delivery ids", "count", n)
+	}
+
+	if engine != nil {
+		engine.EvaluateAll(ctx)
 	}
 }
 
 // reviewLoop is the slow half of merge detection. It asks the forge about
 // every awaiting_review pull request, so a missed webhook delays the move to
-// done or needs_human by at most one interval. It runs apart from sweepLoop
+// done or needs_human by at most one interval. It runs apart from the sweep loops
 // because forge reads must not hold up lease expiry.
 func reviewLoop(ctx context.Context, reviews *shiftengine.ReviewWatch, every time.Duration) {
 	if every <= 0 {

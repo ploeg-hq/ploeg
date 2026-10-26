@@ -48,6 +48,7 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(s.metrics.body)
 	_, _ = w.Write(renderPoolMetrics(s.Store.PoolStat()))
 	_, _ = w.Write(renderProviderAPIMetrics(apilimit.Snapshot()))
+	_, _ = w.Write(s.Loops.render())
 }
 
 func renderProviderAPIMetrics(counts []apilimit.Counts) []byte {
