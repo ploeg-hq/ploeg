@@ -97,7 +97,7 @@ A per-Run credential is useful only while the forge or gateway accepts it. Wheth
 
 `TestQualificationARevokedForgejoRunTokenIsRefusedAtOnce` ([`pkg/forgebroker/qualification_test.go`](../../pkg/forgebroker/qualification_test.go)) is opt-in like the GitHub qualification. Against a real Forgejo it mints a per-Run token through the broker, proves the token reads the repository API and git push discovery (and, given a second repository, that it cannot read that one), deletes it, and then replays it five times against both routes. Every replay must answer 401, and the token must be gone from the bot's token list. It logs how long the revoke took and when the first refusal came, never the token. Run against a fake that honours revocation it passes; against one that ignores the delete it fails on the first replay.
 
-Status on 2026-10-26: **not yet run against the live forge.** It needs the bot's password on the machine that runs it, and the maintainer runs it:
+Status on 2026-10-26: **qualified against the live forge.** The maintainer's homelab runs the same sequence in-cluster as a worker-labelled Job, `forge-revocation-probe`, which reads the bot password from the Secret that ploegd's broker uses, so the value never leaves the pod. Against Forgejo `15.0.10+gitea-1.22.0` it minted a token for `agent-builder`, read `GET /api/v1/user` and git discovery of a repository with it (200 and 200), revoked it (204), and replayed it five times against both routes: every replay answered 401, the first within 10 ms of the revoke returning (the probe's clock resolution), and the token was gone from the bot's token list. The Job reruns weekly. The opt-in test runs the same steps through Ploeg's broker for an installation that wants the proof from its own machine:
 
 ```sh
 umask 077
@@ -111,13 +111,12 @@ PLOEG_FORGEJO_E2E_OTHER_REPO=<owner/repo the bot can read> \
 rm -f /tmp/ploeg-bot-password
 ```
 
-The Secret and key names are the maintainer's homelab's; another installation uses the Secret its `botPasswordSecret` names. The test leaves no token behind: it revokes in a deferred call as well. Record the logged line, with the date and the Forgejo version, in this section; until then the source reading above is the evidence, and the threat model's "No live negative-credential tests" limit stays.
+The Secret and key names are the maintainer's homelab's; another installation uses the Secret its `botPasswordSecret` names. The test leaves no token behind: it revokes in a deferred call as well. The live probe's token was a plain user token, not one restricted to a repository, so it shows that Forgejo refuses a revoked token at once; that the broker's restricted token is refused the same way rests on the source reading above, since both go through `GetAccessTokenBySHA`.
 
 ## What is left
 
 | Gap | Where it is tracked |
 | --- | --- |
-| Live-forge replay after revocation not yet run | This page, the command above |
 | The shared builder token and the bootstrap token stay in the worker container | ADR-0138 option (c); F-03's residual |
 | Readers share one long-lived read token | ADR-0013 tier 1, ADR-0138 follow-ups |
 | A Forgejo per-Run token has no expiry; the sweep is the only backstop for a failed delete | ADR-0013 re-evaluation trigger (Forgejo native token expiry) |

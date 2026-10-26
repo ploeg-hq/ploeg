@@ -448,7 +448,7 @@ What this model does not yet establish:
 
 - **No live boundary test.** No test probes host mounts, cloud metadata, unrelated services, the Kubernetes API or unapproved egress from a P1 worker pod (issue #16).
 - **No failure injection.** Controller restart, partition, duplicate dispatch and late completion are untested beyond the unit tests named above (issue #18).
-- **No live negative-credential tests.** Cross-Run, expired and revoked credentials have not been tried against a live forge and gateway (issue #17). A replay after revocation is tested only against a fake Forgejo that refuses revoked tokens (T-FG-2). That Forgejo 15.0.10 refuses a deleted token on the next request is read from its source, not measured; the opt-in `TestQualificationARevokedForgejoRunTokenIsRefusedAtOnce` measures it and has not yet been run against a live forge ([credential flow](credential-flow.md#qualification-against-a-live-forge)).
+- **Live negative-credential tests cover forge revocation only.** On 2026-10-26 a revoked token was refused by live Forgejo 15.0.10 on every replay, the first within 10 ms ([credential flow](credential-flow.md#qualification-against-a-live-forge)). Cross-Run and expired credentials, and a blocked LiteLLM key, have not been tried against the live forge and gateway (issue #17); the LiteLLM case rests on its source.
 - **Some mitigations are doc only.** The rows that say so were not traced into the code: key-column contents (T-DB-2), knowledge promotion (T-HN-8) and delivery facts (T-HN-9).
 - **No independent review.** Issue #34 asks for someone other than the main implementer to review the supported profile.
 
