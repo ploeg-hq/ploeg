@@ -22,6 +22,11 @@ var observerReads = []string{
 	`SELECT p.state, count(*) FROM pull_requests p JOIN pull_request_deployments d ON d.pull_request_id = p.id GROUP BY 1`,
 	`SELECT action, count(*) FROM audit_log GROUP BY action`,
 	`SELECT state, count(*) FROM work_item_reviews GROUP BY state`,
+	`SELECT run_id, entries, bytes, truncated FROM run_transcript_totals`,
+	`SELECT review_requeues, acts_for_proof, acts_for_act FROM work_items`,
+	`SELECT yields, yield_requested_at FROM agent_runs`,
+	`SELECT node_name, pod_uid, count(*) FROM checkpoints GROUP BY 1, 2`,
+	`SELECT work_item_id, shift_id, round, actor, requested_at, yielded_at, pushed, handed_back_at FROM work_item_take_overs`,
 }
 
 var observerRefusals = []string{
@@ -45,6 +50,8 @@ var observerRefusals = []string{
 	`SELECT count(*) FROM asks`,
 	`SELECT count(*) FROM chats`,
 	`SELECT count(*) FROM run_llm_operator_settlements`,
+	`SELECT yield_detail FROM work_item_take_overs`,
+	`SELECT command_id FROM work_item_take_overs`,
 }
 
 func TestObserverRoleReadsMetadataAndNeverText(t *testing.T) {
@@ -133,4 +140,33 @@ func asObserver(ctx context.Context, s *Store, query string) error {
 func isPermissionDenied(err error) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == "42501"
+}
+
+func TestGrantObserverAppliesTheGrantsToARoleCreatedAfterTheMigrations(t *testing.T) {
+	ctx := context.Background()
+	s, err := New(ctx, scratchDatabase(t, "ploeg_observer_late"), PoolConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(s.Close)
+	if err := s.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if granted, err := s.GrantObserver(ctx); err != nil || granted {
+		t.Fatalf("GrantObserver without the role = %v, %v; want false, nil", granted, err)
+	}
+
+	createObserverRole(t)
+	t.Cleanup(func() { _, _ = s.pool.Exec(context.Background(), `DROP OWNED BY ploeg_observer`) })
+	if granted, err := s.GrantObserver(ctx); err != nil || !granted {
+		t.Fatalf("GrantObserver with the role = %v, %v; want true, nil", granted, err)
+	}
+	if granted, err := s.GrantObserver(ctx); err != nil || !granted {
+		t.Fatalf("GrantObserver a second time = %v, %v; want true, nil", granted, err)
+	}
+	for _, query := range observerReads {
+		if err := asObserver(ctx, s, query); err != nil {
+			t.Errorf("ploeg_observer cannot run %q: %v", query, err)
+		}
+	}
 }

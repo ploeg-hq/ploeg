@@ -97,6 +97,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 	if err := st.Migrate(ctx); err != nil {
 		return err
 	}
+	grantObserver(ctx, st, log)
 	gate.enter("resolving configuration")
 
 	// File-backed configuration (PLOEG_CONFIG). Replaces three env-var DSLs
