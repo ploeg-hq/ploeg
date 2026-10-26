@@ -2,8 +2,8 @@
 type: reference
 audience: [operator, integrator, contributor]
 owner: ploeg
-last_verified: 2026-10-24
-verified_by: "go test ./internal/compat/ against v0.2.0-rc.47; read pkg/store/store.go (Migrate), pkg/config/config.go (KnownFields), ops/helm/ploeg/values.schema.json, docs/contracts/README.md; go test ./pkg/httpapi/ ./pkg/worker/ (worker version handshake)"
+last_verified: 2026-10-26
+verified_by: "go test ./internal/compat/ against v0.2.0-rc.47; read pkg/store/store.go (Migrate, applyMigration), pkg/config/config.go (KnownFields), ops/helm/ploeg/values.schema.json, docs/contracts/README.md; go test ./pkg/httpapi/ ./pkg/worker/ (worker version handshake); mise run upgrade-drill from v0.2.0-rc.77 and v0.2.0-rc.1"
 ---
 
 # Compatibility policy
@@ -67,6 +67,16 @@ The removal is a `feat!` with a `BREAKING CHANGE:` footer and an ADR, and adds a
 - **Rolling update.** With the default `RollingUpdate` strategy the new `ploegd` migrates while the old one still serves, and Runs started by the old image keep running. So each migration *expands* only: it adds, and keeps what the previous release reads and writes working. Removing or renaming happens in a later minor's migration, once no supported release uses the old form ([parallel change](https://martinfowler.com/bliki/ParallelChange.html)). Migration 0052's trigger, which rewrites `leased` written by the outgoing release, is the pattern.
 - **Rollback.** Running the previous release on the current schema is supported, because every migration expanded. Running an older release than that is not: restore the database from the backup taken before the upgrade ([restore after a database outage](../how-to/restore-after-a-database-outage.md)). Take that backup before every minor upgrade.
 - **Skipped versions.** Upgrading across several releases at once is supported: every migration in between runs, in order. Because the old release may not survive a contract step two minors on, [drain the workers](../how-to/drain-workers.md) and scale `ploegd` to zero before an upgrade that skips a minor, then start the new release.
+- **Interrupted upgrade.** A migration and its `schema_migrations` row commit in one transaction. A migration cut off by a lock timeout, a killed `ploegd` or a PostgreSQL crash leaves nothing behind, and the next start applies it again. A migration that fails on the data every time cannot be rerun past: restore the backup taken before the upgrade and run the release that took it.
+
+| After an upgrade | Recovery | Data lost |
+| --- | --- | --- |
+| A migration was interrupted | Rerun: restart `ploegd` | None |
+| A migration fails on the data every time | Restore the pre-upgrade backup, run the release that took it | Everything after that backup |
+| The new release misbehaves, and you came from the previous release | Roll back to it on the upgraded schema | None |
+| You need a release older than the previous one | Restore the pre-upgrade backup | Everything after that backup |
+
+The [upgrade drill](../research/2026-10-26-upgrade-drill.md) (`mise run upgrade-drill`) rehearses each row on every change to the store, the run API, the Shift engine or the worker: it restores backups written by the previous release and by `v0.2.0-rc.1`, upgrades them to head, interrupts the upgrade three ways, and rolls back to the previous release. [Recover from a failed upgrade](../how-to/recover-from-a-failed-upgrade.md) has the steps and the measured times.
 
 ## Version pairs
 
