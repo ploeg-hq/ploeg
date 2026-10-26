@@ -1656,6 +1656,10 @@
             "proxy"
           ]
         },
+        "harnessOutputInLog": {
+          "type": "boolean",
+          "description": "true copies the harness's stdout and stderr into the worker pod's log (PLOEG_HARNESS_OUTPUT_IN_LOG): the prompt, tool output, file contents and any secret the agent reads then reach every log store and every reader of the pod's log. Debugging only; false (the default) keeps it inside the worker."
+        },
         "sandbox": {
           "type": "object",
           "additionalProperties": false,

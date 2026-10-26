@@ -82,14 +82,13 @@ func (c *client) RequestPermission(_ context.Context, params sdk.RequestPermissi
 	switch {
 	case d.Storm:
 		c.stormOnce.Do(func() { close(c.storm) })
-		total, top := c.perms.Stats()
-		c.log.Warn("permission storm; cancelling the session",
-			"requests", total, "topTools", top)
+		total, _ := c.perms.Stats()
+		c.log.Warn("permission storm; cancelling the session", "requests", total)
 		return cancelledPermission(), nil
 	case d.OptionID == "":
 		// Nothing acceptable was offered. Answering "cancelled" is honest;
 		// guessing at an option could silently grant a mutation.
-		c.log.Warn("no acceptable permission option offered", "tool", req.Title, "kind", req.ToolKind)
+		c.log.Warn("no acceptable permission option offered", "kind", req.ToolKind)
 		return cancelledPermission(), nil
 	default:
 		return sdk.RequestPermissionResponse{
