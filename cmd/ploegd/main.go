@@ -509,7 +509,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 		loops.Go(func() { webhookCheck.loop(ctx) })
 	}
 
-	loops.Go(func() { sweepLoop(ctx, log, st, sweeper, forgeSweeper, engine, srv, sweepEvery, settleAfter) })
+	startSweepLoops(ctx, &loops, log, st, sweeper, forgeSweeper, engine, srv, sweepEvery, settleAfter)
 	if reviews != nil {
 		loops.Go(func() { reviewLoop(ctx, reviews, reviewEvery) })
 	}
