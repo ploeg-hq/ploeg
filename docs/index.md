@@ -46,6 +46,7 @@ Use these sources for the current implementation. The [architecture](architectur
 ## Security
 
 - [Threat model](security/threat-model.md): the supported deployment profile, trust boundaries, STRIDE per element and findings
+- [Credential flow of a Run](security/credential-flow.md): every credential a Run touches, who mints it, its scope and lifetime, and what revokes it
 - [Security self-assessment](security/self-assessment.md), following the CNCF TAG Security and Compliance outline
 - [Reporting a vulnerability](../SECURITY.md)
 
