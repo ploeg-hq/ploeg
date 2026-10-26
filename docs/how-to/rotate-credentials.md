@@ -141,5 +141,6 @@ Verify: `ploegd` becomes ready, the next Run reaches `running` and finishes, and
 | `401` on clone or push | Old bot token deleted while a pod still used it | Let the Run fail and retry; next time wait for running Runs to end |
 | `forge credential revoke failed` | Admin token invalid, or lacks rights over the bot user | Restore the previous token, fix the new token's scope |
 | `worker.request_rejected` rows after a rotation | Worker token not in the registry, or signing key changed under a live Run | Add the token to the registry; drain before changing the signing key |
+| Workers get `429 worker request rate limited` | More than 30 worker requests were rejected within one minute, counted across every `ploegd` replica in the database; past that limit a rejection is answered `429` and not recorded until the oldest counted one is a minute old ([worker_auth.go](../../pkg/httpapi/worker_auth.go)) | Find the first `worker.request_rejected` rows with the query above and fix their cause |
 | `ploegd` does not start: `invalid worker bootstrap scope` | A registry entry lacks a team or has a token under 32 bytes | Fix the entry in OpenBao |
 | `ploegd` does not start: `worker bootstrap credentials must be unique per scope` | The same token appears twice in the registry | Give each entry its own token |

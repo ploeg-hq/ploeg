@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http/httptest"
 	"strings"
@@ -149,5 +150,38 @@ func TestWorkerCapabilityBindsAudienceAndExpiry(t *testing.T) {
 	}
 	if _, err := NewWorkerSecurity(`[]`, strings.Repeat("fixture-signing", 3), true); err == nil {
 		t.Fatal("managed authority accepted in legacy mode")
+	}
+}
+
+func TestWorkerRejectionLimitIsSharedAcrossReplicas(t *testing.T) {
+	reset(t)
+	ctx := context.Background()
+	dsn := fmt.Sprintf("postgresql://postgres:postgres@localhost:%d/postgres?sslmode=disable", testPort)
+	otherStore, err := store.New(ctx, dsn, store.PoolConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer otherStore.Close()
+	replica := func(st *store.Store) *Server {
+		a, err := NewWorkerSecurity(`[]`, strings.Repeat("s", 32), false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return &Server{Log: slog.New(slog.DiscardHandler), Store: st, LeaseTTL: time.Minute, RoleCaps: plan.Plans{}, WorkerSecurity: a}
+	}
+	replicas := []*Server{replica(testStore), replica(otherStore)}
+	for i := 0; i < workerRejectionLimit; i++ {
+		if got := workerRequest(replicas[i%2], "POST", "/api/v1/claim", strings.Repeat("x", 32), "pod", "{}").Code; got != 401 {
+			t.Fatalf("rejection %d answered %d before the shared limit", i+1, got)
+		}
+	}
+	for i, s := range replicas {
+		if got := workerRequest(s, "POST", "/api/v1/claim", strings.Repeat("x", 32), "pod", "{}").Code; got != 429 {
+			t.Fatalf("replica %d answered %d after %d rejections across both replicas", i, got, workerRejectionLimit)
+		}
+	}
+	var recorded int
+	if err := testPool.QueryRow(ctx, `SELECT count(*) FROM audit_log WHERE action='worker.request_rejected'`).Scan(&recorded); err != nil || recorded != workerRejectionLimit {
+		t.Fatalf("recorded %d rejections, want %d: %v", recorded, workerRejectionLimit, err)
 	}
 }
