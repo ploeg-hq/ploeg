@@ -18,14 +18,14 @@ Read [Before you start](index.md#before-you-start) for names and the database se
 
 | What happened | Recovery | Data lost | Measured in the [upgrade drill](../research/2026-10-26-upgrade-drill.md) |
 | --- | --- | --- | --- |
-| `ploegd` exits with `migration <name>: … lock timeout`, or its pod or node died during the upgrade | **Rerun.** Restart `ploegd` (step 1). It applies the interrupted migration and the rest | Nothing | 33 to 44 ms from restart to serving, after the 5 s the failed attempt waited. In a cluster the crash-loop backoff (10 s, doubling to 5 minutes) dominates |
-| PostgreSQL crashed during the upgrade | **Rerun** once the database is back | Nothing; crash recovery keeps every committed migration | 44 to 49 ms after PostgreSQL is back |
-| `ploegd` exits with the same `migration <name>: …` error on every start, not a lock timeout | **Restore** (step 3). The migration fails on this data, so rerunning cannot help | Everything after the pre-upgrade backup | 0.59 to 0.66 s on a 76 MB backup, plus your restore time |
+| `ploegd` exits with `migration <name>: … lock timeout`, or its pod or node died during the upgrade | **Rerun.** Restart `ploegd` (step 1). It applies the interrupted migration and the rest | Nothing | 33 to 49 ms from restart to serving, after the 5 s the failed attempt waited. In a cluster the crash-loop backoff (10 s, doubling to 5 minutes) dominates |
+| PostgreSQL crashed during the upgrade | **Rerun** once the database is back | Nothing; crash recovery keeps every committed migration | 44 to 52 ms after PostgreSQL is back |
+| `ploegd` exits with the same `migration <name>: …` error on every start, not a lock timeout | **Restore** (step 3). The migration fails on this data, so rerunning cannot help | Everything after the pre-upgrade backup | 0.27 to 0.66 s on a 76 MB backup, plus your restore time |
 | The upgrade finished but the new release misbehaves, and you came from the previous release | **Roll back** (step 2) to the previous release, on the upgraded database | Nothing | The previous release was serving 21 ms after its process started |
 | The upgrade finished and you need a release older than the previous one | **Restore** (step 3). An older release on a newer schema is not supported | Everything after the pre-upgrade backup | as above |
-| The database was lost after the upgrade, and the newest backup predates it | **Restore and upgrade.** Restore the backup and run the current release; it migrates the backup forward on start | Everything after the backup | 0.60 to 1.03 s from destruction to serving, 39 migrations included |
+| The database was lost after the upgrade, and the newest backup predates it | **Restore and upgrade.** Restore the backup and run the current release; it migrates the backup forward on start | Everything after the backup | 0.29 to 1.03 s from destruction to serving, 39 migrations included |
 
-The drill measured these on one workstation with embedded PostgreSQL and a 77 MB backup. They time PostgreSQL and `ploegd`, not a CloudNativePG restore, object storage or pod scheduling. Time a real restore of `ploeg-db` before you promise an operator target.
+The drill measured these on the CI runner and a workstation with embedded PostgreSQL and a 77 MB backup. They time PostgreSQL and `ploegd`, not a CloudNativePG restore, object storage or pod scheduling. Time a real restore of `ploeg-db` before you promise an operator target.
 
 ## 1. Rerun the upgrade
 

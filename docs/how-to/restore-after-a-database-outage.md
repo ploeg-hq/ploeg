@@ -3,7 +3,7 @@ type: how-to
 audience: [operator]
 owner: ploeg
 last_verified: 2026-10-26
-verified_by: "Ran the restore drill (mise run restore-drill) locally and on the CI runner, and the upgrade drill (mise run upgrade-drill) locally; read apps/ploeg cmd/ploegd/{main,sweep}.go (startup ping retry, Migrate, boot orphan sweeps), pkg/store/store.go (Migrate, ExpireLeases), pkg/store/shift.go (ExpireRuns), pkg/httpapi/server.go (readyz), pkg/worker/worker.go (renewLoop), ops/helm/ploeg and docs/operations/first-cutover.md"
+verified_by: "Ran the restore drill (mise run restore-drill) locally and on the CI runner, and the upgrade drill (mise run upgrade-drill) locally and on the CI runner; read apps/ploeg cmd/ploegd/{main,sweep}.go (startup ping retry, Migrate, boot orphan sweeps), pkg/store/store.go (Migrate, ExpireLeases), pkg/store/shift.go (ExpireRuns), pkg/httpapi/server.go (readyz), pkg/worker/worker.go (renewLoop), ops/helm/ploeg and docs/operations/first-cutover.md"
 ---
 
 # Restore Ploeg after a database outage
@@ -136,7 +136,7 @@ Measured on 2026-10-25, embedded PostgreSQL 18 with a 59 MB data directory, sing
 
 The RPO is exactly the backup point: every write before it came back and every write after it, a settled 0.75 USD included, was gone. The drill's window is short only because the drill destroys the database a fraction of a second after the backup.
 
-The [upgrade drill](../research/2026-10-26-upgrade-drill.md) does the same with a backup written by an older release's own code, 13,037 rows in a 77 MB data directory, and migrates it to the current release before `ploegd` starts. From `v0.2.0-rc.77` it served again in 0.60 to 0.67 s, and from `v0.2.0-rc.1`, 39 migrations included, in 0.77 to 1.03 s. A worker of the older release that kept running got `gone` on its next renewal and could not checkpoint or report.
+The [upgrade drill](../research/2026-10-26-upgrade-drill.md) does the same with a backup written by an older release's own code, 13,037 rows in a 77 MB data directory, and migrates it to the current release before `ploegd` starts. From `v0.2.0-rc.77` it served again in 287 ms on the CI runner and 0.60 to 0.67 s on a workstation, and from `v0.2.0-rc.1`, 39 migrations included, in 424 ms and 0.77 to 1.03 s. A worker of the older release that kept running got `gone` on its next renewal and could not checkpoint or report.
 
 These numbers time the database and `ploegd`, not a production restore. A CloudNativePG restore also downloads the base backup and replays archived WAL from object storage, both of which grow with the database and the time since the last base backup, and the pod has to be scheduled and its volume bound. With continuous WAL archiving the RPO is the archiving delay, not the age of the base backup. Time a real restore of `ploeg-db` before you promise an operator target.
 

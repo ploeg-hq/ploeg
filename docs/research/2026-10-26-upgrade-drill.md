@@ -4,7 +4,7 @@ Status: research record, 2026-10-26. It completes the upgrade half of [#22](http
 
 **Question.** When a backup taken by an older release is restored and the current `ploegd` migrates it, do the older release's Work Items, Runs, Leases, accounts and audit trail come through unchanged? Can a worker of the older release, holding a token from before the upgrade, change anything afterwards? When a migration is interrupted, does rerunning it give the same database as an uninterrupted upgrade? And how long does each recovery take?
 
-**Answer.** Yes, for each of the three releases tried. A backup written by `v0.2.0-rc.77` (the previous release), by `v0.2.0-rc.1` (the oldest release the policy expects to upgrade), and by `v0.1.0` (which the policy does not cover) restored into a clean PostgreSQL and migrated to head. Every row of every table kept every column that head still has, except the two changes migrations make on purpose. Settled spend and Shift spend matched the backup point to the cent. The older release's worker process, reconnecting after the upgrade, got `gone` on renewal and 404 on checkpoint and outcome, and changed nothing. Its next claim was served under a new token. A migration interrupted three ways (a lock timeout, `ploegd` killed, PostgreSQL crashed) left the interrupted migration unapplied, and the next start finished the upgrade with a schema and rows identical to an uninterrupted one. On a 32-thread workstation under `-race`, a restore plus upgrade served again in 0.6 to 1.0 s, and an interrupted upgrade served again 33 to 49 ms after the rerun began.
+**Answer.** Yes, for each of the three releases tried. A backup written by `v0.2.0-rc.77` (the previous release), by `v0.2.0-rc.1` (the oldest release the policy expects to upgrade), and by `v0.1.0` (which the policy does not cover) restored into a clean PostgreSQL and migrated to head. Every row of every table kept every column that head still has, except the two changes migrations make on purpose. Settled spend and Shift spend matched the backup point to the cent. The older release's worker process, reconnecting after the upgrade, got `gone` on renewal and 404 on checkpoint and outcome, and changed nothing. Its next claim was served under a new token. A migration interrupted three ways (a lock timeout, `ploegd` killed, PostgreSQL crashed) left the interrupted migration unapplied, and the next start finished the upgrade with a schema and rows identical to an uninterrupted one. Under `-race`, a restore plus upgrade served again in 0.29 to 0.42 s on the CI runner and 0.6 to 1.0 s on a workstation, and an interrupted upgrade served again 33 to 52 ms after the rerun began.
 
 ## Which older releases
 
@@ -72,26 +72,28 @@ After each interruption, `schema_migrations` holds every migration before the in
 
 ## Measurements
 
-A 32-thread workstation, `-race`, embedded PostgreSQL 18, the dataset above (13,037 rows, 76 to 77 MB base backup). The RTO is the time the recovery steps take, with the drill's checks left out. The RPO is the time from the backup point to destruction, and each run lost exactly the writes after the backup point.
+Embedded PostgreSQL 18 and the dataset above (13,037 rows, 76 to 77 MB base backup), under `-race`, on two machines: the CI runner (`ubuntu-24.04`, [run 40294384069](https://github.com/ploeg-hq/ploeg/actions/runs/40294384069), the workflow's first run, on this change) and a 32-thread workstation (three runs of the final code per base). The RTO is the time the recovery steps take, with the drill's checks left out. The RPO is the time from the backup point to destruction, and each run lost exactly the writes after the backup point.
 
 ### Restore and upgrade
 
-| From | Migrations to head | RTO | Restore files | PostgreSQL start and recovery | Migrate | `ploegd` boot and first sweep | RPO | Rollback served again |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `v0.2.0-rc.77` | 0 | 0.60–0.67 s | 107–115 ms | 459–546 ms | 7–8 ms | 6–16 ms | 0.65–1.12 s | 21 ms |
-| `v0.2.0-rc.1` | 39 | 0.77–1.03 s | 101–106 ms | 507–730 ms | 162–175 ms | 5–16 ms | 0.49–0.76 s | not promised; restore |
-| `v0.1.0`, once | 41 | 0.76 s | 100 ms | 486 ms | 170 ms | 5 ms | 0.49 s | not promised |
+| From | Where | Migrations to head | RTO | Restore files | PostgreSQL start and recovery | Migrate | `ploegd` boot and first sweep | RPO | Rollback served again |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `v0.2.0-rc.77` | CI | 0 | 287 ms | 138 ms | 121 ms | 16 ms | 11 ms | 1.18 s | 21 ms |
+| `v0.2.0-rc.1` | CI | 39 | 424 ms | 128 ms | 122 ms | 164 ms | 9 ms | 0.54 s | not promised; restore |
+| `v0.2.0-rc.77` | workstation | 0 | 0.60–0.67 s | 107–115 ms | 459–546 ms | 7–8 ms | 6–16 ms | 0.65–1.12 s | 21 ms |
+| `v0.2.0-rc.1` | workstation | 39 | 0.77–1.03 s | 101–106 ms | 507–730 ms | 162–175 ms | 5–16 ms | 0.49–0.76 s | not promised; restore |
+| `v0.1.0`, once | workstation | 41 | 0.76 s | 100 ms | 486 ms | 170 ms | 5 ms | 0.49 s | not promised |
 
 ### Interrupted upgrade from `v0.2.0-rc.1`
 
-| Case | Recovery | Served again after |
-| --- | --- | --- |
-| Lock timeout | Restart `ploegd`; `Migrate` resumes at 0071 | 33–44 ms (rerun 28–39 ms, boot 5 ms), after the 5 s the failed attempt waited |
-| `ploegd` killed | Same | 33–43 ms |
-| PostgreSQL crash | PostgreSQL crash recovery, then the same | 44–49 ms after PostgreSQL is back |
-| Restore instead | Restore the pre-upgrade backup, run `rc.1` | 0.59–0.66 s (restore files about 0.1 s, PostgreSQL about 0.5 s, `ploegd` start 10–11 ms) |
+| Case | Recovery | Served again after, CI | Served again after, workstation |
+| --- | --- | --- | --- |
+| Lock timeout | Restart `ploegd`; `Migrate` resumes at 0071 | 47 ms (rerun 38 ms, boot 9 ms) | 33–44 ms (rerun 28–39 ms, boot 5 ms) |
+| `ploegd` killed | Same | 49 ms | 33–43 ms |
+| PostgreSQL crash | PostgreSQL crash recovery, then the same | 52 ms after PostgreSQL is back | 44–49 ms |
+| Restore instead | Restore the pre-upgrade backup, run `rc.1` | 266 ms (files 124 ms, PostgreSQL 121 ms, `ploegd` start 21 ms) | 0.59–0.66 s (files about 0.1 s, PostgreSQL about 0.5 s, `ploegd` start 10–11 ms) |
 
-Ranges cover the runs of the final code made while writing this record, three for each base. In a cluster the rerun is not immediate: a `ploegd` that fails a migration exits, and Kubernetes restarts it after its crash-loop backoff, 10 s doubling to 5 minutes. That delay, not the rerun, sets the RTO of an interrupted upgrade.
+The lock-timeout times start after the 5 s the failed attempt waited. PostgreSQL starts faster on the CI runner than on the workstation, as in the restore drill. In a cluster the rerun is not immediate: a `ploegd` that fails a migration exits, and Kubernetes restarts it after its crash-loop backoff, 10 s doubling to 5 minutes. That delay, not the rerun, sets the RTO of an interrupted upgrade.
 
 ## Mutation tests
 
