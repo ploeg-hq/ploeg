@@ -446,7 +446,7 @@ Severity follows the matrix in [Method](#method). Following issue #34, a finding
 
 What this model does not yet establish:
 
-- **No live boundary test.** No test probes host mounts, cloud metadata, unrelated services, the Kubernetes API or unapproved egress from a P1 worker pod (issue #16).
+- **Partial live boundary test.** The [2026-10-26 boundary qualification](../research/2026-10-26-worker-boundary-qualification.md) shows egress, unrelated services, the service-account token and credential files held in one homelab under Kata. Cloud metadata, Kubernetes API reachability and the in-pod privilege set rest on configuration and admission until [`worker-boundary-probe.sh`](../../scripts/worker-boundary-probe.sh) has run in a Kata worker pod (issue #16).
 - **No failure injection.** Controller restart, partition, duplicate dispatch and late completion are untested beyond the unit tests named above (issue #18).
 - **No live negative-credential tests.** Cross-Run, expired and revoked credentials have not been tried against a live forge and gateway (issue #17). A replay after revocation is tested only against a fake Forgejo that refuses revoked tokens (T-FG-2); that a real Forgejo or GitHub refuses a token at once after its revoke call returns is assumed, not tested.
 - **Some mitigations are doc only.** The rows that say so were not traced into the code: key-column contents (T-DB-2), knowledge promotion (T-HN-8) and delivery facts (T-HN-9).
