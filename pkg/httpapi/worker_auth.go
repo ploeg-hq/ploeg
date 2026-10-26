@@ -29,13 +29,17 @@ type WorkerSecurity struct {
 	// RetireHMAC stops ploegd issuing and accepting the HMAC worker
 	// capability, so a Run is controlled with its transaction token alone
 	// (ADR-0156, PLOEG_WORKER_HMAC_CAPABILITY=off).
-	RetireHMAC      bool
-	bootstraps      []WorkerBootstrap
-	signingKey      []byte
-	mu              sync.Mutex
-	rejectionWindow time.Time
-	rejections      int
+	RetireHMAC   bool
+	bootstraps   []WorkerBootstrap
+	signingKey   []byte
+	mu           sync.Mutex
+	limitedUntil time.Time
 }
+
+const (
+	workerRejectionLimit  = 30
+	workerRejectionWindow = time.Minute
+)
 
 type workerCapability struct {
 	Audience string `json:"aud"`
@@ -236,26 +240,39 @@ func (s *Server) WorkerHandler(next http.Handler) http.Handler {
 }
 
 func (s *Server) rejectWorker(w http.ResponseWriter, r *http.Request) {
-	a := s.WorkerSecurity
-	a.mu.Lock()
-	if time.Since(a.rejectionWindow) >= time.Minute {
-		a.rejectionWindow = time.Now()
-		a.rejections = 0
-	}
-	a.rejections++
-	limited := a.rejections > 30
-	a.mu.Unlock()
-	if limited {
+	if s.workerRejectionLimited(r) {
 		http.Error(w, "worker request rate limited", http.StatusTooManyRequests)
 		return
 	}
 	if s.Log != nil {
 		s.Log.Warn("worker request rejected")
 	}
-	if s.Store != nil {
-		_ = s.Store.RecordWorkerRejection(r.Context())
-	}
 	http.Error(w, "worker request unauthorized", http.StatusUnauthorized)
+}
+
+func (s *Server) workerRejectionLimited(r *http.Request) bool {
+	a := s.WorkerSecurity
+	a.mu.Lock()
+	cached := time.Now().Before(a.limitedUntil)
+	a.mu.Unlock()
+	if cached || s.Store == nil {
+		return cached
+	}
+	verdict, err := s.Store.RecordWorkerRejection(r.Context(), workerRejectionLimit, workerRejectionWindow)
+	if err != nil {
+		if s.Log != nil {
+			s.Log.Warn("worker rejection not recorded", "err", err)
+		}
+		return false
+	}
+	if verdict.Limited {
+		a.mu.Lock()
+		if until := time.Now().Add(verdict.LimitedFor); until.After(a.limitedUntil) {
+			a.limitedUntil = until
+		}
+		a.mu.Unlock()
+	}
+	return verdict.Limited
 }
 
 type workerResponse struct {
