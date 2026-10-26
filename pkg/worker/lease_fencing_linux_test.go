@@ -105,6 +105,7 @@ type controlPlane struct {
 	url     string
 	boots   atomic.Int32
 	ttl     time.Duration
+	version string
 }
 
 func newControlPlane(t *testing.T) *controlPlane {
@@ -139,16 +140,21 @@ func (cp *controlPlane) serve() {
 
 func (cp *controlPlane) boot() {
 	cp.engine = &shiftengine.Engine{Store: cp.store, Plans: cp.plans, Log: slog.New(slog.DiscardHandler)}
-	handler := (&httpapi.Server{
+	handler := cp.apiServer(cp.version).Handler()
+	cp.handler.Store(&handler)
+	cp.boots.Add(1)
+}
+
+func (cp *controlPlane) apiServer(version string) *httpapi.Server {
+	return &httpapi.Server{
 		Store:          cp.store,
 		LeaseTTL:       cp.ttl,
 		Log:            slog.New(slog.DiscardHandler),
 		RoleCaps:       cp.plans,
 		Engine:         cp.engine,
 		WorkerSecurity: &httpapi.WorkerSecurity{AllowLegacy: true},
-	}).Handler()
-	cp.handler.Store(&handler)
-	cp.boots.Add(1)
+		Version:        version,
+	}
 }
 
 func (cp *controlPlane) restart() {
