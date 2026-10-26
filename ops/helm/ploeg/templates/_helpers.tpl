@@ -749,6 +749,10 @@ spec:
         - name: PLOEG_CREDENTIAL_ISOLATION_OFF_REASON
           value: {{ . | quote }}
         {{- end }}
+        {{- if $root.Values.executor.harnessOutputInLog }}
+        - name: PLOEG_HARNESS_OUTPUT_IN_LOG
+          value: "on"
+        {{- end }}
         - name: PLOEG_LLM_CREDENTIAL_MODE
           value: {{ ternary "static-compatibility" "managed" (eq $root.Values.executor.workerAuth.mode "legacy") | quote }}
         {{- if eq $root.Values.executor.workerAuth.mode "managed" }}
