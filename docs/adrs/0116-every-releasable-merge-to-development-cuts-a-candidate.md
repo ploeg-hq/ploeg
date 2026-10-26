@@ -63,3 +63,4 @@ GitHub lets a workflow token's tag push start other workflows, the `Protect deve
 * Owner decisions D1 and D4 of [homelab-cluster ADR-0069](https://forgejo.webgrip.dev/webgrip/homelab-cluster/src/branch/main/docs/techdocs/docs/adr/adr-0069-one-delivery-contract.md), 2026-10-17.
 * [Evidence: fixture and dry-run](../research/2026-10-18-release-candidates-from-semantic-release.md); [releases](../ops/release-versioning.md).
 * 2026-10-18 — Candidates became tags only (ADR 0115): the `Protect development` ruleset cannot take GitHub Actions as a bypass actor, so a release commit to `development` would be refused.
+* 2026-10-26 — The stable clause (a pushed stable tag starts the release workflow) is replaced by [ADR 0158](0158-a-stable-release-is-a-soaked-candidate-promoted-by-fast-forwarding-main.md): the push to `main` that fast-forwards it to a candidate starts the stable release. Candidates are unchanged.

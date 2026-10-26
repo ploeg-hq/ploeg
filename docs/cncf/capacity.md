@@ -2,8 +2,8 @@
 type: explanation
 audience: [owner, contributor, reviewer]
 owner: ploeg
-last_verified: 2026-10-25
-verified_by: "Owner decisions of 2026-10-25 on issue #5; MAINTAINERS.md read at development"
+last_verified: 2026-10-26
+verified_by: "Owner decisions of 2026-10-25 on issue #5 and of 2026-10-26 on issue #31; MAINTAINERS.md read at development"
 ---
 
 # Capacity and work in progress
@@ -32,6 +32,11 @@ Paid qualification covers the model calls of test Runs and live accounting check
 * An agent may spend up to **$5 per run** without asking again.
 * Anything above $5 for one run needs the maintainer's approval before it starts.
 
+## Roadmap cadence
+
+The [monthly decision cycle](../../GOVERNANCE.md#the-monthly-decision-cycle) takes about two hours a month of the maintainer's 20 hours a week: opening the issue, answering the week's comments and recording the decisions. It does not hold one of the two work-in-progress slots.
+
 ## Decision history
 
 * 2026-10-25: about 20 hours a week; work in progress capped at two open tickets per maintainer, agent-run tickets included; the maintainer approves paid qualification spend and an agent may spend up to $5 per run without asking again. Decided by the maintainer.
+* 2026-10-26: roadmap decisions in a monthly asynchronous cycle, with proposals in GitHub Discussions; about two hours a month. Decided by the maintainer.

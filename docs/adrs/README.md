@@ -229,6 +229,7 @@ fails otherwise.
 | [0155](0155-an-operator-settles-an-account-the-gateway-cannot-answer-for-from-evidence-and-never-below-what-ploeg-observed.md) | An operator settles an account the gateway cannot answer for from evidence, and never below what Ploeg observed | proposed | 2026-10-25 |
 | [0156](0156-each-run-carries-a-transaction-token-that-names-its-person-and-a-team-without-a-sponsor-runs-nothing.md) | Each Run carries a transaction token that names its person, and a Team without a sponsor runs nothing | proposed | 2026-10-25 |
 | [0157](0157-ploeg-mcp-asks-a-client-on-the-previous-protocol-to-confirm-in-a-session.md) | ploeg-mcp asks a client on the previous protocol to confirm in a session | proposed | 2026-10-25 |
+| [0158](0158-a-stable-release-is-a-soaked-candidate-promoted-by-fast-forwarding-main.md) | A stable release is a soaked candidate, promoted by fast-forwarding main | accepted | 2026-10-26 |
 
 
 ## Review calendar
@@ -332,3 +333,4 @@ triggers.
 | 2027-04-01 | [0147](0147-ploeg-serves-the-major-of-each-contract-and-keeps-its-consumers-two-newest-lines-working.md) — or sooner, when a consumer breaks on a release the expectation check passed, a second consumer records expectations or one asks for more than two lines, Ploeg adds a major 2 of any contract, the owner opens the 1.0 decision, or a consumer's release automates its expectation pull request |
 | 2027-04-01 | [0005](0005-build-a-dedicated-dispatch-plane.md), [0032](0032-keep-the-dispatch-plane-and-compete-on-authorized-spend.md), [0071](0071-ploeg-keeps-its-state-in-postgresql-and-is-not-a-kubernetes-operator.md), [0073](0073-ploeg-stays-in-go-and-admits-rust-only-as-a-separately-deployed-component.md), [0077](0077-ploeg-knows-work-sources-and-change-destinations-never-vendors.md) — the project review gate (`design.md` §10) |
 | 2027-04-30 | [0155](0155-an-operator-settles-an-account-the-gateway-cannot-answer-for-from-evidence-and-never-below-what-ploeg-observed.md) — or sooner, when the gateway gains a durable per-key spend export, Ploeg imports provider invoices, a correction-after-window command is designed, or an operator settlement is found to have undercharged a Run |
+| 2027-04-26 | [0158](0158-a-stable-release-is-a-soaked-candidate-promoted-by-fast-forwarding-main.md) — or sooner, when a second maintainer joins, Ploeg declares 1.0, a re-tagged digest fails in a stable that its candidate never showed, or an adopter asks for a longer support window or notes in the repository |

@@ -2,13 +2,13 @@
 type: explanation
 audience: [owner, operator, integrator, contributor]
 owner: ploeg
-last_verified: 2026-10-24
-verified_by: "git tag and git rev-list against origin on 2026-10-24; gh release view v0.2.0-rc.52 and v0.1.0; gh api rulesets; read scripts/release.sh, .github/workflows/release.yml, release-candidate.yml, contract-bundle.yml; gh issue view 12, 13, 14, 23, 30, 34, 221-227"
+last_verified: 2026-10-26
+verified_by: "Owner decisions of 2026-10-26 recorded in ADR 0158; gh issue view 221-227 on 2026-10-26; git tag and git rev-list against origin on 2026-10-24; gh release view v0.2.0-rc.52 and v0.1.0; gh api rulesets; read scripts/release.sh, .github/workflows/release.yml, release-candidate.yml, contract-bundle.yml; gh issue view 12, 13, 14, 23, 30, 34, 221-227"
 ---
 
 # Plan: the stable release channel
 
-This is a plan. Nothing in it is in force until the owner answers the [open decisions](#open-decisions) and the records listed under [work to land](#work-to-land) are accepted. Until then [releases](release-versioning.md) and [the compatibility policy](compatibility.md) describe what Ploeg does.
+This is a plan. The owner answered its [decisions](#decisions) on 2026-10-26 in [ADR 0158](../adrs/0158-a-stable-release-is-a-soaked-candidate-promoted-by-fast-forwarding-main.md); nothing in it is enforced until the [work to land](#work-to-land) is done. Until then [releases](release-versioning.md) and [the compatibility policy](compatibility.md) describe what Ploeg does.
 
 The goal is a stable channel that people outside the project can run: a stable `v0.2.0` that is a specific, tested candidate, a rule for when the next one comes, how long a stable keeps getting fixes, and what an upgrade between stables promises.
 
@@ -36,12 +36,12 @@ A stable release is a candidate that was promoted. It has the candidate's commit
 
 A candidate `v0.Y.Z-rc.N` may be promoted when all of these hold. G1 to G3 and G5 can be checked by a script; G4, G6 and G7 need recorded evidence.
 
-1. **G1 Release blockers closed.** Every issue in the GitHub milestone `v0.Y.Z` is closed. For `v0.2.0` the milestone holds the findings the [threat model](../security/threat-model.md) marks release-blocking: [#221](https://github.com/ploeg-hq/ploeg/issues/221) (F-24), [#224](https://github.com/ploeg-hq/ploeg/issues/224) (F-03) and [#225](https://github.com/ploeg-hq/ploeg/issues/225) (F-04) are open, [#222](https://github.com/ploeg-hq/ploeg/issues/222) (F-01) and [#223](https://github.com/ploeg-hq/ploeg/issues/223) (F-02) are closed. [#226](https://github.com/ploeg-hq/ploeg/issues/226) (F-08) and [#227](https://github.com/ploeg-hq/ploeg/issues/227) (F-36) block only if the supported profile includes MCP `execute` groups or rework by outside reviewers (decision Q4).
+1. **G1 Release blockers closed.** Every issue in the GitHub milestone `v0.Y.Z` is closed. For `v0.2.0` the milestone holds the findings the [threat model](../security/threat-model.md) marked release-blocking, [#221](https://github.com/ploeg-hq/ploeg/issues/221) to [#225](https://github.com/ploeg-hq/ploeg/issues/225), all closed by 2026-10-25, and the quickstart gate [#12](https://github.com/ploeg-hq/ploeg/issues/12) (G7). [#226](https://github.com/ploeg-hq/ploeg/issues/226) (F-08) and [#227](https://github.com/ploeg-hq/ploeg/issues/227) (F-36) do not block it: MCP `execute` groups and rework by outside reviewers stay outside the supported profile for `0.2` (Q4).
 2. **G2 The candidate's own gates passed.** Its `Release` run completed (`mise run verify`, `mise run docs-check`, signature verification), its contract bundle was published, and the attack drill passed on its commit.
 3. **G3 Contract tests green against the previous stable.** `PLOEG_COMPAT_BASE=<previous stable> go test ./internal/compat/` passes, or every failure is an entry in [breaking-changes.yaml](../contracts/breaking-changes.yaml) with its ADR. Today the gate compares with the newest tag, which is usually the previous candidate; a stable has to be compared with the stable before it. Once the consumer skew tests from the contract-version work (VIK-2398) exist, they are part of this gate.
 4. **G4 Soak.** The exact candidate digests ran in a reference deployment for the soak period (Q3) with no signal of the `DeliveryCandidateUnhealthy` class: the release not Ready, replicas unavailable, a container restarting twice in 15 minutes, or a route probe failing. No `PloegCredentialLeak`, `PloegShiftStuck`, `PloegLeaseExpired` or `PloegRunsFailingRepeatedly` alert ([alerts](alerts.md)) fired in that time either. A reference deployment that follows the candidate channel replaces a candidate within hours, so a soak needs a hold: the deployment is pinned to the chosen candidate for the soak period while new candidates keep being cut.
-5. **G5 The upgrade path works.** On a kind cluster, the previous stable is installed, upgraded to the candidate, completes one Run, and is rolled back one release without a database restore, as [compatibility](compatibility.md#database) promises.
-6. **G6 Notes are written.** The stable notes described [below](#changelog-upgrade-notes-and-deprecations) are merged.
+5. **G5 The upgrade path works.** For `v0.2.0` this gate does not apply: going from `v0.1.0` is a fresh install (Q8). From `v0.2.0` on, on a kind cluster, the previous stable is installed, upgraded to the candidate, completes one Run, and is rolled back one release without a database restore, as [compatibility](compatibility.md#database) promises.
+6. **G6 Notes are written.** The stable notes described [below](#changelog-upgrade-notes-and-deprecations) are drafted on the stable's GitHub release.
 7. **G7 An outsider can start from it.** For `v0.2.0`, the quickstart pins the candidate and a person who did not write it has completed it ([#12](https://github.com/ploeg-hq/ploeg/issues/12)). Later stables need the quickstart to pass in CI at the candidate (decision Q4).
 
 ## Who promotes and how
@@ -99,9 +99,9 @@ How Ploeg advertises the contract versions it serves, how a consumer checks them
 
 ## Changelog, upgrade notes and deprecations
 
-- `CHANGELOG.md` holds stable releases only. Candidate notes stay on their GitHub releases.
-- The stable entry is written by a person from the candidates' notes since the previous stable, in a `docs(changelog)` pull request to `development` before promotion. A `docs` commit cuts no candidate, which is why the promote check allows a target commit whose diff from the candidate touches only `CHANGELOG.md` and `docs/` (Q9).
-- Each stable entry has these sections, empty ones stated as "None":
+- Notes live on GitHub releases only (Q9). `CHANGELOG.md` is not continued; it points to the GitHub releases. The promoted commit is the candidate's commit, with no notes commit.
+- A stable's notes are written by a person from the candidates' notes since the previous stable, on the stable's GitHub release.
+- Each stable's notes have these sections, empty ones stated as "None":
   - **Breaking changes**, one line per entry of `breaking-changes.yaml` between the two stables, with the ADR.
   - **Deprecations**, each with its replacement and the earliest minor it may be removed in.
   - **Removals**, each naming the stable minor that deprecated it.
@@ -110,7 +110,6 @@ How Ploeg advertises the contract versions it serves, how a consumer checks them
   - **Changes**.
   - **Qualification**: the supported profile and what was tested, with links ([#23](https://github.com/ploeg-hq/ploeg/issues/23)).
 - The deprecation policy stays as [compatibility](compatibility.md#deprecation) has it. One clarification: a deprecation counts from the first stable minor whose notes list it. A candidate may mark something deprecated, but its removal waits until a stable has carried the deprecation.
-- The stable release copies its `CHANGELOG.md` entry to the GitHub release.
 
 ## Signing, SBOM and provenance
 
@@ -133,9 +132,9 @@ Sandbox admission does not require a stable release, a release cadence or a supp
 - **A support matrix tied to a release** ([#23](https://github.com/ploeg-hq/ploeg/issues/23)): the Qualification section of each stable entry.
 - **Repository checks** of the kind CLOMonitor runs: a recent release, signed releases, an SBOM, a security policy with supported versions, the OpenSSF Best Practices badge and a Scorecard result. The [self-assessment](../security/self-assessment.md#openssf-best-practices) lists what the badge still needs. The badge is required at graduation, not at Sandbox.
 
-## Open decisions
+## Decisions
 
-The owner decides these. Each has a recommendation; none is decided here.
+The owner decided these on 2026-10-26 ([ADR 0158](../adrs/0158-a-stable-release-is-a-soaked-candidate-promoted-by-fast-forwarding-main.md)). The owner took every recommendation except Q9: notes live on GitHub releases only.
 
 | # | Question | Recommendation |
 | --- | --- | --- |
@@ -156,10 +155,10 @@ The owner decides these. Each has a recommendation; none is decided here.
 
 In order, after the decisions:
 
-1. A record that supersedes ADR 0115's and ADR 0116's stable clauses with the promotion described here, and an update of the `experimental-release-policy` OpenSpec spec.
+1. ~~A record that supersedes ADR 0115's and ADR 0116's stable clauses~~: [ADR 0158](../adrs/0158-a-stable-release-is-a-soaked-candidate-promoted-by-fast-forwarding-main.md). Still to do: update the `experimental-release-policy` OpenSpec spec.
 2. `scripts/release.sh`: `check` accepts a stable on `main`; `validate` stops requiring a matching `Chart.yaml` for a stable, since the chart is versioned when it is packaged; a `promote` subcommand; a publication path that copies digests instead of building. `scripts/test-release-policy.sh` gains a case for each that must fail and one that must pass.
 3. `.github/workflows/release.yml`: run on pushes to `main` and `0.*.x`; sign with the stable identity; sign `SHA256SUMS`; attach SBOMs and attestations; sign the contract bundle.
 4. The `v0.2.0` milestone with the blockers, the release issue template, and the `backport/*` labels.
 5. A kind job for G5 (install the previous stable, upgrade, one Run, roll back).
 6. SECURITY.md's supported-versions table and the stable verification commands in the quickstart.
-7. The `CHANGELOG.md` entry for `v0.2.0`, then the first promotion.
+7. A pointer in `CHANGELOG.md` to the GitHub releases, the `v0.2.0` notes on its release, then the first promotion.

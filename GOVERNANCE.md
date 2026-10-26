@@ -13,12 +13,24 @@ Ploeg has one maintainer today. This page says how decisions are made now and ho
 | --- | --- | --- |
 | A code or documentation change | A pull request against `development` | A maintainer who did not author it approves and merges it. While there is one maintainer, that maintainer merges their own changes after CI passes. |
 | An architectural decision | A new record in [docs/adrs/](docs/adrs/README.md), proposed in a pull request | Maintainers by consensus. Without consensus after the discussion, a majority of maintainers. The record is append-only: a later record supersedes it. |
-| Priority and roadmap | [GitHub Issues](https://github.com/ploeg-hq/ploeg/issues) and its milestones | Maintainers. Anyone may propose or comment. |
-| A stable release | A reviewed tag on `main` ([releases](docs/ops/release-versioning.md)) | A maintainer. |
+| Priority and roadmap | A proposal in [GitHub Discussions](https://github.com/ploeg-hq/ploeg/discussions), decided in the [monthly decision cycle](#the-monthly-decision-cycle) and tracked in [GitHub Issues](https://github.com/ploeg-hq/ploeg/issues) and its milestones | Maintainers. Anyone may propose or comment. |
+| A stable release | A public release issue listing the promotion gates, then a fast-forward of `main` to the soaked candidate ([ADR 0158](docs/adrs/0158-a-stable-release-is-a-soaked-candidate-promoted-by-fast-forwarding-main.md)) | A maintainer. Once there are two, another maintainer approves the release issue first. |
 | Adding or removing a maintainer | A pull request to MAINTAINERS.md | Existing maintainers by consensus; see below. |
 | Changing this page | A pull request to GOVERNANCE.md | Maintainers by consensus, open for at least seven days. |
 
 A maintainer who has a conflict of interest in a decision says so in the pull request or issue and leaves the decision to the others. With one maintainer this cannot be enforced; the declaration is still made.
+
+## The monthly decision cycle
+
+Roadmap decisions are made in public, once a month, without a meeting.
+
+1. Anyone proposes work or a change of direction as a post in GitHub Discussions, in the Ideas category.
+2. On the first working day of the month a maintainer opens an issue titled `Decisions YYYY-MM`. It lists the proposals to decide and links each.
+3. The issue stays open for comments for seven days.
+4. A maintainer records each decision in the issue with its reason, links the issues or milestones it creates, and closes it. A decision about architecture becomes an ADR as the table above says.
+5. The next month's issue starts by reporting what happened to the previous month's decisions.
+
+When no maintainer can run a cycle, the issue is still opened, says so, and carries the proposals to the next month. Security matters never go through this cycle; they follow [SECURITY.md](SECURITY.md).
 
 ## Becoming a maintainer
 
