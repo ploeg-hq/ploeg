@@ -17,6 +17,7 @@ These runbooks cover the recurring operator tasks for a cluster deployment of Pl
 | [Drain workers before maintenance](drain-workers.md) | You need a quiet Ploeg before an upgrade, a gateway change or database work |
 | [Investigate a Run's spend](investigate-a-runs-spend.md) | A Shift's budget looks wrong, a hold is not released, or you need to prove what a Run cost |
 | [Restore after a database outage](restore-after-a-database-outage.md) | PostgreSQL was unavailable or was restored from a backup |
+| [Recover from a failed upgrade](recover-from-a-failed-upgrade.md) | `ploegd` stops on a migration after an upgrade, the new release misbehaves, or you must decide between rolling back and restoring |
 | [Give Runs a toolchain and checks](give-runs-a-toolchain-and-checks.md) | Agents open pull requests that fail checks they could not run in the sandbox |
 | [Route a board that serves several repositories](route-a-multi-repo-board.md) | One board holds tickets for more than one repository, or a ticket was refused with a `repo/*` label reason |
 | [Send deploys from a pipeline to Ploeg](send-deploys-from-a-pipeline.md) | An operator consumer should see where a merged change is live |
