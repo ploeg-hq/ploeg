@@ -2,10 +2,12 @@ package shiftengine
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/ploeg-hq/ploeg/pkg/harness"
 	"github.com/ploeg-hq/ploeg/pkg/provider"
@@ -74,27 +76,41 @@ func (e *Engine) publishRound(ctx context.Context, si store.ShiftInfo, reports [
 	}
 }
 
+// prThread is where the Shift's pull request conversation lives.
+type prThread struct {
+	forge   provider.ForgeProvider
+	forgeID string
+	repo    string
+	pr      int
+}
+
 // pullRequestThread resolves the forge, repository and number of the Shift's
 // pull request. A non-empty skip says why there is nowhere to comment.
 func (e *Engine) pullRequestThread(ctx context.Context, si store.ShiftInfo, reports []store.RunReport) (fp provider.ForgeProvider, repo string, pr int, skip string) {
+	t, skip := e.thread(ctx, si, reports)
+	return t.forge, t.repo, t.pr, skip
+}
+
+func (e *Engine) thread(ctx context.Context, si store.ShiftInfo, reports []store.RunReport) (prThread, string) {
 	item, err := e.Store.WorkItem(ctx, si.WorkItemID)
 	if err != nil {
-		return nil, "", 0, "work item read failed"
+		return prThread{}, "work item read failed"
 	}
 	if item.Target == nil {
-		return nil, "", 0, "work item has no resolved target"
+		return prThread{}, "work item has no resolved target"
 	}
-	repo = item.Target.Owner + "/" + item.Target.Repo
-	if _, pr = pullRequest(reports, repo); pr == 0 && item.Origin == work.OriginPullRequest {
+	repo := item.Target.Owner + "/" + item.Target.Repo
+	_, pr := pullRequest(reports, repo)
+	if pr == 0 && item.Origin == work.OriginPullRequest {
 		// The Shift reads a pull request someone else opened (ADR-0109):
 		// the thread is that pull request, recorded by Ploeg, not by a Run.
 		pr = item.SourcePR
 	}
 	if pr == 0 {
-		return nil, "", 0, "no pull request on this shift yet"
+		return prThread{}, "no pull request on this shift yet"
 	}
-	fp, skip = e.forgeOf(*item.Target)
-	return fp, repo, pr, skip
+	fp, skip := e.forgeOf(*item.Target)
+	return prThread{forge: fp, forgeID: e.forgeID(*item.Target), repo: repo, pr: pr}, skip
 }
 
 func (e *Engine) targetForge(ctx context.Context, si store.ShiftInfo) (fp provider.ForgeProvider, repo, skip string) {
@@ -109,11 +125,15 @@ func (e *Engine) targetForge(ctx context.Context, si store.ShiftInfo) (fp provid
 	return fp, item.Target.Owner + "/" + item.Target.Repo, skip
 }
 
-func (e *Engine) forgeOf(target work.Target) (provider.ForgeProvider, string) {
-	forgeID := target.Forge
-	if forgeID == "" {
-		forgeID = e.DefaultForge
+func (e *Engine) forgeID(target work.Target) string {
+	if target.Forge == "" {
+		return e.DefaultForge
 	}
+	return target.Forge
+}
+
+func (e *Engine) forgeOf(target work.Target) (provider.ForgeProvider, string) {
+	forgeID := e.forgeID(target)
 	fp, ok := e.Forges[forgeID]
 	if !ok {
 		return nil, "no provider for forge " + strconv.Quote(forgeID)
@@ -167,6 +187,14 @@ func (e *Engine) publishBudgetExhausted(ctx context.Context, si store.ShiftInfo,
 	e.Log.Info("budget notice published", "shift", si.ID, "repo", repo, "pr", pr)
 }
 
+const (
+	usageReportSlotKey   = "usage-report"
+	usageReportWriteTime = 30 * time.Second
+	usageReportLease     = 2 * usageReportWriteTime
+	usageReportLeaseWait = 10 * time.Second
+	usageReportLeasePoll = 200 * time.Millisecond
+)
+
 // publishUsageReport maintains the one usage report comment on the Shift's
 // pull request: it renders the Shift's usage and evidence, finds the comment
 // by its marker and edits it, or creates it when there is none.
@@ -174,7 +202,10 @@ func (e *Engine) publishBudgetExhausted(ctx context.Context, si store.ShiftInfo,
 // Best-effort and outside the lifecycle (R2, R3): every failure is logged and
 // skipped, and none changes an Outcome, a close reason or a Work Item state.
 // A failed list is a skip, never a blind post, because a comment we cannot see
-// is a duplicate waiting to happen on the next refresh (design D6).
+// is a duplicate waiting to happen on the next refresh (design D6). Writers
+// take turns under the pull request's usage report lease, so two evaluators
+// cannot both find no report and both post one; the report is rendered once
+// the lease is held, so the later writer shows the later numbers.
 func (e *Engine) publishUsageReport(ctx context.Context, si store.ShiftInfo) {
 	if !e.UsageReport || len(e.Forges) == 0 {
 		return
@@ -184,9 +215,49 @@ func (e *Engine) publishUsageReport(ctx context.Context, si store.ShiftInfo) {
 		e.Log.Error("usage report not published: reports read failed", "shift", si.ID, "err", err)
 		return
 	}
-	fp, repo, pr, skip := e.pullRequestThread(ctx, si, reports)
+	t, skip := e.thread(ctx, si, reports)
 	if skip != "" {
 		e.Log.Info("usage report not published: "+skip, "shift", si.ID, "work_item", si.WorkItemID)
+		return
+	}
+	release, err := e.awaitUsageReportLease(ctx, t)
+	if err != nil {
+		e.Log.Warn("usage report not published: "+err.Error(), "shift", si.ID, "repo", t.repo, "pr", t.pr)
+		return
+	}
+	defer release()
+	ctx, cancel := context.WithTimeout(ctx, usageReportWriteTime)
+	defer cancel()
+	e.writeUsageReport(ctx, si, t)
+}
+
+func (e *Engine) awaitUsageReportLease(ctx context.Context, t prThread) (release func(), err error) {
+	slot := store.CommentSlot{Forge: t.forgeID, Repo: t.repo, Number: t.pr, Key: usageReportSlotKey}
+	deadline := time.Now().Add(usageReportLeaseWait)
+	for {
+		release, held, err := e.Store.ClaimPullRequestComment(ctx, slot, usageReportLease)
+		if err != nil {
+			return nil, fmt.Errorf("lease claim failed: %w", err)
+		}
+		if held {
+			return release, nil
+		}
+		if time.Now().After(deadline) {
+			return nil, errors.New("another writer still holds the report")
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(usageReportLeasePoll):
+		}
+	}
+}
+
+func (e *Engine) writeUsageReport(ctx context.Context, si store.ShiftInfo, t prThread) {
+	fp, repo, pr := t.forge, t.repo, t.pr
+	reports, err := e.Store.RoundReports(ctx, si.ID)
+	if err != nil {
+		e.Log.Error("usage report not published: reports read failed", "shift", si.ID, "err", err)
 		return
 	}
 	usage, err := e.Store.ShiftUsage(ctx, si.ID)

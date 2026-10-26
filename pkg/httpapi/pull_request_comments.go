@@ -24,6 +24,7 @@ const (
 	pullRequestCommentMaxBody     = 384 * 1024
 	pullRequestCommentMaxAlt      = 256
 	pullRequestCommentTimeout     = 30 * time.Second
+	pullRequestCommentLease       = 2 * pullRequestCommentTimeout
 )
 
 var pullRequestCommentKey = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
@@ -184,7 +185,7 @@ func (s *Server) handlePutPullRequestComment(w http.ResponseWriter, r *http.Requ
 		operatorError(w, 503, "forge_unavailable", "Ploeg has no provider for the pull request's forge.")
 		return
 	}
-	unlock, held, err := s.Store.LockPullRequestComment(ctx, ref.RowID(), key)
+	unlock, held, err := s.Store.ClaimPullRequestComment(ctx, keyedCommentSlot(ref, key), pullRequestCommentLease)
 	if err != nil {
 		operatorReadError(w, err)
 		return
@@ -296,7 +297,7 @@ func (s *Server) handleDeletePullRequestComment(w http.ResponseWriter, r *http.R
 			operatorError(w, 503, "forge_unavailable", "Ploeg cannot delete comments on the pull request's forge.")
 			return
 		}
-		unlock, held, err := s.Store.LockPullRequestComment(ctx, c.PullRequest.RowID(), key)
+		unlock, held, err := s.Store.ClaimPullRequestComment(ctx, keyedCommentSlot(c.PullRequest, key), pullRequestCommentLease)
 		if err != nil {
 			operatorReadError(w, err)
 			return
@@ -318,6 +319,10 @@ func (s *Server) handleDeletePullRequestComment(w http.ResponseWriter, r *http.R
 		deleted = append(deleted, c.PullRequest)
 	}
 	operatorJSON(w, http.StatusOK, map[string]any{"schemaVersion": "1.0", "key": key, "workItemId": strconv.FormatInt(id, 10), "deleted": deleted})
+}
+
+func keyedCommentSlot(ref store.PullRequestRef, key string) store.CommentSlot {
+	return store.CommentSlot{Forge: ref.Forge, Repo: ref.FullName(), Number: ref.Number, Key: "operator:" + key}
 }
 
 func (s *Server) deleteKeyedComment(ctx context.Context, fp provider.ForgeProvider, deleter provider.CommentDeleter, c store.PullRequestComment) error {

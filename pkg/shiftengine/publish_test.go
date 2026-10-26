@@ -42,6 +42,7 @@ type fakeForge struct {
 	// edited in order — enough to prove find-then-edit rather than re-post.
 	listCalls int
 	edits     []int64
+	afterList func()
 }
 
 func (f *fakeForge) PullRequestState(_ context.Context, _ string, pr int) (provider.PullRequestState, error) {
@@ -83,6 +84,14 @@ func (f *fakeForge) Comment(_ context.Context, repo string, pr int, body string)
 }
 
 func (f *fakeForge) Comments(_ context.Context, repo string, pr int) ([]provider.Comment, error) {
+	out, err := f.listComments(repo, pr)
+	if f.afterList != nil {
+		f.afterList()
+	}
+	return out, err
+}
+
+func (f *fakeForge) listComments(repo string, pr int) ([]provider.Comment, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.listCalls++

@@ -32,6 +32,8 @@ type keyedForge struct {
 	deletes   int
 	uploads   int
 	failWrite bool
+	listing   chan struct{}
+	release   chan struct{}
 }
 
 var (
@@ -99,6 +101,13 @@ func (f *keyedForge) remove(w http.ResponseWriter, id int64) {
 }
 
 func (f *keyedForge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if f.release != nil && r.Method == http.MethodGet && (forgejoNotes.MatchString(r.URL.Path) || gitlabNotes.MatchString(r.URL.Path)) {
+		select {
+		case f.listing <- struct{}{}:
+		default:
+		}
+		<-f.release
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	p := r.URL.Path
