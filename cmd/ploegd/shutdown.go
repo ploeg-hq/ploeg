@@ -39,11 +39,13 @@ func serveUntilStopped(ctx context.Context, log *slog.Logger, srv *http.Server, 
 	budget shutdownBudget, drains ...drain) error {
 	served := make(chan error, 1)
 	go func() { served <- serve() }()
+	serving := true
 	select {
 	case err := <-served:
 		if !errors.Is(err, http.ErrServerClosed) {
 			return err
 		}
+		serving = false
 	case <-ctx.Done():
 	}
 
@@ -53,8 +55,10 @@ func serveUntilStopped(ctx context.Context, log *slog.Logger, srv *http.Server, 
 	if err := srv.Shutdown(httpCtx); err != nil {
 		log.Warn("http requests still running at shutdown", "err", err)
 	}
-	if err := <-served; err != nil && !errors.Is(err, http.ErrServerClosed) {
-		log.Warn("http server stopped with an error", "err", err)
+	if serving {
+		if err := <-served; err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Warn("http server stopped with an error", "err", err)
+		}
 	}
 
 	drainCtx, cancelDrain := context.WithDeadline(context.Background(), deadline)
