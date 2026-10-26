@@ -59,11 +59,15 @@ func NextMergeCheck(prev MergeCheck, mergeable *bool, headSHA string) MergeCheck
 
 // MergeObservation is one forge poll of a pull request's mergeability.
 // Mergeable is nil when the forge had not computed it; BaseBranch is empty
-// when the forge did not say.
+// when the forge did not say. A conflicted poll at the head the previous poll
+// read counts as one more conflicted poll only when it comes at least
+// RepeatAfter after that previous poll; a sooner one is the same check seen
+// twice and keeps the count.
 type MergeObservation struct {
-	Mergeable  *bool
-	HeadSHA    string
-	BaseBranch string
+	Mergeable   *bool
+	HeadSHA     string
+	BaseBranch  string
+	RepeatAfter time.Duration
 }
 
 // RecordMergeCheck applies obs, through NextMergeCheck, to the pull request
@@ -85,11 +89,12 @@ func (s *Store) RecordMergeCheck(ctx context.Context, key PullRequestKey, workIt
 	var id int64
 	var prev MergeCheck
 	var state string
+	var prevAt *time.Time
 	err = tx.QueryRow(ctx, `
-		SELECT id, COALESCE(merge_state, 'unknown'), COALESCE(merge_head_sha, ''), unmergeable_polls
+		SELECT id, COALESCE(merge_state, 'unknown'), COALESCE(merge_head_sha, ''), unmergeable_polls, merge_checked_at
 		FROM pull_requests
 		WHERE forge = $1 AND repo_owner = $2 AND repo_name = $3 AND number = $4 AND work_item_id = $5
-		FOR UPDATE`, key.Forge, owner, name, key.Number, workItemID).Scan(&id, &state, &prev.HeadSHA, &prev.UnmergeablePolls)
+		FOR UPDATE`, key.Forge, owner, name, key.Number, workItemID).Scan(&id, &state, &prev.HeadSHA, &prev.UnmergeablePolls, &prevAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return MergeCheck{}, false, nil
 	}
@@ -98,6 +103,9 @@ func (s *Store) RecordMergeCheck(ctx context.Context, key PullRequestKey, workIt
 	}
 	prev.State = MergeState(state)
 	next := NextMergeCheck(prev, obs.Mergeable, truncate(obs.HeadSHA, 128))
+	if repeatsTooSoon(prev, next, prevAt, at, obs.RepeatAfter) {
+		next = prev
+	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE pull_requests SET merge_state = $2, merge_head_sha = NULLIF($3, ''), unmergeable_polls = $4,
 			base_branch = COALESCE(NULLIF(left($5, 1024), ''), base_branch), merge_checked_at = $6
@@ -118,4 +126,11 @@ func (s *Store) RecordMergeCheck(ctx context.Context, key PullRequestKey, workIt
 		}
 	}
 	return next, true, tx.Commit(ctx)
+}
+
+func repeatsTooSoon(prev, next MergeCheck, prevAt *time.Time, at time.Time, repeatAfter time.Duration) bool {
+	if repeatAfter <= 0 || prevAt == nil || at.Sub(*prevAt) >= repeatAfter {
+		return false
+	}
+	return next.HeadSHA == prev.HeadSHA && next.UnmergeablePolls > prev.UnmergeablePolls
 }

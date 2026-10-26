@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -38,7 +39,7 @@ type ReviewItem struct {
 	Branch string
 }
 
-const awaitingReviewQuery = `
+const reviewItemSelect = `
 		SELECT w.id, w.provider, w.external_id,
 		       w.target_forge, w.target_owner, w.target_repo, w.target_base_branch,
 		       COALESCE(last.links, '{}'), last.delivery, w.origin, w.source_pr,
@@ -50,14 +51,39 @@ const awaitingReviewQuery = `
 		                   WHERE r.work_item_id = w.id AND r.writes AND r.state = 'finished'
 		                     AND r.outcome IN ('pr_opened', 'pr_updated')
 		                   ORDER BY r.finished_at DESC NULLS LAST, r.id DESC
-		                   LIMIT 1) last ON true
+		                   LIMIT 1) last ON true`
+
+const awaitingReviewQuery = reviewItemSelect + `
 		WHERE w.state = 'awaiting_review' AND NOT w.operator_owned
+		ORDER BY w.id`
+
+const claimReviewChecksQuery = `
+		WITH due AS (SELECT id FROM work_items
+		             WHERE state = 'awaiting_review' AND NOT operator_owned
+		               AND (review_claimed_until IS NULL OR review_claimed_until <= now())
+		             ORDER BY id FOR UPDATE SKIP LOCKED),
+		     claimed AS (UPDATE work_items u SET review_claimed_until = now() + $1::interval
+		                 FROM due WHERE u.id = due.id RETURNING u.id)` + reviewItemSelect + `
+		JOIN claimed ON claimed.id = w.id
 		ORDER BY w.id`
 
 // AwaitingReview lists every Work Item in awaiting_review that Ploeg owns,
 // with the links of the writer Run that put it there.
 func (s *Store) AwaitingReview(ctx context.Context) ([]ReviewItem, error) {
-	rows, err := s.pool.Query(ctx, awaitingReviewQuery)
+	return s.reviewItems(ctx, awaitingReviewQuery)
+}
+
+// ClaimReviewChecks claims every Work Item in awaiting_review that Ploeg owns
+// and no other claim holds, and holds each until lease from now, so another
+// ploegd replica does not ask the forge about the same pull request
+// meanwhile. Items another transaction has locked are skipped, not waited
+// for. A zero lease claims for this call only.
+func (s *Store) ClaimReviewChecks(ctx context.Context, lease time.Duration) ([]ReviewItem, error) {
+	return s.reviewItems(ctx, claimReviewChecksQuery, lease)
+}
+
+func (s *Store) reviewItems(ctx context.Context, query string, args ...any) ([]ReviewItem, error) {
+	rows, err := s.pool.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

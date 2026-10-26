@@ -96,6 +96,7 @@ env:
   PLOEG_OPERATOR_PERSON_JWKS_URL: The issuer's signing keys. Unset reads `jwks_uri` from the issuer's discovery document (chart `operator.personTokens.jwksUrl`).
   PLOEG_OPERATOR_PERSON_MAX_LIFETIME: Longest accepted `exp` minus `iat` of a person token, a Go duration of at most `1h`; default `5m` (chart `operator.personTokens.maxLifetime`).
   PLOEG_OPERATOR_PERSON_SUBJECT_NAMESPACE: What person ids are derived under in place of the issuer, so a proven person keeps the id consumers send and that earlier records hold; set it to the same value as `PLOEG_MCP_SUBJECT_NAMESPACE` (chart `operator.personTokens.subjectNamespace`).
+  PLOEG_REVIEW_RECONCILE_INTERVAL: How often ploegd asks the forge about each awaiting_review pull request. Each check claims its pull request for nine tenths of the interval, so with several replicas one of them reads it per interval. `0` turns the reconcile off.
   PLOEG_OPERATOR_DELIVERY_POLICIES: JSON array of trusted delivery policies with `repositoryId`, `policySha256`, `verifierId`, `minTests`, optional `publicationEnabled` and optional `publisherLogin`, the forge login a published pull request must be opened by (chart `operator.deliveryPolicies`).
   PLOEG_DEPLOY_TOKEN: Bearer token, 32 to 4096 bytes, that `POST /api/v1/deploys` accepts from pipelines reporting a deploy (ADR-0047, chart `deploys.tokenSecret`). Unset answers 404 on that endpoint. A shorter token stops ploegd at boot.
   PLOEG_API_URL: ploegd's run API (chart `executor.apiUrl`, default `http://<fullname>:<service.port>`).
