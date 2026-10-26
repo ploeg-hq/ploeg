@@ -10,4 +10,4 @@ If you cannot use GitHub's private reporting, open a public issue that only asks
 
 ## What happens next
 
-A [maintainer](MAINTAINERS.md) aims to acknowledge a report within seven days, agree on severity with you, fix it in a private fork when that is needed, and publish an advisory with credit once a fixed release is out. These are targets, not guarantees: Ploeg has one maintainer, and there is no backup responder yet.
+A [maintainer](MAINTAINERS.md) aims to acknowledge a report within seven days, agree on severity with you, fix it in a private fork when that is needed, and publish an advisory with credit once a fixed release is out. These are targets, not guarantees: Ploeg has one maintainer, and there is no backup responder yet. The maintainers are the security response team, and [continuity](GOVERNANCE.md#continuity-and-succession) says what happens to private advisories if they are unavailable.

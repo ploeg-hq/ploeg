@@ -40,3 +40,11 @@ one, not a pull request that quietly reverses it.
 Use [GitHub Issues](https://github.com/ploeg-hq/ploeg/issues) for bugs and feature requests and [SECURITY.md](SECURITY.md) for security reports.
 
 Open pull requests against `development`. Run `mise run setup`, `mise run verify` and `mise run docs-check` before review. Sign off your own commits with `git commit -s` to certify the [Developer Certificate of Origin](https://developercertificate.org/). Do not sign on another contributor's behalf. The `dco` CI job checks every commit in a pull request; fix a missing sign-off with `git rebase --signoff development`.
+
+## Review, roles and who decides
+
+A maintainer who did not write a change reviews and merges it; [GOVERNANCE.md](GOVERNANCE.md#how-decisions-are-made) gives the rules, including what happens while Ploeg has one maintainer. Reviewers listed in [MAINTAINERS.md](MAINTAINERS.md) review the areas next to their name. The [contributor ladder](CONTRIBUTOR_LADDER.md) says how to become a reviewer or maintainer, and you may nominate yourself.
+
+If you make a change for an employer, a client or a product built on Ploeg, say so in the pull request. It is reviewed on its merits like any other change; saying who it serves lets reviewers apply the [rules on companies and consumers](GOVERNANCE.md#companies-commercial-users-and-consumers).
+
+Everyone taking part follows the [code of conduct](CODE_OF_CONDUCT.md), which also says how to report a problem, including one about a maintainer.

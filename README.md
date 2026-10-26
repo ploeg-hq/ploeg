@@ -36,7 +36,7 @@ GitHub Issues can be a runtime tracker: a `ploeg:<team>` label on an issue in a 
 
 ## Project
 
-[Governance](GOVERNANCE.md) · [Maintainers](MAINTAINERS.md) · [Contributing](CONTRIBUTING.md) · [Code of conduct](CODE_OF_CONDUCT.md) · [Security](SECURITY.md) · [Scope and stewardship](docs/cncf/charter.md) · [Provenance](PROVENANCE.md)
+[Governance](GOVERNANCE.md) · [Maintainers](MAINTAINERS.md) · [Contributor ladder](CONTRIBUTOR_LADDER.md) · [Contributing](CONTRIBUTING.md) · [Code of conduct](CODE_OF_CONDUCT.md) · [Security](SECURITY.md) · [Scope and stewardship](docs/cncf/charter.md) · [Provenance](PROVENANCE.md)
 
 ## Releases
 
