@@ -468,6 +468,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 			MarkTrackerDone: envOr("PLOEG_TRACKER_DONE_ON_MERGE", "false") == "true",
 			OutcomeNotes:    srv.Notes != nil,
 			CIWaits:         ciWaits(cfg),
+			ClaimFor:        reviewClaim(reviewEvery),
 			Log:             log,
 		}
 		reviews.Conflicts = srv
