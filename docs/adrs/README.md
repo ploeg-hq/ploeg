@@ -231,6 +231,7 @@ fails otherwise.
 | [0157](0157-ploeg-mcp-asks-a-client-on-the-previous-protocol-to-confirm-in-a-session.md) | ploeg-mcp asks a client on the previous protocol to confirm in a session | proposed | 2026-10-25 |
 | [0158](0158-a-stable-release-is-a-soaked-candidate-promoted-by-fast-forwarding-main.md) | A stable release is a soaked candidate, promoted by fast-forwarding main | accepted | 2026-10-26 |
 | [0159](0159-governance-scales-its-votes-with-the-maintainer-count-adopts-the-cncf-code-of-conduct-and-limits-any-one-organisation.md) | Governance scales its votes with the maintainer count, adopts the CNCF Code of Conduct, and limits any one organisation | proposed | 2026-10-26 |
+| [0160](0160-an-operator-consumer-reads-only-the-teams-it-names-and-run-content-only-when-granted.md) | An operator consumer reads only the Teams it names, and Run content only when granted | proposed | 2026-10-26 |
 
 
 ## Review calendar

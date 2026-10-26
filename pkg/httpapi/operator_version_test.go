@@ -22,7 +22,7 @@ func TestVersionReportsTheReleaseAndEveryServedContract(t *testing.T) {
 }
 
 func TestVersionNamesAnUnversionedBuildUnknown(t *testing.T) {
-	consumers, token := operatorTestConsumers(t, nil, false)
+	consumers, token := operatorTestConsumers(t, []string{AllTeams}, false)
 	s := &Server{OperatorConfig: OperatorConfig{Consumers: consumers}}
 	var body versionResponse
 	if err := json.Unmarshal(operatorSchemaGET(t, s, token, "version"), &body); err != nil {

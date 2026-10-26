@@ -39,7 +39,7 @@ func writerServer(t *testing.T) (*httptest.Server, string) {
 		t.Fatal(err)
 	}
 	token := hex.EncodeToString(secret)
-	raw, _ := json.Marshal([]map[string]any{{"name": "steward", "tokenEnv": "STEWARD_TOKEN", "execute": true}})
+	raw, _ := json.Marshal([]map[string]any{{"name": "steward", "tokenEnv": "STEWARD_TOKEN", "teams": []string{httpapi.AllTeams}, "execute": true}})
 	consumers, err := httpapi.ParseOperatorConsumers(string(raw), func(name string) (string, bool) { return token, name == "STEWARD_TOKEN" })
 	if err != nil {
 		t.Fatal(err)

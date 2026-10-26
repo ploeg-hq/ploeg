@@ -72,6 +72,22 @@ authorize every repository: the credential broker must narrow that separately.
 Managed credentials and proxies also depend on the selected harness; confirm
 the isolation mode from the rendered workload and worker's startup record.
 
+## Logs carry identifiers, not Run text
+
+ploegd and ploeg-worker log identifiers, states, counts and byte lengths. They
+do not log a Work Item's title or description, a Run's summary, stuck reason,
+findings or notes, the agent's prompt or tool titles, or a link's query string.
+Read that text through the operator API, which checks the consumer's scopes;
+a log store, a log dashboard or `kubectl logs` does not.
+
+What the harness prints stays inside the worker by default. The worker keeps
+the last 8 KiB in memory and sends the last 2000 bytes, redacted, as the Run's
+stuck reason. `executor.harnessOutputInLog: true` copies all of it into the
+worker pod's log: the prompt, tool output, file contents and any secret the
+agent read then reach every log store and every reader of that pod's log. Set
+it only to debug a harness, on a deployment whose logs you treat as secret, and
+turn it off again.
+
 ## Identity is an application boundary
 
 **End-to-end user delegation into agent actions and automatic personal forge ACL

@@ -305,6 +305,17 @@ monitoring:
         severity: warning
 
 operator:
+  # Each consumer names the Teams it may read: [silver], or ["*"] for every
+  # Team. teams is required; a consumer that lists none reads none.
+  # readContent grants Run transcripts and briefings, attached context and
+  # Work Item Note reviews; unset follows execute, so a read-only consumer
+  # sees metadata only.
+  #   consumers:
+  #     - name: mcp-reader
+  #       teams: [silver]
+  #       execute: false
+  #       readContent: false
+  #       tokenSecret: {name: ploeg-mcp-reader, key: token}
   consumers: []
   deliveryPolicies: []
   # ADR-0150: an Operator Consumer acting for a person may present that
@@ -534,6 +545,12 @@ executor:
   # other workload renders with it off, and ploeg-worker logs why. A team's or
   # Role's harness.credentialIsolation overrides both proxies explicitly.
   forgeTokenIsolation: proxy
+  # true copies everything a Run's harness prints (its prompt, tool output,
+  # file contents and any secret the agent reads) into the worker pod's log,
+  # and from there into every log store and every reader of `kubectl logs`.
+  # Debugging only; false (the default) keeps that output inside the worker,
+  # where only a redacted tail reaches the Run's stuck reason.
+  harnessOutputInLog: false
   # Node selector for worker pods, e.g. {node-role.example/agents: "true"} to
   # keep privileged DinD off control-plane nodes. Empty = any schedulable node.
   nodeSelector: {}

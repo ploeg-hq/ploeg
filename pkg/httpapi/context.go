@@ -173,7 +173,10 @@ func (s *Server) handleListWorkItemContext(w http.ResponseWriter, r *http.Reques
 	if !ok {
 		return
 	}
-	principal, _ := OperatorPrincipalFromContext(r.Context())
+	principal, ok := contentReader(w, r)
+	if !ok {
+		return
+	}
 	items, err := s.Store.ListWorkItemContext(r.Context(), id, principal.Teams, time.Time{})
 	if err != nil {
 		operatorReadError(w, err)

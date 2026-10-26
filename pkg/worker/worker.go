@@ -11,7 +11,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -114,6 +113,11 @@ type Config struct {
 	// includes the agent's reasoning (PLOEG_RUN_TRANSCRIPT_THOUGHTS).
 	Transcript         bool
 	TranscriptThoughts bool
+	// HarnessOutputInLog copies everything the harness prints to the
+	// worker's own stdout and stderr, and so into the pod log
+	// (PLOEG_HARNESS_OUTPUT_IN_LOG). Off by default: that output carries the
+	// prompt, tool output and file contents.
+	HarnessOutputInLog bool
 	// ClaudePlugins are the Claude Code plugins a claude-code Run installs
 	// (PLOEG_CLAUDE_PLUGINS, ADR-0139); empty installs none.
 	ClaudePlugins []claudeplugins.Plugin
@@ -238,7 +242,7 @@ func (w *Worker) RunContext(parent context.Context) error {
 	unscoped := w.Log
 	w.Log = runLogger(unscoped, w.Cfg.Team, claimed, trace)
 	defer func() { w.Log = unscoped }()
-	w.Log.Info("claimed work item", "title", item.Title,
+	w.Log.Info("claimed work item",
 		"harness", w.Adapter.Name(), "harness_version", w.API.HarnessVersion, "node", nodeName, "pod_uid", podUID, "writes", claimed.Writes)
 
 	// Deliberately NOT derived from parent: the harness must die with the
@@ -273,12 +277,12 @@ func (w *Worker) RunContext(parent context.Context) error {
 		w.Log.Warn("created work items discarded before reporting", "err", dropped)
 	}
 	// Log before reporting: if the POST fails, the pod log is the only place
-	// the run's actual result (and a stuck reason) survives.
-	w.Log.Info("run finished", "outcome", report.Outcome, "summary", report.Summary, "stuck_reason", report.StuckReason, "links", report.Links)
+	// the run's outcome survives. It carries no text the Run wrote.
+	w.Log.Info("run finished", reportLogAttrs(report)...)
 	if err := w.API.Outcome(claimed.RunToken, report); err != nil {
 		return fmt.Errorf("outcome report failed (lease left to the sweeper): %w", err)
 	}
-	w.Log.Info("outcome reported", "outcome", report.Outcome, "summary", report.Summary, "links", report.Links)
+	w.Log.Info("outcome reported", reportLogAttrs(report)...)
 	return nil
 }
 
@@ -621,8 +625,8 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 		Prompt:     taskPrompt(harnessSpec, planner, writes, priorPR, onReviewBranch) + support,
 		BaseEnv:    append(append(withToolchains(harnessEnvironment(w.side().environ, home, scratchDir, writes, harnessForgeToken, w.Cfg.LLMBaseURL, harnessModelName(w.Cfg)), w.Cfg.Toolchains), runEnv...), w.runTelemetryEnvironment(claimed.Role, trace)...),
 		LLM:        harness.LLMEnv{BaseURL: w.Cfg.LLMBaseURL, Model: model, TraceID: trace},
-		Stdout:     io.MultiWriter(os.Stdout, &logTail),
-		Stderr:     io.MultiWriter(os.Stderr, &logTail),
+		Stdout:     w.harnessOutput(os.Stdout, &logTail),
+		Stderr:     w.harnessOutput(os.Stderr, &logTail),
 		Checkpoint: func(cp work.Checkpoint) {
 			if err := w.API.Checkpoint(claimed.RunToken, cp); err != nil {
 				w.Log.Warn("checkpoint failed", "err", err)
@@ -681,7 +685,7 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	}
 	prURL := after.URL
 	final := resolveOutcome(w.Adapter.Name(), report, runErr, context.Cause(ctx), prURL, samePullRequest(prior, after),
-		item.Title, branch, logTail.Bytes(), w.Adapter.ExpectsLLM(), writes)
+		item.Title, branch, redactedOutput(logTail.Bytes(), leaks.watch), w.Adapter.ExpectsLLM(), writes)
 	final = withReviewedCommit(final, branch, prURL, reviewedCommit)
 	final = guardUnpublishedWork(context.WithoutCancel(ctx), final, deliveryCheck{
 		writes: writes, dir: cloneDir, cloneURL: cloneURL, token: forgeToken, branch: branch, baseline: baseline, prErr: prErr,

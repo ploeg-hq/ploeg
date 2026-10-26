@@ -27,6 +27,6 @@ func spentBudgetParkMessage(r store.RunReport) string {
 
 func (e *Engine) parkForSpentBudget(ctx context.Context, si store.ShiftInfo, r store.RunReport, reports []store.RunReport) error {
 	e.Log.Warn("a shared LiteLLM budget is spent; parking the shift for a person",
-		"shift", si.ID, "work_item", si.WorkItemID, "team", si.Team, "round", r.Round, "role", r.Role, "summary", r.Summary)
+		"shift", si.ID, "work_item", si.WorkItemID, "team", si.Team, "round", r.Round, "role", r.Role)
 	return e.close(ctx, si, reasonSharedBudgetSpent, spentBudgetParkMessage(r), false, reports)
 }

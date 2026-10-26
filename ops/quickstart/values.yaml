@@ -1,3 +1,4 @@
+supportProfile: P1
 env:
   PLOEG_LLM_SETTLE_AFTER: 1m
 database:

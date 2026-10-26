@@ -132,7 +132,7 @@ func TestClientReadsTheRealOperatorHandler(t *testing.T) {
 }
 
 func TestClientNeverDisclosesItsToken(t *testing.T) {
-	srv, token := operatorServer(t, nil)
+	srv, token := operatorServer(t, []string{httpapi.AllTeams})
 	wrong := strings.Repeat("x", 40)
 	c, err := operatorclient.New(srv.URL, wrong)
 	if err != nil {

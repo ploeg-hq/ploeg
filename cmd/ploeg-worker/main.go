@@ -222,6 +222,9 @@ func run(log *slog.Logger) error {
 	if cfg.TranscriptThoughts, err = switchEnv("PLOEG_RUN_TRANSCRIPT_THOUGHTS", true); err != nil {
 		return err
 	}
+	if cfg.HarnessOutputInLog, err = switchEnv("PLOEG_HARNESS_OUTPUT_IN_LOG", false); err != nil {
+		return err
+	}
 	if v := os.Getenv("PLOEG_KNOWLEDGE_BUDGET_BYTES"); v != "" {
 		if cfg.KnowledgeBudget, err = strconv.Atoi(v); err != nil || cfg.KnowledgeBudget < 0 {
 			return fmt.Errorf("PLOEG_KNOWLEDGE_BUDGET_BYTES: want a non-negative byte count, got %q", v)

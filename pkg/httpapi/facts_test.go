@@ -356,7 +356,7 @@ func factsList(t *testing.T, s *Server, token, query string) factsListBody {
 }
 
 func TestFactsList_PagesNewestActivityFirstAndFiltersByMember(t *testing.T) {
-	s, token := factsServer(t, nil, false)
+	s, token := factsServer(t, []string{AllTeams}, false)
 	now := time.Now().UTC().Truncate(time.Second)
 	var want []string
 	for i := 1; i <= 3; i++ {

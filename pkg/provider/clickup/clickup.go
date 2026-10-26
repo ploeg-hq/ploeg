@@ -37,7 +37,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ploeg-hq/ploeg/pkg/httpclient"
+	"github.com/ploeg-hq/ploeg/pkg/apilimit"
 	"github.com/ploeg-hq/ploeg/pkg/provider"
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
@@ -242,7 +242,7 @@ func (p *Provider) client() *http.Client {
 	if p.HC != nil {
 		return p.HC
 	}
-	return httpclient.New(30 * time.Second)
+	return apilimit.Client("clickup", 30*time.Second)
 }
 
 func (p *Provider) log() *slog.Logger {

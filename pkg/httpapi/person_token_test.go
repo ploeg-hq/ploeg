@@ -253,7 +253,7 @@ func TestADeploymentWithoutPersonTokensRefusesOne(t *testing.T) {
 }
 
 func TestPersonTokenConfigurationIsValidated(t *testing.T) {
-	consumers, _ := operatorTestConsumers(t, nil, true)
+	consumers, _ := operatorTestConsumers(t, []string{AllTeams}, true)
 	cfg := PersonTokenConfig{Issuer: "https://id.example/application/o/ploeg/", Audience: personAudience}
 	if _, err := NewPersonTokens(cfg, consumers); err == nil {
 		t.Fatal("person tokens without any consumer client id must be refused")

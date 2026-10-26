@@ -137,7 +137,10 @@ func (s *Server) handleNoteReviews(w http.ResponseWriter, r *http.Request) {
 		}
 		limit = n
 	}
-	principal, _ := OperatorPrincipalFromContext(r.Context())
+	principal, ok := contentReader(w, r)
+	if !ok {
+		return
+	}
 	reviews, err := s.Store.NoteReviews(r.Context(), principal.Teams, state == "all", limit)
 	if err != nil {
 		operatorReadError(w, err)

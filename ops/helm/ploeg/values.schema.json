@@ -1042,7 +1042,8 @@
             "additionalProperties": false,
             "required": [
               "name",
-              "tokenSecret"
+              "tokenSecret",
+              "teams"
             ],
             "properties": {
               "name": {
@@ -1053,13 +1054,18 @@
                 "type": "array",
                 "maxItems": 100,
                 "uniqueItems": true,
+                "description": "Teams whose Work Items the consumer may read and act on. [\"*\"] grants every Team; an empty list grants none. Required, so no consumer reads every Team by leaving it out.",
                 "items": {
                   "type": "string",
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+                  "pattern": "^(\\*|[A-Za-z0-9][A-Za-z0-9_.:-]{0,127})$"
                 }
               },
               "execute": {
                 "type": "boolean"
+              },
+              "readContent": {
+                "type": "boolean",
+                "description": "Grants reading what agents and people wrote beyond Work Item metadata: Run transcripts and briefings, the context people attached and Work Item Note reviews. Unset follows execute: an executing consumer reads them, a read-only one does not."
               },
               "maxBudgetUsd": {
                 "type": "number",
@@ -1655,6 +1661,10 @@
             "",
             "proxy"
           ]
+        },
+        "harnessOutputInLog": {
+          "type": "boolean",
+          "description": "true copies the harness's stdout and stderr into the worker pod's log (PLOEG_HARNESS_OUTPUT_IN_LOG): the prompt, tool output, file contents and any secret the agent reads then reach every log store and every reader of the pod's log. Debugging only; false (the default) keeps it inside the worker."
         },
         "sandbox": {
           "type": "object",

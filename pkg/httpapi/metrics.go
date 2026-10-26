@@ -13,6 +13,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/ploeg-hq/ploeg/pkg/apilimit"
 	"github.com/ploeg-hq/ploeg/pkg/store"
 )
 
@@ -46,6 +47,30 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 	_, _ = w.Write(s.metrics.body)
 	_, _ = w.Write(renderPoolMetrics(s.Store.PoolStat()))
+	_, _ = w.Write(renderProviderAPIMetrics(apilimit.Snapshot()))
+	_, _ = w.Write(s.Loops.render())
+}
+
+func renderProviderAPIMetrics(counts []apilimit.Counts) []byte {
+	var b metricWriter
+	b.family("ploeg_provider_api_requests_total", "counter", "Tracker and forge API calls this process sent, by provider, retries included.")
+	for _, c := range counts {
+		b.sample("ploeg_provider_api_requests_total", float64(c.Requests), "provider", c.Provider)
+	}
+	b.family("ploeg_provider_api_rate_limited_total", "counter", "Tracker and forge API calls the upstream answered with 429, by provider.")
+	for _, c := range counts {
+		b.sample("ploeg_provider_api_rate_limited_total", float64(c.RateLimited), "provider", c.Provider)
+	}
+	b.family("ploeg_provider_api_retries_total", "counter", "Tracker and forge API calls sent again after a 429 or a 503 with Retry-After, by provider.")
+	for _, c := range counts {
+		b.sample("ploeg_provider_api_retries_total", float64(c.Retries), "provider", c.Provider)
+	}
+	b.family("ploeg_provider_api_throttled_total", "counter", "Tracker and forge API calls held by the client-side rate limit, by provider; outcome is delayed (waited for a slot) or refused (the wait was too long and the call failed).")
+	for _, c := range counts {
+		b.sample("ploeg_provider_api_throttled_total", float64(c.Delayed), "provider", c.Provider, "outcome", "delayed")
+		b.sample("ploeg_provider_api_throttled_total", float64(c.Throttled), "provider", c.Provider, "outcome", "refused")
+	}
+	return b.Bytes()
 }
 
 func renderPoolMetrics(st *pgxpool.Stat) []byte {

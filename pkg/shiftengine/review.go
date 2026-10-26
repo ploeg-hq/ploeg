@@ -37,7 +37,12 @@ type ReviewWatch struct {
 	// conflicted, so the Team that owns it can rebase it (ADR-0146). Nil
 	// records the merge state and nothing else.
 	Conflicts ConflictFollowUps
-	Log       *slog.Logger
+	// ClaimFor is how long Reconcile claims each pull request it checks, so
+	// another ploegd replica's Reconcile skips it meanwhile. Set it a little
+	// under the reconcile interval; zero claims only for the call itself.
+	// A conflicted poll repeated within half of it does not count again.
+	ClaimFor time.Duration
+	Log      *slog.Logger
 }
 
 // ConflictFollowUps acts on a pull request the forge confirmed as
@@ -66,10 +71,11 @@ func (w *ReviewWatch) HandleForgeEvent(ctx context.Context, forge string, ev pro
 	if fp == nil {
 		return nil
 	}
-	targets, err := w.targets(ctx)
+	items, err := w.Store.AwaitingReview(ctx)
 	if err != nil {
 		return err
 	}
+	targets := w.targets(items)
 	for _, t := range targets {
 		if t.forge != fp || t.pr != ev.PR || !strings.EqualFold(t.repo, ev.Repo) {
 			continue
@@ -81,15 +87,17 @@ func (w *ReviewWatch) HandleForgeEvent(ctx context.Context, forge string, ev pro
 	return nil
 }
 
-// Reconcile asks the forge for the state of every awaiting_review pull
-// request and settles the ones that are no longer open. Errors are logged per
-// item so one unreachable repository does not stall the rest.
+// Reconcile claims every awaiting_review pull request no other replica has
+// claimed within ClaimFor, asks the forge for its state and settles the ones
+// that are no longer open. Errors are logged per item so one unreachable
+// repository does not stall the rest.
 func (w *ReviewWatch) Reconcile(ctx context.Context) {
-	targets, err := w.targets(ctx)
+	items, err := w.Store.ClaimReviewChecks(ctx, w.ClaimFor)
 	if err != nil {
-		w.log().Error("review reconcile: awaiting_review read failed", "err", err)
+		w.log().Error("review reconcile: awaiting_review claim failed", "err", err)
 		return
 	}
+	targets := w.targets(items)
 	for _, t := range targets {
 		if ctx.Err() != nil {
 			return
@@ -135,11 +143,7 @@ func reviewTransition(kind provider.ForgeEventKind) (work.State, string, bool) {
 	return "", "", false
 }
 
-func (w *ReviewWatch) targets(ctx context.Context) ([]reviewTarget, error) {
-	items, err := w.Store.AwaitingReview(ctx)
-	if err != nil {
-		return nil, err
-	}
+func (w *ReviewWatch) targets(items []store.ReviewItem) []reviewTarget {
 	var out []reviewTarget
 	for _, it := range items {
 		if it.Target == nil {
@@ -165,7 +169,7 @@ func (w *ReviewWatch) targets(ctx context.Context) ([]reviewTarget, error) {
 		}
 		out = append(out, reviewTarget{item: it, forge: fp, repo: repo, pr: pr, link: link})
 	}
-	return out, nil
+	return out
 }
 
 func (w *ReviewWatch) recordFacts(ctx context.Context, t reviewTarget, facts provider.PullRequestFacts) (*provider.CommitStatus, error) {
@@ -252,6 +256,7 @@ func (w *ReviewWatch) recordMergeCheck(ctx context.Context, t reviewTarget, read
 	key := store.PullRequestKey{Forge: t.forge.Name(), Repo: t.repo, Number: t.pr}
 	check, _, err := w.Store.RecordMergeCheck(ctx, key, t.item.WorkItemID, store.MergeObservation{
 		Mergeable: read.Mergeable, HeadSHA: read.Facts.HeadSHA, BaseBranch: read.BaseBranch,
+		RepeatAfter: w.ClaimFor / 2,
 	}, time.Now())
 	if err != nil {
 		w.log().Error("review reconcile: merge state not recorded",

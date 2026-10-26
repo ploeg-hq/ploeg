@@ -2,8 +2,8 @@
 type: explanation
 audience: [owner, operator, contributor, reviewer]
 owner: ploeg
-last_verified: 2026-10-24
-verified_by: "Source read at development c37de7f; repository settings, rulesets, releases and signatures read through the GitHub API and cosign on 2026-10-23"
+last_verified: 2026-10-26
+verified_by: "Source read at development c37de7f; repository settings, rulesets, releases and signatures read through the GitHub API and cosign on 2026-10-23; finding dispositions checked against development 8e98500 on 2026-10-26"
 ---
 
 # Self-assessment for Ploeg
@@ -31,7 +31,7 @@ This document follows the [CNCF TAG Security and Compliance self-assessment outl
 
 | | |
 | -- | -- |
-| Assessment Stage | Incomplete. Every release-blocking finding is fixed (F-04 on 2026-10-25, #225); the reviewer sign-off asked for in issue #34 is pending. |
+| Assessment Stage | Incomplete. Every release-blocking finding is fixed (F-04 on 2026-10-25, #225), and every other finding has a disposition, an owner role and a target ([finding dispositions](threat-model.md#finding-dispositions)). The maintainer's confirmation of the accepted risks and the reviewer sign-off asked for in issue #34 are pending. |
 | Software | <https://github.com/ploeg-hq/ploeg> |
 | Security Provider | No. Ploeg authorizes, budgets and records AI-agent work. Credential scoping and isolation are central to its design, but securing other systems is not its primary function. |
 | Languages | Go (controller, worker, MCP server), Helm templates, Shell, Python (documentation generators), SQL (migrations) |
@@ -140,7 +140,7 @@ These are design elements the product's security depends on and that a deploymen
 | --- | --- | --- |
 | Controller-only management credentials | Keeps master, signing and minting authority out of the execution boundary | [_worker_control.tpl](../../ops/helm/ploeg/templates/_worker_control.tpl); worker refuses administrative env vars at start ([main.go](../../cmd/ploeg-worker/main.go)) |
 | Worker bootstrap and signed Run capability | Authenticates every worker call and binds it to one Run, worker, team and Role | [worker_auth.go](../../pkg/httpapi/worker_auth.go); [worker_auth_test.go](../../pkg/httpapi/worker_auth_test.go) |
-| Lease and outcome fencing | One writer per branch; stale attempts cannot report | Run-token CAS in [store.go](../../pkg/store/store.go) and [shift.go](../../pkg/store/shift.go); `TestSweptRunCannotReport` |
+| Lease and outcome fencing | One writer per branch; stale attempts cannot report, also after a restore or an upgrade | Run-token CAS in [store.go](../../pkg/store/store.go) and [shift.go](../../pkg/store/shift.go); `TestSweptRunCannotReport`; the [restore drill](../research/2026-10-25-restore-drill.md) and the [upgrade drill](../research/2026-10-26-upgrade-drill.md) |
 | Inference accounts | Authorize before mint; one durable mint; settlement from gateway evidence | [llm_accounts.go](../../pkg/store/llm_accounts.go); [worker control](../contracts/worker-control.md#accounting-states) |
 | Per-Run forge credential broker | Per-repository push rights, revoked on settle and on Lease lapse | [pkg/forgebroker](../../pkg/forgebroker/); [ADR-0013](../adrs/0013-push-rights-are-minted-per-run.md) |
 | Credential proxies and push fence | The harness sees placeholders; pushes only to its branch; Role allowlist | [llmproxy.go](../../pkg/worker/llmproxy.go), [forgeproxy.go](../../pkg/worker/forgeproxy.go), [pushfence.go](../../pkg/worker/pushfence.go); [ADR-0034](../adrs/0034-the-harness-gets-placeholders-the-worker-keeps-credentials.md) |
@@ -221,7 +221,7 @@ The facts below were read from the repository and the GitHub API on 2026-10-23.
   - BuildKit SBOM and provenance attestations ride in each signed image index.
   - Each image digest carries a keyless cosign attestation of type `openvex`, and the same document is a release asset. It lists every finding the project judged not exploitable, with its justification. Consumers verify it and apply it with `grype --vex` or `trivy --vex` ([ops/vex](../../ops/vex/README.md#verify-and-apply-it)).
   - The chart is stamped with both image digests.
-  - Release tarballs, the chart archive and `SHA256SUMS` are not signed, and the only stable release, v0.1.0, predates signing ([F-20](threat-model.md#findings)).
+  - Release tarballs, the chart archive and `SHA256SUMS` are not signed, and the only stable release, v0.1.0, predates signing ([F-20](threat-model.md#findings), [#306](https://github.com/ploeg-hq/ploeg/issues/306)).
 - **Container images.** `ploegd` runs as uid 65532 on distroless with a read-only root filesystem. The worker container is restricted by default. Ploeg publishes no agent image; the installer supplies one.
 
 ### Communication channels
@@ -274,7 +274,7 @@ A project-level procedure for triage, confirmation, notification and patch relea
   - The first real-binary attack drill found that OpenCode 1.18.30 started a repository's plugin and MCP server at `session/new`; the profile now sets `OPENCODE_DISABLE_PROJECT_CONFIG=true` ([ADR-0126](../adrs/0126-a-recurring-attack-drill-runs-every-harness-against-a-hostile-repository.md)).
   - The proxies were changed to refuse any request that does not present the Run's placeholder (Ploeg #64).
   - The worker container gained a restricted security context after a server dry run reported three `restricted` violations ([ADR-0120](../adrs/0120-a-worker-container-meets-the-restricted-pod-security-standard-by-default.md)).
-- **This assessment's findings.** This assessment produced 39 findings, listed in the [threat model](threat-model.md#findings). Seven are release-blocking for the supported profile, two of them only if the profile admits a feature it currently excludes. All seven are fixed:
+- **This assessment's findings.** This assessment produced 41 findings, listed in the [threat model](threat-model.md#findings). Seven are release-blocking for the supported profile, two of them only if the profile admits a feature it currently excludes. All seven are fixed:
 
 | ID | Severity | Summary |
 | --- | --- | --- |
@@ -286,7 +286,16 @@ A project-level procedure for triage, confirmation, notification and patch relea
 | F-08 | High | ploeg-mcp action confirmation can be skipped by the client (blocking only if ploeg-mcp `execute` groups join the profile; fixed in PR #260, ADR-0152: the confirmation state is signed and acted on once) |
 | F-36 | High | Any reviewer could re-queue paid Shifts without limit when rework was on (fixed in PR #261: rework only from listed or writing reviewers, capped by `maxReworks`) |
 
-Each finding still needs a disposition, an owner and a date (issue #34). They are not filed as issues by this change.
+Every other finding has a disposition, an owner role and a target in [Finding dispositions](threat-model.md#finding-dispositions), checked against `development` at `8e98500` on 2026-10-26:
+
+| Disposition | Findings | Where it is tracked |
+| --- | --- | --- |
+| Fix planned, v0.2.x (by 2026-12-15) | F-10, F-14, F-19, F-20, F-28, F-29, F-33, F-34, F-35; the residuals of F-11 and F-17 | [#298](https://github.com/ploeg-hq/ploeg/issues/298), [#301](https://github.com/ploeg-hq/ploeg/issues/301), [#305](https://github.com/ploeg-hq/ploeg/issues/305), [#306](https://github.com/ploeg-hq/ploeg/issues/306), [#311](https://github.com/ploeg-hq/ploeg/issues/311), [#312](https://github.com/ploeg-hq/ploeg/issues/312), [#315](https://github.com/ploeg-hq/ploeg/issues/315), [#316](https://github.com/ploeg-hq/ploeg/issues/316), [#317](https://github.com/ploeg-hq/ploeg/issues/317), [#299](https://github.com/ploeg-hq/ploeg/issues/299), [#303](https://github.com/ploeg-hq/ploeg/issues/303) |
+| Fix planned, v0.3.0 (by 2027-01-31) | F-05, F-06, F-07, F-09, F-16, F-23, F-25, F-26, F-27, F-30, F-37, F-39, F-40 | [#294](https://github.com/ploeg-hq/ploeg/issues/294), [#295](https://github.com/ploeg-hq/ploeg/issues/295), [#296](https://github.com/ploeg-hq/ploeg/issues/296), [#297](https://github.com/ploeg-hq/ploeg/issues/297), [#302](https://github.com/ploeg-hq/ploeg/issues/302), [#307](https://github.com/ploeg-hq/ploeg/issues/307) (F-23 and F-40), [#308](https://github.com/ploeg-hq/ploeg/issues/308), [#309](https://github.com/ploeg-hq/ploeg/issues/309), [#310](https://github.com/ploeg-hq/ploeg/issues/310), [#313](https://github.com/ploeg-hq/ploeg/issues/313), [#318](https://github.com/ploeg-hq/ploeg/issues/318), [#320](https://github.com/ploeg-hq/ploeg/issues/320) |
+| Fix planned, later (by 2027-03-31) | F-12, F-18, F-32, F-38; the residual of F-03 | [#300](https://github.com/ploeg-hq/ploeg/issues/300), [#304](https://github.com/ploeg-hq/ploeg/issues/304), [#314](https://github.com/ploeg-hq/ploeg/issues/314), [#319](https://github.com/ploeg-hq/ploeg/issues/319), [#321](https://github.com/ploeg-hq/ploeg/issues/321) |
+| Existing project tickets | F-13 | [#30](https://github.com/ploeg-hq/ploeg/issues/30), [#7](https://github.com/ploeg-hq/ploeg/issues/7) |
+| Accepted, reviewed by 2027-04-23 | F-15, F-21; the residual of F-02; F-35's bot password (ADR-0013) | the threat model, pending the maintainer's confirmation in #34 |
+| Unsupported (outside profile P1) | F-22, F-31, F-41; harnesses outside the qualified set (F-04); ploeg-mcp `execute` groups (F-08); installer-owned P1 rows (F-11) | [What the profile excludes](threat-model.md#what-the-profile-excludes) |
 
 ### OpenSSF Best Practices
 

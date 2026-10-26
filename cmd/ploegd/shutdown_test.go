@@ -131,3 +131,29 @@ func TestShutdownFinishesInFlightRequestsBeforeDraining(t *testing.T) {
 		t.Error("background work was drained before the in-flight request finished")
 	}
 }
+
+func TestShutdownReturnsWhenTheServerIsClosedBeforeTheContext(t *testing.T) {
+	srv, serve, _ := listenLocal(t)
+	var drained atomic.Bool
+	done := make(chan error, 1)
+	go func() {
+		done <- serveUntilStopped(context.Background(), slog.New(slog.DiscardHandler), srv, serve,
+			defaultShutdownBudget, drain{name: "loops", wait: func() { drained.Store(true) }})
+	}()
+	time.Sleep(50 * time.Millisecond)
+	if err := srv.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("serveUntilStopped hung after the server was closed with its context still live")
+	}
+	if !drained.Load() {
+		t.Error("background work was not drained after the server closed")
+	}
+}

@@ -9,8 +9,8 @@
 {{- if hasKey $names .name -}}{{- fail "operator consumer names must be unique" -}}{{- end -}}
 {{- $_ := set $names .name true -}}
 {{- $tokenEnv := printf "PLOEG_OPERATOR_TOKEN_%s" (.name | sha256sum | upper) -}}
-{{- $consumer := dict "name" .name "tokenEnv" $tokenEnv "execute" (.execute | default false) "verify" (.verify | default false) -}}
-{{- if hasKey . "teams" -}}{{- $_ := set $consumer "teams" .teams -}}{{- end -}}
+{{- $consumer := dict "name" .name "tokenEnv" $tokenEnv "execute" (.execute | default false) "verify" (.verify | default false) "teams" .teams -}}
+{{- $_ := set $consumer "readContent" (ternary .readContent (.execute | default false) (hasKey . "readContent")) -}}
 {{- if hasKey . "maxBudgetUsd" -}}{{- $_ := set $consumer "maxBudgetUsd" .maxBudgetUsd -}}{{- end -}}
 {{- if .clientIds -}}{{- $_ := set $consumer "clientIds" .clientIds -}}{{- $clientIds = true -}}{{- end -}}
 {{- if .audiences -}}{{- $_ := set $consumer "audiences" .audiences -}}{{- end -}}

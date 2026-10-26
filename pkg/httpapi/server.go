@@ -105,6 +105,9 @@ type Server struct {
 	// database is read again. Zero means DefaultMetricsCacheTTL; negative
 	// disables the cache.
 	MetricsCacheTTL time.Duration
+	// Loops records how long each pass of ploegd's background loops took,
+	// for /metrics.
+	Loops LoopDurations
 
 	metrics metricsCache
 	// FollowUps holds each Team's opt-in to acting on forge events. A Team
@@ -375,7 +378,7 @@ func (s *Server) handleTrackerWebhook(w http.ResponseWriter, r *http.Request) {
 		// Log the actual post-upsert state: a re-assignment of a live
 		// (queued/active) item refreshes the mirror without re-queuing (VIK-588).
 		if state == work.StateQueued {
-			s.Log.Info("work item queued", "id", id, "team", item.Team, "title", item.Title)
+			s.Log.Info("work item queued", "id", id, "team", item.Team, "external_id", ev.ExternalID)
 			// The Shift fast path. Crash between the commit above and this call
 			// leaves a queued item with no Shift — the sweeper's repair case.
 			if s.Engine != nil {
@@ -384,7 +387,7 @@ func (s *Server) handleTrackerWebhook(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		} else {
-			s.Log.Info("work item refreshed, not queued", "id", id, "state", string(state), "team", item.Team, "title", item.Title)
+			s.Log.Info("work item refreshed, not queued", "id", id, "state", string(state), "team", item.Team, "external_id", ev.ExternalID)
 		}
 		s.observeGate(r.Context(), name, tp, ev)
 	}
@@ -1060,7 +1063,7 @@ func (s *Server) applyOutcome(ctx context.Context, token string, req harness.Out
 		cancel()
 	}
 	s.recordReportedHarness(ctx, token, req.Harness)
-	s.Log.Info("outcome reported", "outcome", req.Outcome, "summary", req.Summary,
+	s.Log.Info("outcome reported", "outcome", req.Outcome, "failure_reason", req.FailureReason, "summary_bytes", len(req.Summary),
 		"created_proposed", len(req.CreatedWorkItems), "created_accepted", len(res.Created))
 	s.openCreatedShifts(ctx, res.Created)
 	// The Shift fast path: this report may have completed a Round. Errors are

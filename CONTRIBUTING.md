@@ -28,6 +28,26 @@ Two things this does not cover:
 If you need different terms for a contribution, say so in the pull request before it is reviewed
 rather than after.
 
+## Your first contribution
+
+1. **See Ploeg work.** Follow the [quickstart](docs/quickstart.md). It installs a signed release on
+   a local kind cluster and completes one Run in about five minutes, with no accounts and no model
+   spend. Anything on that page that did not work as written is worth an issue.
+2. **Set up the repository.** Install [mise](https://mise.jdx.dev/), then run `mise run setup`,
+   `mise run verify` and `mise run docs-check` from a clone. They need no credentials.
+3. **Pick a small issue.** Issues labelled
+   [`good first issue`](https://github.com/ploeg-hq/ploeg/labels/good%20first%20issue) name the
+   files to change, the acceptance criteria and how to test. Comment on one to take it. A
+   maintainer offers to pair on each one, so ask if you would rather work through it together.
+
+The quickstart is tested, not just written. `scripts/quickstart.sh run` runs every `sh` block on
+the page in order on a fresh kind cluster and checks the Run ends `done`. The
+[Quickstart workflow](.github/workflows/quickstart.yml) runs it daily and on every change to the
+page, `ops/quickstart/` or the chart, against the pinned release, the newest release and the
+chart in your checkout, and fails when the page pins a release more than twenty behind the newest.
+If you change the page, run `mise exec -- bash scripts/quickstart.sh run` locally first; it needs
+Docker and deletes its cluster when it ends.
+
 ## Before you open a pull request
 
 Run the gates CI runs, including `scripts/license-check.sh` and `scripts/brand-marks.sh`. Read

@@ -97,6 +97,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 	if err := st.Migrate(ctx); err != nil {
 		return err
 	}
+	grantObserver(ctx, st, log)
 	gate.enter("resolving configuration")
 
 	// File-backed configuration (PLOEG_CONFIG). Replaces three env-var DSLs
@@ -468,6 +469,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 			MarkTrackerDone: envOr("PLOEG_TRACKER_DONE_ON_MERGE", "false") == "true",
 			OutcomeNotes:    srv.Notes != nil,
 			CIWaits:         ciWaits(cfg),
+			ClaimFor:        reviewClaim(reviewEvery),
 			Log:             log,
 		}
 		reviews.Conflicts = srv
@@ -507,7 +509,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 		loops.Go(func() { webhookCheck.loop(ctx) })
 	}
 
-	loops.Go(func() { sweepLoop(ctx, log, st, sweeper, forgeSweeper, engine, srv, sweepEvery, settleAfter) })
+	startSweepLoops(ctx, &loops, log, st, sweeper, forgeSweeper, engine, srv, sweepEvery, settleAfter)
 	if reviews != nil {
 		loops.Go(func() { reviewLoop(ctx, reviews, reviewEvery) })
 	}

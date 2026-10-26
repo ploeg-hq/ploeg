@@ -38,7 +38,7 @@ func TestRouteRefusalsListWhatIngestRefusedWithItsCode(t *testing.T) {
 	forge := readyForge()
 	forge.set("webgrip/homelab-cluster", provider.RepositoryState{Archived: true, AgentsFile: true})
 	s := routingServer(t, board, forge, nil)
-	consumers, token := operatorTestConsumers(t, nil, false)
+	consumers, token := operatorTestConsumers(t, []string{AllTeams}, false)
 	s.OperatorConfig = OperatorConfig{Consumers: consumers}
 	h := s.Handler()
 

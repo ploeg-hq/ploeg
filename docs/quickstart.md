@@ -2,8 +2,8 @@
 type: tutorial
 audience: [operator, integrator, contributor]
 owner: ploeg
-last_verified: 2026-10-23
-verified_by: "Every command below run in order on a fresh kind cluster with Ploeg 0.2.0-rc.47; transcript in the pull request that added this page"
+last_verified: 2026-10-26
+verified_by: "Every command below run in order on a fresh kind cluster with Ploeg 0.2.0-rc.77 by scripts/quickstart.sh; the Quickstart workflow repeats the run on a schedule, against the pinned and the newest candidate"
 ---
 
 # Quickstart: your first Run on a local cluster
@@ -39,7 +39,7 @@ Install these tools. The versions are the ones this guide was tested with; newer
 | --- | --- |
 | Docker | 28.4 |
 | [kind](https://kind.sigs.k8s.io/docs/user/quick-start/#installation) | 0.33.0 |
-| kubectl | 1.34 |
+| kubectl | 1.36.1 |
 | [Helm](https://helm.sh/docs/intro/install/) | 4.3.0 |
 | [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) | 2.4.3 |
 | git, curl, openssl, [jq](https://jqlang.org/) | any recent |
@@ -56,17 +56,17 @@ export KUBECONFIG="${TMPDIR:-/tmp}/ploeg-quickstart.kubeconfig"
 
 ## 1. Pick a release and check its signatures
 
-Releases are listed on the [releases page](https://github.com/ploeg-hq/ploeg/releases). This guide was tested with `0.2.0-rc.47`, a release candidate. Do not use `0.1.0`, the only stable release so far: it predates release signing, and its chart sets a default node selector that no kind node matches, so `ploegd` never starts.
+Releases are listed on the [releases page](https://github.com/ploeg-hq/ploeg/releases). This guide was tested with `0.2.0-rc.77`, a release candidate. Do not use `0.1.0`, the only stable release so far: it predates release signing, and its chart sets a default node selector that no kind node matches, so `ploegd` never starts.
 
 ```sh
-export PLOEG_VERSION=0.2.0-rc.47
+export PLOEG_VERSION=0.2.0-rc.77
 ```
 
 Every release signs its image and its chart with [cosign](https://docs.sigstore.dev/) keyless signing. There is no signing key to trust. Instead, cosign checks that the signature was made by Ploeg's release workflow on GitHub and that it is recorded in the public transparency log. The identity rule comes from [CI and infrastructure](ops/ci-and-infra.md#credentials-and-signing).
 
 ```sh
 IDENTITY='^https://github\.com/ploeg-hq/ploeg/\.github/workflows/release\.yml@refs/(heads/development|heads/main|tags/v0\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?)$'
-for artifact in ghcr.io/ploeg-hq/ploegd ghcr.io/ploeg-hq/charts/ploeg; do
+for artifact in ghcr.io/ploeg-hq/ploegd ghcr.io/ploeg-hq/ploeg-worker ghcr.io/ploeg-hq/charts/ploeg; do
   cosign verify "$artifact:$PLOEG_VERSION" \
     --certificate-oidc-issuer https://token.actions.githubusercontent.com \
     --certificate-identity-regexp "$IDENTITY" > /dev/null \
@@ -74,7 +74,7 @@ for artifact in ghcr.io/ploeg-hq/ploegd ghcr.io/ploeg-hq/charts/ploeg; do
 done
 ```
 
-You should see two `verified` lines. Stop here if you do not. The chart pins the `ploegd` image by digest, so the chart you verified also fixes the image the cluster runs.
+cosign prints a short `Verification for …` report for each artifact, and the loop adds one `verified` line per artifact. You should see three `verified` lines: the controller image, the worker image and the chart. Stop here if you do not. The chart pins both images by digest, so the chart you verified also fixes the images the cluster runs.
 
 ## 2. Create the cluster
 
@@ -165,20 +165,25 @@ The log shows `registered target ready` for `hello` and then `ploegd ready`. On 
 
 The chart also installs a NetworkPolicy for `ploegd` and one for the worker pods (`kubectl get networkpolicy`). They are the same objects a production install gets, and on this cluster they do nothing: kind's default network plugin, kindnet, does not enforce NetworkPolicy. The guide keeps them anyway, so what you render here is what you would render on a cluster that does. [Network policies](ops/network.md) explains what they allow.
 
+The values also set `supportProfile: P1`. P1 is the one deployment profile the [threat model](security/threat-model.md#the-supported-deployment-profile) covers, and under it the chart refuses to render any value that leaves the profile, such as a credential proxy turned off or a worker that runs as root ([ADR 0154](adrs/0154-the-chart-refuses-values-that-leave-profile-p1-unless-they-declare-the-deployment-unsupported.md)). So the Ploeg objects you install here are the P1 objects. The install as a whole is not a P1 deployment, for reasons the chart cannot check and the profile leaves to the installer. kindnet does not enforce NetworkPolicy. The stand-in PostgreSQL, Forgejo and LiteLLM pods share the namespace, so it cannot enforce the restricted Pod Security level. The worker pushes with the one shared Forgejo token, because the guide sets no `botPasswordSecret` for per-Run tokens (`ploegd` logs `per-run forge credentials disabled`). That is fine for a practice repository. The P1 table in the threat model lists what a real deployment adds.
+
 ## 7. Hand Ploeg a piece of work
 
-The operator API admits work without a tracker. Forward the `ploegd` port to your machine and send one Work Item. The forward runs in the background until you stop it in the last step.
+The operator API admits work without a tracker. Forward the `ploegd` port to your machine and send one Work Item. The forward runs in the background until you stop it in the last step, and the `curl` after it waits until `ploegd` answers through it.
 
 ```sh
 kubectl port-forward svc/ploeg 8080:8080 > /dev/null &
-sleep 3
-WORK_ITEM=$(curl -sS -X POST http://localhost:8080/api/v1/operator/work-items \
+curl -sf --retry 10 --retry-connrefused --retry-delay 1 -o /dev/null http://localhost:8080/readyz \
+  && echo "ploegd answers" || echo "ploegd does not answer on localhost:8080; see step 10"
+ADMISSION=$(curl -sS -X POST http://localhost:8080/api/v1/operator/work-items \
   -H "Authorization: Bearer $OPERATOR_TOKEN" -H "X-Ploeg-Actor: quickstart" \
   -H 'Content-Type: application/json' \
-  -d '{"requestId":"first-run","team":"quickstart","target":"hello","title":"Say hello","description":"A practice task. Ask the model to say hello and change nothing."}' \
-  | jq -r .workItem.id)
-echo "Work Item $WORK_ITEM"
+  -d '{"requestId":"first-run","team":"quickstart","target":"hello","title":"Say hello","description":"A practice task. Ask the model to say hello and change nothing."}')
+WORK_ITEM=$(printf '%s' "$ADMISSION" | jq -r '.workItem.id // empty')
+echo "Work Item ${WORK_ITEM:-not admitted: $ADMISSION}"
 ```
+
+It prints `ploegd answers` and then `Work Item 1`. If it prints `not admitted`, the rest of the line is Ploeg's answer, and the table in step 10 lists the common reasons.
 
 `requestId` makes the request safe to repeat. Sending the same body again returns the same Work Item instead of a second one.
 
@@ -191,12 +196,12 @@ for attempt in $(seq 1 30); do
   STATE=$(curl -sS http://localhost:8080/api/v1/operator/work-items/$WORK_ITEM \
     -H "Authorization: Bearer $OPERATOR_TOKEN" | jq -r .item.state)
   echo "$STATE"
-  case "$STATE" in done|needs_human|withdrawn) break ;; esac
+  case "$STATE" in done|needs_human|withdrawn|null) break ;; esac
   sleep 10
 done
 ```
 
-It prints `queued` a few times and then `done`. Now read the worker's side of the story:
+It prints `queued` a few times, then `active` while the worker runs, and then `done`. A single `null` means step 7 admitted no Work Item: go back to its output. Now read the worker's side of the story:
 
 ```sh
 kubectl logs -l app.kubernetes.io/name=ploeg-worker -c worker --tail=-1 \
@@ -256,9 +261,10 @@ kubectl get cronjobs,jobs,pods
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
 | `cosign verify` fails | Wrong version, or you are not verifying a Ploeg release | Check `PLOEG_VERSION` against the releases page |
-| `ploegd` logs `registered target not ready … has no AGENTS.md` | Step 4 did not add `AGENTS.md` | Repeat the last request of step 4. Ploeg checks again on the next admission, without a restart |
+| Step 7 prints `not admitted` with `target_not_ready … has no AGENTS.md`, and `ploegd` logs `registered target not ready` | Step 4 did not add `AGENTS.md` | Repeat the last request of step 4. Ploeg checks again on the next admission, without a restart |
 | `helm install` times out and `ploegd` logs `database unreachable` | PostgreSQL is not up yet, or the `ploeg-database` URI is wrong | `kubectl rollout status statefulset/postgres`, then check the Secret's password matches `postgres` |
 | A pod stays in `CreateContainerConfigError` | A Secret it references does not exist | `kubectl describe pod <name>` names the Secret. Create it with the command from step 3, 4 or 5 |
+| Step 7 prints `ploegd does not answer on localhost:8080`, then `jq: parse error` or `not admitted` with an HTML page | Another program on your machine listens on port 8080, so the port forward could not take it | Stop that program, or forward another local port, such as `18080:8080`, and use that port in every later `curl` |
 | Admission returns `team_forbidden` or `invalid_admission` | The body names another Team, or a target that is not registered | Use `"team":"quickstart"` and `"target":"hello"` |
 | The state stays `queued` for more than two minutes | No worker started, or it could not enroll | `kubectl get jobs`; then `kubectl logs job/<name> -c worker`. A bootstrap error means the `quickstart--default` key does not match `registry.json` |
 | The state becomes `needs_human` | The Run reported `stuck` or failed | Read the Run's `stuckReason` with the command in step 9. `got no answer from the model gateway` means LiteLLM is down: `kubectl logs deploy/litellm` |

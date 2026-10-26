@@ -443,7 +443,37 @@ func (s *Store) SettleLLMAccount(ctx context.Context, token string, st LLMSettle
 
 func validSpend(v float64) bool { return v >= 0 && !math.IsNaN(v) && !math.IsInf(v, 0) }
 
-func (s *Store) RecordWorkerRejection(ctx context.Context) error {
-	_, err := s.pool.Exec(ctx, `INSERT INTO audit_log(actor,action) VALUES('ploegd:auth','worker.request_rejected')`)
-	return err
+// WorkerRejection is the deployment-wide verdict on one rejected worker
+// request: Limited when the shared window already holds the limit, and
+// LimitedFor how long until the oldest counted rejection leaves the window.
+type WorkerRejection struct {
+	Limited    bool
+	LimitedFor time.Duration
+}
+
+// RecordWorkerRejection counts the worker rejections every ploegd replica
+// recorded within window and records this one unless that count already
+// reached limit. The check and the insert are serialized across replicas.
+func (s *Store) RecordWorkerRejection(ctx context.Context, limit int, window time.Duration) (WorkerRejection, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return WorkerRejection{}, err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('ploeg.worker-rejections', 0))`); err != nil {
+		return WorkerRejection{}, err
+	}
+	var counted int
+	var remaining float64
+	if err = tx.QueryRow(ctx, `SELECT count(*), COALESCE(EXTRACT(EPOCH FROM min(at)+make_interval(secs=>$1)-clock_timestamp()),0)::float8
+		FROM audit_log WHERE action='worker.request_rejected' AND at > clock_timestamp()-make_interval(secs=>$1)`, window.Seconds()).Scan(&counted, &remaining); err != nil {
+		return WorkerRejection{}, err
+	}
+	if counted >= limit {
+		return WorkerRejection{Limited: true, LimitedFor: time.Duration(max(remaining, 0) * float64(time.Second))}, tx.Commit(ctx)
+	}
+	if _, err = tx.Exec(ctx, `INSERT INTO audit_log(at,actor,action) VALUES(clock_timestamp(),'ploegd:auth','worker.request_rejected')`); err != nil {
+		return WorkerRejection{}, err
+	}
+	return WorkerRejection{}, tx.Commit(ctx)
 }

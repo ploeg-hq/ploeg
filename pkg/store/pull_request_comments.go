@@ -69,23 +69,43 @@ func (s *Store) CommentPullRequest(ctx context.Context, id int64, teams []string
 	return ref, err
 }
 
-// LockPullRequestComment takes the session advisory lock of one pull
-// request's keyed comment without waiting, so one writer at a time lists,
-// posts and edits it across replicas. held is false when another session
-// has it. unlock releases the lock and its connection.
-func (s *Store) LockPullRequestComment(ctx context.Context, pullRequestID int64, key string) (unlock func(), held bool, err error) {
-	conn, err := s.pool.Acquire(ctx)
+// CommentSlot names one comment Ploeg writes on a pull request: the forge,
+// the repository ("owner/name"), the pull request number and the comment's
+// key within its writer's namespace.
+type CommentSlot struct {
+	Forge  string
+	Repo   string
+	Number int
+	Key    string
+}
+
+// ClaimPullRequestComment leases slot for ttl without waiting, so one writer
+// at a time lists, posts and edits that comment across replicas. held is
+// false while another writer's lease is live; a lease past its ttl is taken
+// over, so a crashed writer blocks the slot for ttl at most. The lease is a
+// row, not a lock: no connection is held between the claim and release.
+// release ends this writer's lease and leaves a successor's alone.
+func (s *Store) ClaimPullRequestComment(ctx context.Context, slot CommentSlot, ttl time.Duration) (release func(), held bool, err error) {
+	holder, err := newToken()
 	if err != nil {
 		return nil, false, err
 	}
-	const lock = `hashtextextended('ploeg.pull-request-comment:' || $1::bigint::text || ':' || $2::text, 0)`
-	if err := conn.QueryRow(ctx, `SELECT pg_try_advisory_lock(`+lock+`)`, pullRequestID, key).Scan(&held); err != nil || !held {
-		conn.Release()
+	err = s.pool.QueryRow(ctx, `INSERT INTO pull_request_comment_leases AS l (forge, repo, number, key, holder, claimed_until)
+		VALUES ($1, $2, $3, $4, $5, now() + $6 * interval '1 millisecond')
+		ON CONFLICT (forge, repo, number, key) DO UPDATE SET holder = EXCLUDED.holder, claimed_until = EXCLUDED.claimed_until
+		WHERE l.claimed_until <= now()
+		RETURNING true`, slot.Forge, slot.Repo, slot.Number, slot.Key, holder, ttl.Milliseconds()).Scan(&held)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, false, nil
+	}
+	if err != nil {
 		return nil, false, err
 	}
 	return func() {
-		_, _ = conn.Exec(context.WithoutCancel(ctx), `SELECT pg_advisory_unlock(`+lock+`)`, pullRequestID, key)
-		conn.Release()
+		releaseCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		_, _ = s.pool.Exec(releaseCtx, `DELETE FROM pull_request_comment_leases WHERE forge = $1 AND repo = $2 AND number = $3 AND key = $4 AND holder = $5`,
+			slot.Forge, slot.Repo, slot.Number, slot.Key, holder)
 	}, true, nil
 }
 
