@@ -65,6 +65,7 @@ func TestOperatorChartKeepsConsumerCredentialsInController(t *testing.T) {
 			Teams        []string `json:"teams"`
 			Execute      bool     `json:"execute"`
 			Verify       bool     `json:"verify"`
+			ReadContent  *bool    `json:"readContent"`
 			MaxBudgetUSD float64  `json:"maxBudgetUsd"`
 			ClientIDs    []string `json:"clientIds"`
 			Audiences    []string `json:"audiences"`
@@ -74,6 +75,9 @@ func TestOperatorChartKeepsConsumerCredentialsInController(t *testing.T) {
 		}
 		if len(policies) != 2 || policies[0].Name != "console" || !policies[0].Execute || policies[0].Verify || policies[0].MaxBudgetUSD != 3 || len(policies[0].Teams) != 1 || policies[0].Teams[0] != "silver" || policies[1].Name != "verifier" || !policies[1].Verify || policies[1].Execute {
 			t.Fatalf("wrong consumer policy: %+v", policies)
+		}
+		if policies[0].ReadContent == nil || !*policies[0].ReadContent || policies[1].ReadContent == nil || *policies[1].ReadContent {
+			t.Fatalf("readContent must render explicitly, following execute when unset: %+v", policies)
 		}
 		if len(policies[0].ClientIDs) != 1 || policies[0].ClientIDs[0] != "console-app" || len(policies[1].ClientIDs) != 0 {
 			t.Fatalf("clientIds not forwarded: %+v", policies)
@@ -126,6 +130,7 @@ func TestOperatorChartKeepsConsumerCredentialsInController(t *testing.T) {
 	if err := os.WriteFile(audiencesOnlyValues, []byte(`operator:
   consumers:
     - name: console
+      teams: ["*"]
       execute: true
       audiences: [ploeg-console]
       tokenSecret: {name: ploeg-console-operator, key: token}
@@ -137,8 +142,13 @@ func TestOperatorChartKeepsConsumerCredentialsInController(t *testing.T) {
 	audiencesOnly := append(append([]string{}, args[:len(args)-2]...), "-f", audiencesOnlyValues)
 	if out, err := exec.Command(helm, audiencesOnly...).CombinedOutput(); err != nil {
 		t.Fatalf("chart refuses consumer audiences without Ploeg's audience: %v %s", err, out)
-	} else if strings.Contains(string(out), "PLOEG_OPERATOR_PERSON_AUDIENCE") || !strings.Contains(string(out), `\"audiences\":[\"ploeg-console\"]`) {
+	} else if strings.Contains(string(out), "PLOEG_OPERATOR_PERSON_AUDIENCE") || !strings.Contains(string(out), `\"audiences\":[\"ploeg-console\"]`) ||
+		!strings.Contains(string(out), `\"teams\":[\"*\"]`) {
 		t.Fatalf("audiences-only render: %s", out)
+	}
+	noTeams := append(append([]string{}, args...), "--set", "operator.consumers[0].teams=null")
+	if out, err := exec.Command(helm, noTeams...).CombinedOutput(); err == nil || !strings.Contains(string(out), "teams") {
+		t.Fatalf("chart accepts a consumer that names no teams: %v %s", err, out)
 	}
 }
 

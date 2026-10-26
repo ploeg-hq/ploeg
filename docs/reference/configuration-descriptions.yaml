@@ -90,7 +90,7 @@ env:
   PLOEG_REPORT_TEAM_DASHBOARD_URL: Link template for a dashboard filtered to the Shift's Team; `{team}` is the escaped Team. Unset omits the link.
   PLOEG_REPORT_RUN_DASHBOARD_URL: Link template for the usage of the Run behind the report; `{run}` is its escaped gateway alias. Unset omits the link.
   PLOEG_REPORT_SPEND_DASHBOARD_URL: Link to spend across Runs. Unset omits the link.
-  PLOEG_OPERATOR_CONSUMERS: JSON array of operator read consumers. Each entry names a `tokenEnv`, a further variable that holds that consumer's bearer token (chart `operator.consumers`), and may list `audiences`, the audiences of person tokens exchanged for that consumer alone, and `clientIds`, the identity provider clients whose person tokens for Ploeg's shared audience make it the caller (ADR-0150). No consumers refuses every operator request.
+  PLOEG_OPERATOR_CONSUMERS: JSON array of operator read consumers. Each entry names a `tokenEnv`, a further variable that holds that consumer's bearer token (chart `operator.consumers`), and may list `audiences`, the audiences of person tokens exchanged for that consumer alone, and `clientIds`, the identity provider clients whose person tokens for Ploeg's shared audience make it the caller (ADR-0150). `teams` lists the Teams it may read, `["*"]` for every Team; omitted or empty grants none. `readContent` grants transcripts, briefings, attached context and Work Item Note reviews and defaults to `execute`. No consumers refuses every operator request.
   PLOEG_OPERATOR_PERSON_ISSUER: Issuer of person tokens, matched byte for byte against `iss` (ADR-0150, chart `operator.personTokens.issuer`). One issuer serves every consumer; with authentik, give the exchange targets the global issuer mode and set the global issuer here. Unset accepts no person tokens; a consumer that lists `audiences` or `clientIds` then stops the boot.
   PLOEG_OPERATOR_PERSON_AUDIENCE: Ploeg's shared audience for person tokens whose `azp` names a consumer's `clientIds`. Required when a consumer lists `clientIds`, optional when consumers list only `audiences`; no client id or consumer audience may equal it (chart `operator.personTokens.audience`).
   PLOEG_OPERATOR_PERSON_JWKS_URL: The issuer's signing keys. Unset reads `jwks_uri` from the issuer's discovery document (chart `operator.personTokens.jwksUrl`).
@@ -196,7 +196,8 @@ helm:
   executor.teams[].targetSource: "`env` ignores the claim's target and uses the fallback repository."
   executor.teams[].harness: Overrides the `executor.harness` defaults for this Team.
   operator.consumers[].name: Consumer name.
-  operator.consumers[].teams: Teams the consumer may read. Omitted grants all Teams; an empty list grants none.
+  operator.consumers[].teams: "Teams the consumer may read and act on. Required. `[\"*\"]` grants every Team; an empty list grants none."
+  operator.consumers[].readContent: "Grants Run transcripts and briefings, the context people attached and Work Item Note reviews. Unset follows `execute`: a read-only consumer reads Work Item metadata only."
   operator.consumers[].execute: Grants execution commands. Defaults to false.
   operator.consumers[].maxBudgetUsd: Budget ceiling for an executing consumer, 0.01 to 10000. Defaults to 25.
   operator.consumers[].tokenSecret: Secret holding the consumer's bearer token, at least 32 bytes.

@@ -137,7 +137,7 @@ func TestOperatorUnsettledAccountsListsHeldBudgetInScope(t *testing.T) {
 		}
 	}
 
-	everyone, raw := get(nil)
+	everyone, raw := get([]string{AllTeams})
 	if len(everyone.Accounts) != 3 || everyone.Totals.Count != 3 || everyone.Totals.HeldUSD != 6.5 {
 		t.Fatalf("unscoped consumer: %s", raw)
 	}

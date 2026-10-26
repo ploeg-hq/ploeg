@@ -186,7 +186,10 @@ func (s *Server) handleOperatorRunBriefing(w http.ResponseWriter, r *http.Reques
 		operatorError(w, 400, "invalid_request", "Invalid resource identifier or unknown query parameter.")
 		return
 	}
-	principal, _ := OperatorPrincipalFromContext(r.Context())
+	principal, ok := contentReader(w, r)
+	if !ok {
+		return
+	}
 	rec, err := s.Store.OperatorBriefing(r.Context(), id, principal.Teams)
 	if err != nil {
 		operatorReadError(w, err)

@@ -30,8 +30,13 @@ type OperatorPrincipal struct {
 	Teams          []string
 	CanExecute     bool
 	CanVerify      bool
+	CanReadContent bool
 	BudgetLimitUSD float64
 }
+
+// AllTeams is the team scope that grants an Operator Consumer every Team. A
+// consumer that names no team reads none.
+const AllTeams = "*"
 
 func (p OperatorPrincipal) AllowsTeam(team string) bool {
 	if p.Teams == nil {
@@ -85,6 +90,7 @@ func ParseOperatorConsumers(raw string, lookup func(string) (string, bool)) ([]O
 		Teams        []string `json:"teams"`
 		Execute      bool     `json:"execute"`
 		Verify       bool     `json:"verify"`
+		ReadContent  *bool    `json:"readContent"`
 		MaxBudgetUSD *float64 `json:"maxBudgetUsd"`
 		ClientIDs    []string `json:"clientIds"`
 		Audiences    []string `json:"audiences"`
@@ -92,7 +98,7 @@ func ParseOperatorConsumers(raw string, lookup func(string) (string, bool)) ([]O
 	decoder := json.NewDecoder(strings.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&configs); err != nil {
-		return nil, errors.New("operator consumers must be a JSON array of name, tokenEnv, teams, execute, verify, maxBudgetUsd, clientIds and audiences")
+		return nil, errors.New("operator consumers must be a JSON array of name, tokenEnv, teams, execute, verify, readContent, maxBudgetUsd, clientIds and audiences")
 	}
 	if err := decoder.Decode(new(any)); err != io.EOF {
 		return nil, errors.New("operator consumers must contain one JSON value")
@@ -117,12 +123,13 @@ func ParseOperatorConsumers(raw string, lookup func(string) (string, bool)) ([]O
 		if len(cfg.Teams) > 100 {
 			return nil, fmt.Errorf("operator consumer %s has too many team scopes", cfg.Name)
 		}
-		seen := map[string]bool{}
-		for _, team := range cfg.Teams {
-			if !operatorName.MatchString(team) || seen[team] {
-				return nil, fmt.Errorf("operator consumer %s has an invalid or duplicated team scope", cfg.Name)
-			}
-			seen[team] = true
+		teams, err := consumerTeamScope(cfg.Name, cfg.Teams)
+		if err != nil {
+			return nil, err
+		}
+		readContent := cfg.Execute
+		if cfg.ReadContent != nil {
+			readContent = *cfg.ReadContent
 		}
 		token, ok := lookup(cfg.TokenEnv)
 		if !ok || len(token) < 32 || len(token) > 4096 || strings.ContainsAny(token, " \t\r\n") {
@@ -144,10 +151,26 @@ func ParseOperatorConsumers(raw string, lookup func(string) (string, bool)) ([]O
 				seen[id] = true
 			}
 		}
-		consumers = append(consumers, OperatorConsumer{Principal: OperatorPrincipal{Name: cfg.Name, Teams: cfg.Teams, CanExecute: cfg.Execute, CanVerify: cfg.Verify, BudgetLimitUSD: budgetLimit}, tokenHash: hash, clientIDs: cfg.ClientIDs, audiences: cfg.Audiences})
+		consumers = append(consumers, OperatorConsumer{Principal: OperatorPrincipal{Name: cfg.Name, Teams: teams, CanExecute: cfg.Execute, CanVerify: cfg.Verify, CanReadContent: readContent, BudgetLimitUSD: budgetLimit}, tokenHash: hash, clientIDs: cfg.ClientIDs, audiences: cfg.Audiences})
 		names[cfg.Name], hashes[hash] = true, true
 	}
 	return consumers, nil
+}
+
+func consumerTeamScope(name string, configured []string) ([]string, error) {
+	if slices.Equal(configured, []string{AllTeams}) {
+		return nil, nil
+	}
+	teams := []string{}
+	seen := map[string]bool{}
+	for _, team := range configured {
+		if !operatorName.MatchString(team) || seen[team] {
+			return nil, fmt.Errorf("operator consumer %s has an invalid or duplicated team scope; %q grants every Team only on its own", name, AllTeams)
+		}
+		seen[team] = true
+		teams = append(teams, team)
+	}
+	return teams, nil
 }
 
 // OperatorConsumersNameClientIDs reports whether any consumer accepts person
@@ -339,6 +362,15 @@ func (s *Server) personTokenOwner(proven ProvenPerson, caller *OperatorConsumer)
 		return nil, "The person token was issued to a client no consumer names."
 	}
 	return owner, ""
+}
+
+func contentReader(w http.ResponseWriter, r *http.Request) (OperatorPrincipal, bool) {
+	p, ok := OperatorPrincipalFromContext(r.Context())
+	if !ok || !p.CanReadContent {
+		operatorError(w, 403, "content_forbidden", "This consumer reads Work Item metadata only; transcripts, briefings, context and notes need readContent.")
+		return p, false
+	}
+	return p, true
 }
 
 func (s *Server) operatorHandler() http.Handler {

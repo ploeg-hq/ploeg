@@ -305,6 +305,17 @@ monitoring:
         severity: warning
 
 operator:
+  # Each consumer names the Teams it may read: [silver], or ["*"] for every
+  # Team. teams is required; a consumer that lists none reads none.
+  # readContent grants Run transcripts and briefings, attached context and
+  # Work Item Note reviews; unset follows execute, so a read-only consumer
+  # sees metadata only.
+  #   consumers:
+  #     - name: mcp-reader
+  #       teams: [silver]
+  #       execute: false
+  #       readContent: false
+  #       tokenSecret: {name: ploeg-mcp-reader, key: token}
   consumers: []
   deliveryPolicies: []
   # ADR-0150: an Operator Consumer acting for a person may present that

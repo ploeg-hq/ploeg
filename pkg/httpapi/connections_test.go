@@ -86,7 +86,7 @@ func TestConnectionsSayWhichRepositoriesAreReadyAndWhoRoutesThere(t *testing.T) 
 	if err := testStore.AuditForgeEvent(context.Background(), "forgejo", store.ForgeEventAudit{Kind: "pr_opened", Repo: "WebGrip/App", PR: 4}); err != nil {
 		t.Fatal(err)
 	}
-	s, token, _ := connectionsServer(t, nil)
+	s, token, _ := connectionsServer(t, []string{AllTeams})
 
 	body := readConnections(t, s, token)
 	if len(body.Repositories) != 3 {
@@ -108,7 +108,7 @@ func TestConnectionsSayWhichRepositoriesAreReadyAndWhoRoutesThere(t *testing.T) 
 
 func TestConnectionsReportEachBoardsWebhookAndWhoCanSeeIt(t *testing.T) {
 	reset(t)
-	s, token, _ := connectionsServer(t, nil)
+	s, token, _ := connectionsServer(t, []string{AllTeams})
 
 	before := readConnections(t, s, token)
 	if before.CheckedAt != nil || before.Boards[0].Webhook != BoardWebhookUnchecked || before.Boards[0].Teams[1].Assignees[0].Shared != nil {
@@ -169,7 +169,7 @@ func TestConnectionsStayInsideTheConsumersTeams(t *testing.T) {
 
 func TestConnectionsRecheckARepositoryThatWasNotReady(t *testing.T) {
 	reset(t)
-	s, token, forge := connectionsServer(t, nil)
+	s, token, forge := connectionsServer(t, []string{AllTeams})
 	forge.set("webgrip/homelab-cluster", provider.RepositoryState{AgentsFile: true})
 	if got := readConnections(t, s, token).Repositories[1]; got.Readiness != "ready" || got.Reason != "" {
 		t.Errorf("homelab after AGENTS.md landed = %+v, want ready", got)
@@ -185,7 +185,7 @@ func TestConnectionsRecheckARepositoryThatWasNotReady(t *testing.T) {
 
 func TestConnectionsWithoutConfigurationAreEmpty(t *testing.T) {
 	reset(t)
-	consumers, token := operatorTestConsumers(t, nil, false)
+	consumers, token := operatorTestConsumers(t, []string{AllTeams}, false)
 	s := &Server{Store: testStore, OperatorConfig: OperatorConfig{Consumers: consumers}}
 	body := readConnections(t, s, token)
 	if body.Repositories == nil || body.Boards == nil || len(body.Repositories)+len(body.Boards) != 0 || body.CheckedAt != nil {
@@ -194,7 +194,7 @@ func TestConnectionsWithoutConfigurationAreEmpty(t *testing.T) {
 }
 
 func TestConnectionsAcceptNoQueryParameters(t *testing.T) {
-	consumers, token := operatorTestConsumers(t, nil, false)
+	consumers, token := operatorTestConsumers(t, []string{AllTeams}, false)
 	s := &Server{OperatorConfig: OperatorConfig{Consumers: consumers}}
 	for _, tc := range []struct {
 		method, path string

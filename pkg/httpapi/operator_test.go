@@ -27,7 +27,7 @@ func operatorTestConsumers(t *testing.T, teams []string, execute bool) ([]Operat
 		t.Fatal(err)
 	}
 	token := hex.EncodeToString(secret)
-	raw, _ := json.Marshal([]map[string]any{{"name": "workbench", "tokenEnv": "TEST_OPERATOR_CREDENTIAL", "teams": teams, "execute": execute}})
+	raw, _ := json.Marshal([]map[string]any{{"name": "workbench", "tokenEnv": "TEST_OPERATOR_CREDENTIAL", "teams": teams, "execute": execute, "readContent": true}})
 	consumers, err := ParseOperatorConsumers(string(raw), func(name string) (string, bool) { return token, name == "TEST_OPERATOR_CREDENTIAL" })
 	if err != nil {
 		t.Fatal(err)
@@ -124,7 +124,7 @@ func TestOperatorRoutesRejectInvalidOrUnauthorizedQueriesBeforeStore(t *testing.
 }
 
 func TestOperatorConsumerConfigurationFailsClosed(t *testing.T) {
-	_, token := operatorTestConsumers(t, nil, false)
+	_, token := operatorTestConsumers(t, []string{AllTeams}, false)
 	lookup := func(string) (string, bool) { return token, true }
 	for _, raw := range []string{
 		`[{"name":"a","token":"inline"}]`,
@@ -146,7 +146,7 @@ func TestOperatorConsumerConfigurationFailsClosed(t *testing.T) {
 	for _, scope := range []struct {
 		teams []string
 		all   bool
-	}{{nil, true}, {[]string{}, false}} {
+	}{{nil, false}, {[]string{}, false}, {[]string{AllTeams}, true}} {
 		consumers, _ := operatorTestConsumers(t, scope.teams, true)
 		if consumers[0].Principal.AllowsTeam("silver") != scope.all || !consumers[0].Principal.CanExecute {
 			t.Fatalf("scope/execute mismatch: %+v", consumers[0].Principal)

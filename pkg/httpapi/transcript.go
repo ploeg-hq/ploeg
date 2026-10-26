@@ -127,7 +127,10 @@ func (s *Server) handleOperatorRunTranscript(w http.ResponseWriter, r *http.Requ
 			return
 		}
 	}
-	principal, _ := OperatorPrincipalFromContext(r.Context())
+	principal, ok := contentReader(w, r)
+	if !ok {
+		return
+	}
 	page, err := s.Store.OperatorTranscript(r.Context(), id, principal.Teams, after, limit)
 	if err != nil {
 		operatorReadError(w, err)

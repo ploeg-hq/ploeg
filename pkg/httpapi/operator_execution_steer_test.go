@@ -41,7 +41,7 @@ func newSteeringConsumers(t *testing.T) steeringConsumers {
 
 func randomHex(t *testing.T) string {
 	t.Helper()
-	_, token := operatorTestConsumers(t, nil, false)
+	_, token := operatorTestConsumers(t, []string{AllTeams}, false)
 	return token
 }
 
