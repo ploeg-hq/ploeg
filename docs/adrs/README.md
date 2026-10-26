@@ -230,6 +230,7 @@ fails otherwise.
 | [0156](0156-each-run-carries-a-transaction-token-that-names-its-person-and-a-team-without-a-sponsor-runs-nothing.md) | Each Run carries a transaction token that names its person, and a Team without a sponsor runs nothing | proposed | 2026-10-25 |
 | [0157](0157-ploeg-mcp-asks-a-client-on-the-previous-protocol-to-confirm-in-a-session.md) | ploeg-mcp asks a client on the previous protocol to confirm in a session | proposed | 2026-10-25 |
 | [0158](0158-a-stable-release-is-a-soaked-candidate-promoted-by-fast-forwarding-main.md) | A stable release is a soaked candidate, promoted by fast-forwarding main | accepted | 2026-10-26 |
+| [0160](0160-an-operator-consumer-reads-only-the-teams-it-names-and-run-content-only-when-granted.md) | An operator consumer reads only the Teams it names, and Run content only when granted | proposed | 2026-10-26 |
 
 
 ## Review calendar

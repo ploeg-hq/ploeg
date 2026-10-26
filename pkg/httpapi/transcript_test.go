@@ -90,7 +90,7 @@ func TestRunTranscriptRequiresTheRunsOwnCapability(t *testing.T) {
 }
 
 func TestRunTranscriptRefusesMalformedBatches(t *testing.T) {
-	s, token, _ := transcriptServer(t, nil)
+	s, token, _ := transcriptServer(t, []string{AllTeams})
 	path := "/api/v1/runs/" + token + "/transcript"
 	for name, body := range map[string]string{
 		"no entries":   `{"entries":[]}`,
@@ -113,7 +113,7 @@ func TestRunTranscriptRefusesMalformedBatches(t *testing.T) {
 }
 
 func TestRunTranscriptIsRedactedWhenStored(t *testing.T) {
-	s, token, operator := transcriptServer(t, nil)
+	s, token, operator := transcriptServer(t, []string{AllTeams})
 	body, _ := json.Marshal(map[string]any{"entries": []transcript.Entry{
 		{Seq: 1, At: time.Now(), Kind: transcript.KindToolOutput, Text: "run " + token + " key sk-abcdefghijklmnopqrstuvwx " + strings.Repeat("z", 3*transcript.MaxTextBytes)},
 		{Seq: 2, Kind: transcript.KindStage, Text: "no time given"},

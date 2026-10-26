@@ -274,10 +274,22 @@ images is proposed, not done.
 `PLOEG_OPERATOR_CONSUMERS` is a JSON array of named consumer policies. Each
 entry requires `name` and `tokenEnv`; the bearer value is resolved from that
 environment reference and retained as a hash. Tokens require at least 32 bytes.
-An omitted `teams` grants all teams, an empty array grants none, and a populated
-array restricts every resource read. `execute` defaults to false. Consumers
-with execution permission may set `maxBudgetUsd` from 0.01 to 10000; the default
-is 25. A read credential does not authorize execution commands.
+`teams` lists the Teams the consumer may read and act on, and restricts every
+resource read. `["*"]` grants every Team, on its own only. An omitted or empty
+`teams` grants none: the consumer authenticates and sees no Team's data, so no
+consumer reads every Team by leaving it out ([ADR-0160](../adrs/0160-an-operator-consumer-reads-only-the-teams-it-names-and-run-content-only-when-granted.md)).
+The chart requires `teams` on every consumer. `execute` defaults to false. Consumers with execution permission may
+set `maxBudgetUsd` from 0.01 to 10000; the default is 25. A read credential does
+not authorize execution commands.
+
+`readContent` grants reading what agents and people wrote beyond Work Item
+metadata: `GET /runs/{id}/transcript`, `GET /runs/{id}/briefing`,
+`GET /work-items/{id}/context` and `GET /knowledge/reviews`. Unset, it follows
+`execute`: an executing consumer reads them and a read-only one does not. A
+consumer without it gets 403 `content_forbidden` on those routes; every other
+read route answers as before. Set `readContent: true` on a read-only consumer
+only when it must show transcripts, briefings, attached context or notes, and
+`readContent: false` on an executing one that never shows them.
 
 `verify` defaults to false and grants the separate trusted delivery-verifier
 operations. Configure that permission on a distinct consumer identity. The

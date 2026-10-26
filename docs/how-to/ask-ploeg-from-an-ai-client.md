@@ -18,14 +18,15 @@ Use a consumer of its own, never another consumer's token, so you can revoke it 
 
 1. Generate a random value of at least 32 bytes and put it in OpenBao, following [Rotate credentials](rotate-credentials.md#steps-shared-by-every-rotation). Git holds only the reference.
 2. Sync it into a Kubernetes Secret in the `ploeg` namespace, for example `ploeg-mcp-reader` with key `token`.
-3. Add the consumer to the chart values. Leave `execute` false: `ploeg-mcp` only reads, and a reader cannot start, cancel or approve work.
+3. Add the consumer to the chart values. Leave `execute` false: `ploeg-mcp` only reads, and a reader cannot start, cancel or approve work. Name the Teams it may read; `["*"]` is every Team, and a consumer that names none reads none. Leave `readContent` false: `ploeg-mcp`'s tools read Work Item metadata and need no Run transcripts, briefings, attached context or notes.
 
    ```yaml
    operator:
      consumers:
        - name: mcp-reader
-         teams: [silver]        # leave out to read every Team
+         teams: [silver]        # ["*"] reads every Team
          execute: false
+         readContent: false
          tokenSecret:
            name: ploeg-mcp-reader
            key: token

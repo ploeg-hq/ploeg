@@ -27,3 +27,7 @@ exceptions:
     surface: ops/helm/ploeg/values.yaml
     pointer: supportProfile
     adr: "0154"
+  - base: v0.2.0-rc.80
+    surface: ops/helm/ploeg/values.schema.json
+    pointer: /properties/operator/properties/consumers/items/required
+    adr: "0160"
