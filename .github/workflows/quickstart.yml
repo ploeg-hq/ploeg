@@ -1,0 +1,104 @@
+name: Quickstart
+on:
+  schedule:
+    - cron: "29 3 * * *"
+  workflow_dispatch:
+  push:
+    branches: [development]
+    paths:
+      - "docs/quickstart.md"
+      - "ops/quickstart/**"
+      - "ops/helm/ploeg/**"
+      - "scripts/quickstart.sh"
+      - "scripts/package-chart.sh"
+      - ".github/workflows/quickstart.yml"
+  pull_request:
+    paths:
+      - "docs/quickstart.md"
+      - "ops/quickstart/**"
+      - "ops/helm/ploeg/**"
+      - "scripts/quickstart.sh"
+      - "scripts/package-chart.sh"
+      - ".github/workflows/quickstart.yml"
+permissions:
+  contents: read
+concurrency:
+  group: quickstart-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  versions:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      pinned: ${{ steps.resolve.outputs.pinned }}
+      newest: ${{ steps.resolve.outputs.newest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Find the pinned and the newest published release
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh release list --repo "$REPO" --exclude-drafts --limit 200 --json tagName --jq '.[].tagName' > "$RUNNER_TEMP/releases.txt"
+          echo "pinned=$(bash scripts/quickstart.sh pinned)" >> "$GITHUB_OUTPUT"
+          echo "newest=$(sed -n 's/^v//p;q' "$RUNNER_TEMP/releases.txt")" >> "$GITHUB_OUTPUT"
+      - name: The page pins a published release among the newest twenty
+        run: bash scripts/quickstart.sh pin-check < "$RUNNER_TEMP/releases.txt"
+  run:
+    name: run (${{ matrix.leg }})
+    needs: versions
+    if: ${{ !cancelled() && needs.versions.outputs.newest != '' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        leg: [pinned, newest, checkout-chart]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@7a4e45a543138629540c9a1616d08632b893e492 # v5.0.1
+        with:
+          version: 2026.9.18
+          cache: false
+      - name: Run the newest release instead of the pin
+        if: matrix.leg != 'pinned'
+        env:
+          NEWEST: ${{ needs.versions.outputs.newest }}
+        run: echo "QUICKSTART_VERSION=$NEWEST" >> "$GITHUB_ENV"
+      - name: Install this checkout's chart, stamped with the newest release's image digests
+        if: matrix.leg == 'checkout-chart'
+        env:
+          NEWEST: ${{ needs.versions.outputs.newest }}
+        run: echo "QUICKSTART_CHART=$(mise exec -- bash scripts/quickstart.sh checkout-chart "$NEWEST" "$RUNNER_TEMP/chart")" >> "$GITHUB_ENV"
+      - name: Every command on docs/quickstart.md runs in order and the Run ends done
+        run: mise exec -- bash scripts/quickstart.sh run
+  report:
+    name: Open an issue on a scheduled failure
+    runs-on: ubuntu-24.04
+    needs: [versions, run]
+    if: ${{ failure() && github.event_name == 'schedule' }}
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Open or update the quickstart issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          REPO: ${{ github.repository }}
+          PINNED: ${{ needs.versions.outputs.pinned }}
+          NEWEST: ${{ needs.versions.outputs.newest }}
+        run: |
+          title="Quickstart failed on the schedule"
+          body="The scheduled quickstart run failed (pinned ${PINNED}, newest ${NEWEST}). A newcomer following docs/quickstart.md may hit the same failure, or the page pins a release more than twenty behind the newest. Run: ${RUN_URL}"
+          existing=$(gh issue list --repo "$REPO" --state open --search "in:title \"$title\"" --json number,title --jq "map(select(.title == \"$title\")) | .[0].number // empty")
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --repo "$REPO" --body "$body"
+          else
+            gh issue create --repo "$REPO" --title "$title" --body "$body"
+          fi
