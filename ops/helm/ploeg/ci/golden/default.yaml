@@ -127,7 +127,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: ploegd
-          image: ghcr.io/ploeg-hq/ploegd:CHART-VERSION
+          image: ghcr.io/ploeg-hq/ploegd:CHART-VERSION@sha256:da0cc1526c299863f227760b0f3f4d8428fd762de5edfeaa2effe75e3b739a36
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

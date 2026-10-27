@@ -17,6 +17,50 @@
 {{- end -}}
 {{- end -}}
 
+{{- define "ploeg.unpinnedImageDeparture" -}}
+{{- if and .source.image (not (regexMatch "@sha256:[a-f0-9]{64}$" (toString .source.image))) -}}
+{{- $scope := "" -}}
+{{- with .label -}}{{- $scope = printf "%s: " . -}}{{- end -}}
+{{- printf "%s%s image %s (%s) is not pinned by digest; P1 needs every image the worker pod runs as <reference>@sha256:<digest>" $scope .what .source.image .source.path -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "ploeg.workloadImageDepartures" -}}
+{{- $root := .root -}}
+{{- $label := .label -}}
+{{- $out := list -}}
+{{- $roleScope := dict "root" $root "team" .team "role" .role -}}
+{{- with include "ploeg.unpinnedImageDeparture" (dict "label" $label "what" "the harness" "source" (include "ploeg.roleHarnessImage" $roleScope | fromJson)) -}}
+{{- $out = append $out . -}}
+{{- end -}}
+{{- $toolchains := include "ploeg.roleToolchains" $roleScope | fromJson -}}
+{{- range $tc := $toolchains.toolchains -}}
+{{- with include "ploeg.unpinnedImageDeparture" (dict "label" $label "what" (printf "the %s toolchain" $tc.name) "source" (dict "image" $tc.image "path" (printf "%s[%s].image" $toolchains.path $tc.name))) -}}
+{{- $out = append $out . -}}
+{{- end -}}
+{{- end -}}
+{{- if .separate -}}
+{{- with include "ploeg.unpinnedImageDeparture" (dict "what" "the worker" "source" (include "ploeg.workerImageSource" $root | fromJson)) -}}
+{{- $out = append $out . -}}
+{{- end -}}
+{{- else -}}
+{{- with include "ploeg.unpinnedImageDeparture" (dict "what" "the worker-bin" "source" (include "ploeg.workerBinImageSource" (dict "root" $root "separate" false) | fromJson)) -}}
+{{- $out = append $out . -}}
+{{- end -}}
+{{- end -}}
+{{- if .dind -}}
+{{- with include "ploeg.unpinnedImageDeparture" (dict "what" "the dind" "source" (dict "image" $root.Values.executor.dindImage "path" "executor.dindImage")) -}}
+{{- $out = append $out . -}}
+{{- end -}}
+{{- end -}}
+{{- if .sandbox -}}
+{{- with include "ploeg.unpinnedImageDeparture" (dict "what" "the sandbox launcher" "source" (include "ploeg.ploegdWorkerImageSource" $root | fromJson)) -}}
+{{- $out = append $out . -}}
+{{- end -}}
+{{- end -}}
+{{- toJson $out -}}
+{{- end -}}
+
 {{- define "ploeg.workloadSupportProfileDepartures" -}}
 {{- $root := .root -}}
 {{- $team := .team -}}
@@ -53,6 +97,7 @@
 {{- if and (eq $layout "shared") (not $dind) (not $isolation.offReason) (ne $identity.name "claude-environment") -}}
 {{- $out = append $out (printf "%s: harnessContainer resolves to shared; P1 needs separate (ADR-0138)" $label) -}}
 {{- end -}}
+{{- $out = concat $out (include "ploeg.workloadImageDepartures" (dict "root" $root "team" $team "role" $role "label" $label "separate" (eq $layout "separate") "dind" $dind "sandbox" $sandbox) | fromJsonArray) -}}
 {{- toJson $out -}}
 {{- end -}}
 
@@ -68,6 +113,9 @@
 {{- end -}}
 {{- if .Values.claudeRunner.enabled -}}
 {{- $out = append $out "claudeRunner.enabled is true; P1 excludes the claude-runner, whose Runs execute outside the pod" -}}
+{{- with include "ploeg.unpinnedImageDeparture" (dict "what" "the claude-runner" "source" (dict "image" (include "ploeg.claudeRunnerImage" $root) "path" "claudeRunner.image")) -}}
+{{- $out = append $out . -}}
+{{- end -}}
 {{- end -}}
 {{- if $e.enabled -}}
 {{- if ne (($e.litellm | default dict).keyIsolation | default "") "proxy" -}}

@@ -74,6 +74,7 @@ Both are off by default and create no Secret or route host of their own: the clu
 | `harness.dind: true`, even with `acknowledgePrivilegedDind` | `false` |
 | `harnessContainer` resolving to `shared` | `separate` |
 | `executor.workerSecurityContext` or the derived worker container context below `restricted` | the defaults |
+| an image a worker pod runs without a digest: `harness.image` (Role, team or `executor`), `executor.runnerImage`, `harness.toolchains[].image`, `worker.image`, `executor.workerImage`, `image` (worker-bin with a shared harness container, the sandbox launcher), `executor.dindImage`, `claudeRunner.image` | `<reference>@sha256:<digest>`; the published chart stamps the digests of `image`, `worker.image` and `claudeRunner.image`, a source checkout leaves them to you |
 
 Set `supportProfile: unsupported` to render such values anyway; the install notes then list each departure, and the threat model does not cover the deployment ([ADR-0154](../../../docs/adrs/0154-the-chart-refuses-values-that-leave-profile-p1-unless-they-declare-the-deployment-unsupported.md)). The chart cannot see the namespace's Pod Security level, the CNI, transport encryption or the forge's per-Run minting; those P1 rows stay yours.
 

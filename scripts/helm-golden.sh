@@ -171,6 +171,17 @@ leaves_p1 'team defaults harness openhands: harnessContainer resolves to shared'
 leaves_p1 'executor.workerSecurityContext (runAsNonRoot is not true, runAsUser is 0' --set executor.workerSecurityContext.runAsNonRoot=false --set executor.workerSecurityContext.runAsUser=0
 leaves_p1 'executor.workerSecurityContext (allowPrivilegeEscalation is not false, capabilities.drop lacks ALL, seccompProfile.type is not RuntimeDefault or Localhost)' --set executor.workerSecurityContext.allowPrivilegeEscalation=true --set 'executor.workerSecurityContext.capabilities.drop=null' --set executor.workerSecurityContext.seccompProfile.type=Unconfined
 leaves_p1 'workerContainerSecurityContext) (privileged is true, capabilities.add is set, readOnlyRootFilesystem is not true)' --set executor.workerContainerSecurityContext.privileged=true --set 'executor.workerContainerSecurityContext.capabilities.add={NET_ADMIN}' --set executor.workerContainerSecurityContext.readOnlyRootFilesystem=false
+leaves_p1 'team defaults harness openhands: the harness image registry.example/agent-runner:1.3.0 (executor.harness.image) is not pinned by digest' --set executor.harness.image=registry.example/agent-runner:1.3.0
+leaves_p1 'team defaults harness openhands: the harness image registry.example/agent-runner:latest (executor.teams[defaults].harness.image) is not pinned by digest' --set 'executor.teams[0].harness.image=registry.example/agent-runner:latest'
+leaves_p1 'team defaults/builder harness openhands: the harness image registry.example/builder:2.0.0 (executor.teams[defaults].plan[].roles[builder].harness.image) is not pinned by digest' --set 'executor.teams[0].plan[0].roles[0].name=builder' --set 'executor.teams[0].plan[0].roles[0].writes=true' --set 'executor.teams[0].plan[0].roles[0].harness.image=registry.example/builder:2.0.0'
+leaves_p1 'the harness image registry.example/agent-runner:1.3.0@sha256:db06 (executor.harness.image) is not pinned by digest' --set executor.harness.image=registry.example/agent-runner:1.3.0@sha256:db06
+leaves_p1 'team defaults harness openhands: the go toolchain image docker.io/library/golang:1.27-alpine (executor.harness.toolchains[go].image) is not pinned by digest' --set 'executor.harness.toolchains[0].name=go' --set 'executor.harness.toolchains[0].image=docker.io/library/golang:1.27-alpine'
+leaves_p1 '(worker.image) is not pinned by digest' --set worker.image.digest=
+leaves_p1 'the worker image registry.example/ploeg-worker:0.2.0 (executor.workerImage) is not pinned by digest' --set executor.workerImage=registry.example/ploeg-worker:0.2.0
+leaves_p1 'the worker-bin image registry.example/ploegd:0.2.0 (executor.workerImage) is not pinned by digest' --set executor.harnessContainer=shared --set executor.workerImage=registry.example/ploegd:0.2.0
+leaves_p1 'the sandbox launcher image ghcr.io/ploeg-hq/ploegd:' --set executor.type=sandbox --set executor.sandbox.runtimeClassName=kata --set image.digest=
+leaves_p1 'the dind image docker.io/library/docker:29.8.2-dind (executor.dindImage) is not pinned by digest' --set 'executor.teams[0].harness.dind=true' --set 'executor.teams[0].harness.acknowledgePrivilegedDind=true' --set executor.dindImage=docker.io/library/docker:29.8.2-dind
+leaves_p1 'the claude-runner image ghcr.io/ploeg-hq/claude-runner:latest (claudeRunner.image) is not pinned by digest' --set claudeRunner.enabled=true --set claudeRunner.environmentSecret.name=claude-runner-environment --set claudeRunner.image.tag=latest
 if out=$(helm template ploeg ops/helm/ploeg -f "$REQUIRED" --set supportProfile=P2 2>&1) || ! printf '%s' "$out" | grep -qF "value must be one of 'P1', 'unsupported'"; then
 	echo "chart did not refuse supportProfile P2 by its schema:"
 	echo "$out"
@@ -187,6 +198,10 @@ renders_p1() {
 renders_p1 --set executor.type=sandbox --set executor.sandbox.runtimeClassName=kata
 renders_p1 --set executor.type=sandbox --set executor.runtimeClassName=kata
 renders_p1 --set 'executor.teams[0].executorType=sandbox' --set 'executor.teams[0].sandbox.runtimeClassName=kata'
+renders_p1 --set 'executor.teams[0].plan[0].roles[0].name=builder' --set 'executor.teams[0].plan[0].roles[0].writes=true' --set 'executor.teams[0].plan[0].roles[0].harness.image=registry.example/builder:2.0.0@sha256:db06af1d9c0969ed594a21ee2b3369a79d6e91abb36b94d29223918581963027'
+renders_p1 --set 'executor.teams[0].harness.image=registry.example/agent-runner@sha256:db06af1d9c0969ed594a21ee2b3369a79d6e91abb36b94d29223918581963027'
+renders_p1 --set 'executor.harness.toolchains[0].name=go' --set 'executor.harness.toolchains[0].image=docker.io/library/golang:1.27-alpine@sha256:db06af1d9c0969ed594a21ee2b3369a79d6e91abb36b94d29223918581963027'
+renders_p1 --set executor.workerImage=registry.example/ploeg-worker:0.2.0@sha256:db06af1d9c0969ed594a21ee2b3369a79d6e91abb36b94d29223918581963027
 for p1 in "" "$P1_VALUES"; do
 	if ! out=$(helm template ploeg ops/helm/ploeg -f "$REQUIRED" ${p1:+-f "$p1"} 2>&1); then
 		echo "chart refused the P1 values ${p1:-defaults}, which it must render:"
