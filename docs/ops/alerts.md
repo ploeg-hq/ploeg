@@ -123,6 +123,8 @@ WHERE a.state IN ('issued', 'unknown')
   AND r.started_at + make_interval(secs => a.ttl_seconds) < now();
 ```
 
+Without a database session, `GET /api/v1/operator/unsettled-accounts` lists these accounts once their Run has finished, and `GET /api/v1/operator/runs/{runId}/accounting` (or `ploeg_run_spend`) gives each one's state, alias, Hold and `llm.*` events ([Investigate a Run's spend](../how-to/investigate-a-runs-spend.md#2-read-the-runs-account-and-hold)).
+
 Look each alias up in LiteLLM. Then follow [reconcile uncertainty](managed-workers.md#reconcile-uncertainty): confirm the block through the controller, keep the alias and its spend logs, and do not delete the key by hand, because its spend logs are the settlement evidence.
 
 ## PloegSpendSpike
@@ -252,6 +254,8 @@ FROM run_llm_accounts a JOIN agent_runs r USING (run_token)
 WHERE r.state = 'finished' AND a.state IN ('reserved', 'blocked')
 ORDER BY a.updated_at;
 ```
+
+Without a database session, read each listed Run with `GET /api/v1/operator/runs/{runId}/accounting`: `account.updatedAt` and its `llm.observed` events show whether the account keeps changing.
 
 Fix the gateway first; the sweep then clears the backlog itself. When the gateway can no longer answer for an account, follow [reconcile uncertainty](managed-workers.md#reconcile-uncertainty) and settle it from evidence with `POST /api/v1/operator/unsettled-accounts/{runId}/settle` ([how-to](../how-to/investigate-a-runs-spend.md#7-settle-an-account-from-evidence)). Never edit `shifts.spent` or `run_llm_accounts` by hand.
 
