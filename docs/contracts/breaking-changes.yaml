@@ -35,3 +35,7 @@ exceptions:
     surface: ops/helm/ploeg/values.yaml
     pointer: executor.harness.image
     adr: "0154"
+  - base: v0.2.0-rc.83
+    surface: ops/helm/ploeg/values.yaml
+    pointer: security.workerAdmission.enabled
+    adr: "0168"
