@@ -231,6 +231,24 @@ teams:
 	}
 }
 
+func TestLoad_PlanCarriesIndependentReview(t *testing.T) {
+	f, err := Load(write(t, `
+teams:
+  bronze:
+    plan:
+      independentReview: {model: true, harness: true}
+      rounds:
+        - roles: [{name: builder, writes: true}]
+        - roles: [{name: reviewer}]
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rule := f.Plans()["bronze"].IndependentReview; rule == nil || !rule.Model || !rule.Harness {
+		t.Fatalf("independentReview = %+v, want model and harness", rule)
+	}
+}
+
 // A plan that cannot fix anything is refused here too — one validator, not
 // two that drift.
 func TestLoad_PlanValidationApplies(t *testing.T) {
