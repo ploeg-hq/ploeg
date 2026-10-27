@@ -39,3 +39,7 @@ exceptions:
     surface: ops/helm/ploeg/values.yaml
     pointer: security.workerAdmission.enabled
     adr: "0168"
+  - base: v0.2.0-rc.83
+    surface: ops/helm/ploeg/values.schema.json
+    pointer: /properties/security/properties/workerAdmission/properties/enabled
+    adr: "0168"
