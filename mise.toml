@@ -41,11 +41,15 @@ env = { PLOEG_UPGRADE_DRILL_BASES = "previous v0.2.0-rc.1" }
 description = "Restore an older release's backup, migrate it to head, interrupt the migration three ways, and prove ploegd reconciles and fences the older release's workers; prints the measured RTO and RPO"
 
 [tasks.docs-check]
-run = "go test ./internal/ledger/ ./pkg/harness/ && uv run --no-project --with pyyaml==6.0.3 python scripts/docs-configuration.py --check && uv run --no-project --with pyyaml==6.0.3 python scripts/check-domain.py"
-description = "Validate decisions, contracts and generated configuration"
+run = "go test ./internal/ledger/ ./pkg/harness/ && uv run --no-project --with pyyaml==6.0.3 python scripts/docs-configuration.py --check && uv run --no-project --with pyyaml==6.0.3 python scripts/check-domain.py && uv run --no-project --with pyyaml==6.0.3 python scripts/support-matrix.py --check"
+description = "Validate decisions, contracts, generated configuration and the support matrix's evidence"
 
 [tasks.docs-configuration]
 run = "uv run --no-project --with pyyaml==6.0.3 python scripts/docs-configuration.py"
+
+[tasks.support-matrix]
+run = "uv run --no-project --with pyyaml==6.0.3 python scripts/support-matrix.py"
+description = "Check every support matrix cell against its evidence and regenerate docs/reference/support-matrix.md"
 
 [tasks.domain]
 run = "uv run --no-project --with pyyaml==6.0.3 python scripts/generate-domain.py docs/domain/model.yaml -o docs/domain"

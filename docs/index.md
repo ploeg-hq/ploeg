@@ -22,9 +22,11 @@ Use these sources for the current implementation. The [architecture](architectur
 - [Managed workers and recovery](ops/managed-workers.md)
 - [Network policies](ops/network.md): what every Ploeg pod may reach, how the chart derives it, and what your CNI must enforce
 - [Metrics and alerts](ops/alerts.md)
+- [Data retention](ops/data-retention.md): what Ploeg keeps about work, Runs, transcripts and spend, for how long, the settings that control sensitive content, and what is never deleted for accounting
 - [Briefings: versions, catch-up, usefulness and replay](ops/briefings.md)
 - [Tracker configuration](ops/board.md)
 - [Configuration reference](reference/configuration.md): every environment variable and Helm value, generated from the source
+- [Support and qualification matrix](reference/support-matrix.md): per release line, what is supported, tested in CI or qualified live, with the evidence for each cell
 - [Accounting invariants](reference/accounting-invariants.md): the rules Ploeg keeps for inference budgets, holds and settlement, and the tests that check them
 - [Leases and cancellation](reference/leases-and-cancellation.md): the Lease lifecycle, fencing, the three-strike rule and timing bounds, with the tests that prove them
 - [CI and infrastructure](ops/ci-and-infra.md)
@@ -60,6 +62,9 @@ Use these sources for the current implementation. The [architecture](architectur
 - [CNCF Sandbox eligibility](cncf/eligibility.md): the earliest filing date and the maintainer blocker
 - [Capacity and work in progress](cncf/capacity.md): weekly hours, the work-in-progress cap and who approves paid qualification spend
 - [Licence inventory](cncf/license-inventory.md): every distributed component against the CNCF licence policy
+- [Day 0 technical review](cncf/day-0.md): the CNCF General Technical Review's Day 0 answers
+- [Ecosystem fit](cncf/ecosystem-fit.md): Ploeg beside kagent, Hive Commons, agent-sandbox and the rest, dated and sourced
+- [Sandbox application draft](cncf/application-draft.md): answers keyed to the form's fields, with the gaps before filing
 - [Baseline verification record](cncf/evidence/baseline.md): the commit, commands, environment and results of a fresh-clone `mise run verify`
 
 The [backlog](backlog.md), [OpenSpec changes](../openspec/changes/) and [research dossiers](research/) retain plans and evidence. Their existence does not establish implemented behavior or current priority.

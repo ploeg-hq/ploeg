@@ -5,6 +5,7 @@ mode=${1:?expected script, run, pinned, pin-check or checkout-chart}
 doc=${QUICKSTART_DOC:-$root/docs/quickstart.md}
 version=${QUICKSTART_VERSION:-}
 chart=${QUICKSTART_CHART:-}
+images=${QUICKSTART_IMAGES:-}
 signed_artifacts=3
 max_candidates_behind=${QUICKSTART_MAX_CANDIDATES_BEHIND:-20}
 fail() { echo "quickstart: $*" >&2; exit 1; }
@@ -30,7 +31,8 @@ require_line() {
 }
 
 generate() {
-  local pinned cleanup
+  local pinned cleanup loads
+  loads=$(image_loads)
   pinned=$(pinned_version)
   [[ -n "$pinned" ]] || fail "docs/quickstart.md has no 'export PLOEG_VERSION=<version>' line"
   cleanup=$(cleanup_block)
@@ -41,13 +43,17 @@ generate() {
     || fail 'docs/quickstart.md no longer installs oci://ghcr.io/ploeg-hq/charts/ploeg --version "$PLOEG_VERSION"'
   echo 'set -euo pipefail'
   printf 'cd %q\n' "$root"
+  emit_diagnose
   echo 'quickstart_cleanup() {'
+  echo '  quickstart_status=$?'
   echo '  set +e'
+  echo '  [ "$quickstart_status" = 0 ] || quickstart_diagnose'
   doc_blocks | awk -F '\t' -v block="$cleanup" '$1 == block { print "  " $2 }'
   echo '}'
   echo 'trap quickstart_cleanup EXIT'
-  doc_blocks | awk -F '\t' -v block="$cleanup" -v version="$version" -v chart="$chart" '
+  doc_blocks | awk -F '\t' -v block="$cleanup" -v version="$version" -v chart="$chart" -v loads="$loads" '
     $1 == block { next }
+    loads != "" && $2 ~ /^kind create cluster --name / { print $2; print loads; next }
     $2 == "git clone --depth 1 https://github.com/ploeg-hq/ploeg.git" || $2 == "cd ploeg" { next }
     version != "" && $2 ~ /^export PLOEG_VERSION=/ { print "export PLOEG_VERSION=" version; next }
     chart != "" && index($2, "oci://ghcr.io/ploeg-hq/charts/ploeg --version \"$PLOEG_VERSION\"") {
@@ -93,14 +99,72 @@ pin_check() {
   echo "newest=$newest"
 }
 
-checkout_chart() {
-  local release=${1:?expected the release whose images the checkout chart runs} destination=${2:?expected the destination directory}
-  local -a digests=()
-  for image in ploegd claude-runner ploeg-worker; do
-    digests+=("$(oras resolve "ghcr.io/ploeg-hq/$image:$release")")
+emit_diagnose() {
+  cat <<'SH'
+quickstart_diagnose() {
+  echo "quickstart: exit status $quickstart_status; the cluster as it stood"
+  kubectl get pods,deployments,jobs,cronjobs -o wide --request-timeout=20s
+  kubectl get events --sort-by=.lastTimestamp --request-timeout=20s
+  kubectl describe deployment/ploeg pods --request-timeout=20s
+  for pod in $(kubectl get pods -o name --request-timeout=20s); do
+    kubectl logs "$pod" --all-containers --prefix --tail=200 --request-timeout=20s
+    kubectl logs "$pod" --all-containers --prefix --tail=200 --previous --request-timeout=20s 2> /dev/null
   done
-  bash "$root/scripts/package-chart.sh" "$release" "${digests[@]}" "$destination" > /dev/null
-  echo "$destination/ploeg-$release.tgz"
+}
+SH
+}
+
+cluster_name() {
+  doc_blocks | awk -F '\t' '$2 ~ /^kind create cluster --name / { split($2, words, " "); print words[5]; exit }'
+}
+
+image_loads() {
+  [[ -n "$images" ]] || return 0
+  local name archive image digest
+  name=$(cluster_name)
+  [[ -n "$name" ]] || fail "docs/quickstart.md no longer creates its cluster with 'kind create cluster --name <name>', so the checkout's images have no cluster to load into"
+  for archive in "$images"/*.tar; do
+    [[ -f "$archive" ]] || fail "QUICKSTART_IMAGES names $images, which holds no image archive"
+    image=$(oci_archive_name "$archive")
+    digest=$(oci_archive_digest "$archive")
+    [[ "$image" == *:checkout && "$digest" =~ ^sha256:[a-f0-9]{64}$ ]] \
+      || fail "$archive is not an OCI archive of one <repository>:checkout image"
+    printf 'kind load image-archive --name %q %q\n' "$name" "$archive"
+    printf 'docker exec %q ctr --namespace k8s.io images tag --force %q %q\n' "$name-control-plane" "$image" "${image%:checkout}@$digest"
+  done
+}
+
+oci_archive_digest() {
+  tar -xOf "$1" index.json 2> /dev/null | jq -r '.manifests[0].digest // empty' 2> /dev/null || true
+}
+
+oci_archive_name() {
+  tar -xOf "$1" index.json 2> /dev/null | jq -r '.manifests[0].annotations["io.containerd.image.name"] // empty' 2> /dev/null || true
+}
+
+build_checkout_image() {
+  local image=$1 release=$2 archive=$3 platform
+  platform=linux/$(docker version --format '{{.Server.Arch}}')
+  docker buildx build --builder "$builder" --file "$root/ops/docker/$image/Dockerfile" --platform "$platform" \
+    --provenance=false --sbom=false --build-arg "IMAGE_VERSION=$release" \
+    --output "type=oci,dest=$archive,name=ghcr.io/ploeg-hq/$image:checkout" "$root" >&2
+}
+
+checkout_chart() {
+  local release=${1:?expected the release whose version the chart takes and whose claude-runner image it pins} destination=${2:?expected the destination directory}
+  local archives=$destination/images ploegd_digest worker_digest runner_digest
+  builder=ploeg-quickstart-$$
+  docker buildx create --name "$builder" --driver docker-container > /dev/null
+  trap 'docker buildx rm --force "$builder" > /dev/null 2>&1' EXIT
+  mkdir -p "$archives"
+  build_checkout_image ploegd "$release" "$archives/ploegd.tar"
+  build_checkout_image ploeg-worker "$release" "$archives/ploeg-worker.tar"
+  ploegd_digest=$(oci_archive_digest "$archives/ploegd.tar")
+  worker_digest=$(oci_archive_digest "$archives/ploeg-worker.tar")
+  runner_digest=$(oras resolve "ghcr.io/ploeg-hq/claude-runner:$release")
+  bash "$root/scripts/package-chart.sh" "$release" "$ploegd_digest" "$runner_digest" "$worker_digest" "$destination" > /dev/null
+  echo "QUICKSTART_CHART=$destination/ploeg-$release.tgz"
+  echo "QUICKSTART_IMAGES=$archives"
 }
 
 case "$mode" in

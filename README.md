@@ -4,7 +4,7 @@ Developed independently at [ploeg-hq/ploeg](https://github.com/ploeg-hq/ploeg). 
 
 Ploeg is a self-hosted service for authorizing and coordinating agent work. Tracker assignments can start unattended workers; an operator consumer can run interactive sessions under the same execution authority. PostgreSQL retains the work, leases, outcomes, evidence and accounting.
 
-*Ploeg* is Dutch for a work crew or shift. The software is experimental and starts its independent release line at **0.1.0**. Qualification applies to specific tested paths, not every provider or deployment.
+*Ploeg* is Dutch for a work crew or shift. The software is experimental and starts its independent release line at **0.1.0**. Qualification applies to specific tested paths, not every provider or deployment; the [support matrix](docs/reference/support-matrix.md) names them for each release line.
 
 `Ploeg` is the project. `ploegd` is its long-running controller/server (the `d` means daemon). `ploeg-worker` claims authorized work and executes it. Both binaries ship in the controller image.
 
@@ -15,6 +15,7 @@ Ploeg is a self-hosted service for authorizing and coordinating agent work. Trac
 - [Architecture](docs/architecture.md): what runs where and who holds authority.
 - [Managed workers](docs/ops/managed-workers.md): required configuration and recovery.
 - [Network policies](docs/ops/network.md): what every Ploeg pod may reach, and what your CNI must enforce.
+- [Support matrix](docs/reference/support-matrix.md): for each release line, which Kubernetes, PostgreSQL, runtimes, harnesses, forges, trackers and gateways are supported, which CI tests, and which have been qualified on a live deployment.
 
 ## How it works
 
@@ -24,7 +25,7 @@ An operator consumer supplies the human workbench and delegated workspace execut
 
 Management credentials remain in the controller. [Scoped worker capabilities](docs/contracts/worker-control.md) authorize control and inference. Unknown spending stays unresolved until trusted reconciliation.
 
-The source includes Vikunja, ClickUp and GitHub Issues tracker integrations, Forgejo, GitLab and GitHub forge integrations, team plans, tracker write-backs and multiple harness adapters. Capabilities differ by provider. See the [implementation map](docs/architecture.md#6-providers-harnesses-and-delivery) and [published contracts](docs/contracts/README.md).
+The source includes Vikunja, ClickUp and GitHub Issues tracker integrations, Forgejo, GitLab and GitHub forge integrations, team plans, tracker write-backs and multiple harness adapters. Capabilities differ by provider, and being in the source does not make a provider supported: the [support matrix](docs/reference/support-matrix.md) says which are in the supported profile and what tests each. See the [implementation map](docs/architecture.md#6-providers-harnesses-and-delivery) and [published contracts](docs/contracts/README.md).
 
 Delegated [candidate delivery](docs/contracts/operator-delivery.md) records verified evidence and candidate-bound approval. Its live publisher executor is not enabled. A completed Run is not automatically a published or accepted result.
 
@@ -36,7 +37,7 @@ GitHub Issues can be a runtime tracker: a `ploeg:<team>` label on an issue in a 
 
 ## Project
 
-[Governance](GOVERNANCE.md) · [Maintainers](MAINTAINERS.md) · [Contributing](CONTRIBUTING.md) · [Code of conduct](CODE_OF_CONDUCT.md) · [Security](SECURITY.md) · [Scope and stewardship](docs/cncf/charter.md) · [Provenance](PROVENANCE.md)
+[Governance](GOVERNANCE.md) · [Maintainers](MAINTAINERS.md) · [Contributor ladder](CONTRIBUTOR_LADDER.md) · [Contributing](CONTRIBUTING.md) · [Code of conduct](CODE_OF_CONDUCT.md) · [Security](SECURITY.md) · [Scope and stewardship](docs/cncf/charter.md) · [Provenance](PROVENANCE.md)
 
 ## Releases
 

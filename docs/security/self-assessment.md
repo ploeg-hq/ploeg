@@ -31,7 +31,7 @@ This document follows the [CNCF TAG Security and Compliance self-assessment outl
 
 | | |
 | -- | -- |
-| Assessment Stage | Incomplete. Every release-blocking finding is fixed (F-04 on 2026-10-25, #225), and every other finding has a disposition, an owner role and a target ([finding dispositions](threat-model.md#finding-dispositions)). The maintainer's confirmation of the accepted risks and the reviewer sign-off asked for in issue #34 are pending. |
+| Assessment Stage | Incomplete. Every release-blocking finding is fixed (F-04 on 2026-10-25, #225), and every other finding has a disposition, an owner role and a target ([finding dispositions](threat-model.md#finding-dispositions)). The maintainer decided the proposed accepted risks on 2026-10-27 (F-15 and F-13 accepted, F-21 and F-02's residual ticketed); the reviewer sign-off asked for in issue #34 is pending. |
 | Software | <https://github.com/ploeg-hq/ploeg> |
 | Security Provider | No. Ploeg authorizes, budgets and records AI-agent work. Credential scoping and isolation are central to its design, but securing other systems is not its primary function. |
 | Languages | Go (controller, worker, MCP server), Helm templates, Shell, Python (documentation generators), SQL (migrations) |
@@ -163,17 +163,18 @@ These are settings and components a deployment configures. The threat model's [s
 | `executor.forgejo.botPasswordSecret`, `tracker.github.appId` | Enable per-Run forge credentials; without them writers share one token |
 | `executor.<forge>.readTokenSecret` | Read-only credential for reading Roles; the chart refuses a reading Role without it |
 | Webhook secrets (`webhook.existingSecret`, `executor.<forge>.webhookSecret`, `tracker.*.webhookSecret`) | Without a secret every delivery is rejected |
-| `operator.consumers[].teams`, `execute`, `verify`, `maxBudgetUsd` | Operator consumer scope; omitting `teams` means all teams |
+| `operator.consumers[].teams`, `execute`, `verify`, `readContent`, `maxBudgetUsd` | Operator consumer scope: a consumer reads only the Teams it names (`["*"]` for every Team) and Run content only with `readContent` ([ADR-0160](../adrs/0160-an-operator-consumer-reads-only-the-teams-it-names-and-run-content-only-when-granted.md)) |
 | `executor.harness.timeout`, `idleTimeout`, `executor.activeDeadlineSeconds` | Bound a wedged or silent harness |
 | `executor.teams[].maxRunning`, plan `pool` and Role `cap` | Concurrency and spend ceilings |
 | `forgeFollowUps` | Opt-in rework and repair Runs from forge events; rework only from listed or writing reviewers, capped per Work Item ([F-36](threat-model.md#findings), fixed) |
 | `executor.sandbox.*` (experimental) | agent-sandbox executor with an optional runtime class (Kata, gVisor) and managed NetworkPolicy |
 | `mcp.*` | ploeg-mcp OAuth settings and optional NetworkPolicies |
+| `PLOEG_RUN_TRANSCRIPTS`, `PLOEG_RUN_TRANSCRIPT_THOUGHTS`, `executor.harnessOutputInLog`, `executor.harness.telemetry` | Whether agent sessions, reasoning and harness output are stored or logged, and whether prompts reach a telemetry collector ([data retention](../ops/data-retention.md)) |
 | `monitoring.prometheusRule.alerts` | Alerts such as `PloegCredentialLeak`, `PloegModelKeyPastTTL`, spend spikes and expired Leases ([alerts](../ops/alerts.md)) |
 
 ## Project compliance
 
-Ploeg has not been assessed against, and does not claim compliance with, any security or regulatory standard (PCI-DSS, ISO 27001, SOC 2, GDPR or others). Data protection for the ticket text, transcripts and repository content Ploeg handles is the operator's responsibility.
+Ploeg has not been assessed against, and does not claim compliance with, any security or regulatory standard (PCI-DSS, ISO 27001, SOC 2, GDPR or others). Data protection for the ticket text, transcripts and repository content Ploeg handles is the operator's responsibility. [Data retention](../ops/data-retention.md) lists what Ploeg stores, for how long, the settings that keep prompts, code and credentials out of storage, logs and telemetry, and the accounting rows it never deletes.
 
 The project does not claim any OpenSSF Best Practices badge or SLSA level.
 
@@ -291,10 +292,10 @@ Every other finding has a disposition, an owner role and a target in [Finding di
 | Disposition | Findings | Where it is tracked |
 | --- | --- | --- |
 | Fix planned, v0.2.x (by 2026-12-15) | F-10, F-14, F-19, F-20, F-28, F-29, F-33, F-34, F-35; the residual of F-17 | [#298](https://github.com/ploeg-hq/ploeg/issues/298), [#301](https://github.com/ploeg-hq/ploeg/issues/301), [#305](https://github.com/ploeg-hq/ploeg/issues/305), [#306](https://github.com/ploeg-hq/ploeg/issues/306), [#311](https://github.com/ploeg-hq/ploeg/issues/311), [#312](https://github.com/ploeg-hq/ploeg/issues/312), [#315](https://github.com/ploeg-hq/ploeg/issues/315), [#316](https://github.com/ploeg-hq/ploeg/issues/316), [#317](https://github.com/ploeg-hq/ploeg/issues/317), [#303](https://github.com/ploeg-hq/ploeg/issues/303) |
-| Fix planned, v0.3.0 (by 2027-01-31) | F-05, F-06, F-07, F-09, F-16, F-23, F-25, F-26, F-27, F-30, F-37, F-39, F-40 | [#294](https://github.com/ploeg-hq/ploeg/issues/294), [#295](https://github.com/ploeg-hq/ploeg/issues/295), [#296](https://github.com/ploeg-hq/ploeg/issues/296), [#297](https://github.com/ploeg-hq/ploeg/issues/297), [#302](https://github.com/ploeg-hq/ploeg/issues/302), [#307](https://github.com/ploeg-hq/ploeg/issues/307) (F-23 and F-40), [#308](https://github.com/ploeg-hq/ploeg/issues/308), [#309](https://github.com/ploeg-hq/ploeg/issues/309), [#310](https://github.com/ploeg-hq/ploeg/issues/310), [#313](https://github.com/ploeg-hq/ploeg/issues/313), [#318](https://github.com/ploeg-hq/ploeg/issues/318), [#320](https://github.com/ploeg-hq/ploeg/issues/320) |
-| Fix planned, later (by 2027-03-31) | F-12, F-18, F-32, F-38; the residual of F-03 | [#300](https://github.com/ploeg-hq/ploeg/issues/300), [#304](https://github.com/ploeg-hq/ploeg/issues/304), [#314](https://github.com/ploeg-hq/ploeg/issues/314), [#319](https://github.com/ploeg-hq/ploeg/issues/319), [#321](https://github.com/ploeg-hq/ploeg/issues/321) |
-| Existing project tickets | F-13 | [#30](https://github.com/ploeg-hq/ploeg/issues/30), [#7](https://github.com/ploeg-hq/ploeg/issues/7) |
-| Accepted, reviewed by 2027-04-23 | F-15, F-21; the residual of F-02; F-35's bot password (ADR-0013) | the threat model, pending the maintainer's confirmation in #34 |
+| Fix planned, v0.3.0 (by 2027-01-31) | F-05, F-06, F-07, F-09, F-16, F-21, F-23, F-25, F-26, F-27, F-30, F-37, F-39, F-40 | [#294](https://github.com/ploeg-hq/ploeg/issues/294), [#295](https://github.com/ploeg-hq/ploeg/issues/295), [#296](https://github.com/ploeg-hq/ploeg/issues/296), [#297](https://github.com/ploeg-hq/ploeg/issues/297), [#302](https://github.com/ploeg-hq/ploeg/issues/302), [#338](https://github.com/ploeg-hq/ploeg/issues/338), [#307](https://github.com/ploeg-hq/ploeg/issues/307) (F-23 and F-40), [#308](https://github.com/ploeg-hq/ploeg/issues/308), [#309](https://github.com/ploeg-hq/ploeg/issues/309), [#310](https://github.com/ploeg-hq/ploeg/issues/310), [#313](https://github.com/ploeg-hq/ploeg/issues/313), [#318](https://github.com/ploeg-hq/ploeg/issues/318), [#320](https://github.com/ploeg-hq/ploeg/issues/320) |
+| Fix planned, later (by 2027-03-31) | F-12, F-18, F-32, F-38; the residuals of F-02 and F-03 | [#300](https://github.com/ploeg-hq/ploeg/issues/300), [#304](https://github.com/ploeg-hq/ploeg/issues/304), [#314](https://github.com/ploeg-hq/ploeg/issues/314), [#319](https://github.com/ploeg-hq/ploeg/issues/319), [#321](https://github.com/ploeg-hq/ploeg/issues/321), [#339](https://github.com/ploeg-hq/ploeg/issues/339) |
+| Existing project tickets; accepted until a second maintainer exists (confirmed by the maintainer on 2026-10-27) | F-13 | [#30](https://github.com/ploeg-hq/ploeg/issues/30), [#7](https://github.com/ploeg-hq/ploeg/issues/7) |
+| Accepted, reviewed by 2027-04-23 | F-15 (confirmed by the maintainer on 2026-10-27); F-35's bot password (ADR-0013) | the threat model; the maintainer's decision in #34 |
 | Unsupported (outside profile P1) | F-22, F-31, F-41; harnesses outside the qualified set (F-04); ploeg-mcp `execute` groups (F-08); installer-owned P1 rows (F-11) | [What the profile excludes](threat-model.md#what-the-profile-excludes) |
 
 ### OpenSSF Best Practices

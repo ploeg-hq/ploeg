@@ -45,8 +45,13 @@ the page in order on a fresh kind cluster and checks the Run ends `done`. The
 [Quickstart workflow](.github/workflows/quickstart.yml) runs it daily and on every change to the
 page, `ops/quickstart/` or the chart, against the pinned release, the newest release and the
 chart in your checkout, and fails when the page pins a release more than twenty behind the newest.
+The checkout leg runs the `ploegd` and worker images built from your checkout, because a chart
+change can need code no release has yet. When a run fails, it prints the pods, events and container
+logs before it deletes the cluster.
 If you change the page, run `mise exec -- bash scripts/quickstart.sh run` locally first; it needs
-Docker and deletes its cluster when it ends.
+Docker and deletes its cluster when it ends. To run the checkout leg locally, first run
+`export $(mise exec -- bash scripts/quickstart.sh checkout-chart <newest release> <directory>)`
+and `export QUICKSTART_VERSION=<newest release>`.
 
 ## Before you open a pull request
 
@@ -60,3 +65,11 @@ one, not a pull request that quietly reverses it.
 Use [GitHub Issues](https://github.com/ploeg-hq/ploeg/issues) for bugs and feature requests and [SECURITY.md](SECURITY.md) for security reports.
 
 Open pull requests against `development`. Run `mise run setup`, `mise run verify` and `mise run docs-check` before review. Sign off your own commits with `git commit -s` to certify the [Developer Certificate of Origin](https://developercertificate.org/). Do not sign on another contributor's behalf. The `dco` CI job checks every commit in a pull request; fix a missing sign-off with `git rebase --signoff development`.
+
+## Review, roles and who decides
+
+A maintainer who did not write a change reviews and merges it; [GOVERNANCE.md](GOVERNANCE.md#how-decisions-are-made) gives the rules, including what happens while Ploeg has one maintainer. Reviewers listed in [MAINTAINERS.md](MAINTAINERS.md) review the areas next to their name. The [contributor ladder](CONTRIBUTOR_LADDER.md) says how to become a reviewer or maintainer, and you may nominate yourself.
+
+If you make a change for an employer, a client or a product built on Ploeg, say so in the pull request. It is reviewed on its merits like any other change; saying who it serves lets reviewers apply the [rules on companies and consumers](GOVERNANCE.md#companies-commercial-users-and-consumers).
+
+Everyone taking part follows the [code of conduct](CODE_OF_CONDUCT.md), which also says how to report a problem, including one about a maintainer.

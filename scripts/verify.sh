@@ -17,6 +17,7 @@ bash scripts/test-dco-check.sh
 bash scripts/test-claude-code-install.sh
 bash scripts/test-check-go-toolchain.sh
 bash scripts/test-quickstart.sh
+bash scripts/test-support-matrix.sh
 openspec validate --all --strict
 required=ops/helm/ploeg/ci/required-values.yaml
 uv run --no-project --with pyyaml==6.0.3 --with cel-python==0.4.0 python scripts/check-security-profile.py
