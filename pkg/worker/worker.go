@@ -8,6 +8,7 @@
 package worker
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -381,12 +382,25 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 		baseline = recorded
 	}
 	var reviewedCommit string
+	var writerInstructions *harness.Finding
 	if !writes && branch != "" {
+		baseCommit := headCommit(ctx, cloneDir)
+		if baseCommit == "" {
+			return stuckReport("could not read the base branch's commit", "git rev-parse HEAD in the fresh clone named no commit")
+		}
 		commit, failure, failed := checkoutBranchUnderReview(ctx, w.Log, cloneDir, cloneURL, forgeToken, branch, ref.BaseBranch, claimed.PreAuthor)
 		if failed {
 			return failure
 		}
 		reviewedCommit = commit
+		if reviewedCommit != "" {
+			pinned, err := pinBaseInstructionFiles(ctx, cloneDir, baseCommit)
+			if err != nil {
+				return stuckReport("could not give the reviewer the base branch's agent instruction files", err.Error())
+			}
+			writerInstructions = instructionFilesBriefing(pinned, cmp.Or(ref.BaseBranch, shortCommit(baseCommit)), claimed.Round)
+			w.Log.Info("reviewer reads the base branch's agent instruction files", "changed_by_writer", pinned)
+		}
 		w.Log.Info("reading run prepared", "on_review_branch", reviewedCommit != "", "commit", reviewedCommit,
 			"pre_author", claimed.PreAuthor, "branch", branch, "base", ref.BaseBranch)
 	}
@@ -425,7 +439,7 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 		Repo:     ref,
 		Branch:   branch,
 		TraceID:  trace,
-		Briefing: withHandback(claimed.Briefing, handedBack),
+		Briefing: withHandback(withHandback(claimed.Briefing, handedBack), writerInstructions),
 
 		ReviewFindings: claimed.ReviewFindings,
 		ActiveWork:     claimed.ActiveWork,
