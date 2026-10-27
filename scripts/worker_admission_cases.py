@@ -42,6 +42,15 @@ def team(name, **settings):
 
 
 VARIANTS = [
+    Variant("p1-default", {"executor": {"enabled": True, "teams": [team("p1-default")]}}, ()),
+    Variant(
+        "p1-sandbox",
+        {
+            "security": {"workerAdmission": {"runtimeClassNames": [ALLOWED_RUNTIME_CLASS]}},
+            "executor": {"enabled": True, "teams": [team("p1-sandbox", executorType="sandbox", sandbox={"runtimeClassName": ALLOWED_RUNTIME_CLASS})]},
+        },
+        (ALLOWED_RUNTIME_CLASS,),
+    ),
     Variant("keda", {**admission(), "executor": {"enabled": True, "teams": [team("keda")]}}, ()),
     Variant("cronjob", {**admission(), "executor": {"enabled": True, "type": "cronjob", "teams": [team("cronjob")]}}, ()),
     Variant(

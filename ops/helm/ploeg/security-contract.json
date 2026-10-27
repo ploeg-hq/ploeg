@@ -1,12 +1,15 @@
 {
-  "contractRevision": 1,
+  "contractRevision": 2,
   "identity": {
     "operator": "optional-verified-person-token-per-consumer-audience-or-client-id; consumer-asserted-person-still-accepted-and-recorded-as-asserted",
     "run": "signed-team-role-worker-capability",
     "delegatedUserAccessToken": false,
     "personalForgeAclInheritance": false
   },
-  "nativeAdmissionDefault": false,
+  "nativeAdmissionDefault": {
+    "P1": true,
+    "unsupported": false
+  },
   "nativeAdmissionMinimumKubernetes": "1.30.0",
   "nativeAdmissionCoveredExecutors": [
     "keda",
