@@ -60,6 +60,9 @@ Use these sources for the current implementation. The [architecture](architectur
 - [CNCF Sandbox eligibility](cncf/eligibility.md): the earliest filing date and the maintainer blocker
 - [Capacity and work in progress](cncf/capacity.md): weekly hours, the work-in-progress cap and who approves paid qualification spend
 - [Licence inventory](cncf/license-inventory.md): every distributed component against the CNCF licence policy
+- [Day 0 technical review](cncf/day-0.md): the CNCF General Technical Review's Day 0 answers
+- [Ecosystem fit](cncf/ecosystem-fit.md): Ploeg beside kagent, Hive Commons, agent-sandbox and the rest, dated and sourced
+- [Sandbox application draft](cncf/application-draft.md): answers keyed to the form's fields, with the gaps before filing
 - [Baseline verification record](cncf/evidence/baseline.md): the commit, commands, environment and results of a fresh-clone `mise run verify`
 
 The [backlog](backlog.md), [OpenSpec changes](../openspec/changes/) and [research dossiers](research/) retain plans and evidence. Their existence does not establish implemented behavior or current priority.
