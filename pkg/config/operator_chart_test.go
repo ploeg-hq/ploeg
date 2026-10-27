@@ -60,14 +60,14 @@ func TestOperatorChartKeepsConsumerCredentialsInController(t *testing.T) {
 			env[item["name"].(string)] = item
 		}
 		var policies []struct {
-			Name         string   `json:"name"`
-			TokenEnv     string   `json:"tokenEnv"`
-			Teams        []string `json:"teams"`
-			Execute      bool     `json:"execute"`
-			Verify       bool     `json:"verify"`
-			ReadContent  *bool    `json:"readContent"`
-			MaxBudgetUSD float64  `json:"maxBudgetUsd"`
-			ClientIDs    []string `json:"clientIds"`
+			Name          string              `json:"name"`
+			TokenEnv      string              `json:"tokenEnv"`
+			Teams         []string            `json:"teams"`
+			Execute       bool                `json:"execute"`
+			Verify        bool                `json:"verify"`
+			ReadContent   *bool               `json:"readContent"`
+			MaxBudgetUSD  float64             `json:"maxBudgetUsd"`
+			ClientIDs     []string            `json:"clientIds"`
 			Audiences     []string            `json:"audiences"`
 			RequireClaims map[string][]string `json:"requireClaims"`
 		}
