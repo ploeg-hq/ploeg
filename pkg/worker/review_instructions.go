@@ -42,13 +42,6 @@ func touches(changed, target string) bool {
 	return changed == target || strings.HasPrefix(changed, target+"/")
 }
 
-// pinBaseInstructionFiles gives a reading Run, standing on the branch under
-// review, the base branch's agent instruction files (F-43, ADR-0163). Every
-// instruction path the branch adds, changes or removes relative to base, and
-// every file an instruction symlink resolves to that the branch changes, is
-// put back to its version at base in the working tree, or deleted where base
-// has none. The commit under review is untouched: the writer's versions stay
-// readable through git. It returns the paths it put back, sorted.
 func pinBaseInstructionFiles(ctx context.Context, dir, base string) ([]string, error) {
 	changed, err := pathsChangedSince(ctx, dir, base)
 	if err != nil {
