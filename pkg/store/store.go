@@ -22,6 +22,7 @@ import (
 
 	"github.com/ploeg-hq/ploeg/pkg/followup"
 	"github.com/ploeg-hq/ploeg/pkg/harness"
+	"github.com/ploeg-hq/ploeg/pkg/spendcap"
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
@@ -54,7 +55,7 @@ const MaxInfraFailures = 10
 
 type Store struct {
 	pool      *pgxpool.Pool
-	spendCaps TeamSpendCaps
+	spendCaps spendcap.Caps
 	clock     func() time.Time
 }
 

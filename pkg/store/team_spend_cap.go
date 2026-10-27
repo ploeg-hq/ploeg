@@ -8,67 +8,9 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/ploeg-hq/ploeg/pkg/spendcap"
 )
-
-// SpendPeriod is the calendar window a Team's spend cap counts over, in UTC
-// (ADR-0162).
-type SpendPeriod string
-
-// The periods a spend cap may count over. A week starts on Monday.
-const (
-	SpendPeriodDay   SpendPeriod = "day"
-	SpendPeriodWeek  SpendPeriod = "week"
-	SpendPeriodMonth SpendPeriod = "month"
-)
-
-// Valid reports whether p is one of the supported periods.
-func (p SpendPeriod) Valid() bool {
-	switch p {
-	case SpendPeriodDay, SpendPeriodWeek, SpendPeriodMonth:
-		return true
-	}
-	return false
-}
-
-// Start is the beginning of the period that contains at, in UTC.
-func (p SpendPeriod) Start(at time.Time) time.Time {
-	at = at.UTC()
-	day := time.Date(at.Year(), at.Month(), at.Day(), 0, 0, 0, 0, time.UTC)
-	switch p {
-	case SpendPeriodWeek:
-		sinceMonday := (int(day.Weekday()) + 6) % 7
-		return day.AddDate(0, 0, -sinceMonday)
-	case SpendPeriodMonth:
-		return time.Date(at.Year(), at.Month(), 1, 0, 0, 0, 0, time.UTC)
-	}
-	return day
-}
-
-// End is the beginning of the period after the one that contains at.
-func (p SpendPeriod) End(at time.Time) time.Time {
-	start := p.Start(at)
-	switch p {
-	case SpendPeriodWeek:
-		return start.AddDate(0, 0, 7)
-	case SpendPeriodMonth:
-		return start.AddDate(0, 1, 0)
-	}
-	return start.AddDate(0, 0, 1)
-}
-
-// SpendCap bounds what one Team's Runs may spend in a period: the spend
-// settled in the period plus every hold its Runs keep. USD of 0 is no cap.
-type SpendCap struct {
-	USD    float64     `json:"usd"`
-	Period SpendPeriod `json:"period"`
-}
-
-// Capped reports whether the cap bounds anything.
-func (c SpendCap) Capped() bool { return c.USD > 0 }
-
-// TeamSpendCaps maps a team to its spend cap. A team that is absent is not
-// capped.
-type TeamSpendCaps map[string]SpendCap
 
 // ErrTeamSpendCapReached means a claim would take its Team over its spend cap
 // for the current period. Like ErrBudgetExhausted it is a gate outcome: no
@@ -79,7 +21,7 @@ var ErrTeamSpendCapReached = errors.New("team spend cap reached")
 // figures that refused it.
 type SpendCapRefusal struct {
 	Team         string
-	Cap          SpendCap
+	Cap          spendcap.Cap
 	PeriodStart  time.Time
 	SettledUSD   float64
 	HeldUSD      float64
@@ -104,7 +46,7 @@ func (r *SpendCapRefusal) Reason() string {
 // TeamPeriodSpend is a capped Team's spend in its current period.
 type TeamPeriodSpend struct {
 	Team        string
-	Cap         SpendCap
+	Cap         spendcap.Cap
 	PeriodStart time.Time
 	PeriodEnd   time.Time
 	SettledUSD  float64
@@ -113,8 +55,8 @@ type TeamPeriodSpend struct {
 
 // SetTeamSpendCaps replaces the spend caps the claim paths enforce. ploegd
 // sets them once at boot, before it serves a claim.
-func (s *Store) SetTeamSpendCaps(caps TeamSpendCaps) {
-	s.spendCaps = TeamSpendCaps{}
+func (s *Store) SetTeamSpendCaps(caps spendcap.Caps) {
+	s.spendCaps = spendcap.Caps{}
 	for team, c := range caps {
 		if c.Capped() {
 			s.spendCaps[team] = c
@@ -123,7 +65,7 @@ func (s *Store) SetTeamSpendCaps(caps TeamSpendCaps) {
 }
 
 // TeamSpendCap returns the team's spend cap; a zero cap when it has none.
-func (s *Store) TeamSpendCap(team string) SpendCap { return s.spendCaps[team] }
+func (s *Store) TeamSpendCap(team string) spendcap.Cap { return s.spendCaps[team] }
 
 func (s *Store) spendNow() time.Time {
 	if s.clock != nil {

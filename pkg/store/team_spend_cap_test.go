@@ -9,12 +9,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ploeg-hq/ploeg/pkg/spendcap"
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
 var spendCapDay = time.Date(2026, 10, 27, 12, 0, 0, 0, time.UTC)
 
-func withSpendCaps(t *testing.T, caps TeamSpendCaps, at time.Time) {
+func withSpendCaps(t *testing.T, caps spendcap.Caps, at time.Time) {
 	t.Helper()
 	testStore.SetTeamSpendCaps(caps)
 	testStore.clock = func() time.Time { return at }
@@ -88,7 +89,7 @@ func settle(t *testing.T, run *ClaimedRun, usage string) {
 
 func TestTeamSpendCapRefusesTheClaimThatWouldCrossIt(t *testing.T) {
 	resetTables(t)
-	withSpendCaps(t, TeamSpendCaps{"silver": {USD: 1, Period: SpendPeriodDay}}, spendCapDay)
+	withSpendCaps(t, spendcap.Caps{"silver": {USD: 1, Period: spendcap.Day}}, spendCapDay)
 	items := pendingCappedRuns(t, "silver", 2, 0.6)
 
 	if _, err := claimAnalyst("silver", 0.6); err != nil {
@@ -122,7 +123,7 @@ func TestTeamSpendCapRefusesTheClaimThatWouldCrossIt(t *testing.T) {
 
 func TestTeamSpendCapStartsRunsUpToTheCap(t *testing.T) {
 	resetTables(t)
-	withSpendCaps(t, TeamSpendCaps{"silver": {USD: 1, Period: SpendPeriodDay}}, spendCapDay)
+	withSpendCaps(t, spendcap.Caps{"silver": {USD: 1, Period: spendcap.Day}}, spendCapDay)
 	pendingCappedRuns(t, "silver", 3, 0.5)
 
 	for i := 0; i < 2; i++ {
@@ -137,7 +138,7 @@ func TestTeamSpendCapStartsRunsUpToTheCap(t *testing.T) {
 
 func TestTeamWithoutSpendCapClaimsAsBefore(t *testing.T) {
 	resetTables(t)
-	withSpendCaps(t, TeamSpendCaps{"gold": {USD: 1, Period: SpendPeriodDay}}, spendCapDay)
+	withSpendCaps(t, spendcap.Caps{"gold": {USD: 1, Period: spendcap.Day}}, spendCapDay)
 	pendingCappedRuns(t, "silver", 3, 0.6)
 
 	for i := 0; i < 3; i++ {
@@ -154,7 +155,7 @@ func TestTeamSpendCapHeadroomReturnsWhenARunSettlesOrReleases(t *testing.T) {
 	for name, usage := range map[string]string{"settled below its hold": `{"costUsd":0.3}`, "released with no cost": `{}`} {
 		t.Run(name, func(t *testing.T) {
 			resetTables(t)
-			withSpendCaps(t, TeamSpendCaps{"silver": {USD: 1, Period: SpendPeriodDay}}, spendCapDay)
+			withSpendCaps(t, spendcap.Caps{"silver": {USD: 1, Period: spendcap.Day}}, spendCapDay)
 			pendingCappedRuns(t, "silver", 2, 0.6)
 			first, err := claimAnalyst("silver", 0.6)
 			if err != nil {
@@ -173,7 +174,7 @@ func TestTeamSpendCapHeadroomReturnsWhenARunSettlesOrReleases(t *testing.T) {
 
 func TestTeamSpendCapCountsManagedSettlement(t *testing.T) {
 	resetTables(t)
-	withSpendCaps(t, TeamSpendCaps{"silver": {USD: 1, Period: SpendPeriodDay}}, spendCapDay)
+	withSpendCaps(t, spendcap.Caps{"silver": {USD: 1, Period: spendcap.Day}}, spendCapDay)
 	ctx := context.Background()
 	pendingCappedRuns(t, "silver", 3, 0.6)
 	first, err := claimAnalyst("silver", 0.6)
@@ -208,7 +209,7 @@ func TestTeamSpendCapCountsManagedSettlement(t *testing.T) {
 func TestTeamSpendCapRollsOverWithItsPeriod(t *testing.T) {
 	resetTables(t)
 	now := time.Now().UTC()
-	withSpendCaps(t, TeamSpendCaps{"silver": {USD: 1, Period: SpendPeriodDay}}, now)
+	withSpendCaps(t, spendcap.Caps{"silver": {USD: 1, Period: spendcap.Day}}, now)
 	pendingCappedRuns(t, "silver", 2, 0.6)
 	first, err := claimAnalyst("silver", 0.6)
 	if err != nil {
@@ -218,7 +219,7 @@ func TestTeamSpendCapRollsOverWithItsPeriod(t *testing.T) {
 	if _, err := claimAnalyst("silver", 0.6); !errors.Is(err, ErrTeamSpendCapReached) {
 		t.Fatalf("claim over the day's settled spend = %v, want ErrTeamSpendCapReached", err)
 	}
-	testStore.clock = func() time.Time { return SpendPeriodDay.End(now).Add(time.Minute) }
+	testStore.clock = func() time.Time { return spendcap.Day.End(now).Add(time.Minute) }
 	if _, err := claimAnalyst("silver", 0.6); err != nil {
 		t.Fatalf("claim in the next day: %v", err)
 	}
@@ -226,7 +227,7 @@ func TestTeamSpendCapRollsOverWithItsPeriod(t *testing.T) {
 
 func TestTeamSpendCapHoldsUnderConcurrentClaims(t *testing.T) {
 	resetTables(t)
-	withSpendCaps(t, TeamSpendCaps{"silver": {USD: 1, Period: SpendPeriodDay}}, spendCapDay)
+	withSpendCaps(t, spendcap.Caps{"silver": {USD: 1, Period: spendcap.Day}}, spendCapDay)
 	pendingCappedRuns(t, "silver", 6, 0.3)
 
 	const claimers = 6
@@ -263,7 +264,7 @@ func TestTeamSpendCapHoldsUnderConcurrentClaims(t *testing.T) {
 
 func TestLegacyClaimRefusedAtTheTeamSpendCap(t *testing.T) {
 	resetTables(t)
-	withSpendCaps(t, TeamSpendCaps{"silver": {USD: 1, Period: SpendPeriodDay}}, spendCapDay)
+	withSpendCaps(t, spendcap.Caps{"silver": {USD: 1, Period: spendcap.Day}}, spendCapDay)
 	pendingCappedRuns(t, "silver", 1, 1)
 	run, err := claimAnalyst("silver", 1)
 	if err != nil {
@@ -278,25 +279,5 @@ func TestLegacyClaimRefusedAtTheTeamSpendCap(t *testing.T) {
 	settle(t, run, `{"costUsd":0.2}`)
 	if _, err := testStore.ClaimWithin(context.Background(), "silver", time.Minute, 0); err != nil {
 		t.Fatalf("legacy claim with headroom: %v", err)
-	}
-}
-
-func TestSpendPeriodStartsInUTC(t *testing.T) {
-	at := time.Date(2026, 10, 29, 23, 30, 0, 0, time.FixedZone("CET", 3600))
-	cases := map[SpendPeriod][2]string{
-		SpendPeriodDay:   {"2026-10-29", "2026-10-30"},
-		SpendPeriodWeek:  {"2026-10-26", "2026-11-02"},
-		SpendPeriodMonth: {"2026-10-01", "2026-11-01"},
-	}
-	for period, want := range cases {
-		if got := period.Start(at).Format(time.DateOnly); got != want[0] {
-			t.Errorf("%s start = %s, want %s", period, got, want[0])
-		}
-		if got := period.End(at).Format(time.DateOnly); got != want[1] {
-			t.Errorf("%s end = %s, want %s", period, got, want[1])
-		}
-	}
-	if SpendPeriod("hour").Valid() {
-		t.Error("hour is not a supported period")
 	}
 }

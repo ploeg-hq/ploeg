@@ -9,6 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/ploeg-hq/ploeg/pkg/harness"
+	"github.com/ploeg-hq/ploeg/pkg/spendcap"
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
@@ -400,7 +401,7 @@ type pendingRun struct {
 	team, role, token, model   string
 	round                      int
 	writes                     bool
-	spendCap                   SpendCap
+	spendCap                   spendcap.Cap
 	now                        time.Time
 }
 
