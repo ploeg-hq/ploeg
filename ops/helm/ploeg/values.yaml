@@ -10,7 +10,7 @@ supportProfile: P1
 
 security:
   workerAdmission:
-    enabled: false
+    enabled: null
     runtimeClassNames: []
 
 image:

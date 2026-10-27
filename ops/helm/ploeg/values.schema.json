@@ -17,7 +17,7 @@
         "workerAdmission": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["enabled", "runtimeClassNames"],
+          "required": ["runtimeClassNames"],
           "description": "Native ValidatingAdmissionPolicy over every ploeg-worker Pod in the release namespace (Kubernetes 1.30 or later); see docs/ops/self-hosting-security.md.",
           "properties": {
             "enabled": {
