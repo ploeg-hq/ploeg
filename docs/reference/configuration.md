@@ -143,6 +143,7 @@ The generator follows each binary's imports inside the module and records every 
 | `PLOEG_REPO_KNOWLEDGE_DIR` | ploeg-worker |  |  | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_REVIEW_RECONCILE_INTERVAL` | ploegd | `10m` | How often ploegd asks the forge about each awaiting_review pull request. Each check claims its pull request for nine tenths of the interval, so with several replicas one of them reads it per interval. `0` turns the reconcile off. | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_ROLE` | ploeg-worker |  |  | [main.go](../../cmd/ploeg-worker/main.go), [sandbox.go](../../cmd/ploeg-worker/sandbox.go) |
+| `PLOEG_RUN_IDENTITY_AUDIENCES` | ploegd |  | JSON `{"<team>": {"<role>": ["<audience>", ...]}}`: the only audiences ploegd signs a Run identity for, by the Run's Team and Role (ADR-0149, threat model F-48); a Team without a Shift plan runs in the Role `""`. Any other audience answers 403 and is logged as `run identity refused`. The chart renders it from each Role's `harness.claudeCode.plugins[].runIdentity.audience`. Unset with a signing key signs for none; set without one stops ploegd at boot. | [run_identity.go](../../cmd/ploegd/run_identity.go) |
 | `PLOEG_RUN_IDENTITY_ISSUER` | ploegd |  | The http(s) URL consumers reach ploegd at, written as every Run identity's `iss` (ADR-0149, chart `runIdentity.issuer`). Required with `PLOEG_RUN_IDENTITY_SIGNING_KEY`; either without the other stops ploegd at boot. | [run_identity.go](../../cmd/ploegd/run_identity.go) |
 | `PLOEG_RUN_IDENTITY_RETIRED_KEYS` | ploegd |  | Concatenated PEM `PUBLIC KEY` blocks of P-256 keys ploegd no longer signs with but still publishes in its key set, so a token signed just before a rotation verifies until it expires (ADR-0149, chart `runIdentity.retiredKeysSecret`). | [run_identity.go](../../cmd/ploegd/run_identity.go) |
 | `PLOEG_RUN_IDENTITY_SIGNING_KEY` | ploegd |  | PEM P-256 private key (PKCS#8 or SEC 1) ploegd signs Run identities with (ADR-0149, chart `runIdentity.signingKeySecret`): the ES256 JWT a Claude Code plugin that opted in receives in `AGENT_RUN_IDENTITY_TOKEN`. Unset issues none: `POST /api/v1/runs/{token}/identity` and `GET /api/v1/run-identity/jwks` answer 404. Only ploegd holds it; a plugin env may never read its Secret. | [run_identity.go](../../cmd/ploegd/run_identity.go) |
@@ -786,7 +787,7 @@ claude-code harness only (ADR-0139). Rendered only into a claude-code pod.
 | `plugins[].env[].secret.name` | string |  |
 | `plugins[].env[].secret.key` | string |  |
 | `plugins[].hookTimeout` | string |  |
-| `plugins[].runIdentity` | object | ADR-0149: every hook of the plugin receives a Run identity for this audience in AGENT_RUN_IDENTITY_TOKEN. Needs the top-level runIdentity.signingKeySecret. |
+| `plugins[].runIdentity` | object | ADR-0149: every hook of the plugin receives a Run identity for this audience in AGENT_RUN_IDENTITY_TOKEN. Needs the top-level runIdentity.signingKeySecret. The chart lists this audience in PLOEG_RUN_IDENTITY_AUDIENCES for each Role whose plugins declare it, and ploegd refuses every other audience (threat model F-48). |
 | `plugins[].runIdentity.audience` | string |  |
 
 ### telemetry

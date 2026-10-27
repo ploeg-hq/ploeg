@@ -45,7 +45,7 @@ func identitySigner(t *testing.T) *runidentity.Signer {
 var identityAllowlist = runidentity.Audiences{
 	"bronze": {
 		"builder":  {identityAudience, "urn:example:second", "urn:example:a"},
-		"reviewer": {"urn:example:a"},
+		"reviewer": {"urn:example:a", "urn:example:reviewer-only"},
 	},
 }
 

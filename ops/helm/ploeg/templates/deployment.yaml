@@ -342,6 +342,8 @@ spec:
                 secretKeyRef:
                   name: {{ .name }}
                   key: {{ .key }}
+            - name: PLOEG_RUN_IDENTITY_AUDIENCES
+              value: {{ include "ploeg.runIdentityAudiences" $ | quote }}
             {{- end }}
             {{- with .retiredKeysSecret }}
             - name: PLOEG_RUN_IDENTITY_RETIRED_KEYS
