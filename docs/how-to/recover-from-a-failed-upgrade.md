@@ -25,7 +25,7 @@ Read [Before you start](index.md#before-you-start) for names and the database se
 | The upgrade finished and you need a release older than the previous one | **Restore** (step 3). An older release on a newer schema is not supported | Everything after the pre-upgrade backup | as above |
 | The database was lost after the upgrade, and the newest backup predates it | **Restore and upgrade.** Restore the backup and run the current release; it migrates the backup forward on start | Everything after the backup | 0.29 to 1.03 s from destruction to serving, 39 migrations included |
 
-The drill measured these on the CI runner and a workstation with embedded PostgreSQL and a 77 MB backup. They time PostgreSQL and `ploegd`, not a CloudNativePG restore, object storage or pod scheduling. Time a real restore of `ploeg-db` before you promise an operator target.
+The drill measured these on the CI runner and a workstation with embedded PostgreSQL and a 77 MB backup. They time PostgreSQL and `ploegd`, not a CloudNativePG restore, object storage or pod scheduling. The [proposed operator target](restore-after-a-database-outage.md#proposed-operator-target) of 1 hour RTO and 5 minutes RPO for a CloudNativePG restore with continuous WAL archiving is not yet measured; a real restore drill of `ploeg-db` confirms or revises it.
 
 ## 1. Rerun the upgrade
 

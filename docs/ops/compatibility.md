@@ -76,7 +76,7 @@ The removal is a `feat!` with a `BREAKING CHANGE:` footer and an ADR, and adds a
 | The new release misbehaves, and you came from the previous release | Roll back to it on the upgraded schema | None |
 | You need a release older than the previous one | Restore the pre-upgrade backup | Everything after that backup |
 
-The [upgrade drill](../research/2026-10-26-upgrade-drill.md) (`mise run upgrade-drill`) rehearses each row on every change to the store, the run API, the Shift engine or the worker: it restores backups written by the previous release and by `v0.2.0-rc.1`, upgrades them to head, interrupts the upgrade three ways, and rolls back to the previous release. [Recover from a failed upgrade](../how-to/recover-from-a-failed-upgrade.md) has the steps and the measured times.
+The [upgrade drill](../research/2026-10-26-upgrade-drill.md) (`mise run upgrade-drill`) rehearses each row on every change to the store, the run API, the Shift engine or the worker: it restores backups written by the previous release and by `v0.2.0-rc.1`, upgrades them to head, interrupts the upgrade three ways, and rolls back to the previous release. [Recover from a failed upgrade](../how-to/recover-from-a-failed-upgrade.md) has the steps and the measured times. Those times cover PostgreSQL and `ploegd` only. The maintainer's proposed operator target for a CloudNativePG restore with continuous WAL archiving is an RTO of 1 hour and an RPO of 5 minutes; it is not yet measured, and a real restore drill confirms or revises it ([proposed operator target](../how-to/restore-after-a-database-outage.md#proposed-operator-target)).
 
 ## Version pairs
 
