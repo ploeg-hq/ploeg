@@ -1,0 +1,832 @@
+summary: >-
+  Which versions, runtimes, harnesses, forges, trackers and gateways each Ploeg release line supports, which of them a CI job
+  exercises, and which a dated record shows working on a live deployment. The supported deployment is profile P1 of the
+  [threat model](../security/threat-model.md#the-supported-deployment-profile); a row outside it is unsupported even when the
+  source implements it. "Implemented" and "qualified" are different claims: the README lists what the source contains, this
+  page lists what is supported and what evidence stands behind it. Each cell links to its evidence, and each limit says what
+  the evidence does not cover. Every live record comes from one environment, the maintainer's own cluster, and holds only there.
+
+releaseNotes: >-
+  A stable release's notes carry a Qualification section ([stable channel plan](../ops/stable-channel-plan.md#changelog-upgrade-notes-and-deprecations)).
+  Generate it from this matrix with `mise run support-matrix -- --notes 0.2.0 --commit <promoted commit>` and paste it into
+  the release's notes. Every release's generated notes name this page at the release's own commit, so the matrix a release
+  points to is the one that was true when it was cut.
+
+notesIntro: >-
+  The supported deployment is profile P1 of the threat model. Rows outside it are unsupported. A qualified-live row names the
+  release or commit it was qualified at; promotion to stable does not requalify it.
+
+lines:
+  - id: 0.2.0-rc
+    title: 0.2.0-rc.N
+    state: current
+    summary: >-
+      The 0.2.0 candidates cut from `development` on every releasable merge (ADR 0116). A qualified-live cell names the
+      candidate it was qualified at; later candidates inherit it only through the CI rows that run on every change.
+  - id: 0.2.0
+    title: v0.2.0
+    state: planned
+    summary: >-
+      The first 0.2 stable, a soaked candidate promoted by fast-forwarding `main` (ADR 0158). Not released. It runs the
+      candidate's digests, so it carries the candidate's cells. It is also gated by G1 to G7 of the stable channel plan,
+      including an outsider completing the quickstart (#12). Going from 0.1 to 0.2 is a reinstall.
+
+axes:
+  - id: kubernetes
+    title: Kubernetes
+    summary: >-
+      The `worker-admission` job starts kind at the oldest and newest Kubernetes the worker admission policy supports, and the
+      quickstart runs a full install and one Run on kind 0.33.0's default node, `kindest/node:v1.37.0`. No live record names
+      the Kubernetes version of the cluster it ran on.
+  - id: database
+    title: PostgreSQL
+    summary: >-
+      Every store, API and worker test, the restore drill and the upgrade drill run on embedded PostgreSQL from
+      embedded-postgres v1.34.0, whose default is PostgreSQL 18.3.0. The quickstart runs PostgreSQL 17.6. No live record names
+      the PostgreSQL version of the deployment it read.
+  - id: network
+    title: Network and CNI
+    summary: >-
+      P1 relies on the chart's default-deny NetworkPolicies, so the CNI must enforce them. A CNI that does not leaves every
+      egress limit void.
+  - id: runtime
+    title: Executors and runtime classes
+    summary: >-
+      `keda` and `cronjob` workers share the node's kernel under runc. The `sandbox` executor is in P1 only under a runtime
+      class whose handler gives each pod its own VM, with the guest's seccomp on (F-41).
+  - id: harness
+    title: Harnesses
+    summary: >-
+      A harness is in P1 only once a Run has reached its normal outcome with both credential proxies on. The chart's
+      `ploeg.isolationQualifiedHarnesses` lists them and refuses any other under `supportProfile: P1`.
+  - id: forge
+    title: Forges
+    summary: >-
+      A writer Run pushes with a token minted for it alone: a GitHub App installation token, or a repository-scoped Forgejo
+      token minted with the bot's password.
+  - id: tracker
+    title: Work sources and trackers
+    summary: >-
+      Work reaches Ploeg from a tracker webhook or from the operator API. Fixture tests fake each tracker with `httptest`.
+  - id: gateway
+    title: Model gateway
+    summary: >-
+      Ploeg mints, caps, watches and revokes one LiteLLM key per Run and settles from the gateway's spend logs.
+  - id: tooling
+    title: Install tooling
+    summary: >-
+      The chart is installed with Helm. KEDA is the installer's, needed only by the `keda` executor.
+  - id: operations
+    title: Installation, security, accounting and recovery
+    summary: >-
+      The paths an adopter relies on after install, and the drill or record that exercises each.
+  - id: features
+    title: Features outside the profile
+    summary: >-
+      Implemented features that the 0.2 supported profile leaves out. The source has them; nothing here supports them.
+
+rows:
+  - id: kubernetes-1.28
+    axis: kubernetes
+    item: 1.28 and older
+    cells: {0.2.0-rc: unsupported, 0.2.0: unsupported}
+    evidence:
+      - doc:
+          path: docs/ops/managed-workers.md#upgrade-existing-deployments
+          label: managed workers
+          contains: ["Kubernetes 1.29 or later, as the DinD sidecar already required: native sidecars are what end the pod when the worker exits."]
+    limits: Without native sidecars a Run pod does not end when the worker exits.
+
+  - id: kubernetes-1.29
+    axis: kubernetes
+    item: "1.29"
+    cells: {0.2.0-rc: experimental, 0.2.0: experimental}
+    evidence:
+      - doc:
+          path: docs/ops/managed-workers.md#upgrade-existing-deployments
+          label: managed workers
+          contains: ["Kubernetes 1.29 or later"]
+      - doc:
+          path: docs/reference/configuration.md
+          label: configuration reference
+          contains: ["Native ValidatingAdmissionPolicy over every ploeg-worker Pod in the release namespace (Kubernetes 1.30 or later)"]
+    limits: >-
+      The documented floor for native sidecars, but below the oldest version CI starts. `security.workerAdmission` needs 1.30.
+      No job or record runs 1.29.
+
+  - id: kubernetes-1.30
+    axis: kubernetes
+    item: "1.30"
+    cells: {0.2.0-rc: tested-in-ci, 0.2.0: tested-in-ci}
+    evidence:
+      - ci:
+          workflow: ci.yml
+          job: worker-admission
+          contains: ["kindest/node:v1.30.13", "scripts/check-worker-admission-live.py"]
+      - doc:
+          path: docs/ops/self-hosting-security.md
+          label: self-hosting security
+          contains: ["Kubernetes 1.30 and 1.37: the API server must type-check the policy without warnings, admit every rendered worker Pod"]
+    limits: The API server admits every rendered worker pod and refuses each hostile variant. No Run executes on 1.30.
+
+  - id: kubernetes-1.31-1.36
+    axis: kubernetes
+    item: 1.31 to 1.36
+    cells: {0.2.0-rc: supported, 0.2.0: supported}
+    evidence:
+      - doc:
+          path: .github/workflows/ci.yml
+          label: ci.yml worker-admission step
+          contains: ["Start a disposable cluster at the policy's oldest and newest supported Kubernetes"]
+      - doc:
+          path: docs/how-to/give-runs-a-toolchain-and-checks.md
+          label: toolchains
+          contains: ["Image volumes need Kubernetes 1.35 or later."]
+    limits: Between the two versions CI tests; none of them is run. Toolchain image volumes need 1.35.
+
+  - id: kubernetes-1.37
+    axis: kubernetes
+    item: "1.37"
+    cells: {0.2.0-rc: tested-in-ci, 0.2.0: tested-in-ci}
+    evidence:
+      - ci:
+          workflow: ci.yml
+          job: worker-admission
+          contains: ["kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5"]
+      - ci:
+          workflow: quickstart.yml
+          job: run
+          contains: ["scripts/quickstart.sh run", "pinned", "newest", "checkout-chart"]
+      - source:
+          path: mise.toml
+          contains: ['"aqua:kubernetes-sigs/kind" = "0.33.0"']
+    limits: >-
+      The quickstart creates its cluster without `--image`, so it runs kind 0.33.0's default node, the same
+      `kindest/node:v1.37.0` digest `worker-admission` pins. That cluster runs kindnet, outside P1.
+
+  - id: kubernetes-1.38
+    axis: kubernetes
+    item: 1.38 and newer
+    cells: {0.2.0-rc: experimental, 0.2.0: experimental}
+    evidence: []
+    limits: Newer than the newest version CI starts.
+
+  - id: postgres-18
+    axis: database
+    item: "18"
+    cells: {0.2.0-rc: tested-in-ci, 0.2.0: tested-in-ci}
+    evidence:
+      - ci:
+          workflow: ci.yml
+          job: verify
+          contains: ["mise run verify"]
+      - ci:
+          workflow: restore-drill.yml
+          job: restore
+          contains: ["mise run restore-drill"]
+          test: {package: pkg/worker, name: TestRestoreDrillReconcilesToTheBackupPointAndFencesEveryOlderLease}
+      - ci:
+          workflow: upgrade-drill.yml
+          job: upgrade
+          contains: ["mise run upgrade-drill"]
+      - source:
+          path: go.mod
+          contains: ["github.com/fergusstrange/embedded-postgres v1.34.0"]
+      - doc:
+          path: docs/research/2026-10-25-restore-drill.md
+          label: restore drill
+          contains: ["Embedded PostgreSQL 18 in its own data directory, migrated to head."]
+    limits: Single-node embedded PostgreSQL 18.3.0, no replication or operator.
+
+  - id: postgres-17
+    axis: database
+    item: "17"
+    cells: {0.2.0-rc: tested-in-ci, 0.2.0: tested-in-ci}
+    evidence:
+      - ci:
+          workflow: quickstart.yml
+          job: run
+          contains: ["scripts/quickstart.sh run"]
+      - source:
+          path: ops/quickstart/postgres.yaml
+          contains: ["docker.io/library/postgres:17.6-alpine@sha256:ef257d85f76e48da1c64832459b59fcaba1a4dac97bf5d7450c77753542eee94"]
+    limits: One Run on a fresh database; the drills do not run on 17.
+
+  - id: postgres-16
+    axis: database
+    item: 16 and older
+    cells: {0.2.0-rc: experimental, 0.2.0: experimental}
+    evidence: []
+    limits: No job runs them, and no minimum version is documented.
+
+  - id: cni-cilium
+    axis: network
+    item: Cilium, enforcing the chart's NetworkPolicies
+    cells: {0.2.0-rc: qualified-live, 0.2.0: qualified-live}
+    evidence:
+      - live:
+          record: docs/research/2026-10-26-worker-boundary-qualification.md
+          at: 0.2.0-rc.72
+          contains: ["Talos Linux, Cilium as the CNI", "plus the namespace default-deny, enforced by Cilium"]
+      - ci:
+          workflow: ci.yml
+          job: verify
+          contains: ["mise run verify"]
+      - source:
+          path: scripts/verify.sh
+          contains: ["bash scripts/test-chart-network-policies.sh"]
+    limits: >-
+      One cluster. The egress probe ran under runc; under Kata only the public forge address was seen refused. The allowlist
+      is per namespace and port, not per pod.
+
+  - id: cni-other-enforcing
+    axis: network
+    item: Another CNI that enforces NetworkPolicy
+    cells: {0.2.0-rc: supported, 0.2.0: supported}
+    evidence:
+      - doc:
+          path: docs/security/threat-model.md#profile-p1-unattended-workers-without-docker-credential-proxies-on
+          label: threat model, P1 Network row
+          contains: ["`networkPolicy.enabled: true`, on a CNI that enforces them"]
+    limits: Not run anywhere. Check the rendered policies on your CNI as network policies describes.
+
+  - id: cni-not-enforcing
+    axis: network
+    item: A CNI that does not enforce NetworkPolicy (kindnet, Flannel)
+    cells: {0.2.0-rc: unsupported, 0.2.0: unsupported}
+    evidence:
+      - doc:
+          path: docs/research/2026-10-26-worker-boundary-qualification.md#what-is-not-covered
+          label: worker boundary record
+          contains: ["on a CNI that does not enforce NetworkPolicy (kindnet, Flannel) the egress row is void"]
+    limits: The quickstart runs on kindnet and says so; it is not a P1 deployment.
+
+  - id: transport-encryption
+    axis: network
+    item: Cross-node pod traffic encrypted by the CNI or a mesh
+    cells: {0.2.0-rc: supported, 0.2.0: supported}
+    evidence:
+      - doc:
+          path: docs/security/threat-model.md#profile-p1-unattended-workers-without-docker-credential-proxies-on
+          label: threat model, P1 Transport row
+          contains: ["Pod-to-pod traffic is encrypted by the CNI or a mesh when it crosses nodes"]
+    limits: Required by P1 because `ploegd` serves plain HTTP (F-06, planned for v0.3.0). No record checks it.
+
+  - id: runtime-runc
+    axis: runtime
+    item: runc with the `cronjob` executor
+    cells: {0.2.0-rc: tested-in-ci, 0.2.0: tested-in-ci}
+    evidence:
+      - ci:
+          workflow: quickstart.yml
+          job: run
+          contains: ["scripts/quickstart.sh run"]
+      - source:
+          path: ops/quickstart/values.yaml
+          contains: ["type: cronjob"]
+      - doc:
+          path: docs/security/threat-model.md#profile-p1-unattended-workers-without-docker-credential-proxies-on
+          label: threat model, P1 Executor row
+          contains: ["`executor.type: keda` (KEDA ScaledJob) or `cronjob`"]
+    limits: The quickstart's Run uses the `exec` harness on kind. The worker shares the node's kernel.
+
+  - id: runtime-keda
+    axis: runtime
+    item: runc with the `keda` executor
+    cells: {0.2.0-rc: supported, 0.2.0: supported}
+    evidence:
+      - doc:
+          path: docs/security/threat-model.md#profile-p1-unattended-workers-without-docker-credential-proxies-on
+          label: threat model, P1 Executor row
+          contains: ["`executor.type: keda` (KEDA ScaledJob) or `cronjob`"]
+      - doc:
+          path: docs/research/2026-10-04-isolation-qualification.md
+          label: isolation qualification 2026-10-04
+          contains: ["OpenHands ran under the KEDA ScaledJob executor"]
+    limits: >-
+      CI renders the ScaledJob and the API server admits its pods, but no job installs KEDA or runs a Run through it. The
+      2026-10-04 KEDA Runs predate the proxies' placeholder check (Ploeg #64) and name no release.
+
+  - id: runtime-kata-seccomp-on
+    axis: runtime
+    item: "`sandbox` executor under Kata Containers with guest seccomp on (`disable_guest_seccomp=false`)"
+    cells: {0.2.0-rc: supported, 0.2.0: supported}
+    evidence:
+      - doc:
+          path: docs/security/threat-model.md#profile-p1-unattended-workers-without-docker-credential-proxies-on
+          label: threat model, P1 Executor row
+          contains: ["with the guest's seccomp enabled (Kata `disable_guest_seccomp=false`, [F-41](#findings))"]
+      - doc:
+          path: docs/research/2026-10-25-credential-proxy-requalification.md
+          label: credential proxy requalification
+          contains: ["Profile P1: sandbox executor under `runtimeClassName: kata`"]
+    limits: >-
+      The credential planes were qualified live under Kata at 0.2.0-rc.68 and the network and token boundaries at
+      0.2.0-rc.72, both with guest seccomp off. No probe has passed with guest seccomp on, so the privilege row is not
+      qualified.
+
+  - id: runtime-kata-seccomp-off
+    axis: runtime
+    item: Kata Containers with guest seccomp off, as the kata-containers 3.32.0 Talos extension ships it
+    cells: {0.2.0-rc: unsupported, 0.2.0: unsupported}
+    evidence:
+      - doc:
+          path: docs/security/threat-model.md#what-the-profile-excludes
+          label: threat model, excluded
+          contains: ["A VM runtime class whose guest seccomp is off (Kata `disable_guest_seccomp=true`, as the kata-containers 3.32.0 Talos extension ships it)"]
+      - doc:
+          path: docs/research/2026-10-26-worker-boundary-qualification.md
+          label: worker boundary record
+          contains: ["**`Seccomp` 0**"]
+    limits: The VM boundary holds; the pod's `RuntimeDefault` seccomp filter is not enforced in the guest (F-41).
+
+  - id: runtime-sandbox-not-vm
+    axis: runtime
+    item: "`sandbox` executor under gVisor (`runsc`), runc or no runtime class"
+    cells: {0.2.0-rc: unsupported, 0.2.0: unsupported}
+    evidence:
+      - doc:
+          path: docs/security/threat-model.md#what-the-profile-excludes
+          label: threat model, excluded
+          contains: ["naming one whose handler is not a VM (gVisor, runc) is outside P1 on the installer's word"]
+    limits: The chart refuses a sandbox workload without a `runtimeClassName`; it cannot tell a VM handler from another by name.
+
+  - id: harness-acp-openhands
+    axis: harness
+    item: "`acp/openhands`"
+    cells: {0.2.0-rc: qualified-live, 0.2.0: qualified-live}
+    evidence:
+      - live:
+          record: docs/research/2026-10-25-credential-proxy-requalification.md
+          at: 0.2.0-rc.68
+          contains: ["Harness: `acp`, profile `openhands`, writer Role `builder`.", "outcome `pr_opened`"]
+      - ci:
+          workflow: attack-drill.yml
+          job: real-binary
+          contains: ["OPENHANDS_VERSION", "PLOEG_HOSTILE_REPOSITORY=1"]
+    limits: One writer Role in one cluster; a reader Role was not exercised. The attack drill runs the real binary without a model.
+
+  - id: harness-openhands
+    axis: harness
+    item: "`openhands`"
+    cells: {0.2.0-rc: supported, 0.2.0: supported}
+    evidence:
+      - doc:
+          path: docs/security/threat-model.md#profile-p1-unattended-workers-without-docker-credential-proxies-on
+          label: threat model, P1 Harness row
+          contains: ["One in `ploeg.isolationQualifiedHarnesses` (`openhands`, `acp/openhands`, `exec`)"]
+      - doc:
+          path: docs/research/2026-10-04-isolation-qualification.md
+          label: isolation qualification 2026-10-04
+          contains: ["Team silver, KEDA ScaledJob executor."]
+    limits: 'Its Runs predate the proxies'' placeholder check (Ploeg #64) and name no release; F-04''s requalification covered `acp/openhands` only.'
+
+  - id: harness-exec
+    axis: harness
+    item: "`exec`"
+    cells: {0.2.0-rc: tested-in-ci, 0.2.0: tested-in-ci}
+    evidence:
+      - ci:
+          workflow: quickstart.yml
+          job: run
+          contains: ["scripts/quickstart.sh run"]
+      - source:
+          path: ops/quickstart/values.yaml
+          contains: ["name: exec"]
+    limits: Plumbing only. A custom command that calls the model must read `LLM_BASE_URL` and `LLM_API_KEY`.
+
+  - id: harness-claude-code
+    axis: harness
+    item: "`claude-code`, `claude-environment` and the claude-runner"
+    cells: {0.2.0-rc: unsupported, 0.2.0: unsupported}
+    evidence:
+      - doc:
+          path: docs/security/threat-model.md#what-the-profile-excludes
+          label: threat model, excluded
+          contains: ["`claude-environment` and the `claudeRunner`"]
+      - doc:
+          path: docs/research/2026-10-04-isolation-qualification.md
+          label: isolation qualification 2026-10-04
+          contains: ["| `claude-code` | no | No Run with both proxies on yet. |"]
+    limits: Not qualified with both proxies on; `claude-environment` runs outside the pod on a person's login.
+
+  - id: harness-acp-other
+    axis: harness
+    item: "`acp/opencode` (the `acp` default), `acp/goose`, `acp/qwen-code`, `acp/custom`"
+    cells: {0.2.0-rc: unsupported, 0.2.0: unsupported}
+    evidence:
+      - doc:
+          path: docs/security/threat-model.md#what-the-profile-excludes
+          label: threat model, excluded
+          contains: ["`claude-code`, `acp/opencode`, `acp/qwen-code`, `acp/goose`, `acp/custom`"]
+      - ci:
+          workflow: attack-drill.yml
+          job: real-binary
+          contains: ["OPENCODE_VERSION", "GOOSE_VERSION"]
+    limits: The attack drill runs opencode and goose against a hostile repository, which does not qualify the proxies.
+
+  - id: harness-dind
+    axis: harness
+    item: 'Any harness with `harness.dind: true`'
+    cells: {0.2.0-rc: unsupported, 0.2.0: unsupported}
+    evidence:
+      - doc:
+          path: docs/security/threat-model.md#what-the-profile-excludes
+          label: threat model, excluded
+          contains: ["Privileged sidecar whose client certificates the harness holds. It also turns both credential proxies off"]
+    limits: 'Renders only with `harness.acknowledgePrivilegedDind: true`, and never under `supportProfile: P1`.'
+
+  - id: forge-github-app
+    axis: forge
+    item: GitHub with a GitHub App (per-Run installation tokens)
+    cells: {0.2.0-rc: qualified-live, 0.2.0: qualified-live}
+    evidence:
+      - live:
+          record: docs/research/2026-10-23-github-qualification.md
+          at: 2fc4ddc
+          contains: ["--- PASS: TestQualificationAGitHubRunDeliversAPullRequest (9.88s)", "Both opt-in qualifications now pass on github.com through the App"]
+      - ci:
+          workflow: ci.yml
+          job: verify
+          contains: ["mise run verify"]
+          test: {package: pkg/forgebroker, name: TestGitHubAppMintsOneRepositoryWithWriterPermissionsAndRevokesByID}
+    limits: Against github.com from a workstation, not from a deployed release. Webhooks from github.com have fixture tests only.
+
+  - id: forge-forgejo-15
+    axis: forge
+    item: Forgejo 15 or later with `botPasswordSecret` (per-Run repository tokens)
+    cells: {0.2.0-rc: tested-in-ci, 0.2.0: tested-in-ci}
+    evidence:
+      - ci:
+          workflow: ci.yml
+          job: verify
+          contains: ["mise run verify"]
+          test: {package: pkg/forgebroker, name: TestMint_ScopedToTheRunsRepositoryAndTraceable}
+      - doc:
+          path: docs/security/credential-flow.md#qualification-against-a-live-forge
+          label: credential flow, live forge
+          contains: ["Against Forgejo `15.0.10+gitea-1.22.0` it minted a token for `agent-builder`"]
+    limits: >-
+      Minting is tested against a fake. The live probe showed Forgejo 15.0.10 refusing a revoked plain token at once; it did
+      not run a release's broker. The broker does not check that Forgejo honoured the repository restriction (F-10, #298).
+
+  - id: forge-forgejo-old
+    axis: forge
+    item: Forgejo before 15
+    cells: {0.2.0-rc: unsupported, 0.2.0: unsupported}
+    evidence:
+      - doc:
+          path: docs/security/threat-model.md#profile-p1-unattended-workers-without-docker-credential-proxies-on
+          label: threat model, P1 Forge row
+          contains: ["Forgejo 15 or later with `botPasswordSecret` (per-Run repository tokens)"]
+    limits: Repository-scoped tokens exist only from Forgejo 15.
+
+  - id: forge-shared-token
+    axis: forge
+    item: A static shared forge token for writers (no App, no bot password)
+    cells: {0.2.0-rc: unsupported, 0.2.0: unsupported}
+    evidence:
+      - doc:
+          path: docs/security/threat-model.md#what-the-profile-excludes
+          label: threat model, excluded
+          contains: ["Static shared forge token for writers (no App, no bot password)"]
+    limits: The quickstart pushes this way to a practice repository, and says it is outside P1.
+
+  - id: forge-gitlab
+    axis: forge
+    item: GitLab
+    cells: {0.2.0-rc: unsupported, 0.2.0: unsupported}
+    evidence:
+      - doc:
+          path: docs/security/threat-model.md#what-the-profile-excludes
+          label: threat model, excluded
+          contains: ["No per-Run GitLab broker exists; GitLab writers always use the shared token"]
+    limits: Implemented as a forge; no per-Run broker (F-31).
+
+  - id: tracker-github-issues
+    axis: tracker
+    item: GitHub Issues
+    cells: {0.2.0-rc: qualified-live, 0.2.0: qualified-live}
+    evidence:
+      - live:
+          record: docs/research/2026-10-23-github-qualification.md
+          at: 2fc4ddc
+          contains: ["--- PASS: TestQualificationGitHubIssuesReadAndWriteBack (4.98s)"]
+      - ci:
+          workflow: ci.yml
+          job: verify
+          contains: ["mise run verify"]
+    limits: Reads and write-backs against github.com. The webhook from github.com, its signature and redelivery have fixture tests only.
+
+  - id: tracker-vikunja
+    axis: tracker
+    item: Vikunja
+    cells: {0.2.0-rc: tested-in-ci, 0.2.0: tested-in-ci}
+    evidence:
+      - ci:
+          workflow: ci.yml
+          job: verify
+          contains: ["mise run verify"]
+          test: {package: pkg/provider/vikunja, name: TestParseWebhookAssigned}
+    limits: Fixture tests only. No record qualifies the tracker against a live Vikunja.
+
+  - id: tracker-clickup
+    axis: tracker
+    item: ClickUp
+    cells: {0.2.0-rc: tested-in-ci, 0.2.0: tested-in-ci}
+    evidence:
+      - ci:
+          workflow: ci.yml
+          job: verify
+          contains: ["mise run verify"]
+          test: {package: pkg/provider/clickup, name: TestExecutionReaderRequiresUnarchivedKnownOpenStatus}
+    limits: Fixture tests only. No record qualifies the tracker against a live ClickUp.
+
+  - id: tracker-operator-api
+    axis: tracker
+    item: Operator API, no tracker
+    cells: {0.2.0-rc: tested-in-ci, 0.2.0: tested-in-ci}
+    evidence:
+      - ci:
+          workflow: quickstart.yml
+          job: run
+          contains: ["scripts/quickstart.sh run"]
+      - source:
+          path: docs/quickstart.md
+          contains: ["curl -sS -X POST http://localhost:8080/api/v1/operator/work-items"]
+    limits: Admission with a static consumer token. Run oversight and delegated execution through a consumer are not in the quickstart.
+
+  - id: gateway-litellm-1.103
+    axis: gateway
+    item: LiteLLM 1.103.0 or later, spend logs on, master key only in `ploegd`
+    cells: {0.2.0-rc: supported, 0.2.0: supported}
+    evidence:
+      - doc:
+          path: docs/ops/managed-workers.md#configure-the-controller
+          label: managed workers
+          contains: ["The controller needs LiteLLM 1.103.0 or later."]
+      - doc:
+          path: docs/security/threat-model.md#profile-p1-unattended-workers-without-docker-credential-proxies-on
+          label: threat model, P1 Model gateway row
+          contains: ["LiteLLM 1.103.0 or later with spend logs on; the master key only in ploegd"]
+    limits: The key filters were read in LiteLLM's source at v1.103.0 and v1.105.1. The live accounting record does not name the gateway's version.
+
+  - id: gateway-litellm-1.105.2
+    axis: gateway
+    item: LiteLLM 1.105.2
+    cells: {0.2.0-rc: tested-in-ci, 0.2.0: tested-in-ci}
+    evidence:
+      - ci:
+          workflow: quickstart.yml
+          job: run
+          contains: ["scripts/quickstart.sh run"]
+      - source:
+          path: ops/quickstart/litellm.yaml
+          contains: ["ghcr.io/berriai/litellm-database:v1.105.2@sha256:38cd7e708581a90ea904279c2d8bbaccc1786d44c1e2b05fbc33dcaf743e9678"]
+    limits: A `mock_response` model that spends nothing; it proves minting, the cap and revocation, not settlement of real spend.
+
+  - id: gateway-litellm-old
+    axis: gateway
+    item: LiteLLM 1.102 and earlier, or another gateway
+    cells: {0.2.0-rc: unsupported, 0.2.0: unsupported}
+    evidence:
+      - doc:
+          path: docs/ops/managed-workers.md#configure-the-controller
+          label: managed workers
+          contains: ["LiteLLM 1.102 and earlier accept only `status=deleted` and answer the sweep's request with `400`"]
+    limits: The orphan-key sweep fails on 1.102 and earlier. Ploeg talks only to LiteLLM's management API.
+
+  - id: helm-4
+    axis: tooling
+    item: Helm 4.3.0
+    cells: {0.2.0-rc: tested-in-ci, 0.2.0: tested-in-ci}
+    evidence:
+      - ci:
+          workflow: ci.yml
+          job: verify
+          contains: ["mise run verify"]
+      - ci:
+          workflow: quickstart.yml
+          job: run
+          contains: ["scripts/quickstart.sh run"]
+      - source:
+          path: mise.toml
+          contains: ['helm = "4.3.0"']
+    limits: Lint, template and golden renders in `verify`; `helm install` of the signed OCI chart in the quickstart.
+
+  - id: helm-3
+    axis: tooling
+    item: Helm 3
+    cells: {0.2.0-rc: experimental, 0.2.0: experimental}
+    evidence:
+      - source:
+          path: ops/helm/ploeg/Chart.yaml
+          contains: ["apiVersion: v2"]
+    limits: 'The chart is `apiVersion: v2`, which Helm 3 reads, but no job runs Helm 3.'
+
+  - id: keda-2.13
+    axis: tooling
+    item: KEDA 2.13 or later
+    cells: {0.2.0-rc: supported, 0.2.0: supported}
+    evidence:
+      - doc:
+          path: docs/how-to/drain-workers.md#2-stop-new-claims
+          label: drain workers
+          contains: ["Pausing a ScaledJob requires KEDA 2.13 or later."]
+    limits: No job installs KEDA, and no record names the KEDA version it ran with.
+
+  - id: ops-quickstart
+    axis: operations
+    item: Install a signed release and complete one Run (the quickstart profile)
+    cells: {0.2.0-rc: tested-in-ci, 0.2.0: tested-in-ci}
+    evidence:
+      - ci:
+          workflow: quickstart.yml
+          job: run
+          contains: ["scripts/quickstart.sh run", "pinned", "newest", "checkout-chart"]
+      - source:
+          path: docs/quickstart.md
+          contains: ["cosign verify \"$artifact:$PLOEG_VERSION\""]
+    limits: >-
+      Every command on the page, nightly and on chart changes, against the pinned candidate, the newest one and this checkout's
+      chart. kind, kindnet, the `exec` harness, a mock model and a shared forge token: reproducible from public artifacts,
+      but not P1. For v0.2.0, G7 also needs an outsider to complete it (#12).
+
+  - id: ops-chart-profile
+    axis: operations
+    item: 'The chart refuses values that leave P1 (`supportProfile: P1`)'
+    cells: {0.2.0-rc: tested-in-ci, 0.2.0: tested-in-ci}
+    evidence:
+      - ci:
+          workflow: ci.yml
+          job: verify
+          contains: ["mise run verify"]
+      - source:
+          path: scripts/helm-golden.sh
+          contains: ["leaves_p1"]
+    limits: Only rows the chart renders. Pod Security level, CNI enforcement, transport encryption, gateway and forge versions stay with the installer.
+
+  - id: ops-credential-proxies
+    axis: operations
+    item: Both credential proxies hold against a hostile harness
+    cells: {0.2.0-rc: qualified-live, 0.2.0: qualified-live}
+    evidence:
+      - live:
+          record: docs/research/2026-10-25-credential-proxy-requalification.md
+          at: 0.2.0-rc.68
+          contains: ["A Run instructed to act as the attacker held only its own placeholders"]
+      - ci:
+          workflow: attack-drill.yml
+          job: binary-free
+          contains: ["TestAttackDrill"]
+          test: {package: pkg/worker, name: TestAttackDrill_HarnessEnvironmentNeverHoldsRealCredentials}
+    limits: One harness, `acp/openhands`, one writer Role. "Refused" and "unreachable" are not told apart for public addresses.
+
+  - id: ops-worker-boundary
+    axis: operations
+    item: Worker pod holds no Kubernetes token and reaches no metadata endpoint, API server or unapproved service
+    cells: {0.2.0-rc: qualified-live, 0.2.0: qualified-live}
+    evidence:
+      - live:
+          record: docs/research/2026-10-26-worker-boundary-qualification.md
+          at: 0.2.0-rc.72
+          contains: ["`https://kubernetes.default.svc/version` and the Service address `https://10.43.0.1:443/version` both unreachable"]
+      - ci:
+          workflow: ci.yml
+          job: verify
+          contains: ["mise run verify"]
+      - source:
+          path: scripts/verify.sh
+          contains: ["bash scripts/test-worker-boundary-probe.sh"]
+    limits: Privilege is not qualified while guest seccomp is off (F-41). The pod templates were read at rc.72; the in-pod observations come from rc.68 Runs.
+
+  - id: ops-accounting
+    axis: operations
+    item: Settlement matches the gateway's spend logs within 0.0001 USD per account
+    cells: {0.2.0-rc: qualified-live, 0.2.0: qualified-live}
+    evidence:
+      - live:
+          record: docs/research/2026-10-25-live-gateway-accounting.md
+          at: 0.2.0-rc.68
+          contains: ["| Accounts within 0.0001 USD | 199 of 200 |", "| Accounts below the logs by more than 0.0001 USD | 0 |"]
+      - ci:
+          workflow: ci.yml
+          job: verify
+          contains: ["mise run verify"]
+          test: {package: pkg/store, name: TestCorrectionNeverLowersASettlement}
+      - doc:
+          path: docs/reference/accounting-invariants.md#how-the-tests-check-them
+          label: accounting invariants
+          contains: ["**Admission never overcommits a Shift.**"]
+    limits: Accounts settled by 0.2.0-rc.68 to rc.71 over four weeks. The one exception settled at a spend Ploeg observed, above the logs.
+
+  - id: ops-restore
+    axis: operations
+    item: Restore the database from a backup; older Leases are fenced
+    cells: {0.2.0-rc: tested-in-ci, 0.2.0: tested-in-ci}
+    evidence:
+      - ci:
+          workflow: restore-drill.yml
+          job: restore
+          contains: ["mise run restore-drill"]
+          test: {package: pkg/worker, name: TestRestoreDrillReconcilesToTheBackupPointAndFencesEveryOlderLease}
+      - doc:
+          path: docs/research/2026-10-25-restore-drill.md
+          label: restore drill
+          contains: ["Every token from before the restore was refused on renewal, checkpoint and outcome, and changed nothing."]
+    limits: Embedded PostgreSQL on one node, a low-level base backup. The installer's own backup tool is not exercised.
+
+  - id: ops-upgrade
+    axis: operations
+    item: Upgrade the database from the previous release or from v0.2.0-rc.1, and recover an interrupted migration
+    cells: {0.2.0-rc: tested-in-ci, 0.2.0: tested-in-ci}
+    evidence:
+      - ci:
+          workflow: upgrade-drill.yml
+          job: upgrade
+          contains: ["mise run upgrade-drill"]
+      - source:
+          path: mise.toml
+          contains: ['PLOEG_UPGRADE_DRILL_BASES = "previous v0.2.0-rc.1"']
+      - doc:
+          path: docs/research/2026-10-26-upgrade-drill.md
+          label: upgrade drill
+          contains: ["A migration interrupted three ways (a lock timeout, `ploegd` killed, PostgreSQL crashed)"]
+    limits: The database and run-API half. Once v0.2.0 exists the drill's oldest base becomes v0.2.0.
+
+  - id: ops-chart-upgrade
+    axis: operations
+    item: Upgrade and roll back the chart and images between releases on a cluster
+    cells: {0.2.0-rc: experimental, 0.2.0: experimental}
+    evidence:
+      - doc:
+          path: docs/ops/stable-channel-plan.md#work-to-land
+          label: stable channel plan, work to land
+          contains: ["A kind job for G5 (install the previous stable, upgrade, one Run, roll back)."]
+    limits: Promised by the compatibility policy, but no job installs one release and upgrades it to the next. G5 does not apply to v0.2.0.
+
+  - id: ops-upgrade-from-0.1
+    axis: operations
+    item: Upgrade from v0.1.0
+    cells: {0.2.0-rc: unsupported, 0.2.0: unsupported}
+    evidence:
+      - doc:
+          path: docs/adrs/0158-a-stable-release-is-a-soaked-candidate-promoted-by-fast-forwarding-main.md
+          label: ADR 0158, item 8
+          contains: ["Going from `0.1` to `0.2` is a fresh install, recorded as one exception, and the upgrade promise starts at `v0.2.0`."]
+    limits: Reinstall. A by-hand drill migrated a v0.1.0 backup forward once; the configuration and chart changes are what make it a reinstall.
+
+  - id: feature-mcp-execute
+    axis: features
+    item: "`ploeg-mcp` groups with `execute`"
+    cells: {0.2.0-rc: unsupported, 0.2.0: unsupported}
+    evidence:
+      - doc:
+          path: docs/adrs/0158-a-stable-release-is-a-soaked-candidate-promoted-by-fast-forwarding-main.md
+          label: ADR 0158, item 4
+          contains: ["`ploeg-mcp` `execute` groups and rework requested by outside reviewers stay outside the supported profile for `0.2`"]
+    limits: Read-only `ploeg-mcp` groups are in scope. `login` confirmation mode is what would let `execute` in (F-08).
+
+  - id: feature-mcp-read
+    axis: features
+    item: "`ploeg-mcp` read-only groups"
+    cells: {0.2.0-rc: supported, 0.2.0: supported}
+    evidence:
+      - doc:
+          path: docs/security/threat-model.md#what-the-profile-excludes
+          label: threat model, excluded
+          contains: ["Read-only groups are in scope."]
+    limits: No live record.
+
+  - id: feature-outside-rework
+    axis: features
+    item: Rework requested by reviewers outside the project
+    cells: {0.2.0-rc: unsupported, 0.2.0: unsupported}
+    evidence:
+      - doc:
+          path: docs/adrs/0158-a-stable-release-is-a-soaked-candidate-promoted-by-fast-forwarding-main.md
+          label: ADR 0158, item 4
+          contains: ["rework requested by outside reviewers stay outside the supported profile for `0.2`"]
+    limits: Fixed and tested (F-36, ADR 0151), but left out of the 0.2 profile.
+
+  - id: feature-legacy-auth
+    axis: features
+    item: "`executor.workerAuth.mode: legacy`"
+    cells: {0.2.0-rc: unsupported, 0.2.0: unsupported}
+    evidence:
+      - doc:
+          path: docs/security/threat-model.md#what-the-profile-excludes
+          label: threat model, excluded
+          contains: ["Unauthenticated worker routes, static inference key, no managed accounting"]
+    limits: 'Refused under `supportProfile: P1`.'
+
+  - id: feature-registry-egress
+    axis: features
+    item: Registry egress (`registries` profile)
+    cells: {0.2.0-rc: unsupported, 0.2.0: unsupported}
+    evidence:
+      - doc:
+          path: docs/security/threat-model.md#what-the-profile-excludes
+          label: threat model, excluded
+          contains: ["Enforcement lives outside the chart and is not modelled here"]
+    limits: Not modelled by the threat model.
