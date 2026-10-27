@@ -47,7 +47,7 @@ Every claim below is limited to this environment.
 - the process's uid, its effective, permitted, bounding and ambient capabilities, `no_new_privs` and its seccomp mode
 - that no service-account token is present
 - that no host path or runtime socket is present or mounted, and that `DOCKER_HOST` is unset
-- that no metadata address answers (AWS and OpenStack link-local, GCP, Alibaba)
+- that no metadata address answers (AWS, Azure and OpenStack link-local, the AWS IPv6 and ECS task addresses, GCP, Alibaba)
 - that neither `kubernetes.default.svc` nor the address in `KUBERNETES_SERVICE_HOST` accepts a connection
 - that the unapproved hosts in `PROBE_BLOCKED_URLS` are unreachable and the approved ones in `PROBE_REACHABLE_URLS` are reachable
 
@@ -56,6 +56,14 @@ It exits non-zero on any failure. It counts a host as reached when a TCP connect
 [`scripts/test-worker-boundary-probe.sh`](../../scripts/test-worker-boundary-probe.sh), run by `scripts/verify.sh`, shows the probe working both ways. A confined fixture passes. Each of fourteen escapes fails, and the failure names it: uid 0, an effective capability, a bounding capability, privilege escalation, seccomp off, a token, the Docker socket, a kubelet mount, `DOCKER_HOST`, a reachable metadata address, a reachable API URL, a reachable API Service address, unapproved egress, and an allowed endpoint that is unreachable. Removing a check from the probe, or making every connection look blocked, turns that test red.
 
 To qualify the three open rows, run the probe in a pod with the worker's label, `runtimeClassName: kata`, the worker service account, `automountServiceAccountToken: false` and the harness's security context, as the installer's `worker-egress-probe` Job does under runc. Set `PROBE_REACHABLE_URLS` to the ploegd, gateway and forge health URLs and `PROBE_BLOCKED_URLS` to the services the installer's probe lists. Attach the log to a dated record. A hostile Run is the other route: the task text carries the script, and the harness runs it in its own container.
+
+## Metadata result and F-46, 2026-10-28
+
+The metadata row above is the probe's 2026-10-26 result: `http://169.254.169.254/latest/meta-data/`, `http://metadata.google.internal/computeMetadata/v1/` and `http://100.100.100.200/latest/meta-data/` all `PASS metadata unreachable` from a Kata pod with the worker's labels. It holds for the homelab only, and for a narrower reason than the row's first column suggests: the homelab's forge, gateway and collector are `.svc` URLs, so its worker policy has no internet rule at all and nothing opened port 80 to any address.
+
+Threat-model finding [F-46](../security/threat-model.md#findings) ([#356](https://github.com/ploeg-hq/ploeg/issues/356)) is the case that result does not cover: an `http://` public endpoint renders `0.0.0.0/0` on 80, which before the fix excepted only `privateCidrs` and so admitted `169.254.169.254`. From the fix on, every internet rule excepts link-local `169.254.0.0/16` and loopback `127.0.0.0/8` whatever `privateCidrs` holds, and `scripts/test-chart-network-policies.sh` evaluates the rendered worker policy of an `http://` public forge and finds `169.254.169.254` denied on 80 and 443 while a public address is admitted on both. The probe now also tries the AWS ECS task address `169.254.170.2` and the AWS IPv6 address `fd00:ec2::254`; the chart's internet rule is IPv4 only, so the second is denied by the default deny.
+
+Still open: the probe has not run on a cloud node, where a metadata service exists to answer. That run, with a worker on an `http://` public forge, is the live result for F-46.
 
 ## Result for #16
 
