@@ -131,6 +131,10 @@
 {{- $out = append $out . -}}
 {{- end -}}
 {{- range $team := $e.teams -}}
+{{- $cap := include "ploeg.teamSpendCap" (dict "root" $root "team" $team) | fromJson -}}
+{{- if not (gt ($cap.usd | float64) 0.0) -}}
+{{- $out = append $out (printf "team %s resolves no spend cap (executor.spendCap, executor.teams[].spendCap or config.teams.%s.spendCap); P1 needs a finite cap per period on every executor team (ADR-0162)" $team.name $team.name) -}}
+{{- end -}}
 {{- range $planRole := (include "ploeg.teamRoles" $team | fromJsonArray) -}}
 {{- range $w := (include "ploeg.roleWorkloads" (dict "root" $root "team" $team "role" $planRole) | fromJsonArray) -}}
 {{- $out = concat $out (include "ploeg.workloadSupportProfileDepartures" (dict "root" $root "team" $team "role" $w.role) | fromJsonArray) -}}
