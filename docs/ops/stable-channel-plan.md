@@ -108,7 +108,7 @@ How Ploeg advertises the contract versions it serves, how a consumer checks them
   - **Upgrade notes**: the migrations that run, new required values, whether the previous stable can still roll back, and the upgrade order from [compatibility](compatibility.md#version-pairs).
   - **Security**, linking each advisory fixed.
   - **Changes**.
-  - **Qualification**: the supported profile and what was tested, with links ([#23](https://github.com/ploeg-hq/ploeg/issues/23)).
+  - **Qualification**: the supported profile and what was tested, with links ([#23](https://github.com/ploeg-hq/ploeg/issues/23)), generated from the [support matrix](../reference/support-matrix.md) with `mise run support-matrix -- --notes 0.Y.Z --commit <promoted commit>`.
 - The deprecation policy stays as [compatibility](compatibility.md#deprecation) has it. One clarification: a deprecation counts from the first stable minor whose notes list it. A candidate may mark something deprecated, but its removal waits until a stable has carried the deprecation.
 
 ## Signing, SBOM and provenance
