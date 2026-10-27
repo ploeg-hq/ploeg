@@ -326,7 +326,7 @@ spec:
           type: RuntimeDefault
       initContainers:
         - name: claude-code
-          image: ghcr.io/ploeg-hq/claude-runner:CHART-VERSION
+          image: ghcr.io/ploeg-hq/claude-runner:CHART-VERSION@sha256:25fbd910e9dfa7f05d0c7079b4ab958f4edd31172caf971a269faba911a6cec8
           command: ["ploeg-install-claude-code"]
           env:
             - name: PLOEG_CLAUDE_CODE_DIR
@@ -348,7 +348,7 @@ spec:
               mountPath: /opt/claude-code
       containers:
         - name: runner
-          image: ghcr.io/ploeg-hq/claude-runner:CHART-VERSION
+          image: ghcr.io/ploeg-hq/claude-runner:CHART-VERSION@sha256:25fbd910e9dfa7f05d0c7079b4ab958f4edd31172caf971a269faba911a6cec8
           args:
             - self-hosted-runner
             - --base-dir
@@ -450,7 +450,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: ploegd
-          image: ghcr.io/ploeg-hq/ploegd:CHART-VERSION
+          image: ghcr.io/ploeg-hq/ploegd:CHART-VERSION@sha256:da0cc1526c299863f227760b0f3f4d8428fd762de5edfeaa2effe75e3b739a36
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -634,7 +634,7 @@ spec:
           # Extracts ploeg-worker from the distroless ploegd image via
           # self-copy (no shell in distroless).
           - name: worker-bin
-            image: ghcr.io/ploeg-hq/ploegd:CHART-VERSION
+            image: ghcr.io/ploeg-hq/ploegd:CHART-VERSION@sha256:da0cc1526c299863f227760b0f3f4d8428fd762de5edfeaa2effe75e3b739a36
             command: ["/usr/local/bin/ploeg-worker", "install", "/mnt/bin/ploeg-worker"]
             securityContext:
               runAsNonRoot: true
@@ -656,7 +656,7 @@ spec:
                 memory: 64Mi
         containers:
           - name: worker
-            image: ghcr.io/ploeg-hq/claude-runner:CHART-VERSION
+            image: ghcr.io/ploeg-hq/claude-runner:CHART-VERSION@sha256:25fbd910e9dfa7f05d0c7079b4ab958f4edd31172caf971a269faba911a6cec8
             command: ["/mnt/bin/ploeg-worker"]
             env:
               - name: PLOEG_API_URL

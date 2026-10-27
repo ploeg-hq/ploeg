@@ -368,6 +368,88 @@ PLOEG_HARNESS and PLOEG_ACP_PROFILE (ADR-0097). Context: (dict "root" $
 {{- dict "name" ($rh.name | default ($th.name | default ($gh.name | default "openhands"))) "acpProfile" ($ra.profile | default ($ta.profile | default $ga.profile)) | toJson }}
 {{- end -}}
 
+{{- define "ploeg.roleValuePath" -}}
+{{- $role := .role | default dict }}
+{{- if eq .tier "role" }}
+{{- if .team.harnesses }}
+{{- $identity := include "ploeg.roleHarness" (dict "root" .root "team" .team "role" $role) | fromJson }}
+{{- printf "executor.teams[%s].harnesses[%s].%s" .team.name (include "ploeg.qualificationHarnessName" (dict "name" $identity.name "acpProfile" $identity.acpProfile)) .field }}
+{{- else }}
+{{- printf "executor.teams[%s].plan[].roles[%s].harness.%s" .team.name $role.name .field }}
+{{- end }}
+{{- else if eq .tier "team" }}
+{{- printf "executor.teams[%s].harness.%s" .team.name .field }}
+{{- else }}
+{{- printf "executor.harness.%s" .field }}
+{{- end }}
+{{- end -}}
+
+{{- define "ploeg.roleHarnessImage" -}}
+{{- $root := .root }}
+{{- $gh := $root.Values.executor.harness | default dict }}
+{{- $th := .team.harness | default dict }}
+{{- $rh := (.role | default dict).harness | default dict }}
+{{- $name := (include "ploeg.roleHarness" . | fromJson).name }}
+{{- $tier := dict "root" $root "team" .team "role" .role "field" "image" }}
+{{- $resolved := dict "image" "" "path" "" }}
+{{- if $rh.image }}
+{{- $resolved = dict "image" $rh.image "path" (include "ploeg.roleValuePath" (merge (dict "tier" "role") $tier)) }}
+{{- else if $th.image }}
+{{- $resolved = dict "image" $th.image "path" (include "ploeg.roleValuePath" (merge (dict "tier" "team") $tier)) }}
+{{- else if eq $name "claude-environment" }}
+{{- if and (eq ($gh.name | default "") "claude-environment") $gh.image }}
+{{- $resolved = dict "image" $gh.image "path" "executor.harness.image" }}
+{{- else }}
+{{- $resolved = dict "image" (include "ploeg.claudeRunnerImage" $root) "path" "claudeRunner.image" }}
+{{- end }}
+{{- else if $gh.image }}
+{{- $resolved = dict "image" $gh.image "path" "executor.harness.image" }}
+{{- else if $root.Values.executor.runnerImage }}
+{{- $resolved = dict "image" $root.Values.executor.runnerImage "path" "executor.runnerImage" }}
+{{- end }}
+{{- toJson $resolved }}
+{{- end -}}
+
+{{- define "ploeg.roleToolchains" -}}
+{{- $gh := .root.Values.executor.harness | default dict }}
+{{- $th := .team.harness | default dict }}
+{{- $rh := (.role | default dict).harness | default dict }}
+{{- $tier := dict "root" .root "team" .team "role" .role "field" "toolchains" }}
+{{- $resolved := dict "toolchains" (list) "path" "executor.harness.toolchains" }}
+{{- if $rh.toolchains }}
+{{- $resolved = dict "toolchains" $rh.toolchains "path" (include "ploeg.roleValuePath" (merge (dict "tier" "role") $tier)) }}
+{{- else if $th.toolchains }}
+{{- $resolved = dict "toolchains" $th.toolchains "path" (include "ploeg.roleValuePath" (merge (dict "tier" "team") $tier)) }}
+{{- else if $gh.toolchains }}
+{{- $resolved = dict "toolchains" $gh.toolchains "path" "executor.harness.toolchains" }}
+{{- end }}
+{{- toJson $resolved }}
+{{- end -}}
+
+{{- define "ploeg.workerImageSource" -}}
+{{- if .Values.executor.workerImage }}
+{{- dict "image" .Values.executor.workerImage "path" "executor.workerImage" | toJson }}
+{{- else }}
+{{- dict "image" (include "ploeg.workerImage" .) "path" "worker.image" | toJson }}
+{{- end }}
+{{- end -}}
+
+{{- define "ploeg.ploegdWorkerImageSource" -}}
+{{- if .Values.executor.workerImage }}
+{{- dict "image" .Values.executor.workerImage "path" "executor.workerImage" | toJson }}
+{{- else }}
+{{- dict "image" (include "ploeg.image" .) "path" "image" | toJson }}
+{{- end }}
+{{- end -}}
+
+{{- define "ploeg.workerBinImageSource" -}}
+{{- if .separate }}
+{{- include "ploeg.workerImageSource" .root }}
+{{- else }}
+{{- include "ploeg.ploegdWorkerImageSource" .root }}
+{{- end }}
+{{- end -}}
+
 {{/*
 ploeg.workerPodTemplate renders the worker pod template for one team —
 shared by every executor (ScaledJob, CronJob). Context: (dict "root" $
@@ -387,12 +469,7 @@ global executor.harness defaults field-by-field (explicit hasKey checks, so
 {{- $rh := $role.harness | default dict }}
 {{- $identity := include "ploeg.roleHarness" (dict "root" $root "team" $team "role" $role) | fromJson }}
 {{- $hName := $identity.name }}
-{{- $hImage := $rh.image | default ($th.image | default ($gh.image | default $root.Values.executor.runnerImage)) }}
-{{- if eq $hName "claude-environment" }}
-{{- $globalImage := "" }}
-{{- if eq ($gh.name | default "") "claude-environment" }}{{- $globalImage = $gh.image }}{{- end }}
-{{- $hImage = $rh.image | default ($th.image | default ($globalImage | default (include "ploeg.claudeRunnerImage" $root))) }}
-{{- end }}
+{{- $hImage := (include "ploeg.roleHarnessImage" (dict "root" $root "team" $team "role" $role) | fromJson).image }}
 {{- if not $hImage }}
 {{- fail (printf "team %s: no agent image; set executor.harness.image, or harness.image on the team or Role. Ploeg publishes no agent image" $team.name) }}
 {{- end }}
@@ -401,7 +478,7 @@ global executor.harness defaults field-by-field (explicit hasKey checks, so
 {{- $hOutcomeFile := $rh.outcomeFile | default ($th.outcomeFile | default $gh.outcomeFile) }}
 {{- $hTimeout := $rh.timeout | default ($th.timeout | default $gh.timeout) }}
 {{- $hIdleTimeout := $rh.idleTimeout | default ($th.idleTimeout | default $gh.idleTimeout) }}
-{{- $hToolchains := $rh.toolchains | default ($th.toolchains | default $gh.toolchains) }}
+{{- $hToolchains := (include "ploeg.roleToolchains" (dict "root" $root "team" $team "role" $role) | fromJson).toolchains }}
 {{- $hVerify := $rh.verify | default ($th.verify | default $gh.verify) }}
 {{- $hVerifyTimeout := $rh.verifyTimeout | default ($th.verifyTimeout | default $gh.verifyTimeout) }}
 {{- $hTelemetry := $rh.telemetry | default ($th.telemetry | default $gh.telemetry) }}
@@ -480,7 +557,7 @@ global executor.harness defaults field-by-field (explicit hasKey checks, so
 {{- $layoutOverride := dict }}
 {{- if hasKey $rh "harnessContainer" }}{{- $layoutOverride = dict "value" $rh.harnessContainer }}{{- else if hasKey $th "harnessContainer" }}{{- $layoutOverride = dict "value" $th.harnessContainer }}{{- end }}
 {{- $separate := eq (include "ploeg.harnessContainer" (dict "root" $root "name" $hName "dind" $hDind "isolation" $isolation "override" $layoutOverride "who" $who)) "separate" }}
-{{- $workerImage := $root.Values.executor.workerImage | default (include "ploeg.workerImage" $root) }}
+{{- $workerImage := (include "ploeg.workerImageSource" $root | fromJson).image }}
 {{- /* claude-environment harness (ADR-0084): same override chain. */}}
 {{- $gce := $gh.claudeEnvironment | default dict }}
 {{- $tce := $th.claudeEnvironment | default dict }}
@@ -540,7 +617,7 @@ spec:
     # Extracts ploeg-worker from the distroless ploegd image via
     # self-copy (no shell in distroless).
     - name: worker-bin
-      image: {{ ternary $workerImage ($root.Values.executor.workerImage | default (include "ploeg.image" $root)) $separate }}
+      image: {{ (include "ploeg.workerBinImageSource" (dict "root" $root "separate" $separate) | fromJson).image }}
       command: ["/usr/local/bin/ploeg-worker", "install", "/mnt/bin/ploeg-worker"]
       securityContext:
         runAsNonRoot: true

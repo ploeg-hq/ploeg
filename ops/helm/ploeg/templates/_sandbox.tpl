@@ -82,7 +82,7 @@ spec:
   {{- end }}
   containers:
     - name: launcher
-      image: {{ $root.Values.executor.workerImage | default (include "ploeg.image" $root) }}
+      image: {{ (include "ploeg.ploegdWorkerImageSource" $root | fromJson).image }}
       command: ["/usr/local/bin/ploeg-worker", "sandbox-launch"]
       env:
         - name: POD_NAME

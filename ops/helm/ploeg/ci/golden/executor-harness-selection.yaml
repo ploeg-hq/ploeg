@@ -206,7 +206,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: ploegd
-          image: ghcr.io/ploeg-hq/ploegd:CHART-VERSION
+          image: ghcr.io/ploeg-hq/ploegd:CHART-VERSION@sha256:da0cc1526c299863f227760b0f3f4d8428fd762de5edfeaa2effe75e3b739a36
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -392,7 +392,7 @@ spec:
           # Extracts ploeg-worker from the distroless ploegd image via
           # self-copy (no shell in distroless).
           - name: worker-bin
-            image: ghcr.io/ploeg-hq/ploeg-worker:CHART-VERSION
+            image: ghcr.io/ploeg-hq/ploeg-worker:CHART-VERSION@sha256:cc5bedc5be0fe1c8546671c1ccbf76c62646c87e3bf52908de7c317852848e14
             command: ["/usr/local/bin/ploeg-worker", "install", "/mnt/bin/ploeg-worker"]
             securityContext:
               runAsNonRoot: true
@@ -413,7 +413,7 @@ spec:
                 cpu: 50m
                 memory: 64Mi
           - name: harness
-            image: registry.example/agent-runner:1.3.0
+            image: registry.example/agent-runner:1.3.0@sha256:db06af1d9c0969ed594a21ee2b3369a79d6e91abb36b94d29223918581963027
             restartPolicy: Always
             command: ["/mnt/bin/ploeg-worker", "harness-serve", "/run/ploeg/launcher/launcher.sock"]
             volumeMounts:
@@ -444,7 +444,7 @@ spec:
                 memory: 1Gi
         containers:
           - name: worker
-            image: ghcr.io/ploeg-hq/ploeg-worker:CHART-VERSION
+            image: ghcr.io/ploeg-hq/ploeg-worker:CHART-VERSION@sha256:cc5bedc5be0fe1c8546671c1ccbf76c62646c87e3bf52908de7c317852848e14
             command: ["/usr/local/bin/ploeg-worker"]
             env:
               - name: PLOEG_API_URL
@@ -631,7 +631,7 @@ spec:
           # Extracts ploeg-worker from the distroless ploegd image via
           # self-copy (no shell in distroless).
           - name: worker-bin
-            image: ghcr.io/ploeg-hq/ploeg-worker:CHART-VERSION
+            image: ghcr.io/ploeg-hq/ploeg-worker:CHART-VERSION@sha256:cc5bedc5be0fe1c8546671c1ccbf76c62646c87e3bf52908de7c317852848e14
             command: ["/usr/local/bin/ploeg-worker", "install", "/mnt/bin/ploeg-worker"]
             securityContext:
               runAsNonRoot: true
@@ -652,7 +652,7 @@ spec:
                 cpu: 50m
                 memory: 64Mi
           - name: harness
-            image: registry.example/agent-runner:1.3.0
+            image: registry.example/agent-runner:1.3.0@sha256:db06af1d9c0969ed594a21ee2b3369a79d6e91abb36b94d29223918581963027
             restartPolicy: Always
             command: ["/mnt/bin/ploeg-worker", "harness-serve", "/run/ploeg/launcher/launcher.sock"]
             volumeMounts:
@@ -683,7 +683,7 @@ spec:
                 memory: 1Gi
         containers:
           - name: worker
-            image: ghcr.io/ploeg-hq/ploeg-worker:CHART-VERSION
+            image: ghcr.io/ploeg-hq/ploeg-worker:CHART-VERSION@sha256:cc5bedc5be0fe1c8546671c1ccbf76c62646c87e3bf52908de7c317852848e14
             command: ["/usr/local/bin/ploeg-worker"]
             env:
               - name: PLOEG_API_URL
@@ -884,7 +884,7 @@ spec:
           # Extracts ploeg-worker from the distroless ploegd image via
           # self-copy (no shell in distroless).
           - name: worker-bin
-            image: ghcr.io/ploeg-hq/ploegd:CHART-VERSION
+            image: ghcr.io/ploeg-hq/ploegd:CHART-VERSION@sha256:da0cc1526c299863f227760b0f3f4d8428fd762de5edfeaa2effe75e3b739a36
             command: ["/usr/local/bin/ploeg-worker", "install", "/mnt/bin/ploeg-worker"]
             securityContext:
               runAsNonRoot: true
@@ -1094,7 +1094,7 @@ spec:
           # Extracts ploeg-worker from the distroless ploegd image via
           # self-copy (no shell in distroless).
           - name: worker-bin
-            image: ghcr.io/ploeg-hq/ploegd:CHART-VERSION
+            image: ghcr.io/ploeg-hq/ploegd:CHART-VERSION@sha256:da0cc1526c299863f227760b0f3f4d8428fd762de5edfeaa2effe75e3b739a36
             command: ["/usr/local/bin/ploeg-worker", "install", "/mnt/bin/ploeg-worker"]
             securityContext:
               runAsNonRoot: true
@@ -1304,7 +1304,7 @@ spec:
           # Extracts ploeg-worker from the distroless ploegd image via
           # self-copy (no shell in distroless).
           - name: worker-bin
-            image: ghcr.io/ploeg-hq/ploeg-worker:CHART-VERSION
+            image: ghcr.io/ploeg-hq/ploeg-worker:CHART-VERSION@sha256:cc5bedc5be0fe1c8546671c1ccbf76c62646c87e3bf52908de7c317852848e14
             command: ["/usr/local/bin/ploeg-worker", "install", "/mnt/bin/ploeg-worker"]
             securityContext:
               runAsNonRoot: true
@@ -1325,7 +1325,7 @@ spec:
                 cpu: 50m
                 memory: 64Mi
           - name: harness
-            image: registry.example/agent-runner:1.3.0
+            image: registry.example/agent-runner:1.3.0@sha256:db06af1d9c0969ed594a21ee2b3369a79d6e91abb36b94d29223918581963027
             restartPolicy: Always
             command: ["/mnt/bin/ploeg-worker", "harness-serve", "/run/ploeg/launcher/launcher.sock"]
             volumeMounts:
@@ -1356,7 +1356,7 @@ spec:
                 memory: 1Gi
         containers:
           - name: worker
-            image: ghcr.io/ploeg-hq/ploeg-worker:CHART-VERSION
+            image: ghcr.io/ploeg-hq/ploeg-worker:CHART-VERSION@sha256:cc5bedc5be0fe1c8546671c1ccbf76c62646c87e3bf52908de7c317852848e14
             command: ["/usr/local/bin/ploeg-worker"]
             env:
               - name: PLOEG_API_URL
