@@ -138,7 +138,17 @@ The RPO is exactly the backup point: every write before it came back and every w
 
 The [upgrade drill](../research/2026-10-26-upgrade-drill.md) does the same with a backup written by an older release's own code, 13,037 rows in a 77 MB data directory, and migrates it to the current release before `ploegd` starts. From `v0.2.0-rc.77` it served again in 287 ms on the CI runner and 0.60 to 0.67 s on a workstation, and from `v0.2.0-rc.1`, 39 migrations included, in 424 ms and 0.77 to 1.03 s. A worker of the older release that kept running got `gone` on its next renewal and could not checkpoint or report.
 
-These numbers time the database and `ploegd`, not a production restore. A CloudNativePG restore also downloads the base backup and replays archived WAL from object storage, both of which grow with the database and the time since the last base backup, and the pod has to be scheduled and its volume bound. With continuous WAL archiving the RPO is the archiving delay, not the age of the base backup. Time a real restore of `ploeg-db` before you promise an operator target.
+These numbers time the database and `ploegd`, not a production restore. A CloudNativePG restore also downloads the base backup and replays archived WAL from object storage, both of which grow with the database and the time since the last base backup, and the pod has to be scheduled and its volume bound. With continuous WAL archiving the RPO is the archiving delay, not the age of the base backup.
+
+### Proposed operator target
+
+The maintainer proposed this target on 2026-10-27. It is a target, not a measurement: no CloudNativePG restore of `ploeg-db` has been timed yet, and the target is confirmed or revised by the first real restore drill ([#22](https://github.com/ploeg-hq/ploeg/issues/22)).
+
+| Scope | RTO, outage to `ploegd` serving | RPO, data lost | Status |
+| --- | --- | --- | --- |
+| PostgreSQL restored by CloudNativePG from object storage, with continuous WAL archiving | 1 hour | 5 minutes | Proposed, not yet measured |
+
+The 5-minute RPO assumes WAL segments reach object storage at least every 5 minutes, which CloudNativePG's default `archive_timeout` of `5min` gives. The 1-hour RTO covers scheduling the pod, binding its volume, downloading the base backup and replaying WAL, which the drills above leave out. Until a drill records a CloudNativePG restore within both numbers, do not present them as measured.
 
 ## Symptom, cause, fix
 
