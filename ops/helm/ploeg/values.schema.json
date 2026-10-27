@@ -1120,9 +1120,52 @@
                   "maxLength": 256,
                   "pattern": "^[!-~]+$"
                 }
+              },
+              "requireClaims": {
+                "type": "object",
+                "maxProperties": 10,
+                "description": "Claims a person token for this consumer must carry (ADR-0150, threat model F-47), such as {groups: [ploeg-operators]}: each named claim must hold one of its values, as a string equal to one or an array of strings containing one (scope is split on spaces). A verified token without them answers 403 person_claim_required and changes nothing. Profile P1 needs it from chart 0.3.0 on a consumer with execute that names audiences or clientIds.",
+                "propertyNames": {
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[!-~]+$"
+                },
+                "additionalProperties": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 20,
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256,
+                    "pattern": "^[!-~]+$"
+                  }
+                }
               }
             },
             "allOf": [
+              {
+                "if": {
+                  "required": [
+                    "requireClaims"
+                  ]
+                },
+                "then": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "clientIds"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "audiences"
+                      ]
+                    }
+                  ]
+                }
+              },
               {
                 "if": {
                   "required": [

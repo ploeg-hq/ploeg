@@ -220,6 +220,60 @@ if printf '%s' "$notes" | grep -qF 'UNSUPPORTED'; then
 	status=1
 fi
 
+BEARER_VALUES=ops/helm/ploeg/ci/operator-bearer-without-claims-values.yaml
+BEARER_DEPARTURE='operator consumer console has execute and accepts a person token as the bearer (audiences or clientIds) without requireClaims'
+BEARER_WARNING='WARNING: operator consumers console have execute and accept'
+renders_p1 -f "$BEARER_VALUES"
+notes=$(helm install --dry-run=client ploeg ops/helm/ploeg -f "$REQUIRED" -f "$P1_VALUES" -f "$BEARER_VALUES" 2>&1)
+if ! printf '%s' "$notes" | grep -qF -- "$BEARER_WARNING"; then
+	echo "a P1 render before chart 0.3.0 does not warn about an execute consumer that requires no person token claim:"
+	echo "$notes"
+	status=1
+fi
+notes=$(helm install --dry-run=client ploeg ops/helm/ploeg -f "$REQUIRED" -f "$P1_VALUES" -f "$BEARER_VALUES" --set 'operator.consumers[0].requireClaims.groups={ploeg-operators}' 2>&1)
+if printf '%s' "$notes" | grep -qF -- 'WARNING: operator consumers'; then
+	echo "a consumer that requires a person token claim is still warned about"
+	status=1
+fi
+if out=$(helm template ploeg ops/helm/ploeg -f "$REQUIRED" -f "$P1_VALUES" -f "$BEARER_VALUES" --set 'operator.consumers[0].requireClaims.groups=' 2>&1); then
+	echo "chart rendered requireClaims with a claim that lists no value"
+	status=1
+fi
+static_consumer='{"operator": {"consumers": [{"name": "static", "teams": ["silver"], "execute": true, "requireClaims": {"groups": ["ploeg-operators"]}, "tokenSecret": {"name": "ploeg-static", "key": "token"}}]}}'
+if out=$(printf '%s' "$static_consumer" | helm template ploeg ops/helm/ploeg -f "$REQUIRED" -f "$P1_VALUES" -f - 2>&1) || ! printf '%s' "$out" | grep -qF "missing property 'audiences'"; then
+	echo "chart rendered requireClaims on a consumer that names no audiences or clientIds:"
+	echo "$out"
+	status=1
+fi
+next_minor=$(mktemp -d)
+for version in 0.3.0-rc.1 0.3.0; do
+	rm -rf "$next_minor/ploeg"
+	cp -R ops/helm/ploeg "$next_minor/ploeg"
+	sed "s/^version:.*/version: $version/" ops/helm/ploeg/Chart.yaml >"$next_minor/ploeg/Chart.yaml"
+	if out=$(helm template ploeg "$next_minor/ploeg" -f "$REQUIRED" -f "$P1_VALUES" -f "$BEARER_VALUES" 2>&1); then
+		echo "chart $version rendered an execute consumer that requires no person token claim under supportProfile: P1"
+		status=1
+	elif ! printf '%s' "$out" | grep -qF -- "$BEARER_DEPARTURE"; then
+		echo "chart $version refused the bearer consumer for the wrong reason:"
+		echo "$out"
+		status=1
+	fi
+	for passing in "--set=operator.consumers[0].requireClaims.groups={ploeg-operators}" "--set=operator.consumers[0].execute=false" "--set=supportProfile=unsupported"; do
+		if ! out=$(helm template ploeg "$next_minor/ploeg" -f "$REQUIRED" -f "$P1_VALUES" -f "$BEARER_VALUES" "$passing" 2>&1); then
+			echo "chart $version refused the bearer consumer with $passing, which it must render:"
+			echo "$out"
+			status=1
+		fi
+	done
+	notes=$(helm install --dry-run=client ploeg "$next_minor/ploeg" -f "$REQUIRED" -f "$P1_VALUES" -f "$BEARER_VALUES" --set supportProfile=unsupported 2>&1)
+	if ! printf '%s' "$notes" | grep -qF -- "- $BEARER_DEPARTURE" || printf '%s' "$notes" | grep -qF -- "$BEARER_WARNING"; then
+		echo "chart $version under supportProfile: unsupported does not list the bearer consumer as a departure in place of the warning:"
+		echo "$notes"
+		status=1
+	fi
+done
+rm -rf "$next_minor"
+
 must_render_with() {
 	values=$1
 	shift

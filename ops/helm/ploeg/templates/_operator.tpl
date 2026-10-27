@@ -1,3 +1,17 @@
+{{- define "ploeg.consumersActingForAnyPerson" -}}
+{{- $names := list -}}
+{{- range .Values.operator.consumers -}}
+{{- if and .execute (or .clientIds .audiences) (not .requireClaims) -}}
+{{- $names = append $names .name -}}
+{{- end -}}
+{{- end -}}
+{{- toJson $names -}}
+{{- end -}}
+
+{{- define "ploeg.personClaimsRequiredByP1" -}}
+{{- if semverCompare ">=0.3.0-0" .Chart.Version -}}true{{- end -}}
+{{- end -}}
+
 {{- define "ploeg.operatorControlEnv" -}}
 {{- $consumers := list -}}
 {{- $names := dict -}}
@@ -14,6 +28,7 @@
 {{- if hasKey . "maxBudgetUsd" -}}{{- $_ := set $consumer "maxBudgetUsd" .maxBudgetUsd -}}{{- end -}}
 {{- if .clientIds -}}{{- $_ := set $consumer "clientIds" .clientIds -}}{{- $clientIds = true -}}{{- end -}}
 {{- if .audiences -}}{{- $_ := set $consumer "audiences" .audiences -}}{{- end -}}
+{{- if .requireClaims -}}{{- $_ := set $consumer "requireClaims" .requireClaims -}}{{- end -}}
 {{- $consumers = append $consumers $consumer }}
 - name: {{ $tokenEnv }}
   valueFrom:
