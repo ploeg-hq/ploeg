@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"sort"
 	"time"
 
@@ -107,6 +108,10 @@ func teamPeriodSpend(ctx context.Context, q rowQuerier, team string, since time.
 // TeamPeriodSpends reads every capped Team's spend in its current period,
 // sorted by team.
 func (s *Store) TeamPeriodSpends(ctx context.Context) ([]TeamPeriodSpend, error) {
+	return s.teamPeriodSpends(ctx, s.pool)
+}
+
+func (s *Store) teamPeriodSpends(ctx context.Context, q rowQuerier) ([]TeamPeriodSpend, error) {
 	teams := make([]string, 0, len(s.spendCaps))
 	for team := range s.spendCaps {
 		teams = append(teams, team)
@@ -117,13 +122,29 @@ func (s *Store) TeamPeriodSpends(ctx context.Context) ([]TeamPeriodSpend, error)
 	for _, team := range teams {
 		c := s.spendCaps[team]
 		start := c.Period.Start(now)
-		settled, held, err := teamPeriodSpend(ctx, s.pool, team, start)
+		settled, held, err := teamPeriodSpend(ctx, q, team, start)
 		if err != nil {
 			return nil, err
 		}
 		out = append(out, TeamPeriodSpend{Team: team, Cap: c, PeriodStart: start, PeriodEnd: c.Period.End(now), SettledUSD: settled, HeldUSD: held})
 	}
 	return out, nil
+}
+
+func (s *Store) describeSpendCaps(ctx context.Context, byID map[string]*OperatorTeam) error {
+	spends, err := s.TeamPeriodSpends(ctx)
+	if err != nil {
+		return err
+	}
+	for _, t := range spends {
+		team := byID[t.Team]
+		if team == nil {
+			continue
+		}
+		team.SpendCap = &OperatorSpendCap{USD: t.Cap.USD, Period: string(t.Cap.Period), PeriodStart: t.PeriodStart, PeriodEnd: t.PeriodEnd,
+			SettledUSD: t.SettledUSD, HeldUSD: t.HeldUSD, RemainingUSD: math.Max(0, t.Cap.USD-t.SettledUSD-t.HeldUSD)}
+	}
+	return nil
 }
 
 // checkTeamSpendCap refuses a claim whose hold would take its Team over the
