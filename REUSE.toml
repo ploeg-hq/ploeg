@@ -1,12 +1,12 @@
 version = 1
 SPDX-PackageName = "Ploeg"
-SPDX-PackageSupplier = "Ryan Grippeling / WebGrip <ryan@webgrip.nl>"
+SPDX-PackageSupplier = "Ryan Grippeling <ryan@webgrip.nl>"
 SPDX-PackageDownloadLocation = "https://github.com/ploeg-hq/ploeg"
 
 [[annotations]]
 path = "**"
 precedence = "aggregate"
-SPDX-FileCopyrightText = "2026 Ryan Grippeling / WebGrip"
+SPDX-FileCopyrightText = "2026 Ryan Grippeling"
 SPDX-License-Identifier = "Apache-2.0"
 
 [[annotations]]
@@ -21,7 +21,7 @@ path = [
   "docs/**/*.webp",
 ]
 precedence = "aggregate"
-SPDX-FileCopyrightText = "2026 Ryan Grippeling / WebGrip"
+SPDX-FileCopyrightText = "2026 Ryan Grippeling"
 SPDX-License-Identifier = "CC-BY-4.0"
 
 [[annotations]]
@@ -32,5 +32,5 @@ path = [
   "CHANGELOG.md",
 ]
 precedence = "aggregate"
-SPDX-FileCopyrightText = "2026 Ryan Grippeling / WebGrip"
+SPDX-FileCopyrightText = "2026 Ryan Grippeling"
 SPDX-License-Identifier = "Apache-2.0"

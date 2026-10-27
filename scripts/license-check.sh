@@ -3,7 +3,7 @@ set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root"
-holder="Copyright 2026 Ryan Grippeling / WebGrip"
+holder="Copyright 2026 Ryan Grippeling"
 fail=0
 
 note() { printf '  %s\n' "$1"; fail=1; }
@@ -14,10 +14,11 @@ echo "License consistency — Apache-2.0 code, CC-BY-4.0 documentation"
 grep -q 'Apache License' LICENSE 2>/dev/null || note "LICENSE is not Apache-2.0"
 grep -qE '\[yyyy\]|\[name of copyright owner\]' LICENSE 2>/dev/null \
   && note "LICENSE still carries the Apache appendix placeholders; name the year and the owner"
-grep -qF "$holder" LICENSE 2>/dev/null || note "LICENSE does not carry the estate copyright line: $holder"
+holder_line="^[[:space:]]*${holder}[[:space:]]*\$"
+grep -qE "$holder_line" LICENSE 2>/dev/null || note "LICENSE does not carry the estate copyright line: $holder"
 
 [ -f NOTICE ] || note "NOTICE is missing; Apache-2.0 section 4(d) is how attribution travels with a fork"
-grep -qF "$holder" NOTICE 2>/dev/null || note "NOTICE does not carry the estate copyright line"
+grep -qE "$holder_line" NOTICE 2>/dev/null || note "NOTICE does not carry the estate copyright line"
 
 [ -f CONTRIBUTING.md ] || note "CONTRIBUTING.md is missing; inbound licence terms should be stated, not assumed"
 
