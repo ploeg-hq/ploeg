@@ -1257,6 +1257,15 @@
         "apiUrl": {
           "type": "string"
         },
+        "namespace": {
+          "type": "string",
+          "pattern": "^([a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?)?$",
+          "description": "Namespace the worker workloads render into: the ScaledJobs or CronJobs, the TriggerAuthentication, the sandbox objects, the worker and sandbox launcher ServiceAccounts, Role and RoleBinding, their NetworkPolicies and the worker admission policy's namespace match. Empty keeps them in the release namespace. The installer creates it with the restricted Pod Security level and the Secrets the worker pods read; ploegd's NetworkPolicy then admits the worker and launcher pods from it (F-44, ADR-0169)."
+        },
+        "acknowledgeSharedNamespace": {
+          "type": "boolean",
+          "description": "true keeps the worker workloads in the release namespace under supportProfile P1. Without it, P1 warns before chart 0.3.0 and refuses from it while executor.namespace is empty or names the release namespace (F-44, ADR-0169)."
+        },
         "cronjob": {
           "type": "object",
           "properties": {

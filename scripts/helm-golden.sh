@@ -72,6 +72,8 @@ for case in ":default" \
 	"ops/helm/ploeg/ci/executor-harness-container-shared-values.yaml:executor-harness-container-shared" \
 	"ops/helm/ploeg/ci/executor-harness-selection-values.yaml:executor-harness-selection" \
 	"ops/helm/ploeg/ci/monitoring-values.yaml:monitoring" \
+	"ops/helm/ploeg/ci/executor-namespace-values.yaml:executor-namespace" \
+	"ops/helm/ploeg/ci/executor-namespace-cronjob-values.yaml:executor-namespace-cronjob" \
 	"ops/helm/ploeg/ci/knowledge-graph-values.yaml:knowledge-graph" \
 	"ops/helm/ploeg/ci/mcp-values.yaml:mcp" \
 	"ops/helm/ploeg/ci/claude-runner-values.yaml:claude-runner" \
@@ -271,6 +273,60 @@ if printf '%s' "$notes" | grep -qF 'DEPRECATED: harnessContainer'; then
 	echo "the default render carries the shared harness container's deprecation note"
 	status=1
 fi
+
+for case in "executor-namespace:ploeg-workers" "executor-namespace-cronjob:ploeg-workers" "executor:default" "executor-sandbox-team:default" "executor-worker-admission:default"; do
+	if ! uv run -q --no-project --with pyyaml==6.0.3 python scripts/check-executor-namespace.py "$GOLDEN/${case%%:*}.yaml" default "${case##*:}"; then
+		echo "golden '${case%%:*}' places a worker or control-plane object outside its namespace"
+		status=1
+	fi
+done
+SHARED_NAMESPACE='executor.namespace is empty or names the release namespace, so the worker workloads share namespace default with ploegd'
+NAMED_CALLERS='--set-json=networkPolicy.ploegd.ingressFrom=[{"namespaceSelector":{"matchLabels":{"kubernetes.io/metadata.name":"gateway"}}}]'
+renders_p1 --set executor.namespace=ploeg-workers
+renders_p1 --set executor.acknowledgeSharedNamespace=true
+notes=$(helm install --dry-run=client ploeg ops/helm/ploeg -f "$REQUIRED" -f "$P1_VALUES" 2>&1)
+if ! printf '%s' "$notes" | grep -qF -- "WARNING: $SHARED_NAMESPACE"; then
+	echo "a P1 render before chart 0.3.0 keeps the workers beside ploegd without a warning:"
+	echo "$notes"
+	status=1
+fi
+for separated in --set=executor.namespace=ploeg-workers --set=executor.acknowledgeSharedNamespace=true --set=supportProfile=unsupported --set=executor.enabled=false; do
+	notes=$(helm install --dry-run=client ploeg ops/helm/ploeg -f "$REQUIRED" -f "$P1_VALUES" "$separated" 2>&1)
+	if printf '%s' "$notes" | grep -qF -- 'executor.namespace is empty'; then
+		echo "a render with $separated still warns about a shared worker namespace"
+		status=1
+	fi
+done
+executor_namespace_chart=$(mktemp -d)
+for version in 0.3.0-rc.1 0.3.0; do
+	rm -rf "$executor_namespace_chart/ploeg"
+	cp -R ops/helm/ploeg "$executor_namespace_chart/ploeg"
+	sed "s/^version:.*/version: $version/" ops/helm/ploeg/Chart.yaml >"$executor_namespace_chart/ploeg/Chart.yaml"
+	for shared in "" --set=executor.namespace=default --set=executor.acknowledgeSharedNamespace=false; do
+		if out=$(helm template ploeg "$executor_namespace_chart/ploeg" -f "$REQUIRED" -f "$P1_VALUES" "$NAMED_CALLERS" ${shared:+"$shared"} 2>&1); then
+			echo "chart $version rendered worker workloads in the release namespace under supportProfile: P1 (${shared:-defaults})"
+			status=1
+		elif ! printf '%s' "$out" | grep -qF -- "$SHARED_NAMESPACE"; then
+			echo "chart $version refused a shared worker namespace (${shared:-defaults}) for the wrong reason:"
+			echo "$out"
+			status=1
+		fi
+	done
+	for passing in --set=executor.namespace=ploeg-workers --set=executor.acknowledgeSharedNamespace=true --set=supportProfile=unsupported --set=executor.enabled=false; do
+		if ! out=$(helm template ploeg "$executor_namespace_chart/ploeg" -f "$REQUIRED" -f "$P1_VALUES" "$NAMED_CALLERS" "$passing" 2>&1); then
+			echo "chart $version refused $passing, which it must render under supportProfile: P1:"
+			echo "$out"
+			status=1
+		fi
+	done
+	notes=$(helm install --dry-run=client ploeg "$executor_namespace_chart/ploeg" -f "$REQUIRED" -f "$P1_VALUES" "$NAMED_CALLERS" --set supportProfile=unsupported 2>&1)
+	if ! printf '%s' "$notes" | grep -qF -- "- $SHARED_NAMESPACE" || printf '%s' "$notes" | grep -qF -- "WARNING: $SHARED_NAMESPACE"; then
+		echo "chart $version under supportProfile: unsupported does not list the shared worker namespace as a departure, or still warns:"
+		echo "$notes"
+		status=1
+	fi
+done
+rm -rf "$executor_namespace_chart"
 
 if [ "$mode" = "check" ] && [ "$status" -ne 0 ]; then
 	echo
