@@ -21,7 +21,7 @@
           "description": "Native ValidatingAdmissionPolicy over every ploeg-worker Pod in the release namespace (Kubernetes 1.30 or later); see docs/ops/self-hosting-security.md.",
           "properties": {
             "enabled": {
-              "type": "boolean",
+              "type": ["boolean", "null"],
               "description": "Install the policy and its Deny binding. Unset follows supportProfile: on under P1, off under unsupported; false under P1 leaves the profile (finding F-49). The render fails on Kubernetes older than 1.30 and on any team or Role that keeps privileged DinD. Installing it needs cluster-scoped RBAC for admissionregistration.k8s.io."
             },
             "runtimeClassNames": {
