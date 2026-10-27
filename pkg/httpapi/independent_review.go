@@ -9,7 +9,7 @@ import (
 )
 
 // CheckIndependentReview refuses a Team plan whose independentReview the
-// configured Roles break (ADR-0162). With Model set, no model a reviewing
+// configured Roles break (ADR-0163). With Model set, no model a reviewing
 // Role's inference policy admits may be one its writing Role's policy admits;
 // with Harness set, the same holds for the Harnesses each Role's admission may
 // choose. A Role with no policy or no Harness configuration is refused, since
@@ -46,12 +46,12 @@ func distinctModels(team string, pair plan.ReviewPair, llm *LLMControl) error {
 	models := func(role string) ([]string, error) {
 		if llm == nil {
 			return nil, fmt.Errorf("team %q requires its reviewing Role %q to run a different model from its writing Role %q, "+
-				"but ploegd runs without managed inference policies, so nothing proves the models differ (ADR-0162)", team, pair.Reviewer, pair.Writer)
+				"but ploegd runs without managed inference policies, so nothing proves the models differ (ADR-0163)", team, pair.Reviewer, pair.Writer)
 		}
 		p, ok := llm.Policy(team, role)
 		if !ok {
 			return nil, fmt.Errorf("team %q requires its reviewing Role %q to run a different model from its writing Role %q, "+
-				"but Role %q has no managed inference policy, so nothing proves the models differ (ADR-0162)", team, pair.Reviewer, pair.Writer, role)
+				"but Role %q has no managed inference policy, so nothing proves the models differ (ADR-0163)", team, pair.Reviewer, pair.Writer, role)
 		}
 		return p.Models, nil
 	}
@@ -66,7 +66,7 @@ func distinctModels(team string, pair plan.ReviewPair, llm *LLMControl) error {
 	for _, m := range reviewer {
 		if slices.Contains(writer, m) {
 			return fmt.Errorf("team %q requires its reviewers to run a different model from its writers, "+
-				"but reviewing Role %q and writing Role %q may both run model %q (ADR-0162)", team, pair.Reviewer, pair.Writer, m)
+				"but reviewing Role %q and writing Role %q may both run model %q (ADR-0163)", team, pair.Reviewer, pair.Writer, m)
 		}
 	}
 	return nil
@@ -77,7 +77,7 @@ func distinctHarnesses(team string, pair plan.ReviewPair, harnesses TeamHarnesse
 		h, ok := harnesses[team][role]
 		if !ok {
 			return nil, fmt.Errorf("team %q requires its reviewing Role %q to run a different harness from its writing Role %q, "+
-				"but Role %q has no harness configuration, so nothing proves the harnesses differ (ADR-0162)", team, pair.Reviewer, pair.Writer, role)
+				"but Role %q has no harness configuration, so nothing proves the harnesses differ (ADR-0163)", team, pair.Reviewer, pair.Writer, role)
 		}
 		var keys []string
 		for _, a := range h.Allowlist() {
@@ -98,7 +98,7 @@ func distinctHarnesses(team string, pair plan.ReviewPair, harnesses TeamHarnesse
 	for _, k := range reviewer {
 		if slices.Contains(writer, k) {
 			return fmt.Errorf("team %q requires its reviewers to run a different harness from its writers, "+
-				"but reviewing Role %q and writing Role %q may both run harness %q (ADR-0162)", team, pair.Reviewer, pair.Writer, k)
+				"but reviewing Role %q and writing Role %q may both run harness %q (ADR-0163)", team, pair.Reviewer, pair.Writer, k)
 		}
 	}
 	return nil

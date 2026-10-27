@@ -43,7 +43,7 @@ func touches(changed, target string) bool {
 }
 
 // pinBaseInstructionFiles gives a reading Run, standing on the branch under
-// review, the base branch's agent instruction files (F-43, ADR-0162). Every
+// review, the base branch's agent instruction files (F-43, ADR-0163). Every
 // instruction path the branch adds, changes or removes relative to base, and
 // every file an instruction symlink resolves to that the branch changes, is
 // put back to its version at base in the working tree, or deleted where base

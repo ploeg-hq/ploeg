@@ -1387,7 +1387,7 @@
                 },
                 "additionalProperties": false,
                 "minProperties": 1,
-                "description": "ADR-0162, planned teams only: ploegd refuses to start unless every reviewing Role differs from every writing Role in the models its inference policy admits (model: true) and in the Harnesses its admission may choose (harness: true). Unset = no requirement."
+                "description": "ADR-0163, planned teams only: ploegd refuses to start unless every reviewing Role differs from every writing Role in the models its inference policy admits (model: true) and in the Harnesses its admission may choose (harness: true). Unset = no requirement."
               },
               "executorType": {
                 "type": "string",

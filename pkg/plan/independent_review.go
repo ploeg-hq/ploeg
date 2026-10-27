@@ -3,7 +3,7 @@ package plan
 import "slices"
 
 // IndependentReview is a Team's demand that the Roles judging a writer's work
-// run on something other than the writer (ADR-0162). Model requires that no
+// run on something other than the writer (ADR-0163). Model requires that no
 // model a reviewing Role may call is one its writing Role may call; Harness
 // asks the same of the Harnesses the two Roles may run.
 type IndependentReview struct {
