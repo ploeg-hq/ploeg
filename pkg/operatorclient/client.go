@@ -215,6 +215,18 @@ func (c *Client) Run(ctx context.Context, id string) (store.OperatorRun, error) 
 	return out.Run, c.get(ctx, "runs/"+id, nil, &out)
 }
 
+// RunAccounting answers GET /runs/{id}/accounting: the Run's spend from its
+// authorization to its settlement.
+func (c *Client) RunAccounting(ctx context.Context, id string) (store.OperatorRunAccounting, error) {
+	if !numericID(id) {
+		return store.OperatorRunAccounting{}, &Error{Status: http.StatusBadRequest, Code: "invalid_request", Message: "Run id must be a positive integer."}
+	}
+	var out struct {
+		Accounting store.OperatorRunAccounting `json:"accounting"`
+	}
+	return out.Accounting, c.get(ctx, "runs/"+id+"/accounting", nil, &out)
+}
+
 // EventFilter selects audit Events. After pages ascending; Before with
 // Desc pages newest first.
 type EventFilter struct {

@@ -93,9 +93,10 @@ Any other client takes the same command, arguments and two environment variables
 | `ploeg_find_work` | Work Items by state or Team, paged |
 | `ploeg_get_work` | One Work Item by Ploeg id, `provider:externalId` or tracker task URL: why it waits, its latest Shift's budget and spend, its Runs, pull request and recent events. `detail: full` adds descriptions, findings and event details |
 | `ploeg_recent_runs` | Runs newest first with outcome, verdict, failure reason and cost |
+| `ploeg_run_spend` | One Run's accounting by `runId`: authorization, Hold, inference account state and amounts with their settlement evidence, corrections, an operator settlement and the `llm.*` audit events ([Investigate a Run's spend](investigate-a-runs-spend.md)). Its amounts keep the four decimals Ploeg settles at |
 | `ploeg_changes_since` | Audit events since a cursor the previous call returned |
 
-Every tool above is read-only and returns its full answer as structured content and as text. Amounts are USD rounded to cents. Text that came from a tracker, a forge or an agent sits under an `untrusted` key, and the server tells the client to treat it as data.
+Every tool above is read-only and returns its full answer as structured content and as text. Amounts are USD rounded to cents, except in `ploeg_run_spend`. Text that came from a tracker, a forge or an agent sits under an `untrusted` key, and the server tells the client to treat it as data.
 
 ## Act on work over HTTPS
 
