@@ -684,6 +684,10 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 		s.Log.Warn("claim refused: shift budget exhausted", "team", req.Team, "role", "")
 		w.WriteHeader(http.StatusNoContent)
 		return
+	case errors.Is(err, store.ErrTeamSpendCapReached):
+		s.Log.Warn("claim refused: team spend cap reached", "team", req.Team, "role", "", "reason", err.Error())
+		w.WriteHeader(http.StatusNoContent)
+		return
 	case !errors.Is(err, store.ErrNoWork):
 		s.Log.Error("role-less shift claim failed", "team", req.Team, "err", err)
 		http.Error(w, "claim failed", http.StatusInternalServerError)
@@ -691,6 +695,11 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 	}
 	claimed, err := s.Store.ClaimWithin(r.Context(), req.Team, s.LeaseTTL, s.maxRunning(req.Team))
 	if errors.Is(err, store.ErrNoWork) {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if errors.Is(err, store.ErrTeamSpendCapReached) {
+		s.Log.Warn("claim refused: team spend cap reached", "team", req.Team, "reason", err.Error())
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
@@ -730,6 +739,10 @@ func (s *Server) claimRole(w http.ResponseWriter, r *http.Request, req claimRequ
 		// minted, no attempt is burned. The sweeper parks the item with a
 		// reason naming the spend.
 		s.Log.Warn("claim refused: shift budget exhausted", "team", req.Team, "role", req.Role)
+		w.WriteHeader(http.StatusNoContent)
+		return
+	case errors.Is(err, store.ErrTeamSpendCapReached):
+		s.Log.Warn("claim refused: team spend cap reached", "team", req.Team, "role", req.Role, "reason", err.Error())
 		w.WriteHeader(http.StatusNoContent)
 		return
 	case err != nil:

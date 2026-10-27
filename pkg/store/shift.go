@@ -382,9 +382,11 @@ func (s *Store) ClaimRoleFor(ctx context.Context, team, role, harness string, tt
 		return nil, err
 	}
 	p.team, p.role = team, role
+	p.spendCap, p.now = s.TeamSpendCap(team), s.spendNow()
 	claimed, err := startPendingRun(ctx, tx, p, ttl, cap, "team:"+team, nil)
 	if err != nil {
-		return nil, err
+		_ = tx.Rollback(ctx)
+		return nil, s.refuseOverCap(ctx, "team:"+team, err)
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
@@ -398,6 +400,8 @@ type pendingRun struct {
 	team, role, token, model   string
 	round                      int
 	writes                     bool
+	spendCap                   SpendCap
+	now                        time.Time
 }
 
 // startPendingRun moves a locked pending Run to running inside tx: it
@@ -440,6 +444,9 @@ func startPendingRun(ctx context.Context, tx pgx.Tx, p pendingRun, ttl time.Dura
 	}
 	if budget > 0 && authorized < minViableAuthorization {
 		return nil, ErrBudgetExhausted
+	}
+	if err := checkTeamSpendCap(ctx, tx, p, authorized); err != nil {
+		return nil, err
 	}
 
 	deadline := time.Now().Add(ttl)
