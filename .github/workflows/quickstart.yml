@@ -11,6 +11,8 @@ on:
       - "ops/helm/ploeg/**"
       - "scripts/quickstart.sh"
       - "scripts/package-chart.sh"
+      - "ops/docker/ploegd/**"
+      - "ops/docker/ploeg-worker/**"
       - ".github/workflows/quickstart.yml"
   pull_request:
     paths:
@@ -19,6 +21,8 @@ on:
       - "ops/helm/ploeg/**"
       - "scripts/quickstart.sh"
       - "scripts/package-chart.sh"
+      - "ops/docker/ploegd/**"
+      - "ops/docker/ploeg-worker/**"
       - ".github/workflows/quickstart.yml"
 permissions:
   contents: read
@@ -70,11 +74,11 @@ jobs:
         env:
           NEWEST: ${{ needs.versions.outputs.newest }}
         run: echo "QUICKSTART_VERSION=$NEWEST" >> "$GITHUB_ENV"
-      - name: Install this checkout's chart, stamped with the newest release's image digests
+      - name: Install this checkout's chart, running the ploegd and worker images built from this checkout
         if: matrix.leg == 'checkout-chart'
         env:
           NEWEST: ${{ needs.versions.outputs.newest }}
-        run: echo "QUICKSTART_CHART=$(mise exec -- bash scripts/quickstart.sh checkout-chart "$NEWEST" "$RUNNER_TEMP/chart")" >> "$GITHUB_ENV"
+        run: mise exec -- bash scripts/quickstart.sh checkout-chart "$NEWEST" "$RUNNER_TEMP/chart" >> "$GITHUB_ENV"
       - name: Every command on docs/quickstart.md runs in order and the Run ends done
         run: mise exec -- bash scripts/quickstart.sh run
   report:
