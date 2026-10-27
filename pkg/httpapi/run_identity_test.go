@@ -42,9 +42,16 @@ func identitySigner(t *testing.T) *runidentity.Signer {
 	return s
 }
 
+var identityAllowlist = runidentity.Audiences{
+	"bronze": {
+		"builder":  {identityAudience, "urn:example:second", "urn:example:a"},
+		"reviewer": {"urn:example:a"},
+	},
+}
+
 func identityServer(signer *runidentity.Signer) *Server {
 	return &Server{Store: testStore, LeaseTTL: time.Minute, Log: slog.New(slog.DiscardHandler),
-		WorkerSecurity: &WorkerSecurity{AllowLegacy: true}, RunIdentity: signer}
+		WorkerSecurity: &WorkerSecurity{AllowLegacy: true}, RunIdentity: signer, RunIdentityAudiences: identityAllowlist}
 }
 
 func requestIdentity(t *testing.T, h http.Handler, runToken, body string) (*httptest.ResponseRecorder, runIdentityResponse) {
@@ -155,6 +162,42 @@ func TestRunIdentityRefusals(t *testing.T) {
 	}
 }
 
+func TestRunIdentityRefusesAnAudienceTheRunsTeamAndRoleDoNotList(t *testing.T) {
+	reset(t)
+	var logged bytes.Buffer
+	s := identityServer(identitySigner(t))
+	s.Log = slog.New(slog.NewJSONHandler(&logged, nil))
+	h := s.Handler()
+	targetedWriterShift(t, "1493")
+	_, claim := postClaim(t, h, `{"team":"bronze","role":"builder","harness":"claude-code"}`)
+	for name, body := range map[string]string{
+		"another service":         `{"audiences":["https://elsewhere.example/sessions"]}`,
+		"another Role's audience": `{"audiences":["urn:example:reviewer-only"]}`,
+		"one listed and one not":  `{"audiences":["` + identityAudience + `","https://elsewhere.example/sessions"]}`,
+	} {
+		logged.Reset()
+		rec, _ := requestIdentity(t, h, claim.RunToken, body)
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("%s: %d %s, want 403", name, rec.Code, rec.Body)
+		}
+		if strings.Contains(rec.Body.String(), "eyJ") {
+			t.Errorf("%s: a refused request carried a token", name)
+		}
+		if !strings.Contains(logged.String(), `"msg":"run identity refused`) || !strings.Contains(logged.String(), `"team":"bronze"`) ||
+			!strings.Contains(logged.String(), `"role":"builder"`) {
+			t.Errorf("%s: the refusal was not recorded: %s", name, logged.String())
+		}
+	}
+	s.RunIdentityAudiences = runidentity.Audiences{"bronze": {"reviewer": {identityAudience}}}
+	if rec, _ := requestIdentity(t, h, claim.RunToken, `{"audiences":["`+identityAudience+`"]}`); rec.Code != http.StatusForbidden {
+		t.Errorf("an audience listed only for another Role of the Team: %d, want 403", rec.Code)
+	}
+	s.RunIdentityAudiences = nil
+	if rec, _ := requestIdentity(t, h, claim.RunToken, `{"audiences":["`+identityAudience+`"]}`); rec.Code != http.StatusForbidden {
+		t.Errorf("no allowlist: %d, want 403", rec.Code)
+	}
+}
+
 func TestRunIdentityIsOffWithoutASigningKey(t *testing.T) {
 	reset(t)
 	h := identityServer(nil).Handler()
@@ -173,6 +216,7 @@ func TestRunIdentityIsOffWithoutASigningKey(t *testing.T) {
 func TestManagedRunIdentityNeedsTheRunsControlCapability(t *testing.T) {
 	s, bootstrap := secureWorkerFixture(t, &managedBrokerFixture{})
 	s.RunIdentity = identitySigner(t)
+	s.RunIdentityAudiences = identityAllowlist
 	w := workerRequest(s, "POST", "/api/v1/claim", bootstrap, "pod", `{"team":"bronze","role":"reviewer"}`)
 	var claim struct {
 		RunToken     string `json:"runToken"`
