@@ -189,7 +189,7 @@ func TestRemoteReadsCallPloegWithTheGroupsConsumerNeverTheCallersToken(t *testin
 			t.Errorf("%s is not read-only", tool.Name)
 		}
 	}
-	if len(names) != 5 || !slices.Contains(names, "ploeg_overview") {
+	if len(names) != 6 || !slices.Contains(names, "ploeg_overview") {
 		t.Fatalf("tools: %v", names)
 	}
 	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "ploeg_find_work", Arguments: map[string]any{}})

@@ -22,6 +22,7 @@ Use these sources for the current implementation. The [architecture](architectur
 - [Managed workers and recovery](ops/managed-workers.md)
 - [Network policies](ops/network.md): what every Ploeg pod may reach, how the chart derives it, and what your CNI must enforce
 - [Metrics and alerts](ops/alerts.md)
+- [Data retention](ops/data-retention.md): what Ploeg keeps about work, Runs, transcripts and spend, for how long, the settings that control sensitive content, and what is never deleted for accounting
 - [Briefings: versions, catch-up, usefulness and replay](ops/briefings.md)
 - [Tracker configuration](ops/board.md)
 - [Configuration reference](reference/configuration.md): every environment variable and Helm value, generated from the source

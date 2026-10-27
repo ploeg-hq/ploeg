@@ -262,7 +262,7 @@ func TestAReadOnlyCallerSeesAndCallsNoActionTools(t *testing.T) {
 	a := newActingRemote(t)
 	cs := a.client(t, []string{"ploeg-readers"}, accept())
 	tools := toolNames(t, cs)
-	if len(tools) != 5 {
+	if len(tools) != 6 {
 		t.Fatalf("a reader sees %d tools", len(tools))
 	}
 	for _, name := range actionTools {
@@ -283,7 +283,7 @@ func TestAReadOnlyCallerSeesAndCallsNoActionTools(t *testing.T) {
 func TestAnExecuteCallerSeesEveryActionToolAsAWrite(t *testing.T) {
 	a := newActingRemote(t)
 	tools := toolNames(t, a.client(t, []string{"ploeg-stewards"}, accept()))
-	if len(tools) != 5+len(actionTools) {
+	if len(tools) != 6+len(actionTools) {
 		t.Fatalf("tools = %d", len(tools))
 	}
 	for _, name := range actionTools {

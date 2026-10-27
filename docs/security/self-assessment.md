@@ -163,17 +163,18 @@ These are settings and components a deployment configures. The threat model's [s
 | `executor.forgejo.botPasswordSecret`, `tracker.github.appId` | Enable per-Run forge credentials; without them writers share one token |
 | `executor.<forge>.readTokenSecret` | Read-only credential for reading Roles; the chart refuses a reading Role without it |
 | Webhook secrets (`webhook.existingSecret`, `executor.<forge>.webhookSecret`, `tracker.*.webhookSecret`) | Without a secret every delivery is rejected |
-| `operator.consumers[].teams`, `execute`, `verify`, `maxBudgetUsd` | Operator consumer scope; omitting `teams` means all teams |
+| `operator.consumers[].teams`, `execute`, `verify`, `readContent`, `maxBudgetUsd` | Operator consumer scope: a consumer reads only the Teams it names (`["*"]` for every Team) and Run content only with `readContent` ([ADR-0160](../adrs/0160-an-operator-consumer-reads-only-the-teams-it-names-and-run-content-only-when-granted.md)) |
 | `executor.harness.timeout`, `idleTimeout`, `executor.activeDeadlineSeconds` | Bound a wedged or silent harness |
 | `executor.teams[].maxRunning`, plan `pool` and Role `cap` | Concurrency and spend ceilings |
 | `forgeFollowUps` | Opt-in rework and repair Runs from forge events; rework only from listed or writing reviewers, capped per Work Item ([F-36](threat-model.md#findings), fixed) |
 | `executor.sandbox.*` (experimental) | agent-sandbox executor with an optional runtime class (Kata, gVisor) and managed NetworkPolicy |
 | `mcp.*` | ploeg-mcp OAuth settings and optional NetworkPolicies |
+| `PLOEG_RUN_TRANSCRIPTS`, `PLOEG_RUN_TRANSCRIPT_THOUGHTS`, `executor.harnessOutputInLog`, `executor.harness.telemetry` | Whether agent sessions, reasoning and harness output are stored or logged, and whether prompts reach a telemetry collector ([data retention](../ops/data-retention.md)) |
 | `monitoring.prometheusRule.alerts` | Alerts such as `PloegCredentialLeak`, `PloegModelKeyPastTTL`, spend spikes and expired Leases ([alerts](../ops/alerts.md)) |
 
 ## Project compliance
 
-Ploeg has not been assessed against, and does not claim compliance with, any security or regulatory standard (PCI-DSS, ISO 27001, SOC 2, GDPR or others). Data protection for the ticket text, transcripts and repository content Ploeg handles is the operator's responsibility.
+Ploeg has not been assessed against, and does not claim compliance with, any security or regulatory standard (PCI-DSS, ISO 27001, SOC 2, GDPR or others). Data protection for the ticket text, transcripts and repository content Ploeg handles is the operator's responsibility. [Data retention](../ops/data-retention.md) lists what Ploeg stores, for how long, the settings that keep prompts, code and credentials out of storage, logs and telemetry, and the accounting rows it never deletes.
 
 The project does not claim any OpenSSF Best Practices badge or SLSA level.
 

@@ -147,7 +147,7 @@ func TestToolsAnswerWhatWaitsAndWhy(t *testing.T) {
 			t.Fatalf("%s is not a titled read-only tool with an output schema", tool.Name)
 		}
 	}
-	if strings.Join(names, ",") != "ploeg_changes_since,ploeg_find_work,ploeg_get_work,ploeg_overview,ploeg_recent_runs" {
+	if strings.Join(names, ",") != "ploeg_changes_since,ploeg_find_work,ploeg_get_work,ploeg_overview,ploeg_recent_runs,ploeg_run_spend" {
 		t.Fatalf("tools = %v", names)
 	}
 

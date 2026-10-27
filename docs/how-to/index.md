@@ -51,7 +51,7 @@ Desired state lives in Git and Flux reconciles it. The runbooks use `kubectl` fo
 
 ### Open a database session
 
-Ploeg has no operator CLI. You inspect its state with `psql` on the primary database pod:
+Ploeg has no operator CLI. Read its state through the [operator API](../contracts/README.md) or [ploeg-mcp](ask-ploeg-from-an-ai-client.md) where a runbook shows how: [Investigate a Run's spend](investigate-a-runs-spend.md) needs no database session. The runbooks that still inspect state directly use `psql` on the primary database pod:
 
 ```sh
 PRIMARY=$(kubectl -n ploeg get pods \

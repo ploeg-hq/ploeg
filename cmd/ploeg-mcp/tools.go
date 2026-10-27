@@ -54,6 +54,8 @@ func newExchangingServer(c *operatorclient.Client, confirm *confirmations, excha
 		Description: "One Work Item with why it waits, its latest Shift's budget, spend and held budget, its Runs, its pull request, recent events and its attended executions (yours are marked, to steer with ploeg_steer_execution). ref is a Ploeg id (184), provider:externalId (vikunja:1897) or a tracker task URL. detail=full adds descriptions, findings and event details."}, s.getWork)
 	mcp.AddTool(srv, &mcp.Tool{Name: "ploeg_recent_runs", Title: "Recent Runs", Annotations: readOnly("Recent Runs"),
 		Description: "Runs newest first with role, outcome, verdict, failure reason and cost. Pass nextCursor back as before for older Runs."}, s.recentRuns)
+	mcp.AddTool(srv, &mcp.Tool{Name: "ploeg_run_spend", Title: "A Run's spend", Annotations: readOnly("A Run's spend"),
+		Description: "One Run's accounting: its authorization, the Hold it keeps, its inference account's state, observed, settled and corrected amounts with their evidence, an operator settlement if one was made, and its llm audit events in order. Use it to see why a Shift's budget is held or what a failed Run cost. runId comes from ploeg_get_work or ploeg_recent_runs."}, s.runSpend)
 	mcp.AddTool(srv, &mcp.Tool{Name: "ploeg_changes_since", Title: "Changes since", Annotations: readOnly("Changes since"),
 		Description: "Audit events in the order they happened. Without a cursor it returns the newest events; pass the returned cursor next time to get only what happened since."}, s.changesSince)
 	if confirm != nil {
@@ -506,6 +508,42 @@ func (s *server) recentRuns(ctx context.Context, _ *mcp.CallToolRequest, in runs
 	}
 	out.Summary = fmt.Sprintf("%d Runs costing %s%s.", len(out.Runs), usd(out.TotalUSD), more(out.NextCursor))
 	return nil, out, nil
+}
+
+type runSpendIn struct {
+	RunID string `json:"runId" jsonschema:"the Run's Ploeg id"`
+}
+
+type runSpendOut struct {
+	Summary    string                      `json:"summary"`
+	Accounting store.OperatorRunAccounting `json:"accounting"`
+}
+
+func (s *server) runSpend(ctx context.Context, _ *mcp.CallToolRequest, in runSpendIn) (*mcp.CallToolResult, runSpendOut, error) {
+	var out runSpendOut
+	a, err := s.c.RunAccounting(ctx, strings.TrimSpace(in.RunID))
+	if err != nil {
+		return nil, out, explain(err)
+	}
+	out.Accounting = a
+	out.Summary = spendSummary(a)
+	return nil, out, nil
+}
+
+func spendSummary(a store.OperatorRunAccounting) string {
+	head := fmt.Sprintf("Run %s (%s) is %s with %s authorized and %s held; cost %s.", a.RunID, a.Team, a.RunState, usd(a.AuthorizedUSD), usd(a.HeldUSD), a.CostStatus)
+	acct := a.Account
+	switch {
+	case acct == nil && a.HarnessReportedUSD != nil:
+		return head + fmt.Sprintf(" No inference account; the harness reported %s.", usd(*a.HarnessReportedUSD))
+	case acct == nil:
+		return head + " No inference account and no reported cost."
+	case acct.State == "reconciled" && acct.ReconciledUSD != nil:
+		return head + fmt.Sprintf(" Account %s settled at %s.", acct.KeyAlias, usd(*acct.ReconciledUSD))
+	case acct.ListedUnsettled:
+		return head + fmt.Sprintf(" Account %s is %s and listed as unsettled: an operator may settle it from evidence.", acct.KeyAlias, acct.State)
+	}
+	return head + fmt.Sprintf(" Account %s is %s; the sweeps settle it.", acct.KeyAlias, acct.State)
 }
 
 type changesIn struct {

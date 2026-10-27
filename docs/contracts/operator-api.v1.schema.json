@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://webgrip.dev/ploeg/contracts/operator-api.v1.schema.json",
   "title": "Ploeg authenticated operator API v1",
-  "description": "GET /api/v1/operator/{version,teams,summary,unsettled-accounts,work-items,work-items/{id},runs,runs/{id},runs/{id}/transcript,events,route-refusals,connections}, and POST /api/v1/operator/work-items/{id}/cancel, which requires execute permission and X-Ploeg-Actor and withdraws tracker-originated work; repeating it on a withdrawn or settled item changes nothing and reports withdrawn false. Cancel takes no body or a cancelRequest: a commandId that already withdrew the item answers replayed true, and an expectedShiftId that is not the item's open Shift answers 409 shift_changed and withdraws nothing. POST /api/v1/operator/work-items/{id}/approve and /reject decide a proposed Work Item a Run created (ADR-0031); both require execute permission and X-Ploeg-Actor and take a JSON body {\"reason\": string}, required for reject. Approve queues the item; reject closes it as done and releases its allotted budget. Any other state answers 409 not_proposed. Bearer consumers have team scope: a consumer reads only the Teams its teams lists, every Team with [\"*\"], and none when teams is omitted or empty. runs/{id}/transcript, runs/{id}/briefing, work-items/{id}/context and knowledge/reviews also need the consumer's readContent, which follows execute when unset, and answer 403 content_forbidden without it. Collection after is a decimal bigint cursor; limit defaults 50, maximum 200. Work items filter on team, state, needsHuman=true and the tracker identity provider plus externalId, which must be given together and match across every team in scope unless team narrows it. state takes one state or a comma-separated list of distinct states and keeps items in any of them; the retired leased is read as active until the deprecated forms are removed (ADR-0093). Work items take order=asc|desc (default asc) like events: order=desc returns newest first by id and pages with before=<nextCursor>; after with order=desc, or before without it, is rejected. Detail returns the most recent 200 records per collection, with explicit truncation flags. Audit pagination has snapshot consistency and is not a lossless changefeed: IDs are allocated before commit. Unbound events are omitted. Missing costs and unsupported team pause state remain unknown/null. Text is bounded (16384 characters for descriptions/findings, 4096 for summaries/reasons/URLs), recognizable credentials are redacted, URL queries/fragments are removed. Other credential-bearing structural fields are never selected. A recorded cost is an observation, not proof of final gateway settlement. Summary takes window=24h|7d|30d (default 7d): Work Item counts, pending and running Runs and heldUsd (the Hold, ADR-0093) are current; finished, failed and stuck count Runs finished inside the window by outcome, and settledUsd is spend settled inside the window; lastActivityAt is the Team's latest bound audit event. The Run list is newest first by id with limit 1..200 (default 50), filters team, state and outcome, and pages with before=<runId>, returning nextBefore; teams are scoped by the owning Work Item and externalRef is the tracker reference used in trailers, or empty for manual work. Events take order=asc|desc (default asc); order=desc returns newest first, pages with before=<eventId> and returns that cursor as nextCursor, and lastCursor is the newest event id in the page (0 when empty); after with order=desc, or before without it, is rejected. Timestamps in summary and Run list responses are UTC. Unsettled-accounts takes no query parameters and lists, oldest first and at most 200, the finished Runs in scope whose gateway key the block sweep cannot block (account minting, issued or unknown) and those whose key is blocked but whose account is still unsettled an hour after the Run finished (account blocked), each with the budget it still holds; totals cover every such Run in scope, also past the 200th. Route refusals (ADR-0038) lists tracker tasks that routing refused and that therefore have no Work Item: it takes no query parameters and answers the newest refusal of each task refused in the last windowDays (14) days, newest first and at most 50, within the consumer's team scope. A task queued or refreshed after its newest refusal is left out. code is stable; a refusal recorded before codes existed answers unclassified with allowedLabels empty, and reason is the sentence Ploeg also commented on the task. allowedLabels are the repo/ labels the matched board rule allows, empty when no rule matched or the reason is target_not_ready. POST /api/v1/operator/work-items/{id}/requeue restarts a needs_human, stale or awaiting_review Work Item with no open Shift (ADR-0044); it requires execute permission and X-Ploeg-Actor. Without a body it restarts from Round 1; a body is a requeueRequest and must carry commandId, and a repeated commandId returns the first result with replayed true. A live, settled, withdrawn or operator-owned item, an expectedState mismatch and a commandId reused with another body answer 409; a fromRound outside the Team's current plan answers 422 round_not_in_plan, and a fromRound past a writing Round when no earlier Shift recorded pr_opened or pr_updated answers 422 nothing_to_review; a pool above the consumer's maxBudgetUsd answers 400 pool_above_limit. Delivery facts (ADR-0079): GET /api/v1/operator/work-items/{id}/facts answers factsResponse, and 404 when the Work Item is not in the consumer's scope. GET /api/v1/operator/facts answers factsListResponse: the consumer's team-scoped Work Items, newest activityAt first, ties by id. It takes member=<login>, repeatable up to 20 and compared without case, to keep Work Items whose roster names one of them, team, since=<RFC 3339> to keep activityAt at or after it, before=<nextBefore> and limit 1..25 (default 10); nextBefore is an opaque cursor or null. Facts are stored values only: no grade, tier, score, KPI, status kind or working time. PUT /api/v1/operator/work-items/{id}/pull-request-comments/{key} takes a pullRequestCommentRequest and keeps one comment per pull request and key, marked <!-- ploeg:comment:<key> -->, posted with Ploeg's forge credentials; it requires execute permission and X-Ploeg-Actor, answers pullRequestCommentResponse, 404 for a Work Item outside the scope or a pull request it does not have, 409 no_pull_request when it has none, 422 unsafe_svg, 422 adopt_not_found when adoptCommentId names no Ploeg-marked comment, 413 for a body over 384 KiB and 502 forge_unavailable when the forge refused; each write is audited as pull_request_comment.upserted. DELETE on the same path removes that key's comment from every pull request where Ploeg recorded it, audited as pull_request_comment.deleted, and answers pullRequestCommentDeleteResponse. The Run card, card list, crack, evolved and card legacy export routes were removed by ADR-0080 and answer 404. GET /api/v1/operator/allowances?team=<team> answers allowanceResponse: the team's Ask Allowance for the current UTC month (ADR-0082), or with purpose=chat its Chat Allowance (ADR-0128); purpose defaults to ask. It answers 400 without exactly one team or with a purpose other than ask or chat, and 403 for a team outside the consumer's scope. POST /api/v1/operator/work-items/{id}/asks admits an Ask on a Work Item in the consumer's scope (ADR-0082): it requires execute permission and exactly one X-Ploeg-Actor, takes an askAdmitRequest and answers askAdmitResponse, 201 when new and 200 for a replayed askId, which never mints a second key. It answers 404 for a Work Item outside the scope, 400 invalid_ask, 409 ask_conflict when the askId was used for another Work Item, question or actor, 402 allowanceRefusalResponse when the team's allowance cannot cover the per-Ask Budget, 409 inference_policy when the team has no (team, ask) inference policy, 409 credential_unresolved when the mint is unresolved and 503 inference_unavailable without managed inference. GET /api/v1/operator/work-items/{id}/asks/{askId} answers askResponse, and POST .../asks/{askId}/finish finishes the Ask, blocks its key and answers askFinishResponse, or 503 block_unconfirmed while a retried block is pending; both are scoped to the consumer and actor that admitted the Ask. POST /api/v1/operator/teams/{team}/chats admits a chat message for a team in the consumer's scope (ADR-0128): a read-only Run with the Role chat about no Work Item, paid from the team's Chat Allowance and metered under its (team, ask) inference policy. It requires execute permission and exactly one X-Ploeg-Actor, records X-Ploeg-Acting-User as askedBy, takes a chatAdmitRequest and answers chatAdmitResponse, 201 when new and 200 for a replayed chatId with the same message and actor, which never mints a second key. It answers 404 for a team outside the scope, 400 invalid_chat, 409 chat_conflict when the chatId was used for another team, message or actor, 402 allowanceRefusalResponse when the Chat Allowance cannot cover the per-chat Budget, 409 inference_policy when the team has no (team, ask) inference policy, 409 credential_unresolved when the mint is unresolved and 503 inference_unavailable without managed inference. GET /api/v1/operator/teams/{team}/chats/{chatId} answers chatResponse, and POST .../chats/{chatId}/finish finishes the chat message, blocks its key and answers chatResponse, or 503 block_unconfirmed while a retried block is pending; both are scoped to the consumer and actor that admitted it, and repeating finish changes nothing. A chat Run belongs to no Work Item: it is absent from Work Item detail, delivery facts and the Run list, its spend and hold count in the team summary, and unsettled-accounts lists it with workItemId null. POST /api/v1/operator/work-items/{id}/notes stores an operator instruction for a live Work Item in the consumer's scope: it requires execute permission and exactly one X-Ploeg-Actor, takes a noteRequest and answers noteResponse, 201 when new and 200 for a replayed commandId. It answers 404 for a Work Item outside the scope, 400 command_required or invalid_note, 409 operator_owned for an item bound to an Operator Execution, 409 work_item_terminal for a done, needs_human, awaiting_review, stale or withdrawn item, 409 shift_changed when expectedShiftId is not the open Shift and 409 command_conflict for a commandId reused with another body. Each note is audited as operator.note.added. The next claimed Run of the Work Item, other than an Ask, is briefed with every unconsumed note as an \"operator note\" finding, and each is then marked consumed and audited as operator.note.consumed, so a note reaches one Run. POST /api/v1/operator/work-items admits a manual-origin Work Item that ploeg-worker executes (ADR-0102): it requires execute permission and exactly one X-Ploeg-Actor, takes a workItemAdmissionRequest and answers workItemAdmissionResponse, 201 when new and 200 for a replayed requestId. The Work Item is queued for its Team, not operator-owned, pinned to the registered target and allotted budgetUsd or, without it, the consumer's maxBudgetUsd, which caps its Shift pool. A replay with the same actor and body returns the Work Item in its current state and never queues it again; a requestId reused with another body or actor, or one that names an Operator Execution, answers 409 request_conflict. It answers 400 invalid_admission, 400 budget_above_limit for a budgetUsd above maxBudgetUsd, 403 team_forbidden for a team outside the scope, 422 unknown_target, 422 target_not_ready, 422 team_not_dispatched for a team without a plan while uniform dispatch is off, 422 harness_not_allowed for a harness no Role of the plan allows (the message names each Role's allowlist), 422 harness_unqualified for an allowed but unqualified harness that is no Role's default while the Team has not set allowUnqualifiedHarnesses, 422 model_not_allowed for a model no Role's policy lists (the message names each Role's models), 422 model_requires_managed_inference for a model when the Team's Roles have no managed inference policy, and 503 dispatch_unavailable without Shift dispatch; each refusal records nothing. The response lists, per Role, the Harness and model its Runs store (ADR-0098, ADR-0103). Each Admission is audited once as operator.work_item.admitted with detail.requestId; a replay is not. Cancel, requeue and notes apply to the admitted Work Item as to tracker work, and its cancel calls no tracker. Attribution (ADR-0108): every operator request other than GET may carry, each at most once, X-Ploeg-Actor (the person, 1 to 128 identifier characters), X-Ploeg-Acting-User (a person acting on the actor's behalf), X-Ploeg-Via (the channel, 1 to 128 printable ASCII characters without leading or trailing space, such as mcp:Claude Code 2.1.296 or browser) and X-Ploeg-Confirmation (<confirmation id>:<lowercase SHA-256 hex of the text the person agreed to>). A repeated or malformed one answers 400 actor_required, invalid_acting_user, invalid_via or invalid_confirmation, and nothing changes; the last three need X-Ploeg-Actor. Every audit event such a request writes under the consumer's name carries detail.attribution (consumer, actor, actingUser, via, confirmation, proof, act), the same shape on every route; existing detail keys are unchanged. Person tokens (ADR-0150): a consumer acting for a person may send that person's token, exchanged at the identity provider for Ploeg's audience, as the bearer (the caller is the one consumer whose clientIds include its azp or client_id) or in X-Ploeg-Person-Token next to its own bearer (its azp must be one of that consumer's clientIds). A token with a bad signature, another issuer or audience, no sub, an expiry passed, a lifetime over the configured bound or an unknown azp answers 401 invalid_token and nothing changes. The person is then the oidc- id of sub, X-Ploeg-Actor is set to it, a header naming anyone else answers 403 actor_conflict, and attribution.proof is proven; header-only attribution is asserted. A person's execution command (message, pause, resume, cancel, handback or take-control) is audited as operator.execution.commanded on the execution's Work Item. Events take actor=<identity> to keep only events whose attribution names it as actor or actingUser; events recorded before attribution existed never match. Findings and questions (ADR-0121): Work Item detail carries findings (every finding raised by id, with the writer's answer and unanswered), questions (every question its Runs asked, with waitingForPerson) and reviewDisagreements (review Rounds whose shadow reviewer's verdict differed from the acting readers'), and every Run shape carries findingItems, findingAnswers, questions and questionAnswers. A question to a person parks the Work Item at needs_human with Shift close reason question_for_person. POST /api/v1/operator/work-items/{id}/questions/{questionId}/answer stores a person's answer to such a question: it requires execute permission and exactly one X-Ploeg-Actor, takes a questionAnswerRequest and answers questionAnswerResponse, 201 when new and 200 for a replayed commandId. It answers 400 invalid_request, command_required or invalid_answer, 404 for a Work Item outside the scope or a question to a person it does not have, 409 already_answered when the question has another answer and 409 command_conflict for a commandId reused with another body. Each answer is audited as question.answered. It accepts an answer in any Work Item state and queues nothing: every later Run of the Work Item is briefed with the question and its answer, so a person answers and then resumes a parked Work Item with a requeue that sets resume true. A requeue body with resume true resumes a Work Item parked on a question instead of restarting it: the new Shift reopens the Round that asked on the parked branch, with the parked Shift's earlier Rounds in its briefing and the parked Shift's unspent pool; Work Item detail resume says which Round, its cap (roundCapUsd), the pool and whether every question is answered. It is audited as work_item.requeued with detail resume true and resumes_round, and a replayed commandId returns the first result. Knowledge (ADR-0122): POST /api/v1/operator/work-items/{id}/knowledge-notes keeps a person's note on a Work Item in the consumer's scope in the Tenant's notes graph: it requires execute permission and exactly one X-Ploeg-Actor, attributes the note to X-Ploeg-Acting-User when given, else to the actor, takes a personNoteRequest and answers personNoteResponse, 201 when new and 200 for a replayed commandId. The note is trusted, read by later Runs of the Work Item's root, or of its repository at level repository, where the person's own words are their approval. It answers 404 outside the scope, 400 command_required or invalid_note, 409 command_conflict for a commandId reused with another note and 409 notes_off when the deployment keeps no notes. GET /api/v1/operator/knowledge/reviews?state=open|all&limit=1..200 answers noteReviewsResponse: the promotions and contradictions of Work Items in scope, newest first, open ones unless state=all. A promotion is a note suggested for a wider level; a merged pull request applies an open repository promotion on its own, and Client and Tenant promotions need a person. A contradiction is a note that disagreed with current notes on its subject; Runs see both marked contested until a person decides. POST /api/v1/operator/knowledge/reviews/{id}/decision takes a noteReviewDecisionRequest from a person (execute permission and X-Ploeg-Actor) and answers noteReviewDecisionResponse: accept or reject a promotion (reject needs a reason and is kept, so the suggestion is not raised again), or keep_newer, keep_older or keep_both for a contradiction, where every note not kept gets a retraction that takes it out of every briefing. It answers 404 outside the scope, 409 review_decided and 422 invalid_decision. Each decision is audited as note.review_decided. Client-carried Runs (ADR-0112): a Role whose claude-environment Runs a client carries (PLOEG_TEAM_HARNESSES carrier client) has every new Run stored with that carrier; no worker claims it, and its Work Item waits as needs_human with work item waitingForClient (reason start_from_claude_code) and a work_item.needs_human event naming the person it acts for. POST /api/v1/operator/work-items/{id}/claim lets that person claim the oldest such Run of a Work Item in the consumer's scope: it requires execute permission and X-Ploeg-Actor, takes no body, treats X-Ploeg-Acting-User when given, else the actor, as the person, starts the Run exactly as a worker's claim does (budget, Lease, Work Item active, audited as run.claimed with detail.carrier client) and answers clientClaimResponse. It answers 404 for a Work Item outside the scope, 403 not_your_run when the Run acts for another person, 409 person_unknown when Ploeg knows no person for it, 409 already_claimed when its Run is already running, 409 no_client_run when none waits, 409 no_target without a resolved repository, 409 team_at_capacity at the Team's maxRunning and 409 budget_exhausted when the Shift's pool cannot fund the Run; each refusal changes nothing. The client then dispatches with the person's own Claude Code and login, records the session through the run API's claude-session route, after which ploegd holds the Run and settles it from the runner's post-session report, so the client may renew and report the outcome or leave; the runner's hooks exchange the session token and push as for a worker-dispatched Run (ADR-0084). Like every person match (ADR-0108), ploegd trusts the consumer's X-Ploeg-Actor unless a person token proves the person (ADR-0150). Connections (ADR-0129) lists every configured board and every repository Ploeg can route to: a repository's readiness, the boards routing to it and when its forge last sent an event; a board's rule, its tracker webhook state and, for every Team in scope, whether each of its tracker users can see the board. Boards pinned to a Team outside the scope are left out. POST /api/v1/operator/unsettled-accounts/{runId}/settle settles one account that unsettled-accounts lists from evidence an operator gathered, such as a provider invoice line, when the gateway can no longer answer for it; it requires execute permission and X-Ploeg-Actor, takes a settleFromEvidenceRequest and answers 201 with a settlementResponse, or 200 with replayed true when the commandId repeats the same settlement. The settlement is final at once, charges the Run's Shift, releases its hold and audits llm.reconciled under the operator. It answers 409 below_observation for an amount under the spend Ploeg observed, already_settled for a reconciled account, not_unsettled for one the sweeps still own, and command_conflict for a commandId that settled another Run, amount or evidence.",
+  "description": "GET /api/v1/operator/{version,teams,summary,unsettled-accounts,work-items,work-items/{id},runs,runs/{id},runs/{id}/accounting,runs/{id}/transcript,events,route-refusals,connections}, and POST /api/v1/operator/work-items/{id}/cancel, which requires execute permission and X-Ploeg-Actor and withdraws tracker-originated work; repeating it on a withdrawn or settled item changes nothing and reports withdrawn false. Cancel takes no body or a cancelRequest: a commandId that already withdrew the item answers replayed true, and an expectedShiftId that is not the item's open Shift answers 409 shift_changed and withdraws nothing. POST /api/v1/operator/work-items/{id}/approve and /reject decide a proposed Work Item a Run created (ADR-0031); both require execute permission and X-Ploeg-Actor and take a JSON body {\"reason\": string}, required for reject. Approve queues the item; reject closes it as done and releases its allotted budget. Any other state answers 409 not_proposed. Bearer consumers have team scope: a consumer reads only the Teams its teams lists, every Team with [\"*\"], and none when teams is omitted or empty. runs/{id}/transcript, runs/{id}/briefing, work-items/{id}/context and knowledge/reviews also need the consumer's readContent, which follows execute when unset, and answer 403 content_forbidden without it. Collection after is a decimal bigint cursor; limit defaults 50, maximum 200. Work items filter on team, state, needsHuman=true and the tracker identity provider plus externalId, which must be given together and match across every team in scope unless team narrows it. state takes one state or a comma-separated list of distinct states and keeps items in any of them; the retired leased is read as active until the deprecated forms are removed (ADR-0093). Work items take order=asc|desc (default asc) like events: order=desc returns newest first by id and pages with before=<nextCursor>; after with order=desc, or before without it, is rejected. Detail returns the most recent 200 records per collection, with explicit truncation flags. Audit pagination has snapshot consistency and is not a lossless changefeed: IDs are allocated before commit. Unbound events are omitted. Missing costs and unsupported team pause state remain unknown/null. Text is bounded (16384 characters for descriptions/findings, 4096 for summaries/reasons/URLs), recognizable credentials are redacted, URL queries/fragments are removed. Other credential-bearing structural fields are never selected. A recorded cost is an observation, not proof of final gateway settlement. Summary takes window=24h|7d|30d (default 7d): Work Item counts, pending and running Runs and heldUsd (the Hold, ADR-0093) are current; finished, failed and stuck count Runs finished inside the window by outcome, and settledUsd is spend settled inside the window; lastActivityAt is the Team's latest bound audit event. The Run list is newest first by id with limit 1..200 (default 50), filters team, state and outcome, and pages with before=<runId>, returning nextBefore; teams are scoped by the owning Work Item and externalRef is the tracker reference used in trailers, or empty for manual work. Events take order=asc|desc (default asc); order=desc returns newest first, pages with before=<eventId> and returns that cursor as nextCursor, and lastCursor is the newest event id in the page (0 when empty); after with order=desc, or before without it, is rejected. Timestamps in summary and Run list responses are UTC. Unsettled-accounts takes no query parameters and lists, oldest first and at most 200, the finished Runs in scope whose gateway key the block sweep cannot block (account minting, issued or unknown) and those whose key is blocked but whose account is still unsettled an hour after the Run finished (account blocked), each with the budget it still holds; totals cover every such Run in scope, also past the 200th. Route refusals (ADR-0038) lists tracker tasks that routing refused and that therefore have no Work Item: it takes no query parameters and answers the newest refusal of each task refused in the last windowDays (14) days, newest first and at most 50, within the consumer's team scope. A task queued or refreshed after its newest refusal is left out. code is stable; a refusal recorded before codes existed answers unclassified with allowedLabels empty, and reason is the sentence Ploeg also commented on the task. allowedLabels are the repo/ labels the matched board rule allows, empty when no rule matched or the reason is target_not_ready. POST /api/v1/operator/work-items/{id}/requeue restarts a needs_human, stale or awaiting_review Work Item with no open Shift (ADR-0044); it requires execute permission and X-Ploeg-Actor. Without a body it restarts from Round 1; a body is a requeueRequest and must carry commandId, and a repeated commandId returns the first result with replayed true. A live, settled, withdrawn or operator-owned item, an expectedState mismatch and a commandId reused with another body answer 409; a fromRound outside the Team's current plan answers 422 round_not_in_plan, and a fromRound past a writing Round when no earlier Shift recorded pr_opened or pr_updated answers 422 nothing_to_review; a pool above the consumer's maxBudgetUsd answers 400 pool_above_limit. Delivery facts (ADR-0079): GET /api/v1/operator/work-items/{id}/facts answers factsResponse, and 404 when the Work Item is not in the consumer's scope. GET /api/v1/operator/facts answers factsListResponse: the consumer's team-scoped Work Items, newest activityAt first, ties by id. It takes member=<login>, repeatable up to 20 and compared without case, to keep Work Items whose roster names one of them, team, since=<RFC 3339> to keep activityAt at or after it, before=<nextBefore> and limit 1..25 (default 10); nextBefore is an opaque cursor or null. Facts are stored values only: no grade, tier, score, KPI, status kind or working time. PUT /api/v1/operator/work-items/{id}/pull-request-comments/{key} takes a pullRequestCommentRequest and keeps one comment per pull request and key, marked <!-- ploeg:comment:<key> -->, posted with Ploeg's forge credentials; it requires execute permission and X-Ploeg-Actor, answers pullRequestCommentResponse, 404 for a Work Item outside the scope or a pull request it does not have, 409 no_pull_request when it has none, 422 unsafe_svg, 422 adopt_not_found when adoptCommentId names no Ploeg-marked comment, 413 for a body over 384 KiB and 502 forge_unavailable when the forge refused; each write is audited as pull_request_comment.upserted. DELETE on the same path removes that key's comment from every pull request where Ploeg recorded it, audited as pull_request_comment.deleted, and answers pullRequestCommentDeleteResponse. The Run card, card list, crack, evolved and card legacy export routes were removed by ADR-0080 and answer 404. GET /api/v1/operator/allowances?team=<team> answers allowanceResponse: the team's Ask Allowance for the current UTC month (ADR-0082), or with purpose=chat its Chat Allowance (ADR-0128); purpose defaults to ask. It answers 400 without exactly one team or with a purpose other than ask or chat, and 403 for a team outside the consumer's scope. POST /api/v1/operator/work-items/{id}/asks admits an Ask on a Work Item in the consumer's scope (ADR-0082): it requires execute permission and exactly one X-Ploeg-Actor, takes an askAdmitRequest and answers askAdmitResponse, 201 when new and 200 for a replayed askId, which never mints a second key. It answers 404 for a Work Item outside the scope, 400 invalid_ask, 409 ask_conflict when the askId was used for another Work Item, question or actor, 402 allowanceRefusalResponse when the team's allowance cannot cover the per-Ask Budget, 409 inference_policy when the team has no (team, ask) inference policy, 409 credential_unresolved when the mint is unresolved and 503 inference_unavailable without managed inference. GET /api/v1/operator/work-items/{id}/asks/{askId} answers askResponse, and POST .../asks/{askId}/finish finishes the Ask, blocks its key and answers askFinishResponse, or 503 block_unconfirmed while a retried block is pending; both are scoped to the consumer and actor that admitted the Ask. POST /api/v1/operator/teams/{team}/chats admits a chat message for a team in the consumer's scope (ADR-0128): a read-only Run with the Role chat about no Work Item, paid from the team's Chat Allowance and metered under its (team, ask) inference policy. It requires execute permission and exactly one X-Ploeg-Actor, records X-Ploeg-Acting-User as askedBy, takes a chatAdmitRequest and answers chatAdmitResponse, 201 when new and 200 for a replayed chatId with the same message and actor, which never mints a second key. It answers 404 for a team outside the scope, 400 invalid_chat, 409 chat_conflict when the chatId was used for another team, message or actor, 402 allowanceRefusalResponse when the Chat Allowance cannot cover the per-chat Budget, 409 inference_policy when the team has no (team, ask) inference policy, 409 credential_unresolved when the mint is unresolved and 503 inference_unavailable without managed inference. GET /api/v1/operator/teams/{team}/chats/{chatId} answers chatResponse, and POST .../chats/{chatId}/finish finishes the chat message, blocks its key and answers chatResponse, or 503 block_unconfirmed while a retried block is pending; both are scoped to the consumer and actor that admitted it, and repeating finish changes nothing. A chat Run belongs to no Work Item: it is absent from Work Item detail, delivery facts and the Run list, its spend and hold count in the team summary, and unsettled-accounts lists it with workItemId null. POST /api/v1/operator/work-items/{id}/notes stores an operator instruction for a live Work Item in the consumer's scope: it requires execute permission and exactly one X-Ploeg-Actor, takes a noteRequest and answers noteResponse, 201 when new and 200 for a replayed commandId. It answers 404 for a Work Item outside the scope, 400 command_required or invalid_note, 409 operator_owned for an item bound to an Operator Execution, 409 work_item_terminal for a done, needs_human, awaiting_review, stale or withdrawn item, 409 shift_changed when expectedShiftId is not the open Shift and 409 command_conflict for a commandId reused with another body. Each note is audited as operator.note.added. The next claimed Run of the Work Item, other than an Ask, is briefed with every unconsumed note as an \"operator note\" finding, and each is then marked consumed and audited as operator.note.consumed, so a note reaches one Run. POST /api/v1/operator/work-items admits a manual-origin Work Item that ploeg-worker executes (ADR-0102): it requires execute permission and exactly one X-Ploeg-Actor, takes a workItemAdmissionRequest and answers workItemAdmissionResponse, 201 when new and 200 for a replayed requestId. The Work Item is queued for its Team, not operator-owned, pinned to the registered target and allotted budgetUsd or, without it, the consumer's maxBudgetUsd, which caps its Shift pool. A replay with the same actor and body returns the Work Item in its current state and never queues it again; a requestId reused with another body or actor, or one that names an Operator Execution, answers 409 request_conflict. It answers 400 invalid_admission, 400 budget_above_limit for a budgetUsd above maxBudgetUsd, 403 team_forbidden for a team outside the scope, 422 unknown_target, 422 target_not_ready, 422 team_not_dispatched for a team without a plan while uniform dispatch is off, 422 harness_not_allowed for a harness no Role of the plan allows (the message names each Role's allowlist), 422 harness_unqualified for an allowed but unqualified harness that is no Role's default while the Team has not set allowUnqualifiedHarnesses, 422 model_not_allowed for a model no Role's policy lists (the message names each Role's models), 422 model_requires_managed_inference for a model when the Team's Roles have no managed inference policy, and 503 dispatch_unavailable without Shift dispatch; each refusal records nothing. The response lists, per Role, the Harness and model its Runs store (ADR-0098, ADR-0103). Each Admission is audited once as operator.work_item.admitted with detail.requestId; a replay is not. Cancel, requeue and notes apply to the admitted Work Item as to tracker work, and its cancel calls no tracker. Attribution (ADR-0108): every operator request other than GET may carry, each at most once, X-Ploeg-Actor (the person, 1 to 128 identifier characters), X-Ploeg-Acting-User (a person acting on the actor's behalf), X-Ploeg-Via (the channel, 1 to 128 printable ASCII characters without leading or trailing space, such as mcp:Claude Code 2.1.296 or browser) and X-Ploeg-Confirmation (<confirmation id>:<lowercase SHA-256 hex of the text the person agreed to>). A repeated or malformed one answers 400 actor_required, invalid_acting_user, invalid_via or invalid_confirmation, and nothing changes; the last three need X-Ploeg-Actor. Every audit event such a request writes under the consumer's name carries detail.attribution (consumer, actor, actingUser, via, confirmation, proof, act), the same shape on every route; existing detail keys are unchanged. Person tokens (ADR-0150): a consumer acting for a person may send that person's token, exchanged at the identity provider for Ploeg's audience, as the bearer (the caller is the one consumer whose clientIds include its azp or client_id) or in X-Ploeg-Person-Token next to its own bearer (its azp must be one of that consumer's clientIds). A token with a bad signature, another issuer or audience, no sub, an expiry passed, a lifetime over the configured bound or an unknown azp answers 401 invalid_token and nothing changes. The person is then the oidc- id of sub, X-Ploeg-Actor is set to it, a header naming anyone else answers 403 actor_conflict, and attribution.proof is proven; header-only attribution is asserted. A person's execution command (message, pause, resume, cancel, handback or take-control) is audited as operator.execution.commanded on the execution's Work Item. Events take actor=<identity> to keep only events whose attribution names it as actor or actingUser; events recorded before attribution existed never match. Findings and questions (ADR-0121): Work Item detail carries findings (every finding raised by id, with the writer's answer and unanswered), questions (every question its Runs asked, with waitingForPerson) and reviewDisagreements (review Rounds whose shadow reviewer's verdict differed from the acting readers'), and every Run shape carries findingItems, findingAnswers, questions and questionAnswers. A question to a person parks the Work Item at needs_human with Shift close reason question_for_person. POST /api/v1/operator/work-items/{id}/questions/{questionId}/answer stores a person's answer to such a question: it requires execute permission and exactly one X-Ploeg-Actor, takes a questionAnswerRequest and answers questionAnswerResponse, 201 when new and 200 for a replayed commandId. It answers 400 invalid_request, command_required or invalid_answer, 404 for a Work Item outside the scope or a question to a person it does not have, 409 already_answered when the question has another answer and 409 command_conflict for a commandId reused with another body. Each answer is audited as question.answered. It accepts an answer in any Work Item state and queues nothing: every later Run of the Work Item is briefed with the question and its answer, so a person answers and then resumes a parked Work Item with a requeue that sets resume true. A requeue body with resume true resumes a Work Item parked on a question instead of restarting it: the new Shift reopens the Round that asked on the parked branch, with the parked Shift's earlier Rounds in its briefing and the parked Shift's unspent pool; Work Item detail resume says which Round, its cap (roundCapUsd), the pool and whether every question is answered. It is audited as work_item.requeued with detail resume true and resumes_round, and a replayed commandId returns the first result. Knowledge (ADR-0122): POST /api/v1/operator/work-items/{id}/knowledge-notes keeps a person's note on a Work Item in the consumer's scope in the Tenant's notes graph: it requires execute permission and exactly one X-Ploeg-Actor, attributes the note to X-Ploeg-Acting-User when given, else to the actor, takes a personNoteRequest and answers personNoteResponse, 201 when new and 200 for a replayed commandId. The note is trusted, read by later Runs of the Work Item's root, or of its repository at level repository, where the person's own words are their approval. It answers 404 outside the scope, 400 command_required or invalid_note, 409 command_conflict for a commandId reused with another note and 409 notes_off when the deployment keeps no notes. GET /api/v1/operator/knowledge/reviews?state=open|all&limit=1..200 answers noteReviewsResponse: the promotions and contradictions of Work Items in scope, newest first, open ones unless state=all. A promotion is a note suggested for a wider level; a merged pull request applies an open repository promotion on its own, and Client and Tenant promotions need a person. A contradiction is a note that disagreed with current notes on its subject; Runs see both marked contested until a person decides. POST /api/v1/operator/knowledge/reviews/{id}/decision takes a noteReviewDecisionRequest from a person (execute permission and X-Ploeg-Actor) and answers noteReviewDecisionResponse: accept or reject a promotion (reject needs a reason and is kept, so the suggestion is not raised again), or keep_newer, keep_older or keep_both for a contradiction, where every note not kept gets a retraction that takes it out of every briefing. It answers 404 outside the scope, 409 review_decided and 422 invalid_decision. Each decision is audited as note.review_decided. Client-carried Runs (ADR-0112): a Role whose claude-environment Runs a client carries (PLOEG_TEAM_HARNESSES carrier client) has every new Run stored with that carrier; no worker claims it, and its Work Item waits as needs_human with work item waitingForClient (reason start_from_claude_code) and a work_item.needs_human event naming the person it acts for. POST /api/v1/operator/work-items/{id}/claim lets that person claim the oldest such Run of a Work Item in the consumer's scope: it requires execute permission and X-Ploeg-Actor, takes no body, treats X-Ploeg-Acting-User when given, else the actor, as the person, starts the Run exactly as a worker's claim does (budget, Lease, Work Item active, audited as run.claimed with detail.carrier client) and answers clientClaimResponse. It answers 404 for a Work Item outside the scope, 403 not_your_run when the Run acts for another person, 409 person_unknown when Ploeg knows no person for it, 409 already_claimed when its Run is already running, 409 no_client_run when none waits, 409 no_target without a resolved repository, 409 team_at_capacity at the Team's maxRunning and 409 budget_exhausted when the Shift's pool cannot fund the Run; each refusal changes nothing. The client then dispatches with the person's own Claude Code and login, records the session through the run API's claude-session route, after which ploegd holds the Run and settles it from the runner's post-session report, so the client may renew and report the outcome or leave; the runner's hooks exchange the session token and push as for a worker-dispatched Run (ADR-0084). Like every person match (ADR-0108), ploegd trusts the consumer's X-Ploeg-Actor unless a person token proves the person (ADR-0150). Connections (ADR-0129) lists every configured board and every repository Ploeg can route to: a repository's readiness, the boards routing to it and when its forge last sent an event; a board's rule, its tracker webhook state and, for every Team in scope, whether each of its tracker users can see the board. Boards pinned to a Team outside the scope are left out. POST /api/v1/operator/unsettled-accounts/{runId}/settle settles one account that unsettled-accounts lists from evidence an operator gathered, such as a provider invoice line, when the gateway can no longer answer for it; it requires execute permission and X-Ploeg-Actor, takes a settleFromEvidenceRequest and answers 201 with a settlementResponse, or 200 with replayed true when the commandId repeats the same settlement. The settlement is final at once, charges the Run's Shift, releases its hold and audits llm.reconciled under the operator. It answers 409 below_observation for an amount under the spend Ploeg observed, already_settled for a reconciled account, not_unsettled for one the sweeps still own, and command_conflict for a commandId that settled another Run, amount or evidence.",
   "oneOf": [
     {
       "$ref": "#/$defs/teamsResponse"
@@ -15,6 +15,9 @@
     },
     {
       "$ref": "#/$defs/runResponse"
+    },
+    {
+      "$ref": "#/$defs/runAccountingResponse"
     },
     {
       "$ref": "#/$defs/eventsResponse"
@@ -7644,6 +7647,417 @@
           }
         }
       }
+    },
+    "runAccountingAccount": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "keyAlias",
+        "authorizedUsd",
+        "observedUsd",
+        "reconciledUsd",
+        "settledUsd",
+        "settledAt",
+        "correctionsUntil",
+        "costKnown",
+        "evidence",
+        "updatedAt",
+        "listedUnsettled"
+      ],
+      "properties": {
+        "state": {
+          "enum": [
+            "reserved",
+            "minting",
+            "issued",
+            "unknown",
+            "blocked",
+            "reconciled"
+          ]
+        },
+        "keyAlias": {
+          "type": "string",
+          "pattern": "^ploeg-[a-f0-9]{12}$",
+          "description": "The gateway key's alias, to find its spend logs in the gateway."
+        },
+        "authorizedUsd": {
+          "type": "number",
+          "minimum": 0
+        },
+        "observedUsd": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "The highest spend Ploeg read from the gateway while the key lived, or null."
+        },
+        "reconciledUsd": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "The settled amount including every correction, or null before settlement."
+        },
+        "settledUsd": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "The first settlement, kept when a correction raises reconciledUsd."
+        },
+        "settledAt": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "correctionsUntil": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Until when the correction sweep may still raise the cost; null once it cannot."
+        },
+        "costKnown": {
+          "type": "boolean",
+          "description": "false when the account settled at zero because the gateway logged no request for a minted key: the cost is unknown, not zero."
+        },
+        "evidence": {
+          "type": "string",
+          "maxLength": 4096,
+          "description": "How the account settled: ploegd:mint-never-began, litellm:spend-logs or operator:evidence, with its figures. Empty before settlement."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the account last changed. A blocked account settles once it has not changed for PLOEG_LLM_SETTLE_AFTER."
+        },
+        "listedUnsettled": {
+          "type": "boolean",
+          "description": "true when GET /api/v1/operator/unsettled-accounts lists the account, so an execute-capable consumer may settle it from evidence."
+        }
+      },
+      "description": "The Run's inference account (ADR-0012)."
+    },
+    "runAccountingAdjustment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "previousUsd",
+        "spendUsd",
+        "evidence",
+        "recordedAt"
+      ],
+      "properties": {
+        "previousUsd": {
+          "type": "number",
+          "minimum": 0
+        },
+        "spendUsd": {
+          "type": "number",
+          "minimum": 0
+        },
+        "evidence": {
+          "type": "string",
+          "maxLength": 4096
+        },
+        "recordedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "description": "A correction the correction sweep charged after the first settlement."
+    },
+    "runAccountingOperatorSettlement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "consumer",
+        "commandId",
+        "actor",
+        "previousState",
+        "settledUsd",
+        "releasedUsd",
+        "evidence",
+        "settledAt"
+      ],
+      "properties": {
+        "consumer": {
+          "type": "string"
+        },
+        "commandId": {
+          "type": "string"
+        },
+        "actor": {
+          "type": "string"
+        },
+        "previousState": {
+          "enum": [
+            "minting",
+            "issued",
+            "unknown",
+            "blocked"
+          ]
+        },
+        "settledUsd": {
+          "type": "number",
+          "minimum": 0
+        },
+        "releasedUsd": {
+          "type": "number",
+          "minimum": 0
+        },
+        "evidence": {
+          "type": "string",
+          "maxLength": 4096,
+          "description": "The evidence the operator gave."
+        },
+        "settledAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "description": "An operator's settlement of the account from evidence (ADR-0155)."
+    },
+    "runAccountingEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "at",
+        "actor",
+        "action"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]{0,18}$"
+        },
+        "at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "actor": {
+          "type": "string"
+        },
+        "action": {
+          "type": "string",
+          "pattern": "^llm\\."
+        },
+        "observedUsd": {
+          "type": "number",
+          "minimum": 0
+        },
+        "spendUsd": {
+          "type": "number",
+          "minimum": 0
+        },
+        "deltaUsd": {
+          "type": "number",
+          "description": "What the event charged to the Shift."
+        },
+        "costKnown": {
+          "type": "boolean"
+        },
+        "adjustment": {
+          "const": true
+        },
+        "operatorEvidence": {
+          "const": true
+        }
+      },
+      "description": "One llm audit event of the Run, with only the amounts it recorded."
+    },
+    "runAccounting": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runId",
+        "workItemId",
+        "shiftId",
+        "team",
+        "role",
+        "runState",
+        "outcome",
+        "finishedAt",
+        "authorizedUsd",
+        "harnessReportedUsd",
+        "heldUsd",
+        "costStatus",
+        "account",
+        "adjustments",
+        "operatorSettlement",
+        "events",
+        "eventsTruncated"
+      ],
+      "properties": {
+        "runId": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]{0,18}$"
+        },
+        "workItemId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,18}$"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The Run's Work Item, or null for a chat Run."
+        },
+        "shiftId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,18}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "team": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string"
+        },
+        "runState": {
+          "enum": [
+            "pending",
+            "running",
+            "finished"
+          ]
+        },
+        "outcome": {
+          "anyOf": [
+            {
+              "enum": [
+                "pr_opened",
+                "pr_updated",
+                "issue_updated",
+                "follow_up_created",
+                "stuck",
+                "failed",
+                "no_change_needed",
+                "yielded"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "finishedAt": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "authorizedUsd": {
+          "type": "number",
+          "minimum": 0,
+          "description": "The Run's authorization, fixed when it was claimed."
+        },
+        "harnessReportedUsd": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "The cost the harness reported. It is the charge only for a Run without an account."
+        },
+        "heldUsd": {
+          "type": "number",
+          "minimum": 0,
+          "description": "What the Run keeps back from its Shift's pool now."
+        },
+        "costStatus": {
+          "$ref": "#/$defs/costStatus"
+        },
+        "account": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/runAccountingAccount"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "null for a Run without an inference account."
+        },
+        "adjustments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/runAccountingAdjustment"
+          }
+        },
+        "operatorSettlement": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/runAccountingOperatorSettlement"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "events": {
+          "type": "array",
+          "maxItems": 200,
+          "items": {
+            "$ref": "#/$defs/runAccountingEvent"
+          },
+          "description": "The Run's newest accounting audit events, oldest first."
+        },
+        "eventsTruncated": {
+          "type": "boolean",
+          "description": "true when the Run has more than 200 accounting events and the oldest were left out."
+        }
+      }
+    },
+    "runAccountingResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "generatedAt",
+        "accounting"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "1.0"
+        },
+        "generatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "accounting": {
+          "$ref": "#/$defs/runAccounting"
+        }
+      },
+      "description": "GET /api/v1/operator/runs/{id}/accounting: a Run's spend from authorization to settlement, for any consumer whose Teams include the Run's Team. It carries no Run content."
     }
   }
 }

@@ -232,6 +232,17 @@ The check does not compare enum values: a consumer must treat an unknown value a
   `llm.reconciled` under the operator with `operatorEvidence: true`. It
   answers 409 `below_observation`, `already_settled`, `not_unsettled` or
   `command_conflict` and changes nothing. An older Ploeg answers 404 or 405.
+- Any operator consumer whose Teams include a Run's Team reads that Run's
+  spend with `GET /api/v1/operator/runs/{id}/accounting`
+  (`runAccountingResponse`): its authorization, the cost its harness
+  reported, its Hold, its Cost Status, its inference account (state, key
+  alias, observed, settled and reconciled amounts, correction window,
+  `costKnown`, settlement evidence and `listedUnsettled`), every later
+  adjustment, an operator settlement when one was made, and its newest 200
+  `llm.*` audit events with their amounts, oldest first. A chat Run is
+  included, with `workItemId` null. The answer carries no Run content, so it
+  needs no `readContent`; it never names the gateway's hashed key id. A Run
+  outside the consumer's Teams answers 404. An older Ploeg answers 404.
 - `deploy-api.v1` is the body of a pipeline's deploy report. It refuses
   unknown fields, unlike the response contracts, so a misspelled field fails
   the pipeline step instead of being dropped.
