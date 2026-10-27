@@ -45,8 +45,13 @@ the page in order on a fresh kind cluster and checks the Run ends `done`. The
 [Quickstart workflow](.github/workflows/quickstart.yml) runs it daily and on every change to the
 page, `ops/quickstart/` or the chart, against the pinned release, the newest release and the
 chart in your checkout, and fails when the page pins a release more than twenty behind the newest.
+The checkout leg runs the `ploegd` and worker images built from your checkout, because a chart
+change can need code no release has yet. When a run fails, it prints the pods, events and container
+logs before it deletes the cluster.
 If you change the page, run `mise exec -- bash scripts/quickstart.sh run` locally first; it needs
-Docker and deletes its cluster when it ends.
+Docker and deletes its cluster when it ends. To run the checkout leg locally, first run
+`export $(mise exec -- bash scripts/quickstart.sh checkout-chart <newest release> <directory>)`
+and `export QUICKSTART_VERSION=<newest release>`.
 
 ## Before you open a pull request
 
