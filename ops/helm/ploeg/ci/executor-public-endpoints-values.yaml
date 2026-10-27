@@ -1,0 +1,10 @@
+executor:
+  enabled: true
+  forgejo:
+    url: http://forgejo.example.com
+  litellm:
+    baseUrl: https://llm.example.com/v1
+  teams:
+    - name: defaults
+      model: litellm_proxy/deepseek-chat
+      budget: "1"
