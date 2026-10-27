@@ -51,7 +51,7 @@ networkPolicy:
     ports:
       - {protocol: UDP, port: 53}
       - {protocol: TCP, port: 53}
-  privateCidrs: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16]
+  privateCidrs: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10]
   database:
     peers: []
     port: 5432
