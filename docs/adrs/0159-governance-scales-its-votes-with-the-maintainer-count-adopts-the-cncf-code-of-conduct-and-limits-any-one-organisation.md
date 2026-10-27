@@ -53,7 +53,7 @@ Chosen option: "**Adapt the CNCF Maintainer Council template**", because it is t
 * Bad, because until Ploeg is a CNCF project the independent route is a request the committee may decline, and while there is one maintainer a declined report about that maintainer has no project responder without a conflict. Accepted and stated in CODE_OF_CONDUCT.md; a second maintainer or CNCF acceptance closes it.
 * Bad, because with two maintainers a non-conduct dispute between them can deadlock. Accepted: the status quo is safer than letting one of two remove the other.
 * Bad, because Ploeg under its own name cannot continue if the sole maintainer disappears. Accepted as open until a co-maintainer is found.
-* Neutral, because the first CoC reporting step is a public issue without details: Ploeg has no conduct mailbox, and GitHub has no private messages.
+* Neutral, because conduct reports to the maintainers go through GitHub's private reporting form, which is built for security reports: the maintainer chose it on 2026-10-27 over a separate mailbox, and the code of conduct tells reporters to title the report `Conduct:`.
 
 ### Confirmation
 
