@@ -22,6 +22,7 @@ import (
 
 	"github.com/ploeg-hq/ploeg/pkg/followup"
 	"github.com/ploeg-hq/ploeg/pkg/harness"
+	"github.com/ploeg-hq/ploeg/pkg/spendcap"
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
@@ -53,7 +54,9 @@ const MaxAttempts = 3
 const MaxInfraFailures = 10
 
 type Store struct {
-	pool *pgxpool.Pool
+	pool      *pgxpool.Pool
+	spendCaps spendcap.Caps
+	clock     func() time.Time
 }
 
 // New opens a connection pool on databaseURL shaped by poolCfg; a setting
@@ -384,6 +387,10 @@ func (s *Store) ClaimWithin(ctx context.Context, team string, ttl time.Duration,
 	}
 	if err != nil {
 		return nil, err
+	}
+	if err := checkTeamSpendCap(ctx, tx, pendingRun{team: team, workItemID: id, spendCap: s.TeamSpendCap(team), now: s.spendNow()}, minViableAuthorization); err != nil {
+		_ = tx.Rollback(ctx)
+		return nil, s.refuseOverCap(ctx, "team:"+team, err)
 	}
 	it.ID = fmt.Sprint(id)
 	it.State = work.StateActive

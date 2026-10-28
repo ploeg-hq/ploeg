@@ -39,6 +39,7 @@ type instructionScan struct {
 	Files       []work.InstructionFile
 	Hidden      []hiddenCharacter
 	HiddenTotal int
+	LinkTargets []string
 }
 
 func isHiddenRune(r rune) bool {
@@ -115,9 +116,11 @@ func (s *instructionScanner) followLink(link, rel string, inside bool) error {
 	if err != nil {
 		return fmt.Errorf("instruction path %s: %w", rel, err)
 	}
-	if r, err := filepath.Rel(s.root, target); err != nil || r == ".." || strings.HasPrefix(r, ".."+string(filepath.Separator)) {
+	inRepo, err := filepath.Rel(s.root, target)
+	if err != nil || inRepo == ".." || strings.HasPrefix(inRepo, ".."+string(filepath.Separator)) {
 		return fmt.Errorf("instruction path %s is a symlink that leaves the repository", rel)
 	}
+	s.scan.LinkTargets = append(s.scan.LinkTargets, filepath.ToSlash(inRepo))
 	info, err := os.Stat(target)
 	if err != nil {
 		return fmt.Errorf("instruction path %s: %w", rel, err)

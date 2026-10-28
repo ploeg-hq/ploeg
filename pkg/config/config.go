@@ -39,6 +39,7 @@ import (
 	"github.com/ploeg-hq/ploeg/pkg/followup"
 	"github.com/ploeg-hq/ploeg/pkg/gate"
 	"github.com/ploeg-hq/ploeg/pkg/plan"
+	"github.com/ploeg-hq/ploeg/pkg/spendcap"
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
@@ -144,6 +145,10 @@ type Team struct {
 	// MaxRunning caps how many of the team's Runs may be running at once.
 	// A claim over the cap returns no work. 0 = unlimited.
 	MaxRunning int `yaml:"maxRunning"`
+	// SpendCap bounds the team's total spend per calendar period (ADR-0162):
+	// a claim whose hold would take the period's settled and held spend over
+	// it starts nothing. Omitted = no cap.
+	SpendCap *spendcap.Cap `yaml:"spendCap"`
 	// ForgeFollowUps opts this team in to acting on forge events on its pull
 	// requests. Omitted = forge events are recorded and nothing else happens.
 	ForgeFollowUps work.ForgeFollowUps `yaml:"forgeFollowUps"`
@@ -294,6 +299,13 @@ func (f *File) Validate() error {
 	for _, name := range sortedTeamNames(f.Teams) {
 		if f.Teams[name].MaxRunning < 0 {
 			return fmt.Errorf("teams.%s.maxRunning: must be 0 (unlimited) or more, got %d", name, f.Teams[name].MaxRunning)
+		}
+	}
+	for _, name := range sortedTeamNames(f.Teams) {
+		if c := f.Teams[name].SpendCap; c != nil {
+			if err := c.Validate(); err != nil {
+				return fmt.Errorf("teams.%s.spendCap: %w", name, err)
+			}
 		}
 	}
 	for name, t := range f.Teams {
@@ -642,6 +654,21 @@ func (f *File) RunCaps(base RunCaps) RunCaps {
 	for team, t := range f.Teams {
 		if t.MaxRunning > 0 {
 			out[team] = t.MaxRunning
+		}
+	}
+	return out
+}
+
+// SpendCaps overlays the roster's per-team spendCap onto base, so a team
+// capped in the file wins over the same team capped by environment.
+func (f *File) SpendCaps(base spendcap.Caps) spendcap.Caps {
+	out := spendcap.Caps{}
+	for team, c := range base {
+		out[team] = c
+	}
+	for team, t := range f.Teams {
+		if t.SpendCap != nil {
+			out[team] = *t.SpendCap
 		}
 	}
 	return out

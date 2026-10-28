@@ -1342,6 +1342,10 @@
                 "minimum": 0,
                 "description": "Concurrency cap: the most Runs this team may have running at once, enforced by ploegd at claim time. A claim over the cap gets no work and the worker exits 0. Every workload's maxReplicaCount is clamped to it. 0 or unset = unlimited."
               },
+              "spendCap": {
+                "$ref": "#/definitions/spendCap",
+                "description": "This team's spend cap per calendar period (ADR-0162), in place of executor.spendCap; config.teams.<name>.spendCap wins over both. usd 0 = no cap, which leaves profile P1."
+              },
               "harness": {
                 "$ref": "#/definitions/harness"
               },
@@ -1378,6 +1382,16 @@
                 "type": "integer",
                 "minimum": 0,
                 "description": "ADR-0017: how many times a reviewer request_changes may re-open the writing Round of this plan. 0 = loop off, the plan runs to exhaustion."
+              },
+              "independentReview": {
+                "type": "object",
+                "properties": {
+                  "model": {"type": "boolean"},
+                  "harness": {"type": "boolean"}
+                },
+                "additionalProperties": false,
+                "minProperties": 1,
+                "description": "ADR-0163, planned teams only: ploegd refuses to start unless every reviewing Role differs from every writing Role in the models its inference policy admits (model: true) and in the Harnesses its admission may choose (harness: true). Unset = no requirement."
               },
               "executorType": {
                 "type": "string",
@@ -1517,6 +1531,10 @@
           },
           "additionalProperties": false,
           "description": "Worker pods ServiceAccount. create and name are independent: naming an account never suppresses creating it."
+        },
+        "spendCap": {
+          "$ref": "#/definitions/spendCap",
+          "description": "The spend cap every executor team takes unless it sets its own (ADR-0162): ploegd refuses a claim whose hold would take the team's spend settled in the calendar period (UTC) plus its Runs' holds over usd. Default 20 USD per day. Profile P1 needs every executor team to resolve a cap with usd above 0."
         },
         "workerSecurityContext": {
           "type": "object",
@@ -1783,6 +1801,40 @@
     }
   },
   "definitions": {
+    "spendCap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "usd"
+      ],
+      "properties": {
+        "usd": {
+          "type": "number",
+          "minimum": 0,
+          "description": "The most the team's Runs may settle and hold in one period, in USD. 0 = no cap."
+        },
+        "period": {
+          "enum": [
+            "day",
+            "week",
+            "month"
+          ],
+          "description": "The calendar period in UTC; a week starts on Monday."
+        }
+      },
+      "if": {
+        "properties": {
+          "usd": {
+            "exclusiveMinimum": 0
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "period"
+        ]
+      }
+    },
     "networkPolicyPeers": {
       "type": "array",
       "description": "A list of NetworkPolicyPeer objects: `podSelector`, `namespaceSelector` or `ipBlock`, as in `networking.k8s.io/v1`.",

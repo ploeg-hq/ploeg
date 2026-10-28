@@ -343,6 +343,8 @@ spec:
               value: "{\"gvisor\":{\"maxFixRounds\":0,\"pool\":\"4\",\"rounds\":[{\"roles\":[{\"cap\":\"3.00\",\"name\":\"builder\",\"writes\":true}]},{\"roles\":[{\"cap\":\"0.75\",\"harness\":{\"dind\":false},\"name\":\"reviewer\",\"sandbox\":{\"runtimeClassName\":\"gvisor-systrap\"},\"writes\":false}]}]}}"
             - name: PLOEG_TEAM_HARNESSES
               value: "{\"gvisor\":{\"builder\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"openhands\",\"qualification\":\"qualified\"}],\"name\":\"openhands\"},\"reviewer\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"openhands\",\"qualification\":\"qualified\"}],\"name\":\"openhands\"}},\"kata\":{\"\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"openhands\",\"qualification\":\"qualified\"}],\"name\":\"openhands\"}}}"
+            - name: PLOEG_TEAM_SPEND_CAPS
+              value: "{\"gvisor\":{\"period\":\"day\",\"usd\":20},\"kata\":{\"period\":\"day\",\"usd\":20}}"
             - name: PLOEG_FORGEJO_URL
               value: "http://forgejo-http.forgejo.svc.cluster.local:3000"
             - name: PLOEG_FORGEJO_TOKEN
