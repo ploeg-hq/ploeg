@@ -42,10 +42,12 @@ type Config struct {
 	// Resource, when set, is this server's resource identifier: the RFC 9728
 	// resource its protected resource metadata names and the RFC 8707
 	// resource indicator a client requests a token for. A token is accepted
-	// only when its aud names it exactly (RFC 9068 section 4), so a token
-	// issued to an accepted client for another resource is refused. It must
-	// be an absolute URL without credentials or fragment, and cannot be
-	// combined with AuthorizedParties or SelfIssuedAudiences.
+	// only when its aud names it (RFC 9068 section 4), so a token issued to an
+	// accepted client for another resource is refused. The scheme and host
+	// compare without case, as the MCP authorization specification asks;
+	// everything else compares exactly. It must be an absolute URL without
+	// credentials or fragment, and cannot be combined with AuthorizedParties
+	// or SelfIssuedAudiences.
 	Resource string
 	// AllowLoopbackHTTP accepts an http Issuer, JWKS URL and jwks_uri whose
 	// host is localhost or a loopback address. It is for local development
@@ -118,6 +120,7 @@ func NewVerifier(cfg Config) (*Verifier, error) {
 		if err != nil || !r.IsAbs() || r.Host == "" || r.Fragment != "" || r.User != nil {
 			return nil, errors.New("resource must be an absolute URL without credentials or fragment")
 		}
+		cfg.Resource = canonicalResource(cfg.Resource)
 		if len(cfg.AuthorizedParties) > 0 || len(cfg.SelfIssuedAudiences) > 0 {
 			return nil, errors.New("a resource cannot be combined with authorized parties or self-issued audiences")
 		}
@@ -213,16 +216,19 @@ type actClaim struct {
 // "claims" (every claim of the verified payload, as JSON decodes it).
 func (v *Verifier) Verify(ctx context.Context, token string, _ *http.Request) (*auth.TokenInfo, error) {
 	var c claims
-	parser := jwt.NewParser(
+	options := []jwt.ParserOption{
 		jwt.WithValidMethods(v.cfg.Algorithms),
 		jwt.WithIssuer(v.cfg.Issuer),
-		jwt.WithAudience(v.tokenAudiences()...),
 		jwt.WithExpirationRequired(),
 		jwt.WithIssuedAt(),
 		jwt.WithLeeway(v.cfg.Leeway),
 		jwt.WithTimeFunc(v.cfg.Now),
 		jwt.WithStrictDecoding(),
-	)
+	}
+	if v.cfg.Resource == "" {
+		options = append(options, jwt.WithAudience(v.cfg.Audiences...))
+	}
+	parser := jwt.NewParser(options...)
 	var keyErr error
 	_, err := parser.ParseWithClaims(token, &c, func(t *jwt.Token) (any, error) {
 		kid, _ := t.Header["kid"].(string)
@@ -233,11 +239,11 @@ func (v *Verifier) Verify(ctx context.Context, token string, _ *http.Request) (*
 	if keyErr != nil && errors.Is(keyErr, ErrKeysUnavailable) {
 		return nil, keyErr
 	}
-	if err != nil && v.cfg.Resource != "" && errors.Is(err, jwt.ErrTokenInvalidAudience) {
-		return nil, invalid(fmt.Sprintf("the token's aud does not name this resource %q; request the token with the RFC 8707 resource parameter", v.cfg.Resource))
-	}
 	if err != nil {
 		return nil, invalid(describe(err))
+	}
+	if v.cfg.Resource != "" && !slices.ContainsFunc(c.Audience, func(aud string) bool { return canonicalResource(aud) == v.cfg.Resource }) {
+		return nil, invalid(fmt.Sprintf("the token's aud does not name this resource %q; request the token with the RFC 8707 resource parameter", v.cfg.Resource))
 	}
 	if c.IssuedAt == nil {
 		return nil, invalid("the token has no iat")
@@ -292,11 +298,14 @@ func (v *Verifier) Verify(ctx context.Context, token string, _ *http.Request) (*
 	}, nil
 }
 
-func (v *Verifier) tokenAudiences() []string {
-	if v.cfg.Resource != "" {
-		return []string{v.cfg.Resource}
+func canonicalResource(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || !u.IsAbs() || u.Host == "" {
+		return raw
 	}
-	return v.cfg.Audiences
+	u.Scheme = strings.ToLower(u.Scheme)
+	u.Host = strings.ToLower(u.Host)
+	return u.String()
 }
 
 func payloadClaims(parser *jwt.Parser, token string) map[string]any {

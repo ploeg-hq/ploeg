@@ -113,10 +113,11 @@ const mcpResource = "https://ploeg-mcp.example.com/mcp"
 
 func TestATokenForTheResourcePasses(t *testing.T) {
 	is := newIssuer(t)
-	v := resourceVerifier(t, is, mcpResource)
+	v := resourceVerifier(t, is, "https://Ploeg-MCP.example.com/mcp")
 	for name, aud := range map[string]any{
-		"the resource":                    mcpResource,
-		"the resource beside a client id": []string{"ploeg-mcp", mcpResource},
+		"the resource":                              mcpResource,
+		"the resource beside a client id":           []string{"ploeg-mcp", mcpResource},
+		"the resource, scheme and host in capitals": "HTTPS://PLOEG-MCP.EXAMPLE.COM/mcp",
 	} {
 		c := is.accessClaims()
 		c["aud"] = aud
@@ -138,7 +139,10 @@ func TestATokenNotForTheResourceIsRefused(t *testing.T) {
 		"aud a client id but not the resource": func(c jwt.MapClaims) { c["aud"] = "ploeg-mcp" },
 		"aud another resource":                 func(c jwt.MapClaims) { c["aud"] = "https://other.example.com/mcp" },
 		"aud the resource with another path":   func(c jwt.MapClaims) { c["aud"] = mcpResource + "/other" },
-		"aud the resource in another case":     func(c jwt.MapClaims) { c["aud"] = strings.ToUpper(mcpResource) },
+		"aud the resource, path in capitals":   func(c jwt.MapClaims) { c["aud"] = "https://ploeg-mcp.example.com/MCP" },
+		"aud the resource, a trailing slash":   func(c jwt.MapClaims) { c["aud"] = mcpResource + "/" },
+		"aud the resource on another port":     func(c jwt.MapClaims) { c["aud"] = "https://ploeg-mcp.example.com:8443/mcp" },
+		"aud the resource over http":           func(c jwt.MapClaims) { c["aud"] = "http://ploeg-mcp.example.com/mcp" },
 		"the resource, a foreign azp":          func(c jwt.MapClaims) { c["aud"] = mcpResource; c["azp"] = "another-client" },
 		"the resource, an ID token":            func(c jwt.MapClaims) { c["aud"] = mcpResource; delete(c, "azp"); delete(c, "scope") },
 		"no aud":                               func(c jwt.MapClaims) { delete(c, "aud") },
