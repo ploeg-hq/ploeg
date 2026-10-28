@@ -853,6 +853,15 @@ expired. A declaration cannot set the name itself.
 Every fact comes from ploegd's records of the Run; the worker names only the
 audiences. The token carries no credential: nothing in Ploeg accepts it.
 
+**Which audiences.** ploegd signs only an audience configured for the Run's
+Team and Role in `PLOEG_RUN_IDENTITY_AUDIENCES`
+(`{"<team>": {"<role>": ["<audience>"]}}`, the Role `""` for a Team without a
+Shift plan). The chart renders it from the `runIdentity.audience` of the
+plugins each Role's workers load, so a configured plugin is always covered.
+Any other audience answers 403, signs nothing for the request and is logged
+as `run identity refused` with the Run, Team, Role and audience; the worker
+then removes the plugins' tokens and stops asking (threat model F-48).
+
 **Verifying it.** A consumer pins two values in its own configuration, the
 issuer and its own audience, and fetches the keys from
 `GET <issuer>/api/v1/run-identity/jwks` (a JWK Set, unauthenticated, cacheable

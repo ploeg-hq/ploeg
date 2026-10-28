@@ -31,6 +31,11 @@ var ErrRunIdentityOff = errors.New("ploegd issues no run identities")
 // person (ADR-0142).
 var ErrRunIdentityEnded = errors.New("the Run is not running, so it has no run identity")
 
+// ErrRunIdentityRefused means ploegd signs none of the requested audiences
+// for this Run's Team and Role (threat model F-48). The worker asks with the
+// same audiences every time, so asking again cannot succeed.
+var ErrRunIdentityRefused = errors.New("ploegd signs no run identity for an audience this Run's Team and Role do not list")
+
 // RunIdentities asks ploegd for one Run identity per audience. The facts in
 // them are ploegd's; the worker names only the audiences.
 func (a *APIClient) RunIdentities(ctx context.Context, runToken string, audiences []string) ([]RunIdentity, error) {
@@ -49,6 +54,8 @@ func (a *APIClient) RunIdentities(ctx context.Context, runToken string, audience
 		return nil, ErrRunIdentityOff
 	case http.StatusConflict:
 		return nil, ErrRunIdentityEnded
+	case http.StatusForbidden:
+		return nil, ErrRunIdentityRefused
 	default:
 		return nil, fmt.Errorf("run identity: HTTP %d", resp.StatusCode)
 	}
@@ -99,6 +106,11 @@ func startRunIdentity(ctx context.Context, api runIdentitySource, runToken strin
 		ids, err := api.RunIdentities(callCtx, runToken, audiences)
 		if errors.Is(err, ErrRunIdentityOff) {
 			log.Warn("plugins opted into the run identity, but ploegd issues none; their hooks run without it")
+			k.remove()
+			return false
+		}
+		if errors.Is(err, ErrRunIdentityRefused) {
+			log.Warn("ploegd refused the run identity: an audience a plugin opted into is not configured for this Run's Team and Role; the plugins' hooks run without it", "audiences", audiences)
 			k.remove()
 			return false
 		}

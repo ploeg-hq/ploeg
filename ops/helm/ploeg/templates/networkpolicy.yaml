@@ -29,6 +29,10 @@
 {{- else }}
 {{- $ploegdIngress = append $ploegdIngress (dict "ports" (list $ploegdPort)) }}
 {{- end }}
+{{- if and $np.ploegd.ingressFrom $ex.enabled (include "ploeg.executorNamespaceSeparate" .) }}
+{{- $workerCallers := dict "matchExpressions" (list (dict "key" "app.kubernetes.io/name" "operator" "In" "values" (list "ploeg-worker" "ploeg-sandbox-launcher"))) }}
+{{- $ploegdIngress = append $ploegdIngress (dict "from" (list (dict "namespaceSelector" (dict "matchLabels" (dict "kubernetes.io/metadata.name" (include "ploeg.executorNamespace" .))) "podSelector" $workerCallers)) "ports" (list $ploegdPort)) }}
+{{- end }}
 {{- range $np.ploegd.extraIngress }}{{- $ploegdIngress = append $ploegdIngress . }}{{- end }}
 ---
 apiVersion: networking.k8s.io/v1
@@ -45,7 +49,8 @@ spec:
   ingress: {{- toYaml $ploegdIngress | nindent 4 }}
   egress: {{- include "ploeg.netpol.rules" (dict "rules" $ploegdEgress "extra" $np.ploegd.extraEgress) | fromJsonArray | toYaml | nindent 4 }}
 {{- if $ex.enabled }}
-{{- $workerEgress := list (include "ploeg.netpol.dnsRule" .) (include "ploeg.netpol.ploegdRule" (dict "root" . "url" $ex.apiUrl)) }}
+{{- $ploegdFromExecutor := dict "root" . "url" $ex.apiUrl "namespace" (ternary .Release.Namespace "" (eq (include "ploeg.executorNamespaceSeparate" .) "true")) }}
+{{- $workerEgress := list (include "ploeg.netpol.dnsRule" .) (include "ploeg.netpol.ploegdRule" $ploegdFromExecutor) }}
 {{- with $ex.litellm.baseUrl }}
 {{- $workerEgress = append $workerEgress (include "ploeg.netpol.endpointRule" (dict "root" $root "url" . "endpoint" $np.gateway)) }}
 {{- end }}
@@ -60,6 +65,9 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: {{ include "ploeg.netpol.name" (dict "root" . "suffix" "worker") }}
+  {{- with include "ploeg.executorNamespaceMetadata" . }}
+  {{ . }}
+  {{- end }}
   labels: {{- include "ploeg.labels" . | nindent 4 }}
 spec:
   podSelector:
@@ -74,6 +82,9 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: {{ include "ploeg.netpol.name" (dict "root" $root "suffix" (printf "worker-%s-anthropic" $team)) }}
+  {{- with include "ploeg.executorNamespaceMetadata" $root }}
+  {{ . }}
+  {{- end }}
   labels: {{- include "ploeg.labels" $root | nindent 4 }}
 spec:
   podSelector:
@@ -84,7 +95,7 @@ spec:
   egress: {{- list (include "ploeg.netpol.internetRule" (dict "root" $root "port" 443) | fromJson) | toYaml | nindent 4 }}
 {{- end }}
 {{- if include "ploeg.anyTeamOnSandbox" . }}
-{{- $launcherEgress := list (include "ploeg.netpol.dnsRule" .) (include "ploeg.netpol.ploegdRule" (dict "root" . "url" $ex.apiUrl)) }}
+{{- $launcherEgress := list (include "ploeg.netpol.dnsRule" .) (include "ploeg.netpol.ploegdRule" $ploegdFromExecutor) }}
 {{- $apiRule := dict "ports" $np.kubernetesApi.ports }}
 {{- with $np.kubernetesApi.peers }}{{- $_ := set $apiRule "to" . }}{{- end }}
 {{- $launcherEgress = append $launcherEgress ($apiRule | toJson) }}
@@ -93,6 +104,9 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: {{ include "ploeg.netpol.name" (dict "root" . "suffix" "sandbox-launcher") }}
+  {{- with include "ploeg.executorNamespaceMetadata" . }}
+  {{ . }}
+  {{- end }}
   labels: {{- include "ploeg.labels" . | nindent 4 }}
 spec:
   podSelector:

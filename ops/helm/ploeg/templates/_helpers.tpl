@@ -424,6 +424,40 @@ PLOEG_HARNESS and PLOEG_ACP_PROFILE (ADR-0097). Context: (dict "root" $
 {{- toJson $resolved }}
 {{- end -}}
 
+{{- define "ploeg.roleClaudePlugins" -}}
+{{- $gcc := (.root.Values.executor.harness | default dict).claudeCode | default dict }}
+{{- $tcc := (.team.harness | default dict).claudeCode | default dict }}
+{{- $rcc := ((.role | default dict).harness | default dict).claudeCode | default dict }}
+{{- dict "plugins" ($rcc.plugins | default ($tcc.plugins | default ($gcc.plugins | default list))) | toJson }}
+{{- end -}}
+
+{{- define "ploeg.runIdentityAudiences" -}}
+{{- $root := . }}
+{{- $teams := dict }}
+{{- if $root.Values.executor.enabled }}
+{{- range $team := $root.Values.executor.teams }}
+{{- $roles := dict }}
+{{- range $role := (include "ploeg.teamRoles" $team | fromJsonArray) }}
+{{- $auds := list }}
+{{- range $w := (include "ploeg.workerWorkloads" (dict "root" $root "team" $team "role" $role) | fromJsonArray) }}
+{{- if eq (include "ploeg.roleHarness" (dict "root" $root "team" $team "role" $w.role) | fromJson).name "claude-code" }}
+{{- range $p := (include "ploeg.roleClaudePlugins" (dict "root" $root "team" $team "role" $w.role) | fromJson).plugins }}
+{{- with $p.runIdentity }}{{- $auds = append $auds .audience }}{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if $auds }}
+{{- $_ := set $roles ($role.name | default "") (uniq $auds) }}
+{{- end }}
+{{- end }}
+{{- if $roles }}
+{{- $_ := set $teams $team.name $roles }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- toJson $teams }}
+{{- end -}}
+
 {{- define "ploeg.roleToolchains" -}}
 {{- $gh := .root.Values.executor.harness | default dict }}
 {{- $th := .team.harness | default dict }}
@@ -500,10 +534,7 @@ global executor.harness defaults field-by-field (explicit hasKey checks, so
      rendered only into a claude-code pod. A Secret-backed variable becomes a
      PLOEG_CLAUDE_PLUGIN_ENV_<plugin>_<var> secretKeyRef, the only variables
      the worker lets a plugin declaration read. */}}
-{{- $gcc := $gh.claudeCode | default dict }}
-{{- $tcc := $th.claudeCode | default dict }}
-{{- $rcc := $rh.claudeCode | default dict }}
-{{- $ccPlugins := $rcc.plugins | default ($tcc.plugins | default $gcc.plugins) }}
+{{- $ccPlugins := (include "ploeg.roleClaudePlugins" (dict "root" $root "team" $team "role" $role) | fromJson).plugins }}
 {{- $ccPluginJson := list }}
 {{- $ccPluginSecrets := list }}
 {{- if eq $hName "claude-code" }}
@@ -707,7 +738,7 @@ spec:
       {{- end }}
       env:
         - name: PLOEG_API_URL
-          value: {{ include "ploeg.apiUrl" $root | quote }}
+          value: {{ include "ploeg.workerApiUrl" $root | quote }}
         - name: PLOEG_TEAM
           value: {{ $team.name | quote }}
         {{- if $role.name }}

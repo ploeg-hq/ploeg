@@ -20,6 +20,9 @@ apiVersion: keda.sh/v1alpha1
 kind: ScaledJob
 metadata:
   name: {{ include "ploeg.workloadName" (dict "root" $root "team" $team "role" $role "suffix" $w.suffix) }}
+  {{- with include "ploeg.executorNamespaceMetadata" $root }}
+  {{ . }}
+  {{- end }}
   labels: {{- include "ploeg.labels" $root | nindent 4 }}
     {{- if and (not $sandbox) (include "ploeg.roleUsesDind" (dict "root" $root "team" $team "role" $role)) }}
     # KEDA copies these labels onto every Job it creates, which is the only way

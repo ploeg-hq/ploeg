@@ -13,6 +13,9 @@ apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: {{ include "ploeg.workloadName" (dict "root" $root "team" $team "role" $role "suffix" $w.suffix) }}
+  {{- with include "ploeg.executorNamespaceMetadata" $root }}
+  {{ . }}
+  {{- end }}
   labels: {{- include "ploeg.labels" $root | nindent 4 }}
 spec:
   schedule: {{ $root.Values.executor.cronjob.schedule | quote }}
