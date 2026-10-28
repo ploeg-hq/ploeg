@@ -84,6 +84,9 @@ type OperationalMetrics struct {
 	// PendingRunsByHarness counts pending Runs per team, Role and stored
 	// Harness key (ADR-0099). ploegd compares it with the current allowlist.
 	PendingRunsByHarness []PendingHarnessRuns
+	// TeamSpend is every capped Team's spend in its current period
+	// (ADR-0162), sorted by team.
+	TeamSpend []TeamPeriodSpend
 }
 
 // ShadowReviewKey labels one ploeg_shadow_reviews_total series. Primary is
@@ -376,6 +379,9 @@ func (s *Store) OperationalMetrics(ctx context.Context) (OperationalMetrics, err
 		return m, err
 	}
 	if err := briefedRuns(ctx, tx, m.BriefedRuns, m.BriefedNotes); err != nil {
+		return m, err
+	}
+	if m.TeamSpend, err = s.teamPeriodSpends(ctx, tx); err != nil {
 		return m, err
 	}
 	return m, tx.Commit(ctx)

@@ -182,6 +182,10 @@ leaves_p1 'the worker-bin image registry.example/ploegd:0.2.0 (executor.workerIm
 leaves_p1 'the sandbox launcher image ghcr.io/ploeg-hq/ploegd:' --set executor.type=sandbox --set executor.sandbox.runtimeClassName=kata --set image.digest=
 leaves_p1 'the dind image docker.io/library/docker:29.8.2-dind (executor.dindImage) is not pinned by digest' --set 'executor.teams[0].harness.dind=true' --set 'executor.teams[0].harness.acknowledgePrivilegedDind=true' --set executor.dindImage=docker.io/library/docker:29.8.2-dind
 leaves_p1 'the claude-runner image ghcr.io/ploeg-hq/claude-runner:latest (claudeRunner.image) is not pinned by digest' --set claudeRunner.enabled=true --set claudeRunner.environmentSecret.name=claude-runner-environment --set claudeRunner.image.tag=latest
+leaves_p1 'team defaults resolves no spend cap (executor.spendCap, executor.teams[].spendCap or config.teams.defaults.spendCap)' --set executor.spendCap.usd=0
+leaves_p1 'team defaults resolves no spend cap' --set 'executor.teams[0].spendCap.usd=0'
+leaves_p1 'team defaults resolves no spend cap' --set config.teams.defaults.spendCap.usd=0
+leaves_p1 'team defaults resolves no spend cap' --set executor.spendCap=null
 if out=$(helm template ploeg ops/helm/ploeg -f "$REQUIRED" --set supportProfile=P2 2>&1) || ! printf '%s' "$out" | grep -qF "value must be one of 'P1', 'unsupported'"; then
 	echo "chart did not refuse supportProfile P2 by its schema:"
 	echo "$out"
@@ -202,6 +206,12 @@ renders_p1 --set 'executor.teams[0].plan[0].roles[0].name=builder' --set 'execut
 renders_p1 --set 'executor.teams[0].harness.image=registry.example/agent-runner@sha256:db06af1d9c0969ed594a21ee2b3369a79d6e91abb36b94d29223918581963027'
 renders_p1 --set 'executor.harness.toolchains[0].name=go' --set 'executor.harness.toolchains[0].image=docker.io/library/golang:1.27-alpine@sha256:db06af1d9c0969ed594a21ee2b3369a79d6e91abb36b94d29223918581963027'
 renders_p1 --set executor.workerImage=registry.example/ploeg-worker:0.2.0@sha256:db06af1d9c0969ed594a21ee2b3369a79d6e91abb36b94d29223918581963027
+renders_p1 --set executor.spendCap.usd=0 --set 'executor.teams[0].spendCap.usd=5' --set 'executor.teams[0].spendCap.period=week'
+renders_p1 --set executor.spendCap=null --set config.teams.defaults.spendCap.usd=50 --set config.teams.defaults.spendCap.period=month
+if ! helm template ploeg ops/helm/ploeg -f "$REQUIRED" -f "$P1_VALUES" --set 'executor.teams[0].spendCap.usd=5' --set 'executor.teams[0].spendCap.period=week' | grep -qF 'value: "{\"defaults\":{\"period\":\"week\",\"usd\":5}}"'; then
+	echo "a team's own spendCap does not reach ploegd as PLOEG_TEAM_SPEND_CAPS"
+	status=1
+fi
 for p1 in "" "$P1_VALUES"; do
 	if ! out=$(helm template ploeg ops/helm/ploeg -f "$REQUIRED" ${p1:+-f "$p1"} 2>&1); then
 		echo "chart refused the P1 values ${p1:-defaults}, which it must render:"
