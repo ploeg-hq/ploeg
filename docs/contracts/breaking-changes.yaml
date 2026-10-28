@@ -43,3 +43,11 @@ exceptions:
     surface: ops/helm/ploeg/values.yaml
     pointer: networkPolicy.ploegd.ingressFrom
     adr: "0154"
+  - base: v0.2.0-rc.86
+    surface: ops/helm/ploeg/values.schema.json
+    pointer: /properties/operator/properties/consumers/items/allOf
+    adr: "0150"
+  - base: v0.2.0-rc.86
+    surface: ops/helm/ploeg/values.yaml
+    pointer: operator.consumers[].requireClaims
+    adr: "0150"

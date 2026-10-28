@@ -60,15 +60,16 @@ func TestOperatorChartKeepsConsumerCredentialsInController(t *testing.T) {
 			env[item["name"].(string)] = item
 		}
 		var policies []struct {
-			Name         string   `json:"name"`
-			TokenEnv     string   `json:"tokenEnv"`
-			Teams        []string `json:"teams"`
-			Execute      bool     `json:"execute"`
-			Verify       bool     `json:"verify"`
-			ReadContent  *bool    `json:"readContent"`
-			MaxBudgetUSD float64  `json:"maxBudgetUsd"`
-			ClientIDs    []string `json:"clientIds"`
-			Audiences    []string `json:"audiences"`
+			Name          string              `json:"name"`
+			TokenEnv      string              `json:"tokenEnv"`
+			Teams         []string            `json:"teams"`
+			Execute       bool                `json:"execute"`
+			Verify        bool                `json:"verify"`
+			ReadContent   *bool               `json:"readContent"`
+			MaxBudgetUSD  float64             `json:"maxBudgetUsd"`
+			ClientIDs     []string            `json:"clientIds"`
+			Audiences     []string            `json:"audiences"`
+			RequireClaims map[string][]string `json:"requireClaims"`
 		}
 		if err := json.Unmarshal([]byte(env["PLOEG_OPERATOR_CONSUMERS"]["value"].(string)), &policies); err != nil {
 			t.Fatal(err)
@@ -84,6 +85,9 @@ func TestOperatorChartKeepsConsumerCredentialsInController(t *testing.T) {
 		}
 		if len(policies[1].Audiences) != 1 || policies[1].Audiences[0] != "ploeg-verifier" || len(policies[0].Audiences) != 0 {
 			t.Fatalf("audiences not forwarded: %+v", policies)
+		}
+		if groups := policies[0].RequireClaims["groups"]; len(groups) != 1 || groups[0] != "ploeg-operators" || policies[1].RequireClaims != nil {
+			t.Fatalf("requireClaims not forwarded: %+v", policies)
 		}
 		for name, want := range map[string]any{"PLOEG_OPERATOR_PERSON_ISSUER": "https://id.example.com/application/o/ploeg/", "PLOEG_OPERATOR_PERSON_AUDIENCE": "ploeg", "PLOEG_OPERATOR_PERSON_MAX_LIFETIME": "5m"} {
 			if env[name] == nil || env[name]["value"] != want {

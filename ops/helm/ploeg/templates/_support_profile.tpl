@@ -126,6 +126,11 @@ networkPolicy.ploegd.ingressFrom is empty, so ploegd's NetworkPolicy admits port
 {{- if eq (($e.workerAuth | default dict).mode | default "managed") "legacy" -}}
 {{- $out = append $out "executor.workerAuth.mode is legacy; P1 needs managed" -}}
 {{- end -}}
+{{- if include "ploeg.personClaimsRequiredByP1" $root -}}
+{{- range $name := include "ploeg.consumersActingForAnyPerson" $root | fromJsonArray -}}
+{{- $out = append $out (printf "operator consumer %s has execute and accepts a person token as the bearer (audiences or clientIds) without requireClaims; P1 needs requireClaims on it, so the identity provider's groups or roles decide who acts with its authority (F-47)" $name) -}}
+{{- end -}}
+{{- end -}}
 {{- if .Values.claudeRunner.enabled -}}
 {{- $out = append $out "claudeRunner.enabled is true; P1 excludes the claude-runner, whose Runs execute outside the pod" -}}
 {{- with include "ploeg.unpinnedImageDeparture" (dict "what" "the claude-runner" "source" (dict "image" (include "ploeg.claudeRunnerImage" $root) "path" "claudeRunner.image")) -}}
