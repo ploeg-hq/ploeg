@@ -2,7 +2,7 @@
 type: how-to
 audience: [operator, owner]
 owner: ploeg
-last_verified: 2026-10-25
+last_verified: 2026-10-28
 verified_by: "Read cmd/ploeg-mcp and pkg/mcpauth; go test ./cmd/ploeg-mcp ./pkg/mcpauth (2026-10-17, action tools; 2026-10-25, login confirmations against a fake OpenID Connect issuer); authentik's OAuth2 provider source read at 7ff197b for prompt, max_age, acr and amr; the MCP conformance suite 0.2.0-alpha.11 and the Inspector CLI --strict against the binary behind a token-injecting proxy. Not checked against a live identity provider or a running client."
 ---
 
@@ -34,6 +34,13 @@ Create one public client (no secret, authorization code with PKCE S256) whose ac
 
    Also attach `openid` and `offline_access`, so clients get a refresh token and do not open the browser every time a token expires.
 4. Access token validity: 10 minutes. `ploeg-mcp` refuses a token that lives longer, unless you raise `PLOEG_MCP_MAX_TOKEN_LIFETIME`. Authentik's access tokens carry `iss`, `aud` and `azp` (the client id), `sub`, `iat`, `exp`, `scope` and, through the mapping above, `groups`.
+6. The issuer, its key set and its token endpoint must be `https` URLs. `ploeg-mcp` refuses an `http` one unless `PLOEG_MCP_ALLOW_LOOPBACK_HTTP=true` and the host is `localhost` or a loopback address, a local-development setting outside profile P1.
+
+### Audience: the resource or the client id
+
+By default `ploeg-mcp` accepts a token only when its `aud` names `PLOEG_MCP_RESOURCE` (scheme and host in any case, the rest exactly, without an added trailing slash), and `azp` is one of `PLOEG_MCP_CLIENT_IDS` ([ADR-0173](../adrs/0173-ploeg-mcp-accepts-a-token-only-for-its-own-resource-from-an-https-issuer.md)). That is what the MCP authorization specification asks of a server: the client sends the RFC 8707 `resource` parameter with the URL the protected resource metadata names, the provider puts it in `aud`, and the server checks it (RFC 9068 section 4). A token the same client obtained for another resource is then refused.
+
+A provider that ignores the `resource` parameter puts its client id in `aud`. Authentik does (its OAuth2 provider sets `aud` to the client id). For such a provider set `PLOEG_MCP_TOKEN_AUDIENCE=client-id`: `aud` and `azp` must then name a client id in `PLOEG_MCP_CLIENT_IDS`, and `ploeg-mcp` logs a warning at start. Give `ploeg-mcp` a client that no other resource uses, because any token issued to that client is accepted (threat model T-OC-1).
 5. Bind the application to a group, for example `ploeg-readers`, so only its members can sign in.
 
 ## 2. Give each group a read-only Operator Consumer
@@ -49,7 +56,9 @@ The Ploeg image ships the binary at `/usr/local/bin/ploeg-mcp`. The Ploeg chart 
 | `PLOEG_URL` | yes | ploegd's base URL inside the cluster |
 | `PLOEG_MCP_RESOURCE` | yes | The exact public URL clients connect to, such as `https://ploeg-mcp.example.com/mcp`. The MCP endpoint is served at its path, and the protected resource metadata names it as the resource |
 | `PLOEG_MCP_ISSUER` | yes | The provider's issuer, matched byte for byte, such as `https://id.example.com/application/o/ploeg-mcp/` |
-| `PLOEG_MCP_CLIENT_IDS` | yes | Comma-separated client ids whose tokens are accepted (`aud` and `azp`) |
+| `PLOEG_MCP_CLIENT_IDS` | yes | Comma-separated client ids whose tokens are accepted: `azp` must name one, and with `PLOEG_MCP_TOKEN_AUDIENCE=client-id` so must `aud` |
+| `PLOEG_MCP_TOKEN_AUDIENCE` | no | `resource` (default): a token's `aud` must name `PLOEG_MCP_RESOURCE`, scheme and host in any case (RFC 8707). `client-id`: `aud` names a client id instead, for a provider without resource indicators such as Authentik; logs a warning at start |
+| `PLOEG_MCP_ALLOW_LOOPBACK_HTTP` | no | `true` accepts an `http` issuer, key set, confirmation issuer and exchange token endpoint on `localhost` or a loopback address, for local development. Default `false`: every one must be `https`. Outside profile P1; the chart refuses it unless `supportProfile: unsupported` |
 | `PLOEG_MCP_GROUPS` | yes | JSON array of `{"group", "tokenEnv", "execute"}`. The first entry whose group the person is in decides the consumer; `tokenEnv` names the variable holding that consumer's token. `execute: true` also offers that group the action tools; its consumer then needs `execute: true` in ploegd too (see [Act on work](ask-ploeg-from-an-ai-client.md#act-on-work-over-https)) |
 | `PLOEG_MCP_CONFIRMATION_KEY` | with an `execute` group | The key ploeg-mcp signs each person's confirmation state with (HMAC-SHA256, [ADR-0152](../adrs/0152-ploeg-mcp-signs-each-confirmation-and-acts-on-it-once.md)), at least 32 bytes, such as `openssl rand -base64 48`. ploeg-mcp refuses to start when a group is marked `execute` without it. Keep it in a Secret (the chart's `mcp.confirmationKeySecret`); every replica must read the same key. Changing it voids confirmations still open, which ask to be called again |
 | `PLOEG_MCP_CONFIRMATION_MODE` | with an `execute` group | `login`: a person confirms each action by signing in afresh at ploeg-mcp's confirmation page ([ADR-0153](../adrs/0153-a-person-confirms-a-ploeg-mcp-action-by-signing-in-afresh-at-a-ploeg-mcp-page.md), section 5 below). `elicitation`: the client shows a checkbox and answers it, which a client can do without the person ([ADR-0152](../adrs/0152-ploeg-mcp-signs-each-confirmation-and-acts-on-it-once.md)). Unset with an `execute` group behaves as `elicitation` and logs a `DEPRECATED` warning at start; from the next minor it refuses to start |
@@ -83,6 +92,7 @@ mcp:
     PLOEG_MCP_RESOURCE: https://ploeg-mcp.example.com/mcp
     PLOEG_MCP_ISSUER: https://id.example.com/application/o/ploeg-mcp/
     PLOEG_MCP_CLIENT_IDS: ploeg-mcp
+    PLOEG_MCP_TOKEN_AUDIENCE: client-id
     PLOEG_MCP_REQUEST_SCOPES: openid ploeg:read offline_access
     PLOEG_MCP_GROUPS: '[{"group":"ploeg-readers","tokenEnv":"PLOEG_MCP_TOKEN_READERS"}]'
   extraEnv:
@@ -103,6 +113,7 @@ env:
   - {name: PLOEG_MCP_RESOURCE, value: "https://ploeg-mcp.example.com/mcp"}
   - {name: PLOEG_MCP_ISSUER, value: "https://id.example.com/application/o/ploeg-mcp/"}
   - {name: PLOEG_MCP_CLIENT_IDS, value: ploeg-mcp}
+  - {name: PLOEG_MCP_TOKEN_AUDIENCE, value: client-id}
   - {name: PLOEG_MCP_REQUEST_SCOPES, value: "openid ploeg:read offline_access"}
   - {name: PLOEG_MCP_GROUPS, value: '[{"group":"ploeg-readers","tokenEnv":"PLOEG_MCP_TOKEN_READERS"}]'}
   - name: PLOEG_MCP_TOKEN_READERS
@@ -191,7 +202,9 @@ The first answers 401 with `resource_metadata` and `scope`; the second names the
 | The client never opens a browser and says the server needs authentication | It cannot read the metadata or the provider's discovery | Check both URLs above from the client's machine; a browser-based client also needs CORS on the provider's discovery document |
 | 401 `the token lives longer than 10m0s` | The provider issues longer access tokens | Set the access token validity to 10 minutes, or raise `PLOEG_MCP_MAX_TOKEN_LIFETIME` |
 | 401 `the token has no azp or scope` | The client sent an ID token, or the provider puts no `scope` in access tokens | Use a client that sends the access token; check the provider's access token claims |
-| 401 `the token is meant for another audience` | The client signed in with a client id missing from `PLOEG_MCP_CLIENT_IDS` | Pass `ploeg-mcp` as the client id, or add the id |
+| 401 `the token is meant for another audience` | With `PLOEG_MCP_TOKEN_AUDIENCE=client-id`, the client signed in with a client id missing from `PLOEG_MCP_CLIENT_IDS` | Pass `ploeg-mcp` as the client id, or add the id |
+| 401 `the token's aud does not name this resource` | The provider ignored the RFC 8707 `resource` parameter and put the client id in `aud`, or the client asked for another resource | Configure the provider to issue tokens for `PLOEG_MCP_RESOURCE`; for a provider that cannot, such as Authentik, set `PLOEG_MCP_TOKEN_AUDIENCE=client-id` |
+| ploeg-mcp refuses to start: `issuer must be https` | `PLOEG_MCP_ISSUER`, `PLOEG_MCP_JWKS_URL`, the confirmation issuer or the exchange token URL is `http` | Use the provider's `https` URL; only for local development against a loopback provider set `PLOEG_MCP_ALLOW_LOOPBACK_HTTP=true` |
 | 403 `insufficient_scope` | The token lacks `ploeg:read` | Attach the `ploeg:read` scope to the provider's client and sign in again |
 | 403 "none of your groups gives access to Ploeg" | The token's `groups` hold none of `PLOEG_MCP_GROUPS` | Add the person to a mapped group, or check that the `ploeg:read` mapping returns groups |
 | 503 "signing keys are unavailable" | `ploeg-mcp` cannot reach the provider's key set | Check egress to the provider and `PLOEG_MCP_JWKS_URL` |
