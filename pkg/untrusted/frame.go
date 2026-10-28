@@ -1,5 +1,5 @@
 // Package untrusted frames text from a tracker or a forge as data in a Run's
-// prompt (ADR-0164). A frame opens and closes on a line carrying a boundary
+// prompt (ADR-0170). A frame opens and closes on a line carrying a boundary
 // derived from the framed text itself, and any delimiter the text contains
 // is escaped first, so the text can neither close its own frame nor open a
 // second one that Ploeg would recognise.
