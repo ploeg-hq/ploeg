@@ -3,7 +3,7 @@
 Read the [self-hosting security contract](../../../docs/ops/self-hosting-security.md)
 before enabling agent execution. Each release snapshots it as `SECURITY.md` and
 ships `security-contract.json`; install notes report the selected controls and
-the missing delegated-user guarantees. Native admission under `security.workerAdmission` is opt-in. NetworkPolicy
+the missing delegated-user guarantees. Native admission under `security.workerAdmission` is on by default under `supportProfile: P1`. NetworkPolicy
 is enabled by default under `networkPolicy` ([network guide](../../../docs/ops/network.md)). Cluster-owned CNI, runtime,
 Kyverno/Tetragon and identity setup remain required as described in that guide.
 

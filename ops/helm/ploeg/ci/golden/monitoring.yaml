@@ -422,3 +422,64 @@ spec:
       path: /metrics
       interval: 30s
       scrapeTimeout: 10s
+---
+# Source: ploeg/templates/agent-admission.yaml
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: ploeg-default-agent-security
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: "default"
+    objectSelector:
+      matchLabels:
+        app.kubernetes.io/name: ploeg-worker
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: [CREATE, UPDATE]
+        resources: [pods, pods/ephemeralcontainers]
+  variables:
+    - name: allContainers
+      expression: "object.spec.containers + (has(object.spec.initContainers) ? object.spec.initContainers : []) + (has(object.spec.ephemeralContainers) ? object.spec.ephemeralContainers : [])"
+    - name: annotationKeys
+      expression: "has(object.metadata.annotations) ? object.metadata.annotations.map(k, k) : []"
+  validations:
+    - expression: "!has(object.spec.hostNetwork) || !object.spec.hostNetwork"
+      message: "Host networking is forbidden."
+    - expression: "!has(object.spec.hostPID) || !object.spec.hostPID"
+      message: "Host PID sharing is forbidden."
+    - expression: "!has(object.spec.hostIPC) || !object.spec.hostIPC"
+      message: "Host IPC sharing is forbidden."
+    - expression: "!has(object.spec.shareProcessNamespace) || !object.spec.shareProcessNamespace"
+      message: "Sharing the pod process namespace defeats worker credential isolation."
+    - expression: "has(object.spec.automountServiceAccountToken) && object.spec.automountServiceAccountToken == false"
+      message: "Agent pods must explicitly disable automatic Kubernetes API credentials."
+    - expression: "!has(object.spec.volumes) || object.spec.volumes.all(v, !has(v.hostPath))"
+      message: "Host paths, including host container-runtime sockets, are forbidden."
+    - expression: "variables.allContainers.all(c, !has(c.ports) || c.ports.all(p, !has(p.hostPort) || p.hostPort == 0))"
+      message: "Host ports are forbidden."
+    - expression: "!has(object.spec.securityContext) || !has(object.spec.securityContext.sysctls) || size(object.spec.securityContext.sysctls) == 0"
+      message: "Pod sysctls are forbidden."
+    - expression: "variables.allContainers.all(c, has(c.securityContext) && (!has(c.securityContext.privileged) || !c.securityContext.privileged) && has(c.securityContext.allowPrivilegeEscalation) && !c.securityContext.allowPrivilegeEscalation && has(c.securityContext.capabilities) && has(c.securityContext.capabilities.drop) && 'ALL' in c.securityContext.capabilities.drop && (!has(c.securityContext.capabilities.add) || size(c.securityContext.capabilities.add) == 0))"
+      message: "Every container must disable privilege escalation, drop ALL capabilities and add none."
+    - expression: "variables.allContainers.all(c, has(c.securityContext) && (!has(c.securityContext.runAsUser) || c.securityContext.runAsUser != 0) && (has(c.securityContext.runAsNonRoot) ? c.securityContext.runAsNonRoot : (has(object.spec.securityContext) && has(object.spec.securityContext.runAsNonRoot) && object.spec.securityContext.runAsNonRoot))) && (!has(object.spec.securityContext) || !has(object.spec.securityContext.runAsUser) || object.spec.securityContext.runAsUser != 0)"
+      message: "Every container must run as non-root."
+    - expression: "variables.allContainers.all(c, has(c.securityContext) && (has(c.securityContext.seccompProfile) ? c.securityContext.seccompProfile.type in ['RuntimeDefault', 'Localhost'] : (has(object.spec.securityContext) && has(object.spec.securityContext.seccompProfile) && object.spec.securityContext.seccompProfile.type in ['RuntimeDefault', 'Localhost'])))"
+      message: "Every container must use RuntimeDefault or a provisioned Localhost seccomp profile."
+    - expression: "(!has(object.spec.securityContext) || !has(object.spec.securityContext.appArmorProfile) || object.spec.securityContext.appArmorProfile.type != 'Unconfined') && variables.allContainers.all(c, !has(c.securityContext) || !has(c.securityContext.appArmorProfile) || c.securityContext.appArmorProfile.type != 'Unconfined') && !variables.annotationKeys.exists(k, k.startsWith('container.apparmor.security.beta.kubernetes.io/') && object.metadata.annotations[k] == 'unconfined')"
+      message: "Unconfined AppArmor is forbidden."
+    - expression: "!variables.annotationKeys.exists(k, k.startsWith('io.katacontainers.'))"
+      message: "Kata runtime override annotations (io.katacontainers.*) are forbidden."
+---
+# Source: ploeg/templates/agent-admission.yaml
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: ploeg-default-agent-security
+spec:
+  policyName: ploeg-default-agent-security
+  validationActions: [Deny]

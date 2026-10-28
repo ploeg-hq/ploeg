@@ -1,6 +1,6 @@
-{{- if .Values.security.workerAdmission.enabled }}
+{{- if include "ploeg.workerAdmissionEnabled" . }}
 {{- if not (semverCompare ">=1.30.0-0" .Capabilities.KubeVersion.Version) }}
-{{- fail "Native CEL admission requires Kubernetes >= 1.30; use a supported cluster policy engine on older clusters" }}
+{{- fail "Native CEL admission requires Kubernetes >= 1.30; supportProfile P1 turns it on, so on an older cluster set supportProfile: unsupported and security.workerAdmission.enabled: false and use a supported cluster policy engine instead" }}
 {{- end }}
 {{- $name := printf "%s-%s-agent-security" (include "ploeg.fullname" .) .Release.Namespace | trunc 253 | trimSuffix "-" }}
 apiVersion: admissionregistration.k8s.io/v1

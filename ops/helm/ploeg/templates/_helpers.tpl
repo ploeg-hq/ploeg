@@ -550,7 +550,7 @@ global executor.harness defaults field-by-field (explicit hasKey checks, so
 {{- $toolchainEnv = append $toolchainEnv (dict "name" $tc.name "path" $paths "env" ($tc.env | default dict)) }}
 {{- end }}
 {{- $hDind := eq (include "ploeg.roleUsesDind" (dict "root" $root "team" $team "role" $role)) "true" }}
-{{- if and $root.Values.security.workerAdmission.enabled $hDind }}
+{{- if and (eq (include "ploeg.workerAdmissionSetting" $root) "true") $hDind }}
 {{- fail (printf "team %s: security.workerAdmission forbids privileged DinD; set harness.dind=false at every applicable override" $team.name) }}
 {{- end }}
 {{- $dt := $root.Values.executor.defaultTarget | default dict }}
