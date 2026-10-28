@@ -56,6 +56,9 @@ spec:
           - 10.0.0.0/8
           - 172.16.0.0/12
           - 192.168.0.0/16
+          - 100.64.0.0/10
+          - 169.254.0.0/16
+          - 127.0.0.0/8
 ---
 # Source: ploeg/templates/networkpolicy.yaml
 apiVersion: networking.k8s.io/v1
@@ -146,6 +149,9 @@ spec:
           - 10.0.0.0/8
           - 172.16.0.0/12
           - 192.168.0.0/16
+          - 100.64.0.0/10
+          - 169.254.0.0/16
+          - 127.0.0.0/8
 ---
 # Source: ploeg/templates/serviceaccount.yaml
 apiVersion: v1
@@ -290,6 +296,8 @@ spec:
               value: "{\"brass\":{\"\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"claude-environment\",\"qualification\":\"unqualified\"}],\"carrier\":\"client\",\"environmentId\":\"ccpool_brass\",\"name\":\"claude-environment\"}},\"bronze\":{\"\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"openhands\",\"qualification\":\"qualified\"}],\"name\":\"openhands\"}},\"copper\":{\"\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"exec\",\"qualification\":\"qualified\"}],\"name\":\"exec\"}},\"gold\":{\"analyst\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"openhands\",\"qualification\":\"qualified\"}],\"name\":\"openhands\"},\"builder\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"openhands\",\"qualification\":\"qualified\"}],\"name\":\"openhands\"},\"reviewer\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"openhands\",\"qualification\":\"qualified\"}],\"name\":\"openhands\"},\"tests\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"acp\",\"profile\":\"openhands\",\"qualification\":\"qualified\"}],\"name\":\"acp\",\"profile\":\"openhands\"}},\"lead\":{\"\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"acp\",\"profile\":\"custom\",\"qualification\":\"unqualified\"}],\"name\":\"acp\",\"profile\":\"custom\"}},\"pewter\":{\"\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"claude-environment\",\"qualification\":\"unqualified\"}],\"name\":\"claude-environment\"}},\"tin\":{\"\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"openhands\",\"qualification\":\"qualified\"}],\"name\":\"openhands\"}},\"zinc\":{\"\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"openhands\",\"qualification\":\"qualified\"}],\"name\":\"openhands\"}}}"
             - name: PLOEG_TEAM_MAX_RUNNING
               value: "{\"zinc\":2}"
+            - name: PLOEG_TEAM_SPEND_CAPS
+              value: "{\"brass\":{\"period\":\"day\",\"usd\":20},\"bronze\":{\"period\":\"day\",\"usd\":20},\"copper\":{\"period\":\"day\",\"usd\":20},\"gold\":{\"period\":\"day\",\"usd\":20},\"lead\":{\"period\":\"day\",\"usd\":20},\"pewter\":{\"period\":\"day\",\"usd\":20},\"tin\":{\"period\":\"day\",\"usd\":20},\"zinc\":{\"period\":\"day\",\"usd\":20}}"
             - name: PLOEG_FORGEJO_URL
               value: "https://forgejo.example.com"
             - name: PLOEG_FORGEJO_TOKEN

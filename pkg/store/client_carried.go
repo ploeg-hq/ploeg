@@ -87,9 +87,11 @@ func (s *Store) ClaimClientCarriedRun(ctx context.Context, workItemID int64, per
 	} else if full {
 		return ClientClaim{}, ErrNoWork
 	}
+	p.spendCap, p.now = s.TeamSpendCap(team), s.spendNow()
 	claimed, err := startPendingRun(ctx, tx, p, ttl, cap, actor, map[string]any{"carrier": CarrierClient, "actsFor": person})
 	if err != nil {
-		return ClientClaim{}, err
+		_ = tx.Rollback(ctx)
+		return ClientClaim{}, s.refuseOverCap(ctx, actor, err)
 	}
 	c := ClientClaim{ClaimedRun: *claimed, RunID: p.runID, Team: team, ActsFor: person}
 	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM agent_runs WHERE shift_id = $1 AND round < $2 AND writes)`,

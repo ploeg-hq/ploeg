@@ -143,6 +143,7 @@ The generator follows each binary's imports inside the module and records every 
 | `PLOEG_REPO_KNOWLEDGE_DIR` | ploeg-worker |  |  | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_REVIEW_RECONCILE_INTERVAL` | ploegd | `10m` | How often ploegd asks the forge about each awaiting_review pull request. Each check claims its pull request for nine tenths of the interval, so with several replicas one of them reads it per interval. `0` turns the reconcile off. | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_ROLE` | ploeg-worker |  |  | [main.go](../../cmd/ploeg-worker/main.go), [sandbox.go](../../cmd/ploeg-worker/sandbox.go) |
+| `PLOEG_RUN_IDENTITY_AUDIENCES` | ploegd |  | JSON `{"<team>": {"<role>": ["<audience>", ...]}}`: the only audiences ploegd signs a Run identity for, by the Run's Team and Role (ADR-0149, threat model F-48); a Team without a Shift plan runs in the Role `""`. Any other audience answers 403 and is logged as `run identity refused`. The chart renders it from each Role's `harness.claudeCode.plugins[].runIdentity.audience`. Unset with a signing key signs for none; set without one stops ploegd at boot. | [run_identity.go](../../cmd/ploegd/run_identity.go) |
 | `PLOEG_RUN_IDENTITY_ISSUER` | ploegd |  | The http(s) URL consumers reach ploegd at, written as every Run identity's `iss` (ADR-0149, chart `runIdentity.issuer`). Required with `PLOEG_RUN_IDENTITY_SIGNING_KEY`; either without the other stops ploegd at boot. | [run_identity.go](../../cmd/ploegd/run_identity.go) |
 | `PLOEG_RUN_IDENTITY_RETIRED_KEYS` | ploegd |  | Concatenated PEM `PUBLIC KEY` blocks of P-256 keys ploegd no longer signs with but still publishes in its key set, so a token signed just before a rotation verifies until it expires (ADR-0149, chart `runIdentity.retiredKeysSecret`). | [run_identity.go](../../cmd/ploegd/run_identity.go) |
 | `PLOEG_RUN_IDENTITY_SIGNING_KEY` | ploegd |  | PEM P-256 private key (PKCS#8 or SEC 1) ploegd signs Run identities with (ADR-0149, chart `runIdentity.signingKeySecret`): the ES256 JWT a Claude Code plugin that opted in receives in `AGENT_RUN_IDENTITY_TOKEN`. Unset issues none: `POST /api/v1/runs/{token}/identity` and `GET /api/v1/run-identity/jwks` answer 404. Only ploegd holds it; a plugin env may never read its Secret. | [run_identity.go](../../cmd/ploegd/run_identity.go) |
@@ -167,6 +168,7 @@ The generator follows each binary's imports inside the module and records every 
 | `PLOEG_TEAM_MAP` | ploegd |  | Legacy assignee roster, replaced by `teams.<name>.assignees` in the `PLOEG_CONFIG` file. | [main.go](../../cmd/ploegd/main.go), [operator.go](../../cmd/ploegd/operator.go) |
 | `PLOEG_TEAM_MAX_RUNNING` | ploegd |  |  | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_TEAM_PLANS` | ploegd |  | Legacy Shift plans, replaced by `teams.<name>.plan` in the `PLOEG_CONFIG` file. A malformed plan stops ploegd at boot. | [main.go](../../cmd/ploegd/main.go) |
+| `PLOEG_TEAM_SPEND_CAPS` | ploegd |  | JSON object of team to `{usd, period}` with period `day`, `week` or `month` in UTC: the most a team's Runs may settle in the period plus hold now (ADR-0162). ploegd refuses a claim whose hold would cross it; the Run stays pending and the refusal is audited as `team.spend_capped`. The chart renders it from `executor.spendCap` and `executor.teams[].spendCap`; `teams.<name>.spendCap` in the `PLOEG_CONFIG` file wins. Unset means no cap. A malformed value stops ploegd at boot. | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_TELEMETRY` | ploeg-worker |  | JSON `{endpoint, protocol, signals, resourceAttributes, logPrompts, logToolDetails, allowHarnesses}`: the OpenTelemetry collector the harness exports to. claude-code receives the variables (`OTEL_*` plus `CLAUDE_CODE_*`); openhands and acp/openhands receive the standard `OTEL_*` only when `allowHarnesses` lists `openhands`; every other harness gets none. Resource attributes carry `ploeg.team`, `ploeg.role` and `ploeg.run.alias`, and the worker logs at startup what it exports or why it withholds (chart `executor.harness.telemetry`). | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_TOOLCHAINS` | ploeg-worker |  | JSON array of mounted toolchains, each `{name, path, env}`: `path` directories go in front of the harness's `PATH` and `env` is added. The worker refuses to claim when a directory is missing (chart `executor.harness.toolchains`). | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_TRACKER_DONE_ON_MERGE` | ploegd | `false` |  | [main.go](../../cmd/ploegd/main.go) |
@@ -368,6 +370,7 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `executor.serviceAccount` | object |  | Worker pods ServiceAccount. create and name are independent: naming an account never suppresses creating it. | values.yaml, values.schema.json |
 | `executor.serviceAccount.create` | boolean | `true` |  | values.yaml, values.schema.json |
 | `executor.serviceAccount.name` | string | `""` | empty = <fullname>-worker | values.yaml, values.schema.json |
+| `executor.spendCap` | [spendCap](#spendcap) | `{"usd": 20, "period": "day"}` | The spend cap every executor team takes unless it sets its own (ADR-0162): ploegd refuses a claim whose hold would take the team's spend settled in the calendar period (UTC) plus its Runs' holds over usd. Default 20 USD per day. Profile P1 needs every executor team to resolve a cap with usd above 0. | values.yaml, values.schema.json |
 | `executor.teams` | array | `[]` |  | values.yaml, values.schema.json |
 | `executor.teams[].allowUnqualifiedHarnesses` | boolean |  | ADR-0098: admit an allowed Harness that is not qualified even when it is not the Role's default. Default false. | values.schema.json |
 | `executor.teams[].baseBranch` | string |  | Branch the worker clones, branches from and targets. Unset means the repository default branch. | values.schema.json |
@@ -375,6 +378,9 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `executor.teams[].executorType` | one of `"keda"`, `"sandbox"` |  | Optional: this team's executor while executor.type is keda or sandbox; unset = executor.type. Lets one team run under the experimental sandbox executor while the others stay on keda. | values.schema.json |
 | `executor.teams[].harness` | [harness](#harness) |  | Overrides the `executor.harness` defaults for this Team. | values.schema.json |
 | `executor.teams[].harnesses` | array |  | ADR-0098/ADR-0099, planned teams only: the Harnesses an operator admission may choose per Run. Each entry renders its own workload per Role and replaces the Role's harness block; unset = the one configured harness. | values.schema.json |
+| `executor.teams[].independentReview` | object |  | ADR-0163, planned teams only: ploegd refuses to start unless every reviewing Role differs from every writing Role in the models its inference policy admits (model: true) and in the Harnesses its admission may choose (harness: true). Unset = no requirement. | values.schema.json |
+| `executor.teams[].independentReview.harness` | boolean |  |  | values.schema.json |
+| `executor.teams[].independentReview.model` | boolean |  |  | values.schema.json |
 | `executor.teams[].litellmTeamId` | string |  | ADR-0078: the LiteLLM team_id every Run key of this team is minted in. Optional; empty = no team. | values.schema.json |
 | `executor.teams[].maxFixRounds` | integer |  | ADR-0017: how many times a reviewer request_changes may re-open the writing Round of this plan. 0 = loop off, the plan runs to exhaustion. | values.schema.json |
 | `executor.teams[].maxReplicaCount` | integer |  |  | values.schema.json |
@@ -389,6 +395,7 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `executor.teams[].repoOwner` | string |  | Deprecated per-team fallback repository owner. The repository belongs to the Work Item. | values.schema.json |
 | `executor.teams[].runtimeClassName` | string |  | This team's worker RuntimeClass under every executor type; a Role's runtimeClassName overrides it. Empty = executor.runtimeClassName. | values.schema.json |
 | `executor.teams[].sandbox` | [sandboxOverride](#sandboxoverride) |  |  | values.schema.json |
+| `executor.teams[].spendCap` | [spendCap](#spendcap) |  | This team's spend cap per calendar period (ADR-0162), in place of executor.spendCap; config.teams.<name>.spendCap wins over both. usd 0 = no cap, which leaves profile P1. | values.schema.json |
 | `executor.teams[].targetSource` | one of `"claim"`, `"env"` |  | `env` ignores the claim's target and uses the fallback repository. | values.schema.json |
 | `executor.terminationGracePeriodSeconds` |  | `90` | Long enough for ploeg-worker to abort the harness, revoke the per-run key, settle its spend and POST the outcome — not long enough to be a hiding place. A worker that needs more than this is not shutting down, and the kubelet's SIGKILL is the right answer. | values.yaml |
 | `executor.type` | one of `"keda"`, `"cronjob"`, `"sandbox"` | `keda` | keda (flagship: ScaledJob + Postgres scaler) \| cronjob (KEDA-free polling executor) \| sandbox (EXPERIMENTAL: the ScaledJob's pod becomes a launcher that runs each Run in a kubernetes-sigs/agent-sandbox v1beta1 Sandbox; needs agent-sandbox v1.0.x with extensions installed, ADR-0032). Any other launcher can implement docs/contracts/executor.md out-of-chart against the run API. | values.yaml, values.schema.json |
@@ -561,8 +568,8 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `networkPolicy.mcp.ingressFrom` | [networkPolicyPeers](#networkpolicypeers) | `[]` | Peers that may reach ploeg-mcp on `mcp.port`. Empty allows any peer on that port; `mcp.networkPolicy.ingress` is the older per-component form and still renders. | values.yaml, values.schema.json |
 | `networkPolicy.ploegd.extraEgress` | [networkPolicyEgressRules](#networkpolicyegressrules) | `[]` | Further egress rules for ploegd, such as a tracker or forge whose URL the derivation cannot place. | values.yaml, values.schema.json |
 | `networkPolicy.ploegd.extraIngress` | [networkPolicyIngressRules](#networkpolicyingressrules) | `[]` |  | values.yaml, values.schema.json |
-| `networkPolicy.ploegd.ingressFrom` | [networkPolicyPeers](#networkpolicypeers) | `[]` | Peers that may reach ploegd on 8080: the gateway that forwards webhooks, operator consumers, Prometheus. Empty allows any peer on that port, because the chart cannot know your gateway; set, the policy allows these peers plus this release's own worker, launcher, ploeg-mcp and claude-runner pods. | values.yaml, values.schema.json |
-| `networkPolicy.privateCidrs` | array | `["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]` | CIDRs an internet rule excludes, so a pod allowed to reach a public host cannot reach the cluster, the nodes or the LAN through the same rule. Add your pod, service and node ranges when they are outside RFC 1918. | values.yaml, values.schema.json |
+| `networkPolicy.ploegd.ingressFrom` | [networkPolicyPeers](#networkpolicypeers) | `[]` | Peers that may reach ploegd on 8080: the gateway that forwards webhooks, operator consumers, Prometheus. Empty allows any peer on that port, because the chart cannot know your gateway; set, the policy allows these peers plus this release's own worker, launcher, ploeg-mcp and claude-runner pods. Under supportProfile P1 an empty list is warned about before chart 0.3.0 and refused from it (F-45). | values.yaml, values.schema.json |
+| `networkPolicy.privateCidrs` | array | `["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10"]` | CIDRs an internet rule excludes, so a pod allowed to reach a public host cannot reach the cluster, the nodes or the LAN through the same rule. The default is RFC 1918 plus the shared address space 100.64.0.0/10. Add your pod, service and node ranges when they are outside these. Every internet rule also excludes link-local 169.254.0.0/16, where cloud instance metadata lives, and loopback 127.0.0.0/8, whatever this list holds. | values.yaml, values.schema.json |
 | `networkPolicy.sandboxLauncher.extraEgress` | [networkPolicyEgressRules](#networkpolicyegressrules) | `[]` |  | values.yaml, values.schema.json |
 | `networkPolicy.telemetry` | [networkPolicyEndpoint](#networkpolicyendpoint) | `{"peers": [], "port": ""}` | Every OTLP collector a harness `telemetry.endpoint` or `claudeRunner.env.OTEL_EXPORTER_OTLP_ENDPOINT` names. Empty `peers` derives the destination from each URL. | values.yaml, values.schema.json |
 | `networkPolicy.tracker` | [networkPolicyEndpoint](#networkpolicyendpoint) | `{"peers": [], "port": ""}` | The trackers ploegd calls: `tracker.url`, ClickUp when a ClickUp Secret is set, the GitHub API when `tracker.github.appId` is set. Empty `peers` derives the destination from each URL. | values.yaml, values.schema.json |
@@ -575,6 +582,7 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `operator.consumers[].maxBudgetUsd` | number |  | Budget ceiling for an executing consumer, 0.01 to 10000. Defaults to 25. | values.schema.json |
 | `operator.consumers[].name` | string |  | Consumer name. | values.schema.json |
 | `operator.consumers[].readContent` | boolean |  | Grants reading what agents and people wrote beyond Work Item metadata: Run transcripts and briefings, the context people attached and Work Item Note reviews. Unset follows execute: an executing consumer reads them, a read-only one does not. | values.schema.json |
+| `operator.consumers[].requireClaims` | object |  | Claims a person token for this consumer must carry (ADR-0150, threat model F-47), such as {groups: [ploeg-operators]}: each named claim must hold one of its values, as a string equal to one or an array of strings containing one (scope is split on spaces). A verified token without them answers 403 person_claim_required and changes nothing. Profile P1 needs it from chart 0.3.0 on a consumer with execute that names audiences or clientIds. | values.schema.json |
 | `operator.consumers[].teams` | array |  | Teams whose Work Items the consumer may read and act on. ["*"] grants every Team; an empty list grants none. Required, so no consumer reads every Team by leaving it out. | values.schema.json |
 | `operator.consumers[].tokenSecret` | object |  | Secret holding the consumer's bearer token, at least 32 bytes. | values.schema.json |
 | `operator.consumers[].tokenSecret.key` | string |  |  | values.schema.json |
@@ -607,10 +615,10 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `runIdentity.signingKeySecret.key` | string |  |  | values.schema.json |
 | `runIdentity.signingKeySecret.name` | string |  |  | values.schema.json |
 | `security.workerAdmission` | object |  | Native ValidatingAdmissionPolicy over every ploeg-worker Pod in the release namespace (Kubernetes 1.30 or later); see docs/ops/self-hosting-security.md. | values.yaml, values.schema.json |
-| `security.workerAdmission.enabled` | boolean | `false` | Install the policy and its Deny binding. The render fails on Kubernetes older than 1.30 and on any team or Role that keeps privileged DinD. Installing it needs cluster-scoped RBAC for admissionregistration.k8s.io. | values.yaml, values.schema.json |
-| `security.workerAdmission.runtimeClassNames` | array | `[]` | RuntimeClass names a worker Pod must select. Empty leaves the runtime class unchecked; a non-empty list refuses a worker Pod without one of them. The chart does not install the handler. | values.yaml, values.schema.json |
+| `security.workerAdmission.enabled` | boolean or null |  | Install the policy and its Deny binding. Unset follows supportProfile: on under P1, off under unsupported; false under P1 leaves the profile (finding F-49). The render fails on Kubernetes older than 1.30 and on any team or Role that keeps privileged DinD. Installing it needs cluster-scoped RBAC for admissionregistration.k8s.io. | values.yaml, values.schema.json |
+| `security.workerAdmission.runtimeClassNames` | array | `[]` | RuntimeClass names a worker Pod must select. Empty leaves the runtime class unchecked; a non-empty list refuses a worker Pod without one of them. Under P1 a team on the sandbox executor needs it non-empty, and every worker workload's runtimeClassName must be in it. The chart does not install the handler. | values.yaml, values.schema.json |
 | `service.port` |  | `8080` |  | values.yaml |
-| `supportProfile` | one of `"P1"`, `"unsupported"` | `P1` | The deployment profile the values claim. P1, the default, is the profile the threat model covers: the render fails, listing each departure, when a value leaves it (DinD, executor.workerAuth.mode legacy, a credential proxy off or a credentialIsolation override, a harness not qualified with both proxies, harnessContainer shared, a worker securityContext below restricted, the sandbox executor, claudeRunner, or networkPolicy.enabled false). unsupported renders such values and lists the departures in the install notes; the threat model does not cover that deployment (ADR-0154, finding F-11). | values.yaml, values.schema.json |
+| `supportProfile` | one of `"P1"`, `"unsupported"` | `P1` | The deployment profile the values claim. P1, the default, is the profile the threat model covers: the render fails, listing each departure, when a value leaves it (DinD, executor.workerAuth.mode legacy, a credential proxy off or a credentialIsolation override, a harness not qualified with both proxies, harnessContainer shared, a worker securityContext below restricted, the sandbox executor, claudeRunner, networkPolicy.enabled false, security.workerAdmission.enabled false, or the sandbox executor with an empty security.workerAdmission.runtimeClassNames). unsupported renders such values and lists the departures in the install notes; the threat model does not cover that deployment (ADR-0154, finding F-11). | values.yaml, values.schema.json |
 | `tracker` | object |  | Tracker write-backs (backlog #31): how a closed Shift reaches a person with the pull request link. Unset = the Vikunja provider keeps its logging no-op — runs still finish, the board simply is not updated. Ingest (the webhook) is configured separately and needs no token. | values.yaml, values.schema.json |
 | `tracker.clickup` | object or null |  | The ClickUp tracker (pkg/provider/clickup). Ingest and write-backs are independent: webhookSecret alone verifies deliveries, tokenSecret alone enables reads and write-backs, either without the other degrades rather than fails. ClickUp GENERATES the webhook secret on registration — capture it from the create-webhook response; there is nothing to invent. | values.yaml, values.schema.json |
 | `tracker.clickup.doneStatus` | string | `""` | List status name applied when a Shift finishes, e.g. 'for review'. Statuses are per-List custom strings; empty leaves the board untouched. | values.yaml, values.schema.json |
@@ -646,6 +654,13 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 
 Several keys above share one schema definition.
 
+### spendCap
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `usd` | number | The most the team's Runs may settle and hold in one period, in USD. 0 = no cap. |
+| `period` | one of `"day"`, `"week"`, `"month"` | The calendar period in UTC; a week starts on Monday. |
+
 ### networkPolicyPeers
 
 A list of NetworkPolicyPeer objects: `podSelector`, `namespaceSelector` or `ipBlock`, as in `networking.k8s.io/v1`.
@@ -676,7 +691,7 @@ A list of NetworkPolicyEgressRule objects, appended to the policy as written.
 
 ### networkPolicyEndpoint
 
-Where one kind of endpoint lives. Empty `peers` derives the destination from each configured URL; set, they replace it for every URL of the kind. Empty `port` is each URL's port, or 443 for https and 80 for http; set, it replaces it, which a Service whose port differs from its pods' needs.
+Where one kind of endpoint lives. Empty `peers` derives the destination from each configured URL, and a `<service>.<namespace>.svc` URL then admits every pod in that namespace; set, they replace it for every URL of the kind. Empty `port` is each URL's port, or 443 for https and 80 for http; set, it replaces it, which a Service whose port differs from its pods' needs.
 
 | Key | Type | Description |
 | --- | --- | --- |
@@ -788,7 +803,7 @@ claude-code harness only (ADR-0139). Rendered only into a claude-code pod.
 | `plugins[].env[].secret.name` | string |  |
 | `plugins[].env[].secret.key` | string |  |
 | `plugins[].hookTimeout` | string |  |
-| `plugins[].runIdentity` | object | ADR-0149: every hook of the plugin receives a Run identity for this audience in AGENT_RUN_IDENTITY_TOKEN. Needs the top-level runIdentity.signingKeySecret. |
+| `plugins[].runIdentity` | object | ADR-0149: every hook of the plugin receives a Run identity for this audience in AGENT_RUN_IDENTITY_TOKEN. Needs the top-level runIdentity.signingKeySecret. The chart lists this audience in PLOEG_RUN_IDENTITY_AUDIENCES for each Role whose plugins declare it, and ploegd refuses every other audience (threat model F-48). |
 | `plugins[].runIdentity.audience` | string |  |
 
 ### telemetry

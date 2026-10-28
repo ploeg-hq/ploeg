@@ -56,6 +56,9 @@ spec:
           - 10.0.0.0/8
           - 172.16.0.0/12
           - 192.168.0.0/16
+          - 100.64.0.0/10
+          - 169.254.0.0/16
+          - 127.0.0.0/8
 ---
 # Source: ploeg/templates/networkpolicy.yaml
 apiVersion: networking.k8s.io/v1
@@ -113,6 +116,9 @@ spec:
           - 10.0.0.0/8
           - 172.16.0.0/12
           - 192.168.0.0/16
+          - 100.64.0.0/10
+          - 169.254.0.0/16
+          - 127.0.0.0/8
 ---
 # Source: ploeg/templates/serviceaccount.yaml
 apiVersion: v1
@@ -255,6 +261,8 @@ spec:
               value: "{\"silver\":{\"maxFixRounds\":0,\"pool\":\"6\",\"rounds\":[{\"roles\":[{\"cap\":\"0.50\",\"harness\":{\"dind\":false},\"name\":\"analyst\",\"writes\":false}]},{\"roles\":[{\"cap\":\"3.00\",\"name\":\"builder\",\"writes\":true}]},{\"roles\":[{\"cap\":\"0.75\",\"harness\":{\"dind\":false},\"name\":\"reviewer\",\"writes\":false}]}]}}"
             - name: PLOEG_TEAM_HARNESSES
               value: "{\"silver\":{\"analyst\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"claude-code\",\"qualification\":\"unqualified\"}],\"name\":\"claude-code\"},\"builder\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"claude-code\",\"qualification\":\"unqualified\"}],\"name\":\"claude-code\"},\"reviewer\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"claude-code\",\"qualification\":\"unqualified\"}],\"name\":\"claude-code\"}}}"
+            - name: PLOEG_TEAM_SPEND_CAPS
+              value: "{\"silver\":{\"period\":\"day\",\"usd\":20}}"
             - name: PLOEG_GITLAB_URL
               value: "https://gitlab.com"
             - name: PLOEG_GITLAB_TOKEN

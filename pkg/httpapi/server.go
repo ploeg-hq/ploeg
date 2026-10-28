@@ -54,6 +54,10 @@ type Server struct {
 	// RunIdentity signs the Run identities a Team's declared plugins receive
 	// and publishes its key set (ADR-0149). Nil = both routes answer 404.
 	RunIdentity *runidentity.Signer
+	// RunIdentityAudiences names, per Team and Role, the audiences
+	// RunIdentity signs for; any other audience answers 403 (ADR-0149,
+	// threat model F-48). Nil signs for none.
+	RunIdentityAudiences runidentity.Audiences
 	// TransactionTokens signs each Run's transaction token at its claim and
 	// renewals and publishes its key set (ADR-0156). Nil = none is issued,
 	// none is accepted and the key set answers 404.
@@ -684,6 +688,10 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 		s.Log.Warn("claim refused: shift budget exhausted", "team", req.Team, "role", "")
 		w.WriteHeader(http.StatusNoContent)
 		return
+	case errors.Is(err, store.ErrTeamSpendCapReached):
+		s.Log.Warn("claim refused: team spend cap reached", "team", req.Team, "role", "", "reason", err.Error())
+		w.WriteHeader(http.StatusNoContent)
+		return
 	case !errors.Is(err, store.ErrNoWork):
 		s.Log.Error("role-less shift claim failed", "team", req.Team, "err", err)
 		http.Error(w, "claim failed", http.StatusInternalServerError)
@@ -691,6 +699,11 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 	}
 	claimed, err := s.Store.ClaimWithin(r.Context(), req.Team, s.LeaseTTL, s.maxRunning(req.Team))
 	if errors.Is(err, store.ErrNoWork) {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if errors.Is(err, store.ErrTeamSpendCapReached) {
+		s.Log.Warn("claim refused: team spend cap reached", "team", req.Team, "reason", err.Error())
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
@@ -730,6 +743,10 @@ func (s *Server) claimRole(w http.ResponseWriter, r *http.Request, req claimRequ
 		// minted, no attempt is burned. The sweeper parks the item with a
 		// reason naming the spend.
 		s.Log.Warn("claim refused: shift budget exhausted", "team", req.Team, "role", req.Role)
+		w.WriteHeader(http.StatusNoContent)
+		return
+	case errors.Is(err, store.ErrTeamSpendCapReached):
+		s.Log.Warn("claim refused: team spend cap reached", "team", req.Team, "role", req.Role, "reason", err.Error())
 		w.WriteHeader(http.StatusNoContent)
 		return
 	case err != nil:

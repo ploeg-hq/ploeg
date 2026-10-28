@@ -4,7 +4,7 @@ import json
 import celpy
 from celpy.adapter import json_to_cel
 
-from worker_admission_cases import VARIANTS, chart, hostile_mutations, only, render, worker_pods
+from worker_admission_cases import ALLOWED_RUNTIME_CLASS, UNAPPROVED_RUNTIME_CLASS, VARIANTS, admission, chart, hostile_mutations, only, render, worker_pods
 
 
 def compile_policy(policy):
@@ -74,16 +74,37 @@ def check_dind_is_refused():
     assert "forbids privileged DinD" in error, error
 
 
+def admission_kinds(documents):
+    return sorted(doc["kind"] for doc in documents if doc["kind"].startswith("ValidatingAdmissionPolicy"))
+
+
 def check_version_floor_and_default():
-    variant = VARIANTS[0]
+    variant = next(v for v in VARIANTS if v.name == "keda")
     assert "Kubernetes >= 1.30" in render(variant.values, variant.namespace, kube="1.29.0", ok=False)
-    assert not any(doc["kind"].startswith("ValidatingAdmissionPolicy") for doc in render({}, variant.namespace))
+    assert "supportProfile: unsupported and security.workerAdmission.enabled: false" in render({}, variant.namespace, kube="1.29.0", ok=False)
+    both = ["ValidatingAdmissionPolicy", "ValidatingAdmissionPolicyBinding"]
+    assert admission_kinds(render({}, variant.namespace)) == both, "supportProfile P1 must install the worker admission policy by default"
+    assert admission_kinds(render({"supportProfile": "unsupported"}, variant.namespace)) == [], "only P1 turns the worker admission policy on by default"
+    assert admission_kinds(render({"supportProfile": "unsupported", **admission()}, variant.namespace)) == both
+    off = {"security": {"workerAdmission": {"enabled": False, "runtimeClassNames": []}}}
+    assert "security.workerAdmission.enabled is false; P1 needs" in render(off, variant.namespace, ok=False)
+    assert admission_kinds(render({**off, "supportProfile": "unsupported"}, variant.namespace)) == []
+
+
+def check_p1_sandbox_names_its_runtime_class():
+    variant = next(v for v in VARIANTS if v.name == "p1-sandbox")
+    unlisted = copy.deepcopy(variant.values)
+    unlisted["security"]["workerAdmission"]["runtimeClassNames"] = []
+    assert "the sandbox executor runs while security.workerAdmission.runtimeClassNames is empty" in render(unlisted, variant.namespace, ok=False)
+    other = copy.deepcopy(variant.values)
+    other["security"]["workerAdmission"]["runtimeClassNames"] = [UNAPPROVED_RUNTIME_CLASS]
+    assert f'runtimeClassName "{ALLOWED_RUNTIME_CLASS}" is not in security.workerAdmission.runtimeClassNames' in render(other, variant.namespace, ok=False)
 
 
 def check_contract():
     contract = json.loads((chart / "security-contract.json").read_text())
-    assert contract["contractRevision"] == 1
-    assert contract["nativeAdmissionDefault"] is False
+    assert contract["contractRevision"] == 2
+    assert contract["nativeAdmissionDefault"] == {"P1": True, "unsupported": False}
     assert contract["identity"]["delegatedUserAccessToken"] is False
     assert contract["identity"]["personalForgeAclInheritance"] is False
     assert (chart / "SECURITY.md").is_file()
@@ -92,5 +113,6 @@ def check_contract():
 denied = sum(check_variant(variant) for variant in VARIANTS)
 check_dind_is_refused()
 check_version_floor_and_default()
+check_p1_sandbox_names_its_runtime_class()
 check_contract()
 print(f"{chart.name}: {len(VARIANTS)} executor variants' worker pods pass; {denied} hostile mutations each refused by exactly the rule that names them. scripts/check-worker-admission-live.py runs the same cases against a real API server.")

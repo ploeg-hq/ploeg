@@ -146,6 +146,20 @@ Context: (dict "root" $ "team" <team>).
 {{- end -}}
 
 {{/*
+ploeg.teamSpendCap is a team's spend cap as JSON {usd, period}. It resolves
+the way ploegd does: config.teams.<name>.spendCap wins over
+executor.teams[].spendCap, which wins over executor.spendCap.
+Context: (dict "root" $ "team" <team>).
+*/}}
+{{- define "ploeg.teamSpendCap" -}}
+{{- $fromConfig := dig "teams" .team.name "spendCap" dict (.root.Values.config | default dict) -}}
+{{- $cap := .root.Values.executor.spendCap | default dict -}}
+{{- if hasKey .team "spendCap" }}{{- $cap = .team.spendCap | default dict -}}{{- end -}}
+{{- if $fromConfig }}{{- $cap = $fromConfig -}}{{- end -}}
+{{- toJson (dict "usd" ($cap.usd | default 0 | float64) "period" ($cap.period | default "")) -}}
+{{- end -}}
+
+{{/*
 ploeg.maxReplicaCount is a workload's KEDA ceiling: the role's or team's
 maxReplicaCount (default 1), never above the team's concurrency cap.
 Context: (dict "root" $ "team" <team> "role" <role>).
@@ -410,6 +424,40 @@ PLOEG_HARNESS and PLOEG_ACP_PROFILE (ADR-0097). Context: (dict "root" $
 {{- toJson $resolved }}
 {{- end -}}
 
+{{- define "ploeg.roleClaudePlugins" -}}
+{{- $gcc := (.root.Values.executor.harness | default dict).claudeCode | default dict }}
+{{- $tcc := (.team.harness | default dict).claudeCode | default dict }}
+{{- $rcc := ((.role | default dict).harness | default dict).claudeCode | default dict }}
+{{- dict "plugins" ($rcc.plugins | default ($tcc.plugins | default ($gcc.plugins | default list))) | toJson }}
+{{- end -}}
+
+{{- define "ploeg.runIdentityAudiences" -}}
+{{- $root := . }}
+{{- $teams := dict }}
+{{- if $root.Values.executor.enabled }}
+{{- range $team := $root.Values.executor.teams }}
+{{- $roles := dict }}
+{{- range $role := (include "ploeg.teamRoles" $team | fromJsonArray) }}
+{{- $auds := list }}
+{{- range $w := (include "ploeg.workerWorkloads" (dict "root" $root "team" $team "role" $role) | fromJsonArray) }}
+{{- if eq (include "ploeg.roleHarness" (dict "root" $root "team" $team "role" $w.role) | fromJson).name "claude-code" }}
+{{- range $p := (include "ploeg.roleClaudePlugins" (dict "root" $root "team" $team "role" $w.role) | fromJson).plugins }}
+{{- with $p.runIdentity }}{{- $auds = append $auds .audience }}{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if $auds }}
+{{- $_ := set $roles ($role.name | default "") (uniq $auds) }}
+{{- end }}
+{{- end }}
+{{- if $roles }}
+{{- $_ := set $teams $team.name $roles }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- toJson $teams }}
+{{- end -}}
+
 {{- define "ploeg.roleToolchains" -}}
 {{- $gh := .root.Values.executor.harness | default dict }}
 {{- $th := .team.harness | default dict }}
@@ -486,10 +534,7 @@ global executor.harness defaults field-by-field (explicit hasKey checks, so
      rendered only into a claude-code pod. A Secret-backed variable becomes a
      PLOEG_CLAUDE_PLUGIN_ENV_<plugin>_<var> secretKeyRef, the only variables
      the worker lets a plugin declaration read. */}}
-{{- $gcc := $gh.claudeCode | default dict }}
-{{- $tcc := $th.claudeCode | default dict }}
-{{- $rcc := $rh.claudeCode | default dict }}
-{{- $ccPlugins := $rcc.plugins | default ($tcc.plugins | default $gcc.plugins) }}
+{{- $ccPlugins := (include "ploeg.roleClaudePlugins" (dict "root" $root "team" $team "role" $role) | fromJson).plugins }}
 {{- $ccPluginJson := list }}
 {{- $ccPluginSecrets := list }}
 {{- if eq $hName "claude-code" }}
@@ -536,7 +581,7 @@ global executor.harness defaults field-by-field (explicit hasKey checks, so
 {{- $toolchainEnv = append $toolchainEnv (dict "name" $tc.name "path" $paths "env" ($tc.env | default dict)) }}
 {{- end }}
 {{- $hDind := eq (include "ploeg.roleUsesDind" (dict "root" $root "team" $team "role" $role)) "true" }}
-{{- if and $root.Values.security.workerAdmission.enabled $hDind }}
+{{- if and (eq (include "ploeg.workerAdmissionSetting" $root) "true") $hDind }}
 {{- fail (printf "team %s: security.workerAdmission forbids privileged DinD; set harness.dind=false at every applicable override" $team.name) }}
 {{- end }}
 {{- $dt := $root.Values.executor.defaultTarget | default dict }}

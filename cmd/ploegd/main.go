@@ -28,6 +28,7 @@ import (
 	"github.com/ploeg-hq/ploeg/pkg/provider/gitlab"
 	"github.com/ploeg-hq/ploeg/pkg/provider/vikunja"
 	"github.com/ploeg-hq/ploeg/pkg/shiftengine"
+	"github.com/ploeg-hq/ploeg/pkg/spendcap"
 	"github.com/ploeg-hq/ploeg/pkg/store"
 )
 
@@ -283,6 +284,13 @@ func run(ctx context.Context, log *slog.Logger) error {
 		return fmt.Errorf("PLOEG_TEAM_MAX_RUNNING: %w", err)
 	}
 	runCaps := cfg.RunCaps(envCaps)
+	envSpendCaps, err := spendcap.Parse(os.Getenv("PLOEG_TEAM_SPEND_CAPS"))
+	if err != nil {
+		return fmt.Errorf("PLOEG_TEAM_SPEND_CAPS: %w", err)
+	}
+	spendCaps := cfg.SpendCaps(envSpendCaps)
+	st.SetTeamSpendCaps(spendCaps)
+	log.Info("team spend caps loaded", "teams", len(spendCaps))
 	log.Info("team concurrency caps loaded", "caps", runCaps)
 
 	// Uniform dispatch: a team with no plan still gets a Shift — one Round,
@@ -354,6 +362,9 @@ func run(ctx context.Context, log *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("operator configuration: %w", err)
 	}
+	if err := httpapi.CheckIndependentReview(plans, llmControl, operator.TeamHarnesses); err != nil {
+		return fmt.Errorf("team plans: %w", err)
+	}
 	if engine != nil {
 		engine.Selections = httpapi.RunSelections{Harnesses: operator.TeamHarnesses, LLM: llmControl}
 	}
@@ -402,7 +413,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	identities, err := runIdentitySigner(log)
+	identities, identityAudiences, err := runIdentitySigner(log)
 	if err != nil {
 		return err
 	}
@@ -442,6 +453,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 
 		DisableRunTranscripts: !runTranscripts,
 		RunIdentity:           identities,
+		RunIdentityAudiences:  identityAudiences,
 		TransactionTokens:     transactionTokens,
 		TeamSponsors:          cfg.Sponsors(),
 	}

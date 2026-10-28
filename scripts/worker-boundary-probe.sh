@@ -3,7 +3,7 @@ set -u
 
 root="${PROBE_ROOT:-}"
 connect_timeout="${PROBE_CONNECT_TIMEOUT:-5}"
-metadata_urls="${PROBE_METADATA_URLS:-http://169.254.169.254/latest/meta-data/ http://metadata.google.internal/computeMetadata/v1/ http://100.100.100.200/latest/meta-data/}"
+metadata_urls="${PROBE_METADATA_URLS:-http://169.254.169.254/latest/meta-data/ http://metadata.google.internal/computeMetadata/v1/ http://100.100.100.200/latest/meta-data/ http://169.254.170.2/v2/metadata http://[fd00:ec2::254]/latest/meta-data/}"
 kubernetes_api_urls="${PROBE_KUBERNETES_API_URLS:-https://kubernetes.default.svc/version}"
 blocked_urls="${PROBE_BLOCKED_URLS:-https://example.com/ https://1.1.1.1/}"
 reachable_urls="${PROBE_REACHABLE_URLS:-}"

@@ -127,6 +127,9 @@ func (s *Server) handleClientClaim(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, store.ErrBudgetExhausted):
 		operatorError(w, 409, "budget_exhausted", "The Shift's pool cannot fund another Run.")
 		return
+	case errors.Is(err, store.ErrTeamSpendCapReached):
+		operatorError(w, 409, "spend_cap_reached", "The claim would take the Team over its spend cap: "+err.Error()+".")
+		return
 	case err != nil:
 		s.Log.Error("client claim failed", "work_item", id, "err", err)
 		operatorError(w, 503, "unavailable", "Ploeg could not claim the Run.")
