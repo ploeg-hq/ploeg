@@ -63,7 +63,7 @@ exceptions:
     surface: ops/helm/ploeg/values.schema.json
     pointer: /properties/security/properties/workerAdmission/properties/enabled
     adr: "0168"
-  - base: v0.2.0-rc.83
+  - base: v0.2.0-rc.89
     surface: environment
     pointer: PLOEG_RUN_IDENTITY_AUDIENCES
     adr: "0149"
