@@ -274,12 +274,15 @@ if printf '%s' "$notes" | grep -qF 'DEPRECATED: harnessContainer'; then
 	status=1
 fi
 
+placement=$(mktemp)
 for case in "executor-namespace:ploeg-workers" "executor-namespace-cronjob:ploeg-workers" "executor:default" "executor-sandbox-team:default" "executor-worker-admission:default"; do
-	if ! uv run -q --no-project --with pyyaml==6.0.3 python scripts/check-executor-namespace.py "$GOLDEN/${case%%:*}.yaml" default "${case##*:}"; then
-		echo "golden '${case%%:*}' places a worker or control-plane object outside its namespace"
+	render "ops/helm/ploeg/ci/${case%%:*}-values.yaml" >"$placement"
+	if ! uv run -q --no-project --with pyyaml==6.0.3 python scripts/check-executor-namespace.py "$placement" default "${case##*:}"; then
+		echo "chart render '${case%%:*}' places a worker or control-plane object outside its namespace"
 		status=1
 	fi
 done
+rm -f "$placement"
 SHARED_NAMESPACE='executor.namespace is empty or names the release namespace, so the worker workloads share namespace default with ploegd'
 NAMED_CALLERS='--set-json=networkPolicy.ploegd.ingressFrom=[{"namespaceSelector":{"matchLabels":{"kubernetes.io/metadata.name":"gateway"}}}]'
 renders_p1 --set executor.namespace=ploeg-workers

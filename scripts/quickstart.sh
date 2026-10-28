@@ -6,6 +6,10 @@ doc=${QUICKSTART_DOC:-$root/docs/quickstart.md}
 version=${QUICKSTART_VERSION:-}
 chart=${QUICKSTART_CHART:-}
 images=${QUICKSTART_IMAGES:-}
+workers=${QUICKSTART_WORKER_NAMESPACE:-}
+release_namespace=ploeg
+helm_values_line='  -n ploeg -f ops/quickstart/values.yaml --wait --timeout 5m'
+worker_logs_line='kubectl logs -l app.kubernetes.io/name=ploeg-worker -c worker --tail=-1 \'
 signed_artifacts=3
 max_candidates_behind=${QUICKSTART_MAX_CANDIDATES_BEHIND:-20}
 fail() { echo "quickstart: $*" >&2; exit 1; }
@@ -30,9 +34,33 @@ require_line() {
   grep -qxF -- "$1" "$doc" || fail "docs/quickstart.md no longer has the line '$1' this runner rewrites"
 }
 
+worker_namespace_setup() {
+  [[ -n "$workers" ]] || return 0
+  printf 'kubectl create namespace %s\n' "$workers"
+  printf 'kubectl label namespace %s pod-security.kubernetes.io/enforce=restricted\n' "$workers"
+  printf 'kubectl create secret generic agent-builder-token -n %s --from-literal=FORGEJO_TOKEN="$FORGEJO_TOKEN"\n' "$workers"
+  printf 'kubectl create secret generic ploeg-worker-bootstrap -n %s --from-literal=quickstart--default="$BOOTSTRAP_TOKEN"\n' "$workers"
+}
+
+worker_namespace_check() {
+  [[ -n "$workers" ]] || return 0
+  printf 'if [ -z "$(kubectl get jobs -n %s -o name)" ] || [ -n "$(kubectl get jobs -n %s -o name)" ]; then\n' "$workers" "$release_namespace"
+  printf '  echo "quickstart: the worker Jobs did not run in namespace %s alone" >&2\n' "$workers"
+  echo '  exit 1'
+  echo 'fi'
+  printf 'echo "quickstart workers ran in namespace %s"\n' "$workers"
+}
+
 generate() {
-  local pinned cleanup loads
+  local pinned cleanup loads setup
   loads=$(image_loads)
+  if [[ -n "$workers" ]]; then
+    [[ "$workers" =~ ^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$ && "$workers" != "$release_namespace" ]] \
+      || fail "QUICKSTART_WORKER_NAMESPACE must be a namespace name other than $release_namespace, not '$workers'"
+    require_line "$helm_values_line"
+    require_line "$worker_logs_line"
+  fi
+  setup=$(worker_namespace_setup)
   pinned=$(pinned_version)
   [[ -n "$pinned" ]] || fail "docs/quickstart.md has no 'export PLOEG_VERSION=<version>' line"
   cleanup=$(cleanup_block)
@@ -51,16 +79,21 @@ generate() {
   doc_blocks | awk -F '\t' -v block="$cleanup" '$1 == block { print "  " $2 }'
   echo '}'
   echo 'trap quickstart_cleanup EXIT'
-  doc_blocks | awk -F '\t' -v block="$cleanup" -v version="$version" -v chart="$chart" -v loads="$loads" '
+  doc_blocks | QS_SETUP="$setup" QS_VALUES_LINE="$helm_values_line" QS_LOGS_LINE="$worker_logs_line" \
+    awk -F '\t' -v block="$cleanup" -v version="$version" -v chart="$chart" -v loads="$loads" -v workers="$workers" '
     $1 == block { next }
     loads != "" && $2 ~ /^kind create cluster --name / { print $2; print loads; next }
     $2 == "git clone --depth 1 https://github.com/ploeg-hq/ploeg.git" || $2 == "cd ploeg" { next }
     version != "" && $2 ~ /^export PLOEG_VERSION=/ { print "export PLOEG_VERSION=" version; next }
+    workers != "" && $2 ~ /^helm install ploeg / { print ENVIRON["QS_SETUP"] }
+    workers != "" && $2 == ENVIRON["QS_VALUES_LINE"] { sub(/ --wait /, " --set executor.namespace=" workers " --wait ") }
+    workers != "" && $2 == ENVIRON["QS_LOGS_LINE"] { print "kubectl logs -n " workers " " substr($2, length("kubectl logs ") + 1); next }
     chart != "" && index($2, "oci://ghcr.io/ploeg-hq/charts/ploeg --version \"$PLOEG_VERSION\"") {
       sub(/oci:\/\/ghcr\.io\/ploeg-hq\/charts\/ploeg --version "\$PLOEG_VERSION"/, chart)
     }
     { print $2 }
   '
+  worker_namespace_check
   cat <<'SH'
 quickstart_result=$(curl -sS http://localhost:8080/api/v1/operator/work-items/$WORK_ITEM \
   -H "Authorization: Bearer $OPERATOR_TOKEN" | jq -c '{state: .item.state, outcomes: [.runs[].outcome]}')
@@ -79,6 +112,8 @@ check_transcript() {
     grep -qF "$line" "$transcript" || fail "the transcript never shows '$line'"
   done
   grep -q '"settledUsd": 0' "$transcript" || fail 'step 9 never showed the settled cost of 0'
+  [[ -z "$workers" ]] || grep -qxF "quickstart workers ran in namespace $workers" "$transcript" \
+    || fail "the transcript never shows the worker Jobs running in namespace $workers"
 }
 
 pin_check() {
@@ -100,15 +135,19 @@ pin_check() {
 }
 
 emit_diagnose() {
+  echo "quickstart_namespaces='$release_namespace${workers:+ $workers}'"
   cat <<'SH'
 quickstart_diagnose() {
   echo "quickstart: exit status $quickstart_status; the cluster as it stood"
-  kubectl get pods,deployments,jobs,cronjobs -o wide --request-timeout=20s
-  kubectl get events --sort-by=.lastTimestamp --request-timeout=20s
-  kubectl describe deployment/ploeg pods --request-timeout=20s
-  for pod in $(kubectl get pods -o name --request-timeout=20s); do
-    kubectl logs "$pod" --all-containers --prefix --tail=200 --request-timeout=20s
-    kubectl logs "$pod" --all-containers --prefix --tail=200 --previous --request-timeout=20s 2> /dev/null
+  kubectl describe deployment/ploeg -n ploeg --request-timeout=20s
+  for namespace in $quickstart_namespaces; do
+    kubectl get pods,deployments,jobs,cronjobs -n "$namespace" -o wide --request-timeout=20s
+    kubectl get events -n "$namespace" --sort-by=.lastTimestamp --request-timeout=20s
+    kubectl describe pods -n "$namespace" --request-timeout=20s
+    for pod in $(kubectl get pods -n "$namespace" -o name --request-timeout=20s); do
+      kubectl logs "$pod" --all-containers --prefix --tail=200 -n "$namespace" --request-timeout=20s
+      kubectl logs "$pod" --all-containers --prefix --tail=200 --previous -n "$namespace" --request-timeout=20s 2> /dev/null
+    done
   done
 }
 SH
