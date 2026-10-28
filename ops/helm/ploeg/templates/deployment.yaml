@@ -97,7 +97,11 @@ spec:
             {{- $plans := dict }}
             {{- range .Values.executor.teams }}
             {{- if .plan }}
-            {{- $_ := set $plans .name (dict "pool" (.budget | default "0") "rounds" .plan "maxFixRounds" (.maxFixRounds | default 0)) }}
+            {{- $teamPlan := dict "pool" (.budget | default "0") "rounds" .plan "maxFixRounds" (.maxFixRounds | default 0) }}
+            {{- with .independentReview }}
+            {{- $_ := set $teamPlan "independentReview" . }}
+            {{- end }}
+            {{- $_ := set $plans .name $teamPlan }}
             {{- end }}
             {{- end }}
             {{- if $plans }}

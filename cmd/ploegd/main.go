@@ -362,6 +362,9 @@ func run(ctx context.Context, log *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("operator configuration: %w", err)
 	}
+	if err := httpapi.CheckIndependentReview(plans, llmControl, operator.TeamHarnesses); err != nil {
+		return fmt.Errorf("team plans: %w", err)
+	}
 	if engine != nil {
 		engine.Selections = httpapi.RunSelections{Harnesses: operator.TeamHarnesses, LLM: llmControl}
 	}

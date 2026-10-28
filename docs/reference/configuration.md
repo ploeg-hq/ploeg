@@ -375,6 +375,9 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `executor.teams[].executorType` | one of `"keda"`, `"sandbox"` |  | Optional: this team's executor while executor.type is keda or sandbox; unset = executor.type. Lets one team run under the experimental sandbox executor while the others stay on keda. | values.schema.json |
 | `executor.teams[].harness` | [harness](#harness) |  | Overrides the `executor.harness` defaults for this Team. | values.schema.json |
 | `executor.teams[].harnesses` | array |  | ADR-0098/ADR-0099, planned teams only: the Harnesses an operator admission may choose per Run. Each entry renders its own workload per Role and replaces the Role's harness block; unset = the one configured harness. | values.schema.json |
+| `executor.teams[].independentReview` | object |  | ADR-0163, planned teams only: ploegd refuses to start unless every reviewing Role differs from every writing Role in the models its inference policy admits (model: true) and in the Harnesses its admission may choose (harness: true). Unset = no requirement. | values.schema.json |
+| `executor.teams[].independentReview.harness` | boolean |  |  | values.schema.json |
+| `executor.teams[].independentReview.model` | boolean |  |  | values.schema.json |
 | `executor.teams[].litellmTeamId` | string |  | ADR-0078: the LiteLLM team_id every Run key of this team is minted in. Optional; empty = no team. | values.schema.json |
 | `executor.teams[].maxFixRounds` | integer |  | ADR-0017: how many times a reviewer request_changes may re-open the writing Round of this plan. 0 = loop off, the plan runs to exhaustion. | values.schema.json |
 | `executor.teams[].maxReplicaCount` | integer |  |  | values.schema.json |

@@ -23,6 +23,7 @@ executor:
       model: litellm_proxy/glm-4.7
       budget: "6"
       allowUnqualifiedHarnesses: false
+      independentReview: {model: true}
       harnesses:
         - {name: openhands, default: true, dind: false}
         - {name: acp, image: harbor.webgrip.dev/webgrip/opencode-runner:0.1.0, dind: false, acp: {profile: opencode}}
