@@ -2237,7 +2237,7 @@
               "hookTimeout": { "type": "string", "pattern": "^$|^0$|^[0-9]+(\\.[0-9]+)?(ms|s|m)$" },
               "runIdentity": {
                 "type": "object",
-                "description": "ADR-0149: every hook of the plugin receives a Run identity for this audience in AGENT_RUN_IDENTITY_TOKEN. Needs the top-level runIdentity.signingKeySecret.",
+                "description": "ADR-0149: every hook of the plugin receives a Run identity for this audience in AGENT_RUN_IDENTITY_TOKEN. Needs the top-level runIdentity.signingKeySecret. The chart lists this audience in PLOEG_RUN_IDENTITY_AUDIENCES for each Role whose plugins declare it, and ploegd refuses every other audience (threat model F-48).",
                 "additionalProperties": false,
                 "required": ["audience"],
                 "properties": {
