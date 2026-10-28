@@ -78,8 +78,8 @@ func TestScanInstructionFilesRecordsEveryInstructionFileWithItsDigest(t *testing
 	if len(got) != len(want) {
 		t.Errorf("recorded %d files, want %d: %v", len(got), len(want), got)
 	}
-	if scan.HiddenTotal != 0 {
-		t.Errorf("clean files reported hidden characters: %v", scan.Hidden)
+	if scan.Hidden.Total != 0 {
+		t.Errorf("clean files reported hidden characters: %v", scan.Hidden.Found)
 	}
 }
 
@@ -91,10 +91,10 @@ func TestScanInstructionFilesFindsEveryHiddenCharacterClass(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if scan.HiddenTotal != 1 || len(scan.Hidden) != 1 {
-			t.Fatalf("U+%04X: found %d", r, scan.HiddenTotal)
+		if scan.Hidden.Total != 1 || len(scan.Hidden.Found) != 1 {
+			t.Fatalf("U+%04X: found %d", r, scan.Hidden.Total)
 		}
-		h := scan.Hidden[0]
+		h := scan.Hidden.Found[0]
 		if h.Path != ".claude/rules/review.md" || h.Line != 2 || h.Column != 12 || h.Rune != r {
 			t.Errorf("U+%04X: position %+v, want .claude/rules/review.md line 2 column 12", r, h)
 		}
@@ -111,8 +111,8 @@ func TestScanInstructionFilesIgnoresVisibleUnicodeAndOtherFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if scan.HiddenTotal != 0 {
-		t.Fatalf("false positive: %v", scan.Hidden)
+	if scan.Hidden.Total != 0 {
+		t.Fatalf("false positive: %v", scan.Hidden.Found)
 	}
 }
 
@@ -136,8 +136,8 @@ func TestScanInstructionFilesFollowsSymlinksOnlyInsideTheRepository(t *testing.T
 	if got["CLAUDE.md"] != digest("rules\n") {
 		t.Errorf("symlinked CLAUDE.md must be hashed as the content it points at: %v", got)
 	}
-	if scan.HiddenTotal != 1 || scan.Hidden[0].Path != ".claude/settings.json" {
-		t.Errorf("a symlinked .claude directory must be scanned: %+v", scan.Hidden)
+	if scan.Hidden.Total != 1 || scan.Hidden.Found[0].Path != ".claude/settings.json" {
+		t.Errorf("a symlinked .claude directory must be scanned: %+v", scan.Hidden.Found)
 	}
 
 	outside := t.TempDir()
@@ -159,12 +159,12 @@ func TestScanInstructionFilesFollowsSymlinksOnlyInsideTheRepository(t *testing.T
 	}
 }
 
-func TestHiddenInstructionReportNamesFileAndPosition(t *testing.T) {
-	scan := instructionScan{HiddenTotal: 25}
+func TestHiddenUnicodeReportNamesFileAndPosition(t *testing.T) {
+	hidden := hiddenCharacters{Total: 25}
 	for i := 0; i < maxReportedHiddenCharacters; i++ {
-		scan.Hidden = append(scan.Hidden, hiddenCharacter{Path: "AGENTS.md", Line: 3, Column: i + 1, Rune: 0x202E})
+		hidden.Found = append(hidden.Found, hiddenCharacter{Path: "AGENTS.md", Line: 3, Column: i + 1, Rune: 0x202E})
 	}
-	report := hiddenInstructionReport(scan)
+	report := hiddenUnicodeReport(hidden)
 	if report.Outcome != work.OutcomeStuck {
 		t.Fatalf("outcome %q", report.Outcome)
 	}

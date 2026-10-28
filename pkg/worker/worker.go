@@ -313,6 +313,10 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	if report, refused := refuseReaderWithoutReadOnlyToken(w.Cfg, claimed); refused {
 		return report
 	}
+	if hidden := scanWorkItemText(item); hidden.Total > 0 {
+		w.Log.Info("work item text hides characters", "hidden_characters", hidden.Total)
+		return hiddenUnicodeReport(hidden)
+	}
 
 	// A credential minted for THIS run (ADR-0013 tier 2) beats the shared
 	// env one: it dies when the run settles, so a partitioned pod whose Lease
@@ -407,7 +411,7 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	onReviewBranch := reviewedCommit != ""
 
 	instructions, scanErr := scanInstructionFiles(cloneDir)
-	w.Log.Info("scanned agent instruction files", "files", len(instructions.Files), "hidden_characters", instructions.HiddenTotal)
+	w.Log.Info("scanned agent instruction files", "files", len(instructions.Files), "hidden_characters", instructions.Hidden.Total)
 	if err := w.API.Checkpoint(claimed.RunToken, work.Checkpoint{Phase: "branch_created", Branch: branch, Commit: reviewedCommit, NodeName: nodeName, PodUID: podUID,
 		InstructionFiles: instructions.Files}); err != nil {
 		w.Log.Warn("checkpoint failed", "err", err)
@@ -415,8 +419,8 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	if scanErr != nil {
 		return stuckReport("could not verify the agent instruction files", scanErr.Error())
 	}
-	if instructions.HiddenTotal > 0 {
-		return hiddenInstructionReport(instructions)
+	if instructions.Hidden.Total > 0 {
+		return hiddenUnicodeReport(instructions.Hidden)
 	}
 
 	openSpecID, err := work.OpenSpecChange(item.Description)

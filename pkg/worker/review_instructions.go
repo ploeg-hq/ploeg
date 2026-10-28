@@ -16,14 +16,6 @@ import (
 
 const instructionFilesBriefingRole = "instruction files"
 
-func isInstructionPath(p string) bool {
-	parts := strings.Split(p, "/")
-	if instructionFileNames[parts[len(parts)-1]] {
-		return true
-	}
-	return slices.ContainsFunc(parts, func(part string) bool { return instructionDirNames[part] })
-}
-
 func pathsChangedSince(ctx context.Context, dir, base string) ([]string, error) {
 	out, err := gitCommand(ctx, dir, "", "", "diff", "--no-renames", "--name-only", "-z", base, "HEAD", "--").Output()
 	if err != nil {

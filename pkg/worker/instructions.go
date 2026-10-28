@@ -6,21 +6,44 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
+	"unicode"
 
 	"github.com/ploeg-hq/ploeg/pkg/harness"
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
 var (
-	instructionFileNames = map[string]bool{"AGENTS.md": true, "CLAUDE.md": true, ".cursorrules": true, ".mcp.json": true}
-	instructionDirNames  = map[string]bool{".claude": true, ".agents": true, ".openhands": true}
+	instructionNames = map[string]bool{
+		"AGENTS.md": true, "CLAUDE.md": true, "CLAUDE.local.md": true, "GEMINI.md": true, "QWEN.md": true,
+		".cursorrules": true, ".clinerules": true, ".goosehints": true, ".mcp.json": true,
+		".claude": true, ".agents": true, ".openhands": true, ".gemini": true, ".qwen": true,
+	}
+	instructionPaths = []string{".github/copilot-instructions.md", ".github/instructions"}
 )
+
+func isInstructionEntry(rel string) bool {
+	if instructionNames[path.Base(rel)] {
+		return true
+	}
+	return slices.ContainsFunc(instructionPaths, func(p string) bool { return rel == p || strings.HasSuffix(rel, "/"+p) })
+}
+
+func isInstructionPath(rel string) bool {
+	for p := path.Clean(rel); p != "." && p != "/"; p = path.Dir(p) {
+		if isInstructionEntry(p) {
+			return true
+		}
+	}
+	return false
+}
 
 const maxReportedHiddenCharacters = 20
 
@@ -35,23 +58,62 @@ func (h hiddenCharacter) String() string {
 	return fmt.Sprintf("%s line %d column %d (U+%04X)", h.Path, h.Line, h.Column, h.Rune)
 }
 
+type hiddenCharacters struct {
+	Found []hiddenCharacter
+	Total int
+}
+
+func (h *hiddenCharacters) record(c hiddenCharacter) {
+	h.Total++
+	if len(h.Found) < maxReportedHiddenCharacters {
+		h.Found = append(h.Found, c)
+	}
+}
+
+type runeCursor struct {
+	source       string
+	line, column int
+}
+
+func newRuneCursor(source string) runeCursor { return runeCursor{source: source, line: 1} }
+
+func (c *runeCursor) step(r rune, hidden *hiddenCharacters) {
+	c.column++
+	if isHiddenRune(r) {
+		hidden.record(hiddenCharacter{Path: c.source, Line: c.line, Column: c.column, Rune: r})
+	}
+	if r == '\n' {
+		c.line, c.column = c.line+1, 0
+	}
+}
+
 type instructionScan struct {
 	Files       []work.InstructionFile
-	Hidden      []hiddenCharacter
-	HiddenTotal int
+	Hidden      hiddenCharacters
 	LinkTargets []string
 }
 
+const (
+	firstUnicodeTag = 0xE0000
+	lastUnicodeTag  = 0xE007F
+)
+
 func isHiddenRune(r rune) bool {
-	switch {
-	case r >= 0x200B && r <= 0x200F,
-		r >= 0x202A && r <= 0x202E,
-		r >= 0x2060 && r <= 0x2064,
-		r >= 0x2066 && r <= 0x2069,
-		r == 0xFEFF:
-		return true
+	return unicode.Is(unicode.Cf, r) || (r >= firstUnicodeTag && r <= lastUnicodeTag)
+}
+
+func scanWorkItemText(item work.WorkItem) hiddenCharacters {
+	var hidden hiddenCharacters
+	for _, field := range []struct{ source, text string }{
+		{"Work Item title", item.Title},
+		{"Work Item description", item.Description},
+	} {
+		cursor := newRuneCursor(field.source)
+		for _, r := range html.UnescapeString(field.text) {
+			cursor.step(r, &hidden)
+		}
 	}
-	return false
+	return hidden
 }
 
 func scanInstructionFiles(root string) (instructionScan, error) {
@@ -82,18 +144,17 @@ func (s *instructionScanner) walk(dir, rel string, inside bool) error {
 		}
 		childRel := path.Join(rel, name)
 		childPath := filepath.Join(dir, name)
-		childInside := inside || instructionDirNames[name]
-		wanted := childInside || instructionFileNames[name]
+		wanted := inside || isInstructionEntry(childRel)
 		switch {
 		case e.Type()&fs.ModeSymlink != 0:
 			if !wanted {
 				continue
 			}
-			if err := s.followLink(childPath, childRel, childInside); err != nil {
+			if err := s.followLink(childPath, childRel, wanted); err != nil {
 				return err
 			}
 		case e.IsDir():
-			if err := s.walk(childPath, childRel, childInside); err != nil {
+			if err := s.walk(childPath, childRel, wanted); err != nil {
 				return err
 			}
 		case !wanted:
@@ -146,7 +207,7 @@ func (s *instructionScanner) file(name, rel string) error {
 	defer f.Close()
 	digest := sha256.New()
 	r := bufio.NewReader(io.TeeReader(f, digest))
-	line, column := 1, 0
+	cursor := newRuneCursor(rel)
 	for {
 		c, _, err := r.ReadRune()
 		if err == io.EOF {
@@ -155,31 +216,22 @@ func (s *instructionScanner) file(name, rel string) error {
 		if err != nil {
 			return fmt.Errorf("read %s: %w", rel, err)
 		}
-		column++
-		if isHiddenRune(c) {
-			s.scan.HiddenTotal++
-			if len(s.scan.Hidden) < maxReportedHiddenCharacters {
-				s.scan.Hidden = append(s.scan.Hidden, hiddenCharacter{Path: rel, Line: line, Column: column, Rune: c})
-			}
-		}
-		if c == '\n' {
-			line, column = line+1, 0
-		}
+		cursor.step(c, &s.scan.Hidden)
 	}
 	s.scan.Files = append(s.scan.Files, work.InstructionFile{Path: rel, SHA256: hex.EncodeToString(digest.Sum(nil))})
 	return nil
 }
 
-func hiddenInstructionReport(scan instructionScan) harness.OutcomeReport {
-	positions := make([]string, len(scan.Hidden))
-	for i, h := range scan.Hidden {
+func hiddenUnicodeReport(hidden hiddenCharacters) harness.OutcomeReport {
+	positions := make([]string, len(hidden.Found))
+	for i, h := range hidden.Found {
 		positions[i] = h.String()
 	}
-	reason := fmt.Sprintf("agent instruction files contain %d invisible, bidi or zero-width character(s) "+
+	reason := fmt.Sprintf("agent instructions contain %d invisible, bidi, zero-width or tag character(s) "+
 		"and the harness was not started; a human must inspect them: %s",
-		scan.HiddenTotal, strings.Join(positions, "; "))
-	if more := scan.HiddenTotal - len(scan.Hidden); more > 0 {
+		hidden.Total, strings.Join(positions, "; "))
+	if more := hidden.Total - len(hidden.Found); more > 0 {
 		reason += fmt.Sprintf("; and %d more", more)
 	}
-	return stuckReport("hidden Unicode in agent instruction files", reason)
+	return stuckReport("hidden Unicode in agent instructions", reason)
 }
