@@ -53,6 +53,7 @@ func (p *Provider) Name() string { return "vikunja" }
 // payload is the (tolerantly parsed) Vikunja webhook body.
 type payload struct {
 	EventName string `json:"event_name"`
+	Time      string `json:"time"`
 	Data      struct {
 		Task struct {
 			ID          int64  `json:"id"`
@@ -82,7 +83,7 @@ type payload struct {
 // ParseWebhook verifies the signature against the RAW body before JSON
 // parsing (backlog #2) and returns normalized events.
 func (p *Provider) ParseWebhook(r *http.Request) ([]provider.TrackerEvent, error) {
-	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+	body, err := provider.ReadWebhookBody(r, maxPayloadBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -155,6 +156,31 @@ func (p *Provider) ParseWebhook(r *http.Request) ([]provider.TrackerEvent, error
 		// than the core consumes.
 		return nil, nil
 	}
+}
+
+const maxPayloadBytes = 1 << 20
+
+// DeliveryID returns a synthetic id, because Vikunja puts no delivery id on
+// its webhooks. It is built from the event name, the task and its project,
+// the assignee or related task the event names, and the time Vikunja sent the event, falling
+// back to the task's updated time. A redelivered or replayed body yields the
+// same id; an event without either time yields none and is not deduplicated.
+func (p *Provider) DeliveryID(r *http.Request) string {
+	body, err := provider.ReadWebhookBody(r, maxPayloadBytes)
+	if err != nil {
+		return ""
+	}
+	var pl payload
+	if err := json.Unmarshal(body, &pl); err != nil || pl.Data.Task.ID == 0 {
+		return ""
+	}
+	changed := pl.Time
+	if changed == "" {
+		changed = pl.Data.Task.Updated
+	}
+	object := fmt.Sprintf("task %d project %d assignee %q related %d", pl.Data.Task.ID, pl.Data.Task.ProjectID,
+		pl.Data.Assignee.Username, pl.Data.Relation.OtherTaskID)
+	return provider.SyntheticDeliveryID(p.Name(), pl.EventName, object, changed)
 }
 
 func verify(secret string, body []byte, sigHex string) bool {

@@ -7,7 +7,7 @@
       "type": "string",
       "enum": ["P1", "unsupported"],
       "default": "P1",
-      "description": "The deployment profile the values claim. P1, the default, is the profile the threat model covers: the render fails, listing each departure, when a value leaves it (DinD, executor.workerAuth.mode legacy, a credential proxy off or a credentialIsolation override, a harness not qualified with both proxies, harnessContainer shared, a worker securityContext below restricted, the sandbox executor, claudeRunner, or networkPolicy.enabled false). unsupported renders such values and lists the departures in the install notes; the threat model does not cover that deployment (ADR-0154, finding F-11)."
+      "description": "The deployment profile the values claim. P1, the default, is the profile the threat model covers: the render fails, listing each departure, when a value leaves it (DinD, executor.workerAuth.mode legacy, a credential proxy off or a credentialIsolation override, a harness not qualified with both proxies, harnessContainer shared, a worker securityContext below restricted, the sandbox executor, claudeRunner, networkPolicy.enabled false, security.workerAdmission.enabled false, or the sandbox executor with an empty security.workerAdmission.runtimeClassNames). unsupported renders such values and lists the departures in the install notes; the threat model does not cover that deployment (ADR-0154, finding F-11)."
     },
     "security": {
       "type": "object",
@@ -17,17 +17,17 @@
         "workerAdmission": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["enabled", "runtimeClassNames"],
+          "required": ["runtimeClassNames"],
           "description": "Native ValidatingAdmissionPolicy over every ploeg-worker Pod in the release namespace (Kubernetes 1.30 or later); see docs/ops/self-hosting-security.md.",
           "properties": {
             "enabled": {
-              "type": "boolean",
-              "description": "Install the policy and its Deny binding. The render fails on Kubernetes older than 1.30 and on any team or Role that keeps privileged DinD. Installing it needs cluster-scoped RBAC for admissionregistration.k8s.io."
+              "type": ["boolean", "null"],
+              "description": "Install the policy and its Deny binding. Unset follows supportProfile: on under P1, off under unsupported; false under P1 leaves the profile (finding F-49). The render fails on Kubernetes older than 1.30 and on any team or Role that keeps privileged DinD. Installing it needs cluster-scoped RBAC for admissionregistration.k8s.io."
             },
             "runtimeClassNames": {
               "type": "array",
               "uniqueItems": true,
-              "description": "RuntimeClass names a worker Pod must select. Empty leaves the runtime class unchecked; a non-empty list refuses a worker Pod without one of them. The chart does not install the handler.",
+              "description": "RuntimeClass names a worker Pod must select. Empty leaves the runtime class unchecked; a non-empty list refuses a worker Pod without one of them. Under P1 a team on the sandbox executor needs it non-empty, and every worker workload's runtimeClassName must be in it. The chart does not install the handler.",
               "items": {
                 "type": "string",
                 "minLength": 1,
@@ -1300,6 +1300,15 @@
         "apiUrl": {
           "type": "string"
         },
+        "namespace": {
+          "type": "string",
+          "pattern": "^([a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?)?$",
+          "description": "Namespace the worker workloads render into: the ScaledJobs or CronJobs, the TriggerAuthentication, the sandbox objects, the worker and sandbox launcher ServiceAccounts, Role and RoleBinding, their NetworkPolicies and the worker admission policy's namespace match. Empty keeps them in the release namespace. The installer creates it with the restricted Pod Security level and the Secrets the worker pods read; ploegd's NetworkPolicy then admits the worker and launcher pods from it (F-44, ADR-0169)."
+        },
+        "acknowledgeSharedNamespace": {
+          "type": "boolean",
+          "description": "true keeps the worker workloads in the release namespace under supportProfile P1. Without it, P1 warns before chart 0.3.0 and refuses from it while executor.namespace is empty or names the release namespace (F-44, ADR-0169)."
+        },
         "cronjob": {
           "type": "object",
           "properties": {
@@ -2237,7 +2246,7 @@
               "hookTimeout": { "type": "string", "pattern": "^$|^0$|^[0-9]+(\\.[0-9]+)?(ms|s|m)$" },
               "runIdentity": {
                 "type": "object",
-                "description": "ADR-0149: every hook of the plugin receives a Run identity for this audience in AGENT_RUN_IDENTITY_TOKEN. Needs the top-level runIdentity.signingKeySecret.",
+                "description": "ADR-0149: every hook of the plugin receives a Run identity for this audience in AGENT_RUN_IDENTITY_TOKEN. Needs the top-level runIdentity.signingKeySecret. The chart lists this audience in PLOEG_RUN_IDENTITY_AUDIENCES for each Role whose plugins declare it, and ploegd refuses every other audience (threat model F-48).",
                 "additionalProperties": false,
                 "required": ["audience"],
                 "properties": {

@@ -1067,30 +1067,6 @@ func (s *Store) Ledger(ctx context.Context, shiftID int64) (ShiftLedger, error) 
 	return l, err
 }
 
-// SeenDelivery records a forge webhook delivery id and reports whether it had
-// already been seen. A forge retries what it thinks failed, and a retry that
-// acts twice turns one review into two fix rounds (backlog #4).
-//
-// The insert IS the check: ON CONFLICT DO NOTHING makes "have I seen this"
-// and "remember this" one atomic statement, so two concurrent deliveries of
-// the same id cannot both conclude they are the first.
-func (s *Store) SeenDelivery(ctx context.Context, provider, deliveryID string) (bool, error) {
-	if deliveryID == "" {
-		// No id to dedup on. Treated as fresh rather than as a duplicate: a
-		// forge that sends no delivery header must not have every event
-		// silently dropped (backlog #4 — Vikunja does exactly this, which is
-		// why the tracker path synthesizes one).
-		return false, nil
-	}
-	tag, err := s.pool.Exec(ctx,
-		`INSERT INTO forge_deliveries (provider, delivery_id) VALUES ($1, $2)
-		 ON CONFLICT (provider, delivery_id) DO NOTHING`, provider, deliveryID)
-	if err != nil {
-		return false, err
-	}
-	return tag.RowsAffected() == 0, nil
-}
-
 // SweepDeliveries drops delivery ids older than the retention window. A forge
 // stops retrying long before this; the table exists to survive a restart, not
 // to be an archive.

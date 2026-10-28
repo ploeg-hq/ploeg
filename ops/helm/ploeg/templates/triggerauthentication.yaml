@@ -3,6 +3,9 @@ apiVersion: keda.sh/v1alpha1
 kind: TriggerAuthentication
 metadata:
   name: {{ include "ploeg.fullname" . }}-scaler
+  {{- with include "ploeg.executorNamespaceMetadata" . }}
+  {{ . }}
+  {{- end }}
   labels: {{- include "ploeg.labels" . | nindent 4 }}
 spec:
   secretTargetRef:

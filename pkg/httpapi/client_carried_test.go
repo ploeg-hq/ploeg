@@ -211,7 +211,7 @@ func TestOnlyThePersonAClientCarriedRunActsForCanClaimIt(t *testing.T) {
 		d.Repository != (clientClaimRepository{Forge: "forgejo", Owner: "webgrip", Repo: "fixture"}) || d.Reference != "VIK-1304" {
 		t.Errorf("claim response = %+v", resp)
 	}
-	for _, want := range []string{"# Work Item VIK-1304: Add a health check", "Add a /healthz route", "## Where you run", "agent/vik-1304"} {
+	for _, want := range []string{"# Work Item VIK-1304\n", "Title: Add a health check", "Add a /healthz route", "## Where you run", "agent/vik-1304"} {
 		if !strings.Contains(d.Prompt, want) {
 			t.Errorf("prompt lacks %q:\n%s", want, d.Prompt)
 		}
