@@ -144,6 +144,7 @@ The generator follows each binary's imports inside the module and records every 
 | `PLOEG_REPO_KNOWLEDGE_DIR` | ploeg-worker |  |  | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_REVIEW_RECONCILE_INTERVAL` | ploegd | `10m` | How often ploegd asks the forge about each awaiting_review pull request. Each check claims its pull request for nine tenths of the interval, so with several replicas one of them reads it per interval. `0` turns the reconcile off. | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_ROLE` | ploeg-worker |  |  | [main.go](../../cmd/ploeg-worker/main.go), [sandbox.go](../../cmd/ploeg-worker/sandbox.go) |
+| `PLOEG_RUN_IDENTITY_AUDIENCES` | ploegd |  | JSON `{"<team>": {"<role>": ["<audience>", ...]}}`: the only audiences ploegd signs a Run identity for, by the Run's Team and Role (ADR-0149, threat model F-48); a Team without a Shift plan runs in the Role `""`. Any other audience answers 403 and is logged as `run identity refused`. The chart renders it from each Role's `harness.claudeCode.plugins[].runIdentity.audience`. Unset with a signing key signs for none; set without one stops ploegd at boot. | [run_identity.go](../../cmd/ploegd/run_identity.go) |
 | `PLOEG_RUN_IDENTITY_ISSUER` | ploegd |  | The http(s) URL consumers reach ploegd at, written as every Run identity's `iss` (ADR-0149, chart `runIdentity.issuer`). Required with `PLOEG_RUN_IDENTITY_SIGNING_KEY`; either without the other stops ploegd at boot. | [run_identity.go](../../cmd/ploegd/run_identity.go) |
 | `PLOEG_RUN_IDENTITY_RETIRED_KEYS` | ploegd |  | Concatenated PEM `PUBLIC KEY` blocks of P-256 keys ploegd no longer signs with but still publishes in its key set, so a token signed just before a rotation verifies until it expires (ADR-0149, chart `runIdentity.retiredKeysSecret`). | [run_identity.go](../../cmd/ploegd/run_identity.go) |
 | `PLOEG_RUN_IDENTITY_SIGNING_KEY` | ploegd |  | PEM P-256 private key (PKCS#8 or SEC 1) ploegd signs Run identities with (ADR-0149, chart `runIdentity.signingKeySecret`): the ES256 JWT a Claude Code plugin that opted in receives in `AGENT_RUN_IDENTITY_TOKEN`. Unset issues none: `POST /api/v1/runs/{token}/identity` and `GET /api/v1/run-identity/jwks` answer 404. Only ploegd holds it; a plugin env may never read its Secret. | [run_identity.go](../../cmd/ploegd/run_identity.go) |
@@ -270,6 +271,7 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `env.PLOEG_SWEEP_INTERVAL` |  | `15s` |  | values.yaml |
 | `env.PLOEG_TEAM_MAP` |  | `""` | Legacy assignee roster, replaced by `teams.<name>.assignees` in the `PLOEG_CONFIG` file. | values.yaml |
 | `env.PLOEG_USAGE_REPORT` |  | `true` | The usage and evidence report Ploeg posts on every agent pull request (PLOEG_USAGE_REPORT). Default on; "false" is the kill switch. The four link templates are where its "Where to dig deeper" links point; Ploeg fills {id} (the Work Item id), {team} and {run} (the Run's gateway alias). An unset template omits its link, and none set omits the section while the report still renders. | values.yaml |
+| `executor.acknowledgeSharedNamespace` | boolean | `false` | true keeps the worker workloads in the release namespace under supportProfile P1. Without it, P1 warns before chart 0.3.0 and refuses from it while executor.namespace is empty or names the release namespace (F-44, ADR-0169). | values.yaml, values.schema.json |
 | `executor.activeDeadlineSeconds` |  | `7200` | Backstop only: the DB lease always expires first, so Ploeg decides requeue/stale; this just guarantees the pod dies (backlog #52). | values.yaml |
 | `executor.apiUrl` | string | `""` | empty = http://<fullname>:<service.port> | values.yaml, values.schema.json |
 | `executor.cronjob.schedule` | string | `*/2 * * * *` | type=cronjob only: how often each team polls for work. Idle ticks are free (empty-handed claim = exit 0). | values.yaml, values.schema.json |
@@ -341,6 +343,7 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `executor.litellm.masterKeySecret` |  |  | Controller-only LiteLLM management Secret reference. | values.yaml |
 | `executor.litellm.masterKeySecret.key` |  | `LITELLM_MASTER_KEY` |  | values.yaml |
 | `executor.litellm.masterKeySecret.name` |  | `agent-litellm-master` |  | values.yaml |
+| `executor.namespace` | string | `""` | Namespace the worker workloads render into: the ScaledJobs or CronJobs, the TriggerAuthentication, the sandbox objects, the worker and sandbox launcher ServiceAccounts, Role and RoleBinding, their NetworkPolicies and the worker admission policy's namespace match. Empty keeps them in the release namespace. The installer creates it with the restricted Pod Security level and the Secrets the worker pods read; ploegd's NetworkPolicy then admits the worker and launcher pods from it (F-44, ADR-0169). | values.yaml, values.schema.json |
 | `executor.nodeSelector` | object or null | `{}` | Node selector for WORKER pods, not ploegd (that is the top-level nodeSelector). Empty by default, so workers schedule on any node. Set your own label to keep agent Jobs and their privileged DinD sidecar off control-plane nodes (ADR-0002: no DinD beside etcd). | values.yaml, values.schema.json |
 | `executor.pollingInterval` |  | `30` |  | values.yaml |
 | `executor.runnerImage` | string | `""` | DEPRECATED in favor of harness.image (kept as the fallback so existing value overrides keep working). agent-runner >=1.0.1 only: 1.0.0 mints LiteLLM keys without key_alias (400). | values.yaml, values.schema.json |
@@ -802,7 +805,7 @@ claude-code harness only (ADR-0139). Rendered only into a claude-code pod.
 | `plugins[].env[].secret.name` | string |  |
 | `plugins[].env[].secret.key` | string |  |
 | `plugins[].hookTimeout` | string |  |
-| `plugins[].runIdentity` | object | ADR-0149: every hook of the plugin receives a Run identity for this audience in AGENT_RUN_IDENTITY_TOKEN. Needs the top-level runIdentity.signingKeySecret. |
+| `plugins[].runIdentity` | object | ADR-0149: every hook of the plugin receives a Run identity for this audience in AGENT_RUN_IDENTITY_TOKEN. Needs the top-level runIdentity.signingKeySecret. The chart lists this audience in PLOEG_RUN_IDENTITY_AUDIENCES for each Role whose plugins declare it, and ploegd refuses every other audience (threat model F-48). |
 | `plugins[].runIdentity.audience` | string |  |
 
 ### telemetry

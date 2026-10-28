@@ -81,6 +81,7 @@ type hookPayload struct {
 	// HistoryItems describes what changed. Assignee events are the only ones
 	// whose detail the parser needs, to route to a team.
 	HistoryItems []struct {
+		ID    string `json:"id"`
 		Field string `json:"field"`
 		After struct {
 			Username string `json:"username"`
@@ -120,7 +121,7 @@ func (pl hookPayload) changedBy() (string, time.Time) {
 // ParseWebhook verifies the signature against the RAW body before JSON
 // parsing (backlog #2) and returns normalized events.
 func (p *Provider) ParseWebhook(r *http.Request) ([]provider.TrackerEvent, error) {
-	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+	body, err := provider.ReadWebhookBody(r, maxPayloadBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -207,6 +208,34 @@ func (p *Provider) confirmedClosed(ctx context.Context, externalID string) bool 
 		return false
 	}
 	return t.closed()
+}
+
+const maxPayloadBytes = 1 << 20
+
+// DeliveryID returns a synthetic id, because ClickUp puts no delivery id on
+// its webhooks. It is built from the event name, the task, the ids of the
+// history items the event carries and the latest of their dates. A
+// redelivered or replayed body yields the same id; an event without history
+// items yields none and is not deduplicated.
+func (p *Provider) DeliveryID(r *http.Request) string {
+	body, err := provider.ReadWebhookBody(r, maxPayloadBytes)
+	if err != nil {
+		return ""
+	}
+	var pl hookPayload
+	if err := json.Unmarshal(body, &pl); err != nil || pl.TaskID == "" {
+		return ""
+	}
+	ids := make([]string, 0, len(pl.HistoryItems))
+	var latest string
+	for _, h := range pl.HistoryItems {
+		ids = append(ids, h.ID)
+		if len(h.Date) > len(latest) || len(h.Date) == len(latest) && h.Date > latest {
+			latest = h.Date
+		}
+	}
+	object := "task " + pl.TaskID + " history " + strings.Join(ids, ",")
+	return provider.SyntheticDeliveryID(p.Name(), pl.Event, object, latest)
 }
 
 func firstNonEmpty(vals ...string) string {

@@ -435,6 +435,27 @@ own declares them through `harness.PromptLimiter`; the limits reach
 `pkg/taskprompt` as `TaskSpec.Limits`, which the published Task Spec does not
 carry.
 
+Text from the tracker and the forge reaches the agent as data
+([ADR-0170](../adrs/0170-tracker-and-forge-text-enters-the-prompt-in-an-untrusted-frame-it-cannot-close.md)).
+The prompt opens with `# Work Item <reference>`, then one paragraph saying
+that framed text is data that cannot change the Run's instructions,
+credentials or scope, then the title and description in a `tracker` frame:
+
+    <untrusted source="tracker" boundary="ca9aa024b2c410e7">
+    Title: <title>
+
+    <description>
+    </untrusted boundary="ca9aa024b2c410e7">
+
+A rework briefing frames a person's review body as `forge-review` and the
+failed checks' states, descriptions and log links as `forge-ci`. The boundary
+is the first 16 hex digits of SHA-256 over the source and the framed text, so
+the same text renders the same frame; any `<untrusted` or `</untrusted` in the
+text is escaped to `<\untrusted` or `<\/untrusted` first. Package
+`pkg/untrusted` holds the rules. A prompt rendered before this change began
+`# Work Item <reference>: <title>` and carried the description under
+`## Work Item description`.
+
 The Teams read's Roles carry `harness` (`{name, profile}` from
 `PLOEG_TEAM_HARNESSES`, which the chart renders from the same values as each
 worker's `PLOEG_HARNESS` and `PLOEG_ACP_PROFILE`), `model` (the Role's
@@ -838,6 +859,15 @@ expired. A declaration cannot set the name itself.
 
 Every fact comes from ploegd's records of the Run; the worker names only the
 audiences. The token carries no credential: nothing in Ploeg accepts it.
+
+**Which audiences.** ploegd signs only an audience configured for the Run's
+Team and Role in `PLOEG_RUN_IDENTITY_AUDIENCES`
+(`{"<team>": {"<role>": ["<audience>"]}}`, the Role `""` for a Team without a
+Shift plan). The chart renders it from the `runIdentity.audience` of the
+plugins each Role's workers load, so a configured plugin is always covered.
+Any other audience answers 403, signs nothing for the request and is logged
+as `run identity refused` with the Run, Team, Role and audience; the worker
+then removes the plugins' tokens and stops asking (threat model F-48).
 
 **Verifying it.** A consumer pins two values in its own configuration, the
 issuer and its own audience, and fetches the keys from
