@@ -1300,6 +1300,15 @@
         "apiUrl": {
           "type": "string"
         },
+        "namespace": {
+          "type": "string",
+          "pattern": "^([a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?)?$",
+          "description": "Namespace the worker workloads render into: the ScaledJobs or CronJobs, the TriggerAuthentication, the sandbox objects, the worker and sandbox launcher ServiceAccounts, Role and RoleBinding, their NetworkPolicies and the worker admission policy's namespace match. Empty keeps them in the release namespace. The installer creates it with the restricted Pod Security level and the Secrets the worker pods read; ploegd's NetworkPolicy then admits the worker and launcher pods from it (F-44, ADR-0169)."
+        },
+        "acknowledgeSharedNamespace": {
+          "type": "boolean",
+          "description": "true keeps the worker workloads in the release namespace under supportProfile P1. Without it, P1 warns before chart 0.3.0 and refuses from it while executor.namespace is empty or names the release namespace (F-44, ADR-0169)."
+        },
         "cronjob": {
           "type": "object",
           "properties": {
@@ -2237,7 +2246,7 @@
               "hookTimeout": { "type": "string", "pattern": "^$|^0$|^[0-9]+(\\.[0-9]+)?(ms|s|m)$" },
               "runIdentity": {
                 "type": "object",
-                "description": "ADR-0149: every hook of the plugin receives a Run identity for this audience in AGENT_RUN_IDENTITY_TOKEN. Needs the top-level runIdentity.signingKeySecret.",
+                "description": "ADR-0149: every hook of the plugin receives a Run identity for this audience in AGENT_RUN_IDENTITY_TOKEN. Needs the top-level runIdentity.signingKeySecret. The chart lists this audience in PLOEG_RUN_IDENTITY_AUDIENCES for each Role whose plugins declare it, and ploegd refuses every other audience (threat model F-48).",
                 "additionalProperties": false,
                 "required": ["audience"],
                 "properties": {

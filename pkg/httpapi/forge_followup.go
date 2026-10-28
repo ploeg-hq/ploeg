@@ -8,6 +8,7 @@ import (
 	"github.com/ploeg-hq/ploeg/pkg/harness"
 	"github.com/ploeg-hq/ploeg/pkg/provider"
 	"github.com/ploeg-hq/ploeg/pkg/store"
+	"github.com/ploeg-hq/ploeg/pkg/untrusted"
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
@@ -132,7 +133,7 @@ func (s *Server) reworkOnChangesRequested(ctx context.Context, providerName stri
 	}
 	action, err := s.Store.RecordChangesRequested(ctx, store.ChangesRequested{
 		WorkItemID: owner.WorkItemID, Provider: providerName, Repo: ev.Repo, PR: ev.PR,
-		Reviewer: ev.Actor, Body: ev.Body, HeadSHA: ev.PullRequest.HeadSHA, MaxReworks: policy.ReworkCap(),
+		Reviewer: ev.Actor, Body: ev.Body, HeadSHA: ev.PullRequest.HeadSHA, ReviewID: ev.ReviewID, MaxReworks: policy.ReworkCap(),
 	})
 	if err != nil {
 		s.Log.Error("recording requested changes failed", "work_item", owner.WorkItemID, "pr", ev.PR, "err", err)
@@ -194,9 +195,9 @@ func (s *Server) isForgeBot(login string) bool {
 func reviewBriefing(notes []store.ReviewNote) []harness.Finding {
 	out := make([]harness.Finding, 0, len(notes))
 	for _, n := range notes {
-		body := strings.TrimSpace(n.Body)
-		if body == "" {
-			body = "(the review requested changes without a summary; read the pull request's review comments)"
+		body := "(the review requested changes without a summary; read the pull request's review comments)"
+		if text := strings.TrimSpace(n.Body); text != "" {
+			body = untrusted.Frame(untrusted.SourceForgeReview, text)
 		}
 		role := "human review by " + n.Reviewer
 		if n.PR > 0 {
@@ -212,16 +213,18 @@ func reviewBriefing(notes []store.ReviewNote) []harness.Finding {
 // through Ploeg, so each check names where its log is.
 func forgeCIBriefing(failures []store.CIFailure, round int) harness.Finding {
 	var b strings.Builder
-	b.WriteString("The forge's CI failed on the pull request's head, so the pull request is not ready for review. Fix what these checks report and push to the same branch:\n\n")
+	b.WriteString("The forge's CI failed on the pull request's head, so the pull request is not ready for review. Fix what these checks report and push to the same branch. The checks, as the forge reported them:\n\n")
+	var checks strings.Builder
 	for _, f := range failures {
-		fmt.Fprintf(&b, "- `%s`: %s", f.Context, f.State)
+		fmt.Fprintf(&checks, "- `%s`: %s", f.Context, f.State)
 		if d := strings.TrimSpace(f.Description); d != "" {
-			fmt.Fprintf(&b, " (%s)", d)
+			fmt.Fprintf(&checks, " (%s)", d)
 		}
 		if f.TargetURL != "" {
-			fmt.Fprintf(&b, ", log: %s", f.TargetURL)
+			fmt.Fprintf(&checks, ", log: %s", f.TargetURL)
 		}
-		b.WriteString("\n")
+		checks.WriteString("\n")
 	}
+	b.WriteString(untrusted.Frame(untrusted.SourceForgeCI, checks.String()))
 	return harness.Finding{Role: "forge CI", Round: round - 1, Findings: b.String()}
 }

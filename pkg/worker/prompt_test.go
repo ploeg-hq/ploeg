@@ -300,7 +300,7 @@ func TestComposePrompt_ReaderBeforeTheWriterHasNoDiffClause(t *testing.T) {
 
 func TestComposePrompt_TrackerReferenceFollowsTheProvider(t *testing.T) {
 	vikunja := ComposePrompt(roleSpec("builder", nil), true, "", true)
-	for _, want := range []string{"# Work Item VIK-585: ", "trailers:\n  VIK-585\n", `Put "VIK-585" in the PR body`} {
+	for _, want := range []string{"# Work Item VIK-585\n", "trailers:\n  VIK-585\n", `Put "VIK-585" in the PR body`} {
 		if !strings.Contains(vikunja, want) {
 			t.Errorf("vikunja prompt missing %q:\n%s", want, vikunja)
 		}
@@ -310,7 +310,7 @@ func TestComposePrompt_TrackerReferenceFollowsTheProvider(t *testing.T) {
 	spec.WorkItem.Provider = "clickup"
 	spec.WorkItem.ExternalID = "86c0abc12"
 	clickup := ComposePrompt(spec, true, "", true)
-	for _, want := range []string{"# Work Item clickup-86c0abc12: ", "trailers:\n  clickup-86c0abc12\n", `Put "clickup-86c0abc12" in the PR body`} {
+	for _, want := range []string{"# Work Item clickup-86c0abc12\n", "trailers:\n  clickup-86c0abc12\n", `Put "clickup-86c0abc12" in the PR body`} {
 		if !strings.Contains(clickup, want) {
 			t.Errorf("clickup prompt missing %q:\n%s", want, clickup)
 		}

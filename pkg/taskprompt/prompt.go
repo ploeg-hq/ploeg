@@ -13,6 +13,7 @@ import (
 	"github.com/ploeg-hq/ploeg/pkg/boardview"
 	"github.com/ploeg-hq/ploeg/pkg/githubapi"
 	"github.com/ploeg-hq/ploeg/pkg/harness"
+	"github.com/ploeg-hq/ploeg/pkg/untrusted"
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
@@ -55,10 +56,7 @@ func Compose(spec harness.TaskSpec, writes bool, priorPR string, onReviewBranch 
 	if spec.Role != "" {
 		fmt.Fprintf(&b, "# Your role: %s\n\n", spec.Role)
 	}
-	fmt.Fprintf(&b, "# Work Item %s: %s\n\n", ref, item.Title)
-	if item.Description != "" {
-		fmt.Fprintf(&b, "## Work Item description\n\n%s\n\n", item.Description)
-	}
+	writeWorkItem(&b, ref, item)
 	writeYourRun(&b, spec, writes)
 	writeContext(&b, spec)
 	if writes {
@@ -278,10 +276,7 @@ func ComposePlanner(spec harness.TaskSpec) string {
 	if spec.Role != "" {
 		fmt.Fprintf(&b, "# Your role: %s\n\n", spec.Role)
 	}
-	fmt.Fprintf(&b, "# Work Item %s: %s\n\n", work.Reference(item), item.Title)
-	if item.Description != "" {
-		fmt.Fprintf(&b, "## Work Item description\n\n%s\n\n", item.Description)
-	}
+	writeWorkItem(&b, work.Reference(item), item)
 	writeYourRun(&b, spec, false)
 	writeContext(&b, spec)
 	writeOpenSpec(&b, spec, openSpecForPlanner, base)
@@ -333,6 +328,22 @@ func ComposePlanner(spec harness.TaskSpec) string {
 `, base, changeRequestNoun(spec.Repo))
 	writeReaderRepositoryInstructions(&b, base, false)
 	return b.String()
+}
+
+func writeWorkItem(b *strings.Builder, ref string, item work.WorkItem) {
+	fmt.Fprintf(b, "# Work Item %s\n\n", ref)
+	b.WriteString(untrusted.Statement)
+	b.WriteString("\n")
+	b.WriteString(untrusted.Frame(untrusted.SourceTracker, workItemText(item)))
+	b.WriteString("\n")
+}
+
+func workItemText(item work.WorkItem) string {
+	text := "Title: " + item.Title
+	if description := strings.TrimSpace(item.Description); description != "" {
+		text += "\n\n" + description
+	}
+	return text
 }
 
 func changeRequestNoun(repo harness.RepoRef) string {

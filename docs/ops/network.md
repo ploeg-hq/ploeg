@@ -33,6 +33,8 @@ Policy evaluation sees the destination pod and its port, not the Service. Every 
 
 Each of ploegd, worker, sandbox launcher, claude-runner and ploeg-mcp also takes `networkPolicy.<component>.extraEgress`, and ploegd `extraIngress`, appended as written.
 
+With `executor.namespace` set, the `<release>-worker`, `<release>-worker-<team>-anthropic` and `<release>-sandbox-launcher` policies render into that namespace beside the pods they select, and their rule to ploegd adds a `namespaceSelector` on the release namespace. ploegd's policy, when `networkPolicy.ploegd.ingressFrom` names callers, gains a rule that admits the `ploeg-worker` and `ploeg-sandbox-launcher` pods of the worker namespace on 8080 ([ADR-0169](../adrs/0169-worker-workloads-render-into-a-namespace-of-their-own-and-profile-p1-refuses-a-shared-one-from-chart-0-3-0.md)).
+
 What the table leaves out is deliberate. Workers do not reach the database, the Kubernetes API, the tracker or the knowledge graph. Nothing reaches a worker. The launcher does not reach the model gateway or the forge. Image pulls are the kubelet's, not the pod's, so a policy never affects them; the toolchains of [ADR-0035](../adrs/0035-runs-get-ploeg-owned-skills-mounted-toolchains-and-worker-verification.md) arrive the same way. Kubelet health probes come from the node and are not subject to NetworkPolicy on the CNIs above.
 
 ## How the destination of a rule is found

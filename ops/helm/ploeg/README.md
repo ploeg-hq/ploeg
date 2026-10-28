@@ -85,6 +85,17 @@ Set `supportProfile: unsupported` to render such values anyway; the install note
 
 `mcp.name` and `claudeRunner.name` set the Deployment name and the pods' `app.kubernetes.io/name`, which is also each Deployment's selector. They default to `<fullname>-mcp` and `<fullname>-claude-runner`. To take over objects that exist under other names, set these to the existing names, and set `fullnameOverride` and `instanceOverride` to the old release name when Ploeg moves into another Helm release, because a Deployment's selector cannot change.
 
+## Worker namespace
+
+`executor.namespace` renders the worker workloads into a namespace of their own: the ScaledJobs or CronJobs, the TriggerAuthentication, the sandbox objects, the worker and sandbox launcher ServiceAccounts, Role and RoleBinding, their NetworkPolicies and the worker admission policy's namespace match. ploegd, its Service and Secrets, ploeg-mcp and the claude-runner stay in the release namespace. Workers then call ploegd at `http://<fullname>.<release namespace>.svc:8080` unless `executor.apiUrl` is set, and when `networkPolicy.ploegd.ingressFrom` names callers, ploegd's policy also admits the worker and launcher pods from the worker namespace.
+
+The chart neither creates nor labels that namespace. Before the install:
+
+1. Create it and label it `pod-security.kubernetes.io/enforce=restricted`.
+2. Create in it the Secrets the worker pods read: `ploeg-worker-bootstrap` with the `<team>--<role>` keys only (ploegd's copy in the release namespace keeps `registry.json`), the forge token Secret (`agent-builder-token`, and `readTokenSecret` when set), any Secret a plugin or Claude login names, and `ploeg-scaler` (`password`) under the `keda` or `sandbox` executor.
+
+To move an existing install, create those Secrets first, then set `executor.namespace` and upgrade while no Run is in flight: Helm deletes the worker objects from the release namespace, Kubernetes removes their Jobs with them, and Helm creates the objects in the new namespace. With `executor.namespace` empty, the default, everything renders into the release namespace as before. Under `supportProfile: P1` that is warned about in the install notes before chart 0.3.0 and refused from it, unless `executor.acknowledgeSharedNamespace: true` records the choice ([F-44](../../../docs/security/threat-model.md#findings), [ADR-0169](../../../docs/adrs/0169-worker-workloads-render-into-a-namespace-of-their-own-and-profile-p1-refuses-a-shared-one-from-chart-0-3-0.md)).
+
 ## Optional integrations
 
 Each of these is off until you set it, and ploegd starts without it:

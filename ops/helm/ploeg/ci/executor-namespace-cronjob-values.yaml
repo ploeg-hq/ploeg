@@ -1,0 +1,14 @@
+networkPolicy:
+  ploegd:
+    ingressFrom:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: gateway
+executor:
+  enabled: true
+  type: cronjob
+  namespace: ploeg-workers
+  teams:
+    - name: defaults
+      model: litellm_proxy/deepseek-chat
+      budget: "1"
