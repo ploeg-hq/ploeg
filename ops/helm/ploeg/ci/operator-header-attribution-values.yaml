@@ -1,0 +1,9 @@
+operator:
+  consumers:
+    - name: workbench
+      teams:
+        - silver
+      execute: true
+      tokenSecret:
+        name: ploeg-workbench-operator
+        key: token

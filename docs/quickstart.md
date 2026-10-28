@@ -187,6 +187,8 @@ It prints `ploegd answers` and then `Work Item 1`. If it prints `not admitted`, 
 
 `requestId` makes the request safe to repeat. Sending the same body again returns the same Work Item instead of a second one.
 
+`X-Ploeg-Actor: quickstart` names the person the change is made for, and Ploeg takes the consumer's word for it: the audit row records the person as `asserted`. A real deployment proves the person with a token from its identity provider instead and refuses a change without one ([ADR 0171](adrs/0171-an-operator-change-needs-a-proven-person-and-the-chart-refuses-asserted-attribution-from-0-3-0.md)); from chart 0.3.0 that is the default. This guide has no identity provider, so its values keep header attribution with `PLOEG_OPERATOR_ATTRIBUTION: asserted`, and the install notes warn about it.
+
 ## 8. Watch the Run
 
 Within a minute the CronJob starts a worker. Wait until the Work Item leaves the queue:

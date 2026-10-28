@@ -101,10 +101,15 @@ client, `clientIds`. It checks the issuer, signature, audience, client, lifetime
 and that the token is not an ID token, and records the attribution as `proven`;
 see [ADR-0150](../adrs/0150-an-operator-consumer-proves-the-person-it-acts-for-with-a-token-exchanged-for-ploegs-audience.md).
 Give every consumer its own audience: a token issued for one consumer's audience
-cannot then be replayed as another consumer. Consumer credentials with asserted
-person headers remain accepted for compatibility and are recorded as `asserted`,
-so configuring token verification does not by itself require proof on every
-mutation; audit records say which kind each mutation holds. A recorded person is not independent proof of that
+cannot then be replayed as another consumer. Configuring token verification does not by itself
+require proof on every mutation: set `operator.attribution: proven`
+(`PLOEG_OPERATOR_ATTRIBUTION`, the chart default from 0.3.0) and every operator
+change without a person token answers 403 `person_token_required` and leaves an
+`operator.attribution_refused` audit row naming the consumer; reads keep
+accepting a consumer's credential alone. Under `asserted`, consumer credentials
+with person headers remain accepted and are recorded as `asserted`, and ploegd,
+each response's `Warning` header and the install notes say so
+([ADR-0171](../adrs/0171-an-operator-change-needs-a-proven-person-and-the-chart-refuses-asserted-attribution-from-0-3-0.md)). A recorded person is not independent proof of that
 person's repository authority. Worker capabilities and optional signed Run
 identities are not human OIDC credentials or personal forge permissions.
 
