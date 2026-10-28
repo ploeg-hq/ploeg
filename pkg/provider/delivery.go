@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -31,8 +32,11 @@ func SyntheticDeliveryID(fields ...string) string {
 			return ""
 		}
 	}
-	sum := sha256.Sum256([]byte(strings.Join(fields, "\x00")))
-	return "synthetic:" + hex.EncodeToString(sum[:])
+	h := sha256.New()
+	for _, f := range fields {
+		fmt.Fprintf(h, "%d:%s", len(f), f)
+	}
+	return "synthetic:" + hex.EncodeToString(h.Sum(nil))
 }
 
 // ReadWebhookBody reads at most limit bytes of the request body and puts
