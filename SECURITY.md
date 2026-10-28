@@ -10,6 +10,10 @@ Report it privately through GitHub: [open a draft security advisory](https://git
 
 If you cannot use GitHub's private reporting, open a public issue that only asks a maintainer to contact you, with no vulnerability details.
 
+## Automated scanning
+
+[`.oss-scanner/`](.oss-scanner/) holds the build and the [scanner threat model](.oss-scanner/threat_model.md) that automated vulnerability scanners read, such as [Anthropic's OSS Scanner](https://github.com/anthropics/oss-scanner). It summarizes the threat model above for a scanner: what is attacker-controlled, which components matter, what is out of scope and how Ploeg rates severity. Change both together.
+
 ## What Ploeg stores
 
 [Data retention](docs/ops/data-retention.md) lists what Ploeg keeps about work, Runs, transcripts and spend, for how long, and the settings that keep prompts, code and credentials out of storage and logs.
