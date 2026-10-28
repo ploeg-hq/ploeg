@@ -233,7 +233,10 @@ func run(ctx context.Context, log *slog.Logger) error {
 		log.Info("no forge provider configured (PLOEG_FORGEJO_URL/PLOEG_GITLAB_URL/PLOEG_GITHUB_URL unset); findings will not reach a pull request")
 	}
 
-	forgeCreds, forgeSweeper := forgeCredentials(log)
+	forgeCreds, forgeSweeper, err := forgeCredentials(ctx, log)
+	if err != nil {
+		return err
+	}
 	if ghForge != nil {
 		githubForgeIDs = forgeIDsOf(forges, ghForge)
 	}
