@@ -157,6 +157,15 @@ useful while closing the two paths above at the cheapest point for each.
   MCP server of a `claude-code` Run, with read-only access groups its LiteLLM
   team bounds. `--strict-mcp-config` stays, so the target's `.mcp.json` still
   loads nothing.
+* 2026-10-28 — Follow-up in infrastructure for threat-model F-28
+  ([#311](https://github.com/ploeg-hq/ploeg/issues/311)): the hidden set is
+  every Unicode format character (category Cf), every default-ignorable code
+  point and the tag block U+E0000 to U+E007F, with U+200D, U+FE0E and U+FE0F
+  allowed only inside an emoji sequence; the instruction set adds `GEMINI.md`, `QWEN.md`, `CLAUDE.local.md`,
+  `.clinerules`, `.goosehints`, `.gemini/`, `.qwen/`,
+  `.github/copilot-instructions.md` and `.github/instructions/`; and the Work
+  Item title and description are scanned before the clone
+  ([hidden_unicode.go](../../pkg/worker/hidden_unicode.go)).
 * Related: [0010](0010-shift-owns-the-item-lease-owns-the-branch.md),
   [0011](0011-the-pull-request-is-the-blackboard.md),
   [0013](0013-push-rights-are-minted-per-run.md),
