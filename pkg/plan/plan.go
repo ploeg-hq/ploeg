@@ -66,6 +66,9 @@ type TeamPlan struct {
 	// It is the SECOND bound, never the first — the Shift pool is checked
 	// before it, because money is the limit that cannot be argued with.
 	MaxFixRounds int `json:"maxFixRounds" yaml:"maxFixRounds"`
+	// IndependentReview, when set, makes ploegd refuse to start unless every
+	// reviewing Role differs from every writing Role it judges (ADR-0163).
+	IndependentReview *IndependentReview `json:"independentReview,omitempty" yaml:"independentReview"`
 }
 
 // WriterRound returns the index of the plan's last writing Round — the one a
@@ -148,6 +151,9 @@ func Validate(tp TeamPlan) error {
 	}
 	if len(tp.Rounds) == 0 {
 		return fmt.Errorf("a plan needs at least one round")
+	}
+	if tp.IndependentReview != nil && !tp.IndependentReview.Model && !tp.IndependentReview.Harness {
+		return fmt.Errorf("independentReview asks for neither a different model nor a different harness; set model, harness or both, or remove it (ADR-0163)")
 	}
 	if tp.MaxFixRounds < 0 {
 		return fmt.Errorf("maxFixRounds must not be negative, got %d", tp.MaxFixRounds)

@@ -1,4 +1,10 @@
 supportProfile: P1
+networkPolicy:
+  ploegd:
+    ingressFrom:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: forgejo
 env:
   PLOEG_LLM_SETTLE_AFTER: 1m
 database:

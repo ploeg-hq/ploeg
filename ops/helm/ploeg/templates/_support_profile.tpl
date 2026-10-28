@@ -132,6 +132,16 @@ true
 {{- toJson $out -}}
 {{- end -}}
 
+{{- define "ploeg.ploegdCallersUnnamed" -}}
+{{- if and .Values.networkPolicy.enabled (not ((.Values.networkPolicy.ploegd | default dict).ingressFrom)) -}}
+networkPolicy.ploegd.ingressFrom is empty, so ploegd's NetworkPolicy admits port 8080 from every pod in every namespace; P1 needs the gateway, the operator consumers and Prometheus named there, and the chart adds its own callers (F-45)
+{{- end -}}
+{{- end -}}
+
+{{- define "ploeg.ploegdCallersRequired" -}}
+{{- if semverCompare ">=0.3.0-0" .Chart.Version -}}true{{- end -}}
+{{- end -}}
+
 {{- define "ploeg.supportProfileDepartures" -}}
 {{- $root := . -}}
 {{- $e := .Values.executor -}}
@@ -142,8 +152,18 @@ true
 {{- if eq (include "ploeg.workerAdmissionSetting" $root) "false" -}}
 {{- $out = append $out "security.workerAdmission.enabled is false; P1 needs the chart's worker admission policy, which refuses a worker pod changed outside the chart at the API server (finding F-49)" -}}
 {{- end -}}
+{{- if include "ploeg.ploegdCallersRequired" $root -}}
+{{- with include "ploeg.ploegdCallersUnnamed" $root -}}
+{{- $out = append $out . -}}
+{{- end -}}
+{{- end -}}
 {{- if eq (($e.workerAuth | default dict).mode | default "managed") "legacy" -}}
 {{- $out = append $out "executor.workerAuth.mode is legacy; P1 needs managed" -}}
+{{- end -}}
+{{- if include "ploeg.personClaimsRequiredByP1" $root -}}
+{{- range $name := include "ploeg.consumersActingForAnyPerson" $root | fromJsonArray -}}
+{{- $out = append $out (printf "operator consumer %s has execute and accepts a person token as the bearer (audiences or clientIds) without requireClaims; P1 needs requireClaims on it, so the identity provider's groups or roles decide who acts with its authority (F-47)" $name) -}}
+{{- end -}}
 {{- end -}}
 {{- if .Values.claudeRunner.enabled -}}
 {{- $out = append $out "claudeRunner.enabled is true; P1 excludes the claude-runner, whose Runs execute outside the pod" -}}
@@ -165,6 +185,10 @@ true
 {{- $out = append $out . -}}
 {{- end -}}
 {{- range $team := $e.teams -}}
+{{- $cap := include "ploeg.teamSpendCap" (dict "root" $root "team" $team) | fromJson -}}
+{{- if not (gt ($cap.usd | float64) 0.0) -}}
+{{- $out = append $out (printf "team %s resolves no spend cap (executor.spendCap, executor.teams[].spendCap or config.teams.%s.spendCap); P1 needs a finite cap per period on every executor team (ADR-0162)" $team.name $team.name) -}}
+{{- end -}}
 {{- range $planRole := (include "ploeg.teamRoles" $team | fromJsonArray) -}}
 {{- range $w := (include "ploeg.roleWorkloads" (dict "root" $root "team" $team "role" $planRole) | fromJsonArray) -}}
 {{- $out = concat $out (include "ploeg.workloadSupportProfileDepartures" (dict "root" $root "team" $team "role" $w.role) | fromJsonArray) -}}

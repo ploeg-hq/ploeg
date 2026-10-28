@@ -137,6 +137,7 @@ type ProvenPerson struct {
 	Act string
 
 	audiences []string
+	claims    map[string]any
 }
 
 type provenPersonKey struct{}
@@ -160,7 +161,8 @@ func provenPerson(namespace string, info *auth.TokenInfo) ProvenPerson {
 	client, _ := info.Extra["client"].(string)
 	act, _ := info.Extra["act"].(string)
 	audiences, _ := info.Extra["audiences"].([]string)
-	return ProvenPerson{ID: operatorclient.PersonID(namespace, info.UserID), Client: client, Act: boundedLabel(act), audiences: audiences}
+	claims, _ := info.Extra["claims"].(map[string]any)
+	return ProvenPerson{ID: operatorclient.PersonID(namespace, info.UserID), Client: client, Act: boundedLabel(act), audiences: audiences, claims: claims}
 }
 
 func boundedLabel(s string) string {

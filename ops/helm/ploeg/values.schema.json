@@ -74,7 +74,7 @@
           "items": {
             "type": "string"
           },
-          "description": "CIDRs an internet rule excludes, so a pod allowed to reach a public host cannot reach the cluster, the nodes or the LAN through the same rule. Add your pod, service and node ranges when they are outside RFC 1918."
+          "description": "CIDRs an internet rule excludes, so a pod allowed to reach a public host cannot reach the cluster, the nodes or the LAN through the same rule. The default is RFC 1918 plus the shared address space 100.64.0.0/10. Add your pod, service and node ranges when they are outside these. Every internet rule also excludes link-local 169.254.0.0/16, where cloud instance metadata lives, and loopback 127.0.0.0/8, whatever this list holds."
         },
         "database": {
           "type": "object",
@@ -129,7 +129,7 @@
           "properties": {
             "ingressFrom": {
               "$ref": "#/definitions/networkPolicyPeers",
-              "description": "Peers that may reach ploegd on 8080: the gateway that forwards webhooks, operator consumers, Prometheus. Empty allows any peer on that port, because the chart cannot know your gateway; set, the policy allows these peers plus this release's own worker, launcher, ploeg-mcp and claude-runner pods."
+              "description": "Peers that may reach ploegd on 8080: the gateway that forwards webhooks, operator consumers, Prometheus. Empty allows any peer on that port, because the chart cannot know your gateway; set, the policy allows these peers plus this release's own worker, launcher, ploeg-mcp and claude-runner pods. Under supportProfile P1 an empty list is warned about before chart 0.3.0 and refused from it (F-45)."
             },
             "extraIngress": {
               "$ref": "#/definitions/networkPolicyIngressRules"
@@ -1120,9 +1120,52 @@
                   "maxLength": 256,
                   "pattern": "^[!-~]+$"
                 }
+              },
+              "requireClaims": {
+                "type": "object",
+                "maxProperties": 10,
+                "description": "Claims a person token for this consumer must carry (ADR-0150, threat model F-47), such as {groups: [ploeg-operators]}: each named claim must hold one of its values, as a string equal to one or an array of strings containing one (scope is split on spaces). A verified token without them answers 403 person_claim_required and changes nothing. Profile P1 needs it from chart 0.3.0 on a consumer with execute that names audiences or clientIds.",
+                "propertyNames": {
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[!-~]+$"
+                },
+                "additionalProperties": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 20,
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256,
+                    "pattern": "^[!-~]+$"
+                  }
+                }
               }
             },
             "allOf": [
+              {
+                "if": {
+                  "required": [
+                    "requireClaims"
+                  ]
+                },
+                "then": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "clientIds"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "audiences"
+                      ]
+                    }
+                  ]
+                }
+              },
               {
                 "if": {
                   "required": [
@@ -1342,6 +1385,10 @@
                 "minimum": 0,
                 "description": "Concurrency cap: the most Runs this team may have running at once, enforced by ploegd at claim time. A claim over the cap gets no work and the worker exits 0. Every workload's maxReplicaCount is clamped to it. 0 or unset = unlimited."
               },
+              "spendCap": {
+                "$ref": "#/definitions/spendCap",
+                "description": "This team's spend cap per calendar period (ADR-0162), in place of executor.spendCap; config.teams.<name>.spendCap wins over both. usd 0 = no cap, which leaves profile P1."
+              },
               "harness": {
                 "$ref": "#/definitions/harness"
               },
@@ -1378,6 +1425,16 @@
                 "type": "integer",
                 "minimum": 0,
                 "description": "ADR-0017: how many times a reviewer request_changes may re-open the writing Round of this plan. 0 = loop off, the plan runs to exhaustion."
+              },
+              "independentReview": {
+                "type": "object",
+                "properties": {
+                  "model": {"type": "boolean"},
+                  "harness": {"type": "boolean"}
+                },
+                "additionalProperties": false,
+                "minProperties": 1,
+                "description": "ADR-0163, planned teams only: ploegd refuses to start unless every reviewing Role differs from every writing Role in the models its inference policy admits (model: true) and in the Harnesses its admission may choose (harness: true). Unset = no requirement."
               },
               "executorType": {
                 "type": "string",
@@ -1517,6 +1574,10 @@
           },
           "additionalProperties": false,
           "description": "Worker pods ServiceAccount. create and name are independent: naming an account never suppresses creating it."
+        },
+        "spendCap": {
+          "$ref": "#/definitions/spendCap",
+          "description": "The spend cap every executor team takes unless it sets its own (ADR-0162): ploegd refuses a claim whose hold would take the team's spend settled in the calendar period (UTC) plus its Runs' holds over usd. Default 20 USD per day. Profile P1 needs every executor team to resolve a cap with usd above 0."
         },
         "workerSecurityContext": {
           "type": "object",
@@ -1783,6 +1844,40 @@
     }
   },
   "definitions": {
+    "spendCap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "usd"
+      ],
+      "properties": {
+        "usd": {
+          "type": "number",
+          "minimum": 0,
+          "description": "The most the team's Runs may settle and hold in one period, in USD. 0 = no cap."
+        },
+        "period": {
+          "enum": [
+            "day",
+            "week",
+            "month"
+          ],
+          "description": "The calendar period in UTC; a week starts on Monday."
+        }
+      },
+      "if": {
+        "properties": {
+          "usd": {
+            "exclusiveMinimum": 0
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "period"
+        ]
+      }
+    },
     "networkPolicyPeers": {
       "type": "array",
       "description": "A list of NetworkPolicyPeer objects: `podSelector`, `namespaceSelector` or `ipBlock`, as in `networking.k8s.io/v1`.",
@@ -1814,7 +1909,7 @@
     "networkPolicyEndpoint": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Where one kind of endpoint lives. Empty `peers` derives the destination from each configured URL; set, they replace it for every URL of the kind. Empty `port` is each URL's port, or 443 for https and 80 for http; set, it replaces it, which a Service whose port differs from its pods' needs.",
+      "description": "Where one kind of endpoint lives. Empty `peers` derives the destination from each configured URL, and a `<service>.<namespace>.svc` URL then admits every pod in that namespace; set, they replace it for every URL of the kind. Empty `port` is each URL's port, or 443 for https and 80 for http; set, it replaces it, which a Service whose port differs from its pods' needs.",
       "properties": {
         "peers": {
           "$ref": "#/definitions/networkPolicyPeers"

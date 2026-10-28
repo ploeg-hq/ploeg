@@ -30,12 +30,16 @@
 {{- dict "to" $to "ports" (list (dict "protocol" "TCP" "port" (int $port))) | toJson }}
 {{- end -}}
 
+{{- define "ploeg.netpol.nodeLocalCidrs" -}}
+{{- list "169.254.0.0/16" "127.0.0.0/8" | toJson }}
+{{- end -}}
+
 {{- define "ploeg.netpol.internetPeer" -}}
-{{- $block := dict "cidr" "0.0.0.0/0" }}
-{{- with .Values.networkPolicy.privateCidrs }}
-{{- $_ := set $block "except" . }}
+{{- $except := list }}
+{{- range concat (.Values.networkPolicy.privateCidrs | default list) (include "ploeg.netpol.nodeLocalCidrs" . | fromJsonArray) }}
+{{- if not (has . $except) }}{{- $except = append $except . }}{{- end }}
 {{- end }}
-{{- dict "ipBlock" $block | toJson }}
+{{- dict "ipBlock" (dict "cidr" "0.0.0.0/0" "except" $except) | toJson }}
 {{- end -}}
 
 {{- define "ploeg.netpol.internetRule" -}}
