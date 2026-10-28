@@ -38,6 +38,11 @@ type issuer struct {
 
 func newIssuer(t *testing.T) *issuer {
 	t.Helper()
+	return newIssuerServedBy(t, httptest.NewServer)
+}
+
+func newIssuerServedBy(t *testing.T, serve func(http.Handler) *httptest.Server) *issuer {
+	t.Helper()
 	is := &issuer{t: t, keys: map[string]crypto.Signer{}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/application/o/ploeg-mcp/.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
@@ -58,7 +63,7 @@ func newIssuer(t *testing.T) *issuer {
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"keys": keys})
 	})
-	is.srv = httptest.NewServer(mux)
+	is.srv = serve(mux)
 	t.Cleanup(is.srv.Close)
 	is.url = is.srv.URL + "/application/o/ploeg-mcp/"
 	is.addRSA("rsa-1")
