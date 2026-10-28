@@ -94,14 +94,14 @@ func parseEmojiData(data []byte, wanted ...string) (map[string][]codePointRange,
 
 func parseRange(field string) (rune, rune, error) {
 	first, last, isRange := strings.Cut(field, "..")
-	lo, err := strconv.ParseUint(first, 16, 32)
+	lo, err := strconv.ParseUint(first, 16, 21)
 	if err != nil {
 		return 0, 0, err
 	}
 	if !isRange {
 		return rune(lo), rune(lo), nil
 	}
-	hi, err := strconv.ParseUint(last, 16, 32)
+	hi, err := strconv.ParseUint(last, 16, 21)
 	return rune(lo), rune(hi), err
 }
 
