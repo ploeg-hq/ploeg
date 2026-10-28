@@ -81,6 +81,17 @@ Live, 2026-10-25, Run `ploeg-76b41121490b` (builder, `acp/openhands`, sandbox un
 
 The sweep at 12:57:24 lists every token of the bot on the live forge and deletes any `ploeg-run-` token whose Run holds no Lease. It found none, so the Run's token was gone from the forge within ten minutes of the outcome, deleted by the settle path. Successful deletes are not logged; only failures are (`forge credential revoke failed; the forge sweep will retry`), and none was logged for this Run.
 
+## How the broker knows a Forgejo token is restricted
+
+Forgejo restricts a token to named repositories from 15.0.0. The create request's `repositories` field and the `repositories` field of the created `AccessToken` both arrived then ([`modules/structs/user_app.go`](https://codeberg.org/forgejo/forgejo/src/tag/v15.0.10/modules/structs/user_app.go) lines 19 to 35). The handler stores one restriction row per named repository and answers with those repositories; with no `repositories` in the request it marks the token as reaching every repository and answers `null` ([`routers/api/v1/user/app.go`](https://codeberg.org/forgejo/forgejo/src/tag/v15.0.10/routers/api/v1/user/app.go) lines 178 to 214 and 237 to 244). Forgejo 14 has neither field ([v14.0.0](https://codeberg.org/forgejo/forgejo/src/tag/v14.0.0/routers/api/v1/user/app.go)), so it ignores the restriction the broker asks for and mints a token for every repository the bot can reach, without an error.
+
+ploegd therefore checks twice ([ADR-0172](../adrs/0172-the-forgejo-broker-runs-only-on-forgejo-15-and-refuses-a-token-the-forge-did-not-restrict-to-the-runs-repository.md)):
+
+* **At start.** With `PLOEG_FORGEJO_BOT_PASSWORD` set, ploegd reads `GET /api/v1/version` and stops when the major version is below 15 or the version does not read as Forgejo's, with an error naming the forge URL and the version found, for example `"14.0.2+gitea-1.22.0"`. It also stops when the version cannot be read. On success it logs `per-run forge credentials enabled` with `forgejo_version`.
+* **At every mint.** The broker reads `repositories` from the created token. Unless it names exactly the Run's repository, the broker deletes the token by name and the claim fails: the worker gets no token and the Run ends `failed` with `infra_node`. If the delete fails, the Run no longer holds a Lease, so the orphan sweep deletes the token.
+
+What this does not prove is that Forgejo enforces the restriction it reports. The [live qualification](#qualification-against-a-live-forge), given a second repository, does.
+
 ## What a revocation takes away, and when
 
 A per-Run credential is useful only while the forge or gateway accepts it. Whether a revoked one is refused on the next request depends on the forge and gateway, not on Ploeg.
@@ -111,7 +122,7 @@ PLOEG_FORGEJO_E2E_OTHER_REPO=<owner/repo the bot can read> \
 rm -f /tmp/ploeg-bot-password
 ```
 
-The Secret and key names are the maintainer's homelab's; another installation uses the Secret its `botPasswordSecret` names. The test leaves no token behind: it revokes in a deferred call as well. The live probe's token was a plain user token, not one restricted to a repository, so it shows that Forgejo refuses a revoked token at once; that the broker's restricted token is refused the same way rests on the source reading above, since both go through `GetAccessTokenBySHA`.
+The Secret and key names are the maintainer's homelab's; another installation uses the Secret its `botPasswordSecret` names. The test leaves no token behind: it revokes in a deferred call as well. The live probe's token was a plain user token, not one restricted to a repository, so it shows that Forgejo refuses a revoked token at once; that the broker's restricted token is refused the same way rests on the source reading above, since both go through `GetAccessTokenBySHA`. The opt-in test mints through the broker, so on a forge that does not report the restriction it fails at the mint with `the forge did not restrict the per-run token`; with `PLOEG_FORGEJO_E2E_OTHER_REPO` it also requires the other repository to answer 403 or 404. That run through the broker has not yet been recorded here (F-10's residual).
 
 ## What is left
 
@@ -120,7 +131,7 @@ The Secret and key names are the maintainer's homelab's; another installation us
 | The shared builder token and the bootstrap token stay in the worker container | ADR-0138 option (c); F-03's residual |
 | Readers share one long-lived read token | ADR-0013 tier 1, ADR-0138 follow-ups |
 | A Forgejo per-Run token has no expiry; the sweep is the only backstop for a failed delete | ADR-0013 re-evaluation trigger (Forgejo native token expiry) |
-| The broker does not check that Forgejo honoured the repository restriction | [F-10](threat-model.md#findings) |
+| The broker checks the restriction Forgejo reports on each token, not that Forgejo enforces it; the live qualification with a second repository has not yet run through the broker | [F-10](threat-model.md#findings), [ADR-0172](../adrs/0172-the-forgejo-broker-runs-only-on-forgejo-15-and-refuses-a-token-the-forge-did-not-restrict-to-the-runs-repository.md) |
 | GitHub token handles are lost on a ploegd restart | [F-15](threat-model.md#findings) |
 | GitLab has no per-Run broker | [F-31](threat-model.md#findings) |
 | Proxy refusals reach the worker log only, not ploegd's audit log | T-WK-1 |
