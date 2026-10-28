@@ -57,7 +57,9 @@
 {{- else }}
 {{- $labels := include "ploeg.selectorLabels" .root | fromYaml }}
 {{- $_ := set $labels "ploeg.webgrip.dev/component" "daemon" }}
-{{- dict "to" (list (dict "podSelector" (dict "matchLabels" $labels))) "ports" (list (dict "protocol" "TCP" "port" 8080)) | toJson }}
+{{- $peer := dict "podSelector" (dict "matchLabels" $labels) }}
+{{- with .namespace }}{{- $_ := set $peer "namespaceSelector" (dict "matchLabels" (dict "kubernetes.io/metadata.name" .)) }}{{- end }}
+{{- dict "to" (list $peer) "ports" (list (dict "protocol" "TCP" "port" 8080)) | toJson }}
 {{- end }}
 {{- end -}}
 

@@ -357,6 +357,8 @@ spec:
                 secretKeyRef:
                   name: ploeg-run-identity
                   key: signing-key.pem
+            - name: PLOEG_RUN_IDENTITY_AUDIENCES
+              value: "{\"silver\":{\"builder\":[\"https://link.example.com\"],\"reviewer\":[\"https://link.example.com\"]}}"
             - name: PLOEG_RUN_IDENTITY_RETIRED_KEYS
               valueFrom:
                 secretKeyRef:

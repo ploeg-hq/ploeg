@@ -1,6 +1,6 @@
 Ploeg {{ .Chart.AppVersion }} / chart {{ .Chart.Version }}
 Security contract: revision {{ (fromJson (.Files.Get "security-contract.json")).contractRevision }}
-Native worker admission: {{ .Values.security.workerAdmission.enabled }}
+Native worker admission: {{ include "ploeg.workerAdmissionEnabled" . | default "false" }}
 Default-deny NetworkPolicies: {{ .Values.networkPolicy.enabled }}
 Delegated user access tokens and automatic personal forge ACL inheritance: NOT IMPLEMENTED.
 Read SECURITY.md and security-contract.json from this exact chart package.
@@ -58,5 +58,12 @@ and ADR-0154 explain what that leaves to your own assessment.
 {{- else }}
 supportProfile is unsupported, but these values meet profile P1. Set
 supportProfile: P1 so the chart refuses a later change that leaves it.
+{{- end }}
+{{- end }}
+{{- if and (eq (.Values.supportProfile | default "P1") "P1") (not (include "ploeg.executorNamespaceRequired" .)) }}
+{{- with include "ploeg.executorNamespaceShared" . }}
+WARNING: {{ . }}.
+From chart 0.3.0, supportProfile: P1 refuses this render (ADR-0169); set
+executor.namespace now and the upgrade changes nothing.
 {{- end }}
 {{- end }}

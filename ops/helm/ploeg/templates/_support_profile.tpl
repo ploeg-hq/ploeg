@@ -1,3 +1,33 @@
+{{- define "ploeg.workerAdmissionSetting" -}}
+{{- $a := .Values.security.workerAdmission | default dict -}}
+{{- if and (hasKey $a "enabled") (not (kindIs "invalid" $a.enabled)) -}}
+{{- toString $a.enabled -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "ploeg.workerAdmissionEnabled" -}}
+{{- $setting := include "ploeg.workerAdmissionSetting" . -}}
+{{- if $setting -}}
+{{- if eq $setting "true" -}}true{{- end -}}
+{{- else if eq (.Values.supportProfile | default "P1") "P1" -}}
+true
+{{- end -}}
+{{- end -}}
+
+{{- define "ploeg.workerAdmissionRuntimeClassDepartures" -}}
+{{- $root := .root -}}
+{{- $allowed := $root.Values.security.workerAdmission.runtimeClassNames | default list -}}
+{{- $class := include "ploeg.runtimeClassName" (dict "root" $root "team" .team "role" .role) -}}
+{{- $out := list -}}
+{{- if and .sandbox (not $allowed) -}}
+{{- $out = append $out (printf "team %s: the sandbox executor runs while security.workerAdmission.runtimeClassNames is empty; P1 needs it to name the sandbox runtime class, so the API server refuses a worker pod that drops it (finding F-49)" .who) -}}
+{{- end -}}
+{{- if and $allowed (not (has $class $allowed)) -}}
+{{- $out = append $out (printf "team %s: runtimeClassName %q is not in security.workerAdmission.runtimeClassNames %s, so the worker admission policy refuses its pods" .who $class (toJson $allowed)) -}}
+{{- end -}}
+{{- toJson $out -}}
+{{- end -}}
+
 {{- define "ploeg.securityContextDepartures" -}}
 {{- $c := .context | default dict -}}
 {{- $out := list -}}
@@ -85,6 +115,7 @@
 {{- if and $sandbox (not (include "ploeg.runtimeClassName" (dict "root" $root "team" $team "role" $role))) -}}
 {{- $out = append $out (printf "team %s: the sandbox executor resolves no runtimeClassName; P1 runs it only under a runtime class that gives each pod its own VM, such as Kata Containers" $who) -}}
 {{- end -}}
+{{- $out = concat $out (include "ploeg.workerAdmissionRuntimeClassDepartures" (dict "root" $root "team" $team "role" $role "who" $who "sandbox" $sandbox) | fromJsonArray) -}}
 {{- if $dind -}}
 {{- $out = append $out (printf "%s: harness.dind is true; P1 needs dind: false on every team and Role" $label) -}}
 {{- end -}}
@@ -118,6 +149,9 @@ networkPolicy.ploegd.ingressFrom is empty, so ploegd's NetworkPolicy admits port
 {{- if not .Values.networkPolicy.enabled -}}
 {{- $out = append $out "networkPolicy.enabled is false; P1 needs the chart's default-deny NetworkPolicies" -}}
 {{- end -}}
+{{- if eq (include "ploeg.workerAdmissionSetting" $root) "false" -}}
+{{- $out = append $out "security.workerAdmission.enabled is false; P1 needs the chart's worker admission policy, which refuses a worker pod changed outside the chart at the API server (finding F-49)" -}}
+{{- end -}}
 {{- if include "ploeg.ploegdCallersRequired" $root -}}
 {{- with include "ploeg.ploegdCallersUnnamed" $root -}}
 {{- $out = append $out . -}}
@@ -138,6 +172,11 @@ networkPolicy.ploegd.ingressFrom is empty, so ploegd's NetworkPolicy admits port
 {{- end -}}
 {{- end -}}
 {{- if $e.enabled -}}
+{{- if include "ploeg.executorNamespaceRequired" $root -}}
+{{- with include "ploeg.executorNamespaceShared" $root -}}
+{{- $out = append $out . -}}
+{{- end -}}
+{{- end -}}
 {{- if ne (($e.litellm | default dict).keyIsolation | default "") "proxy" -}}
 {{- $out = append $out "executor.litellm.keyIsolation is not proxy; P1 needs proxy" -}}
 {{- end -}}
