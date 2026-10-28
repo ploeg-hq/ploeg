@@ -220,6 +220,7 @@ renders_p1 --set executor.workerImage=registry.example/ploeg-worker:0.2.0@sha256
 renders_p1 -f ops/helm/ploeg/ci/executor-public-endpoints-values.yaml
 renders_p1 --set networkPolicy.privateCidrs=null
 PLOEGD_CALLERS=ops/helm/ploeg/ci/ploegd-callers-values.yaml
+SEPARATE_WORKERS=--set=executor.namespace=ploeg-workers
 renders_p1
 renders_p1 -f "$PLOEGD_CALLERS"
 chart_from_0_3=$(mktemp -d)
@@ -228,8 +229,8 @@ sed 's/^version:.*/version: 0.3.0/' ops/helm/ploeg/Chart.yaml >"$chart_from_0_3/
 P1_CHART=$chart_from_0_3/ploeg
 leaves_p1 'networkPolicy.ploegd.ingressFrom is empty, so ploegd'"'"'s NetworkPolicy admits port 8080 from every pod in every namespace'
 leaves_p1 'networkPolicy.ploegd.ingressFrom is empty' --set 'networkPolicy.ploegd.ingressFrom=null'
-renders_p1 -f "$PLOEGD_CALLERS"
-ploegd_ingress=$(helm template ploeg "$P1_CHART" -f "$REQUIRED" -f "$P1_VALUES" -f "$PLOEGD_CALLERS" -s templates/networkpolicy.yaml 2>&1 | awk '/^  name: ploeg-ploegd$/ { found = 1 } found && /^  egress:/ { exit } found')
+renders_p1 -f "$PLOEGD_CALLERS" "$SEPARATE_WORKERS"
+ploegd_ingress=$(helm template ploeg "$P1_CHART" -f "$REQUIRED" -f "$P1_VALUES" -f "$PLOEGD_CALLERS" "$SEPARATE_WORKERS" -s templates/networkpolicy.yaml 2>&1 | awk '/^  name: ploeg-ploegd$/ { found = 1 } found && /^  egress:/ { exit } found')
 for caller in 'kubernetes.io/metadata.name: gateway' '- ploeg-worker' '- ploeg-sandbox-launcher' '- ploeg-mcp' '- ploeg-claude-runner'; do
 	if ! printf '%s' "$ploegd_ingress" | grep -qF -- "$caller"; then
 		echo "chart 0.3.0 with networkPolicy.ploegd.ingressFrom named renders a ploegd ingress without '$caller':"
@@ -237,7 +238,7 @@ for caller in 'kubernetes.io/metadata.name: gateway' '- ploeg-worker' '- ploeg-s
 		status=1
 	fi
 done
-if out=$(helm template ploeg "$P1_CHART" -f "$REQUIRED" -f "$P1_VALUES" --set networkPolicy.enabled=false 2>&1) || printf '%s' "$out" | grep -qF 'ingressFrom is empty'; then
+if out=$(helm template ploeg "$P1_CHART" -f "$REQUIRED" -f "$P1_VALUES" "$SEPARATE_WORKERS" --set networkPolicy.enabled=false 2>&1) || printf '%s' "$out" | grep -qF 'ingressFrom is empty'; then
 	echo "chart 0.3.0 with networkPolicy.enabled: false names ingressFrom, which has no policy to fill:"
 	echo "$out"
 	status=1
@@ -308,7 +309,7 @@ for version in 0.3.0-rc.1 0.3.0; do
 	rm -rf "$next_minor/ploeg"
 	cp -R ops/helm/ploeg "$next_minor/ploeg"
 	sed "s/^version:.*/version: $version/" ops/helm/ploeg/Chart.yaml >"$next_minor/ploeg/Chart.yaml"
-	if out=$(helm template ploeg "$next_minor/ploeg" -f "$REQUIRED" -f "$P1_VALUES" -f "$PLOEGD_CALLERS" -f "$BEARER_VALUES" 2>&1); then
+	if out=$(helm template ploeg "$next_minor/ploeg" -f "$REQUIRED" -f "$P1_VALUES" -f "$PLOEGD_CALLERS" "$SEPARATE_WORKERS" -f "$BEARER_VALUES" 2>&1); then
 		echo "chart $version rendered an execute consumer that requires no person token claim under supportProfile: P1"
 		status=1
 	elif ! printf '%s' "$out" | grep -qF -- "$BEARER_DEPARTURE"; then
@@ -317,13 +318,13 @@ for version in 0.3.0-rc.1 0.3.0; do
 		status=1
 	fi
 	for passing in "--set=operator.consumers[0].requireClaims.groups={ploeg-operators}" "--set=operator.consumers[0].execute=false" "--set=supportProfile=unsupported"; do
-		if ! out=$(helm template ploeg "$next_minor/ploeg" -f "$REQUIRED" -f "$P1_VALUES" -f "$PLOEGD_CALLERS" -f "$BEARER_VALUES" "$passing" 2>&1); then
+		if ! out=$(helm template ploeg "$next_minor/ploeg" -f "$REQUIRED" -f "$P1_VALUES" -f "$PLOEGD_CALLERS" "$SEPARATE_WORKERS" -f "$BEARER_VALUES" "$passing" 2>&1); then
 			echo "chart $version refused the bearer consumer with $passing, which it must render:"
 			echo "$out"
 			status=1
 		fi
 	done
-	notes=$(helm install --dry-run=client ploeg "$next_minor/ploeg" -f "$REQUIRED" -f "$P1_VALUES" -f "$PLOEGD_CALLERS" -f "$BEARER_VALUES" --set supportProfile=unsupported 2>&1)
+	notes=$(helm install --dry-run=client ploeg "$next_minor/ploeg" -f "$REQUIRED" -f "$P1_VALUES" -f "$PLOEGD_CALLERS" "$SEPARATE_WORKERS" -f "$BEARER_VALUES" --set supportProfile=unsupported 2>&1)
 	if ! printf '%s' "$notes" | grep -qF -- "- $BEARER_DEPARTURE" || printf '%s' "$notes" | grep -qF -- "$BEARER_WARNING"; then
 		echo "chart $version under supportProfile: unsupported does not list the bearer consumer as a departure in place of the warning:"
 		echo "$notes"

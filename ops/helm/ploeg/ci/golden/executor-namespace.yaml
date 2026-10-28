@@ -94,6 +94,9 @@ spec:
           - 10.0.0.0/8
           - 172.16.0.0/12
           - 192.168.0.0/16
+          - 100.64.0.0/10
+          - 169.254.0.0/16
+          - 127.0.0.0/8
 ---
 # Source: ploeg/templates/networkpolicy.yaml
 apiVersion: networking.k8s.io/v1
@@ -182,6 +185,9 @@ spec:
           - 10.0.0.0/8
           - 172.16.0.0/12
           - 192.168.0.0/16
+          - 100.64.0.0/10
+          - 169.254.0.0/16
+          - 127.0.0.0/8
 ---
 # Source: ploeg/templates/networkpolicy.yaml
 apiVersion: networking.k8s.io/v1
@@ -424,6 +430,8 @@ spec:
               value: "230MiB"
             - name: PLOEG_TEAM_HARNESSES
               value: "{\"copper\":{\"\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"exec\",\"qualification\":\"qualified\"}],\"name\":\"exec\"}},\"pewter\":{\"\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"claude-environment\",\"qualification\":\"unqualified\"}],\"name\":\"claude-environment\"}},\"silver\":{\"\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"openhands\",\"qualification\":\"qualified\"}],\"name\":\"openhands\"}}}"
+            - name: PLOEG_TEAM_SPEND_CAPS
+              value: "{\"copper\":{\"period\":\"day\",\"usd\":20},\"pewter\":{\"period\":\"day\",\"usd\":20},\"silver\":{\"period\":\"day\",\"usd\":20}}"
             - name: PLOEG_FORGEJO_URL
               value: "http://forgejo-http.forgejo.svc.cluster.local:3000"
             - name: PLOEG_FORGEJO_TOKEN
