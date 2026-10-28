@@ -34,7 +34,7 @@ func TestAPersonTokenWithoutTheRequiredGroupIsRefusedOnAMutatingRouteAndChangesN
 	f.server.OperatorConfig.Consumers[0].clientIDs = []string{personClient}
 	f.server.OperatorConfig.Consumers[0].requiredClaims = operatorsOnly()
 	is := newPersonIssuer(t)
-	tokens, err := NewPersonTokens(PersonTokenConfig{Issuer: is.url, Audience: personAudience, Now: func() time.Time { return personNow }}, f.server.OperatorConfig.Consumers)
+	tokens, err := NewPersonTokens(PersonTokenConfig{Issuer: is.url, AllowLoopbackHTTP: true, Audience: personAudience, Now: func() time.Time { return personNow }}, f.server.OperatorConfig.Consumers)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +124,7 @@ func TestAnAudienceConsumerRequiresItsClaimsFromConfiguration(t *testing.T) {
 	}
 	is := newPersonIssuer(t)
 	global := strings.TrimSuffix(is.url, "application/o/ploeg/")
-	personTokens, err := NewPersonTokens(PersonTokenConfig{Issuer: global, JWKSURL: global + "jwks", Now: func() time.Time { return personNow }}, consumers)
+	personTokens, err := NewPersonTokens(PersonTokenConfig{Issuer: global, AllowLoopbackHTTP: true, JWKSURL: global + "jwks", Now: func() time.Time { return personNow }}, consumers)
 	if err != nil {
 		t.Fatal(err)
 	}

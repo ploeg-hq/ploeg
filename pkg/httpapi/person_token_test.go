@@ -92,7 +92,7 @@ func newPersonRig(t *testing.T) *personRig {
 	others[0].clientIDs = []string{"other-app"}
 	consumers = append(consumers, others...)
 	is := newPersonIssuer(t)
-	tokens, err := NewPersonTokens(PersonTokenConfig{Issuer: is.url, Audience: personAudience, Now: func() time.Time { return personNow }}, consumers)
+	tokens, err := NewPersonTokens(PersonTokenConfig{Issuer: is.url, AllowLoopbackHTTP: true, Audience: personAudience, Now: func() time.Time { return personNow }}, consumers)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -288,7 +288,7 @@ func TestAProvenNoteRecordsTheProvenPersonInTheAudit(t *testing.T) {
 	f := newRequeueFixture(t)
 	f.server.OperatorConfig.Consumers[0].clientIDs = []string{personClient}
 	is := newPersonIssuer(t)
-	tokens, err := NewPersonTokens(PersonTokenConfig{Issuer: is.url, Audience: personAudience, Now: func() time.Time { return personNow }}, f.server.OperatorConfig.Consumers)
+	tokens, err := NewPersonTokens(PersonTokenConfig{Issuer: is.url, AllowLoopbackHTTP: true, Audience: personAudience, Now: func() time.Time { return personNow }}, f.server.OperatorConfig.Consumers)
 	if err != nil {
 		t.Fatal(err)
 	}

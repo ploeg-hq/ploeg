@@ -82,7 +82,7 @@ func exchangingRemote(t *testing.T, f *fakeExchange) acting {
 	return newActingRemoteWith(t, actingOptions{
 		stewardClientIDs: []string{"ploeg-mcp"},
 		personTokens: func(consumers []httpapi.OperatorConsumer) *httpapi.PersonTokens {
-			tokens, err := httpapi.NewPersonTokens(httpapi.PersonTokenConfig{Issuer: f.issuer(), Audience: "ploeg", JWKSURL: f.srv.URL + "/jwks", SubjectNamespace: personNamespace}, consumers)
+			tokens, err := httpapi.NewPersonTokens(httpapi.PersonTokenConfig{Issuer: f.issuer(), AllowLoopbackHTTP: true, Audience: "ploeg", JWKSURL: f.srv.URL + "/jwks", SubjectNamespace: personNamespace}, consumers)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -157,11 +157,11 @@ func TestExchangeConfigurationIsAllOrNothing(t *testing.T) {
 		{"PLOEG_MCP_EXCHANGE_TOKEN_URL": "https://id.example/token", "PLOEG_MCP_EXCHANGE_CLIENT_ID": "a", "PLOEG_MCP_EXCHANGE_CLIENT_SECRET": "b"},
 		{"PLOEG_MCP_EXCHANGE_TOKEN_URL": "not a url", "PLOEG_MCP_EXCHANGE_CLIENT_ID": "a", "PLOEG_MCP_EXCHANGE_CLIENT_SECRET": "b", "PLOEG_MCP_EXCHANGE_AUDIENCE": "ploeg"},
 	} {
-		if _, err := loadExchanger(func(k string) string { return env[k] }); err == nil {
+		if _, err := loadExchanger(func(k string) string { return env[k] }, false); err == nil {
 			t.Errorf("%v accepted", env)
 		}
 	}
-	if ex, err := loadExchanger(func(string) string { return "" }); ex != nil || err != nil {
+	if ex, err := loadExchanger(func(string) string { return "" }, false); ex != nil || err != nil {
 		t.Fatalf("unset exchange: %v %v", ex, err)
 	}
 }

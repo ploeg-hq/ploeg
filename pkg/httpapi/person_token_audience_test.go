@@ -52,7 +52,7 @@ func newAudienceRig(t *testing.T) *audienceRig {
 	consumers, tokens := audienceConsumers(t)
 	is := newPersonIssuer(t)
 	global := strings.TrimSuffix(is.url, "application/o/ploeg/")
-	personTokens, err := NewPersonTokens(PersonTokenConfig{Issuer: global, Audience: personAudience, JWKSURL: global + "jwks", Now: func() time.Time { return personNow }}, consumers)
+	personTokens, err := NewPersonTokens(PersonTokenConfig{Issuer: global, AllowLoopbackHTTP: true, Audience: personAudience, JWKSURL: global + "jwks", Now: func() time.Time { return personNow }}, consumers)
 	if err != nil {
 		t.Fatal(err)
 	}

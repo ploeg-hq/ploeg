@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"slices"
@@ -30,11 +31,26 @@ const DefaultMaxLifetime = 10 * time.Minute
 
 // Config pins what a Verifier accepts.
 type Config struct {
-	// Issuer is matched byte for byte against the token's iss.
+	// Issuer is matched byte for byte against the token's iss. It must be an
+	// https URL unless AllowLoopbackHTTP is set and its host is loopback.
 	Issuer string
 	// Audiences are what aud must name one of. Without AuthorizedParties
 	// they are the pre-registered client ids and azp must be one of them too.
+	// With Resource set, aud must name the resource instead and Audiences are
+	// only the client ids azp must be one of.
 	Audiences []string
+	// Resource, when set, is this server's resource identifier: the RFC 9728
+	// resource its protected resource metadata names and the RFC 8707
+	// resource indicator a client requests a token for. A token is accepted
+	// only when its aud names it exactly (RFC 9068 section 4), so a token
+	// issued to an accepted client for another resource is refused. It must
+	// be an absolute URL without credentials or fragment, and cannot be
+	// combined with AuthorizedParties or SelfIssuedAudiences.
+	Resource string
+	// AllowLoopbackHTTP accepts an http Issuer, JWKS URL and jwks_uri whose
+	// host is localhost or a loopback address. It is for local development
+	// and tests only and is outside deployment profile P1.
+	AllowLoopbackHTTP bool
 	// AuthorizedParties, when set, are the client ids azp (or client_id when
 	// the token has no azp) must be one of, independently of Audiences: a
 	// token exchanged for one audience on behalf of a known client.
@@ -52,7 +68,8 @@ type Config struct {
 	// is still refused.
 	ScopeOptional bool
 	// JWKSURL is where the signing keys live. Empty means the jwks_uri of the
-	// issuer's OpenID discovery document.
+	// issuer's OpenID discovery document. Either must be https under the same
+	// rule as Issuer.
 	JWKSURL string
 	// Algorithms are the accepted signing algorithms; empty means RS256 and
 	// ES256.
@@ -78,17 +95,32 @@ type Verifier struct {
 // the first token or Ready call.
 func NewVerifier(cfg Config) (*Verifier, error) {
 	u, err := url.Parse(cfg.Issuer)
-	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || u.RawQuery != "" || u.Fragment != "" || u.User != nil {
-		return nil, errors.New("issuer must be an http(s) URL without credentials, query or fragment")
+	if err != nil || u.Host == "" || u.RawQuery != "" || u.Fragment != "" || u.User != nil {
+		return nil, errors.New("issuer must be an https URL without credentials, query or fragment")
+	}
+	if !transportAllowed(u, cfg.AllowLoopbackHTTP) {
+		return nil, errors.New(httpRefused("issuer"))
 	}
 	if cfg.JWKSURL != "" {
 		j, err := url.Parse(cfg.JWKSURL)
-		if err != nil || (j.Scheme != "https" && j.Scheme != "http") || j.Host == "" || j.User != nil {
-			return nil, errors.New("JWKS URL must be an http(s) URL without credentials")
+		if err != nil || j.Host == "" || j.User != nil {
+			return nil, errors.New("JWKS URL must be an https URL without credentials")
+		}
+		if !transportAllowed(j, cfg.AllowLoopbackHTTP) {
+			return nil, errors.New(httpRefused("JWKS URL"))
 		}
 	}
 	if len(cfg.Audiences) == 0 || slices.Contains(cfg.Audiences, "") {
 		return nil, errors.New("at least one non-empty client id is required as audience")
+	}
+	if cfg.Resource != "" {
+		r, err := url.Parse(cfg.Resource)
+		if err != nil || !r.IsAbs() || r.Host == "" || r.Fragment != "" || r.User != nil {
+			return nil, errors.New("resource must be an absolute URL without credentials or fragment")
+		}
+		if len(cfg.AuthorizedParties) > 0 || len(cfg.SelfIssuedAudiences) > 0 {
+			return nil, errors.New("a resource cannot be combined with authorized parties or self-issued audiences")
+		}
 	}
 	if slices.Contains(cfg.AuthorizedParties, "") {
 		return nil, errors.New("authorized parties must be non-empty client ids")
@@ -131,7 +163,26 @@ func NewVerifier(cfg Config) (*Verifier, error) {
 	if cfg.Now == nil {
 		cfg.Now = time.Now
 	}
-	return &Verifier{cfg: cfg, keys: newKeySet(cfg.Issuer, cfg.JWKSURL, cfg.HTTPClient, cfg.Now)}, nil
+	return &Verifier{cfg: cfg, keys: newKeySet(cfg.Issuer, cfg.JWKSURL, cfg.HTTPClient, cfg.Now, cfg.AllowLoopbackHTTP)}, nil
+}
+
+func transportAllowed(u *url.URL, allowLoopbackHTTP bool) bool {
+	switch u.Scheme {
+	case "https":
+		return true
+	case "http":
+		return allowLoopbackHTTP && loopbackHost(u.Hostname())
+	}
+	return false
+}
+
+func loopbackHost(host string) bool {
+	ip := net.ParseIP(host)
+	return host == "localhost" || (ip != nil && ip.IsLoopback())
+}
+
+func httpRefused(what string) string {
+	return what + " must be https; http is accepted only on a loopback host with the local-development setting, which is outside profile P1"
 }
 
 // Ready reports whether the issuer's keys have been fetched at least once,
@@ -165,7 +216,7 @@ func (v *Verifier) Verify(ctx context.Context, token string, _ *http.Request) (*
 	parser := jwt.NewParser(
 		jwt.WithValidMethods(v.cfg.Algorithms),
 		jwt.WithIssuer(v.cfg.Issuer),
-		jwt.WithAudience(v.cfg.Audiences...),
+		jwt.WithAudience(v.tokenAudiences()...),
 		jwt.WithExpirationRequired(),
 		jwt.WithIssuedAt(),
 		jwt.WithLeeway(v.cfg.Leeway),
@@ -181,6 +232,9 @@ func (v *Verifier) Verify(ctx context.Context, token string, _ *http.Request) (*
 	})
 	if keyErr != nil && errors.Is(keyErr, ErrKeysUnavailable) {
 		return nil, keyErr
+	}
+	if err != nil && v.cfg.Resource != "" && errors.Is(err, jwt.ErrTokenInvalidAudience) {
+		return nil, invalid(fmt.Sprintf("the token's aud does not name this resource %q; request the token with the RFC 8707 resource parameter", v.cfg.Resource))
 	}
 	if err != nil {
 		return nil, invalid(describe(err))
@@ -236,6 +290,13 @@ func (v *Verifier) Verify(ctx context.Context, token string, _ *http.Request) (*
 		UserID:     c.Subject,
 		Extra:      map[string]any{"groups": groups, "username": c.Username, "client": client, "act": act, "audiences": []string(c.Audience), "claims": payloadClaims(parser, token)},
 	}, nil
+}
+
+func (v *Verifier) tokenAudiences() []string {
+	if v.cfg.Resource != "" {
+		return []string{v.cfg.Resource}
+	}
+	return v.cfg.Audiences
 }
 
 func payloadClaims(parser *jwt.Parser, token string) map[string]any {

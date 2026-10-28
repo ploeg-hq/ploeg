@@ -25,8 +25,12 @@ var ErrLoginRefused = errors.New("the identity provider's sign-in did not verify
 // a person in with the authorization code flow and PKCE.
 type LoginConfig struct {
 	// Issuer is matched byte for byte against the discovery document and the
-	// ID token's iss.
+	// ID token's iss. It and the endpoints its discovery document names must
+	// be https unless AllowLoopbackHTTP is set and their host is loopback.
 	Issuer string
+	// AllowLoopbackHTTP accepts http on a loopback host, as for Config. It is
+	// for local development and tests only and is outside profile P1.
+	AllowLoopbackHTTP bool
 	// ClientID and ClientSecret are this service's own client credentials.
 	ClientID     string
 	ClientSecret string
@@ -81,8 +85,11 @@ type loginEndpoints struct {
 // NewLogin validates cfg. It fetches nothing until the first login.
 func NewLogin(cfg LoginConfig) (*Login, error) {
 	u, err := url.Parse(cfg.Issuer)
-	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || u.RawQuery != "" || u.Fragment != "" || u.User != nil {
-		return nil, errors.New("issuer must be an http(s) URL without credentials, query or fragment")
+	if err != nil || u.Host == "" || u.RawQuery != "" || u.Fragment != "" || u.User != nil {
+		return nil, errors.New("issuer must be an https URL without credentials, query or fragment")
+	}
+	if !transportAllowed(u, cfg.AllowLoopbackHTTP) {
+		return nil, errors.New(httpRefused("issuer"))
 	}
 	if cfg.ClientID == "" || cfg.ClientSecret == "" || strings.ContainsAny(cfg.ClientID, ":\r\n") {
 		return nil, errors.New("sign-in needs this service's client id (without a colon) and client secret")
@@ -103,7 +110,7 @@ func NewLogin(cfg LoginConfig) (*Login, error) {
 	if cfg.Now == nil {
 		cfg.Now = time.Now
 	}
-	return &Login{cfg: cfg, keys: newKeySet(cfg.Issuer, "", cfg.HTTPClient, cfg.Now)}, nil
+	return &Login{cfg: cfg, keys: newKeySet(cfg.Issuer, "", cfg.HTTPClient, cfg.Now, cfg.AllowLoopbackHTTP)}, nil
 }
 
 func (l *Login) discover(ctx context.Context) (loginEndpoints, error) {
@@ -120,8 +127,8 @@ func (l *Login) discover(ctx context.Context) (loginEndpoints, error) {
 		return e, fmt.Errorf("discovery names issuer %q, not the configured %q", e.Issuer, l.cfg.Issuer)
 	}
 	for _, endpoint := range []string{e.AuthorizationEndpoint, e.TokenEndpoint} {
-		if u, err := url.Parse(endpoint); err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || u.Fragment != "" {
-			return e, errors.New("discovery has no http(s) authorization_endpoint or token_endpoint")
+		if u, err := url.Parse(endpoint); err != nil || u.Host == "" || u.Fragment != "" || !transportAllowed(u, l.cfg.AllowLoopbackHTTP) {
+			return e, errors.New("discovery has no " + httpRefused("authorization_endpoint or token_endpoint"))
 		}
 	}
 	l.endpoints, l.discovered = e, l.cfg.Now()

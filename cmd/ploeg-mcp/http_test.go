@@ -83,6 +83,7 @@ func newRemoteTokens(t *testing.T, upstream func(*remote) http.Handler, groups, 
 		"PLOEG_MCP_CLIENT_IDS":     "ploeg-mcp, other-client",
 		"PLOEG_MCP_REQUEST_SCOPES": "openid ploeg:read offline_access",
 		"PLOEG_MCP_GROUPS":         groups,
+		allowLoopbackHTTPEnv:       "true",
 		"ADMINS_TOKEN":             r.admins,
 		"READERS_TOKEN":            r.readers,
 		confirmationKeyEnv:         randomToken(t),
@@ -121,7 +122,7 @@ func (r *remote) tokenFor(subject string, groups []string, scope string) string 
 	r.t.Helper()
 	now := time.Now()
 	tok := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
-		"iss": r.issuer, "sub": subject, "aud": "ploeg-mcp", "azp": "ploeg-mcp", "scope": scope,
+		"iss": r.issuer, "sub": subject, "aud": r.url, "azp": "ploeg-mcp", "scope": scope,
 		"iat": now.Unix(), "exp": now.Add(5 * time.Minute).Unix(), "groups": groups, "preferred_username": "ryan",
 	})
 	tok.Header["kid"] = "k1"

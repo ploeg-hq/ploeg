@@ -13,6 +13,7 @@ import (
 	"io"
 	"math/big"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -36,6 +37,8 @@ type keySet struct {
 	client  *http.Client
 	now     func() time.Time
 
+	allowLoopbackHTTP bool
+
 	mu        sync.Mutex
 	keys      map[string]crypto.PublicKey
 	fetchedAt time.Time
@@ -46,8 +49,8 @@ type keySet struct {
 	loading chan struct{}
 }
 
-func newKeySet(issuer, jwksURL string, client *http.Client, now func() time.Time) *keySet {
-	return &keySet{issuer: issuer, jwksURL: jwksURL, client: client, now: now}
+func newKeySet(issuer, jwksURL string, client *http.Client, now func() time.Time, allowLoopbackHTTP bool) *keySet {
+	return &keySet{issuer: issuer, jwksURL: jwksURL, client: client, now: now, allowLoopbackHTTP: allowLoopbackHTTP}
 }
 
 func (s *keySet) key(ctx context.Context, kid string) (crypto.PublicKey, error) {
@@ -136,8 +139,8 @@ func (s *keySet) fetch(ctx context.Context) (map[string]crypto.PublicKey, error)
 		if discovery.Issuer != s.issuer {
 			return nil, fmt.Errorf("discovery names issuer %q, not the configured %q", discovery.Issuer, s.issuer)
 		}
-		if !strings.HasPrefix(discovery.JWKSURI, "https://") && !strings.HasPrefix(discovery.JWKSURI, "http://") {
-			return nil, errors.New("discovery has no http(s) jwks_uri")
+		if u, err := url.Parse(discovery.JWKSURI); err != nil || u.Host == "" || u.User != nil || !transportAllowed(u, s.allowLoopbackHTTP) {
+			return nil, errors.New("discovery has no " + httpRefused("jwks_uri"))
 		}
 		jwksURL = discovery.JWKSURI
 	}

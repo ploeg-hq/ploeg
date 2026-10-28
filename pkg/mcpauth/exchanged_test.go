@@ -14,7 +14,7 @@ import (
 
 func exchangedVerifier(t *testing.T, is *issuer) *mcpauth.Verifier {
 	t.Helper()
-	v, err := mcpauth.NewVerifier(mcpauth.Config{Issuer: is.url, Audiences: []string{"ploeg"}, AuthorizedParties: []string{"acting-app"}, ScopeOptional: true,
+	v, err := mcpauth.NewVerifier(mcpauth.Config{Issuer: is.url, AllowLoopbackHTTP: true, Audiences: []string{"ploeg"}, AuthorizedParties: []string{"acting-app"}, ScopeOptional: true,
 		MaxLifetime: 5 * time.Minute, Now: func() time.Time { return now }})
 	if err != nil {
 		t.Fatal(err)
@@ -96,7 +96,7 @@ func TestAnOptionalScopeNeedsPartiesApartFromTheAudience(t *testing.T) {
 
 func TestATokenIssuedToItsOwnAudienceNeedsAScopeClaim(t *testing.T) {
 	is := newIssuer(t)
-	v, err := mcpauth.NewVerifier(mcpauth.Config{Issuer: is.url, Audiences: []string{"ploeg", "ploeg-console"}, AuthorizedParties: []string{"acting-app"},
+	v, err := mcpauth.NewVerifier(mcpauth.Config{Issuer: is.url, AllowLoopbackHTTP: true, Audiences: []string{"ploeg", "ploeg-console"}, AuthorizedParties: []string{"acting-app"},
 		SelfIssuedAudiences: []string{"ploeg-console"}, ScopeOptional: true, MaxLifetime: 5 * time.Minute, Now: func() time.Time { return now }})
 	if err != nil {
 		t.Fatal(err)
@@ -123,7 +123,7 @@ func TestATokenIssuedToItsOwnAudienceNeedsAScopeClaim(t *testing.T) {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
-	if _, err := mcpauth.NewVerifier(mcpauth.Config{Issuer: is.url, Audiences: []string{"ploeg"}, SelfIssuedAudiences: []string{"ploeg-console"}, ScopeOptional: true}); err == nil {
+	if _, err := mcpauth.NewVerifier(mcpauth.Config{Issuer: is.url, AllowLoopbackHTTP: true, Audiences: []string{"ploeg"}, SelfIssuedAudiences: []string{"ploeg-console"}, ScopeOptional: true}); err == nil {
 		t.Fatal("a self-issued audience that is not an audience was accepted")
 	}
 }

@@ -50,7 +50,37 @@ type httpConfig struct {
 	exchanger       *mcpauth.Exchanger
 	confirmations   *confirmations
 	confirmMode     string
+	loopbackHTTP    bool
 	warnings        []string
+}
+
+const (
+	allowLoopbackHTTPEnv = "PLOEG_MCP_ALLOW_LOOPBACK_HTTP"
+	tokenAudienceEnv     = "PLOEG_MCP_TOKEN_AUDIENCE"
+	audienceResource     = "resource"
+	audienceClientID     = "client-id"
+	clientIDAudienceNote = "PLOEG_MCP_TOKEN_AUDIENCE=client-id: tokens are accepted when aud names a client id in PLOEG_MCP_CLIENT_IDS instead of PLOEG_MCP_RESOURCE, so a token issued to that client for another resource is accepted too (threat model T-OC-1); give ploeg-mcp a client no other resource uses"
+	loopbackHTTPNote     = "PLOEG_MCP_ALLOW_LOOPBACK_HTTP=true: an http issuer, key set or token endpoint on a loopback host is accepted; this is for local development and is outside profile P1"
+)
+
+func loadTokenAudience(getenv func(string) string, resource *url.URL) (string, error) {
+	switch strings.TrimSpace(getenv(tokenAudienceEnv)) {
+	case "", audienceResource:
+		return resource.String(), nil
+	case audienceClientID:
+		return "", nil
+	}
+	return "", fmt.Errorf("%s must be %s or %s", tokenAudienceEnv, audienceResource, audienceClientID)
+}
+
+func loadLoopbackHTTP(getenv func(string) string) (bool, error) {
+	switch strings.TrimSpace(getenv(allowLoopbackHTTPEnv)) {
+	case "", "false":
+		return false, nil
+	case "true":
+		return true, nil
+	}
+	return false, fmt.Errorf("%s must be true or false", allowLoopbackHTTPEnv)
 }
 
 var tokenEnvName = regexp.MustCompile(`^[A-Z][A-Z0-9_]{0,127}$`)
@@ -99,14 +129,28 @@ func loadHTTPConfig(getenv func(string) string, lookup func(string) (string, boo
 		}
 		cfg.personNamespace = ns
 	}
-	cfg.verifier, err = mcpauth.NewVerifier(mcpauth.Config{Issuer: cfg.issuer, Audiences: cfg.clientIDs, JWKSURL: cfg.jwksURL, Leeway: time.Minute, MaxLifetime: cfg.maxLifetime})
+	if cfg.loopbackHTTP, err = loadLoopbackHTTP(getenv); err != nil {
+		return nil, err
+	}
+	if cfg.loopbackHTTP {
+		cfg.warnings = append(cfg.warnings, loopbackHTTPNote)
+	}
+	tokenResource, err := loadTokenAudience(getenv, cfg.resource)
+	if err != nil {
+		return nil, err
+	}
+	if tokenResource == "" {
+		cfg.warnings = append(cfg.warnings, clientIDAudienceNote)
+	}
+	cfg.verifier, err = mcpauth.NewVerifier(mcpauth.Config{Issuer: cfg.issuer, Audiences: cfg.clientIDs, Resource: tokenResource, AllowLoopbackHTTP: cfg.loopbackHTTP,
+		JWKSURL: cfg.jwksURL, Leeway: time.Minute, MaxLifetime: cfg.maxLifetime})
 	if err != nil {
 		return nil, fmt.Errorf("PLOEG_MCP_ISSUER, PLOEG_MCP_CLIENT_IDS or PLOEG_MCP_JWKS_URL: %w", err)
 	}
 	if cfg.groups, err = parseGroups(getenv("PLOEG_MCP_GROUPS")); err != nil {
 		return nil, err
 	}
-	if cfg.exchanger, err = loadExchanger(getenv); err != nil {
+	if cfg.exchanger, err = loadExchanger(getenv, cfg.loopbackHTTP); err != nil {
 		return nil, err
 	}
 	if cfg.confirmations, err = loadConfirmations(getenv); err != nil {
@@ -125,7 +169,7 @@ func loadHTTPConfig(getenv func(string) string, lookup func(string) (string, boo
 		cfg.warnings = append(cfg.warnings, deprecatedDefaultMode)
 	}
 	if mode == modeLogin && cfg.confirmations != nil {
-		if cfg.confirmations.pages, err = loadConfirmationPages(getenv, cfg.issuer, cfg.resource, cfg.personNamespace, cfg.clientIDs); err != nil {
+		if cfg.confirmations.pages, err = loadConfirmationPages(getenv, cfg.issuer, cfg.resource, cfg.personNamespace, cfg.clientIDs, cfg.loopbackHTTP); err != nil {
 			return nil, err
 		}
 	}
@@ -145,17 +189,18 @@ func loadHTTPConfig(getenv func(string) string, lookup func(string) (string, boo
 	return cfg, nil
 }
 
-func loadExchanger(getenv func(string) string) (*mcpauth.Exchanger, error) {
+func loadExchanger(getenv func(string) string, loopbackHTTP bool) (*mcpauth.Exchanger, error) {
 	tokenURL := strings.TrimSpace(getenv("PLOEG_MCP_EXCHANGE_TOKEN_URL"))
 	if tokenURL == "" {
 		return nil, nil
 	}
 	ex, err := mcpauth.NewExchanger(mcpauth.ExchangeConfig{
-		TokenURL:     tokenURL,
-		ClientID:     strings.TrimSpace(getenv("PLOEG_MCP_EXCHANGE_CLIENT_ID")),
-		ClientSecret: strings.TrimSpace(getenv("PLOEG_MCP_EXCHANGE_CLIENT_SECRET")),
-		Audience:     strings.TrimSpace(getenv("PLOEG_MCP_EXCHANGE_AUDIENCE")),
-		Scope:        strings.TrimSpace(getenv("PLOEG_MCP_EXCHANGE_SCOPE")),
+		TokenURL:          tokenURL,
+		AllowLoopbackHTTP: loopbackHTTP,
+		ClientID:          strings.TrimSpace(getenv("PLOEG_MCP_EXCHANGE_CLIENT_ID")),
+		ClientSecret:      strings.TrimSpace(getenv("PLOEG_MCP_EXCHANGE_CLIENT_SECRET")),
+		Audience:          strings.TrimSpace(getenv("PLOEG_MCP_EXCHANGE_AUDIENCE")),
+		Scope:             strings.TrimSpace(getenv("PLOEG_MCP_EXCHANGE_SCOPE")),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("PLOEG_MCP_EXCHANGE_TOKEN_URL, _CLIENT_ID, _CLIENT_SECRET or _AUDIENCE: %w", err)

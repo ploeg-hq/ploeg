@@ -129,7 +129,7 @@ func (is *issuer) sign(kid string, c jwt.MapClaims) string {
 
 func verifier(t *testing.T, is *issuer, clock *time.Time) *mcpauth.Verifier {
 	t.Helper()
-	v, err := mcpauth.NewVerifier(mcpauth.Config{Issuer: is.url, Audiences: []string{"ploeg-mcp"}, Leeway: time.Minute, Now: func() time.Time { return *clock }})
+	v, err := mcpauth.NewVerifier(mcpauth.Config{Issuer: is.url, AllowLoopbackHTTP: true, Audiences: []string{"ploeg-mcp"}, Leeway: time.Minute, Now: func() time.Time { return *clock }})
 	if err != nil {
 		t.Fatal(err)
 	}

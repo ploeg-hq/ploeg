@@ -37,8 +37,12 @@ type Exchanger struct {
 
 // ExchangeConfig pins one Exchanger.
 type ExchangeConfig struct {
-	// TokenURL is the identity provider's token endpoint.
+	// TokenURL is the identity provider's token endpoint. It must be https
+	// unless AllowLoopbackHTTP is set and its host is loopback.
 	TokenURL string
+	// AllowLoopbackHTTP accepts http on a loopback host, as for Config. It is
+	// for local development and tests only and is outside profile P1.
+	AllowLoopbackHTTP bool
 	// ClientID and ClientSecret are this service's own client credentials.
 	ClientID     string
 	ClientSecret string
@@ -54,8 +58,11 @@ type ExchangeConfig struct {
 // NewExchanger validates cfg.
 func NewExchanger(cfg ExchangeConfig) (*Exchanger, error) {
 	u, err := url.Parse(cfg.TokenURL)
-	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || u.User != nil || u.Fragment != "" {
-		return nil, errors.New("token endpoint must be an http(s) URL without credentials or fragment")
+	if err != nil || u.Host == "" || u.User != nil || u.Fragment != "" {
+		return nil, errors.New("token endpoint must be an https URL without credentials or fragment")
+	}
+	if !transportAllowed(u, cfg.AllowLoopbackHTTP) {
+		return nil, errors.New(httpRefused("token endpoint"))
 	}
 	if cfg.ClientID == "" || cfg.ClientSecret == "" || strings.ContainsAny(cfg.ClientID, ":\r\n") {
 		return nil, errors.New("token exchange needs this service's client id (without a colon) and client secret")
