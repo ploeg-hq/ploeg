@@ -112,7 +112,7 @@ func loadConfirmationMode(getenv func(string) string, executes bool) (mode strin
 	return "", false, fmt.Errorf("%s must be login or elicitation", confirmationModeEnv)
 }
 
-func loadConfirmationPages(getenv func(string) string, issuer string, resource *url.URL, namespace string, mcpClients []string) (*confirmationPages, error) {
+func loadConfirmationPages(getenv func(string) string, issuer string, resource *url.URL, namespace string, mcpClients []string, loopbackHTTP bool) (*confirmationPages, error) {
 	if resource.Scheme != "https" && !loopback(resource.Hostname()) {
 		return nil, errors.New("PLOEG_MCP_CONFIRMATION_MODE=login serves the confirmation page on PLOEG_MCP_RESOURCE's host, which must be https")
 	}
@@ -124,7 +124,7 @@ func loadConfirmationPages(getenv func(string) string, issuer string, resource *
 		return nil, errors.New("PLOEG_MCP_CONFIRMATION_CLIENT_ID must be a confidential client of its own, not one of PLOEG_MCP_CLIENT_IDS")
 	}
 	origin := &url.URL{Scheme: resource.Scheme, Host: resource.Host}
-	login, err := mcpauth.NewLogin(mcpauth.LoginConfig{Issuer: issuer, ClientID: clientID, ClientSecret: strings.TrimSpace(getenv("PLOEG_MCP_CONFIRMATION_CLIENT_SECRET")),
+	login, err := mcpauth.NewLogin(mcpauth.LoginConfig{Issuer: issuer, AllowLoopbackHTTP: loopbackHTTP, ClientID: clientID, ClientSecret: strings.TrimSpace(getenv("PLOEG_MCP_CONFIRMATION_CLIENT_SECRET")),
 		RedirectURL: origin.String() + callbackPath, Leeway: time.Minute})
 	if err != nil {
 		return nil, fmt.Errorf("PLOEG_MCP_CONFIRMATION_ISSUER, _CLIENT_ID or _CLIENT_SECRET: %w", err)

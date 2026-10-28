@@ -39,8 +39,12 @@ const (
 // an Operator Consumer acting for that person obtained by RFC 8693 token
 // exchange (ADR-0150).
 type PersonTokenConfig struct {
-	// Issuer is matched byte for byte against iss.
+	// Issuer is matched byte for byte against iss. It and JWKSURL must be
+	// https unless AllowLoopbackHTTP is set and their host is loopback.
 	Issuer string
+	// AllowLoopbackHTTP accepts an http issuer and key set on a loopback
+	// host, for tests; ploegd never sets it.
+	AllowLoopbackHTTP bool
 	// Audience is Ploeg's own audience, shared by the consumers whose
 	// clientIds name the client a person token was issued to. It is
 	// required when any consumer names clientIds and optional when every
@@ -115,7 +119,7 @@ func NewPersonTokens(cfg PersonTokenConfig, consumers []OperatorConsumer) (*Pers
 	if cfg.Audience != "" {
 		audiences = append([]string{cfg.Audience}, owned...)
 	}
-	v, err := mcpauth.NewVerifier(mcpauth.Config{Issuer: cfg.Issuer, Audiences: audiences, AuthorizedParties: parties, SelfIssuedAudiences: owned, ScopeOptional: true,
+	v, err := mcpauth.NewVerifier(mcpauth.Config{Issuer: cfg.Issuer, AllowLoopbackHTTP: cfg.AllowLoopbackHTTP, Audiences: audiences, AuthorizedParties: parties, SelfIssuedAudiences: owned, ScopeOptional: true,
 		JWKSURL: cfg.JWKSURL, Leeway: 30 * time.Second, MaxLifetime: cfg.MaxLifetime, HTTPClient: cfg.HTTPClient, Now: cfg.Now})
 	if err != nil {
 		return nil, err

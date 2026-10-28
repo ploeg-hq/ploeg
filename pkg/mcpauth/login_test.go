@@ -79,7 +79,7 @@ func (li *loginIssuer) answer(c jwt.MapClaims) {
 
 func (li *loginIssuer) login(t *testing.T) *mcpauth.Login {
 	t.Helper()
-	l, err := mcpauth.NewLogin(mcpauth.LoginConfig{Issuer: li.url, ClientID: "ploeg-confirm", ClientSecret: "s3cret", RedirectURL: "https://ploeg-mcp.example.com/confirmations/callback",
+	l, err := mcpauth.NewLogin(mcpauth.LoginConfig{Issuer: li.url, AllowLoopbackHTTP: true, ClientID: "ploeg-confirm", ClientSecret: "s3cret", RedirectURL: "https://ploeg-mcp.example.com/confirmations/callback",
 		Leeway: time.Minute, Now: func() time.Time { return now }})
 	if err != nil {
 		t.Fatal(err)

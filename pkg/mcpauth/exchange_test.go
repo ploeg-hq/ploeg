@@ -31,7 +31,7 @@ func TestTheExchangerTradesThePersonsTokenForTheAudience(t *testing.T) {
 		_, _ = w.Write([]byte(`{"access_token":"exchanged.jwt.value","issued_token_type":"urn:ietf:params:oauth:token-type:access_token","token_type":"Bearer","expires_in":300}`))
 	}))
 	t.Cleanup(endpoint.Close)
-	ex, err := mcpauth.NewExchanger(mcpauth.ExchangeConfig{TokenURL: endpoint.URL, ClientID: "ploeg-mcp", ClientSecret: "s3cret", Audience: "ploeg"})
+	ex, err := mcpauth.NewExchanger(mcpauth.ExchangeConfig{TokenURL: endpoint.URL, AllowLoopbackHTTP: true, ClientID: "ploeg-mcp", ClientSecret: "s3cret", Audience: "ploeg"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +49,7 @@ func TestTheExchangerTradesThePersonsTokenForTheAudience(t *testing.T) {
 	if _, err := ex.Exchange(context.Background(), "expired"); !errors.Is(err, mcpauth.ErrExchangeRefused) || !strings.Contains(err.Error(), "invalid_grant") || strings.Contains(err.Error(), "expired\"") {
 		t.Fatalf("refused exchange: %v", err)
 	}
-	bad, _ := mcpauth.NewExchanger(mcpauth.ExchangeConfig{TokenURL: endpoint.URL, ClientID: "ploeg-mcp", ClientSecret: "wrong", Audience: "ploeg"})
+	bad, _ := mcpauth.NewExchanger(mcpauth.ExchangeConfig{TokenURL: endpoint.URL, AllowLoopbackHTTP: true, ClientID: "ploeg-mcp", ClientSecret: "wrong", Audience: "ploeg"})
 	if _, err := bad.Exchange(context.Background(), "callers.jwt.token"); !errors.Is(err, mcpauth.ErrExchangeRefused) {
 		t.Fatalf("wrong client secret: %v", err)
 	}
