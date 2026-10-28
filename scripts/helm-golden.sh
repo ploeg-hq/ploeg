@@ -296,7 +296,7 @@ for version in 0.3.0-rc.1 0.3.0; do
 	rm -rf "$next_minor/ploeg"
 	cp -R ops/helm/ploeg "$next_minor/ploeg"
 	sed "s/^version:.*/version: $version/" ops/helm/ploeg/Chart.yaml >"$next_minor/ploeg/Chart.yaml"
-	if out=$(helm template ploeg "$next_minor/ploeg" -f "$REQUIRED" -f "$P1_VALUES" -f "$BEARER_VALUES" 2>&1); then
+	if out=$(helm template ploeg "$next_minor/ploeg" -f "$REQUIRED" -f "$P1_VALUES" -f "$PLOEGD_CALLERS" -f "$BEARER_VALUES" 2>&1); then
 		echo "chart $version rendered an execute consumer that requires no person token claim under supportProfile: P1"
 		status=1
 	elif ! printf '%s' "$out" | grep -qF -- "$BEARER_DEPARTURE"; then
@@ -305,13 +305,13 @@ for version in 0.3.0-rc.1 0.3.0; do
 		status=1
 	fi
 	for passing in "--set=operator.consumers[0].requireClaims.groups={ploeg-operators}" "--set=operator.consumers[0].execute=false" "--set=supportProfile=unsupported"; do
-		if ! out=$(helm template ploeg "$next_minor/ploeg" -f "$REQUIRED" -f "$P1_VALUES" -f "$BEARER_VALUES" "$passing" 2>&1); then
+		if ! out=$(helm template ploeg "$next_minor/ploeg" -f "$REQUIRED" -f "$P1_VALUES" -f "$PLOEGD_CALLERS" -f "$BEARER_VALUES" "$passing" 2>&1); then
 			echo "chart $version refused the bearer consumer with $passing, which it must render:"
 			echo "$out"
 			status=1
 		fi
 	done
-	notes=$(helm install --dry-run=client ploeg "$next_minor/ploeg" -f "$REQUIRED" -f "$P1_VALUES" -f "$BEARER_VALUES" --set supportProfile=unsupported 2>&1)
+	notes=$(helm install --dry-run=client ploeg "$next_minor/ploeg" -f "$REQUIRED" -f "$P1_VALUES" -f "$PLOEGD_CALLERS" -f "$BEARER_VALUES" --set supportProfile=unsupported 2>&1)
 	if ! printf '%s' "$notes" | grep -qF -- "- $BEARER_DEPARTURE" || printf '%s' "$notes" | grep -qF -- "$BEARER_WARNING"; then
 		echo "chart $version under supportProfile: unsupported does not list the bearer consumer as a departure in place of the warning:"
 		echo "$notes"
