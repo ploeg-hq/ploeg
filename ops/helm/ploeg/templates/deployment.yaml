@@ -157,6 +157,17 @@ spec:
             - name: PLOEG_TEAM_MAX_RUNNING
               value: {{ toJson $maxRunning | quote }}
             {{- end }}
+            {{- $spendCaps := dict }}
+            {{- range $team := .Values.executor.teams }}
+            {{- $cap := include "ploeg.teamSpendCap" (dict "root" $ "team" $team) | fromJson }}
+            {{- if gt ($cap.usd | float64) 0.0 }}
+            {{- $_ := set $spendCaps $team.name $cap }}
+            {{- end }}
+            {{- end }}
+            {{- if $spendCaps }}
+            - name: PLOEG_TEAM_SPEND_CAPS
+              value: {{ toJson $spendCaps | quote }}
+            {{- end }}
             {{- /* The forge seam: ploegd publishes findings to the pull
                  request as the same bot that opens them (ADR-0011). Commenting
                  is not pushing, so no second credential — but without a URL

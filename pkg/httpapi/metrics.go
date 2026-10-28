@@ -220,6 +220,16 @@ func renderMetrics(m store.OperationalMetrics, webhooks *WebhookCoverage, harnes
 	b.family("ploeg_settled_spend_usd_last_hour", "gauge", "Spend settled onto Shifts during the last hour, in USD.")
 	b.sample("ploeg_settled_spend_usd_last_hour", m.SettledSpendLastHourUSD)
 
+	b.family("ploeg_team_spend_cap_usd", "gauge", "A capped Team's spend cap for its period (ADR-0162), in USD.")
+	for _, t := range m.TeamSpend {
+		b.sample("ploeg_team_spend_cap_usd", t.Cap.USD, "team", t.Team, "period", string(t.Cap.Period))
+	}
+	b.family("ploeg_team_period_spend_usd", "gauge", "A capped Team's spend in its current period, in USD: settled in the period, or held by its Runs now.")
+	for _, t := range m.TeamSpend {
+		b.sample("ploeg_team_period_spend_usd", t.SettledUSD, "team", t.Team, "period", string(t.Cap.Period), "kind", "settled")
+		b.sample("ploeg_team_period_spend_usd", t.HeldUSD, "team", t.Team, "period", string(t.Cap.Period), "kind", "held")
+	}
+
 	b.family("ploeg_runs_failed_total", "counter", "Runs that ended failed, by failure reason. A credential_leak Run carried one of its credentials or its canary to the forge.")
 	for _, reason := range sortedKeys(m.FailedRuns) {
 		b.sample("ploeg_runs_failed_total", float64(m.FailedRuns[reason]), "reason", reason)
