@@ -491,6 +491,8 @@ spec:
               value: "230MiB"
             - name: PLOEG_TEAM_HARNESSES
               value: "{\"pewter\":{\"\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"claude-environment\",\"qualification\":\"unqualified\"}],\"name\":\"claude-environment\"}}}"
+            - name: PLOEG_TEAM_SPEND_CAPS
+              value: "{\"pewter\":{\"period\":\"day\",\"usd\":20}}"
             - name: PLOEG_FORGEJO_URL
               value: "http://forgejo-http.forgejo.svc.cluster.local:3000"
             - name: PLOEG_FORGEJO_TOKEN

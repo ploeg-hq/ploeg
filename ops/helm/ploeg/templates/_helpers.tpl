@@ -146,6 +146,20 @@ Context: (dict "root" $ "team" <team>).
 {{- end -}}
 
 {{/*
+ploeg.teamSpendCap is a team's spend cap as JSON {usd, period}. It resolves
+the way ploegd does: config.teams.<name>.spendCap wins over
+executor.teams[].spendCap, which wins over executor.spendCap.
+Context: (dict "root" $ "team" <team>).
+*/}}
+{{- define "ploeg.teamSpendCap" -}}
+{{- $fromConfig := dig "teams" .team.name "spendCap" dict (.root.Values.config | default dict) -}}
+{{- $cap := .root.Values.executor.spendCap | default dict -}}
+{{- if hasKey .team "spendCap" }}{{- $cap = .team.spendCap | default dict -}}{{- end -}}
+{{- if $fromConfig }}{{- $cap = $fromConfig -}}{{- end -}}
+{{- toJson (dict "usd" ($cap.usd | default 0 | float64) "period" ($cap.period | default "")) -}}
+{{- end -}}
+
+{{/*
 ploeg.maxReplicaCount is a workload's KEDA ceiling: the role's or team's
 maxReplicaCount (default 1), never above the team's concurrency cap.
 Context: (dict "root" $ "team" <team> "role" <role>).

@@ -39,6 +39,13 @@ authority (threat-model finding F-47). Set requireClaims, for example
 {groups: [ploeg-operators]}; from chart 0.3.0 profile P1 refuses these values
 (ADR-0150).
 {{- end }}
+{{- if not (include "ploeg.ploegdCallersRequired" .) }}
+{{- with include "ploeg.ploegdCallersUnnamed" . }}
+WARNING: {{ . }}.
+From chart 0.3.0, supportProfile: P1 refuses this render (ADR-0154); name
+the callers now and the upgrade changes nothing.
+{{- end }}
+{{- end }}
 {{- $departures := include "ploeg.supportProfileDepartures" . | fromJsonArray }}
 {{- if eq (.Values.supportProfile | default "P1") "unsupported" }}
 {{- if $departures }}
