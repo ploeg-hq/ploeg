@@ -163,6 +163,11 @@ leaves_p1 'claudeRunner.enabled is true' --set claudeRunner.enabled=true --set c
 leaves_p1 'team defaults: the sandbox executor resolves no runtimeClassName' --set executor.type=sandbox
 leaves_p1 'team defaults: the sandbox executor resolves no runtimeClassName' --set 'executor.teams[0].executorType=sandbox'
 leaves_p1 'team defaults/reviewer: the sandbox executor resolves no runtimeClassName' --set 'executor.teams[0].executorType=sandbox' --set 'executor.teams[0].plan[0].roles[0].name=builder' --set 'executor.teams[0].plan[0].roles[0].writes=true' --set 'executor.teams[0].plan[0].roles[0].sandbox.runtimeClassName=kata' --set 'executor.teams[0].plan[1].roles[0].name=reviewer' --set 'executor.teams[0].plan[1].roles[0].writes=false' --set executor.forgejo.readTokenSecret.name=agent-reader-token --set executor.forgejo.readTokenSecret.key=FORGEJO_TOKEN
+leaves_p1 'security.workerAdmission.enabled is false; P1 needs the chart' --set security.workerAdmission.enabled=false
+leaves_p1 'team defaults: the sandbox executor runs while security.workerAdmission.runtimeClassNames is empty' --set executor.type=sandbox --set executor.sandbox.runtimeClassName=kata
+leaves_p1 'team defaults: the sandbox executor runs while security.workerAdmission.runtimeClassNames is empty' --set 'executor.teams[0].executorType=sandbox' --set 'executor.teams[0].sandbox.runtimeClassName=kata'
+leaves_p1 'team defaults: runtimeClassName "kata" is not in security.workerAdmission.runtimeClassNames ["gvisor"]' --set executor.type=sandbox --set executor.sandbox.runtimeClassName=kata --set 'security.workerAdmission.runtimeClassNames={gvisor}'
+leaves_p1 'team defaults: runtimeClassName "" is not in security.workerAdmission.runtimeClassNames ["kata"]' --set 'security.workerAdmission.runtimeClassNames={kata}'
 leaves_p1 'executor.litellm.keyIsolation is not proxy' --set executor.litellm.keyIsolation=
 leaves_p1 'executor.forgeTokenIsolation is not proxy' --set executor.forgeTokenIsolation=
 leaves_p1 'harness.credentialIsolation is set to "proxy"; P1 has no credentialIsolation override' --set 'executor.teams[0].harness.credentialIsolation=proxy'
@@ -181,7 +186,7 @@ leaves_p1 'team defaults harness openhands: the go toolchain image docker.io/lib
 leaves_p1 '(worker.image) is not pinned by digest' --set worker.image.digest=
 leaves_p1 'the worker image registry.example/ploeg-worker:0.2.0 (executor.workerImage) is not pinned by digest' --set executor.workerImage=registry.example/ploeg-worker:0.2.0
 leaves_p1 'the worker-bin image registry.example/ploegd:0.2.0 (executor.workerImage) is not pinned by digest' --set executor.harnessContainer=shared --set executor.workerImage=registry.example/ploegd:0.2.0
-leaves_p1 'the sandbox launcher image ghcr.io/ploeg-hq/ploegd:' --set executor.type=sandbox --set executor.sandbox.runtimeClassName=kata --set image.digest=
+leaves_p1 'the sandbox launcher image ghcr.io/ploeg-hq/ploegd:' --set executor.type=sandbox --set executor.sandbox.runtimeClassName=kata --set image.digest= --set 'security.workerAdmission.runtimeClassNames={kata}'
 leaves_p1 'the dind image docker.io/library/docker:29.8.2-dind (executor.dindImage) is not pinned by digest' --set 'executor.teams[0].harness.dind=true' --set 'executor.teams[0].harness.acknowledgePrivilegedDind=true' --set executor.dindImage=docker.io/library/docker:29.8.2-dind
 leaves_p1 'the claude-runner image ghcr.io/ploeg-hq/claude-runner:latest (claudeRunner.image) is not pinned by digest' --set claudeRunner.enabled=true --set claudeRunner.environmentSecret.name=claude-runner-environment --set claudeRunner.image.tag=latest
 leaves_p1 'team defaults resolves no spend cap (executor.spendCap, executor.teams[].spendCap or config.teams.defaults.spendCap)' --set executor.spendCap.usd=0
@@ -201,9 +206,11 @@ renders_p1() {
 	fi
 }
 
-renders_p1 --set executor.type=sandbox --set executor.sandbox.runtimeClassName=kata
-renders_p1 --set executor.type=sandbox --set executor.runtimeClassName=kata
-renders_p1 --set 'executor.teams[0].executorType=sandbox' --set 'executor.teams[0].sandbox.runtimeClassName=kata'
+renders_p1 --set executor.type=sandbox --set executor.sandbox.runtimeClassName=kata --set 'security.workerAdmission.runtimeClassNames={kata}'
+renders_p1 --set executor.type=sandbox --set executor.runtimeClassName=kata --set 'security.workerAdmission.runtimeClassNames={kata}'
+renders_p1 --set 'executor.teams[0].executorType=sandbox' --set 'executor.teams[0].sandbox.runtimeClassName=kata' --set 'security.workerAdmission.runtimeClassNames={kata}'
+renders_p1 --set security.workerAdmission.enabled=true
+renders_p1 --set executor.runtimeClassName=kata --set 'security.workerAdmission.runtimeClassNames={kata}'
 renders_p1 --set 'executor.teams[0].plan[0].roles[0].name=builder' --set 'executor.teams[0].plan[0].roles[0].writes=true' --set 'executor.teams[0].plan[0].roles[0].harness.image=registry.example/builder:2.0.0@sha256:db06af1d9c0969ed594a21ee2b3369a79d6e91abb36b94d29223918581963027'
 renders_p1 --set 'executor.teams[0].harness.image=registry.example/agent-runner@sha256:db06af1d9c0969ed594a21ee2b3369a79d6e91abb36b94d29223918581963027'
 renders_p1 --set 'executor.harness.toolchains[0].name=go' --set 'executor.harness.toolchains[0].image=docker.io/library/golang:1.27-alpine@sha256:db06af1d9c0969ed594a21ee2b3369a79d6e91abb36b94d29223918581963027'
@@ -347,6 +354,17 @@ must_render_with() {
 		fi
 	done
 }
+
+for p1 in "" "--set supportProfile=unsupported --set security.workerAdmission.enabled=true"; do
+	if ! helm template ploeg ops/helm/ploeg -f "$REQUIRED" -f "$P1_VALUES" $p1 | grep -qF 'kind: ValidatingAdmissionPolicyBinding'; then
+		echo "the worker admission policy is missing from the render ${p1:-under the P1 defaults}"
+		status=1
+	fi
+done
+if helm template ploeg ops/helm/ploeg -f "$REQUIRED" -f "$P1_VALUES" --set supportProfile=unsupported | grep -qF 'kind: ValidatingAdmissionPolicy'; then
+	echo "supportProfile: unsupported with security.workerAdmission.enabled unset renders the worker admission policy, which only P1 turns on"
+	status=1
+fi
 
 must_render_with ops/helm/ploeg/ci/executor-default-worker-values.yaml \
 	'name: PLOEG_LLM_KEY_ISOLATION' 'name: PLOEG_FORGE_TOKEN_ISOLATION' 'runAsNonRoot: true' \
