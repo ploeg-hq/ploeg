@@ -20,7 +20,7 @@
     "at": { "type": "string", "format": "date-time" },
     "instructionFiles": {
       "type": "array",
-      "description": "Agent instruction and configuration files the worker found in the clone before the harness ran (AGENTS.md and CLAUDE.md at any depth, .cursorrules, .mcp.json, and everything under .claude/, .agents/ and .openhands/), with the SHA-256 of the content it read.",
+      "description": "Agent instruction and configuration files the worker found in the clone before the harness ran (AGENTS.md, CLAUDE.md, CLAUDE.local.md, GEMINI.md, QWEN.md, .cursorrules, .clinerules, .goosehints, .mcp.json, .github/copilot-instructions.md and everything under .claude/, .agents/, .openhands/, .gemini/, .qwen/, .clinerules/ and .github/instructions/, at any depth), with the SHA-256 of the content it read.",
       "items": {
         "type": "object",
         "properties": {

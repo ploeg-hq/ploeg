@@ -734,9 +734,16 @@ profile P1 refuses it from chart 0.3.0 (threat model F-47). The person is Ploeg'
 that person; an `X-Ploeg-Actor` or `X-Ploeg-Acting-User` naming anyone else
 answers 403 `actor_conflict`. `detail.attribution.proof` is `proven` for such a
 request and `asserted` when only headers named the person, and `act` holds the
-token's `act.sub`. Header-only attribution keeps working for one release, and
-for it Ploeg trusts the consumer to name the person truthfully: guard a
-consumer's token like an administrator's credential.
+token's `act.sub`. Under `PLOEG_OPERATOR_ATTRIBUTION=proven`
+([ADR-0171](../adrs/0171-an-operator-change-needs-a-proven-person-and-the-chart-refuses-asserted-attribution-from-0-3-0.md)), every operator request other
+than `GET` or `HEAD` without a verified person token answers 403
+`person_token_required`, nothing changes, and an `operator.attribution_refused`
+audit row records `consumer`, `reason`, `method`, `path` and the
+`assertedActor` the request named; reads keep accepting a consumer's credential
+alone and an asserted `X-Ploeg-Actor`. Under `asserted`, the default before
+chart 0.3.0, header-only attribution keeps working, each such change answers
+with `Warning: 299 ploegd "..."`, and Ploeg trusts the consumer to name the
+person truthfully: guard a consumer's token like an administrator's credential.
 
 Managed workers use the [worker control contract](worker-control.md); deployment and conservative accounting recovery are documented in [managed worker operations](../ops/managed-workers.md).
 

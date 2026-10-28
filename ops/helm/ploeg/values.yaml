@@ -318,6 +318,11 @@ operator:
   #       tokenSecret: {name: ploeg-mcp-reader, key: token}
   consumers: []
   deliveryPolicies: []
+  # ADR-0171: asserted lets an operator change name its person in
+  # X-Ploeg-Actor alone; proven refuses every change without a person token
+  # (personTokens below) and keeps reads open. Empty = asserted before chart
+  # 0.3.0 and proven from chart 0.3.0.
+  attribution: ""
   # ADR-0150: an Operator Consumer acting for a person may present that
   # person's token, exchanged at the identity provider (RFC 8693), instead of
   # naming the person in X-Ploeg-Actor. Each consumer that does lists either

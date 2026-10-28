@@ -23,6 +23,10 @@ func operatorConfig(cfg *config.File, plans plan.Plans) (httpapi.OperatorConfig,
 	if err != nil {
 		return httpapi.OperatorConfig{}, err
 	}
+	attribution, err := attributionMode(consumers, personTokens)
+	if err != nil {
+		return httpapi.OperatorConfig{}, err
+	}
 	deliveryPolicies, err := httpapi.ParseDeliveryPolicies(os.Getenv("PLOEG_OPERATOR_DELIVERY_POLICIES"))
 	if err != nil {
 		return httpapi.OperatorConfig{}, err
@@ -74,7 +78,21 @@ func operatorConfig(cfg *config.File, plans plan.Plans) (httpapi.OperatorConfig,
 		}
 	}
 	return httpapi.OperatorConfig{Consumers: consumers, PersonTokens: personTokens, Teams: teams, TeamAssignees: assignees, TeamScopes: scopes,
-		DeliveryPolicies: deliveryPolicies, TeamHarnesses: harnesses}, nil
+		DeliveryPolicies: deliveryPolicies, TeamHarnesses: harnesses, Attribution: attribution}, nil
+}
+
+func attributionMode(consumers []httpapi.OperatorConsumer, personTokens *httpapi.PersonTokens) (httpapi.AttributionMode, error) {
+	mode, err := httpapi.ParseAttributionMode(os.Getenv("PLOEG_OPERATOR_ATTRIBUTION"))
+	if err != nil || len(consumers) == 0 {
+		return mode, err
+	}
+	if mode == httpapi.AttributionProven && personTokens == nil {
+		return "", errors.New("PLOEG_OPERATOR_ATTRIBUTION=proven accepts an operator change only with a person token, which needs PLOEG_OPERATOR_PERSON_ISSUER and a consumer naming audiences or clientIds")
+	}
+	if mode == httpapi.AttributionAsserted {
+		slog.Warn("operator changes may name their person in X-Ploeg-Actor alone, so a consumer's token can act as anyone in its Teams; set PLOEG_OPERATOR_ATTRIBUTION=proven once every consumer sends person tokens (the chart defaults to proven from 0.3.0, threat model F-07)")
+	}
+	return mode, nil
 }
 
 func personTokens(consumers []httpapi.OperatorConsumer) (*httpapi.PersonTokens, error) {
