@@ -22,7 +22,7 @@ What Ploeg keeps, for how long, what you can switch off, and what it never delet
 | Asks and chat messages | `asks`, `chats` | Only the SHA-256 of the question or message, never its text | For the life of the database |
 | Notes, attached context, note reviews | `operator_notes`, `work_item_context` (the attached file's bytes), `work_item_note_outbox`, `note_reviews`, `question_answers` | What people and agents wrote, and files people attached | For the life of the database. [ADR-0122](../adrs/0122-every-note-carries-its-provenance-untrusted-text-is-quoted-and-a-wider-level-needs-evidence-or-a-person.md) designs a per-Client purge of notes; no route runs it yet |
 | Pull request facts | `pull_requests` and `pull_request_*` | Titles, review states, CI results, changed file paths (never file contents), labels | For the life of the database. Changed paths and events are replaced when Ploeg reads the pull request again |
-| Forge delivery ids | `forge_deliveries` | Delivery ids only | 48 hours, then the sweep deletes them ([sweep.go](../../cmd/ploegd/sweep.go), `deliveryRetention`) |
+| Webhook delivery ids | `forge_deliveries` | Forge and tracker delivery ids, synthetic ids derived from the payload, and each delivery's claim and completion time; no payload | 48 hours, then the sweep deletes them ([sweep.go](../../cmd/ploegd/sweep.go), `deliveryRetention`) |
 | Leases | `leases` | None | Until the Lease is released, expires or its Run ends |
 | Run tokens | `agent_runs.run_token` | A credential while its Run is live | For the life of the database. No operator read, metric or log returns it; operator reads show only the alias `ploeg-<first 12 hex>` |
 

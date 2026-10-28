@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/ploeg-hq/ploeg/pkg/provider"
@@ -30,6 +31,7 @@ type hook struct {
 	} `json:"repository"`
 	PullRequest *pullRequest `json:"pull_request"`
 	Review      struct {
+		ID    int64  `json:"id"`
 		State string `json:"state"`
 		Body  string `json:"body"`
 	} `json:"review"`
@@ -94,7 +96,7 @@ func (p *Provider) ParseWebhook(r *http.Request) ([]provider.ForgeEvent, error) 
 		}
 		return []provider.ForgeEvent{{Kind: provider.ForgeReviewSubmitted, Repo: repo, PR: h.PullRequest.Number,
 			Branch: h.PullRequest.Head.Ref, Body: h.Review.Body, Actor: actor, Review: reviewState(h.Review.State),
-			PullRequest: provider.PullRequestFacts{HeadSHA: h.PullRequest.Head.SHA}}}, nil
+			ReviewID: reviewID(h.Review.ID), PullRequest: provider.PullRequestFacts{HeadSHA: h.PullRequest.Head.SHA}}}, nil
 	case "check_run":
 		run := checkRun{Status: h.CheckRun.Status, Conclusion: h.CheckRun.Conclusion}
 		if state, _ := run.state(); h.Action != "completed" || state != provider.CommitFailure && state != provider.CommitError {
@@ -212,4 +214,11 @@ func verify(secret string, body []byte, header string) bool {
 	mac := hmac.New(sha256.New, []byte(secret))
 	mac.Write(body)
 	return hmac.Equal(sig, mac.Sum(nil))
+}
+
+func reviewID(id int64) string {
+	if id <= 0 {
+		return ""
+	}
+	return strconv.FormatInt(id, 10)
 }

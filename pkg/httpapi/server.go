@@ -321,18 +321,19 @@ func (s *Server) handleTrackerWebhook(w http.ResponseWriter, r *http.Request) {
 	if identifier, ok := tp.(provider.DeliveryIdentifier); ok {
 		delivery = identifier.DeliveryID(r)
 	}
-	deliveryKey := "tracker:" + name
-	recorded, err := s.Store.DeliveryRecorded(r.Context(), deliveryKey, delivery)
-	if err != nil {
-		s.Log.Error("tracker webhook dedup failed", "provider", name, "err", err)
-		http.Error(w, "dedup failed", http.StatusInternalServerError)
+	claim, proceed := s.claimDelivery(w, r, "tracker:"+name, delivery)
+	if !proceed {
 		return
 	}
-	if recorded {
-		s.Log.Info("tracker webhook redelivered; its effects are already recorded", "provider", name, "delivery", delivery)
-		w.WriteHeader(http.StatusAccepted)
+	if !s.applyTrackerEvents(w, r, name, tp, events) {
+		s.releaseDelivery(r, claim)
 		return
 	}
+	s.completeDelivery(r, claim)
+	w.WriteHeader(http.StatusAccepted)
+}
+
+func (s *Server) applyTrackerEvents(w http.ResponseWriter, r *http.Request, name string, tp provider.TrackerProvider, events []provider.TrackerEvent) bool {
 	for _, ev := range events {
 		if ev.Kind == provider.TrackerUpdated || ev.Kind == provider.TrackerClosed {
 			s.observeGate(r.Context(), name, tp, ev)
@@ -342,7 +343,7 @@ func (s *Server) handleTrackerWebhook(w http.ResponseWriter, r *http.Request) {
 			if err := s.trackerClosed(r.Context(), name, ev); err != nil {
 				s.Log.Error("withdrawal failed", "provider", name, "external_id", ev.ExternalID, "err", err)
 				http.Error(w, "withdrawal failed", http.StatusInternalServerError)
-				return
+				return false
 			}
 			continue
 		}
@@ -350,7 +351,7 @@ func (s *Server) handleTrackerWebhook(w http.ResponseWriter, r *http.Request) {
 			if err := s.trackerUnassigned(r.Context(), name, ev); err != nil {
 				s.Log.Error("withdrawal failed", "provider", name, "external_id", ev.ExternalID, "err", err)
 				http.Error(w, "withdrawal failed", http.StatusInternalServerError)
-				return
+				return false
 			}
 			continue
 		}
@@ -363,7 +364,7 @@ func (s *Server) handleTrackerWebhook(w http.ResponseWriter, r *http.Request) {
 			if err := s.refuseRoute(r.Context(), tp, item, refusal); err != nil {
 				s.Log.Error("route refusal audit failed", "provider", name, "external_id", ev.ExternalID, "err", err)
 				http.Error(w, "ingest failed", http.StatusInternalServerError)
-				return
+				return false
 			}
 			continue
 		}
@@ -371,7 +372,7 @@ func (s *Server) handleTrackerWebhook(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			s.Log.Error("ingest failed", "provider", name, "external_id", ev.ExternalID, "err", err)
 			http.Error(w, "ingest failed", http.StatusInternalServerError)
-			return
+			return false
 		}
 		s.observeEpics(r.Context(), name, tp, ev.ExternalID)
 		if ev.Actor != "" {
@@ -395,10 +396,7 @@ func (s *Server) handleTrackerWebhook(w http.ResponseWriter, r *http.Request) {
 		}
 		s.observeGate(r.Context(), name, tp, ev)
 	}
-	if err := s.Store.RecordDelivery(r.Context(), deliveryKey, delivery); err != nil {
-		s.Log.Error("tracker webhook delivery not recorded; a redelivery repeats its idempotent effects", "provider", name, "delivery", delivery, "err", err)
-	}
-	w.WriteHeader(http.StatusAccepted)
+	return true
 }
 
 func (s *Server) handleForgeWebhook(w http.ResponseWriter, r *http.Request) {
@@ -423,15 +421,8 @@ func (s *Server) handleForgeWebhook(w http.ResponseWriter, r *http.Request) {
 	if identifier, ok := fp.(provider.DeliveryIdentifier); ok {
 		delivery = identifier.DeliveryID(r)
 	}
-	seen, err := s.Store.SeenDelivery(r.Context(), name, delivery)
-	if err != nil {
-		s.Log.Error("forge webhook dedup failed", "provider", name, "err", err)
-		http.Error(w, "dedup failed", http.StatusInternalServerError)
-		return
-	}
-	if seen {
-		s.Log.Info("forge webhook redelivered; ignoring", "provider", name, "delivery", delivery)
-		w.WriteHeader(http.StatusAccepted)
+	claim, proceed := s.claimDelivery(w, r, name, delivery)
+	if !proceed {
 		return
 	}
 
@@ -456,6 +447,7 @@ func (s *Server) handleForgeWebhook(w http.ResponseWriter, r *http.Request) {
 		}
 		s.actOnForgeEvent(r.Context(), name, ev)
 	}
+	s.completeDelivery(r, claim)
 	w.WriteHeader(http.StatusAccepted)
 }
 

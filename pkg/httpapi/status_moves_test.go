@@ -139,7 +139,7 @@ func TestTrackerWebhook_RecordsEveryStatusMoveOfAGatedBoard(t *testing.T) {
 	ctx := context.Background()
 
 	board.set("Backlog")
-	taskUpdatedAt(t, h, 10, "2026-09-21T08:00:00Z")
+	taskUpdatedAt(t, h, 10, "2026-09-21T07:00:00Z")
 	if board.statusReads != 0 || len(statusTransitionRows(t)) != 0 {
 		t.Fatalf("a ticket without a Work Item read the board %d times", board.statusReads)
 	}
