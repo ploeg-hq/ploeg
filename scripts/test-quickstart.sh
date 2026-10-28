@@ -87,4 +87,26 @@ grep -qF 'pin 0.2.0-rc.25' "$fixture/refused.out" || fail 'a stale pin does not 
 releases 9 6 > "$fixture/unpublished.txt"
 refuses 'a pin that is not a published release' env QUICKSTART_DOC="$fixture/rc5.md" bash "$root/scripts/quickstart.sh" pin-check < "$fixture/unpublished.txt"
 refuses 'an empty release list' env QUICKSTART_DOC="$fixture/rc5.md" bash "$root/scripts/quickstart.sh" pin-check < /dev/null
+
+if grep -qF 'executor.namespace' "$fixture/page.sh"; then fail 'a run without QUICKSTART_WORKER_NAMESPACE moves the workers'; fi
+grep -qxF "quickstart_namespaces='ploeg'" "$fixture/page.sh" || fail 'the diagnostics of a one-namespace run do not describe the release namespace'
+QUICKSTART_WORKER_NAMESPACE=ploeg-workers quickstart script > "$fixture/workers.sh"
+bash -n "$fixture/workers.sh" || fail 'the script with a worker namespace is not valid bash'
+for line in 'kubectl label namespace ploeg-workers pod-security.kubernetes.io/enforce=restricted' \
+  'kubectl create secret generic agent-builder-token -n ploeg-workers --from-literal=FORGEJO_TOKEN="$FORGEJO_TOKEN"' \
+  'kubectl create secret generic ploeg-worker-bootstrap -n ploeg-workers --from-literal=quickstart--default="$BOOTSTRAP_TOKEN"' \
+  '  -n ploeg -f ops/quickstart/values.yaml --set executor.namespace=ploeg-workers --wait --timeout 5m' \
+  'kubectl logs -n ploeg-workers -l app.kubernetes.io/name=ploeg-worker -c worker --tail=-1 \' \
+  'echo "quickstart workers ran in namespace ploeg-workers"' \
+  "quickstart_namespaces='ploeg ploeg-workers'"; do
+  grep -qxF -- "$line" "$fixture/workers.sh" || fail "QUICKSTART_WORKER_NAMESPACE did not write '$line'"
+done
+[[ "$(grep -n '^BOOTSTRAP_TOKEN=' "$fixture/workers.sh" | cut -d: -f1)" -lt "$(grep -n 'ploeg-worker-bootstrap -n ploeg-workers' "$fixture/workers.sh" | cut -d: -f1)" ]] \
+  || fail 'the worker namespace Secrets are created before the tokens they copy exist'
+[[ "$(grep -n 'ploeg-worker-bootstrap -n ploeg-workers' "$fixture/workers.sh" | cut -d: -f1)" -lt "$(grep -n '^helm install ploeg' "$fixture/workers.sh" | cut -d: -f1)" ]] \
+  || fail 'the chart is installed before the worker namespace holds its Secrets'
+refuses 'the release namespace as the worker namespace' env QUICKSTART_WORKER_NAMESPACE=ploeg bash "$root/scripts/quickstart.sh" script
+refuses 'a worker namespace that is not a namespace name' env QUICKSTART_WORKER_NAMESPACE=Workers_1 bash "$root/scripts/quickstart.sh" script
+sed 's#-n ploeg -f ops/quickstart/values.yaml --wait#-n ploeg --wait -f ops/quickstart/values.yaml#' "$root/docs/quickstart.md" > "$fixture/moved-values.md"
+refuses 'a page whose install line changed shape' env QUICKSTART_WORKER_NAMESPACE=ploeg-workers QUICKSTART_DOC="$fixture/moved-values.md" bash "$root/scripts/quickstart.sh" script
 echo 'quickstart: the page generates its run script, and pin-check holds the pin to the newest 20 releases'

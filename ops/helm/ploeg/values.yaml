@@ -696,6 +696,8 @@ executor:
     create: true
     name: "" # empty = <fullname>-worker
   apiUrl: ""      # empty = http://<fullname>:<service.port>
+  namespace: ""
+  acknowledgeSharedNamespace: false
   cronjob:
     # type=cronjob only: how often each team polls for work. Idle ticks are
     # free (empty-handed claim = exit 0).

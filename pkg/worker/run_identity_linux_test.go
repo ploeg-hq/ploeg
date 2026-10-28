@@ -288,6 +288,33 @@ func TestRunIdentityKeepsTheLastTokenThroughATransientFailure(t *testing.T) {
 	}
 }
 
+func TestRunIdentityStopsAskingOncePloegdRefusesTheAudience(t *testing.T) {
+	file := filepath.Join(t.TempDir(), claudeplugins.RunIdentityFileName)
+	results := []claudeplugins.Result{{Name: "p", RunIdentityFile: file, Audience: observerAudience}}
+	src := &scriptedIdentities{answers: make(chan error, 3)}
+	src.answers <- nil
+	src.answers <- ErrRunIdentityRefused
+	src.answers <- nil
+	k := startRunIdentity(context.Background(), src, "rt", results, 20*time.Millisecond, discardLog())
+	waitFor(t, func() bool { _, err := os.Stat(file); return src.calls.Load() >= 2 && os.IsNotExist(err) })
+	time.Sleep(100 * time.Millisecond)
+	k.Close()
+	if n := src.calls.Load(); n != 2 {
+		t.Errorf("asked %d times after ploegd refused the audience, want it to stop at 2", n)
+	}
+}
+
+func TestPloegdsRefusalOfAnAudienceIsNotATransientFailure(t *testing.T) {
+	refusing := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "audience is not configured for this Run's Team and Role", http.StatusForbidden)
+	}))
+	t.Cleanup(refusing.Close)
+	api := &APIClient{Base: refusing.URL, HC: refusing.Client()}
+	if _, err := api.RunIdentities(context.Background(), "rt", []string{observerAudience}); !errors.Is(err, ErrRunIdentityRefused) {
+		t.Errorf("a 403 reads as %v, want ErrRunIdentityRefused", err)
+	}
+}
+
 var errFlaky = errors.New("run identity: HTTP 503")
 
 func waitFor(t *testing.T, ok func() bool) {

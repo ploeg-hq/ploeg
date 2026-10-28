@@ -54,6 +54,10 @@ type Server struct {
 	// RunIdentity signs the Run identities a Team's declared plugins receive
 	// and publishes its key set (ADR-0149). Nil = both routes answer 404.
 	RunIdentity *runidentity.Signer
+	// RunIdentityAudiences names, per Team and Role, the audiences
+	// RunIdentity signs for; any other audience answers 403 (ADR-0149,
+	// threat model F-48). Nil signs for none.
+	RunIdentityAudiences runidentity.Audiences
 	// TransactionTokens signs each Run's transaction token at its claim and
 	// renewals and publishes its key set (ADR-0156). Nil = none is issued,
 	// none is accepted and the key set answers 404.
