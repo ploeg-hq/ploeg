@@ -12,38 +12,12 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"slices"
 	"strings"
 	"unicode"
 
 	"github.com/ploeg-hq/ploeg/pkg/harness"
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
-
-var (
-	instructionNames = map[string]bool{
-		"AGENTS.md": true, "CLAUDE.md": true, "CLAUDE.local.md": true, "GEMINI.md": true, "QWEN.md": true,
-		".cursorrules": true, ".clinerules": true, ".goosehints": true, ".mcp.json": true,
-		".claude": true, ".agents": true, ".openhands": true, ".gemini": true, ".qwen": true,
-	}
-	instructionPaths = []string{".github/copilot-instructions.md", ".github/instructions"}
-)
-
-func isInstructionEntry(rel string) bool {
-	if instructionNames[path.Base(rel)] {
-		return true
-	}
-	return slices.ContainsFunc(instructionPaths, func(p string) bool { return rel == p || strings.HasSuffix(rel, "/"+p) })
-}
-
-func isInstructionPath(rel string) bool {
-	for p := path.Clean(rel); p != "." && p != "/"; p = path.Dir(p) {
-		if isInstructionEntry(p) {
-			return true
-		}
-	}
-	return false
-}
 
 const maxReportedHiddenCharacters = 20
 
@@ -144,7 +118,7 @@ func (s *instructionScanner) walk(dir, rel string, inside bool) error {
 		}
 		childRel := path.Join(rel, name)
 		childPath := filepath.Join(dir, name)
-		wanted := inside || isInstructionEntry(childRel)
+		wanted := inside || work.IsInstructionEntry(childRel)
 		switch {
 		case e.Type()&fs.ModeSymlink != 0:
 			if !wanted {

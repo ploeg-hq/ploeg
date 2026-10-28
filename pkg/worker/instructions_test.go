@@ -365,13 +365,13 @@ func TestEveryNewlyListedInstructionFileWithOrdinaryTextReachesTheHarness(t *tes
 func TestReviewPinningUsesTheSameInstructionSet(t *testing.T) {
 	for _, p := range append([]string{"AGENTS.md", "pkg/CLAUDE.md", ".claude/settings.json", "vendor/x/.agents/a.md", ".mcp.json",
 		"pkg/deep/GEMINI.md", ".github/instructions/nested/go.instructions.md"}, newlyListedInstructionFiles...) {
-		if !isInstructionPath(p) {
+		if !work.IsInstructionPath(p) {
 			t.Errorf("%s: a reviewer must read the base branch's version", p)
 		}
 	}
 	for _, p := range []string{"README.md", ".github/workflows/ci.yml", "docs/copilot-instructions.md", "docs/instructions/how.md",
 		"pkg/agents.md", "docs/claude/notes.md", ".githubx/copilot-instructions.md"} {
-		if isInstructionPath(p) {
+		if work.IsInstructionPath(p) {
 			t.Errorf("%s: not an instruction path", p)
 		}
 	}

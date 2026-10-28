@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/ploeg-hq/ploeg/pkg/harness"
+	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
 const instructionFilesBriefingRole = "instruction files"
@@ -41,7 +42,7 @@ func pinBaseInstructionFiles(ctx context.Context, dir, base string) ([]string, e
 	}
 	var pinned []string
 	for _, p := range changed {
-		if isInstructionPath(p) {
+		if work.IsInstructionPath(p) {
 			pinned = append(pinned, p)
 		}
 	}
