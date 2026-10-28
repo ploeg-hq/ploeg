@@ -60,3 +60,10 @@ supportProfile is unsupported, but these values meet profile P1. Set
 supportProfile: P1 so the chart refuses a later change that leaves it.
 {{- end }}
 {{- end }}
+{{- if and (eq (.Values.supportProfile | default "P1") "P1") (not (include "ploeg.executorNamespaceRequired" .)) }}
+{{- with include "ploeg.executorNamespaceShared" . }}
+WARNING: {{ . }}.
+From chart 0.3.0, supportProfile: P1 refuses this render (ADR-0169); set
+executor.namespace now and the upgrade changes nothing.
+{{- end }}
+{{- end }}

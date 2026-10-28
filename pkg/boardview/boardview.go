@@ -15,6 +15,7 @@ import (
 
 	"github.com/ploeg-hq/ploeg/pkg/harness"
 	"github.com/ploeg-hq/ploeg/pkg/notes"
+	"github.com/ploeg-hq/ploeg/pkg/untrusted"
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
@@ -67,7 +68,7 @@ func Findings(briefing []harness.Finding) (string, work.BriefingSection) {
 		body := f.Findings
 		section.Bytes += min(len(body), budget)
 		if len(body) > budget {
-			body = body[:budget] + "\n\n_(truncated)_"
+			body = untrusted.CloseOpen(body[:budget]) + "\n\n_(truncated)_"
 		}
 		budget -= len(f.Findings)
 		section.Items++

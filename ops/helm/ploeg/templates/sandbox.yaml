@@ -15,6 +15,9 @@ apiVersion: extensions.agents.x-k8s.io/v1beta1
 kind: SandboxTemplate
 metadata:
   name: {{ $name }}
+  {{- with include "ploeg.executorNamespaceMetadata" $root }}
+  {{ . }}
+  {{- end }}
   labels: {{- include "ploeg.labels" $root | nindent 4 }}
 spec:
   podTemplate: {{- toYaml $pod | nindent 4 }}
@@ -31,6 +34,9 @@ apiVersion: extensions.agents.x-k8s.io/v1beta1
 kind: SandboxWarmPool
 metadata:
   name: {{ $name }}
+  {{- with include "ploeg.executorNamespaceMetadata" $root }}
+  {{ . }}
+  {{- end }}
   labels: {{- include "ploeg.labels" $root | nindent 4 }}
 spec:
   replicas: 0
@@ -45,6 +51,9 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: {{ include "ploeg.sandboxLauncherName" $root }}
+  {{- with include "ploeg.executorNamespaceMetadata" $root }}
+  {{ . }}
+  {{- end }}
   labels: {{- include "ploeg.labels" $root | nindent 4 }}
 automountServiceAccountToken: false
 ---
@@ -52,6 +61,9 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: {{ include "ploeg.sandboxLauncherName" $root }}
+  {{- with include "ploeg.executorNamespaceMetadata" $root }}
+  {{ . }}
+  {{- end }}
   labels: {{- include "ploeg.labels" $root | nindent 4 }}
 rules:
   - apiGroups: ["extensions.agents.x-k8s.io"]
@@ -62,6 +74,9 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: {{ include "ploeg.sandboxLauncherName" $root }}
+  {{- with include "ploeg.executorNamespaceMetadata" $root }}
+  {{ . }}
+  {{- end }}
   labels: {{- include "ploeg.labels" $root | nindent 4 }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
@@ -70,5 +85,5 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: {{ include "ploeg.sandboxLauncherName" $root }}
-    namespace: {{ $root.Release.Namespace }}
+    namespace: {{ include "ploeg.executorNamespace" $root }}
 {{- end }}

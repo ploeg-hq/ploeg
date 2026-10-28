@@ -73,6 +73,8 @@ for case in ":default" \
 	"ops/helm/ploeg/ci/executor-harness-container-shared-values.yaml:executor-harness-container-shared" \
 	"ops/helm/ploeg/ci/executor-harness-selection-values.yaml:executor-harness-selection" \
 	"ops/helm/ploeg/ci/monitoring-values.yaml:monitoring" \
+	"ops/helm/ploeg/ci/executor-namespace-values.yaml:executor-namespace" \
+	"ops/helm/ploeg/ci/executor-namespace-cronjob-values.yaml:executor-namespace-cronjob" \
 	"ops/helm/ploeg/ci/knowledge-graph-values.yaml:knowledge-graph" \
 	"ops/helm/ploeg/ci/mcp-values.yaml:mcp" \
 	"ops/helm/ploeg/ci/claude-runner-values.yaml:claude-runner" \
@@ -218,6 +220,7 @@ renders_p1 --set executor.workerImage=registry.example/ploeg-worker:0.2.0@sha256
 renders_p1 -f ops/helm/ploeg/ci/executor-public-endpoints-values.yaml
 renders_p1 --set networkPolicy.privateCidrs=null
 PLOEGD_CALLERS=ops/helm/ploeg/ci/ploegd-callers-values.yaml
+SEPARATE_WORKERS=--set=executor.namespace=ploeg-workers
 renders_p1
 renders_p1 -f "$PLOEGD_CALLERS"
 chart_from_0_3=$(mktemp -d)
@@ -226,8 +229,8 @@ sed 's/^version:.*/version: 0.3.0/' ops/helm/ploeg/Chart.yaml >"$chart_from_0_3/
 P1_CHART=$chart_from_0_3/ploeg
 leaves_p1 'networkPolicy.ploegd.ingressFrom is empty, so ploegd'"'"'s NetworkPolicy admits port 8080 from every pod in every namespace'
 leaves_p1 'networkPolicy.ploegd.ingressFrom is empty' --set 'networkPolicy.ploegd.ingressFrom=null'
-renders_p1 -f "$PLOEGD_CALLERS"
-ploegd_ingress=$(helm template ploeg "$P1_CHART" -f "$REQUIRED" -f "$P1_VALUES" -f "$PLOEGD_CALLERS" -s templates/networkpolicy.yaml 2>&1 | awk '/^  name: ploeg-ploegd$/ { found = 1 } found && /^  egress:/ { exit } found')
+renders_p1 -f "$PLOEGD_CALLERS" "$SEPARATE_WORKERS"
+ploegd_ingress=$(helm template ploeg "$P1_CHART" -f "$REQUIRED" -f "$P1_VALUES" -f "$PLOEGD_CALLERS" "$SEPARATE_WORKERS" -s templates/networkpolicy.yaml 2>&1 | awk '/^  name: ploeg-ploegd$/ { found = 1 } found && /^  egress:/ { exit } found')
 for caller in 'kubernetes.io/metadata.name: gateway' '- ploeg-worker' '- ploeg-sandbox-launcher' '- ploeg-mcp' '- ploeg-claude-runner'; do
 	if ! printf '%s' "$ploegd_ingress" | grep -qF -- "$caller"; then
 		echo "chart 0.3.0 with networkPolicy.ploegd.ingressFrom named renders a ploegd ingress without '$caller':"
@@ -235,7 +238,7 @@ for caller in 'kubernetes.io/metadata.name: gateway' '- ploeg-worker' '- ploeg-s
 		status=1
 	fi
 done
-if out=$(helm template ploeg "$P1_CHART" -f "$REQUIRED" -f "$P1_VALUES" --set networkPolicy.enabled=false 2>&1) || printf '%s' "$out" | grep -qF 'ingressFrom is empty'; then
+if out=$(helm template ploeg "$P1_CHART" -f "$REQUIRED" -f "$P1_VALUES" "$SEPARATE_WORKERS" --set networkPolicy.enabled=false 2>&1) || printf '%s' "$out" | grep -qF 'ingressFrom is empty'; then
 	echo "chart 0.3.0 with networkPolicy.enabled: false names ingressFrom, which has no policy to fill:"
 	echo "$out"
 	status=1
@@ -306,7 +309,7 @@ for version in 0.3.0-rc.1 0.3.0; do
 	rm -rf "$next_minor/ploeg"
 	cp -R ops/helm/ploeg "$next_minor/ploeg"
 	sed "s/^version:.*/version: $version/" ops/helm/ploeg/Chart.yaml >"$next_minor/ploeg/Chart.yaml"
-	if out=$(helm template ploeg "$next_minor/ploeg" -f "$REQUIRED" -f "$P1_VALUES" -f "$PLOEGD_CALLERS" -f "$BEARER_VALUES" 2>&1); then
+	if out=$(helm template ploeg "$next_minor/ploeg" -f "$REQUIRED" -f "$P1_VALUES" -f "$PLOEGD_CALLERS" "$SEPARATE_WORKERS" -f "$BEARER_VALUES" 2>&1); then
 		echo "chart $version rendered an execute consumer that requires no person token claim under supportProfile: P1"
 		status=1
 	elif ! printf '%s' "$out" | grep -qF -- "$BEARER_DEPARTURE"; then
@@ -315,13 +318,13 @@ for version in 0.3.0-rc.1 0.3.0; do
 		status=1
 	fi
 	for passing in "--set=operator.consumers[0].requireClaims.groups={ploeg-operators}" "--set=operator.consumers[0].execute=false" "--set=supportProfile=unsupported"; do
-		if ! out=$(helm template ploeg "$next_minor/ploeg" -f "$REQUIRED" -f "$P1_VALUES" -f "$PLOEGD_CALLERS" -f "$BEARER_VALUES" "$passing" 2>&1); then
+		if ! out=$(helm template ploeg "$next_minor/ploeg" -f "$REQUIRED" -f "$P1_VALUES" -f "$PLOEGD_CALLERS" "$SEPARATE_WORKERS" -f "$BEARER_VALUES" "$passing" 2>&1); then
 			echo "chart $version refused the bearer consumer with $passing, which it must render:"
 			echo "$out"
 			status=1
 		fi
 	done
-	notes=$(helm install --dry-run=client ploeg "$next_minor/ploeg" -f "$REQUIRED" -f "$P1_VALUES" -f "$PLOEGD_CALLERS" -f "$BEARER_VALUES" --set supportProfile=unsupported 2>&1)
+	notes=$(helm install --dry-run=client ploeg "$next_minor/ploeg" -f "$REQUIRED" -f "$P1_VALUES" -f "$PLOEGD_CALLERS" "$SEPARATE_WORKERS" -f "$BEARER_VALUES" --set supportProfile=unsupported 2>&1)
 	if ! printf '%s' "$notes" | grep -qF -- "- $BEARER_DEPARTURE" || printf '%s' "$notes" | grep -qF -- "$BEARER_WARNING"; then
 		echo "chart $version under supportProfile: unsupported does not list the bearer consumer as a departure in place of the warning:"
 		echo "$notes"
@@ -392,6 +395,63 @@ if printf '%s' "$notes" | grep -qF 'DEPRECATED: harnessContainer'; then
 	echo "the default render carries the shared harness container's deprecation note"
 	status=1
 fi
+
+placement=$(mktemp)
+for case in "executor-namespace:ploeg-workers" "executor-namespace-cronjob:ploeg-workers" "executor:default" "executor-sandbox-team:default" "executor-worker-admission:default"; do
+	render "ops/helm/ploeg/ci/${case%%:*}-values.yaml" >"$placement"
+	if ! uv run -q --no-project --with pyyaml==6.0.3 python scripts/check-executor-namespace.py "$placement" default "${case##*:}"; then
+		echo "chart render '${case%%:*}' places a worker or control-plane object outside its namespace"
+		status=1
+	fi
+done
+rm -f "$placement"
+SHARED_NAMESPACE='executor.namespace is empty or names the release namespace, so the worker workloads share namespace default with ploegd'
+NAMED_CALLERS='--set-json=networkPolicy.ploegd.ingressFrom=[{"namespaceSelector":{"matchLabels":{"kubernetes.io/metadata.name":"gateway"}}}]'
+renders_p1 --set executor.namespace=ploeg-workers
+renders_p1 --set executor.acknowledgeSharedNamespace=true
+notes=$(helm install --dry-run=client ploeg ops/helm/ploeg -f "$REQUIRED" -f "$P1_VALUES" 2>&1)
+if ! printf '%s' "$notes" | grep -qF -- "WARNING: $SHARED_NAMESPACE"; then
+	echo "a P1 render before chart 0.3.0 keeps the workers beside ploegd without a warning:"
+	echo "$notes"
+	status=1
+fi
+for separated in --set=executor.namespace=ploeg-workers --set=executor.acknowledgeSharedNamespace=true --set=supportProfile=unsupported --set=executor.enabled=false; do
+	notes=$(helm install --dry-run=client ploeg ops/helm/ploeg -f "$REQUIRED" -f "$P1_VALUES" "$separated" 2>&1)
+	if printf '%s' "$notes" | grep -qF -- 'executor.namespace is empty'; then
+		echo "a render with $separated still warns about a shared worker namespace"
+		status=1
+	fi
+done
+executor_namespace_chart=$(mktemp -d)
+for version in 0.3.0-rc.1 0.3.0; do
+	rm -rf "$executor_namespace_chart/ploeg"
+	cp -R ops/helm/ploeg "$executor_namespace_chart/ploeg"
+	sed "s/^version:.*/version: $version/" ops/helm/ploeg/Chart.yaml >"$executor_namespace_chart/ploeg/Chart.yaml"
+	for shared in "" --set=executor.namespace=default --set=executor.acknowledgeSharedNamespace=false; do
+		if out=$(helm template ploeg "$executor_namespace_chart/ploeg" -f "$REQUIRED" -f "$P1_VALUES" "$NAMED_CALLERS" ${shared:+"$shared"} 2>&1); then
+			echo "chart $version rendered worker workloads in the release namespace under supportProfile: P1 (${shared:-defaults})"
+			status=1
+		elif ! printf '%s' "$out" | grep -qF -- "$SHARED_NAMESPACE"; then
+			echo "chart $version refused a shared worker namespace (${shared:-defaults}) for the wrong reason:"
+			echo "$out"
+			status=1
+		fi
+	done
+	for passing in --set=executor.namespace=ploeg-workers --set=executor.acknowledgeSharedNamespace=true --set=supportProfile=unsupported --set=executor.enabled=false; do
+		if ! out=$(helm template ploeg "$executor_namespace_chart/ploeg" -f "$REQUIRED" -f "$P1_VALUES" "$NAMED_CALLERS" "$passing" 2>&1); then
+			echo "chart $version refused $passing, which it must render under supportProfile: P1:"
+			echo "$out"
+			status=1
+		fi
+	done
+	notes=$(helm install --dry-run=client ploeg "$executor_namespace_chart/ploeg" -f "$REQUIRED" -f "$P1_VALUES" "$NAMED_CALLERS" --set supportProfile=unsupported 2>&1)
+	if ! printf '%s' "$notes" | grep -qF -- "- $SHARED_NAMESPACE" || printf '%s' "$notes" | grep -qF -- "WARNING: $SHARED_NAMESPACE"; then
+		echo "chart $version under supportProfile: unsupported does not list the shared worker namespace as a departure, or still warns:"
+		echo "$notes"
+		status=1
+	fi
+done
+rm -rf "$executor_namespace_chart"
 
 if [ "$mode" = "check" ] && [ "$status" -ne 0 ]; then
 	echo

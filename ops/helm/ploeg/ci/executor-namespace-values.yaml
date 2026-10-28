@@ -1,0 +1,42 @@
+supportProfile: unsupported
+security:
+  workerAdmission:
+    enabled: true
+    runtimeClassNames: [kata]
+networkPolicy:
+  ploegd:
+    ingressFrom:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: gateway
+executor:
+  enabled: true
+  type: keda
+  namespace: ploeg-workers
+  runtimeClassName: kata
+  teams:
+    - name: silver
+      model: litellm_proxy/deepseek-chat
+      budget: "4"
+      maxReplicaCount: 1
+      harness: {dind: false}
+    - name: copper
+      model: litellm_proxy/deepseek-chat
+      budget: "1"
+      maxReplicaCount: 1
+      executorType: sandbox
+      harness:
+        name: exec
+        args: ["/bin/cat", "{taskspec}"]
+        dind: false
+    - name: pewter
+      model: litellm_proxy/claude-sonnet-5
+      budget: "1"
+      maxReplicaCount: 1
+      harness:
+        name: claude-environment
+        image: registry.example/claude-dispatch:0.1.0
+        dind: false
+        claudeEnvironment:
+          environmentId: ccpool_example
+          loginVolume: pewter-claude-login

@@ -159,6 +159,9 @@ type ForgeEvent struct {
 	// Review is the verdict of a ForgeReviewSubmitted event. Empty when the
 	// provider cannot classify it.
 	Review ForgeReviewState
+	// ReviewID is the forge's own id for the review or comment of a
+	// ForgeReviewSubmitted event. Empty when the forge sends none.
+	ReviewID string
 	// PullRequest is what the payload said about the pull request itself:
 	// its head for every event, and the merge or close facts for
 	// ForgePRMerged and ForgePRClosed (ADR-0045).

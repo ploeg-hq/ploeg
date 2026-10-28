@@ -33,6 +33,7 @@ import (
 const (
 	leaseTestTTL  = 90 * time.Second
 	leaseTestWait = 20 * time.Second
+	ploegdLatency = time.Second
 	leaseTeam     = "bronze"
 	shiftlessTeam = "silver"
 	leaseRole     = "builder"
@@ -768,12 +769,12 @@ func cutOffBeforeTheLeaseEnds(t *testing.T, shape dispatchShape) {
 	}
 	leaseEnds := lastRenewal.Add(leaseTestTTL)
 	stopBy := leaseEnds.Add(-leaseStopMargin(leaseTestTTL))
-	if fired := rw.clock.advanceTo(stopBy.Add(-time.Second)); fired != 0 {
-		t.Fatalf("the worker gave up its lease %v before the margin", leaseEnds.Sub(stopBy.Add(-time.Second)))
+	if fired := rw.clock.advanceTo(stopBy.Add(-ploegdLatency)); fired != 0 {
+		t.Fatalf("the worker gave up its lease %v before the lease ends, earlier than the margin", leaseEnds.Sub(stopBy.Add(-ploegdLatency)))
 	}
-	if fired := rw.clock.advanceTo(stopBy); fired != 1 {
+	if fired := rw.clock.advanceTo(stopBy.Add(ploegdLatency)); fired != 1 {
 		t.Fatalf("with a renewal hung since %v, nothing stopped the harness %v before the lease ends at %v",
-			lastRenewal.Add(renewInterval(leaseTestTTL)), leaseStopMargin(leaseTestTTL), leaseEnds)
+			lastRenewal.Add(renewInterval(leaseTestTTL)), leaseStopMargin(leaseTestTTL)-ploegdLatency, leaseEnds)
 	}
 	rw.awaitStop()
 	if !errors.Is(rw.adapter.cause, errLeaseLost) {

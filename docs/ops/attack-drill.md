@@ -12,6 +12,8 @@ A hostile repository fixture carries, through every repository-supplied channel 
 - repository configuration and plugins that try to auto-start code: Goose `.agents/plugins/*/.mcp.json`, OpenCode `opencode.json` (which also tries to grant every permission) and `.opencode/` plugins, Qwen Code `.qwen/settings.json` and `.env`, OpenHands `.openhands/hooks.json`;
 - a `.env` the agent might load into its own environment.
 
+The tracker is attacker input too. A Work Item whose description tries to close its untrusted frame and replace the delivery contract (push to the base branch, print the builder token and the model key, open a pull request on another repository) is driven through a full writer execute, and the drill reads the `session/prompt` the agent received: the description arrives inside one tracker frame with its forged close line escaped, the statement on untrusted text appears once, and Ploeg's delivery contract follows the frame (`TestAttackDrill_AWorkItemThatAsksToLeaveScopeReachesTheAgentOnlyAsFramedData`, [ADR-0170](../adrs/0170-tracker-and-forge-text-enters-the-prompt-in-an-untrusted-frame-it-cannot-close.md)).
+
 The symlink-escape and hidden-Unicode instruction vectors, and the git-configuration vectors (`url.insteadOf`, `http.extraHeader`, hooks, `core.fsmonitor`, `include.path`), are drilled alongside in `pkg/worker/instructions_test.go` and `pkg/worker/workergit_test.go`; process-memory concealment in `pkg/worker/conceal_linux_test.go`.
 
 ## The two tiers
@@ -47,4 +49,4 @@ On 2026-10-24 two more were found and closed ([ADR-0148](../adrs/0148-every-acp-
 
 ## What the drill does not cover
 
-It proves repository-supplied code does not start and credentials do not leak into the harness environment. It does **not** prove a model-driven agent resists prompt injection during a prompt turn — that needs the live canary conformance and its model spend ([ACP profiles](../contracts/acp-profiles.md)).
+It proves repository-supplied code does not start, credentials do not leak into the harness environment, and tracker text reaches the agent only inside its frame. It does **not** prove a model-driven agent resists prompt injection during a prompt turn — that needs the live canary conformance and its model spend ([ACP profiles](../contracts/acp-profiles.md)).
