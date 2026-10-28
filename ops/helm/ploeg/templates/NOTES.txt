@@ -1,6 +1,6 @@
 Ploeg {{ .Chart.AppVersion }} / chart {{ .Chart.Version }}
 Security contract: revision {{ (fromJson (.Files.Get "security-contract.json")).contractRevision }}
-Native worker admission: {{ .Values.security.workerAdmission.enabled }}
+Native worker admission: {{ include "ploeg.workerAdmissionEnabled" . | default "false" }}
 Default-deny NetworkPolicies: {{ .Values.networkPolicy.enabled }}
 Delegated user access tokens and automatic personal forge ACL inheritance: NOT IMPLEMENTED.
 Read SECURITY.md and security-contract.json from this exact chart package.
@@ -29,6 +29,22 @@ The harness then runs in the worker's container, where the bootstrap token,
 the forge token and the per-Run key are one process boundary away from it
 (threat-model finding F-03). shared is removed in the minor after 0.2; remove
 the setting to run the harness in its own container (ADR-0138).
+{{- end }}
+{{- $openConsumers := include "ploeg.consumersActingForAnyPerson" . | fromJsonArray }}
+{{- if and $openConsumers (not (include "ploeg.personClaimsRequiredByP1" .)) }}
+WARNING: operator consumers {{ join ", " $openConsumers }} have execute and accept
+a person token as the bearer without requireClaims, so anyone the identity
+provider issues a token for their audience or client acts with their whole
+authority (threat-model finding F-47). Set requireClaims, for example
+{groups: [ploeg-operators]}; from chart 0.3.0 profile P1 refuses these values
+(ADR-0150).
+{{- end }}
+{{- if not (include "ploeg.ploegdCallersRequired" .) }}
+{{- with include "ploeg.ploegdCallersUnnamed" . }}
+WARNING: {{ . }}.
+From chart 0.3.0, supportProfile: P1 refuses this render (ADR-0154); name
+the callers now and the upgrade changes nothing.
+{{- end }}
 {{- end }}
 {{- $departures := include "ploeg.supportProfileDepartures" . | fromJsonArray }}
 {{- if eq (.Values.supportProfile | default "P1") "unsupported" }}

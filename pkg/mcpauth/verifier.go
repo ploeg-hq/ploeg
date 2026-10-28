@@ -7,6 +7,7 @@ package mcpauth
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -157,7 +158,8 @@ type actClaim struct {
 // except an unreachable key set, which wraps ErrKeysUnavailable. TokenInfo
 // carries the subject as UserID and, in Extra, "groups", "username", "client"
 // (azp, or client_id without azp), "act" (the RFC 8693 act claim's sub, or
-// empty when the token has no act) and "audiences" (the token's aud).
+// empty when the token has no act), "audiences" (the token's aud) and
+// "claims" (every claim of the verified payload, as JSON decodes it).
 func (v *Verifier) Verify(ctx context.Context, token string, _ *http.Request) (*auth.TokenInfo, error) {
 	var c claims
 	parser := jwt.NewParser(
@@ -232,8 +234,24 @@ func (v *Verifier) Verify(ctx context.Context, token string, _ *http.Request) (*
 		Scopes:     strings.Fields(scope),
 		Expiration: c.ExpiresAt.Time,
 		UserID:     c.Subject,
-		Extra:      map[string]any{"groups": groups, "username": c.Username, "client": client, "act": act, "audiences": []string(c.Audience)},
+		Extra:      map[string]any{"groups": groups, "username": c.Username, "client": client, "act": act, "audiences": []string(c.Audience), "claims": payloadClaims(parser, token)},
 	}, nil
+}
+
+func payloadClaims(parser *jwt.Parser, token string) map[string]any {
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return map[string]any{}
+	}
+	payload, err := parser.DecodeSegment(parts[1])
+	if err != nil {
+		return map[string]any{}
+	}
+	claims := map[string]any{}
+	if json.Unmarshal(payload, &claims) != nil {
+		return map[string]any{}
+	}
+	return claims
 }
 
 func invalid(reason string) error {

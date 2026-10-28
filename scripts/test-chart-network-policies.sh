@@ -18,6 +18,14 @@ count_policies() { grep -c '^kind: NetworkPolicy$' <<< "$1" || true; }
 assert_has() { grep -qF -- "$2" <<< "$1" || fail "$3"; }
 assert_lacks() { if grep -qF -- "$2" <<< "$1"; then fail "$3"; fi; }
 assert_count() { local got; got=$(grep -cF -- "$2" <<< "$1" || true); [[ "$got" == "$3" ]] || fail "$4 (found $got)"; }
+verdict() {
+  local file="$work/verdict.yaml" code=0
+  printf '%s\n' "$1" > "$file"
+  uv run -q --no-project --with pyyaml==6.0.3 python "$root/scripts/netpol-admits.py" "$file" "$2" "$3" "$4" >/dev/null 2>&1 || code=$?
+  echo "$code"
+}
+assert_admits() { [[ "$(verdict "$1" "$2" "$3" "$4")" == 0 ]] || fail "$5"; }
+assert_denies() { [[ "$(verdict "$1" "$2" "$3" "$4")" == 1 ]] || fail "$5"; }
 
 rendered=$(render)
 [[ "$(count_policies "$rendered")" == 1 ]] || fail 'a default install renders one policy, for ploegd'
@@ -115,6 +123,14 @@ networkPolicy:
               cidr: 203.0.113.7/32
         ports:
           - {protocol: TCP, port: 9999}
+  forge:
+    peers:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: forgejo
+        podSelector:
+          matchLabels:
+            app.kubernetes.io/name: forgejo
   worker:
     extraEgress:
       - to:
@@ -136,10 +152,30 @@ assert_has "$ploegd" 'cidr: 203.0.113.7/32' 'ploegd.extraEgress is not rendered'
 worker=$(policy "$rendered" ploeg-worker)
 assert_has "$worker" 'app: litellm' 'named gateway peers do not reach the worker policy'
 assert_has "$worker" 'cidr: 203.0.113.8/32' 'worker.extraEgress is not rendered'
+assert_has "$worker" 'app.kubernetes.io/name: forgejo' 'named forge peers for a svc URL do not reach the worker policy'
+assert_count "$worker" 'kubernetes.io/metadata.name: forgejo' 1 'the namespace-wide forge rule survives named peers for a svc URL'
 assert_lacks "$worker" 'cidr: 203.0.113.7/32' 'ploegd.extraEgress leaks into the worker policy'
 
 rendered=$(render -f "$ci/executor-values.yaml" --set 'networkPolicy.privateCidrs=null')
+assert_denies "$rendered" ploeg-worker-pewter-anthropic 169.254.169.254 443 'an empty privateCidrs lets a claude-environment worker reach link-local addresses'
+assert_denies "$rendered" ploeg-worker-pewter-anthropic 127.0.0.1 443 'an empty privateCidrs lets a claude-environment worker reach loopback'
+assert_admits "$rendered" ploeg-worker-pewter-anthropic 10.1.2.3 443 'an empty privateCidrs still excepts a private range'
+assert_admits "$rendered" ploeg-worker-pewter-anthropic 1.1.1.1 443 'a claude-environment worker cannot reach a public address on 443'
+
+rendered=$(render -f "$ci/executor-values.yaml" --set 'networkPolicy.privateCidrs={10.0.0.0/8,169.254.0.0/16}')
 pewter=$(policy "$rendered" ploeg-worker-pewter-anthropic)
-assert_lacks "$pewter" 'except:' 'an empty privateCidrs still renders an except list'
+assert_count "$pewter" '169.254.0.0/16' 1 'a privateCidrs entry that is also node-local is excepted twice'
+assert_count "$pewter" '127.0.0.0/8' 1 'loopback is not excepted once when privateCidrs is set'
+
+rendered=$(render -f "$ci/executor-public-endpoints-values.yaml")
+assert_denies "$rendered" ploeg-worker 169.254.169.254 80 'workers on a public http forge reach the instance metadata service on 80'
+assert_denies "$rendered" ploeg-worker 169.254.169.254 443 'workers on a public https gateway reach the instance metadata service on 443'
+assert_denies "$rendered" ploeg-worker 127.0.0.1 80 'workers on a public http forge reach loopback on 80'
+assert_denies "$rendered" ploeg-worker 100.64.0.1 80 'workers on a public http forge reach the shared address space on 80'
+assert_denies "$rendered" ploeg-worker 10.43.0.1 80 'workers on a public http forge reach a private range on 80'
+assert_admits "$rendered" ploeg-worker 93.184.215.14 80 'workers cannot reach a public http forge on 80'
+assert_admits "$rendered" ploeg-worker 93.184.215.14 443 'workers cannot reach a public https gateway on 443'
+assert_denies "$rendered" ploeg-worker 93.184.215.14 22 'the public endpoint rules open a port no URL names'
+assert_denies "$rendered" ploeg-ploegd 169.254.169.254 80 'ploegd on a public http forge reaches the instance metadata service on 80'
 
 echo 'Every Ploeg pod the chart renders is under a default-deny NetworkPolicy with its own allowlist'

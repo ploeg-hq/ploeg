@@ -111,7 +111,7 @@ rows:
           label: configuration reference
           contains: ["Native ValidatingAdmissionPolicy over every ploeg-worker Pod in the release namespace (Kubernetes 1.30 or later)"]
     limits: >-
-      The documented floor for native sidecars, but below the oldest version CI starts. `security.workerAdmission` needs 1.30.
+      The documented floor for native sidecars, but below the oldest version CI starts. `security.workerAdmission`, on by default under P1, needs 1.30.
       No job or record runs 1.29.
 
   - id: kubernetes-1.30

@@ -1,0 +1,13 @@
+operator:
+  consumers:
+    - name: console
+      teams:
+        - silver
+      execute: true
+      audiences:
+        - ploeg-console
+      tokenSecret:
+        name: ploeg-console-operator
+        key: token
+  personTokens:
+    issuer: https://id.example.com/application/o/ploeg/

@@ -700,7 +700,15 @@ another's credential. A token whose `azp` equals its audience must carry a
 against the configured issuer's keys (asymmetric algorithms only), `iss`, `aud`,
 `exp` and `iat` with a lifetime of at most `PLOEG_OPERATOR_PERSON_MAX_LIFETIME`
 (default five minutes) and `sub`; any failure answers 401 `invalid_token` and
-nothing changes. The person is Ploeg's `oidc-` id of `sub` under the issuer or
+nothing changes. A consumer that names `requireClaims` (for example
+`{"groups": ["ploeg-operators"]}`) accepts only a verified token whose every
+named claim holds one of the listed values: a string equal to one, or an array
+of strings containing one, with `scope` split on spaces. A token without them
+answers 403 `person_claim_required`, however it was carried, and nothing
+changes. Without `requireClaims`, whoever the identity provider issues a token
+for the consumer's audience or client acts with the consumer's whole authority;
+ploegd warns at start for every consumer with `execute` in that state, and
+profile P1 refuses it from chart 0.3.0 (threat model F-47). The person is Ploeg's `oidc-` id of `sub` under the issuer or
 `PLOEG_OPERATOR_PERSON_SUBJECT_NAMESPACE`. ploegd then sets `X-Ploeg-Actor` to
 that person; an `X-Ploeg-Actor` or `X-Ploeg-Acting-User` naming anyone else
 answers 403 `actor_conflict`. `detail.attribution.proof` is `proven` for such a

@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"sort"
 	"strings"
@@ -100,6 +101,10 @@ func personTokens(consumers []httpapi.OperatorConsumer) (*httpapi.PersonTokens, 
 	tokens, err := httpapi.NewPersonTokens(cfg, consumers)
 	if err != nil {
 		return nil, fmt.Errorf("PLOEG_OPERATOR_PERSON_*: %w", err)
+	}
+	if open := httpapi.OperatorConsumersActingForAnyPerson(consumers); len(open) > 0 {
+		slog.Warn("operator consumers with execute accept a person token as the bearer and require no claim of it, so the identity provider alone decides who acts with their authority; set requireClaims (profile P1 refuses this from chart 0.3.0, threat model F-47)",
+			"consumers", strings.Join(open, ","))
 	}
 	return tokens, nil
 }
