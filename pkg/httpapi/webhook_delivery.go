@@ -18,11 +18,11 @@ func (s *Server) claimDelivery(w http.ResponseWriter, r *http.Request, key, deli
 	}
 	switch claim.State {
 	case store.DeliveryCompleted:
-		s.Log.Info("webhook redelivered; its effects already committed", "provider", key, "delivery", delivery)
+		s.Log.Info("webhook redelivered; its effects already committed", "provider", key)
 		w.WriteHeader(http.StatusAccepted)
 		return claim, false
 	case store.DeliveryInFlight:
-		s.Log.Info("webhook redelivered while the first delivery is still acting", "provider", key, "delivery", delivery)
+		s.Log.Info("webhook redelivered while the first delivery is still acting", "provider", key)
 		w.Header().Set("Retry-After", "60")
 		http.Error(w, "delivery in flight", http.StatusConflict)
 		return claim, false
