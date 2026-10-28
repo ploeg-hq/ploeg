@@ -32,7 +32,13 @@ values = yaml.safe_load(open(sys.argv[1]))
 for stamped_by_release in ("image", "worker", "claudeRunner"):
     values.pop(stamped_by_release, None)
 yaml.safe_dump(values, open(sys.argv[2], "w"))
-' "$ci/required-values.yaml" "$required_without_source_digests"
+values.update(yaml.safe_load(open(sys.argv[4])))
+yaml.safe_dump(values, open(sys.argv[3], "w"))
+' "$ci/required-values.yaml" "$work/required-without-ploegd-callers.yaml" "$required_without_source_digests" "$ci/ploegd-callers-values.yaml"
+if out=$(helm template ploeg "$chart" -f "$work/required-without-ploegd-callers.yaml" 2>&1); then
+  fail 'the published 9.9.9 chart renders an empty networkPolicy.ploegd.ingressFrom under P1'
+fi
+grep -qF 'networkPolicy.ploegd.ingressFrom is empty' <<< "$out" || fail "the published 9.9.9 chart refuses an empty networkPolicy.ploegd.ingressFrom for the wrong reason: $out"
 
 assert_every_image_pinned() { # <label> <helm template args...>
   local label=$1; shift
@@ -48,16 +54,17 @@ assert_every_image_pinned 'the published chart with only the required values' -f
 assert_every_image_pinned 'the published chart with ploeg-mcp, claude-runner and a claude-environment team' \
   -f "$required_without_source_digests" -f "$ci/mcp-values.yaml" -f "$ci/claude-runner-values.yaml"
 assert_every_image_pinned 'the published chart with a worker whose harness runs in its own container' \
-  -f "$required_without_source_digests" -f "$ci/executor-default-worker-values.yaml" --set executor.harness.image=registry.example/agent-runner:1.3.0@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  -f "$required_without_source_digests" -f "$ci/executor-default-worker-values.yaml" --set executor.namespace=ploeg-workers --set executor.harness.image=registry.example/agent-runner:1.3.0@sha256:0000000000000000000000000000000000000000000000000000000000000000
 
 rendered=$(helm template ploeg "$chart" -f "$required_without_source_digests" -f "$ci/mcp-values.yaml" -f "$ci/claude-runner-values.yaml")
 grep -qF "image: ghcr.io/ploeg-hq/ploegd:9.9.9@$ploegd_digest" <<< "$rendered" || fail 'ploegd does not default to the release digest'
 grep -qF "image: ghcr.io/ploeg-hq/claude-runner:9.9.9@$runner_digest" <<< "$rendered" || fail 'claude-runner does not default to the release digest'
-rendered=$(helm template ploeg "$chart" -f "$required_without_source_digests" -f "$ci/executor-default-worker-values.yaml")
+rendered=$(helm template ploeg "$chart" -f "$required_without_source_digests" -f "$ci/executor-default-worker-values.yaml" --set executor.namespace=ploeg-workers)
 grep -qF "image: ghcr.io/ploeg-hq/ploeg-worker:9.9.9@$worker_digest" <<< "$rendered" || fail 'the worker container does not default to the ploeg-worker release digest'
 
-helm lint "$chart" -f "$root/ops/quickstart/values.yaml" > /dev/null || fail 'the quickstart values do not lint against the published chart'
-helm template ploeg "$chart" -n ploeg -f "$root/ops/quickstart/values.yaml" > /dev/null || fail 'the published chart refuses the quickstart values'
+helm lint "$chart" -f "$root/ops/quickstart/values.yaml" --set executor.namespace=ploeg-workers > /dev/null || fail 'the quickstart values with the worker namespace of the checkout-chart leg do not lint against the published chart'
+helm template ploeg "$chart" -n ploeg -f "$root/ops/quickstart/values.yaml" --set executor.namespace=ploeg-workers > /dev/null || fail 'the published chart refuses the quickstart values with the worker namespace of the checkout-chart leg'
+if helm template ploeg "$chart" -n ploeg -f "$root/ops/quickstart/values.yaml" > /dev/null 2>&1; then fail 'the published 9.9.9 chart renders the quickstart workers beside ploegd under P1'; fi
 
 rendered=$(helm template ploeg "$chart" -f "$required_without_source_digests" --set image.tag=1.2.3 --set image.repository=registry.example/ploegd)
 grep -qF 'image: registry.example/ploegd:1.2.3' <<< "$rendered" || fail 'a tag the cluster sets does not win'

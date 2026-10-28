@@ -7,6 +7,9 @@ operator:
       maxBudgetUsd: 3
       clientIds:
         - console-app
+      requireClaims:
+        groups:
+          - ploeg-operators
       tokenSecret:
         name: ploeg-console-operator
         key: token

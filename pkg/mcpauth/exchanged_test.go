@@ -46,6 +46,23 @@ func TestATokenExchangedForAnAudienceNamesItsClientAndActor(t *testing.T) {
 	}
 }
 
+func TestAVerifiedTokenCarriesEveryPayloadClaim(t *testing.T) {
+	is := newIssuer(t)
+	v := exchangedVerifier(t, is)
+	c := exchangedClaims(is)
+	c["groups"] = []string{"ploeg-operators"}
+	c["department"] = "platform"
+	info, err := v.Verify(context.Background(), is.sign("rsa-1", c), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	claims, _ := info.Extra["claims"].(map[string]any)
+	groups, _ := claims["groups"].([]any)
+	if claims["department"] != "platform" || len(groups) != 1 || groups[0] != "ploeg-operators" || claims["sub"] != "person" {
+		t.Fatalf("claims = %#v", info.Extra["claims"])
+	}
+}
+
 func TestATokenExchangedForAnotherAudienceOrClientIsRefused(t *testing.T) {
 	is := newIssuer(t)
 	v := exchangedVerifier(t, is)

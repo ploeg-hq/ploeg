@@ -700,7 +700,15 @@ another's credential. A token whose `azp` equals its audience must carry a
 against the configured issuer's keys (asymmetric algorithms only), `iss`, `aud`,
 `exp` and `iat` with a lifetime of at most `PLOEG_OPERATOR_PERSON_MAX_LIFETIME`
 (default five minutes) and `sub`; any failure answers 401 `invalid_token` and
-nothing changes. The person is Ploeg's `oidc-` id of `sub` under the issuer or
+nothing changes. A consumer that names `requireClaims` (for example
+`{"groups": ["ploeg-operators"]}`) accepts only a verified token whose every
+named claim holds one of the listed values: a string equal to one, or an array
+of strings containing one, with `scope` split on spaces. A token without them
+answers 403 `person_claim_required`, however it was carried, and nothing
+changes. Without `requireClaims`, whoever the identity provider issues a token
+for the consumer's audience or client acts with the consumer's whole authority;
+ploegd warns at start for every consumer with `execute` in that state, and
+profile P1 refuses it from chart 0.3.0 (threat model F-47). The person is Ploeg's `oidc-` id of `sub` under the issuer or
 `PLOEG_OPERATOR_PERSON_SUBJECT_NAMESPACE`. ploegd then sets `X-Ploeg-Actor` to
 that person; an `X-Ploeg-Actor` or `X-Ploeg-Acting-User` naming anyone else
 answers 403 `actor_conflict`. `detail.attribution.proof` is `proven` for such a
@@ -823,6 +831,15 @@ expired. A declaration cannot set the name itself.
 
 Every fact comes from ploegd's records of the Run; the worker names only the
 audiences. The token carries no credential: nothing in Ploeg accepts it.
+
+**Which audiences.** ploegd signs only an audience configured for the Run's
+Team and Role in `PLOEG_RUN_IDENTITY_AUDIENCES`
+(`{"<team>": {"<role>": ["<audience>"]}}`, the Role `""` for a Team without a
+Shift plan). The chart renders it from the `runIdentity.audience` of the
+plugins each Role's workers load, so a configured plugin is always covered.
+Any other audience answers 403, signs nothing for the request and is logged
+as `run identity refused` with the Run, Team, Role and audience; the worker
+then removes the plugins' tokens and stops asking (threat model F-48).
 
 **Verifying it.** A consumer pins two values in its own configuration, the
 issuer and its own audience, and fetches the keys from

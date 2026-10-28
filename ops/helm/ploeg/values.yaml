@@ -10,7 +10,7 @@ supportProfile: P1
 
 security:
   workerAdmission:
-    enabled: false
+    enabled: null
     runtimeClassNames: []
 
 image:
@@ -51,7 +51,7 @@ networkPolicy:
     ports:
       - {protocol: UDP, port: 53}
       - {protocol: TCP, port: 53}
-  privateCidrs: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16]
+  privateCidrs: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10]
   database:
     peers: []
     port: 5432
@@ -696,6 +696,8 @@ executor:
     create: true
     name: "" # empty = <fullname>-worker
   apiUrl: ""      # empty = http://<fullname>:<service.port>
+  namespace: ""
+  acknowledgeSharedNamespace: false
   cronjob:
     # type=cronjob only: how often each team polls for work. Idle ticks are
     # free (empty-handed claim = exit 0).

@@ -1,3 +1,33 @@
+{{- define "ploeg.workerAdmissionSetting" -}}
+{{- $a := .Values.security.workerAdmission | default dict -}}
+{{- if and (hasKey $a "enabled") (not (kindIs "invalid" $a.enabled)) -}}
+{{- toString $a.enabled -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "ploeg.workerAdmissionEnabled" -}}
+{{- $setting := include "ploeg.workerAdmissionSetting" . -}}
+{{- if $setting -}}
+{{- if eq $setting "true" -}}true{{- end -}}
+{{- else if eq (.Values.supportProfile | default "P1") "P1" -}}
+true
+{{- end -}}
+{{- end -}}
+
+{{- define "ploeg.workerAdmissionRuntimeClassDepartures" -}}
+{{- $root := .root -}}
+{{- $allowed := $root.Values.security.workerAdmission.runtimeClassNames | default list -}}
+{{- $class := include "ploeg.runtimeClassName" (dict "root" $root "team" .team "role" .role) -}}
+{{- $out := list -}}
+{{- if and .sandbox (not $allowed) -}}
+{{- $out = append $out (printf "team %s: the sandbox executor runs while security.workerAdmission.runtimeClassNames is empty; P1 needs it to name the sandbox runtime class, so the API server refuses a worker pod that drops it (finding F-49)" .who) -}}
+{{- end -}}
+{{- if and $allowed (not (has $class $allowed)) -}}
+{{- $out = append $out (printf "team %s: runtimeClassName %q is not in security.workerAdmission.runtimeClassNames %s, so the worker admission policy refuses its pods" .who $class (toJson $allowed)) -}}
+{{- end -}}
+{{- toJson $out -}}
+{{- end -}}
+
 {{- define "ploeg.securityContextDepartures" -}}
 {{- $c := .context | default dict -}}
 {{- $out := list -}}
@@ -85,6 +115,7 @@
 {{- if and $sandbox (not (include "ploeg.runtimeClassName" (dict "root" $root "team" $team "role" $role))) -}}
 {{- $out = append $out (printf "team %s: the sandbox executor resolves no runtimeClassName; P1 runs it only under a runtime class that gives each pod its own VM, such as Kata Containers" $who) -}}
 {{- end -}}
+{{- $out = concat $out (include "ploeg.workerAdmissionRuntimeClassDepartures" (dict "root" $root "team" $team "role" $role "who" $who "sandbox" $sandbox) | fromJsonArray) -}}
 {{- if $dind -}}
 {{- $out = append $out (printf "%s: harness.dind is true; P1 needs dind: false on every team and Role" $label) -}}
 {{- end -}}
@@ -101,6 +132,16 @@
 {{- toJson $out -}}
 {{- end -}}
 
+{{- define "ploeg.ploegdCallersUnnamed" -}}
+{{- if and .Values.networkPolicy.enabled (not ((.Values.networkPolicy.ploegd | default dict).ingressFrom)) -}}
+networkPolicy.ploegd.ingressFrom is empty, so ploegd's NetworkPolicy admits port 8080 from every pod in every namespace; P1 needs the gateway, the operator consumers and Prometheus named there, and the chart adds its own callers (F-45)
+{{- end -}}
+{{- end -}}
+
+{{- define "ploeg.ploegdCallersRequired" -}}
+{{- if semverCompare ">=0.3.0-0" .Chart.Version -}}true{{- end -}}
+{{- end -}}
+
 {{- define "ploeg.supportProfileDepartures" -}}
 {{- $root := . -}}
 {{- $e := .Values.executor -}}
@@ -108,8 +149,21 @@
 {{- if not .Values.networkPolicy.enabled -}}
 {{- $out = append $out "networkPolicy.enabled is false; P1 needs the chart's default-deny NetworkPolicies" -}}
 {{- end -}}
+{{- if eq (include "ploeg.workerAdmissionSetting" $root) "false" -}}
+{{- $out = append $out "security.workerAdmission.enabled is false; P1 needs the chart's worker admission policy, which refuses a worker pod changed outside the chart at the API server (finding F-49)" -}}
+{{- end -}}
+{{- if include "ploeg.ploegdCallersRequired" $root -}}
+{{- with include "ploeg.ploegdCallersUnnamed" $root -}}
+{{- $out = append $out . -}}
+{{- end -}}
+{{- end -}}
 {{- if eq (($e.workerAuth | default dict).mode | default "managed") "legacy" -}}
 {{- $out = append $out "executor.workerAuth.mode is legacy; P1 needs managed" -}}
+{{- end -}}
+{{- if include "ploeg.personClaimsRequiredByP1" $root -}}
+{{- range $name := include "ploeg.consumersActingForAnyPerson" $root | fromJsonArray -}}
+{{- $out = append $out (printf "operator consumer %s has execute and accepts a person token as the bearer (audiences or clientIds) without requireClaims; P1 needs requireClaims on it, so the identity provider's groups or roles decide who acts with its authority (F-47)" $name) -}}
+{{- end -}}
 {{- end -}}
 {{- if .Values.claudeRunner.enabled -}}
 {{- $out = append $out "claudeRunner.enabled is true; P1 excludes the claude-runner, whose Runs execute outside the pod" -}}
@@ -118,6 +172,11 @@
 {{- end -}}
 {{- end -}}
 {{- if $e.enabled -}}
+{{- if include "ploeg.executorNamespaceRequired" $root -}}
+{{- with include "ploeg.executorNamespaceShared" $root -}}
+{{- $out = append $out . -}}
+{{- end -}}
+{{- end -}}
 {{- if ne (($e.litellm | default dict).keyIsolation | default "") "proxy" -}}
 {{- $out = append $out "executor.litellm.keyIsolation is not proxy; P1 needs proxy" -}}
 {{- end -}}

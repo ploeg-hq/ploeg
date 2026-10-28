@@ -80,6 +80,14 @@ func (s *Server) handleRunIdentity(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "a client-carried Run is the person's own session and gets no run identity", http.StatusConflict)
 		return
 	}
+	for _, aud := range req.Audiences {
+		if !s.RunIdentityAudiences.Allows(facts.Team, facts.Role, aud) {
+			s.Log.Warn("run identity refused: the audience is not configured for the Run's Team and Role",
+				"run", facts.ID, "team", facts.Team, "role", facts.Role, "audience", aud)
+			http.Error(w, "audience "+strconv.Quote(aud)+" is not configured for this Run's Team and Role", http.StatusForbidden)
+			return
+		}
+	}
 	run := runidentity.Run{
 		ID:         strconv.FormatInt(facts.ID, 10),
 		WorkItemID: store.IDString(facts.WorkItemID),

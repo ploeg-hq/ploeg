@@ -413,7 +413,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	identities, err := runIdentitySigner(log)
+	identities, identityAudiences, err := runIdentitySigner(log)
 	if err != nil {
 		return err
 	}
@@ -453,6 +453,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 
 		DisableRunTranscripts: !runTranscripts,
 		RunIdentity:           identities,
+		RunIdentityAudiences:  identityAudiences,
 		TransactionTokens:     transactionTokens,
 		TeamSponsors:          cfg.Sponsors(),
 	}

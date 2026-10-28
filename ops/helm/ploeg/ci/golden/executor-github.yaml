@@ -56,6 +56,9 @@ spec:
           - 10.0.0.0/8
           - 172.16.0.0/12
           - 192.168.0.0/16
+          - 100.64.0.0/10
+          - 169.254.0.0/16
+          - 127.0.0.0/8
 ---
 # Source: ploeg/templates/networkpolicy.yaml
 apiVersion: networking.k8s.io/v1
@@ -113,6 +116,9 @@ spec:
           - 10.0.0.0/8
           - 172.16.0.0/12
           - 192.168.0.0/16
+          - 100.64.0.0/10
+          - 169.254.0.0/16
+          - 127.0.0.0/8
 ---
 # Source: ploeg/templates/serviceaccount.yaml
 apiVersion: v1
@@ -351,6 +357,8 @@ spec:
                 secretKeyRef:
                   name: ploeg-run-identity
                   key: signing-key.pem
+            - name: PLOEG_RUN_IDENTITY_AUDIENCES
+              value: "{\"silver\":{\"builder\":[\"https://link.example.com\"],\"reviewer\":[\"https://link.example.com\"]}}"
             - name: PLOEG_RUN_IDENTITY_RETIRED_KEYS
               valueFrom:
                 secretKeyRef:
