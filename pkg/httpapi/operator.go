@@ -67,6 +67,7 @@ type OperatorConfig struct {
 	TeamScopes       map[string][]string
 	DeliveryPolicies map[string]DeliveryPolicy
 	TeamHarnesses    TeamHarnesses
+	Attribution      AttributionMode
 }
 
 type operatorPrincipalKey struct{}
@@ -244,6 +245,13 @@ func (s *Server) operatorAuth(next http.Handler) http.Handler {
 			if bad != nil {
 				operatorError(w, http.StatusBadRequest, bad.code, bad.message)
 				return
+			}
+			if attribution.Proof != ProofProven && s.OperatorConfig.Attribution == AttributionProven {
+				s.refuseUnprovenChange(w, r, principal.Name, attribution.Actor)
+				return
+			}
+			if attribution.Proof == ProofAsserted {
+				w.Header().Set("Warning", assertedAttributionWarning)
 			}
 			if attribution.Actor != "" {
 				ctx = store.WithAttribution(ctx, attribution)

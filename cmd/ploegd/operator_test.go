@@ -2,9 +2,11 @@ package main
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/ploeg-hq/ploeg/pkg/config"
+	"github.com/ploeg-hq/ploeg/pkg/httpapi"
 )
 
 func TestDeployAuthComesFromTheDeployToken(t *testing.T) {
@@ -97,5 +99,44 @@ func TestPersonTokensComeFromTheEnvironment(t *testing.T) {
 	t.Setenv("PLOEG_OPERATOR_PERSON_ISSUER", "")
 	if _, err := operatorConfig(&config.File{}, nil); err == nil {
 		t.Fatal("audiences without a person token issuer must stop the boot")
+	}
+}
+
+func TestAttributionModeComesFromTheEnvironment(t *testing.T) {
+	t.Setenv("PLOEG_OPERATOR_DELIVERY_POLICIES", "")
+	t.Setenv("PLOEG_TEAM_MAP", "")
+	t.Setenv("PLOEG_TEAM_HARNESSES", "")
+	t.Setenv("PLOEG_OPERATOR_PERSON_AUDIENCE", "")
+	t.Setenv("PLOEG_OPERATOR_PERSON_MAX_LIFETIME", "")
+	t.Setenv("CONSUMER_TOKEN", "0123456789abcdef0123456789abcdef")
+	headerConsumer := `[{"name":"acting","tokenEnv":"CONSUMER_TOKEN","execute":true}]`
+	personConsumer := `[{"name":"acting","tokenEnv":"CONSUMER_TOKEN","execute":true,"audiences":["ploeg-acting"],"requireClaims":{"groups":["ploeg"]}}]`
+	for _, tc := range []struct {
+		name, mode, consumers, issuer string
+		want                          httpapi.AttributionMode
+		refused                       bool
+	}{
+		{name: "unset is asserted", consumers: headerConsumer, want: httpapi.AttributionAsserted},
+		{name: "asserted", mode: "asserted", consumers: headerConsumer, want: httpapi.AttributionAsserted},
+		{name: "proven with person tokens", mode: "proven", consumers: personConsumer, issuer: "https://id.example/application/o/ploeg/", want: httpapi.AttributionProven},
+		{name: "proven without consumers", mode: "proven", want: httpapi.AttributionProven},
+		{name: "proven without a person token issuer", mode: "proven", consumers: headerConsumer, refused: true},
+		{name: "an unknown mode", mode: "trusted", consumers: headerConsumer, refused: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("PLOEG_OPERATOR_ATTRIBUTION", tc.mode)
+			t.Setenv("PLOEG_OPERATOR_CONSUMERS", tc.consumers)
+			t.Setenv("PLOEG_OPERATOR_PERSON_ISSUER", tc.issuer)
+			operator, err := operatorConfig(&config.File{}, nil)
+			if tc.refused {
+				if err == nil || !strings.Contains(err.Error(), "PLOEG_OPERATOR_ATTRIBUTION") {
+					t.Fatalf("want a boot refusal naming PLOEG_OPERATOR_ATTRIBUTION, got %v", err)
+				}
+				return
+			}
+			if err != nil || operator.Attribution != tc.want {
+				t.Fatalf("attribution = %q, %v; want %q", operator.Attribution, err, tc.want)
+			}
+		})
 	}
 }

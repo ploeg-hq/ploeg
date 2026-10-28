@@ -1,8 +1,10 @@
 package httpapi
 
 import (
+	"fmt"
 	"net/http"
 	"regexp"
+	"strings"
 
 	"github.com/ploeg-hq/ploeg/pkg/store"
 )
@@ -66,4 +68,44 @@ func operatorAttribution(r *http.Request, consumer string) (store.Attribution, *
 		a.Proof = ProofAsserted
 	}
 	return a, nil
+}
+
+// AttributionMode says whether an operator change may rest on attribution the
+// consumer only asserted (ADR-0171).
+type AttributionMode string
+
+const (
+	// AttributionAsserted accepts a change whose person only X-Ploeg-Actor
+	// names, records it asserted and answers with a Warning header.
+	AttributionAsserted AttributionMode = "asserted"
+	// AttributionProven refuses every operator change without a verified
+	// person token.
+	AttributionProven AttributionMode = "proven"
+)
+
+// ParseAttributionMode reads PLOEG_OPERATOR_ATTRIBUTION; empty is
+// AttributionAsserted.
+func ParseAttributionMode(raw string) (AttributionMode, error) {
+	switch mode := AttributionMode(strings.TrimSpace(raw)); mode {
+	case "":
+		return AttributionAsserted, nil
+	case AttributionAsserted, AttributionProven:
+		return mode, nil
+	default:
+		return "", fmt.Errorf("PLOEG_OPERATOR_ATTRIBUTION must be %s or %s, not %q", AttributionAsserted, AttributionProven, raw)
+	}
+}
+
+const reasonPersonTokenRequired = "person_token_required"
+
+const assertedAttributionWarning = `299 ploegd "This change names its person only in X-Ploeg-Actor (asserted attribution). PLOEG_OPERATOR_ATTRIBUTION=proven refuses it, and the chart defaults to proven from 0.3.0: send the person's exchanged token (ADR-0150, ADR-0171)."`
+
+func (s *Server) refuseUnprovenChange(w http.ResponseWriter, r *http.Request, consumer, assertedActor string) {
+	if s.Store != nil {
+		refusal := store.AttributionRefusal{Consumer: consumer, Reason: reasonPersonTokenRequired, Method: r.Method, Path: r.URL.Path, AssertedActor: assertedActor}
+		if err := s.Store.RecordAttributionRefusal(r.Context(), refusal); err != nil && s.Log != nil {
+			s.Log.Error("attribution refusal audit failed", "consumer", consumer, "err", err)
+		}
+	}
+	operatorError(w, http.StatusForbidden, reasonPersonTokenRequired, "This deployment accepts an operator change only from a proven person: send the person's exchanged token as the bearer or in "+PersonTokenHeader+". Nothing changed.")
 }

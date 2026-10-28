@@ -65,3 +65,30 @@ func attributedDetail(ctx context.Context, actor string, detail []byte) ([]byte,
 	fields[key] = raw
 	return json.Marshal(fields)
 }
+
+// AuditOperatorAttributionRefused is the audit action of an operator change
+// refused because its attribution was not proven (ADR-0171).
+const AuditOperatorAttributionRefused = "operator.attribution_refused"
+
+// AttributionRefusal is an operator change ploegd refused for its
+// attribution: the consumer that sent it, the stable reason code, the request
+// line, and the person the consumer asserted, when it named one.
+type AttributionRefusal struct {
+	Consumer      string `json:"consumer"`
+	Reason        string `json:"reason"`
+	Method        string `json:"method"`
+	Path          string `json:"path"`
+	AssertedActor string `json:"assertedActor,omitempty"`
+}
+
+// RecordAttributionRefusal writes r to the audit log under the consumer's
+// operator: actor and without an attribution, since nothing was attributed.
+func (s *Store) RecordAttributionRefusal(ctx context.Context, r AttributionRefusal) error {
+	detail, err := json.Marshal(r)
+	if err != nil {
+		return err
+	}
+	_, err = s.pool.Exec(ctx, `INSERT INTO audit_log (actor, action, detail) VALUES ($1, $2, $3)`,
+		"operator:"+r.Consumer, AuditOperatorAttributionRefused, detail)
+	return err
+}
