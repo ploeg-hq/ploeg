@@ -79,6 +79,9 @@ jobs:
         env:
           NEWEST: ${{ needs.versions.outputs.newest }}
         run: mise exec -- bash scripts/quickstart.sh checkout-chart "$NEWEST" "$RUNNER_TEMP/chart" >> "$GITHUB_ENV"
+      - name: Run this checkout's worker workloads in a namespace of their own, beside ploegd's
+        if: matrix.leg == 'checkout-chart'
+        run: echo "QUICKSTART_WORKER_NAMESPACE=ploeg-workers" >> "$GITHUB_ENV"
       - name: Every command on docs/quickstart.md runs in order and the Run ends done
         run: mise exec -- bash scripts/quickstart.sh run
   report:

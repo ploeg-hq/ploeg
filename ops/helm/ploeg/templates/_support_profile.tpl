@@ -172,6 +172,11 @@ networkPolicy.ploegd.ingressFrom is empty, so ploegd's NetworkPolicy admits port
 {{- end -}}
 {{- end -}}
 {{- if $e.enabled -}}
+{{- if include "ploeg.executorNamespaceRequired" $root -}}
+{{- with include "ploeg.executorNamespaceShared" $root -}}
+{{- $out = append $out . -}}
+{{- end -}}
+{{- end -}}
 {{- if ne (($e.litellm | default dict).keyIsolation | default "") "proxy" -}}
 {{- $out = append $out "executor.litellm.keyIsolation is not proxy; P1 needs proxy" -}}
 {{- end -}}

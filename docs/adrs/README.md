@@ -236,6 +236,7 @@ fails otherwise.
 | [0162](0162-a-team-spends-at-most-its-cap-per-period-and-a-claim-over-it-starts-nothing.md) | A Team spends at most its cap per period, and a claim over it starts nothing | proposed | 2026-10-27 |
 | [0163](0163-a-reviewer-reads-the-base-branchs-instruction-files-and-a-team-can-require-a-reviewer-unlike-its-writer.md) | A reviewer reads the base branch's instruction files, and a Team can require a reviewer unlike its writer | proposed | 2026-10-28 |
 | [0168](0168-profile-p1-turns-on-the-worker-admission-policy-and-a-sandbox-team-names-its-runtime-class-there.md) | Profile P1 turns on the worker admission policy, and a sandbox team names its runtime class there | proposed | 2026-10-28 |
+| [0169](0169-worker-workloads-render-into-a-namespace-of-their-own-and-profile-p1-refuses-a-shared-one-from-chart-0-3-0.md) | Worker workloads render into a namespace of their own, and profile P1 refuses a shared one from chart 0.3.0 | proposed | 2026-10-28 |
 
 
 ## Review calendar
@@ -247,6 +248,7 @@ triggers.
 | --- | --- |
 | 2027-04-30 | [0108](0108-every-operator-action-names-its-person-and-channel-and-an-mcp-action-needs-the-persons-confirmation.md) — or sooner, when MCP standardizes proof of a person's confirmation, a deployment needs per-person authorization finer than groups, or a consumer needs Ploeg to verify the person itself |
 | 2027-04-30 | [0126](0126-a-recurring-attack-drill-runs-every-harness-against-a-hostile-repository.md) — or sooner, when a new harness or ACP profile is added, a supported agent's major version changes how it loads repository config, plugins or instructions, `OPENCODE_DISABLE_PROJECT_CONFIG` changes meaning, or the credential-isolation mechanism changes shape |
+| 2027-04-30 | [0169](0169-worker-workloads-render-into-a-namespace-of-their-own-and-profile-p1-refuses-a-shared-one-from-chart-0-3-0.md) — or sooner, when the chart can read a namespace's Pod Security label, the F-21 fix removes the launcher's API token, an adopter needs worker namespaces per team, two adopters rotate a duplicated Secret in one namespace only, or the quickstart pin reaches a release that carries `executor.namespace` |
 | 2026-10-22 | [0030](0030-target-repository-instructions-rank-below-the-delivery-contract.md) — after the first `claude-code` and reviewing Runs against a repository with its own AGENTS.md |
 | 2026-10-31 | [0006](0006-ahp-is-the-wrong-layer.md), [0007](0007-a2a-adopt-nothing-watchlist-a-facade.md), [0008](0008-litellm-is-the-credential-and-metering-seam.md), [0009](0009-paperclip-mine-for-design-never-integrate.md), [0024](0024-operator-work-uses-one-execution-authority.md), [0025](0025-management-authority-stays-in-the-control-plane.md), [0041](0041-the-openai-agents-api-stays-outside-the-run-until-it-takes-an-authorized-budget.md) — the quarterly market re-scan (`design.md` §10) |
 | 2026-11-30 | [0031](0031-runs-create-work-items-held-for-approval-within-limits.md) — or sooner, when the owner answers whether created Work Items are written back to the tracker and whether a person approves them |

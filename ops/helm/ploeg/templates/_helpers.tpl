@@ -738,7 +738,7 @@ spec:
       {{- end }}
       env:
         - name: PLOEG_API_URL
-          value: {{ include "ploeg.apiUrl" $root | quote }}
+          value: {{ include "ploeg.workerApiUrl" $root | quote }}
         - name: PLOEG_TEAM
           value: {{ $team.name | quote }}
         {{- if $role.name }}
