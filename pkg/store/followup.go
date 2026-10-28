@@ -2,8 +2,11 @@ package store
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 
@@ -223,6 +226,9 @@ const (
 	// changes have queued it MaxReworks times already. The review is stored
 	// for the next Shift a person starts, and nothing is queued.
 	ReviewCapped ReviewAction = "capped"
+	// ReviewDuplicate means the forge delivered a review that is already
+	// stored for this Work Item, so nothing changed.
+	ReviewDuplicate ReviewAction = "duplicate"
 )
 
 // ReworkRefusal says why a request for changes did not send work back.
@@ -278,6 +284,10 @@ type ChangesRequested struct {
 	// HeadSHA is the pull request head the review was given on, empty when
 	// the forge did not say (ADR-0045).
 	HeadSHA string
+	// ReviewID is the forge's own id for the review, empty when the forge
+	// sends none. A review is stored once per Work Item and pull request
+	// under this id, or under a digest of reviewer, head and body without it.
+	ReviewID string
 	// MaxReworks caps how many times requests for changes queue the Work
 	// Item again. Zero means work.DefaultMaxReworks.
 	MaxReworks int
@@ -302,11 +312,16 @@ func (s *Store) RecordChangesRequested(ctx context.Context, cr ChangesRequested)
 		FROM work_items WHERE id = $1 FOR UPDATE`, cr.WorkItemID).Scan(&state, &operatorOwned, &liveShift); err != nil {
 		return "", err
 	}
-	if _, err := tx.Exec(ctx, `
-		INSERT INTO work_item_reviews (work_item_id, provider, repo, pr, reviewer, body, state, head_sha)
-		VALUES ($1, $2, $3, $4, $5, $6, 'changes_requested', NULLIF(left($7, 128), ''))`,
-		cr.WorkItemID, cr.Provider, cr.Repo, cr.PR, cr.Reviewer, cr.Body, cr.HeadSHA); err != nil {
+	tag, err := tx.Exec(ctx, `
+		INSERT INTO work_item_reviews (work_item_id, provider, repo, pr, reviewer, body, state, head_sha, review_key)
+		VALUES ($1, $2, $3, $4, $5, $6, 'changes_requested', NULLIF(left($7, 128), ''), $8)
+		ON CONFLICT (work_item_id, provider, repo, pr, review_key) WHERE review_key IS NOT NULL DO NOTHING`,
+		cr.WorkItemID, cr.Provider, cr.Repo, cr.PR, cr.Reviewer, cr.Body, cr.HeadSHA, cr.reviewKey())
+	if err != nil {
 		return "", err
+	}
+	if tag.RowsAffected() == 0 {
+		return ReviewDuplicate, nil
 	}
 	action := ReviewRecorded
 	switch {
@@ -332,6 +347,16 @@ func (s *Store) RecordChangesRequested(ctx context.Context, cr ChangesRequested)
 		return "", err
 	}
 	return action, tx.Commit(ctx)
+}
+
+const maxForgeReviewIDLength = 128
+
+func (cr ChangesRequested) reviewKey() string {
+	if id := strings.TrimSpace(cr.ReviewID); id != "" && len(id) <= maxForgeReviewIDLength {
+		return "forge:" + id
+	}
+	sum := sha256.Sum256([]byte(cr.Reviewer + "\x00" + cr.HeadSHA + "\x00" + cr.Body))
+	return "digest:" + hex.EncodeToString(sum[:])
 }
 
 // ReworkCaps returns a Team's cap on re-queues by requests for changes per

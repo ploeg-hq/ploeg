@@ -465,6 +465,7 @@ type hook struct {
 		PathWithNamespace string `json:"path_with_namespace"`
 	} `json:"project"`
 	ObjectAttributes struct {
+		ID           int64  `json:"id"`
 		IID          int    `json:"iid"`
 		Action       string `json:"action"`
 		SourceBranch string `json:"source_branch"`
@@ -480,6 +481,8 @@ type hook struct {
 		ClosedAt       string     `json:"closed_at"`
 		LastCommit     lastCommit `json:"last_commit"`
 		OldRev         string     `json:"oldrev"`
+		UpdatedAt      string     `json:"updated_at"`
+		FinishedAt     string     `json:"finished_at"`
 	} `json:"object_attributes"`
 	// Note and pipeline events nest the merge request they belong to.
 	MergeRequest struct {
@@ -499,7 +502,7 @@ type hook struct {
 // wider than the core consumes, and erroring would turn every unrelated push
 // into a failed delivery that GitLab then disables the hook over.
 func (p *Provider) ParseWebhook(r *http.Request) ([]provider.ForgeEvent, error) {
-	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+	body, err := provider.ReadWebhookBody(r, maxPayloadBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -534,7 +537,7 @@ func (p *Provider) ParseWebhook(r *http.Request) ([]provider.ForgeEvent, error) 
 		return []provider.ForgeEvent{{
 			Kind: provider.ForgeReviewSubmitted, Repo: repo, PR: h.MergeRequest.IID,
 			Branch: h.MergeRequest.SourceBranch, Body: h.ObjectAttributes.Note,
-			Actor: h.User.Username, Review: provider.ForgeReviewCommented,
+			Actor: h.User.Username, Review: provider.ForgeReviewCommented, ReviewID: noteID(h.ObjectAttributes.ID),
 			PullRequest: provider.PullRequestFacts{HeadSHA: h.MergeRequest.LastCommit.ID},
 		}}, nil
 
@@ -603,8 +606,47 @@ func (p *Provider) ParseWebhook(r *http.Request) ([]provider.ForgeEvent, error) 
 	return nil, nil
 }
 
+const maxPayloadBytes = 1 << 20
+
+// IdempotencyKeyHeader carries the id GitLab keeps when it retries a webhook
+// delivery, sent by GitLab 17.4 and later.
+const IdempotencyKeyHeader = "Idempotency-Key"
+
+// DeliveryID returns GitLab's Idempotency-Key when the request carries one.
+// An older GitLab sends none, and the id is then synthetic: the object kind,
+// the project, the object's id with its action or status, and its updated
+// time, or for a pipeline its finished time. An event without either time
+// yields none and is not deduplicated.
+func (p *Provider) DeliveryID(r *http.Request) string {
+	if key := strings.TrimSpace(r.Header.Get(IdempotencyKeyHeader)); key != "" {
+		return key
+	}
+	body, err := provider.ReadWebhookBody(r, maxPayloadBytes)
+	if err != nil {
+		return ""
+	}
+	var h hook
+	if err := json.Unmarshal(body, &h); err != nil || h.ObjectAttributes.ID <= 0 {
+		return ""
+	}
+	changed := h.ObjectAttributes.UpdatedAt
+	if changed == "" {
+		changed = h.ObjectAttributes.FinishedAt
+	}
+	object := fmt.Sprintf("%s %d %s%s", h.Project.PathWithNamespace, h.ObjectAttributes.ID,
+		h.ObjectAttributes.Action, h.ObjectAttributes.Status)
+	return provider.SyntheticDeliveryID(p.Name(), h.ObjectKind, object, changed)
+}
+
 type lastCommit struct {
 	ID string `json:"id"`
+}
+
+func noteID(id int64) string {
+	if id <= 0 {
+		return ""
+	}
+	return strconv.FormatInt(id, 10)
 }
 
 func approvalState(action string) provider.ForgeReviewState {
