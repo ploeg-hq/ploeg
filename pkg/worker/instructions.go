@@ -6,88 +6,21 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"html"
 	"io"
 	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
 	"strings"
-	"unicode"
 
 	"github.com/ploeg-hq/ploeg/pkg/harness"
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
-const maxReportedHiddenCharacters = 20
-
-type hiddenCharacter struct {
-	Path   string
-	Line   int
-	Column int
-	Rune   rune
-}
-
-func (h hiddenCharacter) String() string {
-	return fmt.Sprintf("%s line %d column %d (U+%04X)", h.Path, h.Line, h.Column, h.Rune)
-}
-
-type hiddenCharacters struct {
-	Found []hiddenCharacter
-	Total int
-}
-
-func (h *hiddenCharacters) record(c hiddenCharacter) {
-	h.Total++
-	if len(h.Found) < maxReportedHiddenCharacters {
-		h.Found = append(h.Found, c)
-	}
-}
-
-type runeCursor struct {
-	source       string
-	line, column int
-}
-
-func newRuneCursor(source string) runeCursor { return runeCursor{source: source, line: 1} }
-
-func (c *runeCursor) step(r rune, hidden *hiddenCharacters) {
-	c.column++
-	if isHiddenRune(r) {
-		hidden.record(hiddenCharacter{Path: c.source, Line: c.line, Column: c.column, Rune: r})
-	}
-	if r == '\n' {
-		c.line, c.column = c.line+1, 0
-	}
-}
-
 type instructionScan struct {
 	Files       []work.InstructionFile
 	Hidden      hiddenCharacters
 	LinkTargets []string
-}
-
-const (
-	firstUnicodeTag = 0xE0000
-	lastUnicodeTag  = 0xE007F
-)
-
-func isHiddenRune(r rune) bool {
-	return unicode.Is(unicode.Cf, r) || (r >= firstUnicodeTag && r <= lastUnicodeTag)
-}
-
-func scanWorkItemText(item work.WorkItem) hiddenCharacters {
-	var hidden hiddenCharacters
-	for _, field := range []struct{ source, text string }{
-		{"Work Item title", item.Title},
-		{"Work Item description", item.Description},
-	} {
-		cursor := newRuneCursor(field.source)
-		for _, r := range html.UnescapeString(field.text) {
-			cursor.step(r, &hidden)
-		}
-	}
-	return hidden
 }
 
 func scanInstructionFiles(root string) (instructionScan, error) {
@@ -192,6 +125,7 @@ func (s *instructionScanner) file(name, rel string) error {
 		}
 		cursor.step(c, &s.scan.Hidden)
 	}
+	cursor.finish(&s.scan.Hidden)
 	s.scan.Files = append(s.scan.Files, work.InstructionFile{Path: rel, SHA256: hex.EncodeToString(digest.Sum(nil))})
 	return nil
 }
