@@ -40,7 +40,7 @@ func TestMint_ScopedToTheRunsRepositoryAndTraceable(t *testing.T) {
 	srv := forgejoTokensAPI(t, "agent-builder", "bot-password", func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewDecoder(r.Body).Decode(&gotBody)
 		w.WriteHeader(http.StatusCreated)
-		_ = json.NewEncoder(w).Encode(map[string]any{"id": 42, "name": gotBody["name"], "sha1": "s3cret-token"})
+		_ = json.NewEncoder(w).Encode(map[string]any{"id": 42, "name": gotBody["name"], "sha1": "s3cret-token", "repositories": restrictedTokenRepositories("webgrip", "ploeg")})
 	})
 
 	b := &Forgejo{BaseURL: srv.URL, Bot: "agent-builder", Password: "bot-password"}

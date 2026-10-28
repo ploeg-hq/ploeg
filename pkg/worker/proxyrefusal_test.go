@@ -330,14 +330,15 @@ func (f *revocableForgejo) serveTokens(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodPost:
 		var body struct {
-			Name string `json:"name"`
+			Name         string           `json:"name"`
+			Repositories []map[string]any `json:"repositories"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		f.nextID++
 		token := "minted-per-run-forge-token-" + strings.Repeat("x", f.nextID)
 		f.live[token] = body.Name
 		w.WriteHeader(http.StatusCreated)
-		_ = json.NewEncoder(w).Encode(map[string]any{"id": f.nextID, "name": body.Name, "sha1": token})
+		_ = json.NewEncoder(w).Encode(map[string]any{"id": f.nextID, "name": body.Name, "sha1": token, "repositories": body.Repositories})
 	case http.MethodDelete:
 		name := strings.TrimPrefix(r.URL.Path, revocableTokensPath+"/")
 		for token, tokenName := range f.live {

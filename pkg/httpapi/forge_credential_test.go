@@ -21,6 +21,7 @@ type fakeTokenForge struct {
 	next         int64
 	tokens       map[string]int64
 	refuseRevoke bool
+	unrestricted bool
 	beforeMint   func()
 	srv          *httptest.Server
 }
@@ -45,16 +46,20 @@ func (f *fakeTokenForge) serve(w http.ResponseWriter, r *http.Request) {
 			f.beforeMint()
 		}
 		var body struct {
-			Name string `json:"name"`
+			Name         string           `json:"name"`
+			Repositories []map[string]any `json:"repositories"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		f.mu.Lock()
 		f.next++
 		id := f.next
 		f.tokens[body.Name] = id
+		if f.unrestricted {
+			body.Repositories = nil
+		}
 		f.mu.Unlock()
 		w.WriteHeader(http.StatusCreated)
-		_ = json.NewEncoder(w).Encode(map[string]any{"id": id, "name": body.Name, "sha1": "secret-" + strconv.FormatInt(id, 10)})
+		_ = json.NewEncoder(w).Encode(map[string]any{"id": id, "name": body.Name, "sha1": "secret-" + strconv.FormatInt(id, 10), "repositories": body.Repositories})
 	case r.Method == http.MethodGet && r.URL.Path == base:
 		f.mu.Lock()
 		list := []map[string]any{}
@@ -155,6 +160,24 @@ func TestClaim_AnUnrecordableTokenIsRevokedAndTheRunReleased(t *testing.T) {
 	}
 	if n := forge.live(); n != 0 {
 		t.Errorf("%d unrecorded push credential(s) left alive", n)
+	}
+	if state, outcome, reason := runState(t); state != "finished" || outcome != "failed" || reason != "infra_node" {
+		t.Errorf("Run = %s/%s/%s, want finished/failed/infra_node", state, outcome, reason)
+	}
+}
+
+func TestClaim_ATokenTheForgeDidNotRestrictIsRevokedAndTheRunReleased(t *testing.T) {
+	reset(t)
+	targetedWriterShift(t, "997")
+	forge := newFakeTokenForge(t)
+	forge.unrestricted = true
+
+	code, resp := postClaim(t, forgeClaimServer(forge.broker()), `{"team":"bronze","role":"builder"}`)
+	if code != http.StatusNoContent || resp.ForgeToken != "" {
+		t.Fatalf("claim = %d with token %q, want 204 and no token", code, resp.ForgeToken)
+	}
+	if n := forge.live(); n != 0 {
+		t.Errorf("%d unrestricted push credential(s) left alive", n)
 	}
 	if state, outcome, reason := runState(t); state != "finished" || outcome != "failed" || reason != "infra_node" {
 		t.Errorf("Run = %s/%s/%s, want finished/failed/infra_node", state, outcome, reason)

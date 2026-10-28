@@ -462,13 +462,20 @@ rows:
           job: verify
           contains: ["mise run verify"]
           test: {package: pkg/forgebroker, name: TestMint_ScopedToTheRunsRepositoryAndTraceable}
+      - ci:
+          workflow: ci.yml
+          job: verify
+          contains: ["mise run verify"]
+          test: {package: pkg/forgebroker, name: TestMint_RefusesAndRevokesATokenTheForgeDidNotRestrict}
       - doc:
           path: docs/security/credential-flow.md#qualification-against-a-live-forge
           label: credential flow, live forge
           contains: ["Against Forgejo `15.0.10+gitea-1.22.0` it minted a token for `agent-builder`"]
     limits: >-
       Minting is tested against a fake. The live probe showed Forgejo 15.0.10 refusing a revoked plain token at once; it did
-      not run a release's broker. The broker does not check that Forgejo honoured the repository restriction (F-10, #298).
+      not run a release's broker. The broker refuses and deletes a token whose mint answer does not name only the Run's
+      repository (F-10, ADR-0172); that a restricted token is refused on another repository of a live forge rests on the
+      opt-in qualification, not yet run through the broker.
 
   - id: forge-forgejo-old
     axis: forge
@@ -479,7 +486,14 @@ rows:
           path: docs/security/threat-model.md#profile-p1-unattended-workers-without-docker-credential-proxies-on
           label: threat model, P1 Forge row
           contains: ["Forgejo 15 or later with `botPasswordSecret` (per-Run repository tokens)"]
-    limits: Repository-scoped tokens exist only from Forgejo 15.
+      - ci:
+          workflow: ci.yml
+          job: verify
+          contains: ["mise run verify"]
+          test: {package: cmd/ploegd, name: TestForgeCredentials_RefusesTheBrokerOnAForgeOlderThan15AndNamesTheVersion}
+    limits: >-
+      Repository-scoped tokens exist only from Forgejo 15. With `botPasswordSecret` set, ploegd reads the forge version at
+      start and refuses to run below 15, naming the version (ADR-0172).
 
   - id: forge-shared-token
     axis: forge
