@@ -67,7 +67,7 @@ exceptions:
     surface: environment
     pointer: PLOEG_RUN_IDENTITY_AUDIENCES
     adr: "0149"
-  - base: v0.2.0-rc.83
+  - base: v0.2.0-rc.90
     surface: ops/helm/ploeg/values.yaml
     pointer: executor.namespace
     adr: "0169"
