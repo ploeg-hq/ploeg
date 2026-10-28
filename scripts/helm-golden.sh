@@ -139,10 +139,11 @@ for case in "ops/helm/ploeg/ci/reject-reader-without-read-token-values.yaml:read
 done
 
 P1_VALUES=ops/helm/ploeg/ci/executor-default-worker-values.yaml
+P1_CHART=ops/helm/ploeg
 leaves_p1() {
 	expected=$1
 	shift
-	if out=$(helm template ploeg ops/helm/ploeg -f "$REQUIRED" -f "$P1_VALUES" "$@" 2>&1); then
+	if out=$(helm template ploeg "$P1_CHART" -f "$REQUIRED" -f "$P1_VALUES" "$@" 2>&1); then
 		echo "chart rendered $*, which leaves profile P1 under supportProfile: P1"
 		status=1
 	elif ! printf '%s' "$out" | grep -qF -- "$expected"; then
@@ -150,7 +151,7 @@ leaves_p1() {
 		echo "$out"
 		status=1
 	fi
-	if ! helm template ploeg ops/helm/ploeg -f "$REQUIRED" -f "$P1_VALUES" "$@" --set supportProfile=unsupported >/dev/null 2>&1; then
+	if ! helm template ploeg "$P1_CHART" -f "$REQUIRED" -f "$P1_VALUES" "$@" --set supportProfile=unsupported >/dev/null 2>&1; then
 		echo "chart refused $* with supportProfile: unsupported, which must render it"
 		status=1
 	fi
@@ -183,13 +184,17 @@ leaves_p1 'the worker-bin image registry.example/ploegd:0.2.0 (executor.workerIm
 leaves_p1 'the sandbox launcher image ghcr.io/ploeg-hq/ploegd:' --set executor.type=sandbox --set executor.sandbox.runtimeClassName=kata --set image.digest=
 leaves_p1 'the dind image docker.io/library/docker:29.8.2-dind (executor.dindImage) is not pinned by digest' --set 'executor.teams[0].harness.dind=true' --set 'executor.teams[0].harness.acknowledgePrivilegedDind=true' --set executor.dindImage=docker.io/library/docker:29.8.2-dind
 leaves_p1 'the claude-runner image ghcr.io/ploeg-hq/claude-runner:latest (claudeRunner.image) is not pinned by digest' --set claudeRunner.enabled=true --set claudeRunner.environmentSecret.name=claude-runner-environment --set claudeRunner.image.tag=latest
+leaves_p1 'team defaults resolves no spend cap (executor.spendCap, executor.teams[].spendCap or config.teams.defaults.spendCap)' --set executor.spendCap.usd=0
+leaves_p1 'team defaults resolves no spend cap' --set 'executor.teams[0].spendCap.usd=0'
+leaves_p1 'team defaults resolves no spend cap' --set config.teams.defaults.spendCap.usd=0
+leaves_p1 'team defaults resolves no spend cap' --set executor.spendCap=null
 if out=$(helm template ploeg ops/helm/ploeg -f "$REQUIRED" --set supportProfile=P2 2>&1) || ! printf '%s' "$out" | grep -qF "value must be one of 'P1', 'unsupported'"; then
 	echo "chart did not refuse supportProfile P2 by its schema:"
 	echo "$out"
 	status=1
 fi
 renders_p1() {
-	if ! out=$(helm template ploeg ops/helm/ploeg -f "$REQUIRED" -f "$P1_VALUES" "$@" 2>&1); then
+	if ! out=$(helm template ploeg "$P1_CHART" -f "$REQUIRED" -f "$P1_VALUES" "$@" 2>&1); then
 		echo "chart refused $* under supportProfile: P1, which it must render:"
 		echo "$out"
 		status=1
@@ -205,6 +210,47 @@ renders_p1 --set 'executor.harness.toolchains[0].name=go' --set 'executor.harnes
 renders_p1 --set executor.workerImage=registry.example/ploeg-worker:0.2.0@sha256:db06af1d9c0969ed594a21ee2b3369a79d6e91abb36b94d29223918581963027
 renders_p1 -f ops/helm/ploeg/ci/executor-public-endpoints-values.yaml
 renders_p1 --set networkPolicy.privateCidrs=null
+PLOEGD_CALLERS=ops/helm/ploeg/ci/ploegd-callers-values.yaml
+renders_p1
+renders_p1 -f "$PLOEGD_CALLERS"
+chart_from_0_3=$(mktemp -d)
+cp -R ops/helm/ploeg "$chart_from_0_3/ploeg"
+sed 's/^version:.*/version: 0.3.0/' ops/helm/ploeg/Chart.yaml >"$chart_from_0_3/ploeg/Chart.yaml"
+P1_CHART=$chart_from_0_3/ploeg
+leaves_p1 'networkPolicy.ploegd.ingressFrom is empty, so ploegd'"'"'s NetworkPolicy admits port 8080 from every pod in every namespace'
+leaves_p1 'networkPolicy.ploegd.ingressFrom is empty' --set 'networkPolicy.ploegd.ingressFrom=null'
+renders_p1 -f "$PLOEGD_CALLERS"
+ploegd_ingress=$(helm template ploeg "$P1_CHART" -f "$REQUIRED" -f "$P1_VALUES" -f "$PLOEGD_CALLERS" -s templates/networkpolicy.yaml 2>&1 | awk '/^  name: ploeg-ploegd$/ { found = 1 } found && /^  egress:/ { exit } found')
+for caller in 'kubernetes.io/metadata.name: gateway' '- ploeg-worker' '- ploeg-sandbox-launcher' '- ploeg-mcp' '- ploeg-claude-runner'; do
+	if ! printf '%s' "$ploegd_ingress" | grep -qF -- "$caller"; then
+		echo "chart 0.3.0 with networkPolicy.ploegd.ingressFrom named renders a ploegd ingress without '$caller':"
+		echo "$ploegd_ingress"
+		status=1
+	fi
+done
+if out=$(helm template ploeg "$P1_CHART" -f "$REQUIRED" -f "$P1_VALUES" --set networkPolicy.enabled=false 2>&1) || printf '%s' "$out" | grep -qF 'ingressFrom is empty'; then
+	echo "chart 0.3.0 with networkPolicy.enabled: false names ingressFrom, which has no policy to fill:"
+	echo "$out"
+	status=1
+fi
+P1_CHART=ops/helm/ploeg
+rm -rf "$chart_from_0_3"
+notes=$(helm install --dry-run=client ploeg ops/helm/ploeg -f "$REQUIRED" -f "$P1_VALUES" 2>&1)
+if ! printf '%s' "$notes" | grep -qF 'WARNING: networkPolicy.ploegd.ingressFrom is empty'; then
+	echo "a chart before 0.3.0 renders an empty networkPolicy.ploegd.ingressFrom without its warning"
+	status=1
+fi
+notes=$(helm install --dry-run=client ploeg ops/helm/ploeg -f "$REQUIRED" -f "$P1_VALUES" -f "$PLOEGD_CALLERS" 2>&1)
+if printf '%s' "$notes" | grep -qF 'ingressFrom is empty'; then
+	echo "a chart with networkPolicy.ploegd.ingressFrom named still warns that it is empty"
+	status=1
+fi
+renders_p1 --set executor.spendCap.usd=0 --set 'executor.teams[0].spendCap.usd=5' --set 'executor.teams[0].spendCap.period=week'
+renders_p1 --set executor.spendCap=null --set config.teams.defaults.spendCap.usd=50 --set config.teams.defaults.spendCap.period=month
+if ! helm template ploeg ops/helm/ploeg -f "$REQUIRED" -f "$P1_VALUES" --set 'executor.teams[0].spendCap.usd=5' --set 'executor.teams[0].spendCap.period=week' | grep -qF 'value: "{\"defaults\":{\"period\":\"week\",\"usd\":5}}"'; then
+	echo "a team's own spendCap does not reach ploegd as PLOEG_TEAM_SPEND_CAPS"
+	status=1
+fi
 for p1 in "" "$P1_VALUES"; do
 	if ! out=$(helm template ploeg ops/helm/ploeg -f "$REQUIRED" ${p1:+-f "$p1"} 2>&1); then
 		echo "chart refused the P1 values ${p1:-defaults}, which it must render:"
@@ -222,6 +268,60 @@ if printf '%s' "$notes" | grep -qF 'UNSUPPORTED'; then
 	echo "the P1 render carries the unsupported profile's note"
 	status=1
 fi
+
+BEARER_VALUES=ops/helm/ploeg/ci/operator-bearer-without-claims-values.yaml
+BEARER_DEPARTURE='operator consumer console has execute and accepts a person token as the bearer (audiences or clientIds) without requireClaims'
+BEARER_WARNING='WARNING: operator consumers console have execute and accept'
+renders_p1 -f "$BEARER_VALUES"
+notes=$(helm install --dry-run=client ploeg ops/helm/ploeg -f "$REQUIRED" -f "$P1_VALUES" -f "$BEARER_VALUES" 2>&1)
+if ! printf '%s' "$notes" | grep -qF -- "$BEARER_WARNING"; then
+	echo "a P1 render before chart 0.3.0 does not warn about an execute consumer that requires no person token claim:"
+	echo "$notes"
+	status=1
+fi
+notes=$(helm install --dry-run=client ploeg ops/helm/ploeg -f "$REQUIRED" -f "$P1_VALUES" -f "$BEARER_VALUES" --set 'operator.consumers[0].requireClaims.groups={ploeg-operators}' 2>&1)
+if printf '%s' "$notes" | grep -qF -- 'WARNING: operator consumers'; then
+	echo "a consumer that requires a person token claim is still warned about"
+	status=1
+fi
+if out=$(helm template ploeg ops/helm/ploeg -f "$REQUIRED" -f "$P1_VALUES" -f "$BEARER_VALUES" --set 'operator.consumers[0].requireClaims.groups=' 2>&1); then
+	echo "chart rendered requireClaims with a claim that lists no value"
+	status=1
+fi
+static_consumer='{"operator": {"consumers": [{"name": "static", "teams": ["silver"], "execute": true, "requireClaims": {"groups": ["ploeg-operators"]}, "tokenSecret": {"name": "ploeg-static", "key": "token"}}]}}'
+if out=$(printf '%s' "$static_consumer" | helm template ploeg ops/helm/ploeg -f "$REQUIRED" -f "$P1_VALUES" -f - 2>&1) || ! printf '%s' "$out" | grep -qF "missing property 'audiences'"; then
+	echo "chart rendered requireClaims on a consumer that names no audiences or clientIds:"
+	echo "$out"
+	status=1
+fi
+next_minor=$(mktemp -d)
+for version in 0.3.0-rc.1 0.3.0; do
+	rm -rf "$next_minor/ploeg"
+	cp -R ops/helm/ploeg "$next_minor/ploeg"
+	sed "s/^version:.*/version: $version/" ops/helm/ploeg/Chart.yaml >"$next_minor/ploeg/Chart.yaml"
+	if out=$(helm template ploeg "$next_minor/ploeg" -f "$REQUIRED" -f "$P1_VALUES" -f "$PLOEGD_CALLERS" -f "$BEARER_VALUES" 2>&1); then
+		echo "chart $version rendered an execute consumer that requires no person token claim under supportProfile: P1"
+		status=1
+	elif ! printf '%s' "$out" | grep -qF -- "$BEARER_DEPARTURE"; then
+		echo "chart $version refused the bearer consumer for the wrong reason:"
+		echo "$out"
+		status=1
+	fi
+	for passing in "--set=operator.consumers[0].requireClaims.groups={ploeg-operators}" "--set=operator.consumers[0].execute=false" "--set=supportProfile=unsupported"; do
+		if ! out=$(helm template ploeg "$next_minor/ploeg" -f "$REQUIRED" -f "$P1_VALUES" -f "$PLOEGD_CALLERS" -f "$BEARER_VALUES" "$passing" 2>&1); then
+			echo "chart $version refused the bearer consumer with $passing, which it must render:"
+			echo "$out"
+			status=1
+		fi
+	done
+	notes=$(helm install --dry-run=client ploeg "$next_minor/ploeg" -f "$REQUIRED" -f "$P1_VALUES" -f "$PLOEGD_CALLERS" -f "$BEARER_VALUES" --set supportProfile=unsupported 2>&1)
+	if ! printf '%s' "$notes" | grep -qF -- "- $BEARER_DEPARTURE" || printf '%s' "$notes" | grep -qF -- "$BEARER_WARNING"; then
+		echo "chart $version under supportProfile: unsupported does not list the bearer consumer as a departure in place of the warning:"
+		echo "$notes"
+		status=1
+	fi
+done
+rm -rf "$next_minor"
 
 must_render_with() {
 	values=$1

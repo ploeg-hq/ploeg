@@ -933,6 +933,9 @@ executor:
   dindResources:
     requests: {cpu: "1", memory: 1536Mi}
     limits: {cpu: "1", memory: 1536Mi}
+  spendCap:
+    usd: 20
+    period: day
   teams: []
   # - name: bronze
   #   model: litellm_proxy/deepseek-chat

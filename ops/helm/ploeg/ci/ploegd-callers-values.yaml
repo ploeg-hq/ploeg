@@ -1,0 +1,6 @@
+networkPolicy:
+  ploegd:
+    ingressFrom:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: gateway

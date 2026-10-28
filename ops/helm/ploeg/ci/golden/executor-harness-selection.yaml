@@ -246,9 +246,11 @@ spec:
             - name: GOMEMLIMIT
               value: "230MiB"
             - name: PLOEG_TEAM_PLANS
-              value: "{\"gold\":{\"maxFixRounds\":0,\"pool\":\"6\",\"rounds\":[{\"roles\":[{\"cap\":\"3.00\",\"model\":\"litellm_proxy/deepseek-v4\",\"models\":[\"deepseek-v4\",\"kimi-k3\"],\"name\":\"builder\",\"writes\":true}]},{\"roles\":[{\"cap\":\"0.75\",\"harnesses\":[\"openhands\"],\"name\":\"reviewer\",\"writes\":false}]}]}}"
+              value: "{\"gold\":{\"independentReview\":{\"model\":true},\"maxFixRounds\":0,\"pool\":\"6\",\"rounds\":[{\"roles\":[{\"cap\":\"3.00\",\"model\":\"litellm_proxy/deepseek-v4\",\"models\":[\"deepseek-v4\",\"kimi-k3\"],\"name\":\"builder\",\"writes\":true}]},{\"roles\":[{\"cap\":\"0.75\",\"harnesses\":[\"openhands\"],\"name\":\"reviewer\",\"writes\":false}]}]}}"
             - name: PLOEG_TEAM_HARNESSES
               value: "{\"gold\":{\"builder\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"openhands\",\"qualification\":\"qualified\"},{\"name\":\"acp\",\"profile\":\"opencode\",\"qualification\":\"unqualified\"},{\"name\":\"acp\",\"profile\":\"qwen-code\",\"qualification\":\"unqualified\"}],\"name\":\"openhands\"},\"reviewer\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"openhands\",\"qualification\":\"qualified\"}],\"name\":\"openhands\"}},\"silver\":{\"\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"openhands\",\"qualification\":\"qualified\"}],\"name\":\"openhands\"}}}"
+            - name: PLOEG_TEAM_SPEND_CAPS
+              value: "{\"gold\":{\"period\":\"day\",\"usd\":20},\"silver\":{\"period\":\"day\",\"usd\":20}}"
             - name: PLOEG_FORGEJO_URL
               value: "http://forgejo-http.forgejo.svc.cluster.local:3000"
             - name: PLOEG_FORGEJO_TOKEN

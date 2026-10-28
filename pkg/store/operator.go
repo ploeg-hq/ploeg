@@ -45,6 +45,20 @@ type OperatorTeam struct {
 	Assignees  []string       `json:"assignees"`
 	// PinnedScopes are the tracker containers whose items always run as this team, whoever is assigned.
 	PinnedScopes []string `json:"pinnedScopes"`
+	// SpendCap is the team's spend cap and its spend in the current period
+	// (ADR-0162); nil when the team has none.
+	SpendCap *OperatorSpendCap `json:"spendCap"`
+}
+
+// OperatorSpendCap is a Team's spend cap as the Teams read shows it.
+type OperatorSpendCap struct {
+	USD          float64   `json:"usd"`
+	Period       string    `json:"period"`
+	PeriodStart  time.Time `json:"periodStart"`
+	PeriodEnd    time.Time `json:"periodEnd"`
+	SettledUSD   float64   `json:"settledUsd"`
+	HeldUSD      float64   `json:"heldUsd"`
+	RemainingUSD float64   `json:"remainingUsd"`
 }
 
 type OperatorRole struct {
@@ -671,6 +685,9 @@ func (s *Store) OperatorTeams(ctx context.Context, teams []string, registered ma
 		return nil, err
 	}
 	if err := s.observeRoleHarnesses(ctx, byID); err != nil {
+		return nil, err
+	}
+	if err := s.describeSpendCaps(ctx, byID); err != nil {
 		return nil, err
 	}
 	out := make([]OperatorTeam, 0, len(byID))

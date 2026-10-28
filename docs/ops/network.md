@@ -24,7 +24,7 @@ Policy evaluation sees the destination pod and its port, not the Service. Every 
 
 | Policy | Selects | Ingress | Egress |
 | --- | --- | --- | --- |
-| `<release>-ploegd` | the ploegd pod (`ploeg.webgrip.dev/component: daemon`) | 8080 from `networkPolicy.ploegd.ingressFrom`; when that is empty, from any peer | DNS; the database; the model gateway (`executor.litellm.adminUrl` and `baseUrl`); every configured forge (`publicUrl` or `url`; `api.github.com` for github.com); every configured tracker; `knowledgeGraph.url`; the Anthropic JWKS when a team runs `claude-environment` |
+| `<release>-ploegd` | the ploegd pod (`ploeg.webgrip.dev/component: daemon`) | 8080 from `networkPolicy.ploegd.ingressFrom`; when that is empty, from any peer, which P1 warns about before chart 0.3.0 and refuses from it | DNS; the database; the model gateway (`executor.litellm.adminUrl` and `baseUrl`); every configured forge (`publicUrl` or `url`; `api.github.com` for github.com); every configured tracker; `knowledgeGraph.url`; the Anthropic JWKS when a team runs `claude-environment` |
 | `<release>-worker` | every worker pod (`app.kubernetes.io/name: ploeg-worker`), under the `keda`, `cronjob` and `sandbox` executors alike | none | DNS; ploegd on 8080; the model gateway (`executor.litellm.baseUrl`); the executor's forge (`executor.<forge>.url`); every OTLP collector a `telemetry.endpoint` names |
 | `<release>-worker-<team>-anthropic` | the worker pods of a team whose Role runs `claude-environment` with a worker as carrier | (egress only) | the internet on 443, outside `privateCidrs` |
 | `<release>-sandbox-launcher` | the sandbox launcher pods, rendered when a team runs under the `sandbox` executor | none | DNS; ploegd on 8080; the Kubernetes API on `networkPolicy.kubernetesApi.ports` |
@@ -77,7 +77,7 @@ DNS is not narrowed by name. Every policy allows UDP and TCP 53 to `networkPolic
 
 ## Ingress to ploegd
 
-ploegd is reached by workers, launchers, ploeg-mcp and claude-runner from inside the namespace, by the gateway that forwards tracker and forge webhooks, by operator consumers, and by Prometheus. The chart knows the first group and not the others, so `networkPolicy.ploegd.ingressFrom` is empty by default and the rule allows port 8080 from any peer. ploegd authenticates every route of its own, so this is the P1 profile's transport assumption restated, not a widening of it. Set `ingressFrom` to the gateway's and Prometheus's namespaces and the policy allows those peers plus this release's own pods, and nothing else:
+ploegd is reached by workers, launchers, ploeg-mcp and claude-runner from inside the namespace, by the gateway that forwards tracker and forge webhooks, by operator consumers, and by Prometheus. The chart knows the first group and not the others, so `networkPolicy.ploegd.ingressFrom` is empty by default and the rule allows port 8080 from any peer. That admits every pod in the cluster to `/metrics`, `/healthz`, `/readyz` and the JWKS, which answer without authentication, over plain HTTP ([F-45](../security/threat-model.md#findings)). Naming the callers is therefore an installer duty under profile P1: before chart 0.3.0 the install notes warn when `ingressFrom` is empty, and from 0.3.0 `supportProfile: P1` refuses the render. Set `ingressFrom` to the gateway's and Prometheus's namespaces and the policy allows those peers plus this release's own pods, and nothing else:
 
 ```yaml
 networkPolicy:
