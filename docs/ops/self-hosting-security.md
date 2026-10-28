@@ -4,7 +4,8 @@ This page describes this source revision, not an installation's running state.
 Each release packages it as `SECURITY.md` together with
 `security-contract.json`. Keep both with the chart digest and values.
 Contract revision 1 starts with this change and does not retroactively qualify
-older releases. Development docs are not evidence about an older chart.
+older releases. Revision 2 turns native admission on by default under profile
+P1 ([ADR 0168](../adrs/0168-profile-p1-turns-on-the-worker-admission-policy-and-a-sandbox-team-names-its-runtime-class-there.md)). Development docs are not evidence about an older chart.
 
 ## Ownership and chart settings
 
@@ -23,7 +24,9 @@ networkPolicy:
 ```
 
 Merge this fragment into a fully configured installation. Native admission is
-opt-in; the chart already enables its baseline NetworkPolicies and strict
+on by default under `supportProfile: P1` and off under `unsupported`, and
+`enabled: false` needs `unsupported`; a team on the sandbox executor needs
+`runtimeClassNames` to name its runtime class; the chart already enables its baseline NetworkPolicies and strict
 credential-isolation profile by default. This fragment is not a complete
 deployment or proof of enforcement.
 
