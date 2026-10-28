@@ -12,6 +12,18 @@
 {{- if semverCompare ">=0.3.0-0" .Chart.Version -}}true{{- end -}}
 {{- end -}}
 
+{{- define "ploeg.operatorAttribution" -}}
+{{- if .Values.operator.attribution -}}
+{{- .Values.operator.attribution -}}
+{{- else if hasKey .Values.env "PLOEG_OPERATOR_ATTRIBUTION" -}}
+{{- toString (index .Values.env "PLOEG_OPERATOR_ATTRIBUTION") | default "asserted" -}}
+{{- else if semverCompare ">=0.3.0-0" .Chart.Version -}}
+proven
+{{- else -}}
+asserted
+{{- end -}}
+{{- end -}}
+
 {{- define "ploeg.operatorControlEnv" -}}
 {{- $consumers := list -}}
 {{- $names := dict -}}
@@ -68,6 +80,17 @@
 - name: PLOEG_OPERATOR_PERSON_SUBJECT_NAMESPACE
   value: {{ .subjectNamespace | quote }}
 {{- end }}
+{{- end }}
+{{- $attribution := include "ploeg.operatorAttribution" . -}}
+{{- if and .Values.operator.attribution (hasKey .Values.env "PLOEG_OPERATOR_ATTRIBUTION") -}}
+{{- fail "operator.attribution and env.PLOEG_OPERATOR_ATTRIBUTION cannot both be configured" -}}
+{{- end -}}
+{{- if and (eq $attribution "proven") .Values.operator.consumers (not .Values.operator.personTokens) (not (hasKey .Values.env "PLOEG_OPERATOR_PERSON_ISSUER")) -}}
+{{- fail "operator.attribution resolves to proven, which accepts an operator change only with a person token, and operator.personTokens is empty; configure operator.personTokens and each consumer's audiences or clientIds (ADR-0150), or set operator.attribution: asserted to keep header attribution (ADR-0171, threat model F-07)" -}}
+{{- end -}}
+{{- if and (not (hasKey .Values.env "PLOEG_OPERATOR_ATTRIBUTION")) (or .Values.operator.attribution (eq $attribution "proven")) }}
+- name: PLOEG_OPERATOR_ATTRIBUTION
+  value: {{ $attribution | quote }}
 {{- end }}
 {{- if .Values.operator.deliveryPolicies }}
 {{- if hasKey .Values.env "PLOEG_OPERATOR_DELIVERY_POLICIES" -}}

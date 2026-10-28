@@ -1186,6 +1186,12 @@
             ]
           }
         },
+        "attribution": {
+          "type": "string",
+          "enum": ["", "asserted", "proven"],
+          "default": "",
+          "description": "ADR-0171, threat model F-07: forwarded as PLOEG_OPERATOR_ATTRIBUTION. proven refuses every operator change without a person token (403 person_token_required) and keeps reads open; asserted accepts a change that names its person in X-Ploeg-Actor alone. Empty resolves to asserted before chart 0.3.0 and to proven from chart 0.3.0; a resolved proven with consumers needs personTokens."
+        },
         "personTokens": {
           "type": "object",
           "additionalProperties": false,

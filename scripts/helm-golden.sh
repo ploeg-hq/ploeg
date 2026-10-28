@@ -323,6 +323,80 @@ for version in 0.3.0-rc.1 0.3.0; do
 done
 rm -rf "$next_minor"
 
+HEADER_VALUES=ops/helm/ploeg/ci/operator-header-attribution-values.yaml
+ATTRIBUTION_WARNING='WARNING: operator.attribution resolves to asserted'
+ATTRIBUTION_REFUSAL='operator.attribution resolves to proven, which accepts an operator change only with a person token'
+attribution_env() {
+	printf '%s' "$1" | grep -A1 -F -- '- name: PLOEG_OPERATOR_ATTRIBUTION' 2>/dev/null | awk '/value:/ { print $2 }' | tr -d '"' | tr '\n' ' ' | sed 's/ $//'
+}
+attribution_renders() {
+	want=$1
+	chart=$2
+	shift 2
+	if ! out=$(helm template ploeg "$chart" -f "$REQUIRED" -f "$PLOEGD_CALLERS" "$@" 2>&1); then
+		echo "chart $chart refused $*, which must render PLOEG_OPERATOR_ATTRIBUTION '$want':"
+		echo "$out"
+		status=1
+	elif [ "$(attribution_env "$out")" != "$want" ]; then
+		echo "chart $chart with $* renders PLOEG_OPERATOR_ATTRIBUTION '$(attribution_env "$out")', want '$want'"
+		status=1
+	fi
+}
+attribution_refused() {
+	expected=$1
+	chart=$2
+	shift 2
+	if out=$(helm template ploeg "$chart" -f "$REQUIRED" -f "$PLOEGD_CALLERS" "$@" 2>&1); then
+		echo "chart $chart rendered $*, which it must refuse"
+		status=1
+	elif ! printf '%s' "$out" | grep -qF -- "$expected"; then
+		echo "chart $chart refused $* for the wrong reason (want '$expected'):"
+		echo "$out"
+		status=1
+	fi
+}
+attribution_notes() {
+	warns=$1
+	chart=$2
+	shift 2
+	notes=$(helm install --dry-run=client ploeg "$chart" -f "$REQUIRED" -f "$PLOEGD_CALLERS" "$@" 2>&1)
+	if [ "$warns" = warns ] && ! printf '%s' "$notes" | grep -F -- "$ATTRIBUTION_WARNING" >/dev/null; then
+		echo "chart $chart with $* does not warn that operator attribution resolves to asserted:"
+		echo "$notes"
+		status=1
+	elif [ "$warns" = quiet ] && printf '%s' "$notes" | grep -F -- "$ATTRIBUTION_WARNING" >/dev/null; then
+		echo "chart $chart with $* warns about asserted attribution it does not resolve to"
+		status=1
+	fi
+}
+SOURCE_CHART=ops/helm/ploeg
+attribution_renders '' "$SOURCE_CHART" -f "$HEADER_VALUES"
+attribution_notes warns "$SOURCE_CHART" -f "$HEADER_VALUES"
+attribution_notes quiet "$SOURCE_CHART"
+attribution_renders asserted "$SOURCE_CHART" -f "$HEADER_VALUES" --set operator.attribution=asserted
+attribution_refused "$ATTRIBUTION_REFUSAL" "$SOURCE_CHART" -f "$HEADER_VALUES" --set operator.attribution=proven
+attribution_renders proven "$SOURCE_CHART" -f "$BEARER_VALUES" --set operator.attribution=proven
+attribution_notes quiet "$SOURCE_CHART" -f "$BEARER_VALUES" --set operator.attribution=proven
+attribution_renders asserted "$SOURCE_CHART" -f "$HEADER_VALUES" --set env.PLOEG_OPERATOR_ATTRIBUTION=asserted
+attribution_refused 'operator.attribution and env.PLOEG_OPERATOR_ATTRIBUTION cannot both be configured' "$SOURCE_CHART" -f "$HEADER_VALUES" --set operator.attribution=asserted --set env.PLOEG_OPERATOR_ATTRIBUTION=asserted
+attribution_refused "value must be one of" "$SOURCE_CHART" -f "$HEADER_VALUES" --set operator.attribution=trusted
+next_minor=$(mktemp -d)
+for version in 0.3.0-rc.1 0.3.0; do
+	rm -rf "$next_minor/ploeg"
+	cp -R ops/helm/ploeg "$next_minor/ploeg"
+	sed "s/^version:.*/version: $version/" ops/helm/ploeg/Chart.yaml >"$next_minor/ploeg/Chart.yaml"
+	attribution_renders proven "$next_minor/ploeg" -f "$BEARER_VALUES" --set 'operator.consumers[0].requireClaims.groups={ploeg-operators}'
+	attribution_notes quiet "$next_minor/ploeg" -f "$BEARER_VALUES" --set 'operator.consumers[0].requireClaims.groups={ploeg-operators}'
+	attribution_refused "$ATTRIBUTION_REFUSAL" "$next_minor/ploeg" -f "$HEADER_VALUES"
+	attribution_renders asserted "$next_minor/ploeg" -f "$HEADER_VALUES" --set operator.attribution=asserted
+	attribution_notes warns "$next_minor/ploeg" -f "$HEADER_VALUES" --set operator.attribution=asserted
+	attribution_renders asserted "$next_minor/ploeg" -f "$HEADER_VALUES" --set env.PLOEG_OPERATOR_ATTRIBUTION=asserted
+	attribution_renders proven "$next_minor/ploeg" -f "$BEARER_VALUES" --set 'operator.consumers[0].requireClaims.groups={ploeg-operators}' --set env.PLOEG_OPERATOR_ATTRIBUTION=proven
+	attribution_renders '' "$next_minor/ploeg"
+	attribution_notes quiet "$next_minor/ploeg"
+done
+rm -rf "$next_minor"
+
 must_render_with() {
 	values=$1
 	shift
