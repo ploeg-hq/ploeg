@@ -39,3 +39,7 @@ exceptions:
     surface: ops/helm/ploeg/values.yaml
     pointer: executor.spendCap
     adr: "0162"
+  - base: v0.2.0-rc.83
+    surface: ops/helm/ploeg/values.yaml
+    pointer: networkPolicy.ploegd.ingressFrom
+    adr: "0154"

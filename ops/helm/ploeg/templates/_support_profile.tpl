@@ -101,12 +101,27 @@
 {{- toJson $out -}}
 {{- end -}}
 
+{{- define "ploeg.ploegdCallersUnnamed" -}}
+{{- if and .Values.networkPolicy.enabled (not ((.Values.networkPolicy.ploegd | default dict).ingressFrom)) -}}
+networkPolicy.ploegd.ingressFrom is empty, so ploegd's NetworkPolicy admits port 8080 from every pod in every namespace; P1 needs the gateway, the operator consumers and Prometheus named there, and the chart adds its own callers (F-45)
+{{- end -}}
+{{- end -}}
+
+{{- define "ploeg.ploegdCallersRequired" -}}
+{{- if semverCompare ">=0.3.0-0" .Chart.Version -}}true{{- end -}}
+{{- end -}}
+
 {{- define "ploeg.supportProfileDepartures" -}}
 {{- $root := . -}}
 {{- $e := .Values.executor -}}
 {{- $out := list -}}
 {{- if not .Values.networkPolicy.enabled -}}
 {{- $out = append $out "networkPolicy.enabled is false; P1 needs the chart's default-deny NetworkPolicies" -}}
+{{- end -}}
+{{- if include "ploeg.ploegdCallersRequired" $root -}}
+{{- with include "ploeg.ploegdCallersUnnamed" $root -}}
+{{- $out = append $out . -}}
+{{- end -}}
 {{- end -}}
 {{- if eq (($e.workerAuth | default dict).mode | default "managed") "legacy" -}}
 {{- $out = append $out "executor.workerAuth.mode is legacy; P1 needs managed" -}}

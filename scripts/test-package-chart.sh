@@ -32,7 +32,13 @@ values = yaml.safe_load(open(sys.argv[1]))
 for stamped_by_release in ("image", "worker", "claudeRunner"):
     values.pop(stamped_by_release, None)
 yaml.safe_dump(values, open(sys.argv[2], "w"))
-' "$ci/required-values.yaml" "$required_without_source_digests"
+values.update(yaml.safe_load(open(sys.argv[4])))
+yaml.safe_dump(values, open(sys.argv[3], "w"))
+' "$ci/required-values.yaml" "$work/required-without-ploegd-callers.yaml" "$required_without_source_digests" "$ci/ploegd-callers-values.yaml"
+if out=$(helm template ploeg "$chart" -f "$work/required-without-ploegd-callers.yaml" 2>&1); then
+  fail 'the published 9.9.9 chart renders an empty networkPolicy.ploegd.ingressFrom under P1'
+fi
+grep -qF 'networkPolicy.ploegd.ingressFrom is empty' <<< "$out" || fail "the published 9.9.9 chart refuses an empty networkPolicy.ploegd.ingressFrom for the wrong reason: $out"
 
 assert_every_image_pinned() { # <label> <helm template args...>
   local label=$1; shift

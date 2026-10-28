@@ -129,7 +129,7 @@
           "properties": {
             "ingressFrom": {
               "$ref": "#/definitions/networkPolicyPeers",
-              "description": "Peers that may reach ploegd on 8080: the gateway that forwards webhooks, operator consumers, Prometheus. Empty allows any peer on that port, because the chart cannot know your gateway; set, the policy allows these peers plus this release's own worker, launcher, ploeg-mcp and claude-runner pods."
+              "description": "Peers that may reach ploegd on 8080: the gateway that forwards webhooks, operator consumers, Prometheus. Empty allows any peer on that port, because the chart cannot know your gateway; set, the policy allows these peers plus this release's own worker, launcher, ploeg-mcp and claude-runner pods. Under supportProfile P1 an empty list is warned about before chart 0.3.0 and refused from it (F-45)."
             },
             "extraIngress": {
               "$ref": "#/definitions/networkPolicyIngressRules"

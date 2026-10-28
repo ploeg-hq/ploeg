@@ -138,10 +138,11 @@ for case in "ops/helm/ploeg/ci/reject-reader-without-read-token-values.yaml:read
 done
 
 P1_VALUES=ops/helm/ploeg/ci/executor-default-worker-values.yaml
+P1_CHART=ops/helm/ploeg
 leaves_p1() {
 	expected=$1
 	shift
-	if out=$(helm template ploeg ops/helm/ploeg -f "$REQUIRED" -f "$P1_VALUES" "$@" 2>&1); then
+	if out=$(helm template ploeg "$P1_CHART" -f "$REQUIRED" -f "$P1_VALUES" "$@" 2>&1); then
 		echo "chart rendered $*, which leaves profile P1 under supportProfile: P1"
 		status=1
 	elif ! printf '%s' "$out" | grep -qF -- "$expected"; then
@@ -149,7 +150,7 @@ leaves_p1() {
 		echo "$out"
 		status=1
 	fi
-	if ! helm template ploeg ops/helm/ploeg -f "$REQUIRED" -f "$P1_VALUES" "$@" --set supportProfile=unsupported >/dev/null 2>&1; then
+	if ! helm template ploeg "$P1_CHART" -f "$REQUIRED" -f "$P1_VALUES" "$@" --set supportProfile=unsupported >/dev/null 2>&1; then
 		echo "chart refused $* with supportProfile: unsupported, which must render it"
 		status=1
 	fi
@@ -192,7 +193,7 @@ if out=$(helm template ploeg ops/helm/ploeg -f "$REQUIRED" --set supportProfile=
 	status=1
 fi
 renders_p1() {
-	if ! out=$(helm template ploeg ops/helm/ploeg -f "$REQUIRED" -f "$P1_VALUES" "$@" 2>&1); then
+	if ! out=$(helm template ploeg "$P1_CHART" -f "$REQUIRED" -f "$P1_VALUES" "$@" 2>&1); then
 		echo "chart refused $* under supportProfile: P1, which it must render:"
 		echo "$out"
 		status=1
@@ -206,6 +207,41 @@ renders_p1 --set 'executor.teams[0].plan[0].roles[0].name=builder' --set 'execut
 renders_p1 --set 'executor.teams[0].harness.image=registry.example/agent-runner@sha256:db06af1d9c0969ed594a21ee2b3369a79d6e91abb36b94d29223918581963027'
 renders_p1 --set 'executor.harness.toolchains[0].name=go' --set 'executor.harness.toolchains[0].image=docker.io/library/golang:1.27-alpine@sha256:db06af1d9c0969ed594a21ee2b3369a79d6e91abb36b94d29223918581963027'
 renders_p1 --set executor.workerImage=registry.example/ploeg-worker:0.2.0@sha256:db06af1d9c0969ed594a21ee2b3369a79d6e91abb36b94d29223918581963027
+PLOEGD_CALLERS=ops/helm/ploeg/ci/ploegd-callers-values.yaml
+renders_p1
+renders_p1 -f "$PLOEGD_CALLERS"
+chart_from_0_3=$(mktemp -d)
+cp -R ops/helm/ploeg "$chart_from_0_3/ploeg"
+sed 's/^version:.*/version: 0.3.0/' ops/helm/ploeg/Chart.yaml >"$chart_from_0_3/ploeg/Chart.yaml"
+P1_CHART=$chart_from_0_3/ploeg
+leaves_p1 'networkPolicy.ploegd.ingressFrom is empty, so ploegd'"'"'s NetworkPolicy admits port 8080 from every pod in every namespace'
+leaves_p1 'networkPolicy.ploegd.ingressFrom is empty' --set 'networkPolicy.ploegd.ingressFrom=null'
+renders_p1 -f "$PLOEGD_CALLERS"
+ploegd_ingress=$(helm template ploeg "$P1_CHART" -f "$REQUIRED" -f "$P1_VALUES" -f "$PLOEGD_CALLERS" -s templates/networkpolicy.yaml 2>&1 | awk '/^  name: ploeg-ploegd$/ { found = 1 } found && /^  egress:/ { exit } found')
+for caller in 'kubernetes.io/metadata.name: gateway' '- ploeg-worker' '- ploeg-sandbox-launcher' '- ploeg-mcp' '- ploeg-claude-runner'; do
+	if ! printf '%s' "$ploegd_ingress" | grep -qF -- "$caller"; then
+		echo "chart 0.3.0 with networkPolicy.ploegd.ingressFrom named renders a ploegd ingress without '$caller':"
+		echo "$ploegd_ingress"
+		status=1
+	fi
+done
+if out=$(helm template ploeg "$P1_CHART" -f "$REQUIRED" -f "$P1_VALUES" --set networkPolicy.enabled=false 2>&1) || printf '%s' "$out" | grep -qF 'ingressFrom is empty'; then
+	echo "chart 0.3.0 with networkPolicy.enabled: false names ingressFrom, which has no policy to fill:"
+	echo "$out"
+	status=1
+fi
+P1_CHART=ops/helm/ploeg
+rm -rf "$chart_from_0_3"
+notes=$(helm install --dry-run=client ploeg ops/helm/ploeg -f "$REQUIRED" -f "$P1_VALUES" 2>&1)
+if ! printf '%s' "$notes" | grep -qF 'WARNING: networkPolicy.ploegd.ingressFrom is empty'; then
+	echo "a chart before 0.3.0 renders an empty networkPolicy.ploegd.ingressFrom without its warning"
+	status=1
+fi
+notes=$(helm install --dry-run=client ploeg ops/helm/ploeg -f "$REQUIRED" -f "$P1_VALUES" -f "$PLOEGD_CALLERS" 2>&1)
+if printf '%s' "$notes" | grep -qF 'ingressFrom is empty'; then
+	echo "a chart with networkPolicy.ploegd.ingressFrom named still warns that it is empty"
+	status=1
+fi
 renders_p1 --set executor.spendCap.usd=0 --set 'executor.teams[0].spendCap.usd=5' --set 'executor.teams[0].spendCap.period=week'
 renders_p1 --set executor.spendCap=null --set config.teams.defaults.spendCap.usd=50 --set config.teams.defaults.spendCap.period=month
 if ! helm template ploeg ops/helm/ploeg -f "$REQUIRED" -f "$P1_VALUES" --set 'executor.teams[0].spendCap.usd=5' --set 'executor.teams[0].spendCap.period=week' | grep -qF 'value: "{\"defaults\":{\"period\":\"week\",\"usd\":5}}"'; then
