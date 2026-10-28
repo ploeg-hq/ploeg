@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"go/format"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"slices"
@@ -24,23 +23,28 @@ func main() {
 	out := flag.String("out", "emoji_tables.go", "the Go file to write")
 	version := flag.String("version", unicode.Version, "the Unicode version of emoji-data.txt, matching Go's unicode tables")
 	flag.Parse()
-	url := fmt.Sprintf("https://www.unicode.org/Public/%s/ucd/emoji/emoji-data.txt", *version)
+	if err := generate(*out, *version); err != nil {
+		fmt.Fprintln(os.Stderr, "emojigen:", err)
+		os.Exit(1)
+	}
+}
+
+func generate(out, version string) error {
+	url := fmt.Sprintf("https://www.unicode.org/Public/%s/ucd/emoji/emoji-data.txt", version)
 	data, err := download(url)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	properties, err := parseEmojiData(data, "Extended_Pictographic", "Emoji_Modifier")
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	digest := sha256.Sum256(data)
-	source, err := render(*version, url, hex.EncodeToString(digest[:]), properties)
+	source, err := render(version, url, hex.EncodeToString(digest[:]), properties)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
-	if err := os.WriteFile(*out, source, 0o644); err != nil {
-		log.Fatal(err)
-	}
+	return os.WriteFile(out, source, 0o644)
 }
 
 func download(url string) ([]byte, error) {
