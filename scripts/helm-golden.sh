@@ -67,6 +67,7 @@ for case in ":default" \
 	"ops/helm/ploeg/ci/executor-isolation-values.yaml:executor-isolation" \
 	"ops/helm/ploeg/ci/executor-isolation-disabled-values.yaml:executor-isolation-disabled" \
 	"ops/helm/ploeg/ci/executor-default-worker-values.yaml:executor-default-worker" \
+	"ops/helm/ploeg/ci/executor-public-endpoints-values.yaml:executor-public-endpoints" \
 	"ops/helm/ploeg/ci/executor-worker-admission-values.yaml:executor-worker-admission" \
 	"ops/helm/ploeg/ci/executor-acknowledged-dind-values.yaml:executor-acknowledged-dind" \
 	"ops/helm/ploeg/ci/executor-harness-container-shared-values.yaml:executor-harness-container-shared" \
@@ -207,6 +208,8 @@ renders_p1 --set 'executor.teams[0].plan[0].roles[0].name=builder' --set 'execut
 renders_p1 --set 'executor.teams[0].harness.image=registry.example/agent-runner@sha256:db06af1d9c0969ed594a21ee2b3369a79d6e91abb36b94d29223918581963027'
 renders_p1 --set 'executor.harness.toolchains[0].name=go' --set 'executor.harness.toolchains[0].image=docker.io/library/golang:1.27-alpine@sha256:db06af1d9c0969ed594a21ee2b3369a79d6e91abb36b94d29223918581963027'
 renders_p1 --set executor.workerImage=registry.example/ploeg-worker:0.2.0@sha256:db06af1d9c0969ed594a21ee2b3369a79d6e91abb36b94d29223918581963027
+renders_p1 -f ops/helm/ploeg/ci/executor-public-endpoints-values.yaml
+renders_p1 --set networkPolicy.privateCidrs=null
 PLOEGD_CALLERS=ops/helm/ploeg/ci/ploegd-callers-values.yaml
 renders_p1
 renders_p1 -f "$PLOEGD_CALLERS"

@@ -2,7 +2,7 @@
 type: reference
 audience: [operator, integrator, contributor]
 owner: ploeg
-last_verified: 2026-10-23
+last_verified: 2026-10-28
 verified_by: "Rendered ops/helm/ploeg with every ci/*-values.yaml and read the output; scripts/test-chart-network-policies.sh asserts each row below on every verify run; source read for the callers: cmd/ploegd/boot.go, pkg/worker, pkg/sandboxlaunch/launcher.go, pkg/claudesession/verifier.go, ops/claude-runner"
 ---
 
@@ -43,10 +43,12 @@ Every URL the chart already holds names a destination. The installer may name it
 | --- | --- |
 | an IPv4 address | `ipBlock` of that address, `/32` |
 | one label, such as `postgres` or `litellm` | `podSelector: {}`, every pod in the release namespace |
-| `<service>.<namespace>.svc` or `<service>.<namespace>.svc.cluster.local` | `namespaceSelector` on `kubernetes.io/metadata.name: <namespace>` |
-| anything else, such as `github.com` or `forgejo.example.com` | `ipBlock` `0.0.0.0/0` with `networkPolicy.privateCidrs` excepted |
+| `<service>.<namespace>.svc` or `<service>.<namespace>.svc.cluster.local` | `namespaceSelector` on `kubernetes.io/metadata.name: <namespace>`: every pod in that namespace, not only the Service's pods |
+| anything else, such as `github.com` or `forgejo.example.com` | `ipBlock` `0.0.0.0/0` with `networkPolicy.privateCidrs`, link-local `169.254.0.0/16` and loopback `127.0.0.0/8` excepted |
 
 The port is the URL's, or 443 for `https` and 80 for `http` when the URL names none. Two URLs that resolve to the same peer and port render one rule.
+
+A `.svc` URL admits the whole namespace it names, because a NetworkPolicy selects pods by label and the chart cannot read the Service's selector. A worker whose forge is `http://forgejo-http.forgejo.svc:3000` may reach any pod in `forgejo` that listens on 3000, not only Forgejo's. Set `networkPolicy.<endpoint>.peers` to the Service's pod labels to admit only those pods; the peers then replace the namespace rule for every URL of that kind.
 
 `networkPolicy.<endpoint>.peers` replaces the derived peer for every URL of that kind with a list of `NetworkPolicyPeer` objects, and `networkPolicy.<endpoint>.port` replaces the port. The kinds are `gateway`, `forge`, `tracker`, `knowledgeGraph` and `telemetry`. Name peers when the derivation is too wide, for instance to reach only the gateway's pods in its namespace rather than every pod there:
 
@@ -67,7 +69,11 @@ Two endpoints have no URL to read:
 - **The database.** ploegd's connection URI lives in a Secret the chart does not read, so `networkPolicy.database` defaults to every pod in the release namespace on 5432. A database in another namespace, or a CloudNativePG cluster you want to name exactly, sets `peers`.
 - **The Kubernetes API.** The API server is not a pod, and the `kubernetes` Service forwards to node addresses the chart does not know. `networkPolicy.kubernetesApi` defaults to any peer on 6443 and 443, which only the launcher policy uses. Narrow it with `peers` naming the API server's endpoint addresses as `ipBlock`s (`kubectl get endpoints kubernetes`), or write your CNI's own form, for Cilium a `CiliumNetworkPolicy` with `toEntities: [kube-apiserver]`.
 
-Two rules reach the internet: a `claude-environment` team's workers and the claude-runner, which log in to and dispatch sessions at Anthropic, and ploegd, which reads the Anthropic JWKS when such a team exists. A NetworkPolicy cannot name a hostname, so these rules allow 443 to every public address. `privateCidrs` keeps the cluster, the nodes and the LAN out of that rule; add your pod, Service and node ranges when they fall outside RFC 1918. A CNI with FQDN policy (Cilium `toFQDNs`) can tighten these to the hosts; the chart does not depend on one.
+Two rules reach the internet: a `claude-environment` team's workers and the claude-runner, which log in to and dispatch sessions at Anthropic, and ploegd, which reads the Anthropic JWKS when such a team exists. A NetworkPolicy cannot name a hostname, so these rules allow 443 to every public address. An `http://` public URL does the same on 80. `privateCidrs` keeps the cluster, the nodes and the LAN out of that rule; its default is RFC 1918 plus the shared address space `100.64.0.0/10`, which carrier-grade NAT and some overlay networks use. Add your pod, Service and node ranges when they fall outside these.
+
+Every internet rule also excepts link-local `169.254.0.0/16` and loopback `127.0.0.0/8`, whatever `privateCidrs` holds, so an emptied or replaced list cannot open them. Link-local is where a cloud node's instance metadata service answers (`169.254.169.254`), and its credentials outlive the Run; the harness shares the worker's network namespace, so a worker rule is a harness rule. This is the fix for threat-model finding [F-46](../security/threat-model.md#findings) ([#356](https://github.com/ploeg-hq/ploeg/issues/356)). A URL whose host is itself a link-local address still renders that `/32`, because the installer named it.
+
+DNS is not narrowed by name. Every policy allows UDP and TCP 53 to `networkPolicy.dns.peers`, and the cluster resolver forwards any name it does not serve, so a pod can encode data in the names it looks up. The threat model records that residual; the egress proxy of [#339](https://github.com/ploeg-hq/ploeg/issues/339) is the path that narrows it. A CNI with FQDN policy (Cilium `toFQDNs`) can tighten these to the hosts; the chart does not depend on one.
 
 ## Ingress to ploegd
 

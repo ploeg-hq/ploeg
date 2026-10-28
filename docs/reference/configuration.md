@@ -566,7 +566,7 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `networkPolicy.ploegd.extraEgress` | [networkPolicyEgressRules](#networkpolicyegressrules) | `[]` | Further egress rules for ploegd, such as a tracker or forge whose URL the derivation cannot place. | values.yaml, values.schema.json |
 | `networkPolicy.ploegd.extraIngress` | [networkPolicyIngressRules](#networkpolicyingressrules) | `[]` |  | values.yaml, values.schema.json |
 | `networkPolicy.ploegd.ingressFrom` | [networkPolicyPeers](#networkpolicypeers) | `[]` | Peers that may reach ploegd on 8080: the gateway that forwards webhooks, operator consumers, Prometheus. Empty allows any peer on that port, because the chart cannot know your gateway; set, the policy allows these peers plus this release's own worker, launcher, ploeg-mcp and claude-runner pods. Under supportProfile P1 an empty list is warned about before chart 0.3.0 and refused from it (F-45). | values.yaml, values.schema.json |
-| `networkPolicy.privateCidrs` | array | `["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]` | CIDRs an internet rule excludes, so a pod allowed to reach a public host cannot reach the cluster, the nodes or the LAN through the same rule. Add your pod, service and node ranges when they are outside RFC 1918. | values.yaml, values.schema.json |
+| `networkPolicy.privateCidrs` | array | `["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10"]` | CIDRs an internet rule excludes, so a pod allowed to reach a public host cannot reach the cluster, the nodes or the LAN through the same rule. The default is RFC 1918 plus the shared address space 100.64.0.0/10. Add your pod, service and node ranges when they are outside these. Every internet rule also excludes link-local 169.254.0.0/16, where cloud instance metadata lives, and loopback 127.0.0.0/8, whatever this list holds. | values.yaml, values.schema.json |
 | `networkPolicy.sandboxLauncher.extraEgress` | [networkPolicyEgressRules](#networkpolicyegressrules) | `[]` |  | values.yaml, values.schema.json |
 | `networkPolicy.telemetry` | [networkPolicyEndpoint](#networkpolicyendpoint) | `{"peers": [], "port": ""}` | Every OTLP collector a harness `telemetry.endpoint` or `claudeRunner.env.OTEL_EXPORTER_OTLP_ENDPOINT` names. Empty `peers` derives the destination from each URL. | values.yaml, values.schema.json |
 | `networkPolicy.tracker` | [networkPolicyEndpoint](#networkpolicyendpoint) | `{"peers": [], "port": ""}` | The trackers ploegd calls: `tracker.url`, ClickUp when a ClickUp Secret is set, the GitHub API when `tracker.github.appId` is set. Empty `peers` derives the destination from each URL. | values.yaml, values.schema.json |
@@ -688,7 +688,7 @@ A list of NetworkPolicyEgressRule objects, appended to the policy as written.
 
 ### networkPolicyEndpoint
 
-Where one kind of endpoint lives. Empty `peers` derives the destination from each configured URL; set, they replace it for every URL of the kind. Empty `port` is each URL's port, or 443 for https and 80 for http; set, it replaces it, which a Service whose port differs from its pods' needs.
+Where one kind of endpoint lives. Empty `peers` derives the destination from each configured URL, and a `<service>.<namespace>.svc` URL then admits every pod in that namespace; set, they replace it for every URL of the kind. Empty `port` is each URL's port, or 443 for https and 80 for http; set, it replaces it, which a Service whose port differs from its pods' needs.
 
 | Key | Type | Description |
 | --- | --- | --- |

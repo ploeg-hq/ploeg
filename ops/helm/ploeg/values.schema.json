@@ -74,7 +74,7 @@
           "items": {
             "type": "string"
           },
-          "description": "CIDRs an internet rule excludes, so a pod allowed to reach a public host cannot reach the cluster, the nodes or the LAN through the same rule. Add your pod, service and node ranges when they are outside RFC 1918."
+          "description": "CIDRs an internet rule excludes, so a pod allowed to reach a public host cannot reach the cluster, the nodes or the LAN through the same rule. The default is RFC 1918 plus the shared address space 100.64.0.0/10. Add your pod, service and node ranges when they are outside these. Every internet rule also excludes link-local 169.254.0.0/16, where cloud instance metadata lives, and loopback 127.0.0.0/8, whatever this list holds."
         },
         "database": {
           "type": "object",
@@ -1909,7 +1909,7 @@
     "networkPolicyEndpoint": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Where one kind of endpoint lives. Empty `peers` derives the destination from each configured URL; set, they replace it for every URL of the kind. Empty `port` is each URL's port, or 443 for https and 80 for http; set, it replaces it, which a Service whose port differs from its pods' needs.",
+      "description": "Where one kind of endpoint lives. Empty `peers` derives the destination from each configured URL, and a `<service>.<namespace>.svc` URL then admits every pod in that namespace; set, they replace it for every URL of the kind. Empty `port` is each URL's port, or 443 for https and 80 for http; set, it replaces it, which a Service whose port differs from its pods' needs.",
       "properties": {
         "peers": {
           "$ref": "#/definitions/networkPolicyPeers"
