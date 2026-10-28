@@ -193,6 +193,8 @@ leaves_p1 'team defaults resolves no spend cap (executor.spendCap, executor.team
 leaves_p1 'team defaults resolves no spend cap' --set 'executor.teams[0].spendCap.usd=0'
 leaves_p1 'team defaults resolves no spend cap' --set config.teams.defaults.spendCap.usd=0
 leaves_p1 'team defaults resolves no spend cap' --set executor.spendCap=null
+leaves_p1 'PLOEG_MCP_ALLOW_LOOPBACK_HTTP is true on ploeg-mcp; P1 needs an https issuer' -f ops/helm/ploeg/ci/mcp-values.yaml --set-string mcp.env.PLOEG_MCP_ALLOW_LOOPBACK_HTTP=true
+leaves_p1 'PLOEG_MCP_ALLOW_LOOPBACK_HTTP is true on ploeg-mcp; P1 needs an https issuer' -f ops/helm/ploeg/ci/mcp-values.yaml --set 'mcp.extraEnv[0].name=PLOEG_MCP_ALLOW_LOOPBACK_HTTP' --set-string 'mcp.extraEnv[0].value=true'
 if out=$(helm template ploeg ops/helm/ploeg -f "$REQUIRED" --set supportProfile=P2 2>&1) || ! printf '%s' "$out" | grep -qF "value must be one of 'P1', 'unsupported'"; then
 	echo "chart did not refuse supportProfile P2 by its schema:"
 	echo "$out"
@@ -210,6 +212,7 @@ renders_p1 --set executor.type=sandbox --set executor.sandbox.runtimeClassName=k
 renders_p1 --set executor.type=sandbox --set executor.runtimeClassName=kata --set 'security.workerAdmission.runtimeClassNames={kata}'
 renders_p1 --set 'executor.teams[0].executorType=sandbox' --set 'executor.teams[0].sandbox.runtimeClassName=kata' --set 'security.workerAdmission.runtimeClassNames={kata}'
 renders_p1 --set security.workerAdmission.enabled=true
+renders_p1 -f ops/helm/ploeg/ci/mcp-values.yaml --set-string mcp.env.PLOEG_MCP_ALLOW_LOOPBACK_HTTP=false
 renders_p1 --set executor.runtimeClassName=kata --set 'security.workerAdmission.runtimeClassNames={kata}'
 renders_p1 --set 'executor.teams[0].plan[0].roles[0].name=builder' --set 'executor.teams[0].plan[0].roles[0].writes=true' --set 'executor.teams[0].plan[0].roles[0].harness.image=registry.example/builder:2.0.0@sha256:db06af1d9c0969ed594a21ee2b3369a79d6e91abb36b94d29223918581963027'
 renders_p1 --set 'executor.teams[0].harness.image=registry.example/agent-runner@sha256:db06af1d9c0969ed594a21ee2b3369a79d6e91abb36b94d29223918581963027'

@@ -142,6 +142,21 @@ networkPolicy.ploegd.ingressFrom is empty, so ploegd's NetworkPolicy admits port
 {{- if semverCompare ">=0.3.0-0" .Chart.Version -}}true{{- end -}}
 {{- end -}}
 
+{{- define "ploeg.mcpLoopbackHTTPDeparture" -}}
+{{- $m := .Values.mcp | default dict -}}
+{{- if $m.enabled -}}
+{{- $set := eq (toString (($m.env | default dict).PLOEG_MCP_ALLOW_LOOPBACK_HTTP | default "")) "true" -}}
+{{- range $e := $m.extraEnv | default list -}}
+{{- if and (eq ($e.name | default "") "PLOEG_MCP_ALLOW_LOOPBACK_HTTP") (eq (toString ($e.value | default "")) "true") -}}
+{{- $set = true -}}
+{{- end -}}
+{{- end -}}
+{{- if $set -}}
+PLOEG_MCP_ALLOW_LOOPBACK_HTTP is true on ploeg-mcp; P1 needs an https issuer, key set and token endpoint (finding F-14)
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
 {{- define "ploeg.supportProfileDepartures" -}}
 {{- $root := . -}}
 {{- $e := .Values.executor -}}
@@ -164,6 +179,9 @@ networkPolicy.ploegd.ingressFrom is empty, so ploegd's NetworkPolicy admits port
 {{- range $name := include "ploeg.consumersActingForAnyPerson" $root | fromJsonArray -}}
 {{- $out = append $out (printf "operator consumer %s has execute and accepts a person token as the bearer (audiences or clientIds) without requireClaims; P1 needs requireClaims on it, so the identity provider's groups or roles decide who acts with its authority (F-47)" $name) -}}
 {{- end -}}
+{{- end -}}
+{{- with include "ploeg.mcpLoopbackHTTPDeparture" $root -}}
+{{- $out = append $out . -}}
 {{- end -}}
 {{- if .Values.claudeRunner.enabled -}}
 {{- $out = append $out "claudeRunner.enabled is true; P1 excludes the claude-runner, whose Runs execute outside the pod" -}}
