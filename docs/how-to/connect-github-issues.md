@@ -76,7 +76,7 @@ Only repositories listed under `trackers.github.projects` are work sources; issu
 
 ## Limits
 
-* **Deliveries.** A delivery must be signed with `X-Hub-Signature-256` and be at most 1 MiB. Ploeg records `X-GitHub-Delivery` after every effect succeeded and keeps it for 48 hours; a redelivery within that time is answered 202 and does nothing. GitHub does not retry a failed delivery itself: after an outage, open the webhook's *Recent Deliveries* and redeliver the failed ones. Redelivery keeps the delivery id, so a delivery that already took effect is not applied twice.
+* **Deliveries.** A delivery must be signed with `X-Hub-Signature-256` and be at most 1 MiB. Ploeg claims `X-GitHub-Delivery` before it acts, marks it complete after every effect succeeded and keeps it for 48 hours; a redelivery within that time is answered 202 and does nothing, and a copy that arrives while the first is still acting is answered 409. GitHub does not retry a failed delivery itself: after an outage, open the webhook's *Recent Deliveries* and redeliver the failed ones. Redelivery keeps the delivery id, so a delivery that already took effect is not applied twice.
 * **Rate limits.** One API call waits out a rate limit only when GitHub asks for at most 5 seconds; otherwise ingest uses the issue snapshot in the webhook and a write-back fails and is logged.
 * **Comments** are read 100 per page, at most 1,000 per issue.
 * **Renames and transfers.** A renamed repository changes the identity of its issues: update its `trackers.github.projects` entry, and expect new events to create new Work Items. A transferred issue is closed in its old repository.
