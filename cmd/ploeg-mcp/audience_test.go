@@ -143,3 +143,66 @@ func TestHTTPIdentityProviderURLsNeedTheLoopbackSetting(t *testing.T) {
 		}
 	}
 }
+
+const metadataClient = "https://client.example/oauth/client.json"
+
+func (r *remote) tokenWith(change func(jwt.MapClaims)) string {
+	r.t.Helper()
+	now := time.Now()
+	claims := jwt.MapClaims{
+		"iss": r.issuer, "sub": "subject-1", "aud": r.url, "azp": "ploeg-mcp", "scope": "openid ploeg:read",
+		"iat": now.Unix(), "exp": now.Add(5 * time.Minute).Unix(), "groups": []string{"ploeg-readers"},
+	}
+	change(claims)
+	tok := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+	tok.Header["kid"] = "k1"
+	s, err := tok.SignedString(r.key)
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	return s
+}
+
+func TestWithoutClientIDsAnyClientIssuedATokenForTheResourceIsAccepted(t *testing.T) {
+	r := newRemoteTokens(t, emptyWorkItems, `[{"group":"ploeg-readers","tokenEnv":"READERS_TOKEN"}]`, randomToken(t), randomToken(t),
+		map[string]string{"PLOEG_MCP_CLIENT_IDS": "", "PLOEG_MCP_CONFIRMATION_CLIENT_ID": "ploeg-mcp-confirm"})
+	for name, change := range map[string]func(jwt.MapClaims){
+		"a pre-registered client":                    func(jwt.MapClaims) {},
+		"a client id metadata document in azp":       func(c jwt.MapClaims) { c["azp"] = metadataClient },
+		"a client id metadata document in client_id": func(c jwt.MapClaims) { delete(c, "azp"); c["client_id"] = metadataClient },
+	} {
+		if resp, body := r.post(r.tokenWith(change), "", toolsList); resp.StatusCode != http.StatusOK {
+			t.Errorf("%s: want 200, got %d %s", name, resp.StatusCode, body)
+		}
+	}
+	for name, change := range map[string]func(jwt.MapClaims){
+		"a token for another resource":      func(c jwt.MapClaims) { c["aud"] = "https://other.example/mcp"; c["azp"] = metadataClient },
+		"a token naming no client":          func(c jwt.MapClaims) { delete(c, "azp") },
+		"an ID token":                       func(c jwt.MapClaims) { c["aud"] = metadataClient; c["azp"] = metadataClient; delete(c, "scope") },
+		"the confirmation sign-in's client": func(c jwt.MapClaims) { c["azp"] = "ploeg-mcp-confirm" },
+	} {
+		resp, _ := r.post(r.tokenWith(change), "", toolsList)
+		if resp.StatusCode != http.StatusUnauthorized || !strings.Contains(resp.Header.Get("WWW-Authenticate"), `error="invalid_token"`) {
+			t.Errorf("%s: want 401 invalid_token, got %d %q", name, resp.StatusCode, resp.Header.Get("WWW-Authenticate"))
+		}
+	}
+}
+
+func TestAClientIDMetadataDocumentURLIsMatchedExactly(t *testing.T) {
+	r := newRemoteTokens(t, emptyWorkItems, `[{"group":"ploeg-readers","tokenEnv":"READERS_TOKEN"}]`, randomToken(t), randomToken(t),
+		map[string]string{"PLOEG_MCP_CLIENT_IDS": metadataClient})
+	if resp, body := r.post(r.tokenWith(func(c jwt.MapClaims) { c["azp"] = metadataClient }), "", toolsList); resp.StatusCode != http.StatusOK {
+		t.Fatalf("the listed URL: want 200, got %d %s", resp.StatusCode, body)
+	}
+	for name, azp := range map[string]string{
+		"the host in capitals":   "https://CLIENT.example/oauth/client.json",
+		"the default port":       "https://client.example:443/oauth/client.json",
+		"a trailing slash":       metadataClient + "/",
+		"a percent-encoded path": "https://client.example/oauth/%63lient.json",
+		"a pre-registered id":    "ploeg-mcp",
+	} {
+		if resp, _ := r.post(r.tokenWith(func(c jwt.MapClaims) { c["azp"] = azp }), "", toolsList); resp.StatusCode != http.StatusUnauthorized {
+			t.Errorf("%s: want 401, got %d", name, resp.StatusCode)
+		}
+	}
+}

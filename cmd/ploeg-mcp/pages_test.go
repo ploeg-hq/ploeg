@@ -663,3 +663,42 @@ func TestAnUnsetModeKeepsClientConfirmationsAndWarnsOnlyForExecuteGroups(t *test
 		t.Fatalf("read-only groups: %v %v", err, cfg.warnings)
 	}
 }
+
+func TestARetryWithoutThePagesAnswerIsAskedAgain(t *testing.T) {
+	s := newSigningRemote(t, nil)
+	cs := s.pageClient(t, "subject-1")
+	id := stuckItem(t, "page-unanswered-1")
+	args := map[string]any{"ref": id}
+	p := requestPage(t, cs, "ploeg_retry_work", args)
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "ploeg_retry_work", Arguments: args, RequestState: p.sealed,
+		InputResponses: mcp.InputResponseMap{"another-request": opened()}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again := pageRequestOf(t, res); again != p {
+		t.Fatalf("asked %+v, want %+v again", again, p)
+	}
+	if status, body := newBrowser(t).signIn(t, p.link); status != http.StatusOK {
+		t.Fatalf("signing in answered %d: %s", status, body)
+	}
+	if out := done(t, recall(t, cs, "ploeg_retry_work", args, p, opened())); !out.Done || itemState(t, id) != "queued" {
+		t.Fatalf("the page after asking again: %+v", out)
+	}
+}
+
+func TestACancelledPageSaysItClosedWithoutAnAnswer(t *testing.T) {
+	s := newSigningRemote(t, nil)
+	cs := s.pageClient(t, "subject-1")
+	id := stuckItem(t, "page-cancelled-1")
+	args := map[string]any{"ref": id}
+	p := requestPage(t, cs, "ploeg_retry_work", args)
+	if out := done(t, recall(t, cs, "ploeg_retry_work", args, p, &mcp.ElicitResult{Action: "cancel"})); out.Done || out.Summary != notAnswered {
+		t.Fatalf("a cancelled page: %+v", out)
+	}
+	if status, _ := newBrowser(t).get(t, p.link); status == http.StatusOK {
+		t.Fatal("the page stayed open after the client cancelled")
+	}
+	if itemState(t, id) != "needs_human" {
+		t.Fatal("a cancelled page acted")
+	}
+}

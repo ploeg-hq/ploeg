@@ -415,3 +415,88 @@ func TestResourceMetadataIsPublicAndNamesTheIssuer(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+func TestTheIssuerIsComparedAsAnExactString(t *testing.T) {
+	is := newIssuer(t)
+	const issuer = "https://id.example/application/o/ploeg-mcp/"
+	v, err := mcpauth.NewVerifier(mcpauth.Config{Issuer: issuer, JWKSURL: is.srv.URL + "/application/o/ploeg-mcp/jwks/", AllowLoopbackHTTP: true,
+		Audiences: []string{"ploeg-mcp"}, Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	signed := func(iss string) string {
+		c := is.accessClaims()
+		c["iss"] = iss
+		return is.sign("rsa-1", c)
+	}
+	if _, err := v.Verify(context.Background(), signed(issuer), nil); err != nil {
+		t.Fatalf("the exact issuer: %v", err)
+	}
+	for name, iss := range map[string]string{
+		"the scheme in capitals":       "HTTPS://id.example/application/o/ploeg-mcp/",
+		"the host in capitals":         "https://ID.EXAMPLE/application/o/ploeg-mcp/",
+		"the default port written out": "https://id.example:443/application/o/ploeg-mcp/",
+		"no trailing slash":            "https://id.example/application/o/ploeg-mcp",
+		"a second trailing slash":      "https://id.example/application/o/ploeg-mcp//",
+		"a percent-encoded letter":     "https://id.example/%61pplication/o/ploeg-mcp/",
+		"a percent-encoded hyphen":     "https://id.example/application/o/ploeg%2Dmcp/",
+		"a dot segment":                "https://id.example/application/o/./ploeg-mcp/",
+	} {
+		if _, err := v.Verify(context.Background(), signed(iss), nil); !errors.Is(err, auth.ErrInvalidToken) || !strings.Contains(err.Error(), "another issuer") {
+			t.Errorf("%s: want ErrInvalidToken for another issuer, got %v", name, err)
+		}
+	}
+}
+
+func TestClientIDsAreOpaqueOrClientIDMetadataDocumentURLs(t *testing.T) {
+	for _, id := range []string{"ploeg-mcp", "4f0c9d2e", "urn:example:client", "https://client.example/oauth/client.json", "https://client.example/", "https://client.example:8443/c.json?v=1"} {
+		if err := mcpauth.CheckClientID(id); err != nil {
+			t.Errorf("%q: %v", id, err)
+		}
+	}
+	for _, id := range []string{"", "ploeg mcp", "http://client.example/client.json", "HTTPS://client.example/client.json", "https://client.example",
+		"https:///client.json", "https://u:p@client.example/client.json", "https://client.example/client.json#x", "https://client.example/a/../client.json",
+		"https://client.example/./client.json", "https://client.example/a/%2E%2E/client.json", "ftp://client.example/client.json"} {
+		if err := mcpauth.CheckClientID(id); err == nil {
+			t.Errorf("%q: want an error", id)
+		}
+	}
+}
+
+func TestAResourceWithoutClientIDsAcceptsAnyClientButTheRefusedOnes(t *testing.T) {
+	is := newIssuer(t)
+	v, err := mcpauth.NewVerifier(mcpauth.Config{Issuer: is.url, AllowLoopbackHTTP: true, Resource: "https://mcp.example/mcp", RefusedClients: []string{"confirm"},
+		Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := func(change func(jwt.MapClaims)) string {
+		c := is.accessClaims()
+		c["aud"] = "https://mcp.example/mcp"
+		change(c)
+		return is.sign("rsa-1", c)
+	}
+	for name, change := range map[string]func(jwt.MapClaims){
+		"azp a metadata document URL":       func(c jwt.MapClaims) { c["azp"] = "https://client.example/c.json" },
+		"client_id a metadata document URL": func(c jwt.MapClaims) { delete(c, "azp"); c["client_id"] = "https://client.example/c.json" },
+	} {
+		info, err := v.Verify(context.Background(), token(change), nil)
+		if err != nil || info.Extra["client"] != "https://client.example/c.json" {
+			t.Errorf("%s: %v %v", name, info, err)
+		}
+	}
+	for name, change := range map[string]func(jwt.MapClaims){
+		"a refused client":     func(c jwt.MapClaims) { c["azp"] = "confirm" },
+		"no client":            func(c jwt.MapClaims) { delete(c, "azp") },
+		"no scope":             func(c jwt.MapClaims) { delete(c, "scope") },
+		"another resource":     func(c jwt.MapClaims) { c["aud"] = "https://other.example/mcp" },
+		"the client id as aud": func(c jwt.MapClaims) { c["aud"] = "ploeg-mcp" },
+	} {
+		if _, err := v.Verify(context.Background(), token(change), nil); !errors.Is(err, auth.ErrInvalidToken) {
+			t.Errorf("%s: want ErrInvalidToken, got %v", name, err)
+		}
+	}
+	if _, err := mcpauth.NewVerifier(mcpauth.Config{Issuer: is.url, AllowLoopbackHTTP: true}); err == nil {
+		t.Error("no client ids and no resource: want an error")
+	}
+}

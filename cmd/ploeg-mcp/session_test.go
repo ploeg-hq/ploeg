@@ -60,7 +60,11 @@ func TestADeclinedConfirmationInASessionChangesNothing(t *testing.T) {
 		cs := sessionClient(t, a.url, a.token([]string{"ploeg-stewards"}, "ploeg:read"), formOnly, asked.elicit)
 		id := stuckItem(t, "session-decline-"+answer.Action+fmt.Sprint(len(answer.Content)))
 		out, res := act(t, cs, "ploeg_stop_work", map[string]any{"ref": id})
-		if res.IsError || out.Done || out.Summary != notConfirmed || asked.last() == "" {
+		want := notConfirmed
+		if answer.Action == "cancel" {
+			want = notAnswered
+		}
+		if res.IsError || out.Done || out.Summary != want || asked.last() == "" {
 			t.Fatalf("%s: %s %+v", answer.Action, textOf(res), out)
 		}
 		if state := itemState(t, id); state != "needs_human" {

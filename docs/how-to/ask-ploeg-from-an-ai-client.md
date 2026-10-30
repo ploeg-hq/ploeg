@@ -2,8 +2,8 @@
 type: how-to
 audience: [operator, owner]
 owner: ploeg
-last_verified: 2026-10-25
-verified_by: "Read cmd/ploeg-mcp (login confirmations, 2026-10-25), pkg/operatorclient, pkg/httpapi/operator.go and ops/helm/ploeg/templates/deployment.yaml; go test ./cmd/ploeg-mcp ./pkg/operatorclient ./pkg/httpapi (action tools, 2026-10-17); go install of v0.2.0-rc.14 on darwin/arm64 and the release assets of v0.2.0-rc.14 checked. Not checked against a live deployment or a running client."
+last_verified: 2026-10-30
+verified_by: "Read cmd/ploeg-mcp (login confirmations, 2026-10-25), pkg/operatorclient, pkg/httpapi/operator.go and ops/helm/ploeg/templates/deployment.yaml; go test ./cmd/ploeg-mcp ./pkg/operatorclient ./pkg/httpapi (action tools, 2026-10-17; cancelled and unanswered confirmations, 2026-10-30); go install of v0.2.0-rc.14 on darwin/arm64 and the release assets of v0.2.0-rc.14 checked. Not checked against a live deployment or a running client."
 ---
 
 # Ask Ploeg from an AI client over MCP
@@ -112,7 +112,7 @@ Over stdio `ploeg-mcp` only reads: it has no verified person to name. Over HTTPS
 | `ploeg_add_note` | Leaves an instruction for the next Run of a live Work Item | `POST /work-items/{id}/notes` |
 | `ploeg_steer_execution` | Sends a message to, pauses, resumes or cancels an attended execution the person owns | `POST /executions/{id}/commands` |
 
-**Every action asks first.** Before it calls ploegd, the tool asks the person through an MCP elicitation that states the exact effect: which Work Item (id, title, Team and state), what will happen and what it may cost. Only an accept with the box ticked goes ahead. A decline, a cancel or an unticked box answers "Not done: you did not confirm. Nothing changed." If the Work Item changes while the person decides, nothing happens and the tool asks to be called again. A client that cannot show an elicitation is refused before anything is called. Over stateless HTTP that means the client must speak MCP 2026-07-28, which carries the confirmation inside the tool call; a 2025-11-25 client can still read but cannot act.
+**Every action asks first.** Before it calls ploegd, the tool asks the person through an MCP elicitation that states the exact effect: which Work Item (id, title, Team and state), what will happen and what it may cost. Only an accept with the box ticked goes ahead. A decline or an unticked box answers "Not done: you did not confirm. Nothing changed." A cancel, where the form closed without the person choosing, answers that the confirmation closed without an answer and names the other ways to act; some clients close a form on their own within moments. A call that comes back without an answer to the confirmation is asked the same question again. If the Work Item changes while the person decides, nothing happens and the tool asks to be called again. A client that cannot show an elicitation is refused before anything is called. Over stateless HTTP that means the client must speak MCP 2026-07-28, which carries the confirmation inside the tool call; a 2025-11-25 client can still read but cannot act.
 
 **The confirmation is ploeg-mcp's, and counts once.** The confirmation state the client carries between the two calls is signed by ploeg-mcp with `PLOEG_MCP_CONFIRMATION_KEY` and binds the tool, its arguments, the effect text, the person and a ten-minute expiry ([ADR-0152](../adrs/0152-ploeg-mcp-signs-each-confirmation-and-acts-on-it-once.md)). A state the client made up, altered, sent for other arguments or another person, sent after it expired, or sent a second time is refused and nothing changes. This makes the client ask the person before it can act; it cannot prove that a client which answers its own elicitations showed the question to anyone.
 

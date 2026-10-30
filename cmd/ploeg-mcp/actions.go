@@ -23,6 +23,7 @@ const (
 	fallbackVia      = "mcp:ploeg-mcp"
 	maxVia           = 128
 	notConfirmed     = "Not done: you did not confirm. Nothing changed."
+	notAnswered      = "Not done: the confirmation closed without an answer, so nothing changed. Some clients close a confirmation form on their own before you see it. Call the tool again to be asked again, or act through Ploeg's operator API or a consumer application."
 	cannotConfirm    = "This client cannot ask you to confirm an action, so ploeg-mcp did nothing. Use an MCP client that declares elicitation, or act through Ploeg's operator API or a consumer application."
 	modernProtocol   = "2026-07-28"
 	maxSessionRounds = 10
@@ -204,7 +205,7 @@ func (a action[In]) step(ctx context.Context, req *mcp.CallToolRequest, in In) (
 	if err != nil {
 		return nil, out, err
 	}
-	if req.Params.InputResponses == nil {
+	if req.Params.InputResponses == nil && req.Params.RequestState == "" {
 		commandID := a.commandID(in)
 		if commandID == "" {
 			commandID = randomID("mcp-")
@@ -218,10 +219,7 @@ func (a action[In]) step(ctx context.Context, req *mcp.CallToolRequest, in In) (
 			}
 			return pages.request(state.ID, link, effect, a.confirm.seal(state)), out, nil
 		}
-		return &mcp.CallToolResult{
-			InputRequests: mcp.InputRequestMap{state.ID: &mcp.ElicitParams{Mode: "form", Message: effect, RequestedSchema: confirmSchema}},
-			RequestState:  a.confirm.seal(state),
-		}, out, nil
+		return askForm(state.ID, effect, a.confirm.seal(state)), out, nil
 	}
 	state, err := a.confirm.open(req.Params.RequestState)
 	if err != nil {
@@ -231,10 +229,13 @@ func (a action[In]) step(ctx context.Context, req *mcp.CallToolRequest, in In) (
 		return nil, out, errForeignConfirmation
 	}
 	answer, _ := req.Params.InputResponses[state.ID].(*mcp.ElicitResult)
+	if answer == nil {
+		return a.askAgain(state.ID, effect, req.Params.RequestState)
+	}
 	if pages != nil {
-		if answer == nil || answer.Action != "accept" {
+		if answer.Action != "accept" {
 			pages.forget(state.ID)
-			return nil, actionOut{Summary: notConfirmed}, nil
+			return nil, actionOut{Summary: refusal(answer)}, nil
 		}
 		wait := pages.wait
 		if inSession(req) {
@@ -259,8 +260,8 @@ func (a action[In]) step(ctx context.Context, req *mcp.CallToolRequest, in In) (
 	if state.Effect != digest(effect) {
 		return nil, out, errors.New("what this would do changed while you decided; nothing changed. Call the tool again to see the new effect")
 	}
-	if pages == nil && (answer == nil || answer.Action != "accept" || answer.Content[confirmFieldName] != true) {
-		return nil, actionOut{Summary: notConfirmed}, nil
+	if pages == nil && (answer.Action != "accept" || answer.Content[confirmFieldName] != true) {
+		return nil, actionOut{Summary: refusal(answer)}, nil
 	}
 	who.Confirmation = state.ID + ":" + state.Effect
 	if a.prove != nil {
@@ -277,6 +278,39 @@ func (a action[In]) step(ctx context.Context, req *mcp.CallToolRequest, in In) (
 		out.CommandID = state.CommandID
 	}
 	return nil, out, nil
+}
+
+// askAgain answers a retry whose inputResponses lack this confirmation with
+// the same question and state, as MCP 2026-07-28 asks of a server that is
+// missing input it needs.
+func (a action[In]) askAgain(id, effect, sealed string) (*mcp.CallToolResult, actionOut, error) {
+	pages := a.confirm.pages
+	if pages == nil {
+		return askForm(id, effect, sealed), actionOut{}, nil
+	}
+	switch state, link, _ := pages.status(id); state {
+	case pageMissing:
+		return nil, actionOut{}, errPageClosed
+	case pageDeclined:
+		pages.forget(id)
+		return nil, actionOut{Summary: notConfirmed}, nil
+	default:
+		return pages.request(id, link, effect, sealed), actionOut{}, nil
+	}
+}
+
+func askForm(id, effect, sealed string) *mcp.CallToolResult {
+	return &mcp.CallToolResult{
+		InputRequests: mcp.InputRequestMap{id: &mcp.ElicitParams{Mode: "form", Message: effect, RequestedSchema: confirmSchema}},
+		RequestState:  sealed,
+	}
+}
+
+func refusal(answer *mcp.ElicitResult) string {
+	if answer.Action == "cancel" {
+		return notAnswered
+	}
+	return notConfirmed
 }
 
 var confirmSchema = map[string]any{

@@ -97,6 +97,9 @@ func loadHTTPConfig(getenv func(string) string, lookup func(string) (string, boo
 	cfg.resource = resource
 	for _, id := range strings.Split(getenv("PLOEG_MCP_CLIENT_IDS"), ",") {
 		if id = strings.TrimSpace(id); id != "" && !slices.Contains(cfg.clientIDs, id) {
+			if err := mcpauth.CheckClientID(id); err != nil {
+				return nil, fmt.Errorf("PLOEG_MCP_CLIENT_IDS: %w", err)
+			}
 			cfg.clientIDs = append(cfg.clientIDs, id)
 		}
 	}
@@ -140,9 +143,16 @@ func loadHTTPConfig(getenv func(string) string, lookup func(string) (string, boo
 		return nil, err
 	}
 	if tokenResource == "" {
+		if len(cfg.clientIDs) == 0 {
+			return nil, fmt.Errorf("%s=%s needs PLOEG_MCP_CLIENT_IDS, the client ids aud must name", tokenAudienceEnv, audienceClientID)
+		}
 		cfg.warnings = append(cfg.warnings, clientIDAudienceNote)
 	}
-	cfg.verifier, err = mcpauth.NewVerifier(mcpauth.Config{Issuer: cfg.issuer, Audiences: cfg.clientIDs, Resource: tokenResource, AllowLoopbackHTTP: cfg.loopbackHTTP,
+	var refused []string
+	if id := strings.TrimSpace(getenv("PLOEG_MCP_CONFIRMATION_CLIENT_ID")); id != "" {
+		refused = append(refused, id)
+	}
+	cfg.verifier, err = mcpauth.NewVerifier(mcpauth.Config{Issuer: cfg.issuer, Audiences: cfg.clientIDs, RefusedClients: refused, Resource: tokenResource, AllowLoopbackHTTP: cfg.loopbackHTTP,
 		JWKSURL: cfg.jwksURL, Leeway: time.Minute, MaxLifetime: cfg.maxLifetime})
 	if err != nil {
 		return nil, fmt.Errorf("PLOEG_MCP_ISSUER, PLOEG_MCP_CLIENT_IDS or PLOEG_MCP_JWKS_URL: %w", err)
@@ -367,6 +377,13 @@ func initializes(r *http.Request) bool {
 	return json.Unmarshal(head, &msg) == nil && msg.Method == "initialize"
 }
 
+func (cfg *httpConfig) clientsLabel() string {
+	if len(cfg.clientIDs) == 0 {
+		return "any client issued a token for the resource"
+	}
+	return strings.Join(cfg.clientIDs, ",")
+}
+
 func (cfg *httpConfig) groupNames() []string {
 	names := make([]string, 0, len(cfg.groups))
 	for _, g := range cfg.groups {
@@ -390,7 +407,7 @@ func serveHTTP(ctx context.Context, cfg *httpConfig, logger *slog.Logger) error 
 	for _, warning := range cfg.warnings {
 		logger.Warn(warning)
 	}
-	logger.Info("ploeg-mcp serving streamable HTTP", "listen", cfg.listen, "resource", cfg.resource.String(), "issuer", cfg.issuer, "groups", len(cfg.groups), "exchangesForActions", cfg.exchanger != nil, "confirmation", cfg.confirmMode)
+	logger.Info("ploeg-mcp serving streamable HTTP", "listen", cfg.listen, "resource", cfg.resource.String(), "issuer", cfg.issuer, "groups", len(cfg.groups), "clients", cfg.clientsLabel(), "exchangesForActions", cfg.exchanger != nil, "confirmation", cfg.confirmMode)
 	select {
 	case err := <-errs:
 		return err

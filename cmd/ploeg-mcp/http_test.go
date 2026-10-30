@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"maps"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -20,6 +21,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -308,11 +310,26 @@ func TestHTTPConfigurationIsRefusedWhenIncomplete(t *testing.T) {
 	if err := load(good); err != nil {
 		t.Fatalf("good configuration: %v", err)
 	}
+	for name, ids := range map[string]string{
+		"no client ids":            " , ",
+		"a client id metadata URL": "ploeg-mcp, https://client.example/oauth/client.json",
+	} {
+		env := maps.Clone(good)
+		env["PLOEG_MCP_CLIENT_IDS"] = ids
+		if err := load(env); err != nil {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
 	for name, change := range map[string][2]string{
 		"no resource":                        {"PLOEG_MCP_RESOURCE", ""},
 		"a relative resource":                {"PLOEG_MCP_RESOURCE", "/mcp"},
 		"no issuer":                          {"PLOEG_MCP_ISSUER", ""},
-		"no client ids":                      {"PLOEG_MCP_CLIENT_IDS", " , "},
+		"a client id over http":              {"PLOEG_MCP_CLIENT_IDS", "http://client.example/oauth/client.json"},
+		"a client id URL without a path":     {"PLOEG_MCP_CLIENT_IDS", "https://client.example"},
+		"a client id URL with a fragment":    {"PLOEG_MCP_CLIENT_IDS", "https://client.example/client.json#x"},
+		"a client id URL with credentials":   {"PLOEG_MCP_CLIENT_IDS", "https://u:p@client.example/client.json"},
+		"a client id URL with dot segments":  {"PLOEG_MCP_CLIENT_IDS", "https://client.example/a/../client.json"},
+		"client-id audience without ids":     {tokenAudienceEnv, audienceClientID},
 		"no groups":                          {"PLOEG_MCP_GROUPS", "[]"},
 		"groups not JSON":                    {"PLOEG_MCP_GROUPS", "ploeg-readers=READERS_TOKEN"},
 		"an unknown field":                   {"PLOEG_MCP_GROUPS", `[{"group":"g","tokenEnv":"READERS_TOKEN","verify":true}]`},
@@ -325,9 +342,9 @@ func TestHTTPConfigurationIsRefusedWhenIncomplete(t *testing.T) {
 		"execute without a confirmation key": {"PLOEG_MCP_GROUPS", `[{"group":"g","tokenEnv":"READERS_TOKEN","execute":true}]`},
 		"a short confirmation key":           {confirmationKeyEnv, strings.Repeat("k", minConfirmationKeyBytes-1)},
 	} {
-		env := map[string]string{}
-		for k, v := range good {
-			env[k] = v
+		env := maps.Clone(good)
+		if change[0] == tokenAudienceEnv {
+			env["PLOEG_MCP_CLIENT_IDS"] = ""
 		}
 		env[change[0]] = change[1]
 		if err := load(env); err == nil {
@@ -360,5 +377,66 @@ func TestThePersonNamespaceIsTheIssuerUnlessConfigured(t *testing.T) {
 	env["PLOEG_MCP_SUBJECT_NAMESPACE"] = " https://id.example/application/o/former/ "
 	if got := load().personNamespace; got != "https://id.example/application/o/former/" {
 		t.Fatalf("configured namespace %q", got)
+	}
+}
+
+func TestPingIsMethodNotFoundOnTheModernProtocolAndAnsweredOnThePrevious(t *testing.T) {
+	r := newRemote(t)
+	token := r.token([]string{"ploeg-readers"}, "ploeg:read")
+	req, _ := http.NewRequest(http.MethodPost, r.url, strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"ping","params":{"_meta":{`+
+		`"io.modelcontextprotocol/protocolVersion":"`+modernProtocol+`","io.modelcontextprotocol/clientCapabilities":{},`+
+		`"io.modelcontextprotocol/clientInfo":{"name":"modern","version":"1"}}}}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json, text/event-stream")
+	req.Header.Set("MCP-Protocol-Version", modernProtocol)
+	req.Header.Set("Mcp-Method", "ping")
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var answer struct {
+		Result *json.RawMessage `json:"result"`
+		Error  *jsonrpc.Error   `json:"error"`
+	}
+	err = json.NewDecoder(resp.Body).Decode(&answer)
+	resp.Body.Close()
+	if err != nil || answer.Result != nil || answer.Error == nil || answer.Error.Code != jsonrpc.CodeMethodNotFound {
+		t.Fatalf("ping on %s: want %d method not found, got %d %+v %v", modernProtocol, jsonrpc.CodeMethodNotFound, resp.StatusCode, answer, err)
+	}
+	if err := sessionClient(t, r.url, token, nil, nil).Ping(context.Background(), nil); err != nil {
+		t.Fatalf("ping in a %s session: %v", previousProtocol, err)
+	}
+	if resp, body := r.post(token, previousProtocol, `{"jsonrpc":"2.0","id":1,"method":"ping"}`); resp.StatusCode != http.StatusOK || !bytes.Contains(body, []byte(`"result":{}`)) {
+		t.Fatalf("ping on %s without a session: %d %s", previousProtocol, resp.StatusCode, body)
+	}
+}
+
+func TestTheProtectedResourceMetadataNamesTheIssuerExactlyAsConfigured(t *testing.T) {
+	const issuer = "https://ID.example:443/application/o/ploeg-mcp/"
+	env := map[string]string{
+		"PLOEG_URL":            "http://ploeg:8080",
+		"PLOEG_MCP_RESOURCE":   "https://mcp.example/mcp",
+		"PLOEG_MCP_ISSUER":     " " + issuer + " ",
+		"PLOEG_MCP_CLIENT_IDS": "ploeg-mcp",
+		"PLOEG_MCP_GROUPS":     `[{"group":"ploeg-readers","tokenEnv":"READERS_TOKEN"}]`,
+		"READERS_TOKEN":        strings.Repeat("a", 64),
+	}
+	cfg, err := loadHTTPConfig(func(k string) string { return env[k] }, func(k string) (string, bool) { v, ok := env[k]; return v, ok })
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(cfg.handler(slog.New(slog.DiscardHandler)))
+	t.Cleanup(srv.Close)
+	resp, err := http.Get(srv.URL + "/.well-known/oauth-protected-resource/mcp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var doc struct {
+		AuthorizationServers []string `json:"authorization_servers"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&doc); err != nil || !slices.Equal(doc.AuthorizationServers, []string{issuer}) {
+		t.Fatalf("authorization_servers %q, want exactly [%q]: %v", doc.AuthorizationServers, issuer, err)
 	}
 }

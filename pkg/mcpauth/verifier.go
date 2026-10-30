@@ -37,8 +37,14 @@ type Config struct {
 	// Audiences are what aud must name one of. Without AuthorizedParties
 	// they are the pre-registered client ids and azp must be one of them too.
 	// With Resource set, aud must name the resource instead and Audiences are
-	// only the client ids azp must be one of.
+	// only the client ids azp (or client_id when the token has no azp) must be
+	// one of; empty then accepts any client the issuer issued a token for this
+	// resource. A client id is compared byte for byte, so a Client ID Metadata
+	// Document URL must be written exactly as the issuer puts it in the token.
 	Audiences []string
+	// RefusedClients are client ids whose tokens are never accepted, even when
+	// an empty Audiences accepts any client.
+	RefusedClients []string
 	// Resource, when set, is this server's resource identifier: the RFC 9728
 	// resource its protected resource metadata names and the RFC 8707
 	// resource indicator a client requests a token for. A token is accepted
@@ -112,8 +118,8 @@ func NewVerifier(cfg Config) (*Verifier, error) {
 			return nil, errors.New(httpRefused("JWKS URL"))
 		}
 	}
-	if len(cfg.Audiences) == 0 || slices.Contains(cfg.Audiences, "") {
-		return nil, errors.New("at least one non-empty client id is required as audience")
+	if (len(cfg.Audiences) == 0 && cfg.Resource == "") || slices.Contains(cfg.Audiences, "") || slices.Contains(cfg.RefusedClients, "") {
+		return nil, errors.New("client ids must be non-empty, and at least one is required as audience unless a resource is set")
 	}
 	if cfg.Resource != "" {
 		r, err := url.Parse(cfg.Resource)
@@ -260,7 +266,7 @@ func (v *Verifier) Verify(ctx context.Context, token string, _ *http.Request) (*
 	}
 	exchanging := len(v.cfg.AuthorizedParties) > 0 || len(v.cfg.SelfIssuedAudiences) > 0
 	client := c.AuthorizedParty
-	if client == "" && exchanging {
+	if client == "" && (exchanging || v.cfg.Resource != "") {
 		client = c.ClientID
 	}
 	if client == "" || (scope == "" && !v.cfg.ScopeOptional) {
@@ -274,7 +280,8 @@ func (v *Verifier) Verify(ctx context.Context, token string, _ *http.Request) (*
 	if selfIssued && c.Scope == nil {
 		return nil, invalid("the token was issued to its own audience and has no scope claim; an ID token is not an access token")
 	}
-	if !selfIssued && !slices.Contains(parties, client) {
+	anyClient := v.cfg.Resource != "" && len(v.cfg.Audiences) == 0
+	if slices.Contains(v.cfg.RefusedClients, client) || (!selfIssued && !anyClient && !slices.Contains(parties, client)) {
 		return nil, invalid("the token was issued to a client this server does not accept")
 	}
 	act := ""
@@ -346,4 +353,34 @@ func describe(err error) string {
 		return "the token is not a JWT"
 	}
 	return "the token is not acceptable"
+}
+
+// CheckClientID accepts a pre-registered client id, any id without "://", or
+// a Client ID Metadata Document URL as the MCP authorization specification
+// (revision 2026-07-28) and draft-ietf-oauth-client-id-metadata-document-00
+// require one: https, with a host and a path, without credentials, fragment
+// or dot segments. It never rewrites id, because a token names its client
+// byte for byte.
+func CheckClientID(id string) error {
+	if id == "" || strings.ContainsFunc(id, func(r rune) bool { return r <= 0x20 || r == 0x7f }) {
+		return errors.New("a client id must be non-empty and hold no spaces or control characters")
+	}
+	if !strings.Contains(id, "://") {
+		return nil
+	}
+	u, err := url.Parse(id)
+	if err != nil || !strings.HasPrefix(id, "https://") || u.Host == "" || u.User != nil || u.Fragment != "" || strings.Contains(id, "#") {
+		return fmt.Errorf("client id %q is a URL, so it must be an https Client ID Metadata Document URL without credentials or fragment", id)
+	}
+	path := u.EscapedPath()
+	if path == "" {
+		return fmt.Errorf("client id %q must name its metadata document's path, such as https://client.example/oauth/client.json", id)
+	}
+	for _, segment := range strings.Split(path, "/") {
+		switch strings.ToLower(segment) {
+		case ".", "..", "%2e", "%2e%2e", ".%2e", "%2e.":
+			return fmt.Errorf("client id %q must not hold . or .. path segments", id)
+		}
+	}
+	return nil
 }

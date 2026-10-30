@@ -261,3 +261,97 @@ func TestAnIssuedConfirmationActsOnceForItsActionArgumentsAndPerson(t *testing.T
 		t.Fatalf("requeued %d times", n)
 	}
 }
+
+// formClient connects as subject with a client that declares form
+// elicitation and leaves every round trip to the test.
+func (a acting) formClient(t *testing.T, subject string) *mcp.ClientSession {
+	t.Helper()
+	transport := &mcp.StreamableClientTransport{Endpoint: a.url, DisableStandaloneSSE: true, MaxRetries: -1,
+		HTTPClient: &http.Client{Transport: bearer{a.tokenFor(subject, []string{"ploeg-stewards"}, "ploeg:read")}}}
+	cs, err := mcp.NewClient(&mcp.Implementation{Name: "Test Client", Version: "1.2.3"},
+		&mcp.ClientOptions{Capabilities: formOnly, MultiRoundTrip: &mcp.MultiRoundTripOptions{Disabled: true}}).Connect(context.Background(), transport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = cs.Close() })
+	return cs
+}
+
+func formRequestOf(t *testing.T, res *mcp.CallToolResult) (id, message string) {
+	t.Helper()
+	if res.IsError || len(res.InputRequests) != 1 || res.RequestState == "" {
+		t.Fatalf("want one input request and a state, got %s %+v", textOf(res), res.InputRequests)
+	}
+	for id, r := range res.InputRequests {
+		e, ok := r.(*mcp.ElicitParams)
+		if !ok || e.Mode != "form" || e.RequestedSchema == nil {
+			t.Fatalf("want a form elicitation, got %+v", r)
+		}
+		return id, e.Message
+	}
+	return "", ""
+}
+
+func TestARetryWithoutTheConfirmationsAnswerIsAskedAgain(t *testing.T) {
+	a := newActingRemote(t)
+	cs := a.formClient(t, "subject-1")
+	id := stuckItem(t, "mcp-unanswered-1")
+	args := map[string]any{"ref": id}
+	first, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "ploeg_retry_work", Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	confirmation, message := formRequestOf(t, first)
+	for name, responses := range map[string]mcp.InputResponseMap{
+		"an answer to another request": {"another-request": &mcp.ElicitResult{Action: "accept", Content: map[string]any{confirmFieldName: true}}},
+		"no answer":                    {},
+	} {
+		again, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "ploeg_retry_work", Arguments: args, RequestState: first.RequestState, InputResponses: responses})
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if gotID, gotMessage := formRequestOf(t, again); gotID != confirmation || gotMessage != message || again.RequestState != first.RequestState {
+			t.Fatalf("%s: asked %s %q, want %s %q again", name, gotID, gotMessage, confirmation, message)
+		}
+		if itemState(t, id) != "needs_human" {
+			t.Fatalf("%s: a retry without the answer acted", name)
+		}
+	}
+	res := answered(t, cs, "ploeg_retry_work", args, first.RequestState, confirmation)
+	if out := done(t, res); !out.Done || itemState(t, id) != "queued" {
+		t.Fatalf("the answer after asking again: %s %+v", textOf(res), out)
+	}
+}
+
+func TestACancelledFormSaysItClosedWithoutAnAnswer(t *testing.T) {
+	a := newActingRemote(t)
+	cs := a.formClient(t, "subject-1")
+	id := stuckItem(t, "mcp-cancelled-1")
+	args := map[string]any{"ref": id}
+	first, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "ploeg_retry_work", Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	confirmation, _ := formRequestOf(t, first)
+	retry := func(action string) *mcp.CallToolResult {
+		res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "ploeg_retry_work", Arguments: args, RequestState: first.RequestState,
+			InputResponses: mcp.InputResponseMap{confirmation: &mcp.ElicitResult{Action: action}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return res
+	}
+	var out actionOut
+	res := retry("cancel")
+	raw, _ := json.Marshal(res.StructuredContent)
+	_ = json.Unmarshal(raw, &out)
+	if res.IsError || out.Done || out.Summary != notAnswered || out.Summary == notConfirmed || !strings.Contains(out.Summary, "operator API") {
+		t.Fatalf("a cancelled form: %s %+v", textOf(res), out)
+	}
+	if res := retry("accept"); !res.IsError || !strings.Contains(textOf(res), "already used") {
+		t.Fatalf("an accept after the cancel: %s", textOf(res))
+	}
+	if itemState(t, id) != "needs_human" {
+		t.Fatal("a cancelled form acted")
+	}
+}
