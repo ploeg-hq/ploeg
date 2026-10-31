@@ -26,6 +26,7 @@ Use these sources for the current implementation. The [architecture](architectur
 - [Briefings: versions, catch-up, usefulness and replay](ops/briefings.md)
 - [Tracker configuration](ops/board.md)
 - [Configuration reference](reference/configuration.md): every environment variable and Helm value, generated from the source
+- [Ploeg features by bounded context](reference/features.md): every feature grouped into Dispatch, Integration, Execution and Harness in the domain model's words, with each context's ports and adapters, status and evidence
 - [Support and qualification matrix](reference/support-matrix.md): per release line, what is supported, tested in CI or qualified live, with the evidence for each cell
 - [Accounting invariants](reference/accounting-invariants.md): the rules Ploeg keeps for inference budgets, holds and settlement, and the tests that check them
 - [Leases and cancellation](reference/leases-and-cancellation.md): the Lease lifecycle, fencing, the three-strike rule and timing bounds, with the tests that prove them
