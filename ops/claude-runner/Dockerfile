@@ -1,6 +1,6 @@
 ARG REGISTRY_CHAINGUARD=cgr.dev
 
-FROM ${REGISTRY_CHAINGUARD}/chainguard/wolfi-base:latest@sha256:360896efb0753a5701c48f860e17130c205eae5a264797aa3e7ea126ee2923a7
+FROM ${REGISTRY_CHAINGUARD}/chainguard/wolfi-base:latest@sha256:88a20e2d017bd20cdc0cb3910de603e7bea9512a6c351a8dd3c9df212ab03d73
 
 RUN printf 'https://packages.wolfi.dev/os\n' > /etc/apk/repositories \
  && apk add --no-cache bash ca-certificates-bundle coreutils curl gawk git gpgv grep jq openssh-client sed

@@ -78,7 +78,7 @@ go:
     concluded: MIT
     disposition: allowlisted
   - module: github.com/jackc/puddle/v2
-    version: v2.2.2
+    version: v2.2.3
     shipped: true
     detected: MIT
     concluded: MIT
@@ -105,12 +105,11 @@ go:
     disposition: not-distributed
     note: 'Test-only: validates the published contract schemas.'
   - module: github.com/segmentio/asm
-    version: v1.1.3
+    version: v1.2.1
     shipped: true
-    detected: MIT
-    concluded: MIT
-    disposition: allowlisted
-    note: GitHub's licence badge says MIT-0, but the LICENSE text keeps the notice condition, so it is MIT.
+    detected: MIT-0
+    concluded: MIT-0
+    disposition: ""
   - module: github.com/segmentio/encoding
     version: v0.5.4
     shipped: true
@@ -138,31 +137,31 @@ go:
     disposition: allowlisted
     note: Apache-2.0 with a NOTICE file, and MIT for the parts ported from libyaml. The NOTICE travels in THIRD-PARTY-NOTICES.
   - module: golang.org/x/oauth2
-    version: v0.35.0
+    version: v0.37.0
     shipped: true
     detected: BSD-3-Clause
     concluded: BSD-3-Clause
     disposition: allowlisted
   - module: golang.org/x/sync
-    version: v0.23.0
+    version: v0.24.0
     shipped: true
     detected: BSD-3-Clause AND LicenseRef-Google-Patents-Notice-Golang
     concluded: BSD-3-Clause AND LicenseRef-Google-Patents-Notice-Golang
     disposition: allowlisted
   - module: golang.org/x/sys
-    version: v0.44.0
+    version: v0.49.0
     shipped: true
     detected: BSD-3-Clause AND LicenseRef-Google-Patents-Notice-Golang
     concluded: BSD-3-Clause AND LicenseRef-Google-Patents-Notice-Golang
     disposition: allowlisted
   - module: golang.org/x/text
-    version: v0.42.0
+    version: v0.43.0
     shipped: true
     detected: BSD-3-Clause AND LicenseRef-Google-Patents-Notice-Golang
     concluded: BSD-3-Clause AND LicenseRef-Google-Patents-Notice-Golang
     disposition: allowlisted
   - module: golang.org/x/time
-    version: v0.15.0
+    version: v0.16.0
     shipped: true
     detected: BSD-3-Clause AND LicenseRef-Google-Patents-Notice-Golang
     concluded: BSD-3-Clause AND LicenseRef-Google-Patents-Notice-Golang
