@@ -12,6 +12,7 @@ Use these sources for the current implementation. The [architecture](architectur
 
 ## Try it
 
+- [Ploeg at a glance](at-a-glance.md): what Ploeg does for you, what it works with, and what is supported, experimental or planned
 - [Quickstart](quickstart.md): verify a release's signatures, install it on a local kind cluster and complete one Run with a fake model and a local forge
 
 ## Operate
