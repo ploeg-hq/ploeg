@@ -10,6 +10,7 @@ const (
 	CapabilityDependencyReader   = "dependency_reader"
 	CapabilityWebhookChecker     = "webhook_checker"
 	CapabilityWebhookRegistrar   = "webhook_registrar"
+	CapabilityReferenceNamer     = "reference_namer"
 )
 
 // TrackerCapabilities names the optional tracker port interfaces t
@@ -42,5 +43,16 @@ func TrackerCapabilities(t TrackerProvider) []string {
 	if _, ok := t.(WebhookRegistrar); ok {
 		out = append(out, CapabilityWebhookRegistrar)
 	}
+	if _, ok := t.(ReferenceNamer); ok {
+		out = append(out, CapabilityReferenceNamer)
+	}
 	return out
+}
+
+// ReferenceNamer is implemented by a TrackerProvider whose items have a
+// reference format of their own, the one its forge integrations recognise.
+// A binary registers it with work.RegisterReferenceNamer so that branches
+// and commit trailers use it (ADR-0183).
+type ReferenceNamer interface {
+	Reference(externalID string) string
 }

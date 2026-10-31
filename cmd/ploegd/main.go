@@ -45,6 +45,7 @@ func main() {
 }
 
 func run(ctx context.Context, log *slog.Logger) error {
+	registerReferenceNamers()
 	dbURL := os.Getenv("PLOEG_DATABASE_URL")
 	if dbURL == "" {
 		return errors.New("PLOEG_DATABASE_URL is required")
