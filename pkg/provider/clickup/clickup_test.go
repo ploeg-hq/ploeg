@@ -307,8 +307,10 @@ func TestCommentPostsToTask(t *testing.T) {
 // the board that raised it.
 func TestSetStatusOnlyWritesForDone(t *testing.T) {
 	var calls int
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		calls++
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPut {
+			calls++
+		}
 		_, _ = io.WriteString(w, `{}`)
 	}))
 	defer srv.Close()
@@ -320,7 +322,7 @@ func TestSetStatusOnlyWritesForDone(t *testing.T) {
 		}
 	}
 	if calls != 0 {
-		t.Fatalf("non-terminal states must not touch the board, got %d calls", calls)
+		t.Fatalf("non-terminal states must not write to the board, got %d writes", calls)
 	}
 	if err := p.SetStatus(context.Background(), "t1", work.StateDone); err != nil {
 		t.Fatal(err)

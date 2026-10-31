@@ -584,8 +584,44 @@ func (p *Provider) SetStatus(ctx context.Context, externalID string, state work.
 		p.log().Debug("clickup status write-back skipped (no List status configured for this state)", "external_id", externalID, "state", state)
 		return nil
 	}
+	status, already := p.listSpelling(ctx, externalID, status)
+	if already {
+		return nil
+	}
 	return p.do(ctx, http.MethodPut, "/task/"+url.PathEscape(externalID),
 		map[string]any{"status": status}, nil)
+}
+
+// listSpelling matches a configured status name to the task's List without
+// regard to case or surrounding space, because a List shows its statuses in
+// whatever case its owner chose. It returns the List's own spelling, and
+// whether the task already has that status. When the task or List cannot be
+// read, the configured name is written as given.
+func (p *Provider) listSpelling(ctx context.Context, externalID, status string) (string, bool) {
+	t, err := p.readTask(ctx, externalID)
+	if err != nil {
+		return status, false
+	}
+	if strings.EqualFold(strings.TrimSpace(t.Status.Status), status) {
+		return status, true
+	}
+	if t.List.ID == "" {
+		return status, false
+	}
+	var list struct {
+		Statuses []struct {
+			Status string `json:"status"`
+		} `json:"statuses"`
+	}
+	if err := p.do(ctx, http.MethodGet, "/list/"+url.PathEscape(t.List.ID), nil, &list); err != nil {
+		return status, false
+	}
+	for _, st := range list.Statuses {
+		if strings.EqualFold(strings.TrimSpace(st.Status), status) {
+			return st.Status, false
+		}
+	}
+	return status, false
 }
 
 func (p *Provider) statusFor(state work.State) string {
