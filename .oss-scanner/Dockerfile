@@ -2,7 +2,7 @@
 # Build image for Anthropic's OSS Scanner (https://github.com/anthropics/oss-scanner).
 # The scanner builds this with the repository as context and network access, then scans
 # the finished image offline, so every module, tool and test binary is fetched here.
-FROM docker.io/golang:1.27.3-trixie@sha256:fbb7ae40b62ff8afe31662df570d39b4f5052ac32b90dae8e60d7657a20a74f4
+FROM docker.io/golang:1.27.3-trixie@sha256:c65ecfe613b539ac74c62a4c3b2c27e8f8a6076384c8f27e8a3c0f3be17cc385
 
 ARG HELM_VERSION=4.3.0
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates git curl python3 \
