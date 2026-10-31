@@ -154,6 +154,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 			DoneStatus:  os.Getenv("PLOEG_CLICKUP_DONE_STATUS"),
 			Statuses:    cuStatuses,
 			Workspace:   strings.TrimSpace(os.Getenv("PLOEG_CLICKUP_WORKSPACE_ID")),
+			Agents:      cfg.Trackers.Clickup.Agents,
 			Log:         log,
 		}
 		trackers[cu.Name()] = cu
@@ -164,6 +165,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 			"write_backs", cuToken != "",
 			"done_status", cu.DoneStatus != "",
 			"mapped_statuses", len(cuStatuses),
+			"agent_members", len(cu.Agents),
 			"capabilities", provider.TrackerCapabilities(cu))
 	}
 	gh, err := githubTracker(cfg, githubTrackerEnvFromOS(), log)

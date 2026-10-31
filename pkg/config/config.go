@@ -70,6 +70,11 @@ type TrackerConfig struct {
 	// to Ploeg runs its client-carried Runs for that person (ADR-0112);
 	// work an unmapped user hands waits until one is added.
 	People map[string]string `yaml:"people"`
+	// Agents are the tracker members whose assignment hands work to Ploeg,
+	// by username or email. When set, assigning or unassigning anyone else
+	// is ignored, so a person assigning themselves starts nothing. Read for
+	// ClickUp; production boards should set it.
+	Agents []string `yaml:"agents"`
 }
 
 // Target is one registered repository, selected by the label
@@ -235,6 +240,14 @@ func Load(path string) (*File, error) {
 func (f *File) Validate() error {
 	if err := f.validateTargets(); err != nil {
 		return err
+	}
+	if len(f.Trackers.Vikunja.Agents) > 0 || len(f.Trackers.Github.Agents) > 0 {
+		return fmt.Errorf("trackers.<tracker>.agents is read only for clickup")
+	}
+	for i, a := range f.Trackers.Clickup.Agents {
+		if strings.TrimSpace(a) == "" {
+			return fmt.Errorf("trackers.clickup.agents[%d]: empty", i)
+		}
 	}
 	// One scope namespace across trackers, deliberately: the target map keys
 	// on the provider's container id alone, so a vikunja project and a clickup

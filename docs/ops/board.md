@@ -22,6 +22,16 @@ When the ClickUp token and `PLOEG_CLICKUP_WORKSPACE_ID` (chart `tracker.clickup.
 
 ClickUp moves a task only to List statuses you name, through `PLOEG_CLICKUP_STATUS_MAP` (chart `tracker.clickup.statuses`). For Lists with the statuses Backlog, Ready, In progress, In review and Done, set `active=In progress,awaiting_review=In review,done=Done`: ploegd writes `active` when it opens a Shift on the item, `awaiting_review` when the Shift ends with a pull request to review, and `done` only when the item is finished and `done` is mapped. Backlog and Ready stay the person's to set. Every List the map is used on must have each named status, or ClickUp refuses the write and ploegd logs it. Vikunja and GitHub Issues ignore every state but `done`. Status writes are tested against a fake ClickUp only.
 
+On ClickUp, any assignee dispatches by default, so a person assigning themselves on a routed List would start paid work. Production boards should name the members that hand work to Ploeg in `trackers.clickup.agents` (usernames or email addresses, compared without case). With it set, ploegd ignores assigning or unassigning anyone else, and an agent member's assignment runs as the List's pinned `team`, else as the agent member's Team under `teams.<name>.assignees`, else `PLOEG_DEFAULT_TEAM`. Unset keeps dispatch on every assignee. ploegd refuses `agents` under another tracker.
+
+```yaml
+trackers:
+  clickup:
+    agents: [agent-member]
+    projects:
+      - {name: "Product", id: "901234567", default: app, team: bronze}
+```
+
 A ClickUp Work Item's branch is `agent/CU-<task id>` and its commit trailer and pull request reference are `CU-<task id>`, the form ClickUp's GitHub and GitLab integrations recognise, so they attach the pull request to the task. The ClickUp adapter supplies the format through its `ReferenceNamer` capability, which ploegd and ploeg-worker both register at start. A Shift keeps the branch it recorded when it opened, and a requeued Work Item keeps its previous Shift's branch; a new Shift on an item that last ran under the earlier `agent/clickup-<id>` form gets the new name. Vikunja items keep `agent/vik-<id>` and `VIK-<id>`.
 
 The [July board snapshot](https://forgejo.webgrip.dev/webgrip/ploeg/src/commit/94c7c8e2dc07037ee2fd38a69343426e40bd680d/docs/ops/board.md) records IDs and MCP failures observed then. Do not treat those IDs, counts, API errors or the old console default as current configuration.
