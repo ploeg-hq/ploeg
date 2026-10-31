@@ -123,11 +123,11 @@ func TestWebhookCheckRecordsEachBoardsWiringForTheConnectionsView(t *testing.T) 
 		webhook string
 		shared  []string
 	}{
-		{httpapi.ConnectionBoard{Name: "Board A"}, httpapi.BoardWebhookPresent, []string{"bronze"}},
-		{httpapi.ConnectionBoard{Name: "Board B"}, httpapi.BoardWebhookMissing, []string{}},
-		{httpapi.ConnectionBoard{Name: "Board C", ID: "7"}, httpapi.BoardWebhookMissing, nil},
-		{httpapi.ConnectionBoard{Name: "Locked", ID: "9"}, httpapi.BoardWebhookUnreadable, nil},
-		{httpapi.ConnectionBoard{Name: "Ghost"}, httpapi.BoardWebhookUnresolved, nil},
+		{httpapi.ConnectionBoard{Tracker: "vikunja", Name: "Board A"}, httpapi.BoardWebhookPresent, []string{"bronze"}},
+		{httpapi.ConnectionBoard{Tracker: "vikunja", Name: "Board B"}, httpapi.BoardWebhookMissing, []string{}},
+		{httpapi.ConnectionBoard{Tracker: "vikunja", Name: "Board C", ID: "7"}, httpapi.BoardWebhookMissing, nil},
+		{httpapi.ConnectionBoard{Tracker: "vikunja", Name: "Locked", ID: "9"}, httpapi.BoardWebhookUnreadable, nil},
+		{httpapi.ConnectionBoard{Tracker: "vikunja", Name: "Ghost"}, httpapi.BoardWebhookUnresolved, nil},
 	} {
 		got, at, ok := check.connections.Wiring(tc.board)
 		if !ok || at.IsZero() || got.Webhook != tc.webhook || !slices.Equal(got.Shared, tc.shared) || (tc.shared == nil) != (got.Shared == nil) {

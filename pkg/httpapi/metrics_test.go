@@ -59,7 +59,7 @@ func TestMetricsExposeAlertingStateFromTheDatabase(t *testing.T) {
 	}
 
 	coverage := &WebhookCoverage{}
-	s := &Server{Store: testStore, Log: slog.New(slog.DiscardHandler), TrackerWebhooks: coverage, MetricsCacheTTL: -1}
+	s := &Server{Store: testStore, Log: slog.New(slog.DiscardHandler), TrackerWebhooks: map[string]*WebhookCoverage{"vikunja": coverage, "clickup": {}}, MetricsCacheTTL: -1}
 	body := scrape(t, s.Handler())
 	requireLines(t, body,
 		"# TYPE ploeg_shifts_open gauge",
@@ -86,10 +86,13 @@ func TestMetricsExposeAlertingStateFromTheDatabase(t *testing.T) {
 	coverage.Record(4, []string{"5", "7"}, []string{"9"}, time.Unix(1700000000, 0))
 	requireLines(t, scrape(t, s.Handler()),
 		"# TYPE ploeg_tracker_webhooks_missing gauge",
-		"ploeg_tracker_webhooks_missing 2",
-		"ploeg_tracker_webhooks_unchecked 1",
-		"ploeg_tracker_webhook_check_timestamp_seconds 1.7e+09",
+		`ploeg_tracker_webhooks_missing{tracker="vikunja"} 2`,
+		`ploeg_tracker_webhooks_unchecked{tracker="vikunja"} 1`,
+		`ploeg_tracker_webhook_check_timestamp_seconds{tracker="vikunja"} 1.7e+09`,
 	)
+	if strings.Contains(scrape(t, s.Handler()), `tracker="clickup"`) {
+		t.Fatal("a tracker whose first check has not completed was reported")
+	}
 }
 
 func TestMetricsCacheBoundsDatabaseReads(t *testing.T) {

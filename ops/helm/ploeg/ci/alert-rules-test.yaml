@@ -105,8 +105,8 @@ tests:
           - exp_labels:
               severity: warning
             exp_annotations:
-              summary: Tracker projects have no assignment webhook to Ploeg
-              description: 2 configured Vikunja project(s) had no assignment webhook at the last check. Assignments there do not reach Ploeg.
+              summary: Tracker boards have no assignment webhook to Ploeg
+              description: 2 configured tracker board(s) had no assignment webhook at the last check. Assignments there do not reach Ploeg.
 
   - name: PloegCredentialLeak fires on the first credential_leak failure and clears after 15 minutes
     interval: 1m

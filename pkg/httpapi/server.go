@@ -96,9 +96,10 @@ type Server struct {
 	// TeamCaps bounds how many Runs a team may have running at once. A claim
 	// over the cap answers 204 exactly like an empty queue. Nil = unlimited.
 	TeamCaps TeamCaps
-	// TrackerWebhooks is the latest Vikunja webhook coverage check, reported
-	// by /readyz. Nil = no check configured.
-	TrackerWebhooks *WebhookCoverage
+	// TrackerWebhooks is the latest webhook coverage check of each checked
+	// tracker, keyed by tracker name and reported by /readyz as
+	// "<tracker>Webhooks". Empty = no check configured.
+	TrackerWebhooks map[string]*WebhookCoverage
 	// Connections answers GET /api/v1/operator/connections. Nil answers an
 	// empty view.
 	Connections *Connections
@@ -294,11 +295,15 @@ func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "db unreachable", http.StatusServiceUnavailable)
 		return
 	}
-	if s.TrackerWebhooks == nil {
+	if len(s.TrackerWebhooks) == 0 {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"status": "ready", "vikunjaWebhooks": s.TrackerWebhooks.report()})
+	body := map[string]any{"status": "ready"}
+	for tracker, coverage := range s.TrackerWebhooks {
+		body[tracker+"Webhooks"] = coverage.report()
+	}
+	writeJSON(w, http.StatusOK, body)
 }
 
 // handleTrackerWebhook verifies + parses via the provider, then fast-acks:

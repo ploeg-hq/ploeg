@@ -6,6 +6,7 @@ tracker:
     webhookSecret:
       name: ploeg-clickup-webhook
       key: PLOEG_CLICKUP_SECRET
+    workspaceId: "9001"
     doneStatus: for review
   github:
     appId: "123456"

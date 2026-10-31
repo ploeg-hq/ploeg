@@ -8,6 +8,8 @@ const (
 	CapabilityTaskLinker         = "task_linker"
 	CapabilityRelationReader     = "relation_reader"
 	CapabilityDependencyReader   = "dependency_reader"
+	CapabilityWebhookChecker     = "webhook_checker"
+	CapabilityWebhookRegistrar   = "webhook_registrar"
 )
 
 // TrackerCapabilities names the optional tracker port interfaces t
@@ -33,6 +35,12 @@ func TrackerCapabilities(t TrackerProvider) []string {
 	}
 	if _, ok := t.(DependencyReader); ok {
 		out = append(out, CapabilityDependencyReader)
+	}
+	if _, ok := t.(WebhookChecker); ok {
+		out = append(out, CapabilityWebhookChecker)
+	}
+	if _, ok := t.(WebhookRegistrar); ok {
+		out = append(out, CapabilityWebhookRegistrar)
 	}
 	return out
 }

@@ -508,6 +508,12 @@ tracker:
     tokenSecret: {}
     # webhookSecret: {name: ploeg-clickup-webhook, key: PLOEG_CLICKUP_SECRET}
     webhookSecret: {}
+    # Workspace whose webhooks ploegd checks hourly against the configured
+    # Lists; empty leaves ClickUp boards unchecked.
+    workspaceId: ""
+    # Exact webhook endpoint the check looks for; empty accepts any endpoint
+    # on /webhooks/tracker/clickup.
+    webhookUrl: ""
     # Statuses are per-List custom strings, so the finished-status must be
     # NAMED; empty leaves the board untouched.
     doneStatus: ""

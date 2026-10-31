@@ -303,8 +303,8 @@ spec:
           labels:
             severity: warning
           annotations:
-            summary: "Tracker projects have no assignment webhook to Ploeg"
-            description: "{{ $value }} configured Vikunja project(s) had no assignment webhook at the last check. Assignments there do not reach Ploeg."
+            summary: "Tracker boards have no assignment webhook to Ploeg"
+            description: "{{ $value }} configured tracker board(s) had no assignment webhook at the last check. Assignments there do not reach Ploeg."
             runbook_url: https://docs.example/ploeg/ops/alerts/#ploegtrackerwebhookmissing
         - alert: PloegCredentialLeak
           expr: max(increase(ploeg_runs_failed_total{reason="credential_leak",job="ploeg",namespace="default"}[15m])) > 0

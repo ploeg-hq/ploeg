@@ -1811,6 +1811,14 @@
               "$ref": "#/definitions/secretRef",
               "description": "Verifies X-Signature on POST /webhooks/tracker/clickup. ClickUp generates this on webhook registration \u2014 capture it, never invent it. Empty = deliveries are rejected."
             },
+            "workspaceId": {
+              "type": "string",
+              "description": "ClickUp Workspace id whose webhooks ploegd checks hourly against the configured Lists. Empty leaves ClickUp boards unchecked."
+            },
+            "webhookUrl": {
+              "type": "string",
+              "description": "Exact webhook endpoint the ClickUp check looks for. Empty accepts any endpoint on /webhooks/tracker/clickup."
+            },
             "doneStatus": {
               "type": "string",
               "description": "List status name applied when a Shift finishes, e.g. 'for review'. Statuses are per-List custom strings; empty leaves the board untouched."

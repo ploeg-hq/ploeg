@@ -116,7 +116,7 @@ func TestConnectionsReportEachBoardsWebhookAndWhoCanSeeIt(t *testing.T) {
 	}
 
 	at := time.Date(2026, 10, 19, 9, 0, 0, 0, time.UTC)
-	s.Connections.RecordBoards(map[string]BoardWiring{
+	s.Connections.RecordBoards("vikunja", map[string]BoardWiring{
 		"Product": {ProjectID: "10", Webhook: BoardWebhookPresent, Shared: []string{"bronze", "silver"}},
 		"Site":    {Webhook: BoardWebhookUnresolved},
 		"#49":     {ProjectID: "49", Webhook: BoardWebhookMissing, Shared: []string{}},
@@ -141,7 +141,22 @@ func TestConnectionsReportEachBoardsWebhookAndWhoCanSeeIt(t *testing.T) {
 		t.Errorf("bench = %+v, want a missing webhook and only its pinned Team, unshared", bench)
 	}
 	if body.Boards[3].Webhook != BoardWebhookUnchecked {
-		t.Errorf("clickup board = %+v, want unchecked", body.Boards[3])
+		t.Errorf("clickup board = %+v, want unchecked before its tracker is checked", body.Boards[3])
+	}
+
+	later := at.Add(time.Minute)
+	s.Connections.RecordBoards("clickup", map[string]BoardWiring{
+		"#901": {ProjectID: "901", Webhook: BoardWebhookPresent, Shared: []string{"silver"}},
+	}, later)
+	body = readConnections(t, s, token)
+	if clickup := body.Boards[3]; clickup.Webhook != BoardWebhookPresent || *clickup.Teams[1].Assignees[0].Shared != true {
+		t.Errorf("clickup board = %+v, want its own check's webhook and shares", clickup)
+	}
+	if body.Boards[2].Webhook != BoardWebhookMissing {
+		t.Errorf("a ClickUp check replaced the Vikunja wiring: %+v", body.Boards[2])
+	}
+	if body.CheckedAt == nil || !body.CheckedAt.Equal(at) {
+		t.Errorf("checkedAt = %v; want the oldest tracker check, %v", body.CheckedAt, at)
 	}
 }
 

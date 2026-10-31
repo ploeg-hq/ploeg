@@ -72,6 +72,10 @@ type Provider struct {
 	// provider.ParseStatusMap, which refuses a state SetStatus is never
 	// called with.
 	Statuses map[work.State]string
+	// Workspace is the ClickUp Workspace (the API's team) whose webhooks
+	// CheckWebhooks lists and RegisterWebhook writes. Empty reports every
+	// List's webhook as unreadable.
+	Workspace string
 	// HC is optional; nil gets a 30s client.
 	HC  *http.Client
 	Log *slog.Logger

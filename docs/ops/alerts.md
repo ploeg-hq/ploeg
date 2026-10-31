@@ -30,9 +30,9 @@ The exposition is written by hand in the Prometheus text format (`version=0.0.4`
 | `ploeg_run_briefed_notes_total` | `team`, `role` | Work Item Notes those Runs were briefed with. A counter |
 | `ploeg_runs_pending_outside_allowlist` | `team`, `role`, `harness` | Pending Runs that store a Harness the current allowlist of their Role no longer contains, so no workload claims them ([ADR-0099](../adrs/0099-each-allowed-harness-runs-in-its-own-workload-and-the-claim-selects-on-it.md)). Absent when there are none. The Teams read shows the same counts as `pendingByHarness` |
 | `ploeg_awaiting_review_with_unsuccessful_ci` | | Work Items in `awaiting_review` whose open pull request's head CI, as last read from the forge, is not `success` ([ADR-0119](../adrs/0119-a-pull-request-is-ready-for-review-only-when-the-forges-ci-passed-on-its-head.md)). A pull request whose forge reported no checks does not count. Should stay at `0` |
-| `ploeg_tracker_webhooks_missing` | | Configured Vikunja projects with no assignment webhook to Ploeg |
-| `ploeg_tracker_webhooks_unchecked` | | Configured Vikunja projects the webhook check could not read |
-| `ploeg_tracker_webhook_check_timestamp_seconds` | | Unix time of the last webhook check |
+| `ploeg_tracker_webhooks_missing` | `tracker` | Configured Vikunja projects or ClickUp Lists with no assignment webhook to Ploeg |
+| `ploeg_tracker_webhooks_unchecked` | `tracker` | Configured Vikunja projects or ClickUp Lists the webhook check could not read |
+| `ploeg_tracker_webhook_check_timestamp_seconds` | `tracker` | Unix time of the tracker's last webhook check |
 | `ploeg_db_pool_connections` | `state` | Connections in this ploegd's database pool: `acquired`, `idle` or `constructing`. Their sum is the pool's open connections |
 | `ploeg_db_pool_max_connections` | | Most connections the pool may open (`PLOEG_DB_MAX_CONNS`, or `pool_max_conns` in the URL) |
 | `ploeg_db_pool_acquires_total` | | Successful connection acquisitions. A counter |
@@ -149,9 +149,9 @@ If one Work Item or team accounts for most of it, compare that Shift's `budget` 
 
 `max(ploeg_tracker_webhooks_missing) > 0`. Default: `for: 15m`, warning.
 
-At the last hourly check, at least one configured Vikunja project had no webhook sending `task.assignee.created` to Ploeg. This is the same count `/readyz` reports as `vikunjaWebhooks.missingProjects`. Assignments on those boards never reach Ploeg, and nothing else will tell you.
+At the last hourly check, at least one configured Vikunja project had no webhook sending `task.assignee.created` to Ploeg, or one configured ClickUp List had no live Workspace webhook sending `taskAssigneeUpdated`, `taskStatusUpdated` and `taskUpdated` to Ploeg. The `tracker` label says which. This is the same count `/readyz` reports as `vikunjaWebhooks.missingProjects` and `clickupWebhooks.missingProjects`. Assignments on those boards never reach Ploeg, and nothing else will tell you.
 
-**Check first:** ploegd's warning log from the check, which names each project. Then add the webhook in Vikunja, or set `PLOEG_VIKUNJA_WEBHOOK_REGISTER=true` as described in [tracker configuration](board.md). A non-zero `ploeg_tracker_webhooks_unchecked` means the check could not read some projects. That is usually a token without access to them.
+**Check first:** ploegd's warning log from the check, which names each project or List. Then add the webhook in the tracker, or for Vikunja set `PLOEG_VIKUNJA_WEBHOOK_REGISTER=true` as described in [tracker configuration](board.md). A non-zero `ploeg_tracker_webhooks_unchecked` means the check could not read some boards. That is usually a token without access to them.
 
 ## PloegCredentialLeak
 
