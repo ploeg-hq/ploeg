@@ -9,12 +9,13 @@ import (
 )
 
 // MappableStates are the Ploeg states a TrackerProvider is told through
-// SetStatus. A tracker whose statuses are its operator's own words maps
-// these, and only these, to them (ADR-0183).
-var MappableStates = []work.State{work.StateAwaitingReview, work.StateNeedsHuman, work.StateDone}
+// SetStatus: active when a Shift opens, then awaiting_review, needs_human or
+// done. A tracker whose statuses are its operator's own words maps these,
+// and only these, to them (ADR-0183).
+var MappableStates = []work.State{work.StateActive, work.StateAwaitingReview, work.StateNeedsHuman, work.StateDone}
 
 // ParseStatusMap reads "state=tracker status" pairs separated by commas,
-// such as "awaiting_review=in review,needs_human=blocked,done=complete". A
+// such as "active=in progress,awaiting_review=in review,done=complete". A
 // state outside MappableStates, an empty status or a state named twice is an
 // error, so a typo fails at start-up instead of silently never moving an
 // item. Status names are kept as given.

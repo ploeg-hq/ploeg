@@ -45,6 +45,7 @@ func main() {
 }
 
 func run(ctx context.Context, log *slog.Logger) error {
+	registerReferenceNamers()
 	dbURL := os.Getenv("PLOEG_DATABASE_URL")
 	if dbURL == "" {
 		return errors.New("PLOEG_DATABASE_URL is required")
@@ -138,12 +139,13 @@ func run(ctx context.Context, log *slog.Logger) error {
 
 	// ClickUp is registered only when a secret or a token says the deployment
 	// actually uses it. Without a secret its route rejects every delivery.
+	var cu *clickup.Provider
 	if cuSecret, cuToken := os.Getenv("PLOEG_CLICKUP_SECRET"), os.Getenv("PLOEG_CLICKUP_TOKEN"); cuSecret != "" || cuToken != "" {
 		cuStatuses, err := provider.ParseStatusMap(os.Getenv("PLOEG_CLICKUP_STATUS_MAP"))
 		if err != nil {
 			return fmt.Errorf("PLOEG_CLICKUP_STATUS_MAP: %w", err)
 		}
-		cu := &clickup.Provider{
+		cu = &clickup.Provider{
 			Secret:      cuSecret,
 			DefaultTeam: envOr("PLOEG_DEFAULT_TEAM", "default"),
 			TeamMap:     mergeTeamMap(cfg.AssigneeTeams(), parseTeamMap(os.Getenv("PLOEG_TEAM_MAP"))),
@@ -151,6 +153,8 @@ func run(ctx context.Context, log *slog.Logger) error {
 			Token:       cuToken,
 			DoneStatus:  os.Getenv("PLOEG_CLICKUP_DONE_STATUS"),
 			Statuses:    cuStatuses,
+			Workspace:   strings.TrimSpace(os.Getenv("PLOEG_CLICKUP_WORKSPACE_ID")),
+			Agents:      cfg.Trackers.Clickup.Agents,
 			Log:         log,
 		}
 		trackers[cu.Name()] = cu
@@ -161,6 +165,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 			"write_backs", cuToken != "",
 			"done_status", cu.DoneStatus != "",
 			"mapped_statuses", len(cuStatuses),
+			"agent_members", len(cu.Agents),
 			"capabilities", provider.TrackerCapabilities(cu))
 	}
 	gh, err := githubTracker(cfg, githubTrackerEnvFromOS(), log)
@@ -520,15 +525,31 @@ func run(ctx context.Context, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	var clickupTracker provider.TrackerProvider
+	if cu != nil && cu.Token != "" && cu.Workspace != "" {
+		clickupTracker = cu
+	}
+	clickupCheck, err := newTrackerWebhookCheck("clickup", clickupTracker, cfg.Trackers.Clickup.Projects, clickupWebhookSettings(), nil, log)
+	if err != nil {
+		return err
+	}
 	var loops backgroundLoops
+	srv.TrackerWebhooks = map[string]*httpapi.WebhookCoverage{}
 	if webhookCheck != nil {
-		srv.TrackerWebhooks = webhookCheck.coverage
+		srv.TrackerWebhooks["vikunja"] = webhookCheck.coverage
 		webhookCheck.connections = srv.Connections
+	}
+	if clickupCheck != nil {
+		srv.TrackerWebhooks["clickup"] = clickupCheck.coverage
+		clickupCheck.connections = srv.Connections
 	}
 
 	gate.open(srv.Handler())
 	if webhookCheck != nil {
 		loops.Go(func() { webhookCheck.loop(ctx) })
+	}
+	if clickupCheck != nil {
+		loops.Go(func() { clickupCheck.loop(ctx) })
 	}
 
 	startSweepLoops(ctx, &loops, log, st, sweeper, forgeSweeper, engine, srv, sweepEvery, settleAfter)

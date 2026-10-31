@@ -30,7 +30,7 @@ func TestClickUpPassesTheTrackerConformanceSuite(t *testing.T) {
 
 func TestClickUpDeclaresItsTrackerCapabilities(t *testing.T) {
 	got := strings.Join(provider.TrackerCapabilities(&Provider{}), ",")
-	want := "execution_reader,delivery_identifier,board_reader,task_linker,relation_reader,dependency_reader"
+	want := "execution_reader,delivery_identifier,board_reader,task_linker,relation_reader,dependency_reader,webhook_checker,webhook_registrar,reference_namer"
 	if got != want {
 		t.Fatalf("capabilities = %s, want %s", got, want)
 	}

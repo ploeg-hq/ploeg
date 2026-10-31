@@ -287,6 +287,8 @@ spec:
                 secretKeyRef:
                   name: agent-clickup-token
                   key: CLICKUP_TOKEN
+            - name: PLOEG_CLICKUP_WORKSPACE_ID
+              value: "9001"
             - name: PLOEG_CLICKUP_DONE_STATUS
               value: "for review"
             - name: PLOEG_GITHUB_TRACKER_SECRET

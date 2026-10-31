@@ -87,6 +87,7 @@ func installSelf(dst string) error {
 }
 
 func run(log *slog.Logger) error {
+	registerReferenceNamers()
 	if err := worker.ConcealFromHarness(); err != nil {
 		return err
 	}

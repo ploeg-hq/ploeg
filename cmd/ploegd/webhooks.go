@@ -88,7 +88,7 @@ func (c vikunjaWebhookCheck) run(ctx context.Context) {
 	now := time.Now()
 	c.coverage.Record(len(projects), missing, failed, now)
 	if c.connections != nil {
-		c.connections.RecordBoards(c.boardWiring(found, byName), now)
+		c.connections.RecordBoards("vikunja", c.boardWiring(found, byName), now)
 	}
 }
 

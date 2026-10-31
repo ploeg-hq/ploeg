@@ -289,6 +289,14 @@ spec:
             - name: PLOEG_CLICKUP_URL
               value: {{ .url | quote }}
             {{- end }}
+            {{- if .workspaceId }}
+            - name: PLOEG_CLICKUP_WORKSPACE_ID
+              value: {{ .workspaceId | quote }}
+            {{- end }}
+            {{- if .webhookUrl }}
+            - name: PLOEG_CLICKUP_WEBHOOK_URL
+              value: {{ .webhookUrl | quote }}
+            {{- end }}
             {{- if .doneStatus }}
             - name: PLOEG_CLICKUP_DONE_STATUS
               value: {{ .doneStatus | quote }}

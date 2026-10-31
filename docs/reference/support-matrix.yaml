@@ -554,7 +554,7 @@ rows:
           job: verify
           contains: ["mise run verify"]
           test: {package: pkg/provider/clickup, name: TestExecutionReaderRequiresUnarchivedKnownOpenStatus}
-    limits: Fixture tests only. No record qualifies the tracker against a live ClickUp.
+    limits: Fixture tests only, including the webhook coverage check, the status map and the CU- branch reference. No record qualifies the tracker against a live ClickUp, and ploegd cannot register a ClickUp webhook until a secret store exists.
 
   - id: tracker-operator-api
     axis: tracker

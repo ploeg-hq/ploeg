@@ -107,7 +107,7 @@ Work reaches Ploeg from a tracker webhook or from the operator API. Fixture test
 | --- | --- | --- | --- | --- |
 | GitHub Issues | qualified-live (`2fc4ddc`) | qualified-live (`2fc4ddc`) | [live: 2026-10-23-github-qualification](../research/2026-10-23-github-qualification.md) at `2fc4ddc`<br>[CI `ci` / `verify`](../../.github/workflows/ci.yml) | Reads and write-backs against github.com. The webhook from github.com, its signature and redelivery have fixture tests only. |
 | Vikunja | tested-in-ci | tested-in-ci | [CI `ci` / `verify`](../../.github/workflows/ci.yml) | Fixture tests only. No record qualifies the tracker against a live Vikunja. |
-| ClickUp | tested-in-ci | tested-in-ci | [CI `ci` / `verify`](../../.github/workflows/ci.yml) | Fixture tests only. No record qualifies the tracker against a live ClickUp. |
+| ClickUp | tested-in-ci | tested-in-ci | [CI `ci` / `verify`](../../.github/workflows/ci.yml) | Fixture tests only, including the webhook coverage check, the status map and the CU- branch reference. No record qualifies the tracker against a live ClickUp, and ploegd cannot register a ClickUp webhook until a secret store exists. |
 | Operator API, no tracker | tested-in-ci | tested-in-ci | [CI `quickstart` / `run`](../../.github/workflows/quickstart.yml)<br>[quickstart.md](../quickstart.md) | Admission with a static consumer token. Run oversight and delegated execution through a consumer are not in the quickstart. |
 
 ## Model gateway

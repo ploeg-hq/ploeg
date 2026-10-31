@@ -72,18 +72,24 @@ type Connections struct {
 	// Readiness gates every repository in Repositories by its Key.
 	Readiness *target.Gate
 
-	mu        sync.Mutex
-	wiring    map[string]BoardWiring
-	checkedAt time.Time
+	mu     sync.Mutex
+	checks map[string]boardCheck
 }
 
-// RecordBoards replaces the tracker wiring with a completed check, keyed by
+type boardCheck struct {
+	wiring map[string]BoardWiring
+	at     time.Time
+}
+
+// RecordBoards replaces one tracker's wiring with a completed check, keyed by
 // board name and, for a pinned board, by its id.
-func (c *Connections) RecordBoards(wiring map[string]BoardWiring, at time.Time) {
+func (c *Connections) RecordBoards(tracker string, wiring map[string]BoardWiring, at time.Time) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.wiring = wiring
-	c.checkedAt = at
+	if c.checks == nil {
+		c.checks = map[string]boardCheck{}
+	}
+	c.checks[tracker] = boardCheck{wiring: wiring, at: at}
 }
 
 // RefreshReadiness inspects every repository again.
@@ -93,20 +99,21 @@ func (c *Connections) RefreshReadiness(ctx context.Context) {
 	}
 }
 
-// Wiring returns what the latest tracker check found on a board, when that
-// check finished, and whether the board was checked.
+// Wiring returns what the latest check of the board's tracker found on it,
+// when that check finished, and whether the board was checked.
 func (c *Connections) Wiring(b ConnectionBoard) (BoardWiring, time.Time, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.checkedAt.IsZero() {
+	check, ok := c.checks[b.Tracker]
+	if !ok || check.at.IsZero() {
 		return BoardWiring{}, time.Time{}, false
 	}
 	key := b.Name
 	if b.ID != "" {
 		key = "#" + b.ID
 	}
-	w, ok := c.wiring[key]
-	return w, c.checkedAt, ok
+	w, ok := check.wiring[key]
+	return w, check.at, ok
 }
 
 type connectionsResponse struct {
@@ -185,7 +192,7 @@ func (s *Server) handleOperatorConnections(w http.ResponseWriter, r *http.Reques
 	var checkedAt time.Time
 	for _, b := range boards {
 		view, at := connectionBoard(c, b, teams)
-		if !at.IsZero() {
+		if !at.IsZero() && (checkedAt.IsZero() || at.Before(checkedAt)) {
 			checkedAt = at
 		}
 		body.Boards = append(body.Boards, view)
@@ -217,16 +224,11 @@ func connectionBoard(c *Connections, b ConnectionBoard, teams map[string][]strin
 	if b.ID != "" {
 		view.ProjectID = optional(b.ID)
 	}
-	var wiring BoardWiring
-	var at time.Time
-	checked := false
-	if b.Tracker == "vikunja" {
-		wiring, at, checked = c.Wiring(b)
-		if checked {
-			view.Webhook = wiring.Webhook
-			if wiring.ProjectID != "" {
-				view.ProjectID = optional(wiring.ProjectID)
-			}
+	wiring, at, checked := c.Wiring(b)
+	if checked {
+		view.Webhook = wiring.Webhook
+		if wiring.ProjectID != "" {
+			view.ProjectID = optional(wiring.ProjectID)
 		}
 	}
 	names := make([]string, 0, len(teams))

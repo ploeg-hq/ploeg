@@ -136,7 +136,8 @@ func (e *Engine) ensureShift(ctx context.Context, workItemID int64, item work.Wo
 			return err
 		}
 		branch := work.Branch(item)
-		if _, err := e.Store.OpenShift(ctx, workItemID, item.Team, branch, float64(tp.Pool)); err != nil {
+		_, err = e.Store.OpenShift(ctx, workItemID, item.Team, branch, float64(tp.Pool))
+		if err != nil {
 			// Unique-index violation = someone else opened it between our read
 			// and our insert. That is the race behaving correctly; re-read.
 			live, rerr := e.Store.LiveShiftForItem(ctx, workItemID)
@@ -146,8 +147,24 @@ func (e *Engine) ensureShift(ctx context.Context, workItemID int64, item work.Wo
 		}
 		e.Log.Info("shift opened", "work_item", workItemID, "team", item.Team,
 			"pool", float64(tp.Pool), "rounds", len(tp.Rounds))
+		if err == nil {
+			e.markStarted(ctx, item)
+		}
 	}
 	return e.EvaluateItem(ctx, workItemID)
+}
+
+// markStarted tells the item's tracker that a Shift opened on it, so a
+// tracker that maps the active state moves the item to its started status.
+// A failed write is logged; the Shift goes on.
+func (e *Engine) markStarted(ctx context.Context, item work.WorkItem) {
+	tp, ok := e.Trackers[item.Provider]
+	if !ok || item.ExternalID == "" {
+		return
+	}
+	if err := tp.SetStatus(ctx, item.ExternalID, work.StateActive); err != nil {
+		e.Log.Warn("tracker status write failed; the Shift goes on", "external_id", item.ExternalID, "state", string(work.StateActive), "err", err)
+	}
 }
 
 // PlanRoles lists the distinct Roles of the team's plan in plan order, the

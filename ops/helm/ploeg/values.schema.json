@@ -1811,15 +1811,24 @@
               "$ref": "#/definitions/secretRef",
               "description": "Verifies X-Signature on POST /webhooks/tracker/clickup. ClickUp generates this on webhook registration \u2014 capture it, never invent it. Empty = deliveries are rejected."
             },
+            "workspaceId": {
+              "type": "string",
+              "description": "ClickUp Workspace id whose webhooks ploegd checks hourly against the configured Lists. Empty leaves ClickUp boards unchecked."
+            },
+            "webhookUrl": {
+              "type": "string",
+              "description": "Exact webhook endpoint the ClickUp check looks for. Empty accepts any endpoint on /webhooks/tracker/clickup."
+            },
             "doneStatus": {
               "type": "string",
               "description": "List status name applied when a Shift finishes, e.g. 'for review'. Statuses are per-List custom strings; empty leaves the board untouched."
             },
             "statuses": {
               "type": "object",
-              "description": "List status per Ploeg state (ADR-0183), e.g. {awaiting_review: 'in review', needs_human: 'blocked'}. done here wins over doneStatus; a state left out leaves the board untouched.",
+              "description": "List status per Ploeg state (ADR-0183), e.g. {active: 'In progress', awaiting_review: 'In review', done: 'Done'}. active is written when a Shift opens; done here wins over doneStatus; a state left out leaves the board untouched.",
               "additionalProperties": false,
               "properties": {
+                "active": {"type": "string", "minLength": 1},
                 "awaiting_review": {"type": "string", "minLength": 1},
                 "needs_human": {"type": "string", "minLength": 1},
                 "done": {"type": "string", "minLength": 1}

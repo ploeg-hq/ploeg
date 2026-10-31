@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"cmp"
 	"fmt"
+	"maps"
 	"net/http"
 	"slices"
 	"strconv"
@@ -178,7 +179,7 @@ func (s *Server) harnessAllowed(team, role, harness string) bool {
 	return ok && h.Allows(harness)
 }
 
-func renderMetrics(m store.OperationalMetrics, webhooks *WebhookCoverage, harnessAllowed func(team, role, harness string) bool) []byte {
+func renderMetrics(m store.OperationalMetrics, webhooks map[string]*WebhookCoverage, harnessAllowed func(team, role, harness string) bool) []byte {
 	var b metricWriter
 
 	b.family("ploeg_shifts_open", "gauge", "Open Shifts per team.")
@@ -267,14 +268,28 @@ func renderMetrics(m store.OperationalMetrics, webhooks *WebhookCoverage, harnes
 	b.family("ploeg_work_item_note_oldest_unwritten_seconds", "gauge", "How long the oldest unwritten Work Item Note has waited for the notes graph; 0 when none waits.")
 	b.sample("ploeg_work_item_note_oldest_unwritten_seconds", m.OldestUnwrittenNoteSeconds)
 
-	if webhooks != nil {
-		if c, ok := webhooks.snapshot(); ok {
-			b.family("ploeg_tracker_webhooks_missing", "gauge", "Configured Vikunja projects whose assignment webhook was not found at the last check.")
-			b.sample("ploeg_tracker_webhooks_missing", float64(c.missing))
-			b.family("ploeg_tracker_webhooks_unchecked", "gauge", "Configured Vikunja projects the last webhook check could not read.")
-			b.sample("ploeg_tracker_webhooks_unchecked", float64(c.failed))
-			b.family("ploeg_tracker_webhook_check_timestamp_seconds", "gauge", "Unix time of the last completed webhook coverage check.")
-			b.sample("ploeg_tracker_webhook_check_timestamp_seconds", float64(c.at.Unix()))
+	type trackerCoverage struct {
+		tracker string
+		counts  coverageCounts
+	}
+	var checked []trackerCoverage
+	for _, tracker := range slices.Sorted(maps.Keys(webhooks)) {
+		if c, ok := webhooks[tracker].snapshot(); ok {
+			checked = append(checked, trackerCoverage{tracker, c})
+		}
+	}
+	if len(checked) > 0 {
+		b.family("ploeg_tracker_webhooks_missing", "gauge", "Configured tracker boards whose dispatch webhook was not found at the last check, per tracker.")
+		for _, c := range checked {
+			b.sample("ploeg_tracker_webhooks_missing", float64(c.counts.missing), "tracker", c.tracker)
+		}
+		b.family("ploeg_tracker_webhooks_unchecked", "gauge", "Configured tracker boards the last webhook check could not read, per tracker.")
+		for _, c := range checked {
+			b.sample("ploeg_tracker_webhooks_unchecked", float64(c.counts.failed), "tracker", c.tracker)
+		}
+		b.family("ploeg_tracker_webhook_check_timestamp_seconds", "gauge", "Unix time of the last completed webhook coverage check, per tracker.")
+		for _, c := range checked {
+			b.sample("ploeg_tracker_webhook_check_timestamp_seconds", float64(c.counts.at.Unix()), "tracker", c.tracker)
 		}
 	}
 	return b.Bytes()

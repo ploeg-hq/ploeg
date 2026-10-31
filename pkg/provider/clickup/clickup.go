@@ -72,6 +72,16 @@ type Provider struct {
 	// provider.ParseStatusMap, which refuses a state SetStatus is never
 	// called with.
 	Statuses map[work.State]string
+	// Agents are the usernames or email addresses of the members whose
+	// assignment hands a task to Ploeg, compared without case. When set, an
+	// assignment or removal of anyone else is ignored, so a person assigning
+	// themselves starts nothing; the List's pinned team then picks the Team.
+	// Empty dispatches on every assignee.
+	Agents []string
+	// Workspace is the ClickUp Workspace (the API's team) whose webhooks
+	// CheckWebhooks lists and RegisterWebhook writes. Empty reports every
+	// List's webhook as unreadable.
+	Workspace string
 	// HC is optional; nil gets a 30s client.
 	HC  *http.Client
 	Log *slog.Logger
@@ -148,20 +158,27 @@ func (p *Provider) ParseWebhook(r *http.Request) ([]provider.TrackerEvent, error
 	}
 
 	// Route on whoever was ADDED as an assignee; on removal the relevant
-	// identity is the one that left.
+	// identity is the one that left. With Agents set, only an agent member's
+	// assignment or removal counts, and one that names none is dropped.
 	var actor string
+	removed := false
 	for _, h := range pl.HistoryItems {
 		if h.Field != "assignee" && h.Field != "assignee_add" && h.Field != "assignee_rem" {
 			continue
 		}
-		if a := firstNonEmpty(h.After.Username, h.After.Email); a != "" {
-			actor = a
-			break
+		who := firstNonEmpty(h.After.Username, h.After.Email)
+		if who == "" {
+			who = firstNonEmpty(h.Before.Username, h.Before.Email)
 		}
-		if b := firstNonEmpty(h.Before.Username, h.Before.Email); b != "" {
-			actor = b
-			break
+		if who == "" || (len(p.Agents) > 0 && !p.isAgent(h.After.Username, h.After.Email, h.Before.Username, h.Before.Email)) {
+			continue
 		}
+		actor, removed = who, h.Field == "assignee_rem"
+		break
+	}
+	if pl.Event == "taskAssigneeUpdated" && len(p.Agents) > 0 && actor == "" {
+		p.log().Debug("clickup assignment ignored: no agent member was assigned or removed", "task", pl.TaskID)
+		return nil, nil
 	}
 	team := p.DefaultTeam
 	if t, ok := p.TeamMap[strings.ToLower(actor)]; ok {
@@ -185,9 +202,15 @@ func (p *Provider) ParseWebhook(r *http.Request) ([]provider.TrackerEvent, error
 		// One ClickUp event covers both directions; the history item's field
 		// is what separates them.
 		kind := provider.TrackerAssigned
-		for _, h := range pl.HistoryItems {
-			if h.Field == "assignee_rem" {
+		if len(p.Agents) > 0 {
+			if removed {
 				kind = provider.TrackerUnassigned
+			}
+		} else {
+			for _, h := range pl.HistoryItems {
+				if h.Field == "assignee_rem" {
+					kind = provider.TrackerUnassigned
+				}
 			}
 		}
 		changer, at := pl.changedBy()
@@ -204,6 +227,20 @@ func (p *Provider) ParseWebhook(r *http.Request) ([]provider.TrackerEvent, error
 		// than the core consumes.
 		return nil, nil
 	}
+}
+
+func (p *Provider) isAgent(identities ...string) bool {
+	for _, id := range identities {
+		if id == "" {
+			continue
+		}
+		for _, agent := range p.Agents {
+			if strings.EqualFold(strings.TrimSpace(agent), id) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (p *Provider) confirmedClosed(ctx context.Context, externalID string) bool {
