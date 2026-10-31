@@ -1814,6 +1814,16 @@
             "doneStatus": {
               "type": "string",
               "description": "List status name applied when a Shift finishes, e.g. 'for review'. Statuses are per-List custom strings; empty leaves the board untouched."
+            },
+            "statuses": {
+              "type": "object",
+              "description": "List status per Ploeg state (ADR-0183), e.g. {awaiting_review: 'in review', needs_human: 'blocked'}. done here wins over doneStatus; a state left out leaves the board untouched.",
+              "additionalProperties": false,
+              "properties": {
+                "awaiting_review": {"type": "string", "minLength": 1},
+                "needs_human": {"type": "string", "minLength": 1},
+                "done": {"type": "string", "minLength": 1}
+              }
             }
           }
         },

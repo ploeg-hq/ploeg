@@ -511,6 +511,13 @@ tracker:
     # Statuses are per-List custom strings, so the finished-status must be
     # NAMED; empty leaves the board untouched.
     doneStatus: ""
+    # The List status each Ploeg state moves a task to (ADR-0183); only
+    # awaiting_review, needs_human and done are accepted, and done here wins
+    # over doneStatus. A state left out leaves the board untouched. Name
+    # statuses of the open or custom type for the first two: a closed-type
+    # status reads as a closed task and withdraws its Work Item.
+    # statuses: {awaiting_review: "in review", needs_human: "blocked"}
+    statuses: {}
   # The GitHub Issues tracker (pkg/provider/githubissues, ADR-0085). A label
   # `ploeg:<team>` on an issue in a repository listed under
   # config.trackers.github.projects dispatches it. webhookSecret verifies
