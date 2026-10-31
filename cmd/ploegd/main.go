@@ -139,6 +139,10 @@ func run(ctx context.Context, log *slog.Logger) error {
 	// ClickUp is registered only when a secret or a token says the deployment
 	// actually uses it. Without a secret its route rejects every delivery.
 	if cuSecret, cuToken := os.Getenv("PLOEG_CLICKUP_SECRET"), os.Getenv("PLOEG_CLICKUP_TOKEN"); cuSecret != "" || cuToken != "" {
+		cuStatuses, err := provider.ParseStatusMap(os.Getenv("PLOEG_CLICKUP_STATUS_MAP"))
+		if err != nil {
+			return fmt.Errorf("PLOEG_CLICKUP_STATUS_MAP: %w", err)
+		}
 		cu := &clickup.Provider{
 			Secret:      cuSecret,
 			DefaultTeam: envOr("PLOEG_DEFAULT_TEAM", "default"),
@@ -146,6 +150,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 			BaseURL:     trimSlash(os.Getenv("PLOEG_CLICKUP_URL")),
 			Token:       cuToken,
 			DoneStatus:  os.Getenv("PLOEG_CLICKUP_DONE_STATUS"),
+			Statuses:    cuStatuses,
 			Log:         log,
 		}
 		trackers[cu.Name()] = cu
@@ -154,7 +159,9 @@ func run(ctx context.Context, log *slog.Logger) error {
 		}
 		log.Info("clickup tracker configured",
 			"write_backs", cuToken != "",
-			"done_status", cu.DoneStatus != "")
+			"done_status", cu.DoneStatus != "",
+			"mapped_statuses", len(cuStatuses),
+			"capabilities", provider.TrackerCapabilities(cu))
 	}
 	gh, err := githubTracker(cfg, githubTrackerEnvFromOS(), log)
 	if err != nil {
