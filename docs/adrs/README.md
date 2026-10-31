@@ -253,6 +253,7 @@ fails otherwise.
 | [0176](0176-an-operator-consumer-sets-a-keyed-commit-status-on-a-pull-requests-head-through-ploegs-forge-credentials.md) | An operator consumer sets a keyed commit status on a pull request's head through Ploeg's forge credentials | proposed | 2026-10-29 |
 | [0184](0184-tracker-and-forge-connection-secrets-live-in-a-secret-store-ploeg-writes-itself-and-no-person-handles-them.md) | Tracker and forge connection secrets live in a secret store Ploeg writes itself, and no person handles them | proposed | 2026-10-31 |
 | [0185](0185-a-forge-event-that-names-a-tracker-item-updates-that-item.md) | A forge event that names a tracker item updates that item | proposed | 2026-10-31 |
+| [0186](0186-an-operator-consumer-binds-a-tracker-scope-to-a-team-at-runtime-and-static-routing-wins-on-conflict.md) | An operator consumer binds a tracker Scope to a Team at runtime, and static routing wins on conflict | proposed | 2026-10-31 |
 
 
 ## Review calendar
@@ -379,3 +380,4 @@ triggers.
 | 2027-01-31 | [0176](0176-an-operator-consumer-sets-a-keyed-commit-status-on-a-pull-requests-head-through-ploegs-forge-credentials.md) — or sooner, when a record answers ADR-0171's machine-attribution trigger, a supported forge changes commit status states, limits or repeated-state handling, a consumer needs a richer status or one without a pull request, two consumers collide on a key or a deployment needs another context prefix, or Ploeg supports a forge without commit statuses |
 | 2027-04-30 | [0184](0184-tracker-and-forge-connection-secrets-live-in-a-secret-store-ploeg-writes-itself-and-no-person-handles-them.md) — or sooner, when a supported tracker or forge drops OAuth or its tokens start to expire, an installation needs another store, a stored value is found in a response, log, event or row, or one Ploeg must hold connections for several Tenants |
 | 2027-04-30 | [0185](0185-a-forge-event-that-names-a-tracker-item-updates-that-item.md) — or sooner, when a supported tracker ships a native Forgejo or Gitea integration, a reference reaches an item outside its route, or linking hits a tracker's rate limit |
+| 2027-01-31 | [0186](0186-an-operator-consumer-binds-a-tracker-scope-to-a-team-at-runtime-and-static-routing-wins-on-conflict.md) — or sooner, when ADR-0183 step 6 gives tracker connections ids, ADR-0184 is accepted or rejected, a Tenant needs a binding to an unregistered Work Target, ploegd runs more than one replica, a shadowed binding goes unnoticed for a day, or an installation passes 200 live bindings |
