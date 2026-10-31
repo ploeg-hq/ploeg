@@ -136,7 +136,9 @@ func TestSetStatusMovesEachMappedStateToItsListStatus(t *testing.T) {
 			Status string `json:"status"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&b)
-		got = append(got, r.Method+" "+r.URL.Path+" "+b.Status)
+		if r.Method == http.MethodPut {
+			got = append(got, r.Method+" "+r.URL.Path+" "+b.Status)
+		}
 		fmt.Fprint(w, `{}`)
 	}))
 	defer srv.Close()
@@ -156,6 +158,44 @@ func TestSetStatusMovesEachMappedStateToItsListStatus(t *testing.T) {
 	_ = p.SetStatus(context.Background(), "t1", work.StateDone)
 	if len(got) != 1 || got[0] != "PUT /task/t1 shipped" {
 		t.Fatalf("a mapped done did not win over DoneStatus: %v", got)
+	}
+}
+
+func TestSetStatusMatchesTheListsStatusWithoutRegardToCase(t *testing.T) {
+	var puts []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/task/"):
+			status := "Backlog"
+			if strings.HasSuffix(r.URL.Path, "/t2") {
+				status = "in progress"
+			}
+			fmt.Fprintf(w, `{"id":%q,"status":{"status":%q,"type":"custom"},"list":{"id":"901"}}`, strings.TrimPrefix(r.URL.Path, "/task/"), status)
+		case r.Method == http.MethodGet && r.URL.Path == "/list/901":
+			fmt.Fprint(w, `{"id":"901","statuses":[{"status":"Backlog"},{"status":"In Progress"},{"status":"In review"},{"status":"Done"}]}`)
+		case r.Method == http.MethodPut:
+			var b struct {
+				Status string `json:"status"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&b)
+			puts = append(puts, r.URL.Path+" "+b.Status)
+			fmt.Fprint(w, `{}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	p := &Provider{BaseURL: srv.URL, Token: "pk", Statuses: map[work.State]string{work.StateActive: " in progress ", work.StateAwaitingReview: "IN REVIEW"}}
+	for _, st := range []work.State{work.StateActive, work.StateAwaitingReview} {
+		if err := p.SetStatus(context.Background(), "t1", st); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := p.SetStatus(context.Background(), "t2", work.StateActive); err != nil {
+		t.Fatal(err)
+	}
+	if want := "/task/t1 In Progress|/task/t1 In review"; strings.Join(puts, "|") != want {
+		t.Fatalf("writes = %q, want %q (the List's own spelling, nothing for a task already there)", strings.Join(puts, "|"), want)
 	}
 }
 
