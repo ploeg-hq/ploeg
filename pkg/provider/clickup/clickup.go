@@ -65,6 +65,13 @@ type Provider struct {
 	// says so: ClickUp statuses are per-List custom strings, so guessing one
 	// would either 400 or move the task to a status nobody chose.
 	DoneStatus string
+	// Statuses names the List status SetStatus applies for each Ploeg state
+	// it is told, e.g. awaiting_review → "in review" and needs_human →
+	// "blocked" (ADR-0183). An entry for done overrides DoneStatus. A state
+	// without an entry leaves the board untouched. Build it with
+	// provider.ParseStatusMap, which refuses a state SetStatus is never
+	// called with.
+	Statuses map[work.State]string
 	// HC is optional; nil gets a 30s client.
 	HC  *http.Client
 	Log *slog.Logger
@@ -170,6 +177,7 @@ func (p *Provider) ParseWebhook(r *http.Request) ([]provider.TrackerEvent, error
 		ExternalID: pl.TaskID,
 		Team:       team,
 		Origin:     work.OriginAssignment,
+		URL:        p.TaskURL(pl.TaskID),
 	}
 
 	switch pl.Event {
@@ -318,15 +326,21 @@ func (p *Provider) do(ctx context.Context, method, path string, body, out any) e
 
 // task is the subset of ClickUp's task representation Ploeg mirrors.
 type task struct {
-	ID           string          `json:"id"`
-	Name         string          `json:"name"`
-	Description  string          `json:"description"`
-	TextContent  string          `json:"text_content"`
-	DateUpdated  string          `json:"date_updated"`
-	DateCreated  string          `json:"date_created"`
-	TimeEstimate json.RawMessage `json:"time_estimate"`
-	Archived     bool            `json:"archived"`
-	Status       struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// URL is the page a person opens for the task, as ClickUp names it.
+	URL string `json:"url"`
+	// MarkdownDescription is returned only when the read asks for it with
+	// include_markdown_description=true. Description and TextContent are
+	// the same body with its formatting stripped.
+	MarkdownDescription string          `json:"markdown_description"`
+	Description         string          `json:"description"`
+	TextContent         string          `json:"text_content"`
+	DateUpdated         string          `json:"date_updated"`
+	DateCreated         string          `json:"date_created"`
+	TimeEstimate        json.RawMessage `json:"time_estimate"`
+	Archived            bool            `json:"archived"`
+	Status              struct {
 		Status string `json:"status"`
 		Type   string `json:"type"`
 	} `json:"status"`
@@ -359,7 +373,7 @@ func (t task) tagNames() []string {
 
 func (p *Provider) readTask(ctx context.Context, externalID string) (task, error) {
 	var t task
-	if err := p.do(ctx, http.MethodGet, "/task/"+url.PathEscape(externalID), nil, &t); err != nil {
+	if err := p.do(ctx, http.MethodGet, "/task/"+url.PathEscape(externalID)+"?include_markdown_description=true", nil, &t); err != nil {
 		return task{}, err
 	}
 	if t.ID == "" {
@@ -380,6 +394,20 @@ func (p *Provider) FetchItem(ctx context.Context, externalID string) (work.WorkI
 
 func (p *Provider) TrackerAPIBaseURL() string { return p.baseURL() }
 
+// AppURL is the root of ClickUp's web app, where a task's page lives.
+const AppURL = "https://app.clickup.com"
+
+// TaskURL is the page a person opens for a task: AppURL/t/<id>, which
+// ClickUp redirects to the task wherever it sits. It is empty for an empty
+// id. A read prefers the url ClickUp returns, which also covers a Workspace
+// that shows custom task ids.
+func (p *Provider) TaskURL(externalID string) string {
+	if strings.TrimSpace(externalID) == "" {
+		return ""
+	}
+	return AppURL + "/t/" + url.PathEscape(externalID)
+}
+
 func (p *Provider) FetchExecutionItem(ctx context.Context, externalID string) (provider.ExecutionItem, error) {
 	if !p.configured() {
 		return provider.ExecutionItem{}, errors.New("clickup: no API credentials configured (falling back to the webhook snapshot)")
@@ -388,10 +416,12 @@ func (p *Provider) FetchExecutionItem(ctx context.Context, externalID string) (p
 	if err != nil {
 		return provider.ExecutionItem{}, err
 	}
-	// description is markdown and may be empty where text_content is not.
-	desc := t.Description
-	if desc == "" {
-		desc = t.TextContent
+	// Only markdown_description keeps headings, lists, code and links; the
+	// other two are plain text and may each be empty where another is not.
+	desc := firstNonEmpty(t.MarkdownDescription, t.Description, t.TextContent)
+	link := t.URL
+	if link == "" {
+		link = p.TaskURL(t.ID)
 	}
 	return provider.ExecutionItem{Open: !t.Archived && (t.Status.Type == "open" || t.Status.Type == "custom"), Item: work.WorkItem{
 		Provider:    p.Name(),
@@ -401,6 +431,7 @@ func (p *Provider) FetchExecutionItem(ctx context.Context, externalID string) (p
 		Priority:    priority(t),
 		Title:       t.Name,
 		Description: desc,
+		URL:         link,
 		// The List is ClickUp's own container for the task — the scope the
 		// core resolves a Work Target from. Team is the caller's routing
 		// decision, not the tracker's view; httpapi.mirror overwrites it.
@@ -481,38 +512,53 @@ func (p *Provider) Scope(ctx context.Context, externalID string) (provider.Scope
 }
 
 // Comment writes back to the task's conversation — how a finished Shift
-// reaches a person with the merge request link.
-func (p *Provider) Comment(ctx context.Context, externalID, htmlBody string) error {
+// reaches a person with the pull request link.
+//
+// The body is the Markdown every tracker is given. ClickUp shows
+// comment_text verbatim, so the comment goes as rich-text blocks (bold,
+// code, links, lists, small print as italic) with comment_text carrying the
+// same words without markup for any reader of the plain field.
+func (p *Provider) Comment(ctx context.Context, externalID, body string) error {
 	if !p.configured() {
 		p.log().Info("clickup write-back skipped (no API credentials)", "action", "comment", "external_id", externalID)
 		return nil
 	}
+	plain, blocks := richComment(body)
 	// notify_all false: a bot narrating its own runs should not mail everyone
 	// watching the task on every round.
-	return p.do(ctx, http.MethodPost, "/task/"+externalID+"/comment",
-		map[string]any{"comment_text": htmlBody, "notify_all": false}, nil)
+	return p.do(ctx, http.MethodPost, "/task/"+url.PathEscape(externalID)+"/comment",
+		map[string]any{"comment_text": plain, "comment": blocks, "notify_all": false}, nil)
 }
 
-// SetStatus applies Ploeg's state to the tracker.
+// SetStatus applies Ploeg's state to the tracker as the List status the
+// operator named for it (ADR-0183).
 //
-// Only a terminal state is expressed: needs_human and stale are NOT done — a
-// person still owes the item work, and marking it done would hide it from the
-// board that raised it. Which status name means done is a per-List decision in
-// ClickUp, so it is configuration rather than a guess here (R7).
+// Which status name means done, in review or blocked is a per-List decision
+// in ClickUp, so it is configuration rather than a guess here (R7). A state
+// nobody named leaves the board untouched: needs_human and stale are NOT
+// done, and without a mapping the only safe move is none.
 func (p *Provider) SetStatus(ctx context.Context, externalID string, state work.State) error {
 	if !p.configured() {
 		p.log().Info("clickup write-back skipped (no API credentials)", "action", "set_status", "external_id", externalID, "state", state)
 		return nil
 	}
-	if state != work.StateDone {
+	status := p.statusFor(state)
+	if status == "" {
+		p.log().Debug("clickup status write-back skipped (no List status configured for this state)", "external_id", externalID, "state", state)
 		return nil
 	}
-	if p.DoneStatus == "" {
-		p.log().Info("clickup status write-back skipped (no DoneStatus configured)", "external_id", externalID)
-		return nil
+	return p.do(ctx, http.MethodPut, "/task/"+url.PathEscape(externalID),
+		map[string]any{"status": status}, nil)
+}
+
+func (p *Provider) statusFor(state work.State) string {
+	if name := strings.TrimSpace(p.Statuses[state]); name != "" {
+		return name
 	}
-	return p.do(ctx, http.MethodPut, "/task/"+externalID,
-		map[string]any{"status": p.DoneStatus}, nil)
+	if state == work.StateDone {
+		return strings.TrimSpace(p.DoneStatus)
+	}
+	return ""
 }
 
 // ListsByName lists a Space's lists as name → id, so configuration can name a
