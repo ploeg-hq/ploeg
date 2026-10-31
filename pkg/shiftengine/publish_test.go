@@ -256,6 +256,12 @@ func TestPublish_FindingsReachThePullRequestWhenTheRoundCompletes(t *testing.T) 
 	if err := e.EnsureShift(ctx, id, item); err != nil {
 		t.Fatal(err)
 	}
+	if err := e.EnsureShift(ctx, id, item); err != nil {
+		t.Fatal(err)
+	}
+	if len(tracker.statuses) != 1 || tracker.statuses[0] != work.StateActive {
+		t.Fatalf("statuses after the Shift opened = %v, want [active] once", tracker.statuses)
+	}
 
 	// Round 1 readers report findings. No PR exists yet, so nothing is
 	// published — the findings still reach the writer via the briefing.
@@ -301,8 +307,8 @@ func TestPublish_FindingsReachThePullRequestWhenTheRoundCompletes(t *testing.T) 
 	if !strings.Contains(tracker.comments[0], "review and merge") {
 		t.Errorf("tracker comment does not ask for a merge:\n%s", tracker.comments[0])
 	}
-	if len(tracker.statuses) != 1 || tracker.statuses[0] != work.StateAwaitingReview {
-		t.Errorf("statuses = %v, want [awaiting_review]", tracker.statuses)
+	if len(tracker.statuses) != 2 || tracker.statuses[1] != work.StateAwaitingReview {
+		t.Errorf("statuses = %v, want [active awaiting_review]", tracker.statuses)
 	}
 	if got := itemState(t, id); got != "awaiting_review" {
 		t.Errorf("item state = %q", got)

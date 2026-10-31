@@ -1825,9 +1825,10 @@
             },
             "statuses": {
               "type": "object",
-              "description": "List status per Ploeg state (ADR-0183), e.g. {awaiting_review: 'in review', needs_human: 'blocked'}. done here wins over doneStatus; a state left out leaves the board untouched.",
+              "description": "List status per Ploeg state (ADR-0183), e.g. {active: 'In progress', awaiting_review: 'In review', done: 'Done'}. active is written when a Shift opens; done here wins over doneStatus; a state left out leaves the board untouched.",
               "additionalProperties": false,
               "properties": {
+                "active": {"type": "string", "minLength": 1},
                 "awaiting_review": {"type": "string", "minLength": 1},
                 "needs_human": {"type": "string", "minLength": 1},
                 "done": {"type": "string", "minLength": 1}

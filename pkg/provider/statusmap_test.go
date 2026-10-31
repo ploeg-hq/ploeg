@@ -7,11 +7,11 @@ import (
 )
 
 func TestParseStatusMapReadsEveryMappableState(t *testing.T) {
-	got, err := ParseStatusMap(" awaiting_review = in review , needs_human=blocked,done=complete,")
+	got, err := ParseStatusMap(" active=In progress, awaiting_review = in review , needs_human=blocked,done=complete,")
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := map[work.State]string{work.StateAwaitingReview: "in review", work.StateNeedsHuman: "blocked", work.StateDone: "complete"}
+	want := map[work.State]string{work.StateActive: "In progress", work.StateAwaitingReview: "in review", work.StateNeedsHuman: "blocked", work.StateDone: "complete"}
 	if len(got) != len(want) {
 		t.Fatalf("got %v, want %v", got, want)
 	}
@@ -23,7 +23,7 @@ func TestParseStatusMapReadsEveryMappableState(t *testing.T) {
 }
 
 func TestParseStatusMapRefusesWhatSetStatusNeverReceives(t *testing.T) {
-	for _, in := range []string{"active=in progress", "queued=to do", "done", "done=", "reviewing=x", "done=a,done=b"} {
+	for _, in := range []string{"stale=gave up", "queued=to do", "done", "done=", "reviewing=x", "done=a,done=b"} {
 		if _, err := ParseStatusMap(in); err == nil {
 			t.Errorf("%q was accepted", in)
 		}

@@ -141,13 +141,13 @@ func TestSetStatusMovesEachMappedStateToItsListStatus(t *testing.T) {
 	}))
 	defer srv.Close()
 	p := &Provider{BaseURL: srv.URL, Token: "pk", DoneStatus: "complete", Statuses: map[work.State]string{
-		work.StateAwaitingReview: "in review", work.StateNeedsHuman: "blocked"}}
-	for _, st := range []work.State{work.StateAwaitingReview, work.StateNeedsHuman, work.StateStale, work.StateDone} {
+		work.StateActive: "in progress", work.StateAwaitingReview: "in review", work.StateNeedsHuman: "blocked"}}
+	for _, st := range []work.State{work.StateActive, work.StateAwaitingReview, work.StateNeedsHuman, work.StateStale, work.StateDone} {
 		if err := p.SetStatus(context.Background(), "t1", st); err != nil {
 			t.Fatalf("%s: %v", st, err)
 		}
 	}
-	want := "PUT /task/t1 in review|PUT /task/t1 blocked|PUT /task/t1 complete"
+	want := "PUT /task/t1 in progress|PUT /task/t1 in review|PUT /task/t1 blocked|PUT /task/t1 complete"
 	if strings.Join(got, "|") != want {
 		t.Fatalf("writes = %q, want %q", strings.Join(got, "|"), want)
 	}
