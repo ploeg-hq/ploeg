@@ -59,6 +59,19 @@ A **merge identity** is a forge account or App, one per forge, that only ploegd 
 * **Where it lives.** Only in ploegd's process, read by the composition root and handed to the forge adapter's merger. It is never in a claim, a Lease, `forgebroker`, the worker's environment or its proxy, a response, a log line, an event or a row. The worker's forge proxy keeps refusing every merge call. When [ADR-0184](0184-tracker-and-forge-connection-secrets-live-in-a-secret-store-ploeg-writes-itself-and-no-person-handles-them.md) is accepted, the merge credential is one more secret of the forge connection in that store.
 * **Forge side.** Operators should allow merging into protected branches only to the merge identity (Forgejo branch protection `enable_merge_whitelist`, a GitHub ruleset that restricts updates with the merge App as its only bypass actor, GitLab "Allowed to merge"), so that even a token held by a harness cannot merge. `GET /api/v1/operator/connections` ([ADR-0129](0129-ploeg-reports-how-each-board-and-repository-it-routes-to-is-wired.md)) reports per Work Target whether the agents' identity can merge into the base branch (`agentCanMerge`: `true`, `false` or `unknown`) where the forge lets Ploeg read the protection.
 
+* **Unsafe protection refuses.** A merge identity is only worth its risk when it is the only non-person way to merge. When `agentCanMerge` is `true` for a Work Item's Work Target, the merge route answers `409 protection_unsafe` and reaches no forge: the operator first restricts merging on the base branch. `unknown` is allowed and logged at `WARN` on every merge, because some forges do not let Ploeg read their protection.
+* **Least scope.** The merge identity has write access only to the repositories Ploeg's Work Targets name, and no administrator rights; the start check reads its permission on each registered Work Target (`GET /repos/{owner}/{repo}` `permissions`) and refuses to start when it is an administrator of any of them.
+
+### Security controls on the route
+
+Merging is the highest-impact write Ploeg makes, so the route carries controls no other operator route needs:
+
+* **A fresh person.** `POST` needs a proven person whose authentication is at most 15 minutes old (`auth_time` of the ID token behind ADR-0171's proof; `PLOEG_MERGE_MAX_AUTH_AGE`, default `15m`). An older proof answers `401 reauthentication_required`, so a stolen long-lived session cannot merge.
+* **A rate limit per consumer.** At most 20 merge requests per consumer per hour by default (`PLOEG_MERGE_RATE_LIMIT`); more answer `429` and write an audit row. Merging in bulk is not what this route is for.
+* **A kill switch.** `PLOEG_MERGE_ENABLED=false` makes the route answer `503 merge_disabled` and drops nothing already merged; removing a consumer's `merge` permission takes effect on ploegd's next start.
+* **Visible use.** Every transition increments `ploeg_pull_request_merges_total{state,reason,consumer}` and writes the audit row of section 3, so an operator can alert on a merge outside working hours or a burst of refusals.
+* **No agent path.** A Run never reaches the route: Runs hold no operator token, ploeg-mcp's merge tools need the person's confirmation (ADR-0108), and the worker's forge proxy refuses every merge call to the forge.
+
 ### 2. API
 
 New operator routes, versioned with the operator API (`docs/contracts/operator-api.v1.schema.json` and its Go types change together):
@@ -69,7 +82,7 @@ New operator routes, versioned with the operator API (`docs/contracts/operator-a
 | `GET /api/v1/operator/work-items/{id}/merge` | The Work Item's merge requests, newest first, with their states. |
 | `DELETE /api/v1/operator/work-items/{id}/merge` | Cancel the open merge request: Ploeg asks the forge to drop the scheduled merge. `204`, also when there was none, so a retry is safe. |
 
-* `headSha` (required) is the full commit id the person reviewed. `whenChecksPass` (default `false`) lets the forge merge later, once its checks pass. `number` picks the pull request when the Work Item has more than one, as for keyed comments and statuses (ADR-0176). Unknown fields are refused.
+* `headSha` (required) is the full commit id the person reviewed. `whenChecksPass` (default `false`) lets the forge merge later, once its checks pass. `number` picks the pull request when the Work Item has more than one, as for keyed comments and statuses (ADR-0176). `reference` and `displayName` are optional and only shape attribution (section 6). Unknown fields are refused.
 * **Who may call it.** The consumer needs the new permission **`merge`** in `PLOEG_OPERATOR_CONSUMERS` (default `false`, independent of `execute`; `OperatorPrincipal.CanMerge`), and its Team scope must include the Work Item's Team; otherwise the Work Item is `404 not_found`, as on every operator route. `POST` and `DELETE` need a **proven person** under every value of `PLOEG_OPERATOR_ATTRIBUTION`: an asserted `X-Ploeg-Actor` is refused with `403 person_token_required` even under `asserted`. Reading needs only the Team scope.
 * **Which Work Items.** Only a Work Item in `awaiting_review` with an open pull request Ploeg recorded for it. Anything else is `409 not_awaiting_review` or `409 no_open_pull_request`. This keeps the existing settlement in force: `ReviewWatch` only settles `awaiting_review` items.
 * **The head.** Ploeg reads the pull request's head from the forge (ADR-0059). If it is not `headSha`, the answer is `409 head_changed` with the current head, and nothing reaches the forge. Otherwise Ploeg sends `headSha` with the merge, so a push between Ploeg's read and the forge's merge makes the forge refuse.
@@ -99,7 +112,7 @@ After `scheduled`, Ploeg acts only on what the forge tells it and never merges b
 
 The Work Item finishes the way it already does: `ReviewWatch` settles it at `done` on the merge. Nothing about Work Item states changes.
 
-Every transition writes one `audit_log` row on the Work Item, with the request's attribution, never a credential: `pull_request_merge.requested`, `.scheduled`, `.merged`, `.refused` (with `reason` and the forge's answer), `.cancelled`. Ploeg also posts one comment on the pull request when it takes a request ("Merge requested by `<person>` through `<consumer>` at `<short head>`; the forge merges when its checks pass"), so people in the forge see why the merge identity is about to merge.
+Every transition writes one `audit_log` row on the Work Item, with the request's attribution, never a credential: `pull_request_merge.requested`, `.scheduled`, `.merged`, `.refused` (with `reason` and the forge's answer), `.cancelled`. Ploeg also posts one comment on the pull request when it takes a request ("Merge requested by `<displayName>`, or `<person>` without one, through `<consumer>` at `<short head>`; the forge merges when its checks pass"), so people in the forge see why the merge identity is about to merge.
 
 ### 4. The forge capability
 
@@ -130,9 +143,17 @@ The forge shows the merge identity as the one who merged. The merge commit's mes
 
 ```text
 Merge-Requested-By: <person> (<consumer>)
+Merge-Request: <merge request id>
+Merge-Request-Ref: <reference>
 ```
 
-`<person>` is `ProvenPerson.ID`, the id ADR-0150 derives and the audit row records; `<consumer>` is the consumer's `name` from `PLOEG_OPERATOR_CONSUMERS`. Ploeg sends the forge's default title and, as the message body, the pull request's title and description followed by the trailer. A method that creates no new commit message (Forgejo `rebase` and `fast-forward-only`, GitLab fast-forward) carries no trailer; the audit row and the pull request comment of section 3 then hold the attribution.
+Git history can never be rewritten on a shared branch, so it holds nothing that names a person:
+
+* `<person>` is `ProvenPerson.ID`, the pseudonymous id ADR-0150 derives and the audit row records; `<consumer>` is the consumer's `name` from `PLOEG_OPERATOR_CONSUMERS`.
+* `Merge-Request` is the `pull_request_merges` row's id, so anyone who may read Ploeg's audit resolves who asked, when and through which channel.
+* `Merge-Request-Ref` is optional: an `https` URL the consumer passes as `reference` (at most 2048 characters, no query string, no user info), pointing at its own record of the decision, which resolves for people the consumer lets in and stops resolving when the consumer erases the record.
+
+The readable name goes where it can be erased. The consumer may pass `displayName` (at most 100 characters); Ploeg uses it only in the pull request comment of section 3 and never stores it, logs it or writes it to git. A forge comment can be edited or deleted on an erasure request; a commit cannot. Ploeg sends the forge's default title and, as the message body, the pull request's title and description followed by the trailers. A method that creates no new commit message (Forgejo `rebase` and `fast-forward-only`, GitLab fast-forward) carries no trailer; the audit row and the pull request comment of section 3 then hold the attribution.
 
 ### 7. Out of scope
 
@@ -149,7 +170,8 @@ Merge-Requested-By: <person> (<consumer>)
 * Good, because the Work Item settles through the existing `ReviewWatch` path, and "merged" stays a forge fact.
 * Bad, because "Ploeg never merges" stops being true. ADR-0086's *Not supported* line, `docs/security/self-assessment.md`, the threat model's T-HN-3 row and "Merge through the API — closed", and [`docs/how-to/connect-github-as-a-forge.md`](../how-to/connect-github-as-a-forge.md) must change when this is built, to "Ploeg merges only when a proven person asks, with an identity no Run holds". The threat model gains a row for a stolen consumer credential plus a person token asking for a merge.
 * Bad, because operators provision a second forge identity per forge, and on GitHub a second App.
-* Bad, because a pseudonymous person id in the trailer is not a name a reader of the forge recognises. Accepted: ploegd's operator path holds no person name today, and a name written into a merge commit can never be erased from history, while the id stops identifying anyone once its mapping is deleted.
+* Neutral: the commit names the person only by a pseudonymous id and a reference, so a reader of the forge follows the reference or reads the pull request comment, which carries the readable name the consumer passed. Accepted: a name written into a merge commit can never be erased from history, while a comment can, and the id stops identifying anyone once its mapping is deleted.
+* Bad, because the security controls (fresh authentication, rate limit, unsafe-protection refusal) add refusals a person has to understand; each answers with its own code and the consumer explains it.
 * Bad, because a scheduled merge on GitHub depends on the repository allowing auto-merge, and GitHub repositories that allow several methods are refused until a method rule is decided.
 * Neutral, because a consumer with `merge` can merge any `awaiting_review` pull request in its Teams that the forge's rules allow. It is a real grant; operators give it to the consumer that serves people who decide merges, and branch protection stays the final word.
 
@@ -161,7 +183,8 @@ Proposed, none of these exist yet. Once built, `mise exec -- go test ./...` in `
 * `pkg/shiftengine` tests that a `pr_merged` event moves a `scheduled` request to `merged` and settles the Work Item as today, and that `pr_synchronized`, `check_failed` and `merge_state_dirty` events drop a scheduled merge and record `refused` with `head_changed`, `checks_failed` and `conflict`.
 * A `cmd/ploegd` start test that a merge credential equal to `PLOEG_FORGEJO_TOKEN`, or whose login is `PLOEG_FORGEJO_BOT`, stops ploegd.
 * A redaction test that no claim, Lease, Task Spec, worker environment, response, log line, event or row contains the merge credential, and a worker proxy test that every merge path stays `403`.
-* The commit message test: the trailer is `Merge-Requested-By: <person id> (<consumer name>)`.
+* The commit message test: the trailers are `Merge-Requested-By: <person id> (<consumer name>)`, `Merge-Request: <id>` and, when given, `Merge-Request-Ref: <reference>`; a `displayName` never appears in the commit, a log line or a row.
+* Security tests: `409 protection_unsafe` when `agentCanMerge` is `true`; `401 reauthentication_required` for a proof older than `PLOEG_MERGE_MAX_AUTH_AGE`; `429` past the rate limit; `503 merge_disabled` under the kill switch; ploegd refuses to start with a merge identity that is an administrator of a registered repository.
 * `go test ./internal/ledger/` keeps this record well-formed, and `go test ./internal/boundary/` keeps it free of consumer names.
 
 ## Pros and Cons of the Options
@@ -196,7 +219,7 @@ Proposed, none of these exist yet. Once built, `mise exec -- go test ./...` in `
 * The GitHub or GitLab adapter gains `PullRequestMerger`, or a GitHub repository that allows several methods is refused with `merge_method_ambiguous` in practice.
 * ADR-0184 is accepted or rejected, which decides where the merge credential lives.
 * A merge identity's credential is found in a Run, a log or a response, or an agent identity is found able to merge in `/connections`.
-* A person needs the trailer to carry a readable name, not a person id.
+* A person needs the commit itself to carry a readable name, not a person id and a reference.
 
 ## More Information
 
