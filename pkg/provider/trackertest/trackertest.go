@@ -313,6 +313,9 @@ func Run(t *testing.T, f Fixture) {
 		if err != nil || team != "" || source != "" {
 			t.Fatalf("Delegate(t3) = %q, %q, %v; want no Team for an item without the field", team, source, err)
 		}
+		if named, ok := tp.(provider.DelegateField); ok && !strings.EqualFold(named.DelegateFieldName(), teamField) {
+			t.Fatalf("DelegateFieldName() = %q, want the field the Team is read from, %q", named.DelegateFieldName(), teamField)
+		}
 	})
 
 	t.Run("an activity reads as a person would without Markdown markers", func(t *testing.T) {

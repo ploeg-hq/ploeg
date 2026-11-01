@@ -102,7 +102,9 @@ The check does not compare enum values: a consumer must treat an unknown value a
   in the last 14 days, which have no Work Item. Each row carries a stable
   `code`, the `reason` sentence and the board's `allowedLabels`. A row
   recorded before codes existed answers `unclassified`. An older Ploeg
-  answers 404.
+  answers 404. The fit gate of [ADR-0187](../adrs/0187-a-team-is-assignable-in-a-tracker-as-a-delegate-and-reports-its-work-as-a-session-of-activities.md)
+  records its refusals here too, under the codes `team_missing`,
+  `team_cannot_write`, `budget_exhausted` and `harness_refuses_repository`.
 - `GET /api/v1/operator/connections` is a new response,
   `connectionsResponse` ([ADR-0129](../adrs/0129-ploeg-reports-how-each-board-and-repository-it-routes-to-is-wired.md)):
   every configured board with its rule, its tracker webhook state and

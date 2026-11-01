@@ -62,3 +62,11 @@ type AgentIdentity interface {
 	PostActivity(ctx context.Context, externalID string, activity SessionActivity) error
 	SetExternalURLs(ctx context.Context, externalID string, urls []ExternalURL) error
 }
+
+// DelegateField is implemented by an AgentIdentity that reads the Team from
+// a field a person sets on the item, and names that field as the person
+// sees it, so a question about an item that names no Team can say which
+// field to set (ADR-0187).
+type DelegateField interface {
+	DelegateFieldName() string
+}

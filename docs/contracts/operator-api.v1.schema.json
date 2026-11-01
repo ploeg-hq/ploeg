@@ -2867,6 +2867,10 @@
             "label_not_allowed",
             "target_not_ready",
             "team_unknown",
+            "team_missing",
+            "team_cannot_write",
+            "budget_exhausted",
+            "harness_refuses_repository",
             "unclassified"
           ]
         },

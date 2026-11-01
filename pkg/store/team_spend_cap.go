@@ -105,6 +105,33 @@ func teamPeriodSpend(ctx context.Context, q rowQuerier, team string, since time.
 	return settled, held, nil
 }
 
+// TeamPeriodSpend reads one Team's spend in its current period. capped is
+// false for a Team without a cap, whose spend is not counted.
+func (s *Store) TeamPeriodSpend(ctx context.Context, team string) (spend TeamPeriodSpend, capped bool, err error) {
+	c, ok := s.spendCaps[team]
+	if !ok {
+		return TeamPeriodSpend{}, false, nil
+	}
+	now := s.spendNow()
+	start := c.Period.Start(now)
+	settled, held, err := teamPeriodSpend(ctx, s.pool, team, start)
+	if err != nil {
+		return TeamPeriodSpend{}, true, err
+	}
+	return TeamPeriodSpend{Team: team, Cap: c, PeriodStart: start, PeriodEnd: c.Period.End(now), SettledUSD: settled, HeldUSD: held}, true, nil
+}
+
+// Exhausted reports whether the settled and held spend has reached the cap,
+// so a claim of any size would be refused (ADR-0162).
+func (t TeamPeriodSpend) Exhausted() bool {
+	return t.Cap.Capped() && t.SettledUSD+t.HeldUSD >= t.Cap.USD-spendCapTolerance
+}
+
+// RemainingUSD is the headroom under the cap, never negative.
+func (t TeamPeriodSpend) RemainingUSD() float64 {
+	return math.Max(0, t.Cap.USD-t.SettledUSD-t.HeldUSD)
+}
+
 // TeamPeriodSpends reads every capped Team's spend in its current period,
 // sorted by team.
 func (s *Store) TeamPeriodSpends(ctx context.Context) ([]TeamPeriodSpend, error) {

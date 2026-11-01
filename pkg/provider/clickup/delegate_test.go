@@ -155,11 +155,11 @@ func shownComment(t *testing.T, body map[string]any) (string, []map[string]any) 
 	return plain, blocks
 }
 
-func TestPostActivityLeadsEveryKindButAResponse(t *testing.T) {
+func TestPostActivityLeadsAnActionAnErrorAndAQuestionAndLeavesANoteAsItIs(t *testing.T) {
 	cases := map[provider.SessionActivityKind]string{
-		provider.SessionThought:     "Thought",
+		provider.SessionThought:     "",
 		provider.SessionAction:      "Action",
-		provider.SessionError:       "Error",
+		provider.SessionError:       "Not starting",
 		provider.SessionElicitation: "Question",
 		provider.SessionResponse:    "",
 	}
@@ -178,7 +178,7 @@ func TestPostActivityLeadsEveryKindButAResponse(t *testing.T) {
 			}
 			if lead == "" {
 				if plain != "Reading the login flow" {
-					t.Fatalf("response = %q, want the body as it is", plain)
+					t.Fatalf("%s = %q, want the body as it is", kind, plain)
 				}
 				return
 			}

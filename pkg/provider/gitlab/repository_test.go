@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"slices"
 	"strings"
 	"testing"
 
@@ -12,7 +14,7 @@ import (
 
 const inspectedProject = "/api/v4/projects/acme%2Finternal%2Fwidgets"
 
-func repositoryForge(t *testing.T, project string, agentsOn map[string]bool) *Provider {
+func repositoryForge(t *testing.T, project string, agentsOn map[string]bool, hooksOn ...string) *Provider {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("PRIVATE-TOKEN") != "tok" {
@@ -26,6 +28,12 @@ func repositoryForge(t *testing.T, project string, agentsOn map[string]bool) *Pr
 				t.Errorf("method = %s, want HEAD for a presence check", r.Method)
 			}
 			if !agentsOn[r.URL.Query().Get("ref")] {
+				http.NotFound(w, r)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+		case inspectedProject + "/repository/files/" + url.PathEscape(provider.RepositoryHooksPath):
+			if !slices.Contains(hooksOn, r.URL.Query().Get("ref")) {
 				http.NotFound(w, r)
 				return
 			}
@@ -77,6 +85,17 @@ func TestInspectRepositoryThatTheForgeDoesNotShowIsAnError(t *testing.T) {
 	p := repositoryForge(t, `{}`, nil)
 	if _, err := p.InspectRepository(context.Background(), "acme", "missing", "main"); err == nil {
 		t.Error("a missing project must be an error, not a verdict")
+	}
+}
+
+func TestInspectRepositoryReportsAnOpenHandsHooksFile(t *testing.T) {
+	p := repositoryForge(t, `{"default_branch":"main"}`, map[string]bool{"main": true}, "main")
+	got, err := p.InspectRepository(context.Background(), "acme", "internal/widgets", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.HooksFile || !got.AgentsFile {
+		t.Errorf("state = %+v, want the hooks file and AGENTS.md both reported", got)
 	}
 }
 

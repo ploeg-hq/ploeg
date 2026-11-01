@@ -4,12 +4,13 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 
 	"github.com/ploeg-hq/ploeg/pkg/provider"
 )
 
-func repositoryForge(t *testing.T, repo string, agentsOn map[string]bool) *Provider {
+func repositoryForge(t *testing.T, repo string, agentsOn map[string]bool, hooksOn ...string) *Provider {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "token tok" {
@@ -24,6 +25,12 @@ func repositoryForge(t *testing.T, repo string, agentsOn map[string]bool) *Provi
 				return
 			}
 			_, _ = w.Write([]byte(`{"type":"file","name":"AGENTS.md"}`))
+		case "/api/v1/repos/webgrip/app/contents/" + provider.RepositoryHooksPath:
+			if !slices.Contains(hooksOn, r.URL.Query().Get("ref")) {
+				http.NotFound(w, r)
+				return
+			}
+			_, _ = w.Write([]byte(`{"type":"file","name":"hooks.json"}`))
 		default:
 			http.NotFound(w, r)
 		}
@@ -62,6 +69,20 @@ func TestInspectRepositoryReadsArchiveMirrorAndAgentsFile(t *testing.T) {
 				t.Errorf("state = %+v, want %+v", got, c.want)
 			}
 		})
+	}
+}
+
+func TestInspectRepositoryReportsAnOpenHandsHooksFile(t *testing.T) {
+	p := repositoryForge(t, `{"default_branch":"main"}`, map[string]bool{"main": true, "development": true}, "development")
+	got, err := p.InspectRepository(context.Background(), "webgrip", "app", "development")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.HooksFile || !got.AgentsFile {
+		t.Errorf("state = %+v, want the hooks file and AGENTS.md both reported on development", got)
+	}
+	if got, err = p.InspectRepository(context.Background(), "webgrip", "app", "main"); err != nil || got.HooksFile {
+		t.Errorf("state on main = %+v, %v; want no hooks file there", got, err)
 	}
 }
 

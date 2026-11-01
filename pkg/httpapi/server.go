@@ -382,6 +382,14 @@ func (s *Server) applyTrackerEvents(w http.ResponseWriter, r *http.Request, name
 				"assignee_team", item.Team, "team", team, "team_source", source)
 		}
 		item.Team = team
+		if team == "" {
+			if err := s.askWhichTeam(r.Context(), tp, item, labelsRead); err != nil {
+				s.Log.Error("route refusal audit failed", "provider", name, "external_id", ev.ExternalID, "err", err)
+				http.Error(w, "ingest failed", http.StatusInternalServerError)
+				return false
+			}
+			continue
+		}
 		if refusal := s.resolveTarget(r.Context(), &item, labelsRead, ev); refusal != nil {
 			if err := s.refuseRoute(r.Context(), tp, item, refusal); err != nil {
 				s.Log.Error("route refusal audit failed", "provider", name, "external_id", ev.ExternalID, "err", err)
@@ -389,6 +397,33 @@ func (s *Server) applyTrackerEvents(w http.ResponseWriter, r *http.Request, name
 				return false
 			}
 			continue
+		}
+		// The fit gate (ADR-0187) judges a card a Team would start on now; a
+		// live item is already taken, and its re-assignment only refreshes
+		// the mirror.
+		live, err := s.Store.LiveItem(r.Context(), item.Provider, item.ExternalID)
+		if err != nil {
+			s.Log.Error("ingest failed", "provider", name, "external_id", ev.ExternalID, "err", err)
+			http.Error(w, "ingest failed", http.StatusInternalServerError)
+			return false
+		}
+		var headroom *store.TeamPeriodSpend
+		if !live {
+			refusal, spend, err := s.fitGate(r.Context(), item)
+			if err != nil {
+				s.Log.Error("fit gate failed", "provider", name, "external_id", ev.ExternalID, "err", err)
+				http.Error(w, "ingest failed", http.StatusInternalServerError)
+				return false
+			}
+			if refusal != nil {
+				if err := s.refuseAtGate(r.Context(), tp, item, labelsRead, refusal); err != nil {
+					s.Log.Error("route refusal audit failed", "provider", name, "external_id", ev.ExternalID, "err", err)
+					http.Error(w, "ingest failed", http.StatusInternalServerError)
+					return false
+				}
+				continue
+			}
+			headroom = spend
 		}
 		id, state, err := s.Store.IngestAssigned(r.Context(), item)
 		if err != nil {
@@ -406,6 +441,9 @@ func (s *Server) applyTrackerEvents(w http.ResponseWriter, r *http.Request, name
 		// (queued/active) item refreshes the mirror without re-queuing (VIK-588).
 		if state == work.StateQueued {
 			s.Log.Info("work item queued", "id", id, "team", item.Team, "team_source", source, "external_id", ev.ExternalID)
+			if !live {
+				s.postActivity(r.Context(), tp, item.ExternalID, startingActivity(item, headroom))
+			}
 			// The Shift fast path. Crash between the commit above and this call
 			// leaves a queued item with no Shift — the sweeper's repair case.
 			if s.Engine != nil {

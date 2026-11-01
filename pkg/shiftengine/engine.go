@@ -185,6 +185,19 @@ func (e *Engine) PlanRoles(team string) ([]string, bool) {
 	return roles, true
 }
 
+// TeamWrites reports whether the team's plan, configured or synthesized, has
+// a Role that writes, so intake can tell a person at once that a Team of
+// readers cannot take a card (ADR-0187). planned is false for a team that
+// gets no Shift, whose plan says nothing.
+func (e *Engine) TeamWrites(team string) (writes, planned bool) {
+	tp, ok, _ := e.planFor(team)
+	if !ok {
+		return false, false
+	}
+	_, writes = tp.WriterRound()
+	return writes, true
+}
+
 // Dispatches reports whether a queued Work Item of team gets a Shift: the team
 // has a plan, or uniform dispatch synthesizes one.
 func (e *Engine) Dispatches(team string) bool {

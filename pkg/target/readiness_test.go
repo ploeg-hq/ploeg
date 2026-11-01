@@ -33,6 +33,30 @@ func gateFor(inspector *fakeInspector, targets map[string]work.Target) *Gate {
 	return NewGate(targets, map[string]provider.RepositoryInspector{"forgejo": inspector})
 }
 
+func TestGateKeepsTheInspectedStateBesideItsVerdict(t *testing.T) {
+	inspector := &fakeInspector{states: map[string]provider.RepositoryState{
+		"webgrip/app":  {AgentsFile: true, HooksFile: true},
+		"webgrip/bare": {HooksFile: true},
+	}}
+	g := gateFor(inspector, map[string]work.Target{
+		"app":  {Forge: "forgejo", Owner: "webgrip", Repo: "app", BaseBranch: "main"},
+		"bare": {Forge: "forgejo", Owner: "webgrip", Repo: "bare", BaseBranch: "main"},
+	})
+	if v := g.Admit(context.Background(), "app"); !v.Ready || !v.Repository.HooksFile || v.Repository.Branch != "main" {
+		t.Fatalf("ready verdict = %+v, want the inspected state with its hooks file", v)
+	}
+	if v := g.Admit(context.Background(), "app"); !v.Repository.HooksFile || inspector.calls != 1 {
+		t.Fatalf("second Admit = %+v after %d calls; want the cached verdict to keep the state", v, inspector.calls)
+	}
+	if v := g.Admit(context.Background(), "bare"); v.Ready || !v.Repository.HooksFile {
+		t.Fatalf("unready verdict = %+v, want the state kept as well", v)
+	}
+	inspector.err = errors.New("down")
+	if v := g.Check(context.Background(), "bare"); !v.Unknown || v.Repository != (provider.RepositoryState{}) {
+		t.Fatalf("unknown verdict = %+v, want no state", v)
+	}
+}
+
 func TestGateLoadsEachUnreadyReasonAndAReadyTarget(t *testing.T) {
 	inspector := &fakeInspector{states: map[string]provider.RepositoryState{
 		"webgrip/archived": {Archived: true, AgentsFile: true},
