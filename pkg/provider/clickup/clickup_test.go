@@ -152,6 +152,33 @@ func TestParseWebhookUpdated(t *testing.T) {
 	}
 }
 
+// ClickUp gives before and after the shape of the field that changed. A
+// status, tag or description change must not be rejected for not being a member.
+func TestParseWebhookAcceptsHistoryItemsOfEveryShape(t *testing.T) {
+	p := &Provider{DefaultTeam: "default"}
+	for _, change := range []any{
+		"to do",
+		[]any{map[string]any{"name": "repo/unfold"}},
+		map[string]any{"status": "ready", "type": "custom"},
+		nil,
+		42,
+	} {
+		evs, err := post(t, p, map[string]any{
+			"event":   "taskStatusUpdated",
+			"task_id": "t1",
+			"history_items": []any{
+				map[string]any{"field": "status", "before": change, "after": change, "user": map[string]any{"username": "Ryan"}},
+			},
+		})
+		if err != nil {
+			t.Fatalf("before/after %#v: %v", change, err)
+		}
+		if len(evs) != 1 || evs[0].Kind != provider.TrackerUpdated {
+			t.Errorf("before/after %#v: want updated, got %+v", change, evs)
+		}
+	}
+}
+
 func TestParseWebhookUnhandledEventIsDropped(t *testing.T) {
 	p := &Provider{DefaultTeam: "default"}
 	evs, err := post(t, p, map[string]any{"event": "taskCommentPosted", "task_id": "t1"})
