@@ -98,22 +98,35 @@ type hookPayload struct {
 	// HistoryItems describes what changed. Assignee events are the only ones
 	// whose detail the parser needs, to route to a team.
 	HistoryItems []struct {
-		ID    string `json:"id"`
-		Field string `json:"field"`
-		After struct {
-			Username string `json:"username"`
-			Email    string `json:"email"`
-		} `json:"after"`
-		Before struct {
-			Username string `json:"username"`
-			Email    string `json:"email"`
-		} `json:"before"`
-		User struct {
-			Username string `json:"username"`
-			Email    string `json:"email"`
-		} `json:"user"`
-		Date string `json:"date"`
+		ID     string   `json:"id"`
+		Field  string   `json:"field"`
+		After  hookUser `json:"after"`
+		Before hookUser `json:"before"`
+		User   hookUser `json:"user"`
+		Date   string   `json:"date"`
 	} `json:"history_items"`
+}
+
+// hookUser is a history item's member. ClickUp gives before and after the
+// shape of the field that changed: a member object for assignees, but a
+// string, an array or a status object for other fields. Anything that is not
+// a member object reads as no member, so those deliveries are not rejected.
+type hookUser struct {
+	Username string
+	Email    string
+}
+
+func (u *hookUser) UnmarshalJSON(b []byte) error {
+	var m struct {
+		Username string `json:"username"`
+		Email    string `json:"email"`
+	}
+	if json.Unmarshal(b, &m) != nil {
+		*u = hookUser{}
+		return nil
+	}
+	*u = hookUser{Username: m.Username, Email: m.Email}
+	return nil
 }
 
 func (pl hookPayload) changedBy() (string, time.Time) {
