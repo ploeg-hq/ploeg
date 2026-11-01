@@ -142,7 +142,7 @@ func TestASpentCapRefusesTheCardAndHeadroomIsOnTheStartingThought(t *testing.T) 
 
 	settleSpend(t, "cu-spent-1", 2)
 	clickupAssigneeHook(t, h, "cu-budget", "assignee_add", "agent-member")
-	if got := board.commentsOn("cu-budget"); len(got) != 1 || !strings.Contains(got[0], "\nBudget left this week: US$ 3.00 of US$ 5.00.\n") {
+	if got := board.commentsOn("cu-budget"); len(got) != 1 || !strings.Contains(got[0], "\nBudget left this week: US$ 3,00 of US$ 5,00.\n") {
 		t.Fatalf("comments = %q, want the headroom line", got)
 	}
 
@@ -150,7 +150,7 @@ func TestASpentCapRefusesTheCardAndHeadroomIsOnTheStartingThought(t *testing.T) 
 	clickupAssigneeHook(t, h, "cu-capped", "assignee_add", "agent-member")
 	code, reason, team := gateRefusal(t, "cu-capped")
 	from := spendcap.Week.End(time.Now()).Format("Monday 2 January 2006")
-	wantReason := "Team bronze has spent US$ 5.00 of its US$ 5.00 this week; it can take this card again from " + from
+	wantReason := "Team bronze has spent US$ 5,00 of its US$ 5,00 this week; it can take this card again from " + from
 	if code != target.RefusalBudgetExhausted || reason != wantReason || team != "bronze" {
 		t.Fatalf("refusal = %q %q under %q, want %q", code, reason, team, wantReason)
 	}

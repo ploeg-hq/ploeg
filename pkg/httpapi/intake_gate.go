@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"html"
 	"sort"
-	"strconv"
 	"strings"
 
+	"github.com/ploeg-hq/ploeg/pkg/money"
 	"github.com/ploeg-hq/ploeg/pkg/provider"
 	"github.com/ploeg-hq/ploeg/pkg/spendcap"
 	"github.com/ploeg-hq/ploeg/pkg/store"
@@ -54,7 +54,7 @@ func (s *Server) fitGate(ctx context.Context, item work.WorkItem) (refusal *targ
 		if spend.Exhausted() {
 			return &target.Refusal{Code: target.RefusalBudgetExhausted, Allowed: []string{},
 				Reason: fmt.Sprintf("Team %s has spent %s of its %s %s; it can take this card again from %s",
-					item.Team, usd(spend.SettledUSD+spend.HeldUSD), usd(spend.Cap.USD), periodWords(spend.Cap.Period), spend.PeriodEnd.Format("Monday 2 January 2006"))}, headroom, nil
+					item.Team, money.USD(spend.SettledUSD+spend.HeldUSD), money.USD(spend.Cap.USD), periodWords(spend.Cap.Period), spend.PeriodEnd.Format("Monday 2 January 2006"))}, headroom, nil
 		}
 	}
 	if role, ok := s.harnessRefusesRepository(ctx, item); ok {
@@ -183,7 +183,7 @@ func startingActivity(item work.WorkItem, headroom *store.TeamPeriodSpend) provi
 		lines = append(lines, where+".")
 	}
 	if headroom != nil {
-		lines = append(lines, fmt.Sprintf("Budget left %s: %s of %s.", periodWords(headroom.Cap.Period), usd(headroom.RemainingUSD()), usd(headroom.Cap.USD)))
+		lines = append(lines, fmt.Sprintf("Budget left %s: %s of %s.", periodWords(headroom.Cap.Period), money.USD(headroom.RemainingUSD()), money.USD(headroom.Cap.USD)))
 	}
 	lines = append(lines, "The pull request link lands here when the work is ready for review.")
 	return provider.SessionActivity{Kind: provider.SessionThought, Body: strings.Join(lines, "\n")}
@@ -214,12 +214,6 @@ func teamsThatCanTakeIt(teams []string) string {
 		return "No configured Team can take it."
 	}
 	return "Teams that can take it: " + strings.Join(teams, ", ") + "."
-}
-
-// usd formats an amount as a person reads it on the card: two decimals
-// after a US$ sign.
-func usd(v float64) string {
-	return "US$ " + strconv.FormatFloat(v, 'f', 2, 64)
 }
 
 func periodWords(p spendcap.Period) string {

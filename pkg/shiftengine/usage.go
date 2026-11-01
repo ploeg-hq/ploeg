@@ -5,11 +5,11 @@ import (
 	"net/url"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/ploeg-hq/ploeg/pkg/harness"
+	"github.com/ploeg-hq/ploeg/pkg/money"
 	"github.com/ploeg-hq/ploeg/pkg/store"
 )
 
@@ -57,58 +57,6 @@ type Evidence struct {
 	Historical bool
 }
 
-// money formats a US dollar amount for the report:
-// "US$ 0,06" — a space after US$, and a decimal comma with a dot as the
-// thousands separator (nl-NL). Hand-rolled rather than locale-dependent so
-// rendering is pure and identical on every host.
-func money(v float64) string {
-	neg := v < 0
-	if neg {
-		v = -v
-	}
-	// Round half-up to cents, then split.
-	cents := int64(v*100 + 0.5)
-	whole := cents / 100
-	frac := cents % 100
-	s := groupThousands(strconv.FormatInt(whole, 10)) + "," + fmt.Sprintf("%02d", frac)
-	if neg {
-		s = "-" + s
-	}
-	return "US$ " + s
-}
-
-// tokenCount formats an integer with dot thousands separators (nl-NL).
-func tokenCount(n int64) string {
-	neg := n < 0
-	if neg {
-		n = -n
-	}
-	s := groupThousands(strconv.FormatInt(n, 10))
-	if neg {
-		s = "-" + s
-	}
-	return s
-}
-
-// groupThousands inserts a dot every three digits, left to right.
-func groupThousands(s string) string {
-	if len(s) <= 3 {
-		return s
-	}
-	var b strings.Builder
-	first := len(s) % 3
-	if first > 0 {
-		b.WriteString(s[:first])
-	}
-	for i := first; i < len(s); i += 3 {
-		if b.Len() > 0 {
-			b.WriteByte('.')
-		}
-		b.WriteString(s[i : i+3])
-	}
-	return b.String()
-}
-
 // runModels joins a Run's models, or a dash when none were recorded.
 func runModels(models []string) string {
 	if len(models) == 0 {
@@ -142,14 +90,14 @@ func outcomeOrDash(o string) string {
 func runRow(r store.RunUsage) string {
 	cost := "unavailable"
 	if r.HasUsage {
-		cost = money(r.CostUSD)
+		cost = money.USD(r.CostUSD)
 		if !r.Settled() {
 			cost += " (provisional)"
 		}
 	}
 	tokens := "unavailable"
 	if r.HasUsage {
-		tokens = tokenCount(r.InputTokens) + " / " + tokenCount(r.OutputTokens)
+		tokens = money.Count(r.InputTokens) + " / " + money.Count(r.OutputTokens)
 		if !r.Settled() {
 			tokens += " (provisional)"
 		}
@@ -220,10 +168,10 @@ func usageReport(in usageReportInput) string {
 	}
 
 	b.WriteString("\n**Shift totals**\n\n")
-	fmt.Fprintf(&b, "- Authorized: %s\n", money(ledger.Budget))
-	fmt.Fprintf(&b, "- Spent: %s\n", money(ledger.Spent))
-	fmt.Fprintf(&b, "- Reserved: %s\n", money(ledger.Reserved))
-	fmt.Fprintf(&b, "- Remaining: %s\n", money(ledger.Remaining()))
+	fmt.Fprintf(&b, "- Authorized: %s\n", money.USD(ledger.Budget))
+	fmt.Fprintf(&b, "- Spent: %s\n", money.USD(ledger.Spent))
+	fmt.Fprintf(&b, "- Reserved: %s\n", money.USD(ledger.Reserved))
+	fmt.Fprintf(&b, "- Remaining: %s\n", money.USD(ledger.Remaining()))
 	fmt.Fprintf(&b, "- Rounds used: %d\n", u.Round)
 	if strings.TrimSpace(u.CloseReason) != "" {
 		fmt.Fprintf(&b, "- Close reason: %s\n", u.CloseReason)

@@ -42,9 +42,9 @@ Once a Team is chosen and the repository resolved, intake runs the fit gate of [
 
 | When | Kind | The card reads |
 | --- | --- | --- |
-| Every check passed and the card was queued | `thought` | `Team bronze takes this card.` then `Repository webgrip/app, base branch main.` (when routing resolved one), then `Budget left this week: US$ 3.00 of US$ 5.00.` (when the Team has a `spendCap`), then `The pull request link lands here when the work is ready for review.` |
+| Every check passed and the card was queued | `thought` | `Team bronze takes this card.` then `Repository webgrip/app, base branch main.` (when routing resolved one), then `Budget left this week: US$ 3,00 of US$ 5,00.` (when the Team has a `spendCap`), then `The pull request link lands here when the work is ready for review.` |
 | The Team's plan has no writing Role (`team_cannot_write`) | `error` | `Team silver has no Role that writes code.` then `Teams that can take it: bronze.` or `No configured Team can take it.` |
-| The Team's settled and held spend has reached its `spendCap` (`budget_exhausted`) | `error` | `Team bronze has spent US$ 5.00 of its US$ 5.00 this week; it can take this card again from Monday 2 November 2026.` then the Teams line |
+| The Team's settled and held spend has reached its `spendCap` (`budget_exhausted`) | `error` | `Team bronze has spent US$ 5,00 of its US$ 5,00 this week; it can take this card again from Monday 2 November 2026.` then the Teams line |
 | A Role of the Team runs OpenHands and the repository ships `.openhands/hooks.json` (`harness_refuses_repository`) | `error` | `Team bronze runs OpenHands for its builder Role, and OpenHands refuses a repository that ships .openhands/hooks.json, which webgrip/app does.` then the Teams line |
 | No Team at all: the field is unset, the List has no pin, the assignee maps to no Team and `PLOEG_DEFAULT_TEAM` is empty (`team_missing`) | `elicitation` | `Which Team should take this card? Set the Team field. Teams that can take this repository: bronze, silver.` (the field name is the one the tracker configured) |
 
