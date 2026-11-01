@@ -254,6 +254,7 @@ fails otherwise.
 | [0184](0184-tracker-and-forge-connection-secrets-live-in-a-secret-store-ploeg-writes-itself-and-no-person-handles-them.md) | Tracker and forge connection secrets live in a secret store Ploeg writes itself, and no person handles them | proposed | 2026-10-31 |
 | [0185](0185-a-forge-event-that-names-a-tracker-item-updates-that-item.md) | A forge event that names a tracker item updates that item | proposed | 2026-10-31 |
 | [0186](0186-an-operator-consumer-binds-a-tracker-scope-to-a-team-at-runtime-and-static-routing-wins-on-conflict.md) | An operator consumer binds a tracker Scope to a Team at runtime, and static routing wins on conflict | proposed | 2026-10-31 |
+| [0188](0188-ploeg-merges-a-work-items-pull-request-at-a-named-head-for-a-proven-person-with-a-merge-identity-no-run-holds.md) | Ploeg merges a Work Item's pull request at a named head for a proven person, with a merge identity no Run holds | proposed | 2026-11-01 |
 
 
 ## Review calendar
@@ -381,3 +382,4 @@ triggers.
 | 2027-04-30 | [0184](0184-tracker-and-forge-connection-secrets-live-in-a-secret-store-ploeg-writes-itself-and-no-person-handles-them.md) — or sooner, when a supported tracker or forge drops OAuth or its tokens start to expire, an installation needs another store, a stored value is found in a response, log, event or row, or one Ploeg must hold connections for several Tenants |
 | 2027-04-30 | [0185](0185-a-forge-event-that-names-a-tracker-item-updates-that-item.md) — or sooner, when a supported tracker ships a native Forgejo or Gitea integration, a reference reaches an item outside its route, or linking hits a tracker's rate limit |
 | 2027-01-31 | [0186](0186-an-operator-consumer-binds-a-tracker-scope-to-a-team-at-runtime-and-static-routing-wins-on-conflict.md) — or sooner, when ADR-0183 step 6 gives tracker connections ids, ADR-0184 is accepted or rejected, a Tenant needs a binding to an unregistered Work Target, ploegd runs more than one replica, a shadowed binding goes unnoticed for a day, or an installation passes 200 live bindings |
+| 2027-02-28 | [0188](0188-ploeg-merges-a-work-items-pull-request-at-a-named-head-for-a-proven-person-with-a-merge-identity-no-run-holds.md) — or sooner, when the owner decides an automatic merge policy, a record answers ADR-0171's machine-attribution trigger, Forgejo changes its merge-when-checks-succeed or head checks, the GitHub or GitLab adapter gains a merger, ADR-0184 is decided, a merge credential leaks or an agent identity can merge, or a person needs a readable name in the trailer |
