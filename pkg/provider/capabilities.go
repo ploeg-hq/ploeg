@@ -11,6 +11,7 @@ const (
 	CapabilityWebhookChecker     = "webhook_checker"
 	CapabilityWebhookRegistrar   = "webhook_registrar"
 	CapabilityReferenceNamer     = "reference_namer"
+	CapabilityAgentIdentity      = "agent_identity"
 )
 
 // TrackerCapabilities names the optional tracker port interfaces t
@@ -45,6 +46,9 @@ func TrackerCapabilities(t TrackerProvider) []string {
 	}
 	if _, ok := t.(ReferenceNamer); ok {
 		out = append(out, CapabilityReferenceNamer)
+	}
+	if _, ok := t.(AgentIdentity); ok {
+		out = append(out, CapabilityAgentIdentity)
 	}
 	return out
 }

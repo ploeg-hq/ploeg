@@ -2866,6 +2866,7 @@
             "no_board_rule",
             "label_not_allowed",
             "target_not_ready",
+            "team_unknown",
             "unclassified"
           ]
         },

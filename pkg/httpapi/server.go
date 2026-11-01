@@ -12,6 +12,7 @@ import (
 	"html"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -364,7 +365,23 @@ func (s *Server) applyTrackerEvents(w http.ResponseWriter, r *http.Request, name
 			continue
 		}
 		item, labelsRead := s.mirror(r.Context(), tp, ev)
-		s.pinTeam(&item)
+		team, source := s.trackerTeam(r.Context(), tp, item, ev)
+		if source == teamSourceField && !s.teamConfigured(team) {
+			item.Team, _ = s.containerTeam(item, ev)
+			refusal := &target.Refusal{Code: target.RefusalTeamUnknown, Allowed: []string{},
+				Reason: fmt.Sprintf("its Team field names %q and this installation has no such Team; the Teams are %s", team, strings.Join(s.knownTeams(), ", "))}
+			if err := s.refuseRoute(r.Context(), tp, item, refusal); err != nil {
+				s.Log.Error("route refusal audit failed", "provider", name, "external_id", ev.ExternalID, "err", err)
+				http.Error(w, "ingest failed", http.StatusInternalServerError)
+				return false
+			}
+			continue
+		}
+		if team != item.Team {
+			s.Log.Info("team decided by the tracker", "external_id", ev.ExternalID, "scope", item.ExternalScope,
+				"assignee_team", item.Team, "team", team, "team_source", source)
+		}
+		item.Team = team
 		if refusal := s.resolveTarget(r.Context(), &item, labelsRead, ev); refusal != nil {
 			if err := s.refuseRoute(r.Context(), tp, item, refusal); err != nil {
 				s.Log.Error("route refusal audit failed", "provider", name, "external_id", ev.ExternalID, "err", err)
@@ -388,7 +405,7 @@ func (s *Server) applyTrackerEvents(w http.ResponseWriter, r *http.Request, name
 		// Log the actual post-upsert state: a re-assignment of a live
 		// (queued/active) item refreshes the mirror without re-queuing (VIK-588).
 		if state == work.StateQueued {
-			s.Log.Info("work item queued", "id", id, "team", item.Team, "external_id", ev.ExternalID)
+			s.Log.Info("work item queued", "id", id, "team", item.Team, "team_source", source, "external_id", ev.ExternalID)
 			// The Shift fast path. Crash between the commit above and this call
 			// leaves a queued item with no Shift — the sweeper's repair case.
 			if s.Engine != nil {
@@ -397,7 +414,7 @@ func (s *Server) applyTrackerEvents(w http.ResponseWriter, r *http.Request, name
 				}
 			}
 		} else {
-			s.Log.Info("work item refreshed, not queued", "id", id, "state", string(state), "team", item.Team, "external_id", ev.ExternalID)
+			s.Log.Info("work item refreshed, not queued", "id", id, "state", string(state), "team", item.Team, "team_source", source, "external_id", ev.ExternalID)
 		}
 		s.observeGate(r.Context(), name, tp, ev)
 	}
@@ -474,21 +491,72 @@ func (s *Server) mirror(ctx context.Context, tp provider.TrackerProvider, ev pro
 		ExternalScope: ev.Scope.ID, Origin: work.OriginAssignment}, false
 }
 
-// pinTeam applies a container's pinned team once the scope is known — which
-// for a thin webhook (clickup) is only after mirror has fetched the item, so
-// this cannot live in the provider. It runs before resolveTarget so the
-// team-qualified routing rules see the team the work will actually run as.
-func (s *Server) pinTeam(item *work.WorkItem) {
-	if item.ExternalScope == "" {
-		return
+// Team sources: what decided the Team a tracker item's work runs as.
+const (
+	teamSourceField    = provider.DelegateSourceField
+	teamSourceScope    = "scope"
+	teamSourceAssignee = "assignee"
+)
+
+// trackerTeam decides the Team a tracker item's work runs as, the same way
+// at intake and at withdrawal (ADR-0187): the Team the item itself names
+// through the tracker's AgentIdentity, else the Team its container pins,
+// else the Team the event's assignee mapped to. The container is known only
+// after mirror has read the item, so this runs after it and before
+// resolveTarget, whose team-qualified rules see the Team the work runs as.
+func (s *Server) trackerTeam(ctx context.Context, tp provider.TrackerProvider, item work.WorkItem, ev provider.TrackerEvent) (string, string) {
+	if identity, ok := tp.(provider.AgentIdentity); ok {
+		team, source, err := identity.Delegate(ctx, item)
+		switch {
+		case err != nil:
+			s.Log.Warn("the tracker item's Team field could not be read; the container and assignee decide",
+				"provider", tp.Name(), "external_id", item.ExternalID, "err", err)
+		case team != "":
+			if source == "" {
+				source = teamSourceField
+			}
+			return team, source
+		}
 	}
-	pinned, ok := s.ScopeTeams[item.ExternalScope]
-	if !ok || pinned == "" || pinned == item.Team {
-		return
+	return s.containerTeam(item, ev)
+}
+
+// containerTeam is the Team without the item's own say: the container's
+// pin when it has one, else the event's assignee Team.
+func (s *Server) containerTeam(item work.WorkItem, ev provider.TrackerEvent) (string, string) {
+	scope := item.ExternalScope
+	if scope == "" {
+		scope = ev.Scope.ID
 	}
-	s.Log.Info("team pinned by tracker container", "external_id", item.ExternalID,
-		"scope", item.ExternalScope, "assignee_team", item.Team, "team", pinned)
-	item.Team = pinned
+	if pinned := s.ScopeTeams[scope]; scope != "" && pinned != "" {
+		return pinned, teamSourceScope
+	}
+	return ev.Team, teamSourceAssignee
+}
+
+// teamConfigured reports whether the installation has the Team. A server
+// that knows no Teams at all cannot refuse one.
+func (s *Server) teamConfigured(team string) bool {
+	if len(s.OperatorConfig.Teams) == 0 && len(s.CreatedWork) == 0 {
+		return true
+	}
+	return s.knownTeam(team)
+}
+
+func (s *Server) knownTeams() []string {
+	names := map[string]bool{}
+	for name := range s.OperatorConfig.Teams {
+		names[name] = true
+	}
+	for name := range s.CreatedWork {
+		names[name] = true
+	}
+	out := make([]string, 0, len(names))
+	for name := range names {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
 }
 
 func (s *Server) resolveTarget(ctx context.Context, item *work.WorkItem, labelsRead bool, ev provider.TrackerEvent) *target.Refusal {
@@ -542,8 +610,12 @@ func (s *Server) refuseRoute(ctx context.Context, tp provider.TrackerProvider, i
 }
 
 func routeRefusalComment(refusal *target.Refusal) string {
-	return "<p>Ploeg did not queue this task: " + html.EscapeString(refusal.Reason) + ".</p>" +
-		"<p>Nothing was sent to any repository. Give the task exactly one <code>" + target.HintPrefix +
+	lead := "<p>Ploeg did not queue this task: " + html.EscapeString(refusal.Reason) + ".</p>"
+	if refusal.Code == target.RefusalTeamUnknown {
+		return lead + "<p>Nothing was sent to any repository. Set the task's Team field to one of the Teams named above, " +
+			"or clear it to run as the List's Team, then assign it again.</p>"
+	}
+	return lead + "<p>Nothing was sent to any repository. Give the task exactly one <code>" + target.HintPrefix +
 		"&lt;target&gt;</code> label this board allows, or ask an operator to register the target, then assign it again.</p>"
 }
 

@@ -291,6 +291,8 @@ spec:
               value: "9001"
             - name: PLOEG_CLICKUP_DONE_STATUS
               value: "for review"
+            - name: PLOEG_CLICKUP_TEAM_FIELD
+              value: "Ploeg Team"
             - name: PLOEG_GITHUB_TRACKER_SECRET
               valueFrom:
                 secretKeyRef:

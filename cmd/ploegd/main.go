@@ -4,6 +4,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -155,6 +156,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 			Statuses:    cuStatuses,
 			Workspace:   strings.TrimSpace(os.Getenv("PLOEG_CLICKUP_WORKSPACE_ID")),
 			Agents:      cfg.Trackers.Clickup.Agents,
+			TeamField:   strings.TrimSpace(os.Getenv("PLOEG_CLICKUP_TEAM_FIELD")),
 			Log:         log,
 		}
 		trackers[cu.Name()] = cu
@@ -166,6 +168,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 			"done_status", cu.DoneStatus != "",
 			"mapped_statuses", len(cuStatuses),
 			"agent_members", len(cu.Agents),
+			"team_field", cmp.Or(cu.TeamField, clickup.DefaultTeamField),
 			"capabilities", provider.TrackerCapabilities(cu))
 	}
 	gh, err := githubTracker(cfg, githubTrackerEnvFromOS(), log)

@@ -58,17 +58,10 @@ func (s *Server) trackerUnassigned(ctx context.Context, name string, ev provider
 	if err != nil {
 		return err
 	}
-	team := ev.Team
-	scope := ev.Scope.ID
-	if scope == "" {
-		scope = item.ExternalScope
-	}
-	if pinned := s.ScopeTeams[scope]; scope != "" && pinned != "" {
-		team = pinned
-	}
+	team, source := s.trackerTeam(ctx, s.Trackers[name], item, ev)
 	if team != item.Team {
 		s.Log.Info("unassignment ignored: the removed assignee is not the item's team",
-			"provider", name, "external_id", ev.ExternalID, "team", item.Team, "assignee_team", team)
+			"provider", name, "external_id", ev.ExternalID, "team", item.Team, "assignee_team", team, "team_source", source)
 		return nil
 	}
 	_, _, err = s.withdraw(ctx, id, nil, "webhook:"+name, store.CloseReasonWithdrawnUnassigned)

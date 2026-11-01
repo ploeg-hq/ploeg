@@ -8,6 +8,7 @@ tracker:
       key: PLOEG_CLICKUP_SECRET
     workspaceId: "9001"
     doneStatus: for review
+    teamField: Ploeg Team
   github:
     appId: "123456"
     appPrivateKeySecret:

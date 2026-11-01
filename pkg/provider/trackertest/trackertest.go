@@ -8,6 +8,7 @@ package trackertest
 
 import (
 	"context"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -36,6 +37,9 @@ type Task struct {
 	// Comments holds each comment as the text a person reads: the fake
 	// renders what the adapter sent the way the vendor would show it.
 	Comments []string
+	// Fields maps a dropdown field's name to its selected option name, for
+	// an adapter that reads a Team from a field (ADR-0187).
+	Fields map[string]string
 }
 
 // World is the tracker state a fake vendor API serves and records into.
@@ -65,6 +69,7 @@ func (w *World) Read(id string) (Task, bool) {
 	out := *t
 	out.DependsOn = slices.Clone(t.DependsOn)
 	out.Comments = slices.Clone(t.Comments)
+	out.Fields = maps.Clone(t.Fields)
 	return out, true
 }
 
@@ -98,6 +103,10 @@ type Fixture struct {
 	// StatusMapping says the adapter moves items to operator-named
 	// statuses rather than to a fixed vocabulary of its own.
 	StatusMapping bool
+	// TeamField is the name of the field the suite seeds a Team into, for
+	// an adapter that declares AgentIdentity; New must configure the
+	// adapter to read it. Empty means "Team".
+	TeamField string
 }
 
 const (
@@ -106,9 +115,10 @@ const (
 	outcome = "Ploeg finished this item. Its pull request is ready for review.\n\n**Outcome:** done\n**Pull request:** https://forge.example/o/r/pulls/7\n\n<sub>Posted by Ploeg.</sub>"
 )
 
-func seed() *World {
+func seed(teamField string) *World {
 	return NewWorld(
-		Task{ID: "t1", Title: "Fix the login", Body: "## Steps\n\n- reproduce **it**", Scope: "901", Status: "to do", DependsOn: []string{"t2", "t3"}},
+		Task{ID: "t1", Title: "Fix the login", Body: "## Steps\n\n- reproduce **it**", Scope: "901", Status: "to do", DependsOn: []string{"t2", "t3"},
+			Fields: map[string]string{teamField: "Silver"}},
 		Task{ID: "t2", Title: "Schema", Scope: "901", Closed: true, Status: "complete"},
 		Task{ID: "t3", Title: "API", Scope: "901", Status: "in progress"},
 	)
@@ -117,9 +127,13 @@ func seed() *World {
 // Run runs every case the adapter's declared capabilities call for.
 func Run(t *testing.T, f Fixture) {
 	t.Helper()
+	teamField := f.TeamField
+	if teamField == "" {
+		teamField = "Team"
+	}
 	open := func(t *testing.T, configured bool, statuses map[work.State]string) (*World, provider.TrackerProvider) {
 		t.Helper()
-		w := seed()
+		w := seed(teamField)
 		srv := httptest.NewServer(f.Server(w))
 		t.Cleanup(srv.Close)
 		return w, f.New(srv.URL, secret, configured, statuses)
@@ -274,6 +288,94 @@ func Run(t *testing.T, f Fixture) {
 		}
 		if linker.TaskURL("t1") == "" || linker.TaskURL("") != "" {
 			t.Fatalf("TaskURL(t1) = %q, TaskURL(\"\") = %q", linker.TaskURL("t1"), linker.TaskURL(""))
+		}
+	})
+
+	t.Run("a delegate field names the Team", func(t *testing.T) {
+		_, tp := open(t, true, nil)
+		identity, ok := tp.(provider.AgentIdentity)
+		if !ok {
+			t.Skip("the adapter declares no agent identity")
+		}
+		item, err := tp.FetchItem(context.Background(), "t1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		team, source, err := identity.Delegate(context.Background(), item)
+		if err != nil || team != "silver" || source == "" {
+			t.Fatalf("Delegate(t1) = %q, %q, %v; want silver from a named source", team, source, err)
+		}
+		team, source, err = identity.Delegate(context.Background(), work.WorkItem{ExternalID: "t1"})
+		if err != nil || team != "silver" || source == "" {
+			t.Fatalf("Delegate of an unread t1 = %q, %q, %v; want the adapter to read the item", team, source, err)
+		}
+		team, source, err = identity.Delegate(context.Background(), work.WorkItem{ExternalID: "t3"})
+		if err != nil || team != "" || source != "" {
+			t.Fatalf("Delegate(t3) = %q, %q, %v; want no Team for an item without the field", team, source, err)
+		}
+	})
+
+	t.Run("an activity reads as a person would without Markdown markers", func(t *testing.T) {
+		w, tp := open(t, true, nil)
+		identity, ok := tp.(provider.AgentIdentity)
+		if !ok {
+			t.Skip("the adapter declares no agent identity")
+		}
+		if err := identity.PostActivity(context.Background(), "t1", provider.SessionActivity{Kind: provider.SessionThought, Body: "Reading **the login** flow"}); err != nil {
+			t.Fatal(err)
+		}
+		if err := identity.PostActivity(context.Background(), "t1", provider.SessionActivity{Kind: provider.SessionResponse, Body: "Starting: **builder** then **reviewer**."}); err != nil {
+			t.Fatal(err)
+		}
+		task, _ := w.Read("t1")
+		if len(task.Comments) != 2 {
+			t.Fatalf("comments = %q, want two", task.Comments)
+		}
+		for _, got := range task.Comments {
+			for _, marker := range []string{"**", "_", "<sub>"} {
+				if strings.Contains(got, marker) {
+					t.Errorf("a person reads %q in %q", marker, got)
+				}
+			}
+		}
+		if !strings.Contains(task.Comments[0], "Reading the login flow") || !strings.Contains(task.Comments[1], "Starting: builder then reviewer.") {
+			t.Errorf("comments %q lost their words", task.Comments)
+		}
+	})
+
+	t.Run("external URLs reach the item", func(t *testing.T) {
+		w, tp := open(t, true, nil)
+		identity, ok := tp.(provider.AgentIdentity)
+		if !ok {
+			t.Skip("the adapter declares no agent identity")
+		}
+		if err := identity.SetExternalURLs(context.Background(), "t1", []provider.ExternalURL{{Label: "Pull request", URL: "https://forge.example/o/r/pulls/7"}}); err != nil {
+			t.Fatal(err)
+		}
+		task, _ := w.Read("t1")
+		if len(task.Comments) != 1 || !strings.Contains(task.Comments[0], "https://forge.example/o/r/pulls/7") || !strings.Contains(task.Comments[0], "Pull request") {
+			t.Fatalf("comments = %q, want one naming the pull request and its link", task.Comments)
+		}
+	})
+
+	t.Run("without credentials the delegate names no Team and writes nothing", func(t *testing.T) {
+		w, tp := open(t, false, nil)
+		identity, ok := tp.(provider.AgentIdentity)
+		if !ok {
+			t.Skip("the adapter declares no agent identity")
+		}
+		team, source, err := identity.Delegate(context.Background(), work.WorkItem{ExternalID: "t1"})
+		if err != nil || team != "" || source != "" {
+			t.Fatalf("Delegate = %q, %q, %v; want nothing from an unconfigured adapter", team, source, err)
+		}
+		if err := identity.PostActivity(context.Background(), "t1", provider.SessionActivity{Kind: provider.SessionResponse, Body: "Starting."}); err != nil {
+			t.Errorf("PostActivity: %v", err)
+		}
+		if err := identity.SetExternalURLs(context.Background(), "t1", []provider.ExternalURL{{Label: "Pull request", URL: "https://forge.example/o/r/pulls/7"}}); err != nil {
+			t.Errorf("SetExternalURLs: %v", err)
+		}
+		if task, _ := w.Read("t1"); len(task.Comments) != 0 {
+			t.Errorf("an unconfigured adapter wrote %q", task.Comments)
 		}
 	})
 }

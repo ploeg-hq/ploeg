@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/ploeg-hq/ploeg/pkg/provider"
+	"github.com/ploeg-hq/ploeg/pkg/provider/vikunja"
 	"github.com/ploeg-hq/ploeg/pkg/target"
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
@@ -16,7 +17,7 @@ func TestPinTeam_ContainerPinBeatsAssigneeMapping(t *testing.T) {
 		Log:        slog.New(slog.DiscardHandler),
 	}
 	item := work.WorkItem{Team: "docs", ExternalScope: "900000000077"}
-	s.pinTeam(&item)
+	item.Team, _ = s.trackerTeam(context.Background(), &vikunja.Provider{}, item, provider.TrackerEvent{Team: "docs"})
 	if item.Team != "app" {
 		t.Errorf("team = %q, want the container's pinned team to win", item.Team)
 	}
@@ -28,7 +29,7 @@ func TestPinTeam_UnpinnedContainerLeavesAssigneeDecision(t *testing.T) {
 		Log:        slog.New(slog.DiscardHandler),
 	}
 	item := work.WorkItem{Team: "infra", ExternalScope: "somewhere-else"}
-	s.pinTeam(&item)
+	item.Team, _ = s.trackerTeam(context.Background(), &vikunja.Provider{}, item, provider.TrackerEvent{Team: "infra"})
 	if item.Team != "infra" {
 		t.Errorf("team = %q, want the assignee's team untouched", item.Team)
 	}
@@ -40,7 +41,7 @@ func TestPinTeam_NoScopeNoOpinion(t *testing.T) {
 		Log:        slog.New(slog.DiscardHandler),
 	}
 	item := work.WorkItem{Team: "docs"}
-	s.pinTeam(&item)
+	item.Team, _ = s.trackerTeam(context.Background(), &vikunja.Provider{}, item, provider.TrackerEvent{Team: "docs"})
 	if item.Team != "docs" {
 		t.Errorf("team = %q, want unchanged when the scope is unknown", item.Team)
 	}
@@ -57,7 +58,7 @@ func TestPinTeam_RunsBeforeTargetResolution(t *testing.T) {
 		Log:        slog.New(slog.DiscardHandler),
 	}
 	item := work.WorkItem{Team: "docs", ExternalScope: "900000000077"}
-	s.pinTeam(&item)
+	item.Team, _ = s.trackerTeam(context.Background(), &vikunja.Provider{}, item, provider.TrackerEvent{Team: "docs"})
 	s.resolveTarget(context.Background(), &item, true, provider.TrackerEvent{ExternalID: "9001"})
 	if item.Target == nil || item.Target.Repo != "internal/widgets" {
 		t.Fatalf("target = %+v, want the team-qualified rule matched via the pinned team", item.Target)

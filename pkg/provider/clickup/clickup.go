@@ -35,6 +35,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ploeg-hq/ploeg/pkg/apilimit"
@@ -82,9 +83,17 @@ type Provider struct {
 	// CheckWebhooks lists and RegisterWebhook writes. Empty reports every
 	// List's webhook as unreadable.
 	Workspace string
+	// TeamField is the name of the dropdown custom field whose selected
+	// option names the Team for a task (ADR-0187), compared without case.
+	// Empty means DefaultTeamField. A task whose field is set runs as that
+	// Team; one without it runs as the List's pinned team.
+	TeamField string
 	// HC is optional; nil gets a 30s client.
 	HC  *http.Client
 	Log *slog.Logger
+
+	fieldsMu sync.Mutex
+	fields   map[string]cachedFields
 }
 
 func (p *Provider) Name() string { return "clickup" }
@@ -407,6 +416,7 @@ type task struct {
 	Tags []struct {
 		Name string `json:"name"`
 	} `json:"tags"`
+	CustomFields []customField `json:"custom_fields"`
 }
 
 func (t task) closed() bool {
@@ -466,6 +476,7 @@ func (p *Provider) FetchExecutionItem(ctx context.Context, externalID string) (p
 	if err != nil {
 		return provider.ExecutionItem{}, err
 	}
+	p.rememberFields(t)
 	// Only markdown_description keeps headings, lists, code and links; the
 	// other two are plain text and may each be empty where another is not.
 	desc := firstNonEmpty(t.MarkdownDescription, t.Description, t.TextContent)
