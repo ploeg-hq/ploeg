@@ -73,3 +73,4 @@ Rules:
 * 2026-10-17 — The owner accepted this record as written; the per-team tracker user `copper` is lent to team `pewter` until it is built.
 
 * Related: [ADR-0038](0038-a-repo-label-selects-among-registered-targets-and-the-board-default-is-the-fallback.md) (a label already selects the repository), [ADR-0094](0094-a-person-connects-a-teams-claude-login-from-unfold-and-the-teams-worker-signs-in.md).
+* 2026-11-01 — The first re-evaluation trigger fired: Linear's Agent Sessions make an app a first-class, assignable *delegate* beside the human assignee. [ADR-0187](0187-a-team-is-assignable-in-a-tracker-as-a-delegate-and-reports-its-work-as-a-session-of-activities.md) (proposed) answers it with a Tracker capability that trackers without the feature emulate; this record's `dispatchUser` and team labels stay the start signal and the fallback where an adapter does not declare it or an item names no Team.
