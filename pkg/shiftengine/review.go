@@ -15,7 +15,10 @@ import (
 
 // ReviewWatch moves Work Items out of awaiting_review when a human merges or
 // closes their pull request. Forge webhooks drive it; Reconcile asks the forge
-// directly and covers deliveries that never arrived.
+// directly and covers deliveries that never arrived. It also follows a Work
+// Item the forge CI gate parked in needs_human with its pull request open
+// (ADR-0189): a merge settles it as done, and CI that passes on the head it
+// was delivered at returns it to awaiting_review.
 type ReviewWatch struct {
 	Store *store.Store
 	// Forges is keyed like Engine.Forges: by forge instance id, and by dialect
@@ -71,7 +74,7 @@ func (w *ReviewWatch) HandleForgeEvent(ctx context.Context, forge string, ev pro
 	if fp == nil {
 		return nil
 	}
-	items, err := w.Store.AwaitingReview(ctx)
+	items, err := w.Store.ReviewWatched(ctx)
 	if err != nil {
 		return err
 	}
@@ -87,9 +90,9 @@ func (w *ReviewWatch) HandleForgeEvent(ctx context.Context, forge string, ev pro
 	return nil
 }
 
-// Reconcile claims every awaiting_review pull request no other replica has
-// claimed within ClaimFor, asks the forge for its state and settles the ones
-// that are no longer open. Errors are logged per item so one unreachable
+// Reconcile claims every pull request the watch follows that no other
+// replica has claimed within ClaimFor, asks the forge for its state and
+// settles the ones that are no longer open. Errors are logged per item so one unreachable
 // repository does not stall the rest.
 func (w *ReviewWatch) Reconcile(ctx context.Context) {
 	items, err := w.Store.ClaimReviewChecks(ctx, w.ClaimFor)
@@ -110,10 +113,15 @@ func (w *ReviewWatch) Reconcile(ctx context.Context) {
 		}
 		facts := read.Facts
 		ci, ciErr := w.recordFacts(ctx, t, facts)
-		if reportsMergeability && facts.State == provider.PullRequestOpen {
-			w.recordMergeCheck(ctx, t, read)
-		}
-		if facts.State == provider.PullRequestOpen {
+		if t.item.CIParked {
+			if facts.State == provider.PullRequestOpen {
+				w.returnAfterCI(ctx, t, facts, ci, ciErr)
+				continue
+			}
+		} else if facts.State == provider.PullRequestOpen {
+			if reportsMergeability {
+				w.recordMergeCheck(ctx, t, read)
+			}
 			w.gateOnForgeCI(ctx, t, facts, ci, ciErr)
 			continue
 		}
@@ -207,7 +215,7 @@ func (w *ReviewWatch) gateOnForgeCI(ctx context.Context, t reviewTarget, facts p
 			"work_item", t.item.WorkItemID, "repo", t.repo, "pr", t.pr, "err", err)
 		return
 	}
-	step, err := ciGate{store: w.Store, log: w.log()}.decide(ctx, t.item.ShiftID, t.forge, t.repo, reading, nil, w.CIWaits.timeout(*t.item.Target))
+	step, err := ciGate{store: w.Store, log: w.log()}.decide(ctx, t.item.ShiftID, t.forge, t.repo, t.pr, reading, nil, w.CIWaits.timeout(*t.item.Target))
 	if err != nil {
 		w.log().Error("review reconcile: forge CI gate failed", "work_item", t.item.WorkItemID, "err", err)
 		return
@@ -231,6 +239,42 @@ func (w *ReviewWatch) gateOnForgeCI(ctx context.Context, t reviewTarget, facts p
 	w.log().Info("review left: forge CI is not success", "work_item", t.item.WorkItemID, "repo", t.repo, "pr", t.pr,
 		"head", facts.HeadSHA, "reason", reason)
 	w.notifyCI(ctx, t, message)
+}
+
+// returnAfterCI moves an item the forge CI gate parked back to
+// awaiting_review once the forge's CI passes on the head it was delivered at
+// (ADR-0189). A new head, pushed after the delivery, does not count: nothing
+// of Ploeg's reviewed it. It starts no Shift and spends nothing.
+func (w *ReviewWatch) returnAfterCI(ctx context.Context, t reviewTarget, facts provider.PullRequestFacts, head *provider.CommitStatus, readErr error) {
+	if readErr != nil || head == nil || head.State != provider.CommitSuccess || t.item.GatedHead == "" ||
+		!strings.EqualFold(facts.HeadSHA, t.item.GatedHead) {
+		return
+	}
+	moved, err := w.Store.ReturnToReviewAfterCI(ctx, t.item.WorkItemID, facts.HeadSHA)
+	if err != nil || !moved {
+		if err != nil {
+			w.log().Error("review reconcile: return to review failed", "work_item", t.item.WorkItemID, "err", err)
+		}
+		return
+	}
+	w.log().Info("review re-entered: forge CI passed after the CI gate parked the item", "work_item", t.item.WorkItemID,
+		"repo", t.repo, "pr", t.pr, "head", facts.HeadSHA)
+	tp, ok := w.Trackers[t.item.Provider]
+	if !ok {
+		return
+	}
+	var b strings.Builder
+	b.WriteString("The forge's CI now passes on this item's pull request, so it is ready for review again.\n\n")
+	if t.link != "" {
+		fmt.Fprintf(&b, "**Pull request:** %s\n\n", t.link)
+	}
+	b.WriteString("Ploeg moved the item back to awaiting_review. Please review and merge; the agents never merge their own work.\n")
+	if err := tp.Comment(ctx, t.item.ExternalID, b.String()); err != nil {
+		w.log().Error("tracker comment failed", "work_item", t.item.WorkItemID, "external_id", t.item.ExternalID, "err", err)
+	}
+	if err := tp.SetStatus(ctx, t.item.ExternalID, work.StateAwaitingReview); err != nil {
+		w.log().Error("tracker status write failed", "work_item", t.item.WorkItemID, "external_id", t.item.ExternalID, "err", err)
+	}
 }
 
 func (w *ReviewWatch) notifyCI(ctx context.Context, t reviewTarget, message string) {
