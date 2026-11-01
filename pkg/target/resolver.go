@@ -75,6 +75,8 @@ const (
 	RefusalLabelNotAllowed = "label_not_allowed"
 	// RefusalTargetNotReady: the selected target failed its readiness check at ingest.
 	RefusalTargetNotReady = "target_not_ready"
+	// RefusalTeamUnknown: the tracker item names a Team the installation does not have (ADR-0187).
+	RefusalTeamUnknown = "team_unknown"
 )
 
 // Refusal is a routing failure that must not fall back to any repository.

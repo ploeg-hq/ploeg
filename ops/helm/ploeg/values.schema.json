@@ -1823,6 +1823,10 @@
               "type": "string",
               "description": "List status name applied when a Shift finishes, e.g. 'for review'. Statuses are per-List custom strings; empty leaves the board untouched."
             },
+            "teamField": {
+              "type": "string",
+              "description": "Dropdown custom field whose selected option names the Team a task runs as (ADR-0187), matched without case; empty means 'Team'. Set, it wins over the List's pinned team; a Team the installation lacks is refused at intake."
+            },
             "statuses": {
               "type": "object",
               "description": "List status per Ploeg state (ADR-0183), e.g. {active: 'In progress', awaiting_review: 'In review', done: 'Done'}. active is written when a Shift opens; done here wins over doneStatus; a state left out leaves the board untouched.",

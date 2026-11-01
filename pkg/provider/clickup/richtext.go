@@ -1,6 +1,7 @@
 package clickup
 
 import (
+	"html"
 	"maps"
 	"regexp"
 	"strings"
@@ -15,13 +16,17 @@ type richBlock struct {
 }
 
 // inlineMarkup matches the Markdown Ploeg writes into tracker comments, in
-// this group order: **bold**, `code`, [text](url), <sub>small print</sub>
-// and a bare URL.
-var inlineMarkup = regexp.MustCompile("\\*\\*(.+?)\\*\\*|`([^`]+)`|\\[([^\\]]+)\\]\\((https?://[^)\\s]+)\\)|<sub>(.*?)</sub>|(https?://[^\\s<>()\\[\\]]+)")
+// this group order: **bold**, `code`, [text](url), <sub>small print</sub>,
+// a bare URL and _italic_ (only between word boundaries, so an identifier
+// such as needs_human stays as written).
+var inlineMarkup = regexp.MustCompile("\\*\\*(.+?)\\*\\*|`([^`]+)`|\\[([^\\]]+)\\]\\((https?://[^)\\s]+)\\)|<sub>(.*?)</sub>|(https?://[^\\s<>()\\[\\]]+)|\\b_([^_\\n]+?)_\\b")
 
 var (
 	orderedItem = regexp.MustCompile(`^\d+\. `)
 	lineBreak   = regexp.MustCompile(`(?i)<br\s*/?>`)
+	// htmlParagraphs turns the HTML the core writes for every tracker into
+	// Markdown: a paragraph per line and <code> as a code span.
+	htmlParagraphs = strings.NewReplacer("<p>", "", "</p>", "\n\n", "<code>", "`", "</code>", "`")
 )
 
 // richComment turns a Markdown comment into ClickUp's rich-text blocks and
@@ -31,6 +36,9 @@ var (
 func richComment(markdown string) (string, []richBlock) {
 	var blocks []richBlock
 	inFence := false
+	if strings.Contains(markdown, "<p>") {
+		markdown = strings.TrimLeft(html.UnescapeString(htmlParagraphs.Replace(markdown)), "\n")
+	}
 	lines := strings.Split(strings.TrimRight(strings.ReplaceAll(markdown, "\r\n", "\n"), "\n"), "\n")
 	for _, line := range lines {
 		if strings.HasPrefix(strings.TrimSpace(line), "```") {
@@ -89,6 +97,8 @@ func inline(text string, base map[string]any) []richBlock {
 			if rest := group(6)[len(link):]; rest != "" {
 				out = append(out, richBlock{Text: rest, Attributes: base})
 			}
+		case has(7):
+			out = append(out, inline(group(7), with(base, "italic", true))...)
 		}
 		text = text[m[1]:]
 	}

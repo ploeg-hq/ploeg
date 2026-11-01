@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
@@ -16,7 +17,7 @@ import (
 func TestClickUpPassesTheTrackerConformanceSuite(t *testing.T) {
 	trackertest.Run(t, trackertest.Fixture{
 		New: func(baseURL, secret string, configured bool, statuses map[work.State]string) provider.TrackerProvider {
-			p := &Provider{BaseURL: baseURL, Secret: secret, DefaultTeam: "default", TeamMap: map[string]string{"builder": "silver"}, Statuses: statuses}
+			p := &Provider{BaseURL: baseURL, Secret: secret, DefaultTeam: "default", TeamMap: map[string]string{"builder": "silver"}, Statuses: statuses, TeamField: "Ploeg Team"}
 			if configured {
 				p.Token = "pk_conformance"
 			}
@@ -25,12 +26,13 @@ func TestClickUpPassesTheTrackerConformanceSuite(t *testing.T) {
 		Server:        fakeClickUp,
 		Assignment:    signedAssignment,
 		StatusMapping: true,
+		TeamField:     "Ploeg Team",
 	})
 }
 
 func TestClickUpDeclaresItsTrackerCapabilities(t *testing.T) {
 	got := strings.Join(provider.TrackerCapabilities(&Provider{}), ",")
-	want := "execution_reader,delivery_identifier,board_reader,task_linker,relation_reader,dependency_reader,webhook_checker,webhook_registrar,reference_namer"
+	want := "execution_reader,delivery_identifier,board_reader,task_linker,relation_reader,dependency_reader,webhook_checker,webhook_registrar,reference_namer,agent_identity"
 	if got != want {
 		t.Fatalf("capabilities = %s, want %s", got, want)
 	}
@@ -74,7 +76,8 @@ func fakeClickUp(w *trackertest.World) http.Handler {
 			out := map[string]any{"id": task.ID, "name": task.Title, "url": "https://app.clickup.com/t/" + task.ID,
 				"description": strings.NewReplacer("#", "", "*", "").Replace(task.Body),
 				"status":      map[string]any{"status": task.Status, "type": statusType},
-				"list":        map[string]any{"id": task.Scope}, "dependencies": deps}
+				"list":        map[string]any{"id": task.Scope}, "dependencies": deps,
+				"custom_fields": dropdownFields(task.Fields)}
 			if r.URL.Query().Get("include_markdown_description") == "true" {
 				out["markdown_description"] = task.Body
 			}
@@ -117,4 +120,28 @@ func fakeClickUp(w *trackertest.World) http.Handler {
 			http.NotFound(rw, r)
 		}
 	})
+}
+
+// dropdownFields renders a task's fields the way ClickUp returns a
+// drop_down custom field: the roster of options with their orderindex, and
+// the selected option's orderindex as the value.
+func dropdownFields(fields map[string]string) []map[string]any {
+	out := []map[string]any{}
+	for name, selected := range fields {
+		roster := []string{"Bronze", "Silver", "Gold"}
+		if selected != "" && !slices.Contains(roster, selected) {
+			roster = append(roster, selected)
+		}
+		options := []map[string]any{}
+		value := any(nil)
+		for i, option := range roster {
+			options = append(options, map[string]any{"id": "opt-" + strings.ToLower(option), "name": option, "orderindex": i, "color": nil})
+			if option == selected {
+				value = i
+			}
+		}
+		out = append(out, map[string]any{"id": "field-" + strings.ToLower(name), "name": name, "type": "drop_down", "value": value,
+			"type_config": map[string]any{"options": options}})
+	}
+	return out
 }

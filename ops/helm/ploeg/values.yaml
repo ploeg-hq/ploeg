@@ -517,6 +517,13 @@ tracker:
     # Statuses are per-List custom strings, so the finished-status must be
     # NAMED; empty leaves the board untouched.
     doneStatus: ""
+    # The dropdown custom field whose selected option names the Team a task
+    # runs as (ADR-0187), matched without case; empty means "Team". Create
+    # it on each dispatching List with one option per Team. A task whose
+    # field is set runs as that Team, one without it as the List's pinned
+    # team, and one naming a Team this installation lacks is refused with
+    # a comment naming the Teams it has.
+    teamField: ""
     # The List status each Ploeg state moves a task to (ADR-0183); only
     # active (written when a Shift opens), awaiting_review, needs_human and
     # done are accepted, and done here wins over doneStatus. A state left out

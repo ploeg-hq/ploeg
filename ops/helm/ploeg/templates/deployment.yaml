@@ -301,6 +301,10 @@ spec:
             - name: PLOEG_CLICKUP_DONE_STATUS
               value: {{ .doneStatus | quote }}
             {{- end }}
+            {{- if .teamField }}
+            - name: PLOEG_CLICKUP_TEAM_FIELD
+              value: {{ .teamField | quote }}
+            {{- end }}
             {{- with .statuses }}
             - name: PLOEG_CLICKUP_STATUS_MAP
               value: {{ $pairs := list }}{{ range $state, $status := . }}{{ $pairs = append $pairs (printf "%s=%s" $state $status) }}{{ end }}{{ join "," $pairs | quote }}
