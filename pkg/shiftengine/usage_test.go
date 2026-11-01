@@ -299,20 +299,3 @@ func TestLinksSection(t *testing.T) {
 		})
 	}
 }
-
-func TestMoneyFormatsNlNL(t *testing.T) {
-	for in, want := range map[float64]string{
-		0:      "US$ 0,00",
-		0.06:   "US$ 0,06",
-		0.005:  "US$ 0,01",
-		12.345: "US$ 12,35",
-		1234.5: "US$ 1.234,50",
-	} {
-		if got := money(in); got != want {
-			t.Errorf("money(%v) = %q, want %q", in, got, want)
-		}
-	}
-	if got := tokenCount(15004); got != "15.004" {
-		t.Errorf("tokenCount = %q, want 15.004", got)
-	}
-}

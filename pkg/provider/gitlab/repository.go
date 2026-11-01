@@ -17,8 +17,8 @@ func (p *Provider) RepositoryURL(owner, repository string) (string, error) {
 }
 
 // InspectRepository reads whether a project is archived or a pull mirror, and
-// whether AGENTS.md exists at the root of branch (the project's default branch
-// when branch is empty). repository may hold subgroups, so owner "group" and
+// whether AGENTS.md and provider.RepositoryHooksPath exist on branch (the
+// project's default branch when branch is empty). repository may hold subgroups, so owner "group" and
 // repository "sub/project" address the project group/sub/project.
 func (p *Provider) InspectRepository(ctx context.Context, owner, repository, branch string) (provider.RepositoryState, error) {
 	if owner == "" || repository == "" {
@@ -48,20 +48,29 @@ func (p *Provider) InspectRepository(ctx context.Context, owner, repository, bra
 	if state.Branch == "" {
 		return state, nil
 	}
-	status, err = p.inspect(ctx, http.MethodHead,
-		base+"/repository/files/AGENTS.md?ref="+url.QueryEscape(state.Branch), nil)
-	if err != nil {
+	if state.AgentsFile, err = p.fileExists(ctx, base, path, "AGENTS.md", state.Branch); err != nil {
 		return provider.RepositoryState{}, err
+	}
+	if state.HooksFile, err = p.fileExists(ctx, base, path, provider.RepositoryHooksPath, state.Branch); err != nil {
+		return provider.RepositoryState{}, err
+	}
+	return state, nil
+}
+
+func (p *Provider) fileExists(ctx context.Context, base, project, file, branch string) (bool, error) {
+	status, err := p.inspect(ctx, http.MethodHead,
+		base+"/repository/files/"+url.PathEscape(file)+"?ref="+url.QueryEscape(branch), nil)
+	if err != nil {
+		return false, err
 	}
 	switch status {
 	case http.StatusOK:
-		state.AgentsFile = true
+		return true, nil
 	case http.StatusNotFound:
-		state.AgentsFile = false
+		return false, nil
 	default:
-		return provider.RepositoryState{}, fmt.Errorf("gitlab: AGENTS.md in %s@%s: HTTP %d", path, state.Branch, status)
+		return false, fmt.Errorf("gitlab: %s in %s@%s: HTTP %d", file, project, branch, status)
 	}
-	return state, nil
 }
 
 func (p *Provider) inspect(ctx context.Context, method, target string, out any) (int, error) {

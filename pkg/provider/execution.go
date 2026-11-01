@@ -47,7 +47,16 @@ type RepositoryState struct {
 	Branch string
 	// AgentsFile reports an AGENTS.md at the root of Branch.
 	AgentsFile bool
+	// HooksFile reports a RepositoryHooksPath on Branch: a file the OpenHands
+	// harnesses refuse to run with (ADR-0148), so a Team whose Role runs one
+	// can be told so at intake rather than in the Run (ADR-0187).
+	HooksFile bool
 }
+
+// RepositoryHooksPath is the hooks file RepositoryState.HooksFile reports,
+// relative to the repository root. It is the path the OpenHands harness
+// adapter refuses (its RepositoryHooksPath), kept equal by a test there.
+const RepositoryHooksPath = ".openhands/hooks.json"
 
 // RepositoryInspector is implemented by a ForgeProvider that can read
 // RepositoryState. A repository the forge does not show is an error.

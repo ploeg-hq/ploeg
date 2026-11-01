@@ -7,7 +7,14 @@ import (
 	"testing"
 
 	"github.com/ploeg-hq/ploeg/pkg/harness"
+	"github.com/ploeg-hq/ploeg/pkg/provider"
 )
+
+func TestRepositoryHooksPathIsTheOneTheForgePortReports(t *testing.T) {
+	if RepositoryHooksPath != provider.RepositoryHooksPath {
+		t.Fatalf("the adapter refuses %q and the forge port reports %q; intake would check the wrong file", RepositoryHooksPath, provider.RepositoryHooksPath)
+	}
+}
 
 func TestPrepare_RefusesARepositoryThatShipsHooks(t *testing.T) {
 	repo := t.TempDir()

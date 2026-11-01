@@ -20,6 +20,10 @@ type Readiness struct {
 	// repository, so it is retried rather than trusted.
 	Unknown bool
 	Reason  string
+	// Repository is what the forge reported when the verdict was made, for
+	// checks beyond readiness such as a harness hooks file (ADR-0187). It is
+	// zero while Unknown.
+	Repository provider.RepositoryState
 }
 
 // Gate holds the readiness of every registered target. It is checked when the
@@ -115,9 +119,9 @@ func (g *Gate) inspect(ctx context.Context, t work.Target) Readiness {
 		reasons = append(reasons, fmt.Sprintf("has no AGENTS.md on branch %q", state.Branch))
 	}
 	if len(reasons) > 0 {
-		return Readiness{Reason: fmt.Sprintf("%s/%s %s", t.Owner, t.Repo, strings.Join(reasons, ", "))}
+		return Readiness{Reason: fmt.Sprintf("%s/%s %s", t.Owner, t.Repo, strings.Join(reasons, ", ")), Repository: state}
 	}
-	return Readiness{Ready: true}
+	return Readiness{Ready: true, Repository: state}
 }
 
 func (g *Gate) keys() []string {

@@ -301,6 +301,16 @@ func trackerEstimate(item work.WorkItem) *int64 {
 	return item.EstimateSeconds
 }
 
+// LiveItem reports whether the tracker item is mirrored as a Work Item that
+// is queued or active, the states a re-assignment refreshes rather than
+// re-queues (VIK-588).
+func (s *Store) LiveItem(ctx context.Context, provider, externalID string) (bool, error) {
+	var live bool
+	err := s.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM work_items WHERE provider = $1 AND external_id = $2 AND state IN ('queued', 'active'))`,
+		provider, externalID).Scan(&live)
+	return live, err
+}
+
 // RefuseRoute records a tracker item that routing refused (ADR-0038): an
 // audit row and no Work Item, so nothing is queued anywhere. code is a
 // target.Refusal code and allowed the repo/ labels the board allows.

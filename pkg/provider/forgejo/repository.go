@@ -17,8 +17,8 @@ func (p *Provider) RepositoryURL(owner, repository string) (string, error) {
 }
 
 // InspectRepository reads whether a repository is archived or a mirror, and
-// whether AGENTS.md exists at the root of branch (the repository's default
-// branch when branch is empty).
+// whether AGENTS.md and provider.RepositoryHooksPath exist on branch (the
+// repository's default branch when branch is empty).
 func (p *Provider) InspectRepository(ctx context.Context, owner, repository, branch string) (provider.RepositoryState, error) {
 	if owner == "" || repository == "" {
 		return provider.RepositoryState{}, fmt.Errorf("forgejo: inspect needs an owner and a repository")
@@ -40,19 +40,28 @@ func (p *Provider) InspectRepository(ctx context.Context, owner, repository, bra
 	if state.Branch == "" {
 		state.Branch = repo.DefaultBranch
 	}
-	status, err = p.get(ctx, base+"/contents/AGENTS.md?ref="+url.QueryEscape(state.Branch), nil)
-	if err != nil {
+	if state.AgentsFile, err = p.fileExists(ctx, base, "AGENTS.md", state.Branch); err != nil {
 		return provider.RepositoryState{}, err
+	}
+	if state.HooksFile, err = p.fileExists(ctx, base, provider.RepositoryHooksPath, state.Branch); err != nil {
+		return provider.RepositoryState{}, err
+	}
+	return state, nil
+}
+
+func (p *Provider) fileExists(ctx context.Context, base, path, branch string) (bool, error) {
+	status, err := p.get(ctx, base+"/contents/"+path+"?ref="+url.QueryEscape(branch), nil)
+	if err != nil {
+		return false, err
 	}
 	switch status {
 	case http.StatusOK:
-		state.AgentsFile = true
+		return true, nil
 	case http.StatusNotFound:
-		state.AgentsFile = false
+		return false, nil
 	default:
-		return provider.RepositoryState{}, fmt.Errorf("forgejo: AGENTS.md in %s/%s@%s: HTTP %d", owner, repository, state.Branch, status)
+		return false, fmt.Errorf("forgejo: %s in %s@%s: HTTP %d", path, strings.TrimPrefix(base, "/api/v1/repos/"), branch, status)
 	}
-	return state, nil
 }
 
 func (p *Provider) get(ctx context.Context, target string, out any) (int, error) {

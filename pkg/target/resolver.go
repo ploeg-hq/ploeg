@@ -77,6 +77,17 @@ const (
 	RefusalTargetNotReady = "target_not_ready"
 	// RefusalTeamUnknown: the tracker item names a Team the installation does not have (ADR-0187).
 	RefusalTeamUnknown = "team_unknown"
+	// RefusalTeamMissing: no field, container pin, assignee mapping or default named a Team, so
+	// intake asked the person which one (ADR-0187).
+	RefusalTeamMissing = "team_missing"
+	// RefusalTeamCannotWrite: the Team's plan has no Role that writes, so it cannot take a card (ADR-0187).
+	RefusalTeamCannotWrite = "team_cannot_write"
+	// RefusalBudgetExhausted: the Team's settled and held spend has reached its cap for the
+	// current period (ADR-0162, ADR-0187).
+	RefusalBudgetExhausted = "budget_exhausted"
+	// RefusalHarnessRefusesRepository: a Role of the Team runs a harness that refuses this
+	// repository, such as OpenHands on one that ships its hooks file (ADR-0148, ADR-0187).
+	RefusalHarnessRefusesRepository = "harness_refuses_repository"
 )
 
 // Refusal is a routing failure that must not fall back to any repository.

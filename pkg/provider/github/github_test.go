@@ -258,12 +258,17 @@ func TestInspectRepository(t *testing.T) {
 	f, p := newFake(t)
 	f.json("GET /repos/acme/widgets", http.StatusOK, `{"archived":false,"mirror_url":null,"default_branch":"main"}`)
 	f.json("GET /repos/acme/widgets/contents/AGENTS.md", http.StatusOK, `{"type":"file"}`)
+	f.json("GET /repos/acme/widgets/contents/"+provider.RepositoryHooksPath, http.StatusNotFound, `{"message":"Not Found"}`)
 	state, err := p.InspectRepository(context.Background(), "acme", "widgets", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if state.Archived || state.Mirror || state.Branch != "main" || !state.AgentsFile {
+	if state.Archived || state.Mirror || state.Branch != "main" || !state.AgentsFile || state.HooksFile {
 		t.Fatalf("state = %+v", state)
+	}
+	f.json("GET /repos/acme/widgets/contents/"+provider.RepositoryHooksPath, http.StatusOK, `{"type":"file"}`)
+	if state, err = p.InspectRepository(context.Background(), "acme", "widgets", ""); err != nil || !state.HooksFile {
+		t.Fatalf("state with a hooks file = %+v, %v", state, err)
 	}
 	if got, _ := p.RepositoryURL("acme", "widgets"); got != "https://github.com/acme/widgets.git" {
 		t.Fatalf("repository URL = %q", got)

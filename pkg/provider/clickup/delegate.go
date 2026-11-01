@@ -145,17 +145,26 @@ func (p *Provider) Delegate(ctx context.Context, item work.WorkItem) (string, st
 	return "", "", nil
 }
 
+// activityLeads is the italic lead a comment opens with per activity kind. A
+// thought and a response are plain notes on the card; an action, an error
+// and a question announce themselves, in the words a person on the card
+// expects rather than the kind's own name.
 var activityLeads = map[provider.SessionActivityKind]string{
-	provider.SessionThought:     "Thought",
+	provider.SessionThought:     "",
 	provider.SessionAction:      "Action",
-	provider.SessionError:       "Error",
+	provider.SessionError:       "Not starting",
 	provider.SessionElicitation: "Question",
 	provider.SessionResponse:    "",
 }
 
-// PostActivity reports one activity as a comment on the task: a response
-// as its Markdown body, every other kind with an italic lead naming the
-// kind (ADR-0187). It refuses a kind it has no lead for.
+// DelegateFieldName is the name of the Team field as a person sees it on
+// the task.
+func (p *Provider) DelegateFieldName() string { return p.teamField() }
+
+// PostActivity reports one activity as a comment on the task: a thought and
+// a response as their Markdown body, every other kind with an italic lead
+// (activityLeads) before it (ADR-0187). It refuses a kind it has no lead
+// for.
 func (p *Provider) PostActivity(ctx context.Context, externalID string, activity provider.SessionActivity) error {
 	lead, known := activityLeads[activity.Kind]
 	if !known {
