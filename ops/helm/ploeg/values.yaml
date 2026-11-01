@@ -423,7 +423,9 @@ env:
   # An unset template omits its link, and none set omits the section while
   # the report still renders.
   PLOEG_USAGE_REPORT: "true"
-  # One Work Item, for example https://console.example/items/{id}
+  # One Work Item, for example https://console.example/items/{id}. Also the
+  # link in the comment ploegd posts on the tracker task when a Shift opens;
+  # unset, no such comment is posted.
   PLOEG_REPORT_WORK_ITEM_URL: ""
   # A dashboard filtered to the Shift's Team, for example .../d/loop?var-team={team}
   PLOEG_REPORT_TEAM_DASHBOARD_URL: ""
