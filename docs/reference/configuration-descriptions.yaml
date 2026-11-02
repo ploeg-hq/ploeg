@@ -91,7 +91,7 @@ env:
   PLOEG_CHAT_ALLOWANCE_USD: Monthly Chat Allowance, in US dollars, that a Team's period opens with (ADR-0128). A period keeps the limit its first chat message opened it with. At most 10000 with four decimals; anything else refuses to start.
   PLOEG_CHAT_BUDGET_USD: Per-chat Budget in US dollars, the cap on the key a chat message is given (ADR-0128). Chat messages use the `(team, ask)` policy in `PLOEG_WORKER_LLM_POLICIES`; its `budgetUsd` lowers this budget when smaller. A Team with no such policy has no chat messages.
   PLOEG_USAGE_REPORT: Publish the usage and evidence report on each agent pull request. Default on; "false" is the kill switch (chart `env.PLOEG_USAGE_REPORT`).
-  PLOEG_REPORT_WORK_ITEM_URL: Link template for one Work Item in the usage report; `{id}` is the Work Item id. Unset omits the link.
+  PLOEG_REPORT_WORK_ITEM_URL: Link template for one Work Item; `{id}` is the Work Item id. The link appears in the usage report and in the comment ploegd posts on the tracker task when a Shift opens. Unset omits the link and posts no such comment.
   PLOEG_REPORT_TEAM_DASHBOARD_URL: Link template for a dashboard filtered to the Shift's Team; `{team}` is the escaped Team. Unset omits the link.
   PLOEG_REPORT_RUN_DASHBOARD_URL: Link template for the usage of the Run behind the report; `{run}` is its escaped gateway alias. Unset omits the link.
   PLOEG_REPORT_SPEND_DASHBOARD_URL: Link to spend across Runs. Unset omits the link.

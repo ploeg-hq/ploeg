@@ -148,22 +148,32 @@ func (e *Engine) ensureShift(ctx context.Context, workItemID int64, item work.Wo
 		e.Log.Info("shift opened", "work_item", workItemID, "team", item.Team,
 			"pool", float64(tp.Pool), "rounds", len(tp.Rounds))
 		if err == nil {
-			e.markStarted(ctx, item)
+			e.markStarted(ctx, workItemID, item)
 		}
 	}
 	return e.EvaluateItem(ctx, workItemID)
 }
 
-// markStarted tells the item's tracker that a Shift opened on it, so a
-// tracker that maps the active state moves the item to its started status.
-// A failed write is logged; the Shift goes on.
-func (e *Engine) markStarted(ctx context.Context, item work.WorkItem) {
+// markStarted tells the item's tracker that a Shift opened on it: a tracker
+// that maps the active state moves the item to its started status, and when
+// the deployment names where a Work Item is followed (ReportLinks.WorkItem)
+// the item gets a comment with that link, so a person can open the work from
+// the card instead of hearing nothing until the Shift closes. A failed write
+// is logged; the Shift goes on.
+func (e *Engine) markStarted(ctx context.Context, workItemID int64, item work.WorkItem) {
 	tp, ok := e.Trackers[item.Provider]
 	if !ok || item.ExternalID == "" {
 		return
 	}
 	if err := tp.SetStatus(ctx, item.ExternalID, work.StateActive); err != nil {
 		e.Log.Warn("tracker status write failed; the Shift goes on", "external_id", item.ExternalID, "state", string(work.StateActive), "err", err)
+	}
+	body, ok := startedMessage(item.Team, workItemLink(e.ReportLinks, workItemID))
+	if !ok {
+		return
+	}
+	if err := tp.Comment(ctx, item.ExternalID, body); err != nil {
+		e.Log.Warn("tracker comment failed; the Shift goes on", "external_id", item.ExternalID, "work_item", workItemID, "err", err)
 	}
 }
 

@@ -144,7 +144,7 @@ The generator follows each binary's imports inside the module and records every 
 | `PLOEG_REPORT_RUN_DASHBOARD_URL` | ploegd |  | Link template for the usage of the Run behind the report; `{run}` is its escaped gateway alias. Unset omits the link. | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_REPORT_SPEND_DASHBOARD_URL` | ploegd |  | Link to spend across Runs. Unset omits the link. | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_REPORT_TEAM_DASHBOARD_URL` | ploegd |  | Link template for a dashboard filtered to the Shift's Team; `{team}` is the escaped Team. Unset omits the link. | [main.go](../../cmd/ploegd/main.go) |
-| `PLOEG_REPORT_WORK_ITEM_URL` | ploegd |  | Link template for one Work Item in the usage report; `{id}` is the Work Item id. Unset omits the link. | [main.go](../../cmd/ploegd/main.go) |
+| `PLOEG_REPORT_WORK_ITEM_URL` | ploegd |  | Link template for one Work Item; `{id}` is the Work Item id. The link appears in the usage report and in the comment ploegd posts on the tracker task when a Shift opens. Unset omits the link and posts no such comment. | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_REPO_KNOWLEDGE_DIR` | ploeg-worker |  |  | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_REVIEW_RECONCILE_INTERVAL` | ploegd | `10m` | How often ploegd asks the forge about each awaiting_review pull request. Each check claims its pull request for nine tenths of the interval, so with several replicas one of them reads it per interval. `0` turns the reconcile off. | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_ROLE` | ploeg-worker |  |  | [main.go](../../cmd/ploeg-worker/main.go), [sandbox.go](../../cmd/ploeg-worker/sandbox.go) |
@@ -271,7 +271,7 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `env.PLOEG_REPORT_RUN_DASHBOARD_URL` |  | `""` | The usage of the Run behind the report, for example .../d/runs?var-run={run} | values.yaml |
 | `env.PLOEG_REPORT_SPEND_DASHBOARD_URL` |  | `""` | Spend across Runs. | values.yaml |
 | `env.PLOEG_REPORT_TEAM_DASHBOARD_URL` |  | `""` | A dashboard filtered to the Shift's Team, for example .../d/loop?var-team={team} | values.yaml |
-| `env.PLOEG_REPORT_WORK_ITEM_URL` |  | `""` | One Work Item, for example https://console.example/items/{id} | values.yaml |
+| `env.PLOEG_REPORT_WORK_ITEM_URL` |  | `""` | One Work Item, for example https://console.example/items/{id}. Also the link in the comment ploegd posts on the tracker task when a Shift opens; unset, no such comment is posted. | values.yaml |
 | `env.PLOEG_SWEEP_INTERVAL` |  | `15s` |  | values.yaml |
 | `env.PLOEG_TEAM_MAP` |  | `""` | Legacy assignee roster, replaced by `teams.<name>.assignees` in the `PLOEG_CONFIG` file. | values.yaml |
 | `env.PLOEG_USAGE_REPORT` |  | `true` | The usage and evidence report Ploeg posts on every agent pull request (PLOEG_USAGE_REPORT). Default on; "false" is the kill switch. The four link templates are where its "Where to dig deeper" links point; Ploeg fills {id} (the Work Item id), {team} and {run} (the Run's gateway alias). An unset template omits its link, and none set omits the section while the report still renders. | values.yaml |
