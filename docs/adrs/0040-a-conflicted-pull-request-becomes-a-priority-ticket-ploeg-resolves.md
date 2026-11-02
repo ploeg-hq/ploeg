@@ -79,14 +79,14 @@ A route opts in with a `conflicts` block. A route without one does nothing new.
 trackers:
   vikunja:
     projects:
-      - name: Unfold
+      - name: App
         id: "10"
-        repo: webgrip/glide
+        repo: acme/app
         branch: development
         conflicts:
           team: bronze          # its first tracker assignee receives the ticket
           priority: 5           # Vikunja "DO NOW"
-          labels: [repo/glide, theme/ploeg, ready, agent-ready]
+          labels: [repo/app, theme/ploeg, ready, agent-ready]
           maxOpen: 3            # open conflict tickets on this route at once
           maxPerPullRequest: 3  # conflict tickets one pull request can ever get
           ignoreAuthors: [renovate]
