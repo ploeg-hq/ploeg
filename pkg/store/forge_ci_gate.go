@@ -14,7 +14,9 @@ import (
 
 // CIGate is what the forge CI gate (ADR-0119) remembers about one head
 // commit of a Shift's pull request: since when it waits for that commit's CI,
-// and when it asked the forge to re-run it. ReRunAt is nil until it did.
+// and when it asked the forge to re-run it or, on a forge that cannot re-run
+// CI, started waiting for someone to re-run it in the forge (ADR-0189).
+// ReRunAt is nil until it did either.
 type CIGate struct {
 	WaitingSince time.Time
 	ReRunAt      *time.Time
@@ -51,8 +53,9 @@ func (s *Store) WaitForCI(ctx context.Context, shiftID int64, headSHA string) (C
 	return g, err
 }
 
-// MarkCIReRun records that the gate asked the forge to re-run the CI of
-// headSHA, and restarts its wait. It reports false, and changes nothing, when
+// MarkCIReRun records that the gate asked for a re-run of the CI of headSHA,
+// from the forge or from whoever can re-run it in the forge, and restarts
+// its wait. It reports false, and changes nothing, when
 // that commit was already re-run: the gate re-runs a commit once.
 func (s *Store) MarkCIReRun(ctx context.Context, shiftID int64, headSHA string) (bool, error) {
 	tag, err := s.pool.Exec(ctx, `

@@ -193,7 +193,7 @@ fails otherwise.
 | [0116](0116-every-releasable-merge-to-development-cuts-a-candidate.md) | Every releasable merge to development cuts a candidate | accepted | 2026-10-18 |
 | [0117](0117-every-release-publishes-a-contract-bundle-for-consumers.md) | Every release publishes a contract bundle for consumers | accepted | 2026-10-18 |
 | [0118](0118-the-unmaintained-openhands-cli-is-retired-as-a-harness.md) | The unmaintained OpenHands CLI is retired as a Harness, for OpenCode, Qwen Code and Goose | proposed | 2026-10-18 |
-| [0119](0119-a-pull-request-is-ready-for-review-only-when-the-forges-ci-passed-on-its-head.md) | A pull request is ready for review only when the forge's CI passed on its head | accepted | 2026-10-18 |
+| [0119](0119-a-pull-request-is-ready-for-review-only-when-the-forges-ci-passed-on-its-head.md) | A pull request is ready for review only when the forge's CI passed on its head (rule 5 amended by 0189) | accepted | 2026-10-18 |
 | [0120](0120-a-worker-container-meets-the-restricted-pod-security-standard-by-default.md) | A worker container meets the restricted Pod Security Standard by default | accepted | 2026-10-18 |
 | [0121](0121-findings-carry-ids-writers-answer-them-and-a-run-asks-instead-of-guessing.md) | Findings carry ids, writers answer them, and a Run asks instead of guessing | accepted | 2026-10-18 |
 | [0122](0122-every-note-carries-its-provenance-untrusted-text-is-quoted-and-a-wider-level-needs-evidence-or-a-person.md) | Every note carries its provenance, untrusted text is quoted, and a wider level needs evidence or a person | accepted | 2026-10-18 |
@@ -255,6 +255,7 @@ fails otherwise.
 | [0185](0185-a-forge-event-that-names-a-tracker-item-updates-that-item.md) | A forge event that names a tracker item updates that item | proposed | 2026-10-31 |
 | [0186](0186-an-operator-consumer-binds-a-tracker-scope-to-a-team-at-runtime-and-static-routing-wins-on-conflict.md) | An operator consumer binds a tracker Scope to a Team at runtime, and static routing wins on conflict | proposed | 2026-10-31 |
 | [0188](0188-ploeg-merges-a-work-items-pull-request-at-a-named-head-for-a-proven-person-with-a-merge-identity-no-run-holds.md) | Ploeg merges a Work Item's pull request at a named head for a proven person, with a merge identity no Run holds | proposed | 2026-11-01 |
+| [0189](0189-a-forge-that-cannot-re-run-ci-waits-for-a-person-and-a-ci-parked-item-follows-its-pr.md) | A forge that cannot re-run CI waits for a person to re-run cancelled checks, and a CI-parked Work Item follows its pull request to done or back to review | proposed | 2026-11-01 |
 
 
 ## Review calendar
@@ -383,3 +384,4 @@ triggers.
 | 2027-04-30 | [0185](0185-a-forge-event-that-names-a-tracker-item-updates-that-item.md) — or sooner, when a supported tracker ships a native Forgejo or Gitea integration, a reference reaches an item outside its route, or linking hits a tracker's rate limit |
 | 2027-01-31 | [0186](0186-an-operator-consumer-binds-a-tracker-scope-to-a-team-at-runtime-and-static-routing-wins-on-conflict.md) — or sooner, when ADR-0183 step 6 gives tracker connections ids, ADR-0184 is accepted or rejected, a Tenant needs a binding to an unregistered Work Target, ploegd runs more than one replica, a shadowed binding goes unnoticed for a day, or an installation passes 200 live bindings |
 | 2027-02-28 | [0188](0188-ploeg-merges-a-work-items-pull-request-at-a-named-head-for-a-proven-person-with-a-merge-identity-no-run-holds.md) — or sooner, when the owner decides an automatic merge policy, a record answers ADR-0171's machine-attribution trigger, Forgejo changes its merge-when-checks-succeed or head checks, the GitHub or GitLab adapter gains a merger, ADR-0184 is decided, a merge credential leaks or an agent identity can merge, or a person needs a readable name in the trailer |
+| 2027-01-31 | [0189](0189-a-forge-that-cannot-re-run-ci-waits-for-a-person-and-a-ci-parked-item-follows-its-pr.md) — or sooner, when Forgejo's API gains a job re-run call, more than five Work Items a month close `ci_not_passed` because nobody re-ran cancelled CI, or a person needs a CI-parked item that turned green on a head they pushed to return to review |
