@@ -3,7 +3,7 @@ status: accepted
 date: 2026-07-29
 decision-makers: Ryan Grippeling
 supersedes: none
-review-by: 2026-10-31
+review-by: 2027-02-04
 ---
 
 # A2A: adopt nothing now; watchlist a north-facing dispatch facade
@@ -144,3 +144,4 @@ carries the watchlisted scope and its prerequisites.
   Work Items that a person approves. The A2A facade stays watchlisted; its
   triggers are unchanged.
 * 2026-10-17 — Re-confirmed, unchanged, by the [team-manifest sweep](../research/2026-10-17-team-manifest-standards.md): A2A 1.0.1's `a2a.proto` still has no team, budget or permission field, so the Agent Card stays the outward description of what a Team offers (one `AgentSkill` per Team, backlog #102) and never its manifest; the triggers above are unchanged.
+* 2026-11-04 — Re-confirmed at its review, unchanged; next review 2027-02-04. Maturity no longer blocks A2A: 1.0.1 (2026-05-28) with a 1.1 release candidate, an Agentic AI Foundation project since August 2026, a stable Go SDK, and shipped acceptors in Gemini Enterprise and Copilot Studio. Fit still does: no agent the people Ploeg serves use delegates work to another agent, and signed Agent Cards do not yet interoperate between SDKs ([a2aproject/A2A#2122](https://github.com/a2aproject/A2A/issues/2122)). Evidence: Unfold's [agent-standards landscape](https://forgejo.webgrip.dev/webgrip/unfold/src/branch/development/apps/unfold/docs/research/2026-11-04-agent-standards-landscape.md) and its catalogue entry for A2A, which now watches the releases. The triggers above are unchanged.
