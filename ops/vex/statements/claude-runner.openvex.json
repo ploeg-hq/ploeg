@@ -2,7 +2,26 @@
   "@context": "https://openvex.dev/ns/v0.2.0",
   "@id": "https://github.com/ploeg-hq/ploeg/blob/development/ops/vex/statements/claude-runner.openvex.json",
   "author": "Ploeg maintainers",
-  "timestamp": "2026-10-24T00:00:00Z",
-  "version": 1,
-  "statements": []
+  "timestamp": "2026-11-04T00:00:00Z",
+  "version": 2,
+  "statements": [
+    {
+      "vulnerability": {
+        "name": "CVE-2026-119586"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/claude-runner?repository_url=ghcr.io%2Fploeg-hq%2Fclaude-runner",
+          "subcomponents": [
+            {
+              "@id": "pkg:apk/wolfi/sqlite-libs@3.54.1-r0?arch=x86_64&distro=wolfi-20230201"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_present",
+      "impact_statement": "CVE-2026-119586 is a command injection in the SQLite command-line shell's .recover command (sqlite3), per NVD. This image installs only sqlite-libs, which holds libsqlite3.so and no sqlite3 shell, as a library dependency of the packages the image installs; nothing in the image runs the shell or its .recover command."
+    }
+  ]
 }
