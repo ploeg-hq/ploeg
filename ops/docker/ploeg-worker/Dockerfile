@@ -2,7 +2,7 @@
 ARG REGISTRY_DOCKERHUB=docker.io
 ARG REGISTRY_CHAINGUARD=cgr.dev
 
-FROM --platform=$BUILDPLATFORM ${REGISTRY_DOCKERHUB}/golang:1.27.3-trixie@sha256:fbb7ae40b62ff8afe31662df570d39b4f5052ac32b90dae8e60d7657a20a74f4 AS builder
+FROM --platform=$BUILDPLATFORM ${REGISTRY_DOCKERHUB}/golang:1.27.3-trixie@sha256:af1bfc2614ebb1dbd31af514b78740fd678850e76498762b425ecee4c5c6ea80 AS builder
 ENV GOTOOLCHAIN=auto
 WORKDIR /src
 COPY go.* ./
@@ -15,7 +15,7 @@ RUN GOOS=$TARGETOS GOARCH=$TARGETARCH \
     go build -trimpath -ldflags "-s -w -X main.version=${IMAGE_VERSION}" \
     -o /out/ploeg-worker ./cmd/ploeg-worker
 
-FROM ${REGISTRY_CHAINGUARD}/chainguard/wolfi-base:latest@sha256:360896efb0753a5701c48f860e17130c205eae5a264797aa3e7ea126ee2923a7 AS rootfs
+FROM ${REGISTRY_CHAINGUARD}/chainguard/wolfi-base:latest@sha256:24f549a7fcace88e69b9557941168c74645688ecc4acf7fb6d734a6b74e9019d AS rootfs
 RUN printf 'https://packages.wolfi.dev/os\n' > /etc/apk/repositories \
  && apk add --no-cache --no-scripts --root /rootfs --initdb --keys-dir /etc/apk/keys --repositories-file /etc/apk/repositories \
       wolfi-baselayout ca-certificates-bundle git \
