@@ -72,6 +72,33 @@ A consumer whose release run checks one head of its base branch for longer than 
 * Forgejo gains a merge queue that keeps a consumer's checked head stable while pins arrive.
 * A second consumer sets `by-consumer`, or a `by-consumer` pin waits more than a day for its consumer.
 
+## Amendment 2026-11-11: GitHub is a second forge, reached through a GitHub App
+
+A consumer is moving its repository to GitHub, which fires this record's first re-evaluation trigger: a second forge needs a consumer. The owner decided on 2026-11-11 that the release reaches a GitHub consumer through a GitHub App that the consumer's organization owns and installs on the consumer repository only, so Ploeg stores no personal token for it, and that Forgejo stays supported next to it.
+
+* An entry's `forge` may be `github`. Its `url` must be `https://github.com`; GitHub Enterprise Server is not supported.
+* The app's ID and private key are the repository secrets `RELEASE_CONSUMER_GITHUB_APP_ID` and `RELEASE_CONSUMER_GITHUB_APP_PRIVATE_KEY`. Only for a `github` entry, the job mints an installation token with `actions/create-github-app-token` for the entry's owner and repository, limited to Contents, Pull requests, Issues and Workflows write, and hands it to the script as `RELEASE_CONSUMER_TOKEN`. The token expires within the hour and is revoked when the job ends.
+* Git clones and pushes as `x-access-token`. An installation token names no user, so the script commits as the app's bot, `<app-slug>[bot]` with its `users.noreply.github.com` address, from the slug the token step reports.
+* The script opens or updates the pull request through the REST API and closes the bot's superseded `ploeg/` pull requests with a comment naming the new one, as on Forgejo.
+* `merge: by-consumer` asks GitHub for nothing more. `merge: on-green` enables auto-merge with the `enablePullRequestAutoMerge` GraphQL mutation, mapping `merge_style` `merge`, `squash` and `rebase` to `MERGE`, `SQUASH` and `REBASE`; when GitHub answers that the pull request is already in clean status, the script merges it with that method at once. A GitHub entry with `rebase-merge` or `fast-forward-only` is refused, because GitHub has neither.
+
+### Consequences of the GitHub amendment
+
+* Good, because the GitHub credential is an installation token that reaches one repository and lives for one job; the long-lived key stays with the app's owner, who can revoke it or uninstall the app.
+* Good, because a Forgejo consumer keeps its entry, its secret and its behaviour.
+* Bad, because the workflow now carries a token step per forge, and a third forge adds another.
+* Bad, because `on-green` on GitHub depends on the consumer repository allowing auto-merge; a repository that does not fails the job after the retries, and the pull request stays open.
+
+### Confirmation of the GitHub amendment
+
+`bash scripts/test-release-consumers.sh`, run by `mise run verify`, drives the script against a fake GitHub as well. It fails when the branch lacks the recipe's change or the bot's identity, when the recipe can read the installation token, when a rerun opens a second pull request, when a `by-consumer` entry calls GraphQL or a merge endpoint, when the app's older `ploeg/` pull request is not closed with a comment naming its successor or a person's is closed, when `on-green` does not retry, does not map the merge style or does not merge a pull request in clean status, when a refusal to enable auto-merge is reported as scheduled, when git does not authenticate as `x-access-token`, and when a GitHub entry with another URL or a merge style GitHub lacks is accepted. `actionlint` and `zizmor` pass on the workflow. The first candidate after the app's secrets and a `github` entry are set shows a `consumers` job and a pull request on the GitHub consumer.
+
+### Re-evaluation triggers of the GitHub amendment
+
+* A consumer needs GitHub Enterprise Server, or a third forge needs a consumer.
+* GitHub changes or removes `enablePullRequestAutoMerge`, or a GitHub consumer needs a merge queue.
+* `actions/create-github-app-token` drops the `app-id` input, which it already marks deprecated in favour of `client-id`.
+
 ## Pros and Cons of the Options
 
 ### Trigger the consumer's Renovate run
@@ -92,4 +119,5 @@ A second forge needs a consumer, Forgejo changes or removes `merge_when_checks_s
 
 * Owner decisions of 2026-10-18 on the RFC "One delivery contract for every project", phase P1b (homelab-cluster `docs/techdocs/docs/rfc/rfc-unfold-release-train.md`): pattern 3, the producer opens the bump pull request; decision 1B, a dedicated Forgejo user with write access to the one consumer repository.
 * 2026-10-24 — Amended: an entry's optional `merge` may be `by-consumer`, so a consumer whose release run checks one head merges its own pin pull request; `on-green` stays the default.
+* 2026-11-11 — Amended: `forge` may be `github`, reached through a GitHub App installation token minted per job; Forgejo stays supported.
 * Builds on [ADR 0116](0116-every-releasable-merge-to-development-cuts-a-candidate.md) and [ADR 0117](0117-every-release-publishes-a-contract-bundle-for-consumers.md); keeps [ADR 0069](0069-ploeg-names-none-of-its-consumers.md): consumers are configuration.

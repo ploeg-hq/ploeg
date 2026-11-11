@@ -34,14 +34,20 @@ A [plan for the stable channel](stable-channel-plan.md) proposes how a candidate
 When the repository variable `RELEASE_CONSUMERS` is set, the `consumers` job of the release candidate workflow calls [the release consumers workflow](../../.github/workflows/release-consumers.yml), which opens each consumer's update after the contract bundle is published ([ADR 0127](../adrs/0127-a-release-opens-each-consumers-update-by-running-the-consumers-own-recipe.md)). The variable is a JSON list:
 
 ```json
-[{"forge": "forgejo", "url": "https://forge.example", "repo": "owner/name", "base": "development", "recipe": "scripts/consume-release.sh", "message": "fix(deps): update ploeg to {version}"}]
+[{"forge": "forgejo", "url": "https://forge.example", "repo": "owner/name", "base": "development", "recipe": "scripts/consume-release.sh", "message": "fix(deps): update ploeg to {version}"},
+ {"forge": "github", "url": "https://github.com", "repo": "owner/other", "base": "main", "recipe": "scripts/consume-release.sh", "merge": "by-consumer"}]
 ```
 
 For each entry, [scripts/release-consumers.py](../../scripts/release-consumers.py) clones `base`, runs `<recipe> <version>` from the checkout root, commits what changed on `ploeg/<version>` as the token's user, opens or updates the pull request and asks the forge to merge it when the base branch's required checks succeed. It closes the same user's older `ploeg/` pull requests. `message`, `merge_style` (`merge` by default) and `merge` are optional.
 
 `merge` decides who merges the pull request. `on-green`, the default, asks the forge to merge it when the base branch's required checks succeed. `by-consumer` opens or updates the pull request and closes the superseded ones but never asks the forge to merge, for a consumer that merges its pin itself, for example at the start of its own release run. A `by-consumer` entry must not set `merge_style`, because nothing would read it. A recipe gets git, a POSIX shell, Python 3 and mise, and never the token.
 
-The token is the repository secret `RELEASE_CONSUMER_TOKEN_FORGEJO`: a Forgejo access token of a user with write access to the consumer repositories only, with the `write:repository`, `write:issue` (the superseded comment) and `read:user` scopes, allowed to merge into `base` by its branch protection. Without the variable the job is skipped.
+`forge` is `forgejo` or `github`. Each forge has its own credential, and an entry for a forge whose credential is not set fails its job:
+
+* **Forgejo.** The repository secret `RELEASE_CONSUMER_TOKEN_FORGEJO`: a Forgejo access token of a user with write access to the consumer repositories only, with the `write:repository`, `write:issue` (the superseded comment) and `read:user` scopes, allowed to merge into `base` by its branch protection.
+* **GitHub.** A GitHub App installed on the consumer repository, whose ID and private key are the repository secrets `RELEASE_CONSUMER_GITHUB_APP_ID` and `RELEASE_CONSUMER_GITHUB_APP_PRIVATE_KEY`. The job mints an installation token for that one repository with `actions/create-github-app-token`, limited to Contents, Pull requests, Issues and Workflows write, which expires within the hour; the private key is the only long-lived part. Git pushes as `x-access-token`, and the commits and pull requests are the app's bot user, `<app-slug>[bot]`. A GitHub entry's `url` must be `https://github.com`; GitHub Enterprise Server is not supported. With `merge: on-green` the script enables auto-merge (`enablePullRequestAutoMerge`, so the repository must allow auto-merge) and merges at once when the base branch's checks have already passed; `merge_style` is `merge`, `squash` or `rebase`, because GitHub has no `rebase-merge` or `fast-forward-only`.
+
+Without the variable the job is skipped.
 
 To try an entry without writing anything, run the script with `RELEASE_CONSUMERS_DRY_RUN=true`: it clones, runs the recipe, commits locally, prints the commit and stops.
 
