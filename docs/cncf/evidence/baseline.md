@@ -30,7 +30,7 @@ mise run check-provenance
 | mise | 2026.9.18 |
 | Git | 2.43.0 |
 | Bash | 5.2.21 |
-| Go | go1.27.3 (from `mise.toml`) |
+| Go | go1.27.4 (from `mise.toml`) |
 | Helm | v4.3.0 (from `mise.toml`) |
 | Node.js | v24.21.0 (from `mise.toml`) |
 
