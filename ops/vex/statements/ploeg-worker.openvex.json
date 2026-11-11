@@ -2,8 +2,8 @@
   "@context": "https://openvex.dev/ns/v0.2.0",
   "@id": "https://github.com/ploeg-hq/ploeg/blob/development/ops/vex/statements/ploeg-worker.openvex.json",
   "author": "Ploeg maintainers",
-  "timestamp": "2026-11-04T00:00:00Z",
-  "version": 2,
+  "timestamp": "2026-11-11T00:00:00Z",
+  "version": 3,
   "statements": [
     {
       "vulnerability": {
@@ -22,6 +22,24 @@
       "status": "not_affected",
       "justification": "vulnerable_code_not_present",
       "impact_statement": "CVE-2026-119586 is a command injection in the SQLite command-line shell's .recover command (sqlite3), per NVD. This image installs only sqlite-libs, which holds libsqlite3.so and no sqlite3 shell, as a library dependency of the packages the image installs; nothing in the image runs the shell or its .recover command."
+    },
+    {
+      "vulnerability": {
+        "name": "CVE-2026-84243"
+      },
+      "products": [
+        {
+          "@id": "pkg:oci/ploeg-worker?repository_url=ghcr.io%2Fploeg-hq%2Fploeg-worker",
+          "subcomponents": [
+            {
+              "@id": "pkg:apk/wolfi/glibc-2.44@2.44-r16"
+            }
+          ]
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_cannot_be_controlled_by_adversary",
+      "impact_statement": "CVE-2026-84243 lets whoever sets LANGUAGE make glibc's gettext load a message catalog from an arbitrary path, per NVD; glibc ignores such entries for setuid and setgid programs (AT_SECURE). In this image the environment of every process is set by Ploeg, and the only other party that can set LANGUAGE is the agent, which already runs arbitrary code as the same unprivileged user inside the Run's sandbox. Loading a crafted catalog therefore gives it nothing it does not have, and crosses no privilege boundary. Wolfi publishes no fixed glibc build yet; drop this statement once one exists."
     }
   ]
 }
