@@ -21,7 +21,10 @@ MERGE_STYLES = {'merge', 'rebase', 'rebase-merge', 'squash', 'fast-forward-only'
 MERGE_ON_GREEN = 'on-green'
 MERGE_BY_CONSUMER = 'by-consumer'
 MERGE_MODES = {MERGE_ON_GREEN, MERGE_BY_CONSUMER}
-SUPPORTED_FORGES = {'forgejo'}
+GITHUB_URL = 'https://github.com'
+GITHUB_API = 'https://api.github.com'
+GITHUB_MERGE_METHODS = {'merge': 'MERGE', 'squash': 'SQUASH', 'rebase': 'REBASE'}
+SUPPORTED_FORGES = {'forgejo', 'github'}
 DEFAULT_MESSAGE = 'chore(deps): update ' + PRODUCER + ' to {version}'
 LOOPBACK_HOSTS = {'127.0.0.1', 'localhost', '::1'}
 MERGE_ATTEMPTS = 6
@@ -68,6 +71,8 @@ def parse_consumer(text):
         raise ConsumerError(f'{entry["url"]} must be an https URL')
     if url.query or url.fragment or url.username or url.password:
         raise ConsumerError(f'{entry["url"]} must carry no credentials, query or fragment')
+    if entry['forge'] == 'github' and urllib.parse.urlunsplit(url) != GITHUB_URL and url.hostname not in LOOPBACK_HOSTS:
+        raise ConsumerError(f'a github consumer must use {GITHUB_URL}, not {entry["url"]}')
     if not REPOSITORY.match(entry['repo']):
         raise ConsumerError(f'{entry["repo"]} is not an owner/name repository')
     if not BRANCH.match(entry['base']) or '..' in entry['base']:
@@ -86,6 +91,8 @@ def parse_consumer(text):
         raise ConsumerError(f'merge must be one of {", ".join(sorted(MERGE_MODES))}')
     if merge == MERGE_BY_CONSUMER and 'merge_style' in entry:
         raise ConsumerError('merge_style has no effect when the consumer merges its own pull request; drop it or set merge to on-green')
+    if entry['forge'] == 'github' and merge_style not in GITHUB_MERGE_METHODS:
+        raise ConsumerError(f'github has no merge_style {merge_style!r}; use one of {", ".join(sorted(GITHUB_MERGE_METHODS))}')
     return Consumer(entry['forge'], urllib.parse.urlunsplit(url), entry['repo'], entry['base'], str(recipe), message, merge_style, merge)
 
 
@@ -96,15 +103,19 @@ def release_version(tag):
     return match['version']
 
 
-class Forgejo:
-    def __init__(self, consumer, token):
-        self.api = f'{consumer.url}/api/v1'
+class ForgeApi:
+    def __init__(self, consumer, token, api):
+        self.api = api
         self.repo = consumer.repo
         self.token = token
 
-    def call(self, method, path, body=None):
+    def headers(self):
+        return {'Accept': 'application/json', 'User-Agent': USER_AGENT}
+
+    def call(self, method, path, body=None, url=None):
         data = None if body is None else json.dumps(body).encode()
-        request = urllib.request.Request(f'{self.api}{path}', data=data, method=method, headers={'Accept': 'application/json', 'Authorization': f'token {self.token}', 'User-Agent': USER_AGENT})
+        target = url or f'{self.api}{path}'
+        request = urllib.request.Request(target, data=data, method=method, headers=self.headers())
         if data is not None:
             request.add_header('Content-Type', 'application/json')
         try:
@@ -116,7 +127,7 @@ class Forgejo:
             error.close()
             return error.code, detail
         except urllib.error.URLError as error:
-            raise ConsumerError(f'{method} {self.api}{path} is unreachable: {error.reason}') from error
+            raise ConsumerError(f'{method} {target} is unreachable: {error.reason}') from error
 
     def expect(self, method, path, body=None, accepted=(200, 201)):
         status, payload = self.call(method, path, body)
@@ -124,19 +135,15 @@ class Forgejo:
             raise ConsumerError(f'{method} {path} answered HTTP {status}: {payload}')
         return payload
 
-    def identity(self):
-        user = self.expect('GET', '/user')
-        login = user.get('login')
-        if not login:
-            raise ConsumerError('the token names no user')
-        return login, user.get('email') or f'{login}@noreply.invalid'
+    def git_user(self, login):
+        return login
 
     def open_pulls(self):
         pulls, page = [], 1
         while True:
-            batch = self.expect('GET', f'/repos/{self.repo}/pulls?state=open&limit=50&page={page}') or []
+            batch = self.expect('GET', f'/repos/{self.repo}/pulls?state=open&{self.page_size_parameter}={self.page_size}&page={page}') or []
             pulls.extend(batch)
-            if len(batch) < 50:
+            if len(batch) < self.page_size:
                 return pulls
             page += 1
 
@@ -148,6 +155,33 @@ class Forgejo:
             return number, False
         created = self.expect('POST', f'/repos/{self.repo}/pulls', {'base': base, 'head': branch, 'title': title, 'body': body})
         return created['number'], True
+
+    def close_superseded(self, prefix, branch, author, number):
+        closed = []
+        for pull in self.open_pulls():
+            ref = pull['head']['ref']
+            if ref.startswith(prefix) and ref != branch and pull['user']['login'] == author:
+                self.expect('POST', f'/repos/{self.repo}/issues/{pull["number"]}/comments', {'body': f'Superseded by #{number}.'})
+                self.expect('PATCH', f'/repos/{self.repo}/pulls/{pull["number"]}', {'state': 'closed'})
+                closed.append(pull['number'])
+        return closed
+
+
+class Forgejo(ForgeApi):
+    page_size_parameter, page_size = 'limit', 50
+
+    def __init__(self, consumer, token):
+        super().__init__(consumer, token, f'{consumer.url}/api/v1')
+
+    def headers(self):
+        return dict(super().headers(), Authorization=f'token {self.token}')
+
+    def identity(self):
+        user = self.expect('GET', '/user')
+        login = user.get('login')
+        if not login:
+            raise ConsumerError('the token names no user')
+        return login, user.get('email') or f'{login}@noreply.invalid'
 
     def merge_when_checks_succeed(self, number, style, delay):
         body = {'Do': style, 'merge_when_checks_succeed': True, 'delete_branch_after_merge': True}
@@ -161,22 +195,64 @@ class Forgejo:
                 raise ConsumerError(f'asking to merge #{number} answered HTTP {status}: {payload}')
             time.sleep(delay)
 
-    def close_superseded(self, prefix, branch, author, number):
-        closed = []
-        for pull in self.open_pulls():
-            ref = pull['head']['ref']
-            if ref.startswith(prefix) and ref != branch and pull['user']['login'] == author:
-                self.expect('POST', f'/repos/{self.repo}/issues/{pull["number"]}/comments', {'body': f'Superseded by #{number}.'})
-                self.expect('PATCH', f'/repos/{self.repo}/pulls/{pull["number"]}', {'state': 'closed'})
-                closed.append(pull['number'])
-        return closed
+
+class GitHub(ForgeApi):
+    page_size_parameter, page_size = 'per_page', 100
+
+    def __init__(self, consumer, token, app_slug=''):
+        api = GITHUB_API if consumer.url == GITHUB_URL else f'{consumer.url}/api/v3'
+        super().__init__(consumer, token, api)
+        self.graphql = GITHUB_API + '/graphql' if consumer.url == GITHUB_URL else f'{consumer.url}/api/graphql'
+        self.app_slug = app_slug
+
+    def headers(self):
+        return dict(super().headers(), Accept='application/vnd.github+json', Authorization=f'Bearer {self.token}', **{'X-GitHub-Api-Version': '2022-11-28'})
+
+    def identity(self):
+        if self.app_slug:
+            login = f'{self.app_slug}[bot]'
+            user = self.expect('GET', f'/users/{urllib.parse.quote(login)}')
+            if not user.get('id'):
+                raise ConsumerError(f'GitHub knows no user {login}')
+            return login, f'{user["id"]}+{login}@users.noreply.github.com'
+        user = self.expect('GET', '/user')
+        login = user.get('login')
+        if not login:
+            raise ConsumerError('the token names no user')
+        return login, f'{user["id"]}+{login}@users.noreply.github.com'
+
+    def git_user(self, login):
+        return 'x-access-token'
+
+    def merge_when_checks_succeed(self, number, style, delay):
+        method = GITHUB_MERGE_METHODS[style]
+        node = self.expect('GET', f'/repos/{self.repo}/pulls/{number}')['node_id']
+        query = 'mutation($id: ID!, $method: PullRequestMergeMethod!) { enablePullRequestAutoMerge(input: {pullRequestId: $id, mergeMethod: $method}) { pullRequest { number } } }'
+        for attempt in range(1, MERGE_ATTEMPTS + 1):
+            status, payload = self.call('POST', '/graphql', {'query': query, 'variables': {'id': node, 'method': method}}, url=self.graphql)
+            errors = payload.get('errors') if isinstance(payload, dict) else None
+            if status == 200 and not errors:
+                return 'scheduled'
+            messages = ' '.join(str(error.get('message', '')) for error in errors or [] if isinstance(error, dict)) or str(payload)
+            if status == 200 and 'clean status' in messages:
+                self.expect('PUT', f'/repos/{self.repo}/pulls/{number}/merge', {'merge_method': style})
+                return 'merged'
+            if attempt == MERGE_ATTEMPTS:
+                raise ConsumerError(f'enabling auto-merge on #{number} answered HTTP {status}: {messages}')
+            time.sleep(delay)
 
 
-def git_environment(consumer, login, token):
+def forge_client(consumer, token):
+    if consumer.forge == 'github':
+        return GitHub(consumer, token, os.environ.get('RELEASE_CONSUMER_GITHUB_APP_SLUG', ''))
+    return Forgejo(consumer, token)
+
+
+def git_environment(consumer, user, token):
     environment = dict(os.environ, GIT_TERMINAL_PROMPT='0')
     if token:
         count = int(environment.get('GIT_CONFIG_COUNT', '0'))
-        credentials = base64.b64encode(f'{login}:{token}'.encode()).decode()
+        credentials = base64.b64encode(f'{user}:{token}'.encode()).decode()
         environment[f'GIT_CONFIG_KEY_{count}'] = f'http.{consumer.url}/.extraHeader'
         environment[f'GIT_CONFIG_VALUE_{count}'] = f'Authorization: Basic {credentials}'
         environment['GIT_CONFIG_COUNT'] = str(count + 1)
@@ -210,12 +286,12 @@ def deliver(consumer, tag, token, release_url, dry_run, retry_delay):
     branch = f'{PRODUCER}/{version}'
     title = consumer.message.format(version=version)
     body = pull_request_body(consumer, tag, version, release_url)
-    forge = Forgejo(consumer, token) if token else None
+    forge = forge_client(consumer, token) if token else None
     login, email = forge.identity() if forge else (f'{PRODUCER}-release', f'{PRODUCER}-release@noreply.invalid')
     workspace = tempfile.mkdtemp(prefix=f'{PRODUCER}-consumer-')
     checkout = os.path.join(workspace, 'checkout')
     try:
-        authenticated = git_environment(consumer, login, token)
+        authenticated = git_environment(consumer, forge.git_user(login) if forge else login, token)
         clone = subprocess.run(['git', 'clone', '--quiet', '--depth', '1', '--single-branch', '--branch', consumer.base, consumer.clone_url, checkout], env=authenticated, check=False)
         if clone.returncode != 0:
             raise ConsumerError(f'could not clone {consumer.clone_url} at {consumer.base}')

@@ -3,8 +3,10 @@ set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 fixture=$(mktemp -d)
 server_pid=
+github_pid=
 cleanup() {
   [[ -z "$server_pid" ]] || kill "$server_pid" 2>/dev/null || true
+  [[ -z "$github_pid" ]] || kill "$github_pid" 2>/dev/null || true
   rm -rf "$fixture"
 }
 trap cleanup EXIT
@@ -87,6 +89,100 @@ class Forge(BaseHTTPRequestHandler):
 
 
 server = ThreadingHTTPServer(('127.0.0.1', 0), Forge)
+print(server.server_address[1], flush=True)
+server.serve_forever()
+PY
+
+cat > "$fixture/github.py" <<'PY'
+import json
+import sys
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import unquote, urlsplit
+
+TOKEN = 'Bearer installation-secret'
+BOT = 'ploeg-release[bot]'
+log_path = sys.argv[1]
+pulls = {
+    7: {'number': 7, 'node_id': 'PR_7', 'state': 'open', 'title': 'old', 'head': {'ref': 'ploeg/0.1.0-rc.1'}, 'base': {'ref': 'development'}, 'user': {'login': BOT}},
+    8: {'number': 8, 'node_id': 'PR_8', 'state': 'open', 'title': 'a person', 'head': {'ref': 'ploeg/by-hand'}, 'base': {'ref': 'development'}, 'user': {'login': 'someone'}},
+}
+comments = []
+auto_merges = []
+merges = []
+graphql_answers = []
+
+
+class GitHub(BaseHTTPRequestHandler):
+    def log_message(self, *args):
+        pass
+
+    def reply(self, status, body=None):
+        payload = b'' if body is None else json.dumps(body).encode()
+        self.send_response(status)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Length', str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def handle_any(self, method):
+        length = int(self.headers.get('Content-Length') or 0)
+        body = json.loads(self.rfile.read(length)) if length else None
+        path = unquote(urlsplit(self.path).path)
+        if path == '/state':
+            return self.reply(200, {'pulls': pulls, 'comments': comments, 'auto_merges': auto_merges, 'merges': merges})
+        if path == '/graphql-answers':
+            graphql_answers.extend(body)
+            return self.reply(204)
+        with open(log_path, 'a') as log:
+            log.write(json.dumps({'method': method, 'path': path, 'body': body}) + '\n')
+        if self.headers.get('Authorization') != TOKEN or self.headers.get('X-GitHub-Api-Version') != '2022-11-28' or self.headers.get('Accept') != 'application/vnd.github+json':
+            return self.reply(401, {'message': 'Bad credentials'})
+        if path == '/api/v3/user':
+            return self.reply(403, {'message': 'Resource not accessible by integration'})
+        if path == '/api/v3/users/' + BOT:
+            return self.reply(200, {'login': BOT, 'id': 4242, 'type': 'Bot'})
+        if path == '/api/graphql':
+            answer = graphql_answers.pop(0) if graphql_answers else {'data': {'enablePullRequestAutoMerge': {'pullRequest': {'number': 0}}}}
+            if 'errors' not in answer:
+                auto_merges.append(body['variables'])
+            return self.reply(200, answer)
+        parts = path.removeprefix('/api/v3/').split('/')
+        if parts[:3] != ['repos', 'acme', 'app']:
+            return self.reply(404, {'message': 'Not Found'})
+        rest = parts[3:]
+        if rest == ['pulls'] and method == 'GET':
+            return self.reply(200, [pull for pull in pulls.values() if pull['state'] == 'open'])
+        if rest == ['pulls'] and method == 'POST':
+            number = max(pulls) + 1
+            pulls[number] = {'number': number, 'node_id': f'PR_{number}', 'state': 'open', 'title': body['title'], 'body': body['body'], 'head': {'ref': body['head']}, 'base': {'ref': body['base']}, 'user': {'login': BOT}}
+            return self.reply(201, pulls[number])
+        if len(rest) == 2 and rest[0] == 'pulls' and method == 'GET':
+            return self.reply(200, pulls[int(rest[1])])
+        if len(rest) == 2 and rest[0] == 'pulls' and method == 'PATCH':
+            pulls[int(rest[1])].update(body)
+            return self.reply(200, pulls[int(rest[1])])
+        if len(rest) == 3 and rest[0] == 'pulls' and rest[2] == 'merge' and method == 'PUT':
+            merges.append({'number': int(rest[1]), **body})
+            return self.reply(200, {'merged': True})
+        if len(rest) == 3 and rest[0] == 'issues' and rest[2] == 'comments':
+            comments.append({'number': int(rest[1]), 'body': body['body']})
+            return self.reply(201, {'id': len(comments)})
+        return self.reply(404, {'message': 'Not Found'})
+
+    def do_GET(self):
+        self.handle_any('GET')
+
+    def do_POST(self):
+        self.handle_any('POST')
+
+    def do_PATCH(self):
+        self.handle_any('PATCH')
+
+    def do_PUT(self):
+        self.handle_any('PUT')
+
+
+server = ThreadingHTTPServer(('127.0.0.1', 0), GitHub)
 print(server.server_address[1], flush=True)
 server.serve_forever()
 PY
@@ -192,4 +288,65 @@ rejects "$valid}" v0.1.0-rc.6 'lacks recipe'
 rejects "$(consumer ',"merge":"when-i-feel-like-it"')" v0.1.0-rc.6 'merge must be one of by-consumer, on-green'
 rejects "$(consumer ',"merge":"by-consumer","merge_style":"squash"')" v0.1.0-rc.6 'merge_style has no effect when the consumer merges its own pull request'
 for tag in 0.1.0 v1 v0.1.0-rc.6/../x latest; do rejects "$(consumer)" "$tag" 'is not a release tag'; done
-echo 'Release consumer delivery, reruns, supersession, dry runs, merge modes and input checks passed'
+python3 -u "$fixture/github.py" "$fixture/github.log" > "$fixture/github-port" &
+github_pid=$!
+for _ in $(seq 50); do [[ -s "$fixture/github-port" ]] && break; sleep 0.1; done
+github_port=$(head -n 1 "$fixture/github-port")
+[[ -n "$github_port" ]] || fail 'the fake GitHub did not start'
+github="http://127.0.0.1:$github_port"
+git -C "$fixture/seed" pull --quiet --rebase origin development
+export GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_1="url.file://$fixture/app.git.insteadOf" GIT_CONFIG_VALUE_1="$github/acme/app.git"
+github_consumer() { printf '{"forge":"github","url":"%s","repo":"acme/app","base":"development","recipe":"scripts/consume.sh","message":"fix(pin): move to {version}"%s}' "$github" "${1:-}"; }
+run_github() { RELEASE_CONSUMER="$1" RELEASE_CONSUMER_TOKEN=installation-secret RELEASE_CONSUMER_GITHUB_APP_SLUG=ploeg-release python3 "$root/scripts/release-consumers.py" "$2"; }
+github_state() { python3 -c 'import json,sys,urllib.request; print(json.dumps(eval(sys.argv[2], {}, {"s": json.load(urllib.request.urlopen(sys.argv[1] + "/state"))})))' "$github" "$1"; }
+github_requests() { python3 -c 'import json,sys; print(sum(1 for line in open(sys.argv[1]) if (r := json.loads(line)) and eval(sys.argv[2], {}, {"r": r})))' "$fixture/github.log" "$1"; }
+github_answers() { python3 -c 'import sys,urllib.request; urllib.request.urlopen(urllib.request.Request(sys.argv[1] + "/graphql-answers", data=sys.argv[2].encode(), method="POST"))' "$github" "$1"; }
+
+run_github "$(github_consumer ',"merge":"by-consumer"')" v0.1.0-rc.10 > "$fixture/github-first.out"
+[[ "$(git --git-dir="$fixture/app.git" show ploeg/0.1.0-rc.10:pin.txt)" == 0.1.0-rc.10 ]] || fail 'the GitHub branch does not carry what the recipe changed'
+[[ "$(git --git-dir="$fixture/app.git" log -1 --format='%an <%ae>' ploeg/0.1.0-rc.10)" == 'ploeg-release[bot] <4242+ploeg-release[bot]@users.noreply.github.com>' ]] || fail 'the GitHub commit is not the app'\''s bot'
+grep -q installation-secret "$fixture/recipe.env" && fail 'the recipe saw the installation token'
+[[ "$(github_state '[[p["number"], p["title"]] for p in s["pulls"].values() if p["head"]["ref"] == "ploeg/0.1.0-rc.10"]')" == '[[9, "fix(pin): move to 0.1.0-rc.10"]]' ]] || fail 'no GitHub pull request was opened for the new branch'
+grep -q 'acme/app merges this pull request itself' <<<"$(github_state 's["pulls"]["9"]["body"]')" || fail 'a by-consumer GitHub pull request must say the consumer merges it'
+[[ "$(github_requests 'r["path"] in ("/api/graphql", "/api/v3/user") or r["path"].endswith("/merge")')" == 0 ]] || fail 'a by-consumer GitHub release asked to merge or read the installation as a user'
+[[ "$(github_state '[s["pulls"]["7"]["state"], s["pulls"]["8"]["state"]]')" == '["closed", "open"]' ]] || fail 'the app'\''s older GitHub pull request must close and a person'\''s must stay open'
+[[ "$(github_state 's["comments"]')" == '[{"number": 7, "body": "Superseded by #9."}]' ]] || fail 'the superseded GitHub pull request names its successor'
+grep -q 'acme/app#9 opened, merge left to the consumer, closed superseded #7' "$fixture/github-first.out" || fail 'the GitHub summary does not name the pull request'
+
+run_github "$(github_consumer ',"merge":"by-consumer"')" v0.1.0-rc.10 > "$fixture/github-rerun.out"
+[[ "$(github_state 'len(s["pulls"])')" == 3 ]] || fail 'a GitHub rerun opened a second pull request'
+grep -q 'acme/app#9 updated, merge left to the consumer' "$fixture/github-rerun.out" || fail 'a GitHub rerun must update the open pull request'
+
+github_answers '[{"errors": [{"message": "Pull request is in unstable status"}]}]'
+run_github "$(github_consumer ',"merge":"on-green","merge_style":"squash"')" v0.1.0-rc.11 > "$fixture/github-on-green.out"
+[[ "$(github_state 's["auto_merges"]')" == '[{"id": "PR_10", "method": "SQUASH"}]' ]] || fail 'on-green must enable auto-merge with the mapped style, after retrying an error'
+[[ "$(github_requests 'r["path"] == "/api/graphql"')" == 2 ]] || fail 'on-green must retry enabling auto-merge once it failed'
+grep -q 'acme/app#10 opened, merge scheduled, closed superseded #9' "$fixture/github-on-green.out" || fail 'on-green must report the scheduled merge'
+
+github_answers '[{"errors": [{"message": "Pull request Pull request is in clean status"}]}]'
+run_github "$(github_consumer ',"merge":"on-green","merge_style":"rebase"')" v0.1.0-rc.12 > "$fixture/github-clean.out"
+[[ "$(github_state 's["merges"]')" == '[{"number": 11, "merge_method": "rebase"}]' ]] || fail 'a pull request whose checks already passed must merge with the configured style'
+grep -q 'acme/app#11 opened, merge merged' "$fixture/github-clean.out" || fail 'a merged GitHub pull request must be reported'
+
+github_answers '[{"errors": [{"message": "Auto merge is not allowed for this repository"}]}, {"errors": [{"message": "Auto merge is not allowed for this repository"}]}, {"errors": [{"message": "Auto merge is not allowed for this repository"}]}, {"errors": [{"message": "Auto merge is not allowed for this repository"}]}, {"errors": [{"message": "Auto merge is not allowed for this repository"}]}, {"errors": [{"message": "Auto merge is not allowed for this repository"}]}]'
+if output=$(run_github "$(github_consumer ',"merge":"on-green"')" v0.1.0-rc.13 2>&1); then fail 'a GitHub repository that refuses auto-merge was reported as scheduled'; fi
+grep -qF 'Auto merge is not allowed for this repository' <<<"$output" || fail "a refused auto-merge must name GitHub's reason: $output"
+
+python3 - "$root/scripts/release-consumers.py" <<'PY' || fail 'git must authenticate to GitHub as x-access-token'
+import base64, importlib.util, sys
+spec = importlib.util.spec_from_file_location('release_consumers', sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+consumer = module.parse_consumer('{"forge":"github","url":"https://github.com","repo":"acme/app","base":"development","recipe":"r.sh","merge":"by-consumer"}')
+client = module.forge_client(consumer, 'installation-secret')
+assert (client.api, client.graphql) == ('https://api.github.com', 'https://api.github.com/graphql'), (client.api, client.graphql)
+environment = module.git_environment(consumer, client.git_user('ploeg-release[bot]'), 'installation-secret')
+key = next(k for k, v in environment.items() if v == 'http.https://github.com/.extraHeader')
+assert environment[key.replace('KEY', 'VALUE')] == 'Authorization: Basic ' + base64.b64encode(b'x-access-token:installation-secret').decode()
+PY
+
+github_valid="{\"forge\":\"github\",\"url\":\"https://github.com\",\"repo\":\"acme/app\",\"base\":\"development\",\"recipe\":\"r.sh\""
+rejects "${github_valid/https:\/\/github.com/https://git.example}}" v0.1.0-rc.6 'a github consumer must use https://github.com'
+rejects "${github_valid/https:\/\/github.com/https://github.com/acme}}" v0.1.0-rc.6 'a github consumer must use https://github.com'
+for style in rebase-merge fast-forward-only; do rejects "$github_valid,\"merge\":\"on-green\",\"merge_style\":\"$style\"}" v0.1.0-rc.6 "github has no merge_style '$style'"; done
+echo 'Release consumer delivery, reruns, supersession, dry runs, merge modes and input checks passed on Forgejo and GitHub'

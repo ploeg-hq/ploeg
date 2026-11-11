@@ -12,14 +12,15 @@ This is the procedure a maintainer follows to cut, publish, check and recover a 
 
 ## Credentials
 
-No release credential is long-lived except the consumer token, and none is a signing key.
+No release credential is long-lived except the consumer credentials (the Forgejo token and the GitHub App's private key), and none is a signing key.
 
 | Who | Credential | Scope | Used for |
 | --- | --- | --- | --- |
 | `cut` job of [release-candidate.yml](../../.github/workflows/release-candidate.yml) | workflow `GITHUB_TOKEN` | `contents: write` | semantic-release's tag and draft release |
 | `release` job of [release.yml](../../.github/workflows/release.yml) | workflow `GITHUB_TOKEN` | `contents: write`, `packages: write`, `id-token: write` | release assets, GHCR pushes, the OIDC token Fulcio turns into a signing certificate |
 | [contract-bundle.yml](../../.github/workflows/contract-bundle.yml) | workflow `GITHUB_TOKEN` | `packages: write` | the contract bundle on GHCR |
-| [release-consumers.yml](../../.github/workflows/release-consumers.yml) | repository secret `RELEASE_CONSUMER_TOKEN_FORGEJO` | a Forgejo user with write access to the consumer repositories only; `write:repository`, `write:issue`, `read:user` | consumer pull requests ([details](release-versioning.md#consumer-pull-requests)) |
+| [release-consumers.yml](../../.github/workflows/release-consumers.yml) | repository secret `RELEASE_CONSUMER_TOKEN_FORGEJO` | a Forgejo user with write access to the consumer repositories only; `write:repository`, `write:issue`, `read:user` | consumer pull requests on Forgejo ([details](release-versioning.md#consumer-pull-requests)) |
+| [release-consumers.yml](../../.github/workflows/release-consumers.yml) | repository secrets `RELEASE_CONSUMER_GITHUB_APP_ID` and `RELEASE_CONSUMER_GITHUB_APP_PRIVATE_KEY`, turned into an installation token per job | a GitHub App installed on the consumer repository; the token reaches that one repository with Contents, Pull requests, Issues and Workflows write | consumer pull requests on GitHub ([details](release-versioning.md#consumer-pull-requests)) |
 | Maintainer | GitHub account with write access to `ploeg-hq/ploeg` | merge pull requests, dispatch workflows, push a stable tag | every step below |
 | Maintainer with the admin role | the same account | bypass the `Protect development` and `Protect main` rulesets; set a new GHCR package public | only when a step says so |
 
