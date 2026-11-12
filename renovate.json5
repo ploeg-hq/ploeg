@@ -1,9 +1,9 @@
 {
   $schema: 'https://docs.renovatebot.com/renovate-schema.json',
   extends: [
-    'github>webgrip/renovate-config#v1.13.0',
-    'github>webgrip/renovate-config:golang#v1.13.0',
-    'github>webgrip/renovate-config:automerge-non-major#v1.13.0',
+    'github>webgrip/renovate-config#v1.21.1',
+    'github>webgrip/renovate-config:golang#v1.21.1',
+    'github>webgrip/renovate-config:automerge-non-major#v1.21.1',
   ],
   platformAutomerge: true,
   postUpgradeTasks: {
