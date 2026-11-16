@@ -52,6 +52,7 @@ Add a statement only when a rebuild on a patched base cannot remove the finding,
 * `not_affected` requires a `justification` from the OpenVEX vocabulary (`component_not_present`, `vulnerable_code_not_present`, `vulnerable_code_not_in_execute_path`, `vulnerable_code_cannot_be_controlled_by_adversary`, `inline_mitigations_already_exist`) and an `impact_statement`.
 * `affected` requires an `action_statement`.
 * Take the subcomponent purl from the finding in `grype.json` (`.matches[].artifact.purl`). Qualifiers can be dropped, because a statement without them matches every architecture and distribution qualifier.
+* Name every package the finding is reported against, not only the one named after the source. A Wolfi source package ships several apk packages (glibc-2.44 also ships ld-linux-2.44, libcrypt1-2.44 and glibc-2.44-locale-posix, whose purls carry `upstream=glibc-2.44`). Grype reports the finding once per package and matches a statement by package URL only. List them with `jq -r --arg v <CVE> '(.matches[], .ignoredMatches[]?) | select(.vulnerability.id == $v) | .artifact.purl' grype.json | sort -u`. On 2026-11-14 a statement for CVE-2026-84243 that named only glibc-2.44 left the other three counted, and claude-runner failed its budget.
 * Raise `version` and `timestamp` with each change, and list every statement in the pull request for review.
 
 ## What a release publishes
