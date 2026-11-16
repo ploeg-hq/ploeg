@@ -1,6 +1,6 @@
 ARG REGISTRY_CHAINGUARD=cgr.dev
 
-FROM ${REGISTRY_CHAINGUARD}/chainguard/wolfi-base:latest@sha256:360896efb0753a5701c48f860e17130c205eae5a264797aa3e7ea126ee2923a7
+FROM ${REGISTRY_CHAINGUARD}/chainguard/wolfi-base:latest@sha256:2c12da5496e21e99003b3db3b9246f025e53d533c4df334205391260f1e8f85b
 
 RUN printf 'https://packages.wolfi.dev/os\n' > /etc/apk/repositories \
  && apk upgrade --no-cache \
