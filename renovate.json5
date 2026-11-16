@@ -1,6 +1,6 @@
 {
   $schema: 'https://docs.renovatebot.com/renovate-schema.json',
-  description: 'Ploeg\'s whole Renovate policy, with no shared preset. Minor, patch, digest and pin updates share one branch that merges itself on green after a release-age soak; security fixes and lock-file maintenance merge themselves; majors, Go toolchain minors and the rules below that ask for one wait for a dashboard tick. platformAutomerge hands a green automerging pull request to GitHub auto-merge.',
+  description: 'Ploeg\'s whole Renovate policy, with no shared preset. Minor, patch, digest and pin updates share one branch that merges itself on green after a release-age soak; security fixes and lock-file maintenance merge themselves; majors, Go toolchain minors and the rules below that ask for one wait for a dashboard tick. A pull request opens as soon as its branch is pushed, because CI runs only on pull requests and never on a renovate/* branch. platformAutomerge hands a green automerging pull request to GitHub auto-merge.',
   extends: ['config:recommended', 'abandonments:recommended', 'mergeConfidence:all-badges'],
   configMigration: true,
   enabled: true,
@@ -20,8 +20,7 @@
   respectLatest: true,
   rollbackPrs: true,
   internalChecksFilter: 'strict',
-  prCreation: 'not-pending',
-  prNotPendingHours: 2,
+  prCreation: 'immediate',
   prHourlyLimit: 0,
   prConcurrentLimit: 5,
   branchConcurrentLimit: 10,
