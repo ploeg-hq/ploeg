@@ -32,8 +32,9 @@ Grype and govulncheck are pinned in `mise.toml`. Grype's database is downloaded 
 
 ## Dependency updates
 
-Renovate proposes updates from [`renovate.json5`](../../renovate.json5). It runs in homelab-cluster as the RenovateJob `ploeg-hq`, authenticated as a GitHub App of its own (`ploeg-hq-renovate`), separate from the App that manages rulesets and settings. The shared [Webgrip presets](https://forgejo.webgrip.dev/webgrip/renovate-config) set the policy:
+Renovate proposes updates from [`renovate.json5`](../../renovate.json5). It runs in homelab-cluster as the RenovateJob `ploeg-hq`, authenticated as a GitHub App of its own (`ploeg-hq-renovate`), separate from the App that manages rulesets and settings. The file holds the whole policy and extends only Renovate's built-in presets:
 
+- A pull request opens as soon as Renovate pushes its branch (`prCreation: immediate`). CI runs on pull requests and on pushes to `development` and `main`, never on a `renovate/*` branch, so waiting for branch checks would leave an update as a bare branch.
 - Security fixes, from OSV and from GitHub's Dependabot alerts when they are on, open at once and merge themselves when `verify` is green.
 - Minor, patch, digest and pin updates share the branch `renovate/all-non-major` and merge themselves when `verify` is green, after a soak of three days for a minor and one day for a patch. Indirect Go modules are included.
 - Majors, Go toolchain minors, the DinD image in `values.yaml` and the semantic-release configuration wait for a tick on the Dependency Dashboard issue. A `values.yaml` image changes the golden renders, so run `scripts/helm-golden.sh update` on its branch.
