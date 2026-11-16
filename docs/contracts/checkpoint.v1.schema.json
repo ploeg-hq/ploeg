@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://webgrip.dev/ploeg/contracts/checkpoint.v1.schema.json",
+  "$id": "https://ploeg-hq.github.io/ploeg/contracts/checkpoint.v1.schema.json",
   "title": "Checkpoint",
   "description": "The small durable progress record enabling resume (work.Checkpoint). Everything else is re-derived from git/forge state.",
   "type": "object",

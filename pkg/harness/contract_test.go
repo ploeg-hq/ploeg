@@ -3,6 +3,7 @@ package harness
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path"
 	"path/filepath"
@@ -20,12 +21,18 @@ import (
 // shape or the schema changed without the other — v1 allows additive
 // optional fields only (docs/contracts/README.md).
 
-// contractsLoader resolves the schemas' canonical $id URLs
-// (https://webgrip.dev/ploeg/contracts/<name>) to the local files.
+const contractIDPrefix = "https://ploeg-hq.github.io/ploeg/contracts/"
+
+var contractsDir = filepath.Join("..", "..", "docs", "contracts")
+
 type contractsLoader struct{ dir string }
 
 func (l contractsLoader) Load(url string) (any, error) {
-	f, err := os.Open(filepath.Join(l.dir, path.Base(url)))
+	name, ok := strings.CutPrefix(url, contractIDPrefix)
+	if !ok || name != path.Base(name) {
+		return nil, fmt.Errorf("%s is not a contract identifier under %s", url, contractIDPrefix)
+	}
+	f, err := os.Open(filepath.Join(l.dir, name))
 	if err != nil {
 		return nil, err
 	}
@@ -36,12 +43,52 @@ func (l contractsLoader) Load(url string) (any, error) {
 func compileSchema(t *testing.T, name string) *jsonschema.Schema {
 	t.Helper()
 	c := jsonschema.NewCompiler()
-	c.UseLoader(contractsLoader{dir: filepath.Join("..", "..", "docs", "contracts")})
-	sch, err := c.Compile("https://webgrip.dev/ploeg/contracts/" + name)
+	c.UseLoader(contractsLoader{dir: contractsDir})
+	sch, err := c.Compile(contractIDPrefix + name)
 	if err != nil {
 		t.Fatalf("compile %s: %v", name, err)
 	}
 	return sch
+}
+
+func TestEverySchemaIDIsItsPublishedURL(t *testing.T) {
+	files, err := filepath.Glob(filepath.Join(contractsDir, "*.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) == 0 {
+		t.Fatalf("no schemas found in %s", contractsDir)
+	}
+	for _, file := range files {
+		raw, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var schema struct {
+			ID string `json:"$id"`
+		}
+		if err := json.Unmarshal(raw, &schema); err != nil {
+			t.Fatalf("%s: %v", file, err)
+		}
+		if want := contractIDPrefix + filepath.Base(file); schema.ID != want {
+			t.Errorf("%s: $id = %q, want %q", filepath.Base(file), schema.ID, want)
+		}
+	}
+}
+
+func TestTheContractsLoaderRefusesAnIdentifierOutsideThePublishedPrefix(t *testing.T) {
+	loader := contractsLoader{dir: contractsDir}
+	for _, url := range []string{
+		"https://example.com/ploeg/contracts/taskspec.v1.schema.json",
+		contractIDPrefix + "nested/taskspec.v1.schema.json",
+	} {
+		if _, err := loader.Load(url); err == nil {
+			t.Errorf("Load(%q) resolved an identifier outside %s", url, contractIDPrefix)
+		}
+	}
+	if _, err := loader.Load(contractIDPrefix + "taskspec.v1.schema.json"); err != nil {
+		t.Errorf("Load of a published identifier: %v", err)
+	}
 }
 
 func validate(t *testing.T, sch *jsonschema.Schema, v any) error {

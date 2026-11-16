@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://webgrip.dev/ploeg/contracts/deploy-api.v1.schema.json",
+  "$id": "https://ploeg-hq.github.io/ploeg/contracts/deploy-api.v1.schema.json",
   "title": "Ploeg deploy API v1",
   "description": "POST /api/v1/deploys (ADR-0047): a pipeline reports that a commit is live in an environment. It authenticates with Authorization: Bearer <PLOEG_DEPLOY_TOKEN>, a dedicated credential, not an operator one. Without PLOEG_DEPLOY_TOKEN the endpoint answers 404. A missing or wrong token answers 401, an invalid body 400, a body over 16 KiB 413, a repo.forge this Ploeg has no forge for 422, and a database failure 503. A report is idempotent per (repo, environment, sha): a repeat keeps the first report's deployedAt, url and source, answers the same deployId and compares only the pull requests not compared with that deploy yet. Ploeg then checks at most 50 merged Ploeg pull requests of the repository that have no deploy of that environment at or before deployedAt, newest merge first, with the forge compare API, and marks each whose merge commit is an ancestor of sha with the first time that environment received it; a deploy reported late with an earlier deployedAt corrects that time. ploegd's sweep checks the remaining pull requests and retries failed comparisons without waiting for another deploy.",
   "oneOf": [
