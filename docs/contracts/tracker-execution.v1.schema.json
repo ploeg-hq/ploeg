@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://webgrip.dev/ploeg/contracts/tracker-execution.v1.schema.json",
+  "$id": "https://ploeg-hq.github.io/ploeg/contracts/tracker-execution.v1.schema.json",
   "title": "Canonical tracker execution binding v1",
   "description": "Additive source expectations for operator admission. Lookup is scoped by the named bearer consumer. Every native expectation is compared before adopting an existing queued, pristine assignment Work Item. expectedBaseUrl is only compared with the configured singleton provider, never used as an outbound endpoint.",
   "oneOf": [

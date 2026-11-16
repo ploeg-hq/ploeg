@@ -16,6 +16,10 @@ change either side and the test tells you.
 | [acp-profiles.md](acp-profiles.md) | The `acp` harness profiles: launch command, gateway wiring, instruction files and approval mapping per agent, and what an image needs to run them. |
 | [executor.md](executor.md) | The executor SPI: what any launcher (KEDA, CronJob, agent-sandbox, a human with curl) must and must not do. |
 
+## Schema identifiers
+
+Every schema's `$id` is `https://ploeg-hq.github.io/ploeg/contracts/<file name>`, and schemas refer to each other by relative `$ref`s, which resolve against it ([ADR 0191](../adrs/0191-contract-schemas-are-identified-by-their-url-on-the-projects-github-pages-site.md)). [The contract pages workflow](../../.github/workflows/contract-pages.yml) publishes the schemas of `development` to that address, with an index at [ploeg-hq.github.io/ploeg/contracts/](https://ploeg-hq.github.io/ploeg/contracts/), whenever they change. Pages serves trunk; pin a release through its contract bundle below. A consumer that compiles schemas offline maps that prefix to its local copies, as `contractsLoader` in `pkg/harness/contract_test.go` does; `TestEverySchemaIDIsItsPublishedURL` keeps every `$id` on it.
+
 ## The contract bundle
 
 Every release also publishes these contracts as one OCI artifact, so a consumer pins a released Ploeg by version and digest instead of checking out its source ([homelab ADR-0069](https://forgejo.webgrip.dev/webgrip/homelab-cluster/src/branch/main/docs/techdocs/docs/adr/adr-0069-one-delivery-contract.md), layer 4). A consumer reads it for its contract tests, its glossary, its decision records and the Ploeg pages it republishes in its own documentation.

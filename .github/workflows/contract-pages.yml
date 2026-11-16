@@ -1,0 +1,54 @@
+name: Contract pages
+on:
+  push:
+    branches: [development]
+    paths:
+      - docs/contracts/**
+      - .github/workflows/contract-pages.yml
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: contract-pages
+  cancel-in-progress: false
+jobs:
+  build:
+    if: github.repository == 'ploeg-hq/ploeg'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Lay out the schemas at their identifiers
+        run: |
+          set -euo pipefail
+          mkdir -p _site/contracts
+          cp docs/contracts/*.json _site/contracts/
+          {
+            printf '<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n<title>Ploeg contracts</title>\n</head>\n<body>\n<h1>Ploeg contract schemas</h1>\n'
+            printf '<p>JSON Schemas of the trunk of <a href="https://github.com/%s">%s</a>. Each schema is served at the URL in its <code>&#36;id</code>. A consumer pins a release through its contract bundle.</p>\n<ul>\n' "$GITHUB_REPOSITORY" "$GITHUB_REPOSITORY"
+            for schema in _site/contracts/*.json; do
+              name=$(basename "$schema")
+              printf '<li><a href="%s">%s</a></li>\n' "$name" "$name"
+            done
+            printf '</ul>\n</body>\n</html>\n'
+          } > _site/contracts/index.html
+          printf '<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<meta http-equiv="refresh" content="0; url=contracts/">\n<title>Ploeg</title>\n</head>\n<body>\n<a href="contracts/">Ploeg contract schemas</a>\n</body>\n</html>\n' > _site/index.html
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: _site
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}contracts/
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
