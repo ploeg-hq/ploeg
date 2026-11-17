@@ -96,7 +96,7 @@ fails otherwise.
 | [0020](0020-published-artifacts-name-the-mirror-as-source.md) | Published artifacts name the GitHub mirror as their source, and Forgejo as their URL | accepted | 2026-08-26 |
 | [0021](0021-infra-failures-and-agent-failures-get-separate-retry-budgets.md) | Infrastructure failures and agent failures get separate retry budgets | proposed | 2026-08-26 |
 | [0022](0022-the-name-and-mark-are-trademarks-not-cc-licensed-artwork.md) | The name and mark are trademarks under a usage policy, not CC-licensed artwork | accepted | 2026-08-27 |
-| [0023](0023-the-forge-dialect-travels-on-the-work-item.md) | The forge dialect travels on the Work Item; the forge URL and credential stay deployment-global | proposed | 2026-09-02 |
+| [0023](0023-the-forge-dialect-travels-on-the-work-item.md) | The forge dialect travels on the Work Item; the forge URL and credential stay deployment-global | superseded by 0192 | 2026-09-02 |
 | [0024](0024-operator-work-uses-one-execution-authority.md) | Ploeg admits operator work and owns execution while De Vloer provides interaction | superseded by 0102 | 2026-09-10 |
 | [0025](0025-management-authority-stays-in-the-control-plane.md) | Management authority stays in the control plane and unresolved accounting retains authorization | proposed | 2026-09-10 |
 | [0026](0026-tracker-selections-bind-the-canonical-work-item.md) | Tracker selections bind canonical Work Items under durable operator ownership | proposed | 2026-09-11 |
@@ -257,6 +257,7 @@ fails otherwise.
 | [0188](0188-ploeg-merges-a-work-items-pull-request-at-a-named-head-for-a-proven-person-with-a-merge-identity-no-run-holds.md) | Ploeg merges a Work Item's pull request at a named head for a proven person, with a merge identity no Run holds | proposed | 2026-11-01 |
 | [0189](0189-a-forge-that-cannot-re-run-ci-waits-for-a-person-and-a-ci-parked-item-follows-its-pr.md) | A forge that cannot re-run CI waits for a person to re-run cancelled checks, and a CI-parked Work Item follows its pull request to done or back to review | proposed | 2026-11-01 |
 | [0191](0191-contract-schemas-are-identified-by-their-url-on-the-projects-github-pages-site.md) | Contract schemas are identified by their URL on the project's GitHub Pages site | accepted | 2026-11-16 |
+| [0192](0192-a-runs-forge-is-resolved-from-its-work-target-and-the-claim-carries-the-forge-and-a-credential-minted-for-that-run.md) | A Run's forge is resolved from its Work Target, and the claim carries that forge and a credential minted for that Run | proposed | 2026-11-17 |
 
 
 ## Review calendar
@@ -388,3 +389,4 @@ triggers.
 | 2027-02-28 | [0188](0188-ploeg-merges-a-work-items-pull-request-at-a-named-head-for-a-proven-person-with-a-merge-identity-no-run-holds.md) — or sooner, when the owner decides an automatic merge policy, a record answers ADR-0171's machine-attribution trigger, Forgejo changes its merge-when-checks-succeed or head checks, the GitHub or GitLab adapter gains a merger, ADR-0184 is decided, a merge credential leaks or an agent identity can merge, or a person needs a readable name in the trailer |
 | 2027-01-31 | [0189](0189-a-forge-that-cannot-re-run-ci-waits-for-a-person-and-a-ci-parked-item-follows-its-pr.md) — or sooner, when Forgejo's API gains a job re-run call, more than five Work Items a month close `ci_not_passed` because nobody re-ran cancelled CI, or a person needs a CI-parked item that turned green on a head they pushed to return to review |
 | 2027-05-31 | [0191](0191-contract-schemas-are-identified-by-their-url-on-the-projects-github-pages-site.md) — or sooner, when the owner buys a domain for Ploeg or the project leaves GitHub, GitHub Pages changes how it serves `.json` or project site paths, or a consumer is broken by a schema fetched from its identifier |
+| 2027-03-31 | [0192](0192-a-runs-forge-is-resolved-from-its-work-target-and-the-claim-carries-the-forge-and-a-credential-minted-for-that-run.md) — or sooner, when GitLab can mint a repository-scoped token per Run, execution cells are built or ADR-0184 is decided, read mints hit a forge's rate or token limit, a Forgejo below 15 must join a multi-forge release, or two instances of one dialect must be active in one release |

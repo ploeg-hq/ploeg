@@ -134,3 +134,9 @@ target written before this field keeps its exact meaning.
   tier 2 does not; see Consequences.
 * Domain rules: R7 (vendor specifics behind the SPI), R11 (the repository
   belongs to the work).
+* 2026-11-17 — Superseded by
+  [0192](0192-a-runs-forge-is-resolved-from-its-work-target-and-the-claim-carries-the-forge-and-a-credential-minted-for-that-run.md):
+  both supersession triggers above fired (GitHub became a third forge, and one
+  release must span two forges). The dialect still travels on the Work Item;
+  the forge URL and a credential minted for the Run now travel on the claim
+  instead of staying deployment-global.
