@@ -178,3 +178,28 @@ func TestRouterNeverSendsAMintToAnotherForgesBroker(t *testing.T) {
 		t.Fatalf("a target without a forge did not go to the default forge's broker: %v", err)
 	}
 }
+
+func TestGitHubAppMintsAReadingRunReadPermissionsOnly(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	b, api := fakeGitHubApp(t, func() time.Time { return now })
+	if _, err := b.Mint(context.Background(), MintRequest{RunToken: "eeeeeeeeeeee1", Owner: "acme", Repo: "widgets", Read: true}); err != nil {
+		t.Fatal(err)
+	}
+	perms, _ := api.asked[0]["permissions"].(map[string]any)
+	if len(perms) == 0 {
+		t.Fatalf("token request = %v, want permissions", api.asked[0])
+	}
+	for name, level := range perms {
+		if level != "read" {
+			t.Errorf("a reading Run's token asks %s:%v; every permission must be read", name, level)
+		}
+	}
+	for _, want := range []string{"contents", "pull_requests", "checks", "statuses", "metadata"} {
+		if perms[want] != "read" {
+			t.Errorf("a reading Run's token lacks %s:read: %v", want, perms)
+		}
+	}
+	if repos, _ := api.asked[0]["repositories"].([]any); len(repos) != 1 || repos[0] != "widgets" {
+		t.Errorf("token request = %v, want the Run's repository alone", api.asked[0])
+	}
+}

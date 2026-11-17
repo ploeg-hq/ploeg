@@ -17,8 +17,9 @@ import (
 // can send a revocation back to it.
 const GitHubAppIDPrefix = "github-app:"
 
-// GitHubApp mints a GitHub App installation token per writing Run, limited to
-// the Run's repository and to githubapp.WriterPermissions (ADR-0086).
+// GitHubApp mints a GitHub App installation token per Run, limited to the
+// Run's repository and to githubapp.WriterPermissions for a writing Run
+// (ADR-0086) or githubapp.ReaderPermissions for a reading one (ADR-0192).
 //
 // GitHub lists no installation tokens and revokes one only when presented
 // with the token itself, so the broker keeps every token it minted in memory
@@ -54,6 +55,9 @@ func (g *GitHubApp) Mint(ctx context.Context, req MintRequest) (Credential, erro
 	perms := g.Permissions
 	if perms == nil {
 		perms = githubapp.WriterPermissions()
+	}
+	if req.Read {
+		perms = githubapp.ReaderPermissions()
 	}
 	tok, err := g.App.Mint(ctx, req.Owner, req.Repo, perms)
 	if err != nil {

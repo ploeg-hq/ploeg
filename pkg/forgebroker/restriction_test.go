@@ -17,6 +17,7 @@ func restrictedTokenRepositories(owner, repo string) []map[string]any {
 
 type mintedTokenForge struct {
 	mu            sync.Mutex
+	scopes        [][]string
 	repositories  any
 	refuseDelete  bool
 	deletedTokens []string
@@ -36,9 +37,11 @@ func (f *mintedTokenForge) broker(t *testing.T) *Forgejo {
 		switch r.Method {
 		case http.MethodPost:
 			var body struct {
-				Name string `json:"name"`
+				Name   string   `json:"name"`
+				Scopes []string `json:"scopes"`
 			}
 			_ = json.NewDecoder(r.Body).Decode(&body)
+			f.scopes = append(f.scopes, body.Scopes)
 			w.WriteHeader(http.StatusCreated)
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"id": 42, "name": body.Name, "sha1": "unrestricted-secret", "scopes": []string{"write:repository"},
@@ -158,5 +161,38 @@ func TestRequireRepositoryTokens_AnUnreadableVersionIsAnError(t *testing.T) {
 	found, err := versionForge(t, http.StatusBadGateway, `bad gateway`).RequireRepositoryTokens(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "HTTP 502") {
 		t.Errorf("RequireRepositoryTokens = %q, %v; want an HTTP 502 error", found, err)
+	}
+}
+
+func TestMint_AReadingRunGetsReadRepositoryRestrictedToItsRepository(t *testing.T) {
+	forge := &mintedTokenForge{repositories: restrictedTokenRepositories("webgrip", "ploeg")}
+	reader := runRepository
+	reader.Read = true
+	cred, err := forge.broker(t).Mint(context.Background(), reader)
+	if err != nil || cred.Token == "" {
+		t.Fatalf("Mint = %+v, %v", cred, err)
+	}
+	if len(forge.scopes) != 1 || len(forge.scopes[0]) != 1 || forge.scopes[0][0] != "read:repository" {
+		t.Fatalf("scopes asked = %v, want [read:repository]", forge.scopes)
+	}
+}
+
+func TestMint_RefusesAReadingRunsTokenTheForgeDidNotRestrict(t *testing.T) {
+	forge := &mintedTokenForge{repositories: restrictedTokenRepositories("webgrip", "homelab-cluster")}
+	reader := runRepository
+	reader.Read = true
+	cred, err := forge.broker(t).Mint(context.Background(), reader)
+	if !errors.Is(err, ErrUnrestrictedToken) || cred != (Credential{}) {
+		t.Fatalf("Mint = %+v, %v; want ErrUnrestrictedToken and nothing handed out", cred, err)
+	}
+	if deleted := forge.deleted(); len(deleted) != 1 {
+		t.Fatalf("deleted %v, want the minted token", deleted)
+	}
+}
+
+func TestStaticHandsAReadingRunNothing(t *testing.T) {
+	cred, err := Static{Token: "shared-write"}.Mint(context.Background(), MintRequest{Owner: "webgrip", Repo: "ploeg", Read: true})
+	if err != nil || cred != (Credential{}) {
+		t.Fatalf("Static read mint = %+v, %v; the shared token can push and must never reach a reader", cred, err)
 	}
 }
