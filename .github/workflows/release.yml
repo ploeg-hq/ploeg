@@ -43,6 +43,7 @@ jobs:
           version: 2026.9.18
           cache: false
       - run: mise run setup
+      - uses: ./.github/actions/embedded-postgres
       - name: Allow the unprivileged user and PID namespace the harness container drill runs in
         run: |
           if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then

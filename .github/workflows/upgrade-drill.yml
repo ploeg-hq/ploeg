@@ -42,6 +42,7 @@ jobs:
           version: 2026.9.18
           cache: false
       - run: mise run setup
+      - uses: ./.github/actions/embedded-postgres
       - name: An older release's backup upgrades to head, survives an interrupted migration and fences its workers
         run: mise run upgrade-drill
 
