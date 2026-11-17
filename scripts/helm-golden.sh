@@ -61,6 +61,7 @@ for case in ":default" \
 	"ops/helm/ploeg/ci/executor-runtimeclass-values.yaml:executor-runtimeclass" \
 	"ops/helm/ploeg/ci/executor-gitlab-values.yaml:executor-gitlab" \
 	"ops/helm/ploeg/ci/executor-github-values.yaml:executor-github" \
+	"ops/helm/ploeg/ci/executor-two-forges-values.yaml:executor-two-forges" \
 	"ops/helm/ploeg/ci/executor-sandbox-values.yaml:executor-sandbox" \
 	"ops/helm/ploeg/ci/executor-sandbox-runtimeclass-values.yaml:executor-sandbox-runtimeclass" \
 	"ops/helm/ploeg/ci/executor-sandbox-team-values.yaml:executor-sandbox-team" \
@@ -101,6 +102,9 @@ fi
 for case in "ops/helm/ploeg/ci/reject-reader-without-read-token-values.yaml:readTokenSecret is not set" \
 	"ops/helm/ploeg/ci/reject-team-executor-type-under-cronjob-values.yaml:executorType is only honoured" \
 	"ops/helm/ploeg/ci/reject-forge-admin-token-values.yaml:adminTokenSecret is not supported" \
+	"ops/helm/ploeg/ci/reject-two-forges-forgejo-without-bot-password-values.yaml:executor.forgejo is active beside another forge (forgejo, github) but sets no botPasswordSecret" \
+	"ops/helm/ploeg/ci/reject-two-forges-with-gitlab-values.yaml:executor.gitlab is active beside another forge (forgejo, gitlab)" \
+	"ops/helm/ploeg/ci/reject-two-forges-github-without-app-values.yaml:executor.github is active beside another forge (forgejo, github) but tracker.github.appId is unset" \
 	"ops/helm/ploeg/ci/reject-runtimeclass-non-string-values.yaml:runtimeClassName" \
 	"ops/helm/ploeg/ci/reject-runtimeclass-invalid-name-values.yaml:runtimeClassName" \
 	"ops/helm/ploeg/ci/reject-telemetry-without-endpoint-values.yaml:endpoint" \
