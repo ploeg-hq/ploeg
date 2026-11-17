@@ -2,8 +2,8 @@
 type: how-to
 audience: [operator]
 owner: ploeg
-last_verified: 2026-10-11
-verified_by: "Read pkg/provider/github, pkg/githubapp, pkg/forgebroker/github.go, pkg/worker/forgeproxy.go, cmd/ploegd/github_forge.go and ops/helm/ploeg; go test ./pkg/provider/github/ ./pkg/forgebroker/ ./pkg/worker/"
+last_verified: 2026-11-17
+verified_by: "Read pkg/provider/github, pkg/githubapp, pkg/forgebroker, pkg/worker/forgeproxy.go, pkg/worker/target.go, cmd/ploegd/github_forge.go, cmd/ploegd/forges.go and ops/helm/ploeg; go test ./pkg/provider/github/ ./pkg/forgebroker/ ./pkg/worker/ ./pkg/httpapi/ ./cmd/ploegd/; scripts/helm-golden.sh check"
 ---
 
 # Connect GitHub as a forge
@@ -18,7 +18,7 @@ Use this when Runs should open pull requests on github.com or GitHub Enterprise 
 | The Run pushes and opens its pull request | Through the worker's proxy: pushes only to the Run's branch, the pull request API, comments, statuses and check runs; merging and everything else is refused |
 | The Run runs longer than 45 minutes | The worker asks ploegd for a new token; ploegd revokes the old one |
 | The Run settles, its Lease lapses or the sweep finds it orphaned | ploegd revokes the token (`DELETE /installation/token`) |
-| A reading Role reviews | Uses the read-only token in `executor.github.readTokenSecret` |
+| A reading Role reviews | With the App, ploegd mints a read-only installation token for the Run's repository and revokes it when the Run ends ([ADR-0192](../adrs/0192-a-runs-forge-is-resolved-from-its-work-target-and-the-claim-carries-the-forge-and-a-credential-minted-for-that-run.md)); without it, the read-only token in `executor.github.readTokenSecret` |
 | A person merges or closes the pull request | The webhook settles the Work Item: merged is done, closed without merging needs a human |
 | A check run or commit status fails, or a review requests changes | Recorded; a Team's `forgeFollowUps` decides whether it becomes a repair or rework Follow-Up |
 
@@ -73,6 +73,38 @@ Keep `executor.forgeTokenIsolation: proxy` for any harness that supports it: onl
 
 Without an App, `executor.github.tokenSecret` becomes `PLOEG_GITHUB_TOKEN` for ploegd and the shared push credential for every writer. That is weaker: Ploeg cannot scope it per Run or revoke it, and ploegd says so at boot.
 
+## Run Forgejo and GitHub side by side
+
+One release can serve repositories on a self-hosted Forgejo and on GitHub at once ([ADR-0192](../adrs/0192-a-runs-forge-is-resolved-from-its-work-target-and-the-claim-carries-the-forge-and-a-credential-minted-for-that-run.md)). Every forge block that sets `url` is active. With more than one active forge:
+
+* Each claim carries the Run's forge, resolved by ploegd from the Work Item's target forge, the URL workers use for it, and a credential minted for that Run alone: an installation token on GitHub, a token restricted to the Run's repository on Forgejo, read-only for a reading Role. A Work Item whose target names no forge goes to `executor.forge`.
+* Worker pods carry no `FORGE_URL`, no `AGENT_BUILDER_TOKEN` and no `readTokenSecret`, and their network policy reaches every active forge.
+* Every active forge must mint. ploegd refuses to start, and the chart refuses to render, when Forgejo has no `botPasswordSecret` or GitHub has no `tracker.github.appId`. Forgejo must be version 15 or later. GitLab cannot mint per Run, so it can only be the only forge of its release.
+
+```yaml
+tracker:
+  github:
+    appId: "123456"
+    appPrivateKeySecret: {name: ploeg-github-app, key: private-key.pem}
+executor:
+  forge: forgejo                     # the default forge for a target that names none
+  forgejo:
+    url: http://forgejo-http.forgejo.svc.cluster.local:3000   # what workers use
+    publicUrl: https://forgejo.example.com                     # what ploegd uses
+    tokenSecret: {name: agent-builder-token, key: FORGEJO_TOKEN}  # ploegd's own reads and comments
+    botPasswordSecret: {name: agent-builder-password, key: FORGEJO_BOT_PASSWORD}
+    botUser: agent-builder
+    webhookSecret: {name: ploeg-forge-webhook, key: PLOEG_FORGEJO_SECRET}
+  github:
+    url: https://github.com
+    webhookSecret: {name: ploeg-github-forge-webhook, key: PLOEG_GITHUB_FORGE_SECRET}
+    botLogin: ploeg[bot]
+```
+
+`readTokenSecret` is not needed for either forge, and `executor.github.tokenSecret` is not rendered while the App is configured. Route each repository to its forge by its target's forge id, `forgejo` or `github`: a routing entry and the forge's webhook are all a new repository needs. A Work Item whose target names a forge the release does not serve ends stuck at its claim with `forge "<id>" is not configured in this release`.
+
+Verify: ploegd logs `per-run forge credentials enabled` and `per-run GitHub App installation tokens enabled`; the worker of a Run on either forge logs `resolved work target` with that forge and `using a per-run forge credential minted for this run`.
+
 ## 4. Add the webhook
 
 On the repository or the organisation, add a webhook:
@@ -96,7 +128,8 @@ The GitHub Issues tracker has its own webhook at `/webhooks/tracker/github` with
 | Symptom | Cause | Fix |
 | --- | --- | --- |
 | Webhook deliveries answer `400` | Wrong secret, or the delivery has no `X-GitHub-Delivery` | Set the same secret on both sides |
-| The claim is released with "could not mint a push credential" | The App is not installed on the repository, or lacks a permission | Install it on the repository; check step 1 |
+| The claim is released with "could not mint a push credential" or "could not mint a read credential" | The App is not installed on the repository, or lacks a permission | Install it on the repository; check step 1 |
+| ploegd refuses to start: "each must mint per-Run credentials" | Two forge blocks set `url` and one cannot mint | Set the missing `botPasswordSecret` or GitHub App, or unset the other block's `url` |
 | A push is refused with `refusing to allow a GitHub App to create or update workflow` | The Run changed `.github/workflows` | Intended; a person changes workflows |
 | Pushes fail after about an hour | The harness holds the token directly (isolation off) | Turn on `forgeTokenIsolation: proxy`, or keep Runs under an hour |
 | Reads answer `403` with a rate-limit message | GitHub's secondary rate limit; Ploeg waits up to one minute | Fewer concurrent Runs per installation |
