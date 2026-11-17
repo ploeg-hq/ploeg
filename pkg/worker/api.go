@@ -95,8 +95,9 @@ type ClaimResponse struct {
 	// ActiveWork is the other active work in the Run's repository, rendered
 	// by ploegd within its section's budget (ADR-0123, ADR-0124).
 	ActiveWork string `json:"activeWork,omitempty"`
-	// ForgeToken is a push credential minted for this run alone and revoked
-	// when it settles (ADR-0013 tier 2). Empty = use the env credential.
+	// ForgeToken is a forge credential minted for this run alone and revoked
+	// when it settles: push rights for a writer (ADR-0013 tier 2), read
+	// rights for a reader (ADR-0192). Empty = use the env credential.
 	ForgeToken string `json:"forgeToken,omitempty"`
 	// ForgeTokenPerRun distinguishes a minted credential from the shared
 	// token, which arrives in the same field. Only ploegd knows the
@@ -105,6 +106,11 @@ type ClaimResponse struct {
 	// ForgeTokenExpiresAt is when the forge ends ForgeToken by itself; nil
 	// for a token that lives until it is revoked.
 	ForgeTokenExpiresAt *time.Time `json:"forgeTokenExpiresAt,omitempty"`
+	// ForgeDialect and ForgeURL are the forge this Run acts on, resolved by
+	// ploegd from the Work Target (ADR-0192). They win over
+	// PLOEG_TARGET_FORGE and FORGE_URL; empty keeps those.
+	ForgeDialect string `json:"forgeDialect,omitempty"`
+	ForgeURL     string `json:"forgeUrl,omitempty"`
 	// Planner selects the planner prompt (ADR-0031): the Run splits or
 	// clarifies its Work Item and returns created Work Items, not code.
 	Planner bool `json:"planner,omitempty"`

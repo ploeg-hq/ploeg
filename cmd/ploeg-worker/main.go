@@ -9,6 +9,7 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -97,8 +98,7 @@ func run(log *slog.Logger) error {
 	// Boot-required and parsed strictly. Discarding this error turned a typo
 	// or a dropped chart value into budget 0, and budget 0 mints an UNCAPPED
 	// key rather than a useless one. Failing here costs no attempt and
-	// strands no lease, which is the same reason AGENT_BUILDER_TOKEN is
-	// required below: it is true for every possible target.
+	// strands no lease.
 	budgetRaw := os.Getenv("LITELLM_KEY_BUDGET")
 	budget, err := strconv.ParseFloat(budgetRaw, 64)
 	if err != nil {
@@ -125,11 +125,7 @@ func run(log *slog.Logger) error {
 		RepoName:     os.Getenv("REPO_NAME"),
 		BaseBranch:   envOr("PLOEG_BASE_BRANCH", ""),
 		TargetSource: envOr("PLOEG_TARGET_SOURCE", ""),
-		ForgeURL:     trimSlash(requireEnv("FORGE_URL")),
 		DefaultForge: envOr("PLOEG_TARGET_FORGE", harness.ForgeForgejo),
-		// The credential is true for EVERY possible target, so it stays
-		// boot-required: failing here costs no attempt and strands no lease.
-		BuilderToken: requireEnv("AGENT_BUILDER_TOKEN"),
 		WorkDir:      envOr("WORK_DIR", "/mnt/ci-shared"),
 
 		LLMBaseURL:          os.Getenv("LLM_BASE_URL"),
@@ -153,6 +149,9 @@ func run(log *slog.Logger) error {
 		}
 	}
 	if cfg.ForgeTokenAccess, err = forgeTokenAccess(); err != nil {
+		return err
+	}
+	if cfg.ForgeURL, cfg.BuilderToken, err = envForge(); err != nil {
 		return err
 	}
 
@@ -351,6 +350,22 @@ func rejectAdministrativeEnvironment() error {
 		}
 	}
 	return nil
+}
+
+// envForge reads the worker's own forge: FORGE_URL and AGENT_BUILDER_TOKEN
+// together, or neither. A release with one forge renders both and a worker
+// fails its boot without one, which costs no attempt and strands no lease. A
+// release with several forges renders neither: every claim carries the
+// Run's forge and a credential minted for it (ADR-0192).
+func envForge() (string, string, error) {
+	url, token := trimSlash(os.Getenv("FORGE_URL")), os.Getenv("AGENT_BUILDER_TOKEN")
+	switch {
+	case url != "" && token == "":
+		return "", "", errors.New("FORGE_URL is set without AGENT_BUILDER_TOKEN: a worker with its own forge needs its credential")
+	case url == "" && token != "":
+		return "", "", errors.New("AGENT_BUILDER_TOKEN is set without FORGE_URL: a worker with its own credential needs its forge")
+	}
+	return url, token, nil
 }
 
 func forgeTokenAccess() (string, error) {
