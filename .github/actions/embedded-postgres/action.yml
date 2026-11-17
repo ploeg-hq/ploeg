@@ -1,0 +1,59 @@
+name: Embedded PostgreSQL binaries
+description: Restores the PostgreSQL binaries the embedded-postgres tests start, fetches them with retries when the cache misses, and saves them from development only.
+runs:
+  using: composite
+  steps:
+    - name: Resolve the embedded PostgreSQL binary
+      id: binary
+      shell: bash
+      run: |
+        set -euo pipefail
+        module=github.com/fergusstrange/embedded-postgres
+        library=$(awk -v m="$module" '$1 == m && $2 !~ /go.mod$/ { print $2 }' go.sum)
+        source=$(mise exec -- go mod download -json "$module@$library" | jq -r .Dir)
+        constant=$(sed -nE 's/^[[:space:]]*version:[[:space:]]*(V[0-9]+),.*/\1/p' "$source/config.go")
+        postgres=$(sed -nE "s/^[[:space:]]*${constant}[[:space:]]*=[[:space:]]*PostgresVersion\(\"([^\"]+)\"\).*/\1/p" "$source/config.go")
+        if [ -z "$library" ] || [ -z "$constant" ] || [ -z "$postgres" ]; then
+          echo "::error::cannot resolve the default PostgreSQL version of $module $library; update .github/actions/embedded-postgres/action.yml"
+          exit 1
+        fi
+        case "$(mise exec -- go env GOARCH)" in
+          amd64) arch=amd64 ;;
+          arm64) arch=arm64v8 ;;
+          *) echo "::error::no embedded PostgreSQL binary name for $(mise exec -- go env GOARCH)"; exit 1 ;;
+        esac
+        name="embedded-postgres-binaries-linux-$arch-$postgres"
+        {
+          echo "key=ploeg-embedded-postgres-$RUNNER_OS-$arch-$library-$postgres"
+          echo "file=$HOME/.embedded-postgres-go/$name.txz"
+          echo "url=https://repo1.maven.org/maven2/io/zonky/test/postgres/embedded-postgres-binaries-linux-$arch/$postgres/$name.jar"
+        } >> "$GITHUB_OUTPUT"
+    - name: Restore embedded PostgreSQL binaries
+      id: cache
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.embedded-postgres-go
+        key: ${{ steps.binary.outputs.key }}
+    - name: Fetch embedded PostgreSQL binaries with retries
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        BINARY_URL: ${{ steps.binary.outputs.url }}
+        BINARY_FILE: ${{ steps.binary.outputs.file }}
+      run: |
+        set -euo pipefail
+        work=$(mktemp -d)
+        curl --fail --silent --show-error --location --retry 5 --retry-all-errors --retry-delay 10 --output "$work/binaries.jar" "$BINARY_URL"
+        curl --fail --silent --show-error --location --retry 5 --retry-all-errors --retry-delay 10 --output "$work/binaries.jar.sha256" "$BINARY_URL.sha256"
+        echo "$(cat "$work/binaries.jar.sha256")  $work/binaries.jar" | sha256sum --check --strict
+        mkdir -p "$(dirname "$BINARY_FILE")"
+        unzip -p "$work/binaries.jar" '*.txz' > "$work/binaries.txz"
+        test -s "$work/binaries.txz"
+        mv "$work/binaries.txz" "$BINARY_FILE"
+        rm -rf "$work"
+    - name: Save embedded PostgreSQL binaries
+      if: steps.cache.outputs.cache-hit != 'true' && github.ref == 'refs/heads/development'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.embedded-postgres-go
+        key: ${{ steps.binary.outputs.key }}
