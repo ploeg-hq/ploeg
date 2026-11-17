@@ -1483,7 +1483,7 @@
             "gitlab",
             "github"
           ],
-          "description": "The default forge: the forge block of the same name serves a Work Item whose target names no forge (ADR-0023), and it must set url. Every forge block that sets url is active (ADR-0192). With one active forge, workers boot with its url and credential as before; with more than one, every active forge must mint per-Run credentials (forgejo with botPasswordSecret on Forgejo 15 or later, github with tracker.github.appId, gitlab cannot), and each claim carries the Run's forge and a credential minted for that Run alone."
+          "description": "The default forge: the forge block of the same name serves a Work Item whose target names no forge (ADR-0023), and it must set url. Every forge block that sets url is active (ADR-0192). With one active forge, workers boot with its url and credential as before; with more than one, every active forge must mint per-Run credentials (forgejo with botPasswordSecret on Forgejo 15 or later, github with tracker.github.appId, gitlab cannot), and each claim carries the Run's forge and a credential minted for that Run alone. A release that already set url on two forge blocks and does not mint for both now fails to render: unset the url of the forge it does not use, or configure minting."
         },
         "github": {
           "type": [

@@ -122,7 +122,7 @@ env:
   REPO_OWNER: Fallback repository owner for a team that pins one. The repository normally comes from the claimed Work Item.
   REPO_NAME: Fallback repository name for a team that pins one. The repository normally comes from the claimed Work Item.
   PLOEG_BASE_BRANCH: Fallback branch the worker clones, branches from and targets. Unset means the repository default branch.
-  PLOEG_TARGET_SOURCE: "`env` ignores the claim's target and uses the fallback repository."
+  PLOEG_TARGET_SOURCE: "`env` ignores the claim's target and uses the fallback repository. A worker of a multi-forge release holds no forge of its own, so the chart refuses `env` there (ADR-0192)."
   PLOEG_HARNESS: "Harness adapter: `openhands`, `exec`, `claude-code` or `acp` (chart `executor.harness.name`)."
   PLOEG_HARNESS_ENTRYPOINT: Harness binary override (chart `executor.harness.entrypoint`). Empty means the adapter default.
   PLOEG_HARNESS_ARGS: "`exec` harness only: JSON argv template with `{taskspec}` and `{taskfile}` (chart `executor.harness.args`)."
@@ -193,7 +193,7 @@ helm:
   executor.harness.timeout: Stops a harness that runs longer than this (`PLOEG_HARNESS_TIMEOUT`).
   executor.harness.idleTimeout: Stops a harness that prints nothing and makes no model call for this long (`PLOEG_HARNESS_IDLE_TIMEOUT`).
   executor.harness.toolchains: Toolchain images mounted read-only at `/opt/ploeg/toolchains/<name>` as image volumes (Kubernetes 1.35 or later) and put on the harness's `PATH` (`PLOEG_TOOLCHAINS`).
-  executor.harness.claudeCode.plugins: "Claude Code plugins every `claude-code` Run loads (`PLOEG_CLAUDE_PLUGINS`, ADR-0139), set at executor, team or Role level; the most specific list wins whole and renders only into a claude-code pod. Each entry names the plugin, its marketplace `url` and a full `commit`, the `env` its hooks receive (a `value`, or a `secret: {name, key}` rendered as a `PLOEG_CLAUDE_PLUGIN_ENV_*` secretKeyRef; a Secret holding a Ploeg credential is refused), `hookTimeout` (default 10s, at most 60s), and `runIdentity: {audience}` to hand every hook a Run identity for that audience in `AGENT_RUN_IDENTITY_TOKEN` (ADR-0149; needs `runIdentity.signingKeySecret`). Empty loads none."
+  executor.harness.claudeCode.plugins: "Claude Code plugins every `claude-code` Run loads (`PLOEG_CLAUDE_PLUGINS`, ADR-0139), set at executor, team or Role level; the most specific list wins whole and renders only into a claude-code pod. Each entry names the plugin, its marketplace `url` and a full `commit`, the `env` its hooks receive (a `value`, or a `secret: {name, key}` rendered as a `PLOEG_CLAUDE_PLUGIN_ENV_*` secretKeyRef; a Secret holding a Ploeg credential is refused: the gateway master key, the worker bootstrap, run identity and transaction token keys, every active forge's `tokenSecret`, `readTokenSecret` and `botPasswordSecret`, and `tracker.github.appPrivateKeySecret`), `hookTimeout` (default 10s, at most 60s), and `runIdentity: {audience}` to hand every hook a Run identity for that audience in `AGENT_RUN_IDENTITY_TOKEN` (ADR-0149; needs `runIdentity.signingKeySecret`). Empty loads none."
   executor.harness.telemetry: "OpenTelemetry collector the harness exports to (`PLOEG_TELEMETRY`), set at executor, team or Role level; the most specific block wins whole. claude-code always receives it; openhands only with `allowHarnesses: [openhands]`, because its tracing fails every prompt on an agent image whose lmnr rejects the SDK call (agent-runner 1.3.0; 1.4.0 is fine, ADR-0113). acp/opencode, exec and claude-environment export nothing from the worker. Empty exports nothing."
   executor.harness.verify: Checks a Run is told to run and the worker runs after a writing Run (`PLOEG_VERIFY_COMMANDS`). Write a formatter check so output fails it, for example `test -z "$(gofmt -l .)"`.
   executor.harness.verifyTimeout: Bounds the worker's own verification run (`PLOEG_VERIFY_TIMEOUT`).
@@ -204,7 +204,7 @@ helm:
   executor.teams[].repoOwner: Deprecated per-team fallback repository owner. The repository belongs to the Work Item.
   executor.teams[].repoName: Deprecated per-team fallback repository name. The repository belongs to the Work Item.
   executor.teams[].baseBranch: Branch the worker clones, branches from and targets. Unset means the repository default branch.
-  executor.teams[].targetSource: "`env` ignores the claim's target and uses the fallback repository."
+  executor.teams[].targetSource: "`env` ignores the claim's target and uses the fallback repository. Refused in a release with more than one active forge, whose workers hold no forge URL or credential to pin to (ADR-0192)."
   executor.teams[].harness: Overrides the `executor.harness` defaults for this Team.
   operator.consumers[].name: Consumer name.
   operator.consumers[].teams: "Teams the consumer may read and act on. Required. `[\"*\"]` grants every Team; an empty list grants none."

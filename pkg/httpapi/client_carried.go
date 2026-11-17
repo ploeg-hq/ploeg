@@ -103,6 +103,15 @@ func (s *Server) handleClientClaim(w http.ResponseWriter, r *http.Request) {
 		operatorError(w, 409, "no_target", "The Work Item has no resolved repository, so a client cannot dispatch it.")
 		return
 	}
+	var sessionForge ClaimForge
+	if s.ClaudeSessions != nil {
+		forge, _, refused := s.sessionForge(item.Target.Forge)
+		if refused != "" {
+			operatorError(w, 409, "forge_unavailable", "A client cannot carry this Run: "+refused+".")
+			return
+		}
+		sessionForge = forge
+	}
 	person := store.ActingPerson(r.Context(), actor)
 	claim, err := s.Store.ClaimClientCarriedRun(r.Context(), id, person, operatorAuditActor(r, p, actor), s.LeaseTTL, s.claimLimits)
 	switch {
@@ -150,7 +159,7 @@ func (s *Server) handleClientClaim(w http.ResponseWriter, r *http.Request) {
 		Limits:     harness.RunLimits{Round: claim.Round, MaxRounds: s.maxRounds(claim.Team)},
 	}
 	if s.ClaudeSessions != nil {
-		spec.Repo.ForgeURL = s.ClaudeSessions.ForgeURL
+		spec.Repo.ForgeURL = sessionForge.PloegdURL
 		spec.Limits.Time = s.ClaudeSessions.sessionTimeout()
 	}
 	base := target.BaseBranch

@@ -3,7 +3,7 @@ type: how-to
 audience: [operator]
 owner: ploeg
 last_verified: 2026-11-17
-verified_by: "Read pkg/provider/github, pkg/githubapp, pkg/forgebroker, pkg/worker/forgeproxy.go, pkg/worker/target.go, cmd/ploegd/github_forge.go, cmd/ploegd/forges.go and ops/helm/ploeg; go test ./pkg/provider/github/ ./pkg/forgebroker/ ./pkg/worker/ ./pkg/httpapi/ ./cmd/ploegd/; scripts/helm-golden.sh check"
+verified_by: "Read pkg/provider/github, pkg/githubapp, pkg/forgebroker, pkg/worker/forgeproxy.go, pkg/worker/target.go, cmd/ploegd/github_forge.go, cmd/ploegd/forges.go, pkg/httpapi/claim_forge.go, pkg/httpapi/claude_session.go, pkg/httpapi/client_carried.go and ops/helm/ploeg; go test ./pkg/provider/github/ ./pkg/forgebroker/ ./pkg/worker/ ./pkg/httpapi/ ./cmd/ploegd/; scripts/helm-golden.sh check"
 ---
 
 # Connect GitHub as a forge
@@ -79,7 +79,10 @@ One release can serve repositories on a self-hosted Forgejo and on GitHub at onc
 
 * Each claim carries the Run's forge, resolved by ploegd from the Work Item's target forge, the URL workers use for it, and a credential minted for that Run alone: an installation token on GitHub, a token restricted to the Run's repository on Forgejo, read-only for a reading Role. A Work Item whose target names no forge goes to `executor.forge`.
 * Worker pods carry no `FORGE_URL`, no `AGENT_BUILDER_TOKEN` and no `readTokenSecret`, and their network policy reaches every active forge.
-* Every active forge must mint. ploegd refuses to start, and the chart refuses to render, when Forgejo has no `botPasswordSecret` or GitHub has no `tracker.github.appId`. Forgejo must be version 15 or later. GitLab cannot mint per Run, so it can only be the only forge of its release.
+* Every active forge must mint. ploegd refuses to start, and the chart refuses to render, when Forgejo has no `botPasswordSecret` or GitHub has no `tracker.github.appId`. Forgejo must be version 15 or later. GitLab cannot mint per Run, so it can only be the only forge of its release. A release that already set `url` on two forge blocks without minting for both renders no more after this upgrade: unset the `url` of the forge it does not use, or configure minting.
+* A Team cannot pin its workers to their env target (`targetSource: env`): the chart refuses it, because those workers hold no forge of their own.
+* A Run in a Claude environment, dispatched by a worker or carried by a person's client, pushes to its own forge: the push-credential exchange mints on the Run's forge and names its remote under ploegd's URL for that forge, as `x-access-token` on GitHub. A client claim of a Work Item on a forge the release does not serve answers `409 forge_unavailable` and starts nothing.
+* A Claude Code plugin never reads a Secret that holds a forge credential of any active forge or the GitHub App key: the chart refuses it.
 
 ```yaml
 tracker:
@@ -101,7 +104,9 @@ executor:
     botLogin: ploeg[bot]
 ```
 
-`readTokenSecret` is not needed for either forge, and `executor.github.tokenSecret` is not rendered while the App is configured. Route each repository to its forge by its target's forge id, `forgejo` or `github`: a routing entry and the forge's webhook are all a new repository needs. A Work Item whose target names a forge the release does not serve ends stuck at its claim with `forge "<id>" is not configured in this release`.
+`readTokenSecret` is not needed for either forge, and `executor.github.tokenSecret` is not rendered while the App is configured. Route each repository to its forge by its target's forge id, `forgejo` or `github`: a routing entry and the forge's webhook are all a new repository needs. A Work Item whose target names a forge the release does not serve ends stuck at its claim with `forge "<id>" is not configured in this release`, and its Work Item waits for a person. A release with one forge keeps resolving any forge id to that forge, as it did before ADR-0192, and logs that it did.
+
+Turn on the second forge only once every ploegd replica runs this release, and before rolling back to a release before ADR-0192, unset the second forge's `url` and let reading Runs finish: an older ploegd's forge sweep spares only Runs that hold a Lease, so it revokes the read credential of every running reader, which then fails to fetch ([recover from a failed upgrade](recover-from-a-failed-upgrade.md#roll-back-past-per-run-read-credentials)).
 
 Verify: ploegd logs `per-run forge credentials enabled` and `per-run GitHub App installation tokens enabled`; the worker of a Run on either forge logs `resolved work target` with that forge and `using a per-run forge credential minted for this run`.
 

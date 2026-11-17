@@ -144,11 +144,18 @@ func (s *Server) handleClaudeForgeCredential(w http.ResponseWriter, r *http.Requ
 		runError(w, err)
 		return
 	}
-	if s.ForgeCreds == nil || s.ClaudeSessions.ForgeURL == "" || run.Owner == "" || run.Repo == "" || run.Branch == "" {
+	if s.ForgeCreds == nil || run.Owner == "" || run.Repo == "" || run.Branch == "" {
 		http.Error(w, "per-run push credentials are not available for this run", http.StatusConflict)
 		return
 	}
-	cred, err := s.ForgeCreds.Mint(r.Context(), forgebroker.MintRequest{RunToken: run.RunToken, Owner: run.Owner, Repo: run.Repo})
+	forge, mintForge, refused := s.sessionForge(run.Forge)
+	if refused != "" {
+		s.Log.Warn("push credential exchange refused: the run's forge cannot serve a claude session",
+			"team", run.Team, "role", run.Role, "run", prefix12(run.RunToken), "forge", run.Forge, "reason", refused)
+		http.Error(w, "per-run push credentials are not available for this run: "+refused, http.StatusConflict)
+		return
+	}
+	cred, err := s.ForgeCreds.Mint(r.Context(), forgebroker.MintRequest{RunToken: run.RunToken, Owner: run.Owner, Repo: run.Repo, Forge: mintForge})
 	if err != nil {
 		s.Log.Error("forge credential mint for a claude session failed",
 			"team", run.Team, "role", run.Role, "run", prefix12(run.RunToken), "err", err)
@@ -175,9 +182,19 @@ func (s *Server) handleClaudeForgeCredential(w http.ResponseWriter, r *http.Requ
 	s.Log.Info("push credential exchanged for a claude session",
 		"team", run.Team, "role", run.Role, "run", prefix12(run.RunToken), "environment", claims.EnvironmentID)
 	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, http.StatusOK, claudeForgeCredentialResponse{Username: s.ClaudeSessions.GitUser, Token: cred.Token, Branch: run.Branch,
+	writeJSON(w, http.StatusOK, claudeForgeCredentialResponse{Username: s.sessionGitUser(forge), Token: cred.Token, Branch: run.Branch,
 		BaseBranch: run.BaseBranch, Title: run.Title, Reference: run.Reference,
-		Remote: strings.TrimSuffix(s.ClaudeSessions.ForgeURL, "/") + "/" + run.Owner + "/" + run.Repo + ".git"})
+		Remote: strings.TrimSuffix(forge.PloegdURL, "/") + "/" + run.Owner + "/" + run.Repo + ".git"})
+}
+
+// sessionGitUser is the login a minted credential authenticates as over
+// HTTPS: a GitHub App installation token takes x-access-token, any other
+// forge the bot it was minted for.
+func (s *Server) sessionGitUser(forge ClaimForge) string {
+	if forge.Dialect == "github" {
+		return "x-access-token"
+	}
+	return s.ClaudeSessions.GitUser
 }
 
 func (s *Server) revokeForgeCredential(ctx context.Context, runToken string, cred forgebroker.Credential) {

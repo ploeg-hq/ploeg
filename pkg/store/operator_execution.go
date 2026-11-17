@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -36,6 +37,9 @@ type OperatorExecution struct {
 	CreatedAt     time.Time `json:"createdAt"`
 	UpdatedAt     time.Time `json:"updatedAt"`
 	RunToken      string    `json:"-"`
+	// ForgeTokenIDs are the forge credentials closing the execution took
+	// from its Run and Lease, for the caller to revoke (ADR-0192).
+	ForgeTokenIDs []string `json:"-"`
 	// Consumer is the Operator Consumer that admitted the execution. Only it
 	// may send executor commands; it is never serialized.
 	Consumer string `json:"-"`
@@ -363,7 +367,7 @@ func (s *Store) CommandOperatorExecution(ctx context.Context, id, consumer, acto
 	}
 	if c.Action == "close" {
 		if e.State == "cancelled" {
-			if err = closeOperatorExecution(ctx, tx, e, "The session ended; an operator closed its Work Item", CloseReasonWithdrawnSessionEnded); err != nil {
+			if err = closeOperatorExecution(ctx, tx, &e, "The session ended; an operator closed its Work Item", CloseReasonWithdrawnSessionEnded); err != nil {
 				return e, err
 			}
 		}
@@ -386,7 +390,7 @@ func (s *Store) CommandOperatorExecution(ctx context.Context, id, consumer, acto
 				summary = string([]rune(summary)[:min(len([]rune(summary)), 4096)])
 			}
 		}
-		if err = closeOperatorExecution(ctx, tx, e, summary, "operator_"+e.State); err != nil {
+		if err = closeOperatorExecution(ctx, tx, &e, summary, "operator_"+e.State); err != nil {
 			return e, err
 		}
 	}
@@ -454,20 +458,37 @@ func workItemWithdrawn(ctx context.Context, tx pgx.Tx, workItemID string) (bool,
 	return state == "withdrawn", nil
 }
 
-func closeOperatorExecution(ctx context.Context, tx pgx.Tx, e OperatorExecution, summary, reason string) error {
+func closeOperatorExecution(ctx context.Context, tx pgx.Tx, e *OperatorExecution, summary, reason string) error {
 	var outcome *string
 	if e.State != "completed" {
 		stuck := "stuck"
 		outcome = &stuck
 	}
-	if _, err := tx.Exec(ctx, `UPDATE agent_runs SET state='finished',finished_at=now(),outcome=$2,summary=$3 WHERE id=$1`, e.RunID, outcome, summary); err != nil {
+	rows, err := tx.Query(ctx, `UPDATE agent_runs SET state='finished',finished_at=now(),outcome=$2,summary=$3 WHERE id=$1 RETURNING forge_token_id`, e.RunID, outcome, summary)
+	if err != nil {
+		return err
+	}
+	runTokens, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
 		return err
 	}
 	if _, err := tx.Exec(ctx, `UPDATE shifts SET closed_at=now(),close_reason=$2 WHERE id=$1`, e.ShiftID, reason); err != nil {
 		return err
 	}
-	_, err := tx.Exec(ctx, `DELETE FROM leases WHERE work_item_id=$1`, e.WorkItemID)
-	return err
+	rows, err = tx.Query(ctx, `DELETE FROM leases WHERE work_item_id=$1 RETURNING forge_token_id`, e.WorkItemID)
+	if err != nil {
+		return err
+	}
+	leaseTokens, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		return err
+	}
+	for _, id := range append(runTokens, leaseTokens...) {
+		if id != "" && !slices.Contains(e.ForgeTokenIDs, id) {
+			e.ForgeTokenIDs = append(e.ForgeTokenIDs, id)
+		}
+	}
+	return nil
 }
 
 func (s *Store) OperatorExecutionEvents(ctx context.Context, id string, after int64, limit int) ([]OperatorExecutionEvent, error) {
@@ -558,7 +579,7 @@ func cancelUnstartedExecutions(ctx context.Context, tx pgx.Tx) ([]OperatorExecut
 		if _, err = tx.Exec(ctx, `UPDATE operator_executions SET state='cancelled',stop_confirmed=true,revision=$2,updated_at=now() WHERE id=$1`, e.ID, e.Revision); err != nil {
 			return nil, err
 		}
-		if err = closeOperatorExecution(ctx, tx, *e, "Operator admission expired before start", "operator_admission_expired"); err != nil {
+		if err = closeOperatorExecution(ctx, tx, e, "Operator admission expired before start", "operator_admission_expired"); err != nil {
 			return nil, err
 		}
 		if _, err = tx.Exec(ctx, `UPDATE work_items SET state='done',updated_at=now() WHERE id=$1`, e.WorkItemID); err != nil {

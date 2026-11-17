@@ -724,17 +724,42 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	forge, ok := s.claimForge(r.Context(), req.Team, claimed.RunToken, claimed.Item)
+	forge, ok := s.claimForge(r.Context(), req.Team, claimed.RunToken, &claimed.Item)
 	if !ok {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 	s.recordRunConfig(r.Context(), claimed.RunToken, req.Team, "", true, runHarness{Name: req.Harness, Profile: req.HarnessProfile, Version: req.HarnessVersion})
+	resp := claimResponse{RunToken: claimed.RunToken, Deadline: claimed.Deadline, ExpiresInMs: leaseExpiresInMs(claimed.Deadline), WorkItem: claimed.Item,
+		ForgeDialect: forge.Dialect, ForgeURL: forge.URL}
+	if s.ForgeCreds != nil && claimed.Item.Target != nil {
+		cred, ok := s.mintForgeCredential(r.Context(), req.Team, &store.ClaimedRun{Item: claimed.Item, RunToken: claimed.RunToken, Writes: true})
+		if !ok {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		resp.carryForgeCredential(cred)
+	}
+	resp.Context = s.claimContext(r.Context(), claimed.RunToken)
+	resp.Board = s.recordBoardClaim(r.Context(), claimed.RunToken)
+	resp.Briefing = s.consumeOperatorNotes(r.Context(), claimed.Item.ID, claimed.RunToken, 0)
+	resp.FastCheck = s.fastCheckFor(claimed.Item, true)
 	s.Log.Info("lease acquired", "team", req.Team, "work_item", claimed.Item.ID, "deadline", claimed.Deadline)
-	writeJSON(w, http.StatusOK, claimResponse{RunToken: claimed.RunToken, Deadline: claimed.Deadline, ExpiresInMs: leaseExpiresInMs(claimed.Deadline), WorkItem: claimed.Item,
-		Context: s.claimContext(r.Context(), claimed.RunToken), Board: s.recordBoardClaim(r.Context(), claimed.RunToken),
-		Briefing:  s.consumeOperatorNotes(r.Context(), claimed.Item.ID, claimed.RunToken, 0),
-		FastCheck: s.fastCheckFor(claimed.Item, true), ForgeDialect: forge.Dialect, ForgeURL: forge.URL})
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// carryForgeCredential puts a credential minted for this Run on its claim;
+// a broker that mints nothing leaves the worker its pod's token.
+func (resp *claimResponse) carryForgeCredential(cred forgebroker.Credential) {
+	if cred.ID == "" {
+		return
+	}
+	resp.ForgeToken = cred.Token
+	resp.ForgeTokenPerRun = true
+	if !cred.ExpiresAt.IsZero() {
+		expires := cred.ExpiresAt.UTC()
+		resp.ForgeTokenExpiresAt = &expires
+	}
 }
 
 // claimRole serves a Shift-scoped claim, carrying everything the Run needs
@@ -777,7 +802,7 @@ func (s *Server) respondClaimedRun(w http.ResponseWriter, r *http.Request, req c
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	forge, ok := s.claimForge(r.Context(), req.Team, run.RunToken, run.Item)
+	forge, ok := s.claimForge(r.Context(), req.Team, run.RunToken, &run.Item)
 	if !ok {
 		w.WriteHeader(http.StatusNoContent)
 		return
@@ -813,14 +838,7 @@ func (s *Server) respondClaimedRun(w http.ResponseWriter, r *http.Request, req c
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-		if cred.ID != "" {
-			resp.ForgeToken = cred.Token
-			resp.ForgeTokenPerRun = true
-			if !cred.ExpiresAt.IsZero() {
-				expires := cred.ExpiresAt.UTC()
-				resp.ForgeTokenExpiresAt = &expires
-			}
-		}
+		resp.carryForgeCredential(cred)
 	}
 
 	if run.Role != "ask" {
