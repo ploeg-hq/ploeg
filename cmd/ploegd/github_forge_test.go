@@ -75,12 +75,12 @@ func TestGitHubCredentialsRouteOnlyTheGitHubForges(t *testing.T) {
 	if len(ids) != 2 {
 		t.Fatalf("github forge ids = %v", ids)
 	}
-	broker, sweeper := withGitHubCredentials(slog.New(slog.DiscardHandler), forgebroker.Static{}, nil, app, ids, "forgejo")
+	broker, sweeper := withGitHubCredentials(slog.New(slog.DiscardHandler), forgebroker.Static{}, nil, app, ids, []string{"forgejo"}, "forgejo")
 	router, ok := broker.(*forgebroker.Router)
-	if !ok || sweeper == nil || router.GitHub == nil || router.DefaultForge != "forgejo" {
+	if !ok || sweeper == nil || router.GitHub == nil || router.DefaultForge != "forgejo" || len(router.ForgejoForges) != 1 {
 		t.Fatalf("broker %T sweeper %v", broker, sweeper)
 	}
-	if b, _ := withGitHubCredentials(slog.New(slog.DiscardHandler), forgebroker.Static{}, nil, nil, ids, "forgejo"); b != (forgebroker.Static{}) {
+	if b, _ := withGitHubCredentials(slog.New(slog.DiscardHandler), forgebroker.Static{}, nil, nil, ids, nil, "forgejo"); b != (forgebroker.Static{}) {
 		t.Fatalf("without an App the broker changed to %T", b)
 	}
 }

@@ -144,12 +144,21 @@ func (g *GitHubApp) SweepOrphans(ctx context.Context, leased func(context.Contex
 	return revoked, errors.Join(errs...)
 }
 
+// ErrNoBroker is returned by Router.Mint for a forge id no broker serves. A
+// mint is never sent to another forge's broker: that broker would mint a
+// token for a forge the Run does not act on (ADR-0192).
+var ErrNoBroker = errors.New("forgebroker: no credential broker serves this forge")
+
 // Router sends a Run's mint to the broker of its forge and a revocation to
 // the broker that minted the credential: GitHub for the forge ids in
-// GitHubForges, Default for every other.
+// GitHubForges, Forgejo for the forge ids in ForgejoForges. A forge id in
+// neither is refused with ErrNoBroker.
 type Router struct {
-	Default        Broker
-	DefaultSweeper Sweeper
+	// Forgejo mints for ForgejoForges: a Forgejo broker, or Static when the
+	// deployment mints nothing for Forgejo.
+	Forgejo        Broker
+	ForgejoSweeper Sweeper
+	ForgejoForges  []string
 	GitHub         *GitHubApp
 	// GitHubForges are the forge ids whose Runs get GitHub App tokens.
 	GitHubForges []string
@@ -157,13 +166,10 @@ type Router struct {
 	DefaultForge string
 }
 
-func (r *Router) github(forge string) bool {
-	if forge == "" {
-		forge = r.DefaultForge
-	}
-	for _, f := range r.GitHubForges {
+func servesForge(forges []string, forge string) bool {
+	for _, f := range forges {
 		if strings.EqualFold(f, forge) {
-			return r.GitHub != nil
+			return true
 		}
 	}
 	return false
@@ -171,13 +177,17 @@ func (r *Router) github(forge string) bool {
 
 // Mint mints with the broker of req.Forge.
 func (r *Router) Mint(ctx context.Context, req MintRequest) (Credential, error) {
-	if r.github(req.Forge) {
+	forge := req.Forge
+	if forge == "" {
+		forge = r.DefaultForge
+	}
+	switch {
+	case r.GitHub != nil && servesForge(r.GitHubForges, forge):
 		return r.GitHub.Mint(ctx, req)
+	case r.Forgejo != nil && servesForge(r.ForgejoForges, forge):
+		return r.Forgejo.Mint(ctx, req)
 	}
-	if r.Default == nil {
-		return Credential{}, nil
-	}
-	return r.Default.Mint(ctx, req)
+	return Credential{}, fmt.Errorf("%w: %q", ErrNoBroker, forge)
 }
 
 // Revoke revokes with the broker that minted cred.
@@ -185,10 +195,10 @@ func (r *Router) Revoke(ctx context.Context, cred Credential) error {
 	if r.GitHub != nil && strings.HasPrefix(cred.ID, GitHubAppIDPrefix) {
 		return r.GitHub.Revoke(ctx, cred)
 	}
-	if r.Default == nil {
+	if r.Forgejo == nil {
 		return nil
 	}
-	return r.Default.Revoke(ctx, cred)
+	return r.Forgejo.Revoke(ctx, cred)
 }
 
 // RevokeByID revokes with the sweeper that minted id.
@@ -196,18 +206,18 @@ func (r *Router) RevokeByID(ctx context.Context, id string) error {
 	if r.GitHub != nil && strings.HasPrefix(id, GitHubAppIDPrefix) {
 		return r.GitHub.RevokeByID(ctx, id)
 	}
-	if r.DefaultSweeper == nil {
+	if r.ForgejoSweeper == nil {
 		return nil
 	}
-	return r.DefaultSweeper.RevokeByID(ctx, id)
+	return r.ForgejoSweeper.RevokeByID(ctx, id)
 }
 
 // SweepOrphans sweeps every broker the router holds.
 func (r *Router) SweepOrphans(ctx context.Context, leased func(context.Context) ([]string, error)) (int, error) {
 	total := 0
 	var errs []error
-	if r.DefaultSweeper != nil {
-		n, err := r.DefaultSweeper.SweepOrphans(ctx, leased)
+	if r.ForgejoSweeper != nil {
+		n, err := r.ForgejoSweeper.SweepOrphans(ctx, leased)
 		total += n
 		errs = append(errs, err)
 	}

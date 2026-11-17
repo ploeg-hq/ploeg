@@ -218,7 +218,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	var githubForgeIDs []string
+	var githubForgeIDs, forgejoForgeIDs []string
 	if ghForge != nil {
 		forges[ghForge.Name()] = ghForge
 		log.Info("forge provider configured", "dialect", ghForge.Name(), "url", ghForge.BaseURL)
@@ -252,7 +252,10 @@ func run(ctx context.Context, log *slog.Logger) error {
 	if ghForge != nil {
 		githubForgeIDs = forgeIDsOf(forges, ghForge)
 	}
-	forgeCreds, forgeSweeper = withGitHubCredentials(log, forgeCreds, forgeSweeper, ghApp, githubForgeIDs, forgeID)
+	if fj := forges["forgejo"]; fj != nil {
+		forgejoForgeIDs = forgeIDsOf(forges, fj)
+	}
+	forgeCreds, forgeSweeper = withGitHubCredentials(log, forgeCreds, forgeSweeper, ghApp, githubForgeIDs, forgejoForgeIDs, forgeID)
 
 	// Gateway credential sweeper (llmbroker.Sweeper) for per-run key
 	// lifecycle: nil = no gateway configured, revocation disabled.

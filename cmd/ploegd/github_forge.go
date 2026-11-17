@@ -65,11 +65,11 @@ func githubForge(log *slog.Logger, env githubForgeEnv) (*github.Provider, *githu
 }
 
 func withGitHubCredentials(log *slog.Logger, base forgebroker.Broker, baseSweeper forgebroker.Sweeper, app *githubapp.Minter,
-	githubForges []string, defaultForge string) (forgebroker.Broker, forgebroker.Sweeper) {
+	githubForges, forgejoForges []string, defaultForge string) (forgebroker.Broker, forgebroker.Sweeper) {
 	if app == nil {
 		return base, baseSweeper
 	}
-	r := &forgebroker.Router{Default: base, DefaultSweeper: baseSweeper, GitHub: &forgebroker.GitHubApp{App: app},
+	r := &forgebroker.Router{Forgejo: base, ForgejoSweeper: baseSweeper, ForgejoForges: forgejoForges, GitHub: &forgebroker.GitHubApp{App: app},
 		GitHubForges: githubForges, DefaultForge: defaultForge}
 	log.Info("per-run GitHub App installation tokens enabled", "forges", githubForges)
 	return r, r
