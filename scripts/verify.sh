@@ -22,7 +22,7 @@ openspec validate --all --strict
 required=ops/helm/ploeg/ci/required-values.yaml
 uv run --no-project --with pyyaml==6.0.3 --with cel-python==0.4.0 python scripts/check-security-profile.py
 helm lint ops/helm/ploeg -f "$required"
-for variant in executor executor-cronjob executor-gitlab executor-github monitoring knowledge-graph mcp claude-runner name-overrides; do
+for variant in executor executor-cronjob executor-gitlab executor-github executor-two-forges monitoring knowledge-graph mcp claude-runner name-overrides; do
   values="ops/helm/ploeg/ci/${variant}-values.yaml"
   helm lint ops/helm/ploeg -f "$required" -f "$values"
   helm template ploeg ops/helm/ploeg -f "$required" -f "$values" >/dev/null

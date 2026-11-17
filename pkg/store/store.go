@@ -564,9 +564,9 @@ type OutcomeResult struct {
 	WorkItemID int64
 	// ShiftID is nil for a legacy (shift-less) run.
 	ShiftID *int64
-	// ForgeTokenID is the per-run push credential to revoke, if one was
-	// minted (ADR-0013 tier 2). Empty for readers and for deployments
-	// without a forge admin credential.
+	// ForgeTokenID is the per-run forge credential to revoke, if one was
+	// minted: a writer's push credential (ADR-0013 tier 2) or a reader's
+	// read credential (ADR-0192). Empty for deployments that mint none.
 	ForgeTokenID string
 	// Created lists the Work Items this report created, in proposal order.
 	// Rejected proposals are absent here and recorded in the audit log.
@@ -642,6 +642,7 @@ func (s *Store) ReportOutcome(ctx context.Context, runToken string, rep harnessR
 	var team string
 	var shiftID *int64
 	var shadow, writes bool
+	var readerTokenID string
 	if err := tx.QueryRow(ctx, `
 		UPDATE agent_runs
 		SET state = 'finished', finished_at = now(), outcome = $1, summary = $2,
@@ -651,10 +652,10 @@ func (s *Store) ReportOutcome(ctx context.Context, runToken string, rep harnessR
 		    verification = CASE WHEN writes THEN $13::jsonb ELSE NULL END,
 		    evidence_version = $14, delivery = $15::jsonb, delivery_source = $16
 		WHERE run_token = $9 AND state = 'running'
-		RETURNING id, work_item_id, team, shift_id, shadow, writes`,
+		RETURNING id, work_item_id, team, shift_id, shadow, writes, forge_token_id`,
 		string(rep.Outcome), rep.Summary, rep.StuckReason, rep.Links, rep.Usage,
 		rep.FailureReason, rep.Findings, rep.Verdict, runToken, digest, rep.Problem, rep.Solution, verification,
-		CurrentEvidenceVersion, delivery, deliverySource).Scan(&runID, &id, &team, &shiftID, &shadow, &writes); err != nil {
+		CurrentEvidenceVersion, delivery, deliverySource).Scan(&runID, &id, &team, &shiftID, &shadow, &writes, &readerTokenID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			if err := tx.QueryRow(ctx, `SELECT work_item_id,shift_id FROM agent_runs
 				WHERE run_token=$1 AND state='finished' AND outcome_digest=$2
@@ -674,6 +675,9 @@ func (s *Store) ReportOutcome(ctx context.Context, runToken string, rep harnessR
 		`DELETE FROM leases WHERE run_token = $1 RETURNING forge_token_id`, runToken).
 		Scan(&forgeTokenID); err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return OutcomeResult{}, err
+	}
+	if forgeTokenID == "" {
+		forgeTokenID = readerTokenID
 	}
 	// Settlement (ADR-0012): record what was actually spent. The authorization
 	// needs no explicit release — `reserved` is summed over running Runs, and

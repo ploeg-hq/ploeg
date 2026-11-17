@@ -163,7 +163,9 @@ func describeRepositories(repositories []tokenRepository) string {
 	return "[" + strings.Join(names, ", ") + "]"
 }
 
-// Mint creates a `write:repository` token restricted to the Run's repository.
+// Mint creates a token restricted to the Run's repository, at
+// `write:repository` for a writing Run and `read:repository` for a reading
+// one.
 // It returns ErrUnrestrictedToken, after deleting the token, when the forge's
 // answer does not list exactly that repository: a forge that ignored the
 // restriction would otherwise hand the Run every repository the bot can reach.
@@ -179,9 +181,13 @@ func (f *Forgejo) Mint(ctx context.Context, req MintRequest) (Credential, error)
 		Scopes       []string          `json:"scopes"`
 		Repositories []tokenRepository `json:"repositories"`
 	}
+	scope := "write:repository"
+	if req.Read {
+		scope = "read:repository"
+	}
 	body := map[string]any{
 		"name":         name,
-		"scopes":       []string{"write:repository"},
+		"scopes":       []string{scope},
 		"repositories": []map[string]string{{"owner": req.Owner, "name": req.Repo}},
 	}
 	if err := f.do(ctx, http.MethodPost,

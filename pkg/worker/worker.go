@@ -336,6 +336,12 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 		}
 	}
 
+	if forgeToken == "" {
+		return stuckReport("no forge credential for this run",
+			"the claim carries no forge credential and this worker has no AGENT_BUILDER_TOKEN: in a release with more than one forge, "+
+				"ploegd must mint one per Run (ADR-0192)")
+	}
+
 	forgeCred := &forgeCredential{token: forgeToken, log: w.Log}
 	if claimed.ForgeTokenPerRun && claimed.ForgeTokenExpiresAt != nil {
 		forgeCred.expiresAt = *claimed.ForgeTokenExpiresAt
@@ -346,11 +352,11 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 
 	// Resolve the repository BEFORE touching disk: a misconfigured run must
 	// park itself without leaving a clone behind.
-	ref, err := resolveTarget(w.Cfg, item, w.Log)
+	ref, err := resolveClaimTarget(w.Cfg, claimed, w.Log)
 	if err != nil {
 		return stuckReport("no repository for this work item", err.Error())
 	}
-	w.Log.Info("resolved work target", "repo", ref.Owner+"/"+ref.Name, "base", ref.BaseBranch, "route_rule", item.RouteRule)
+	w.Log.Info("resolved work target", "repo", ref.Owner+"/"+ref.Name, "base", ref.BaseBranch, "forge", ref.Forge, "route_rule", item.RouteRule)
 
 	cloneDir := filepath.Join(w.Cfg.WorkDir, "vik-"+item.ExternalID)
 	_ = os.RemoveAll(cloneDir)
@@ -1151,7 +1157,7 @@ func discardMalformedCreated(report *harness.OutcomeReport) error {
 }
 
 func refuseReaderWithoutReadOnlyToken(cfg Config, claimed *ClaimResponse) (harness.OutcomeReport, bool) {
-	if claimed.Role == "" || claimed.Writes || cfg.ForgeTokenAccess == ForgeTokenReadOnly {
+	if claimed.Role == "" || claimed.Writes || cfg.ForgeTokenAccess == ForgeTokenReadOnly || claimed.ForgeTokenPerRun {
 		return harness.OutcomeReport{}, false
 	}
 	access := cfg.ForgeTokenAccess

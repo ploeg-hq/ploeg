@@ -16,17 +16,22 @@ const forgeCleanupTimeout = 30 * time.Second
 func (s *Server) mintForgeCredential(ctx context.Context, team string, run *store.ClaimedRun) (forgebroker.Credential, bool) {
 	cred, err := s.ForgeCreds.Mint(ctx, forgebroker.MintRequest{
 		RunToken: run.RunToken, Owner: run.Item.Target.Owner, Repo: run.Item.Target.Repo, Forge: run.Item.Target.Forge,
+		Read: !run.Writes,
 	})
 	if err != nil {
 		s.Log.Error("forge credential mint failed; releasing the run",
-			"team", team, "role", run.Role, "err", err)
-		s.releaseUncredentialedRun(ctx, run.RunToken, "could not mint a push credential")
+			"team", team, "role", run.Role, "writes", run.Writes, "err", err)
+		s.releaseUncredentialedRun(ctx, run.RunToken, "could not mint a "+credentialKind(run.Writes))
 		return forgebroker.Credential{}, false
 	}
 	if cred.ID == "" {
 		return cred, true
 	}
-	err = s.Store.RecordForgeToken(ctx, run.RunToken, cred.ID)
+	if run.Writes {
+		err = s.Store.RecordForgeToken(ctx, run.RunToken, cred.ID)
+	} else {
+		err = s.Store.RecordReaderForgeToken(ctx, run.RunToken, cred.ID)
+	}
 	if err == nil {
 		return cred, true
 	}
@@ -44,9 +49,16 @@ func (s *Server) mintForgeCredential(ctx context.Context, team string, run *stor
 			"run", prefix12(run.RunToken), "err", rerr)
 	}
 	if !errors.Is(err, store.ErrLeaseLost) {
-		s.releaseUncredentialedRun(cleanup, run.RunToken, "could not record a push credential")
+		s.releaseUncredentialedRun(cleanup, run.RunToken, "could not record a "+credentialKind(run.Writes))
 	}
 	return forgebroker.Credential{}, false
+}
+
+func credentialKind(writes bool) string {
+	if writes {
+		return "push credential"
+	}
+	return "read credential"
 }
 
 func (s *Server) releaseUncredentialedRun(ctx context.Context, runToken, summary string) {
@@ -74,29 +86,36 @@ type forgeCredentialResponse struct {
 func (s *Server) handleRefreshForgeCredential(w http.ResponseWriter, r *http.Request) {
 	runToken := r.PathValue("token")
 	if s.ForgeCreds == nil {
-		http.Error(w, "per-run push credentials are not configured", http.StatusConflict)
+		http.Error(w, "per-run forge credentials are not configured", http.StatusConflict)
 		return
 	}
+	writes := true
 	target, err := s.Store.WritingRunTarget(r.Context(), runToken)
-	switch {
-	case errors.Is(err, store.ErrNotAWriter):
-		http.Error(w, err.Error(), http.StatusForbidden)
-		return
-	case err != nil:
+	if errors.Is(err, store.ErrNotAWriter) {
+		writes = false
+		target, err = s.Store.ReadingRunTarget(r.Context(), runToken)
+	}
+	if err != nil {
 		runError(w, err)
 		return
 	}
-	cred, err := s.ForgeCreds.Mint(r.Context(), forgebroker.MintRequest{RunToken: runToken, Owner: target.Owner, Repo: target.Repo, Forge: target.Forge})
+	cred, err := s.ForgeCreds.Mint(r.Context(), forgebroker.MintRequest{RunToken: runToken, Owner: target.Owner, Repo: target.Repo, Forge: target.Forge,
+		Read: !writes})
 	if err != nil {
-		s.Log.Error("forge credential refresh failed", "run", prefix12(runToken), "err", err)
-		http.Error(w, "could not mint a push credential", http.StatusServiceUnavailable)
+		s.Log.Error("forge credential refresh failed", "run", prefix12(runToken), "writes", writes, "err", err)
+		http.Error(w, "could not mint a "+credentialKind(writes), http.StatusServiceUnavailable)
 		return
 	}
 	if cred.ID == "" {
-		http.Error(w, "per-run push credentials are not configured", http.StatusConflict)
+		http.Error(w, "per-run forge credentials are not configured", http.StatusConflict)
 		return
 	}
-	previous, err := s.Store.SwapForgeToken(r.Context(), runToken, cred.ID)
+	var previous string
+	if writes {
+		previous, err = s.Store.SwapForgeToken(r.Context(), runToken, cred.ID)
+	} else {
+		previous, err = s.Store.SwapReaderForgeToken(r.Context(), runToken, cred.ID)
+	}
 	if err != nil {
 		s.revokeForgeCredential(r.Context(), runToken, cred)
 		if errors.Is(err, store.ErrLeaseLost) {
@@ -109,7 +128,7 @@ func (s *Server) handleRefreshForgeCredential(w http.ResponseWriter, r *http.Req
 	if previous != "" && previous != cred.ID {
 		s.revokeForgeCredential(r.Context(), runToken, forgebroker.Credential{ID: previous})
 	}
-	s.Log.Info("push credential refreshed", "run", prefix12(runToken), "repo", target.Owner+"/"+target.Repo)
+	s.Log.Info("forge credential refreshed", "run", prefix12(runToken), "writes", writes, "repo", target.Owner+"/"+target.Repo)
 	resp := forgeCredentialResponse{ForgeToken: cred.Token}
 	if !cred.ExpiresAt.IsZero() {
 		expires := cred.ExpiresAt.UTC()

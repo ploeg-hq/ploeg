@@ -1483,7 +1483,7 @@
             "gitlab",
             "github"
           ],
-          "description": "Which forge the workers act against; selects the sibling block of the same name. Also the default dialect for a Work Item whose target names no forge (ADR-0023). One active forge per release: a worker pod holds one forge URL and one credential."
+          "description": "The default forge: the forge block of the same name serves a Work Item whose target names no forge (ADR-0023), and it must set url. Every forge block that sets url is active (ADR-0192). With one active forge, workers boot with its url and credential as before; with more than one, every active forge must mint per-Run credentials (forgejo with botPasswordSecret on Forgejo 15 or later, github with tracker.github.appId, gitlab cannot), and each claim carries the Run's forge and a credential minted for that Run alone."
         },
         "github": {
           "type": [
@@ -1493,7 +1493,7 @@
           "properties": {
             "url": {
               "type": "string",
-              "description": "Web root, https://github.com or a GitHub Enterprise Server root; the REST API is derived. Empty = ploegd configures no GitHub forge provider."
+              "description": "Web root, https://github.com or a GitHub Enterprise Server root; the REST API is derived. Set = GitHub is an active forge (ADR-0192); empty = ploegd configures no GitHub forge provider."
             },
             "tokenSecret": {
               "$ref": "#/definitions/secretRef",
@@ -1521,7 +1521,7 @@
           "properties": {
             "url": {
               "type": "string",
-              "description": "Base URL, no /api/v4. Empty = ploegd configures no GitLab provider, so findings never reach a merge request."
+              "description": "Base URL, no /api/v4. Set = GitLab is an active forge, which must then be the only one (ADR-0192); empty = ploegd configures no GitLab provider, so findings never reach a merge request."
             },
             "publicUrl": {
               "type": "string",
@@ -1549,7 +1549,7 @@
           "properties": {
             "url": {
               "type": "string",
-              "description": "The workers' forge URL (FORGE_URL): clone, push, pull-request API and the forge proxy upstream. An in-cluster URL keeps Run traffic off the public gateway. Required when the executor is enabled on this forge; empty with the executor off = ploegd has no forge provider."
+              "description": "The workers' forge URL (FORGE_URL, or the claim's forgeUrl in a multi-forge release): clone, push, pull-request API and the forge proxy upstream. An in-cluster URL keeps Run traffic off the public gateway. Set = Forgejo is an active forge (ADR-0192). Required when the executor is enabled on this forge; empty with the executor off = ploegd has no forge provider."
             },
             "publicUrl": {
               "type": "string",

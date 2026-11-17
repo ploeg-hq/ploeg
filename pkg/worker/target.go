@@ -18,12 +18,42 @@ const TargetSourceEnv = "env"
 // than an exit: exiting silently strands the lease until the sweeper reaps it.
 var errNoTarget = errors.New("no repository configured: the work item resolved no target and the worker has no fallback repo")
 
+// errNoForgeURL means neither the claim nor the worker names a forge URL: a
+// multi-forge release whose ploegd resolved no forge for the Run.
+var errNoForgeURL = errors.New("no forge URL: the claim carries no forgeUrl and the worker has no FORGE_URL")
+
+// resolveClaimTarget is resolveTarget with the forge the claim carries
+// (ADR-0192): ploegd resolved it from the Work Target through the forge
+// registry, so it wins over the worker's boot-time PLOEG_TARGET_FORGE and
+// FORGE_URL. A Run pinned to its env target keeps the env forge when the
+// worker has one.
+func resolveClaimTarget(cfg Config, claimed *ClaimResponse, log *slog.Logger) (harness.RepoRef, error) {
+	ref, err := resolveTarget(cfg, claimed.WorkItem, log)
+	if err != nil {
+		return harness.RepoRef{}, err
+	}
+	pinnedToEnvForge := cfg.TargetSource == TargetSourceEnv && cfg.ForgeURL != ""
+	if !pinnedToEnvForge {
+		if claimed.ForgeDialect != "" {
+			ref.Forge = claimed.ForgeDialect
+		}
+		if claimed.ForgeURL != "" {
+			ref.ForgeURL = claimed.ForgeURL
+		}
+	}
+	if ref.ForgeURL == "" {
+		return harness.RepoRef{}, errNoForgeURL
+	}
+	return ref, nil
+}
+
 // resolveTarget decides which repository this run acts on.
 //
 //  1. PLOEG_TARGET_SOURCE=env → the env target, unconditionally.
 //  2. a resolved claim target → owner+repo from the claim. Forge URL and base
-//     branch fall back field-by-field, because the forge is still global and a
-//     map entry legitimately omits the base branch.
+//     branch fall back field-by-field to the env, because a map entry
+//     legitimately omits the base branch; resolveClaimTarget then lays the
+//     claim's forge over it.
 //  3. otherwise → the env target (exactly the pre-decoupling behavior).
 //
 // Owner and repo are ATOMIC: a half-resolved target is never blended with env.
@@ -48,7 +78,7 @@ func resolveTarget(cfg Config, item work.WorkItem, log *slog.Logger) (harness.Re
 	if item.Target != nil && item.Target.Resolved() {
 		ref := harness.RepoRef{
 			Forge:      item.Target.Forge,
-			ForgeURL:   cfg.ForgeURL, // forge is global today; Target carries an id, not a URL
+			ForgeURL:   cfg.ForgeURL,
 			Owner:      item.Target.Owner,
 			Name:       item.Target.Repo,
 			BaseBranch: item.Target.BaseBranch,

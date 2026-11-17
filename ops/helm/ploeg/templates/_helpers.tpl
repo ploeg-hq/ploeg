@@ -78,6 +78,50 @@ ploegd or its workers need is unset.
 {{- fail (printf "executor.%s.url is required when executor.enabled is true: the forge URL workers clone from and push to" $forge.kind) -}}
 {{- end -}}
 {{- end -}}
+{{- include "ploeg.requireMintingForges" . -}}
+{{- end -}}
+
+{{/*
+ploeg.activeForges lists the forge blocks that set a url, as a JSON array:
+each is a forge ploegd serves (ADR-0192). More than one makes the release
+multi-forge.
+*/}}
+{{- define "ploeg.activeForges" -}}
+{{- $ex := .Values.executor -}}
+{{- $out := list -}}
+{{- range $name := list "forgejo" "gitlab" "github" -}}
+{{- if (get $ex $name | default dict).url -}}
+{{- $out = append $out $name -}}
+{{- end -}}
+{{- end -}}
+{{- $out | toJson -}}
+{{- end -}}
+
+{{- define "ploeg.multiForge" -}}
+{{- if gt (len (include "ploeg.activeForges" . | fromJsonArray)) 1 }}true{{ end -}}
+{{- end -}}
+
+{{/*
+ploeg.requireMintingForges fails the render of a multi-forge release in which
+a forge cannot mint per-Run credentials: its worker pods hold no forge
+credential, so ploegd mints every Run's (ADR-0192). ploegd refuses the same
+release at start.
+*/}}
+{{- define "ploeg.requireMintingForges" -}}
+{{- $active := include "ploeg.activeForges" . | fromJsonArray -}}
+{{- if gt (len $active) 1 -}}
+{{- $ex := .Values.executor -}}
+{{- $names := join ", " $active -}}
+{{- if has "gitlab" $active -}}
+{{- fail (printf "executor.gitlab is active beside another forge (%s): GitLab cannot mint a credential per Run, so it can only be the only forge of its release (ADR-0192). Unset executor.gitlab.url, or the url of every other forge block" $names) -}}
+{{- end -}}
+{{- if and (has "forgejo" $active) (not ($ex.forgejo.botPasswordSecret | default dict).name) -}}
+{{- fail (printf "executor.forgejo is active beside another forge (%s) but sets no botPasswordSecret: in a release with more than one forge ploegd mints every Run's forge credential, and Forgejo mints only with the bot's password on Forgejo 15 or later (ADR-0192). Set executor.forgejo.botPasswordSecret" $names) -}}
+{{- end -}}
+{{- if and (has "github" $active) (not ((.Values.tracker | default dict).github | default dict).appId) -}}
+{{- fail (printf "executor.github is active beside another forge (%s) but tracker.github.appId is unset: in a release with more than one forge ploegd mints every Run's forge credential, and GitHub mints only through a GitHub App (ADR-0192). Set tracker.github.appId and tracker.github.appPrivateKeySecret" $names) -}}
+{{- end -}}
+{{- end -}}
 {{- end -}}
 
 {{- define "ploeg.apiUrl" -}}
@@ -891,10 +935,16 @@ spec:
               key: {{ $root.Values.executor.workerAuth.staticInferenceSecret.key }}
         {{- end }}
         {{- $forge := include "ploeg.forge" $root | fromJson }}
+        {{- $multiForge := include "ploeg.multiForge" $root }}
         - name: PLOEG_TARGET_FORGE
           value: {{ $forge.kind | quote }}
+        {{- /* ADR-0192: a worker of a multi-forge release holds no forge URL
+             and no forge credential. Each claim carries the Run's forge and
+             a credential ploegd minted for that Run alone. */}}
+        {{- if not $multiForge }}
         - name: FORGE_URL
           value: {{ $forge.url | quote }}
+        {{- end }}
         {{- /* ADR-0013 tier 1: a READING Run gets a read-only forge credential,
              so the writer/reader split is enforced by the forge and not only
              by Ploeg's scheduling. The repos are private, so "no credential at
@@ -905,13 +955,14 @@ spec:
              when the pod was built some other way. */}}
         {{- $isReader := and (ne ($role.name | default "") "") (not $role.writes) }}
         {{- $readSecret := $forge.readTokenSecret }}
-        {{- if and $isReader (not (and $readSecret.name $readSecret.key)) }}
+        {{- if and $isReader (not $multiForge) (not (and $readSecret.name $readSecret.key)) }}
         {{- fail (printf "team %s: role %q reads but executor.%s.readTokenSecret is not set; a reading Role must not receive the read-write forge token (ADR-0013 tier 1). Set readTokenSecret.name and readTokenSecret.key to a read-only token" $team.name $role.name $forge.kind) }}
         {{- end }}
         {{- if $role.name }}
         - name: PLOEG_FORGE_TOKEN_ACCESS
           value: {{ ternary "read-only" "read-write" $isReader | quote }}
         {{- end }}
+        {{- if not $multiForge }}
         - name: AGENT_BUILDER_TOKEN
           valueFrom:
             secretKeyRef:
@@ -922,6 +973,7 @@ spec:
               name: {{ $forge.tokenSecret.name }}
               key: {{ $forge.tokenSecret.key }}
               {{- end }}
+        {{- end }}
         # FALLBACK target only. The repository belongs to the work item,
         # resolved at ingest from its tracker scope and delivered on the claim
         # (R11, ADR-0001); these render only while a team still pins a repo,

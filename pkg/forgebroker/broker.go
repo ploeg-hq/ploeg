@@ -50,7 +50,7 @@ type Sweeper interface {
 	SweepOrphans(ctx context.Context, leased func(context.Context) ([]string, error)) (int, error)
 }
 
-// MintRequest describes the push rights one writing Run needs.
+// MintRequest describes the forge rights one Run needs.
 type MintRequest struct {
 	// RunToken identifies the Run; its first 12 hex become the token name, so
 	// a token in the forge's UI can be traced to a Run, a Shift and a ticket
@@ -63,6 +63,9 @@ type MintRequest struct {
 	// Forge is the forge id of the Run's Work Target; empty is the default
 	// forge. A Router sends the mint to that forge's broker.
 	Forge string
+	// Read asks for a credential that can only read the repository, for a
+	// reading Run (ADR-0192). False asks for push rights.
+	Read bool
 }
 
 // Credential is a minted per-run forge token.
@@ -84,7 +87,13 @@ type Credential struct {
 // configured, and it keeps the worker path identical either way.
 type Static struct{ Token string }
 
-func (s Static) Mint(context.Context, MintRequest) (Credential, error) {
+// Mint hands a writing Run the shared token and a reading Run nothing: the
+// shared token can push, and a reader keeps the read-only token its pod
+// mounts (ADR-0013 tier 1).
+func (s Static) Mint(_ context.Context, req MintRequest) (Credential, error) {
+	if req.Read {
+		return Credential{}, nil
+	}
 	return Credential{Token: s.Token}, nil
 }
 

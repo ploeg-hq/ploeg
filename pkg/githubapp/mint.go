@@ -18,6 +18,13 @@ func WriterPermissions() Permissions {
 	return Permissions{"contents": "write", "pull_requests": "write", "checks": "read", "statuses": "read", "metadata": "read"}
 }
 
+// ReaderPermissions are what a reading Run needs and nothing it could change
+// the repository with: read its contents, pull requests, checks and commit
+// statuses (ADR-0192).
+func ReaderPermissions() Permissions {
+	return Permissions{"contents": "read", "pull_requests": "read", "checks": "read", "statuses": "read", "metadata": "read"}
+}
+
 // ForgePermissions are what ploegd's own forge reads and comments need: read
 // the repository, comment on and read pull requests, and read checks and
 // statuses. ploegd never pushes.

@@ -69,7 +69,10 @@ env:
   PLOEG_GITLAB_SECRET: Shared secret GitLab sends as `X-Gitlab-Token` to `POST /webhooks/forge/gitlab` (chart `executor.gitlab.webhookSecret`). Unset rejects every GitLab webhook.
   PLOEG_TARGET_FORGE:
     ploegd: Forge instance id a Work Target carries by default (chart `executor.forge`). Binds to the configured forge of that dialect, or to the only configured forge.
-    ploeg-worker: Forge dialect the worker acts against (chart `executor.forge`).
+    ploeg-worker: Forge dialect the worker acts against when the claim names none (chart `executor.forge`). The claim's `forgeDialect` wins over it (ADR-0192).
+  PLOEG_FORGEJO_WORKER_URL: The Forgejo URL a claim hands workers for a Run on Forgejo (chart `executor.forgejo.url`, rendered in a multi-forge release). Unset in a multi-forge release = `PLOEG_FORGEJO_URL`; unset with one forge = the worker keeps its `FORGE_URL` (ADR-0192).
+  PLOEG_GITHUB_WORKER_URL: The GitHub URL a claim hands workers for a Run on GitHub (chart `executor.github.url`, rendered in a multi-forge release). Unset in a multi-forge release = `PLOEG_GITHUB_URL`; unset with one forge = the worker keeps its `FORGE_URL` (ADR-0192).
+  PLOEG_GITLAB_WORKER_URL: The GitLab URL a claim hands workers for a Run on GitLab. GitLab is only ever the sole forge of its release, so the chart never renders it; set, it replaces the worker's `FORGE_URL` on every claim (ADR-0192).
   LITELLM_ADMIN_URL:
     ploegd: LiteLLM management URL (chart `executor.litellm.adminUrl`). Unset disables key revocation, and managed worker mode then refuses to start.
     ploeg-worker: Controller-only. The worker refuses to start when it is set.
@@ -114,7 +117,8 @@ env:
   LLM_API_KEY: Static inference key for legacy mode (chart `executor.workerAuth.staticInferenceSecret`).
   LLM_BASE_URL: Model gateway URL (chart `executor.litellm.baseUrl`).
   LITELLM_KEY_DURATION: Lifetime of the per-run inference key (chart `executor.litellm.keyDuration`).
-  AGENT_BUILDER_TOKEN: Forge token for clone and push. A reading Role gets `executor.forgejo.readTokenSecret` when set. Writers also pass it to the harness.
+  AGENT_BUILDER_TOKEN: Forge token for clone and push in a release with one forge. A reading Role gets `executor.<forge>.readTokenSecret`. Writers also pass it to the harness. A credential minted for the Run on its claim wins over it. A worker of a multi-forge release has none, nor `FORGE_URL`; it takes both from each claim (ADR-0192). Set it and `FORGE_URL` together or not at all.
+  FORGE_URL: The forge the worker clones from and pushes to in a release with one forge (chart `executor.<forge>.url`). The claim's `forgeUrl` wins over it. Unset in a multi-forge release, together with `AGENT_BUILDER_TOKEN` (ADR-0192).
   REPO_OWNER: Fallback repository owner for a team that pins one. The repository normally comes from the claimed Work Item.
   REPO_NAME: Fallback repository name for a team that pins one. The repository normally comes from the claimed Work Item.
   PLOEG_BASE_BRANCH: Fallback branch the worker clones, branches from and targets. Unset means the repository default branch.

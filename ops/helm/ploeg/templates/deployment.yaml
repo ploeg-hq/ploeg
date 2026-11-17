@@ -257,6 +257,15 @@ spec:
             {{- end }}
             - name: PLOEG_TARGET_FORGE
               value: {{ .Values.executor.forge | default "forgejo" | quote }}
+            {{- /* ADR-0192: in a multi-forge release each claim carries the
+                 URL workers use for the Run's forge, which is the block's
+                 url, not ploegd's publicUrl. */}}
+            {{- if include "ploeg.multiForge" . }}
+            {{- range $name := include "ploeg.activeForges" . | fromJsonArray }}
+            - name: {{ printf "PLOEG_%s_WORKER_URL" (upper $name) }}
+              value: {{ (get $.Values.executor $name).url | quote }}
+            {{- end }}
+            {{- end }}
             {{- with .Values.tracker }}
             {{- if .url }}
             - name: PLOEG_VIKUNJA_URL

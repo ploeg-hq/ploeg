@@ -188,6 +188,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 	// registered under both, since a webhook path names the dialect.
 	forgeID := forgeIDFromEnv()
 	forges := map[string]provider.ForgeProvider{}
+	active := map[string]activeForge{}
 	if forgeURL := trimSlash(os.Getenv("PLOEG_FORGEJO_URL")); forgeURL != "" {
 		fj := &forgejo.Provider{
 			BaseURL: forgeURL,
@@ -196,6 +197,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 			Log:     log,
 		}
 		forges[fj.Name()] = fj
+		active[fj.Name()] = activeForge{provider: fj, url: forgeURL, workerURL: workerURLFromEnv(fj.Name())}
 		log.Info("forge provider configured", "dialect", fj.Name(), "url", forgeURL)
 		if fj.Secret == "" {
 			log.Warn("PLOEG_FORGEJO_SECRET is unset; every Forgejo webhook is rejected")
@@ -209,6 +211,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 			Log:     log,
 		}
 		forges[gl.Name()] = gl
+		active[gl.Name()] = activeForge{provider: gl, url: glURL, workerURL: workerURLFromEnv(gl.Name())}
 		log.Info("forge provider configured", "dialect", gl.Name(), "url", glURL)
 		if gl.Secret == "" {
 			log.Warn("PLOEG_GITLAB_SECRET is unset; every GitLab webhook is rejected")
@@ -218,9 +221,9 @@ func run(ctx context.Context, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	var githubForgeIDs []string
 	if ghForge != nil {
 		forges[ghForge.Name()] = ghForge
+		active[ghForge.Name()] = activeForge{provider: ghForge, url: ghForge.BaseURL, workerURL: workerURLFromEnv(ghForge.Name())}
 		log.Info("forge provider configured", "dialect", ghForge.Name(), "url", ghForge.BaseURL)
 	}
 	// Bind the INSTANCE id (ADR-0016) to a dialect. PLOEG_TARGET_FORGE names
@@ -245,14 +248,16 @@ func run(ctx context.Context, log *slog.Logger) error {
 		log.Info("no forge provider configured (PLOEG_FORGEJO_URL/PLOEG_GITLAB_URL/PLOEG_GITHUB_URL unset); findings will not reach a pull request")
 	}
 
-	forgeCreds, forgeSweeper, err := forgeCredentials(ctx, log)
+	forgejoCreds, forgejoSweeper, err := forgeCredentials(ctx, log)
 	if err != nil {
 		return err
 	}
-	if ghForge != nil {
-		githubForgeIDs = forgeIDsOf(forges, ghForge)
+	release := releaseForges{registry: forges, defaultForge: forgeID, byDialect: active,
+		forgejoCreds: forgejoCreds, forgejoSweeper: forgejoSweeper, githubApp: ghApp}
+	if err := release.requireMinting(); err != nil {
+		return err
 	}
-	forgeCreds, forgeSweeper = withGitHubCredentials(log, forgeCreds, forgeSweeper, ghApp, githubForgeIDs, forgeID)
+	forgeCreds, forgeSweeper := release.credentials(log)
 
 	// Gateway credential sweeper (llmbroker.Sweeper) for per-run key
 	// lifecycle: nil = no gateway configured, revocation disabled.
@@ -449,6 +454,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 		TeamCaps:       runCaps,
 		Forges:         forges,
 		ForgeCreds:     forgeCreds,
+		ClaimForges:    release.directory(),
 		ClaudeSessions: claudeSessions(log),
 		CreatedWork:    createdWork,
 
