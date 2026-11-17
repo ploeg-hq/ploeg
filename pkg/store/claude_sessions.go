@@ -189,6 +189,19 @@ func (s *Store) ClaudeSessionFor(ctx context.Context, runToken string) (ClaudeSe
 	return st, err
 }
 
+// ReadingRunTarget returns the Work Target of a running reading Run: the one
+// repository a refreshed read credential may name (ADR-0192).
+func (s *Store) ReadingRunTarget(ctx context.Context, runToken string) (work.Target, error) {
+	b, found, err := loadRunBinding(ctx, s.pool, runToken)
+	if err != nil {
+		return work.Target{}, err
+	}
+	if !found || b.writes || !b.target.Resolved() {
+		return work.Target{}, ErrUnknownRun
+	}
+	return b.target, nil
+}
+
 // WritingRunTarget returns the Work Target of a running writing Run that
 // holds its Lease: the one repository a refreshed push credential may name.
 func (s *Store) WritingRunTarget(ctx context.Context, runToken string) (work.Target, error) {

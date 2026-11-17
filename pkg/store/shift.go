@@ -538,10 +538,50 @@ func (s *Store) RecordForgeToken(ctx context.Context, runToken, tokenID string) 
 	return nil
 }
 
-// LeasedRunTokens lists the run token of every Run that holds a Lease: the
-// Runs whose push credentials the forge sweep must leave alone.
+// RecordReaderForgeToken stores the read credential minted for a running
+// reading Run (ADR-0192), so the Run's settlement, its expiry and the forge
+// sweep can revoke it. A reader holds no Lease, so it lives on the Run.
+func (s *Store) RecordReaderForgeToken(ctx context.Context, runToken, tokenID string) error {
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE agent_runs SET forge_token_id = $2
+		WHERE run_token = $1 AND state = 'running' AND NOT writes`, runToken, tokenID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrLeaseLost
+	}
+	return nil
+}
+
+// SwapReaderForgeToken replaces a running reading Run's read credential and
+// returns the one it replaced, for the caller to revoke.
+func (s *Store) SwapReaderForgeToken(ctx context.Context, runToken, tokenID string) (string, error) {
+	var previous string
+	err := s.pool.QueryRow(ctx, `
+		WITH old AS (
+			SELECT id, forge_token_id FROM agent_runs
+			WHERE run_token = $1 AND state = 'running' AND NOT writes
+			FOR UPDATE
+		)
+		UPDATE agent_runs r SET forge_token_id = $2 FROM old
+		WHERE r.id = old.id
+		RETURNING old.forge_token_id`, runToken, tokenID).Scan(&previous)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrLeaseLost
+	}
+	return previous, err
+}
+
+// LeasedRunTokens lists the run token of every Run that holds a Lease or
+// still runs: the Runs whose forge credentials the forge sweep must leave
+// alone. A running reader counts before its credential is recorded, because
+// a reader takes no Lease before it mints (ADR-0192).
 func (s *Store) LeasedRunTokens(ctx context.Context) ([]string, error) {
-	rows, err := s.pool.Query(ctx, `SELECT run_token FROM leases`)
+	rows, err := s.pool.Query(ctx, `
+		SELECT run_token FROM leases
+		UNION
+		SELECT run_token FROM agent_runs WHERE state = 'running'`)
 	if err != nil {
 		return nil, err
 	}
@@ -589,9 +629,10 @@ type ExpiredRun struct {
 	Team, Role string
 	RunToken   string
 	Writes     bool
-	// ForgeTokenID is the per-run push credential minted for a writing Run
-	// (ADR-0013 tier 2). The sweeper revokes it: a partitioned pod whose
-	// Lease lapsed must lose the ability to push, not merely the right to.
+	// ForgeTokenID is the per-run forge credential minted for the Run: a
+	// writer's push credential (ADR-0013 tier 2) or a reader's read
+	// credential (ADR-0192). The sweeper revokes it: a partitioned pod whose
+	// Run lapsed must lose the ability to push or read, not merely the right.
 	ForgeTokenID string
 }
 
@@ -619,7 +660,7 @@ func (s *Store) ExpireRuns(ctx context.Context) ([]ExpiredRun, error) {
 		    summary = 'run deadline expired', failure_reason = 'lease_lost'
 		WHERE state = 'running' AND expires_at IS NOT NULL AND expires_at < now()
 		AND NOT EXISTS(SELECT 1 FROM operator_executions e WHERE e.run_id=agent_runs.id)
-		RETURNING work_item_id, COALESCE(shift_id, 0), team, role, run_token, writes`)
+		RETURNING work_item_id, COALESCE(shift_id, 0), team, role, run_token, writes, forge_token_id`)
 	if err != nil {
 		return nil, err
 	}
@@ -627,7 +668,7 @@ func (s *Store) ExpireRuns(ctx context.Context) ([]ExpiredRun, error) {
 	for rows.Next() {
 		var e ExpiredRun
 		var workItemID *int64
-		if err := rows.Scan(&workItemID, &e.ShiftID, &e.Team, &e.Role, &e.RunToken, &e.Writes); err != nil {
+		if err := rows.Scan(&workItemID, &e.ShiftID, &e.Team, &e.Role, &e.RunToken, &e.Writes, &e.ForgeTokenID); err != nil {
 			return nil, err
 		}
 		if workItemID != nil {
@@ -645,10 +686,14 @@ func (s *Store) ExpireRuns(ctx context.Context) ([]ExpiredRun, error) {
 		// returned so the caller can revoke it at the forge (ADR-0013 tier 2)
 		// — a zombie writer must LOSE the ability to push, not merely the
 		// right to.
+		var leaseTokenID string
 		if err := tx.QueryRow(ctx,
 			`DELETE FROM leases WHERE run_token = $1 RETURNING forge_token_id`, e.RunToken).
-			Scan(&e.ForgeTokenID); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			Scan(&leaseTokenID); err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return nil, err
+		}
+		if leaseTokenID != "" {
+			e.ForgeTokenID = leaseTokenID
 		}
 		var workItemID *int64
 		if e.WorkItemID != 0 {

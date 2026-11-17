@@ -40,8 +40,8 @@ type Withdrawal struct {
 	// StoppedRunTokens are the running Runs finished by the withdrawal. The
 	// caller blocks their model keys; the worker learns from its next renew.
 	StoppedRunTokens []string
-	// ForgeTokenIDs are push credentials of the released Leases, for the
-	// caller to revoke.
+	// ForgeTokenIDs are the forge credentials of the released Leases and the
+	// stopped reading Runs, for the caller to revoke.
 	ForgeTokenIDs []string
 	// CommandID is the operator cancel's idempotency key, empty without one.
 	CommandID string
@@ -260,13 +260,20 @@ func (s *Store) WithdrawWorkItemGuarded(ctx context.Context, workItemID int64, t
 	}
 	out.CancelledRuns = tag.RowsAffected()
 	rows, err := tx.Query(ctx, `UPDATE agent_runs SET state = 'finished', finished_at = now(), summary = $2
-		WHERE work_item_id = $1 AND state = 'running' AND role <> 'ask' RETURNING run_token`, workItemID, summary)
+		WHERE work_item_id = $1 AND state = 'running' AND role <> 'ask' RETURNING run_token, forge_token_id`, workItemID, summary)
 	if err != nil {
 		return out, err
 	}
-	out.StoppedRunTokens, err = pgx.CollectRows(rows, pgx.RowTo[string])
+	stopped, err := pgx.CollectRows(rows, pgx.RowToStructByPos[stoppedRun])
 	if err != nil {
 		return out, err
+	}
+	out.StoppedRunTokens = make([]string, 0, len(stopped))
+	for _, r := range stopped {
+		out.StoppedRunTokens = append(out.StoppedRunTokens, r.RunToken)
+		if r.ForgeTokenID != "" {
+			out.ForgeTokenIDs = append(out.ForgeTokenIDs, r.ForgeTokenID)
+		}
 	}
 	rows, err = tx.Query(ctx, `DELETE FROM leases WHERE work_item_id = $1 RETURNING forge_token_id`, workItemID)
 	if err != nil {
@@ -297,4 +304,9 @@ func (s *Store) WithdrawWorkItemGuarded(ctx context.Context, workItemID int64, t
 	}
 	out.State, out.Withdrawn = work.StateWithdrawn, true
 	return out, tx.Commit(ctx)
+}
+
+type stoppedRun struct {
+	RunToken     string
+	ForgeTokenID string
 }
