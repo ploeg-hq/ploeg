@@ -89,6 +89,10 @@ type Ask struct {
 	ScopeID        string     `json:"-"`
 	PeriodStart    time.Time  `json:"-"`
 	RunToken       string     `json:"-"`
+	// ForgeTokenID is the read credential FinishAsk took from the Ask's Run,
+	// for the caller to revoke (ADR-0192); empty when none was minted or the
+	// Run had already finished.
+	ForgeTokenID string `json:"-"`
 }
 
 // AdmitAsk is one Ask admission. BudgetUSD is the per-Ask Budget, LimitUSD
@@ -323,12 +327,12 @@ func (s *Store) FinishAsk(ctx context.Context, consumer, actor, askID string) (A
 	if err != nil {
 		return Ask{}, err
 	}
+	var forgeTokenID string
 	if finished == nil {
 		if _, err = tx.Exec(ctx, `UPDATE asks SET finished_at = now() WHERE run_id = $1`, runID); err != nil {
 			return Ask{}, err
 		}
-		if _, err = tx.Exec(ctx, `UPDATE agent_runs SET state = 'finished', finished_at = now(), summary = 'Ask finished'
-			WHERE id = $1 AND state = 'running'`, runID); err != nil {
+		if forgeTokenID, err = finishRunningRun(ctx, tx, runID, "Ask finished"); err != nil {
 			return Ask{}, err
 		}
 		if err = audit(ctx, tx, "operator:"+consumer+":"+actor, "ask.finished", &workItemID, map[string]any{
@@ -340,5 +344,19 @@ func (s *Store) FinishAsk(ctx context.Context, consumer, actor, askID string) (A
 	if err != nil {
 		return a, err
 	}
+	a.ForgeTokenID = forgeTokenID
 	return a, tx.Commit(ctx)
+}
+
+// finishRunningRun finishes a running Run that no outcome report ends and
+// returns the read credential minted for it, which the caller revokes
+// (ADR-0192). A Run that already finished returns none.
+func finishRunningRun(ctx context.Context, tx pgx.Tx, runID int64, summary string) (string, error) {
+	var forgeTokenID string
+	err := tx.QueryRow(ctx, `UPDATE agent_runs SET state = 'finished', finished_at = now(), summary = $2
+		WHERE id = $1 AND state = 'running' RETURNING forge_token_id`, runID, summary).Scan(&forgeTokenID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	return forgeTokenID, err
 }

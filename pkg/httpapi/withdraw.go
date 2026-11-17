@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/ploeg-hq/ploeg/pkg/forgebroker"
 	"github.com/ploeg-hq/ploeg/pkg/provider"
 	"github.com/ploeg-hq/ploeg/pkg/store"
 	"github.com/ploeg-hq/ploeg/pkg/work"
@@ -34,17 +33,7 @@ func (s *Server) withdrawGuarded(ctx context.Context, workItemID int64, teams []
 			s.Log.Error("withdrawn run key block unresolved; the block sweep will retry", "work_item", workItemID)
 		}
 	}
-	for _, id := range wd.ForgeTokenIDs {
-		if s.ForgeCreds == nil {
-			break
-		}
-		revokeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), forgeCleanupTimeout)
-		err := s.ForgeCreds.Revoke(revokeCtx, forgebroker.Credential{ID: id})
-		cancel()
-		if err != nil {
-			s.Log.Error("withdrawn run forge credential revoke failed; the forge sweep will retry", "work_item", workItemID)
-		}
-	}
+	s.revokeFinishedRunCredentials(ctx, "withdrawn work item "+strconv.FormatInt(workItemID, 10), wd.ForgeTokenIDs...)
 	s.Log.Info("work item withdrawn", "id", workItemID, "reason", reason, "shift", wd.ShiftID,
 		"cancelled_runs", wd.CancelledRuns, "stopped_runs", len(wd.StoppedRunTokens), "keys_blocked", blocked)
 	return wd, blocked, nil

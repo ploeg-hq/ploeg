@@ -26,6 +26,7 @@ func (s *Server) ReconcileOperatorExecutions(ctx context.Context) error {
 	}
 	var failures []error
 	for _, execution := range executions {
+		s.revokeFinishedRunCredentials(ctx, "operator execution", execution.ForgeTokenIDs...)
 		if !execution.Demo && s.LLMControl != nil {
 			if err := s.LLMControl.Block(ctx, execution.RunToken); err != nil {
 				failures = append(failures, err)
@@ -211,6 +212,7 @@ func (s *Server) handleExecutionCommand(w http.ResponseWriter, r *http.Request) 
 		executionError(w, err)
 		return
 	}
+	s.revokeFinishedRunCredentials(r.Context(), "operator execution", e.ForgeTokenIDs...)
 	operatorJSON(w, 200, map[string]any{"schemaVersion": "1.0", "execution": e})
 }
 
