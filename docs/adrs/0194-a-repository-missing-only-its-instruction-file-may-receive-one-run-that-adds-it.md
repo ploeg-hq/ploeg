@@ -83,15 +83,23 @@ The writer's general rule that changing `AGENTS.md` "is outside the Work Item un
 
 ### 5. Budget
 
-The Shift pool is the lowest of the Team plan's pool, the consumer's `maxBudgetUsd`, the Admission's `budgetUsd`, and the Team's prepare cap: `teams.<team>.prepareRepository.maxBudgetUsd`, default **USD 2.00**. The cap is a default, not a fixed price: a large repository may need it raised. Holds, settlement, the Team's period cap (ADR-0162) and the review loop's caps ([ADR-0017](0017-the-review-loop-is-verdict-driven-and-capped.md)) apply unchanged. Spend is what the gateway meters; nothing is estimated or invented.
+The Shift pool is the lowest of the Team plan's pool, the consumer's `maxBudgetUsd`, the Admission's `budgetUsd`, and the Team's prepare cap: `teams.<team>.prepareRepository.maxBudgetUsd`, default **USD 2.00**. The cap is a default, not a fixed price: a large repository may need it raised. Holds, settlement and the Team's period cap (ADR-0162) apply unchanged. The review loop ([ADR-0017](0017-the-review-loop-is-verdict-driven-and-capped.md)) does not run for this kind (section 6), so the pool pays for one writing Round and one pass of the plan's reviewing Rounds. Spend is what the gateway meters; nothing is estimated or invented.
 
 ### 6. Review and merge
 
-The pull request is reviewed like any other. Under ADR-0030 and ADR-0163 a reviewing Run treats any change to an instruction file as a finding and never approves it, so a reviewer posts its findings (wrong or uncited commands, invented conventions, missing sections) and leaves the verdict to a person. The writer may answer findings in later Rounds within the pool, and every Round's push is held to the same one-path check. A person merges, as for every Work Item; Ploeg never merges on its own.
+The pull request is reviewed like any other, but **no reviewer's verdict reopens the writer**. Under ADR-0030 and ADR-0163 a reviewing Run treats any change to an instruction file as a finding and never approves it ([`pkg/taskprompt/prompt.go`](../../pkg/taskprompt/prompt.go) tells it to omit the verdict when the Work Item asked for the change). Under ADR-0017 a `request_changes` verdict reopens the plan's writing Round up to `maxFixRounds` (default 2). Together they would spend the pool on fix rounds whose only possible outcome is another change to the same file that the reviewer may again not approve, and then park the Work Item. So for `kind: prepare_repository`:
+
+* the Shift runs one writing Round and the plan's reviewing Rounds once, as if the Team's `maxFixRounds` were 0, whatever the Team plan says;
+* a reviewer's findings (wrong or uncited commands, invented conventions, missing sections) are posted on the pull request as usual, and a `request_changes` verdict is recorded with them but neither reopens the writer nor holds the pull request back from review;
+* the Shift closes with the pull request at `awaiting_review` for a person, provided the one-path check passed and the forge's CI gate ([ADR-0119](0119-a-pull-request-is-ready-for-review-only-when-the-forges-ci-passed-on-its-head.md)) lets it through.
+
+A person who wants the file changed edits the branch, asks for changes in a pull request review, which reaches Ploeg as on any pull request, or closes it and starts a new prepare. A person merges, as for every Work Item; Ploeg never merges on its own.
 
 ### 7. After the merge
 
 When the forge reports the pull request merged, the Work Item closes `done` as any delivered Work Item does, and Ploeg re-inspects the target at once instead of waiting for the next ingest. The gate's verdict turns ready, `target.readiness_changed` is written to the event feed and `/connections` reports the target ready, so a consumer can move the person on. If the pull request is closed unmerged, the Work Item closes as any other and a new `prepare_repository` Admission is allowed.
+
+**Cancelled after the pull request opened.** When a person cancels a `prepare_repository` Work Item (`POST /api/v1/operator/work-items/{id}/cancel`) after its pull request opened, Ploeg closes that pull request through the forge's `PullRequestCloser` capability, as it does for a credential leak ([ADR-0105](0105-a-credential-leak-parks-the-work-item-and-closes-its-pull-request.md)): the branch is kept, a comment says the prepare was cancelled and by whom, and `work_item.prepare_cancelled` is written. The target can then take a new prepare at once. If the forge cannot close it (the adapter lacks the capability or the call fails), the cancel still lands, the response names the pull request as still open, and a new prepare Admission answers `409 prepare_in_progress` naming that pull request until a person closes it. Closing was chosen over refusing a second prepare while the first pull request is open, because a cancelled Work Item should not leave a pull request that looks live and blocks the next attempt.
 
 ### Consequences
 
@@ -100,6 +108,7 @@ When the forge reports the pull request merged, the Work Item closes `done` as a
 * Good, because the exception is checked by code at three points (Admission, claim, delivery) against one kind, one reason and one path, not by a model following a description.
 * Bad, because preparing a repository costs a Run's spend, up to the cap, where a hand-written file costs nothing in model spend.
 * Bad, because a model can still write a plausible but wrong file. Accepted: the citation rule and the reviewer's finding make errors checkable, and a person merges.
+* Bad, because a reviewer's findings are not fixed by a Run: a person fixes them on the branch or starts a new prepare. Accepted, because a fix round could only change the same file again, and the reviewer may not approve that either.
 * Bad, because the Work Item model gains a `kind` that every reader of Work Items, the operator API and the Admission fingerprint must carry.
 * Neutral, because a repository whose instruction file lives elsewhere (only `CLAUDE.md`, or a nested `AGENTS.md`) is still not ready, and this kind adds a root `AGENTS.md` beside it. A Run may read the existing file as input.
 
@@ -113,6 +122,8 @@ Proposed, none of these exist yet. Once built, `mise run verify` runs them throu
 * A claim test: a target that became ready before claim withdraws the Work Item with `already_prepared` and starts no Run; one that became archived ends the Run `stuck`.
 * A `pkg/worker` delivery test with an `httptest` forge: a branch adding only `AGENTS.md` opens a pull request; a branch that also changes another path, modifies an existing `AGENTS.md`, or adds a nested one ends `stuck` with `outside_deliverable` and pushes nothing.
 * A `pkg/taskprompt` golden test for the `prepare_repository` brief.
+* A `pkg/shiftengine` review-loop test: a `prepare_repository` Shift on a Team plan with `maxFixRounds: 2` whose reviewer returns `request_changes` opens no fix round, posts the findings, spends nothing further and settles at `awaiting_review`; the same verdict on a `change` Work Item still reopens the writer.
+* A cancel test with an `httptest` forge: cancelling a `prepare_repository` Work Item whose pull request is open closes it without deleting the branch and writes `work_item.prepare_cancelled`, after which a new prepare Admission is accepted; with a forge that cannot close, the cancel lands and a new prepare Admission answers `409 prepare_in_progress` naming the open pull request.
 * A merge test: the forge's merged event closes the Work Item `done`, re-inspects the target and writes `target.readiness_changed`.
 * `go test ./internal/ledger/` keeps this record well-formed, and `go test ./internal/boundary/` keeps it free of consumer names.
 
@@ -149,3 +160,4 @@ Proposed, none of these exist yet. Once built, `mise run verify` runs them throu
 * Open questions for the owner:
   * The default cap. Recommendation: USD 2.00, raised per Team; revisit after the first ten prepare Runs with their settled spend.
   * Whether the Admission may carry a short person's note ("our tests need Postgres") for the writer. Recommendation: not at Admission; a person can add one through the existing notes route once the Work Item is live, which reaches the next Run as a finding while the one-path check still holds.
+* 2026-11-17 — Amended after an independent review, before anything was built: section 6 now runs no fix round for this kind (a reviewer may never approve an instruction-file change, so ADR-0017's reopened writer could only spend the pool and park the Work Item); section 5 no longer applies the review loop's caps; section 7 says a cancel after the pull request opened closes it. Two Confirmation tests added.
