@@ -54,6 +54,27 @@ func (s *Server) mintForgeCredential(ctx context.Context, team string, run *stor
 	return forgebroker.Credential{}, false
 }
 
+// revokeFinishedRunCredentials revokes the forge credentials a Run kept
+// when something other than its outcome report finished it. A revoke that
+// fails is left to the forge sweep, which revokes every credential whose Run
+// no longer runs.
+func (s *Server) revokeFinishedRunCredentials(ctx context.Context, what string, ids ...string) {
+	if s.ForgeCreds == nil {
+		return
+	}
+	for _, id := range ids {
+		if id == "" {
+			continue
+		}
+		revokeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), forgeCleanupTimeout)
+		err := s.ForgeCreds.Revoke(revokeCtx, forgebroker.Credential{ID: id})
+		cancel()
+		if err != nil {
+			s.Log.Error("forge credential revoke failed; the forge sweep will retry", "finished", what, "err", err)
+		}
+	}
+}
+
 func credentialKind(writes bool) string {
 	if writes {
 		return "push credential"
@@ -99,7 +120,7 @@ func (s *Server) handleRefreshForgeCredential(w http.ResponseWriter, r *http.Req
 		runError(w, err)
 		return
 	}
-	cred, err := s.ForgeCreds.Mint(r.Context(), forgebroker.MintRequest{RunToken: runToken, Owner: target.Owner, Repo: target.Repo, Forge: target.Forge,
+	cred, err := s.ForgeCreds.Mint(r.Context(), forgebroker.MintRequest{RunToken: runToken, Owner: target.Owner, Repo: target.Repo, Forge: s.mintForgeID(target.Forge),
 		Read: !writes})
 	if err != nil {
 		s.Log.Error("forge credential refresh failed", "run", prefix12(runToken), "writes", writes, "err", err)

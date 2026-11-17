@@ -51,6 +51,9 @@ type ClaudeSessionRun struct {
 	Team        string
 	Role        string
 	Owner, Repo string
+	// Forge is the forge id of the Run's Work Target; empty is the default
+	// forge (ADR-0192).
+	Forge string
 	// Branch is the Shift's branch, the one the Run's Lease lets it push.
 	Branch string
 	// BaseBranch, Title and Reference come from the worker's record.
@@ -102,7 +105,7 @@ func (s *Store) WriterForClaudeSession(ctx context.Context, environmentID, sessi
 	var r ClaudeSessionRun
 	var writes, leased bool
 	err := s.pool.QueryRow(ctx, `
-		SELECT r.run_token, r.team, r.role, w.target_owner, w.target_repo, COALESCE(sh.branch, ''),
+		SELECT r.run_token, r.team, r.role, w.target_owner, w.target_repo, w.target_forge, COALESCE(sh.branch, ''),
 		       c.base_branch, c.title, c.reference, r.writes,
 		       EXISTS (SELECT 1 FROM leases l WHERE l.run_token = r.run_token AND l.expires_at > now())
 		FROM claude_sessions c
@@ -110,7 +113,7 @@ func (s *Store) WriterForClaudeSession(ctx context.Context, environmentID, sessi
 		JOIN work_items w ON w.id = r.work_item_id
 		LEFT JOIN shifts sh ON sh.id = r.shift_id
 		WHERE c.environment_id = $1 AND c.session_id = $2 AND r.state = 'running'`,
-		environmentID, sessionID).Scan(&r.RunToken, &r.Team, &r.Role, &r.Owner, &r.Repo, &r.Branch,
+		environmentID, sessionID).Scan(&r.RunToken, &r.Team, &r.Role, &r.Owner, &r.Repo, &r.Forge, &r.Branch,
 		&r.BaseBranch, &r.Title, &r.Reference, &writes, &leased)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ClaudeSessionRun{}, ErrUnknownRun

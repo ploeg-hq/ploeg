@@ -122,7 +122,7 @@ func (r releaseForges) directory() *httpapi.ForgeDirectory {
 		if url == "" && r.multiForge() {
 			url = f.url
 		}
-		d.Forges[id] = httpapi.ClaimForge{Dialect: dialect, URL: url}
+		d.Forges[id] = httpapi.ClaimForge{Dialect: dialect, URL: url, PloegdURL: f.url}
 	}
 	return d
 }
