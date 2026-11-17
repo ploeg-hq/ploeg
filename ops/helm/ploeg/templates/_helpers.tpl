@@ -585,9 +585,15 @@ global executor.harness defaults field-by-field (explicit hasKey checks, so
 {{- $ploegSecrets := list $root.Values.executor.litellm.masterKeySecret.name }}
 {{- with $root.Values.executor.workerAuth.bootstrapSecret }}{{- $ploegSecrets = append $ploegSecrets .name }}{{- end }}
 {{- with $root.Values.executor.workerAuth.staticInferenceSecret }}{{- $ploegSecrets = append $ploegSecrets .name }}{{- end }}
-{{- $forgeCfg := include "ploeg.forge" $root | fromJson }}
-{{- with $forgeCfg.tokenSecret.name }}{{- $ploegSecrets = append $ploegSecrets . }}{{- end }}
-{{- with $forgeCfg.readTokenSecret.name }}{{- $ploegSecrets = append $ploegSecrets . }}{{- end }}
+{{- $credentialForges := include "ploeg.activeForges" $root | fromJsonArray }}
+{{- $credentialForges = append $credentialForges ($root.Values.executor.forge | default "forgejo") | uniq }}
+{{- range $forgeName := $credentialForges }}
+{{- $forgeBlock := get $root.Values.executor $forgeName | default dict }}
+{{- range $secretField := list "tokenSecret" "readTokenSecret" "botPasswordSecret" }}
+{{- with (get $forgeBlock $secretField | default dict).name }}{{- $ploegSecrets = append $ploegSecrets . }}{{- end }}
+{{- end }}
+{{- end }}
+{{- with ((($root.Values.tracker | default dict).github | default dict).appPrivateKeySecret | default dict).name }}{{- $ploegSecrets = append $ploegSecrets . }}{{- end }}
 {{- with $root.Values.runIdentity }}{{- with .signingKeySecret }}{{- $ploegSecrets = append $ploegSecrets .name }}{{- end }}{{- end }}
 {{- with $root.Values.transactionToken }}{{- with .signingKeySecret }}{{- $ploegSecrets = append $ploegSecrets .name }}{{- end }}{{- end }}
 {{- range $i, $p := $ccPlugins }}
@@ -994,6 +1000,9 @@ spec:
         # default branch on clone and the worker's historical "main".
         - name: PLOEG_BASE_BRANCH
           value: {{ $baseBranch | quote }}
+        {{- end }}
+        {{- if and $multiForge (eq ($team.targetSource | default "") "env") }}
+        {{- fail (printf "team %s: targetSource env pins a worker to its env forge, and a worker of a release with more than one forge (%s) holds no forge URL and no forge credential of its own (ADR-0192). Unset targetSource, or serve one forge" $team.name (join ", " (include "ploeg.activeForges" $root | fromJsonArray))) }}
         {{- end }}
         {{- if $team.targetSource }}
         # env = ignore the claim's target and use this team's pinned repo.

@@ -104,6 +104,7 @@ for case in "ops/helm/ploeg/ci/reject-reader-without-read-token-values.yaml:read
 	"ops/helm/ploeg/ci/reject-forge-admin-token-values.yaml:adminTokenSecret is not supported" \
 	"ops/helm/ploeg/ci/reject-two-forges-forgejo-without-bot-password-values.yaml:executor.forgejo is active beside another forge (forgejo, github) but sets no botPasswordSecret" \
 	"ops/helm/ploeg/ci/reject-two-forges-with-gitlab-values.yaml:executor.gitlab is active beside another forge (forgejo, gitlab)" \
+	"ops/helm/ploeg/ci/reject-two-forges-env-target-values.yaml:team silver: targetSource env pins a worker to its env forge, and a worker of a release with more than one forge (forgejo, github)" \
 	"ops/helm/ploeg/ci/reject-two-forges-github-without-app-values.yaml:executor.github is active beside another forge (forgejo, github) but tracker.github.appId is unset" \
 	"ops/helm/ploeg/ci/reject-runtimeclass-non-string-values.yaml:runtimeClassName" \
 	"ops/helm/ploeg/ci/reject-runtimeclass-invalid-name-values.yaml:runtimeClassName" \
@@ -143,6 +144,23 @@ for case in "ops/helm/ploeg/ci/reject-reader-without-read-token-values.yaml:read
 		status=1
 	fi
 done
+
+FORGE_SECRET_VALUES=ops/helm/ploeg/ci/reject-claude-plugin-forge-secret-values.yaml
+plugin_secret='executor.teams[0].harness.claudeCode.plugins[0].env[0].secret.name'
+for secret in github-builder-token github-reader-token agent-builder-token agent-reader-token agent-builder-password ploeg-github-app; do
+	if out=$(helm template ploeg ops/helm/ploeg -f "$REQUIRED" -f "$FORGE_SECRET_VALUES" --set "$plugin_secret=$secret" 2>&1); then
+		echo "chart rendered a Claude Code plugin reading forge credential Secret $secret, which it must refuse"
+		status=1
+	elif ! printf '%s' "$out" | grep -qF "from Secret $secret, which holds a Ploeg credential"; then
+		echo "chart refused a plugin reading Secret $secret for the wrong reason:"
+		echo "$out"
+		status=1
+	fi
+done
+if ! helm template ploeg ops/helm/ploeg -f "$REQUIRED" -f "$FORGE_SECRET_VALUES" --set "$plugin_secret=session-link-token" >/dev/null 2>&1; then
+	echo "chart refused a Claude Code plugin reading an unrelated Secret beside two forges, which it must render"
+	status=1
+fi
 
 P1_VALUES=ops/helm/ploeg/ci/executor-default-worker-values.yaml
 P1_CHART=ops/helm/ploeg
