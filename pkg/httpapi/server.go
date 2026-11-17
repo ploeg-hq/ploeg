@@ -82,10 +82,15 @@ type Server struct {
 	// registered target's policy covers is opened or pushed to (ADR-0109).
 	// Nil = no target opted in; the events are recorded only.
 	PullRequestReads PullRequestReader
-	// ForgeCreds mints the per-run push credential a writing Run gets
-	// (ADR-0013 tier 2). Nil = the worker keeps its env credential, which is
-	// the pre-tier-2 behaviour.
+	// ForgeCreds mints the per-run forge credential a Run gets: push rights
+	// for a writing Run (ADR-0013 tier 2), read rights for a reading one
+	// (ADR-0192). Nil = the worker keeps its env credential, which is the
+	// pre-tier-2 behaviour.
 	ForgeCreds forgebroker.Broker
+	// ClaimForges resolves the forge a claimed Run acts on from its Work
+	// Target (ADR-0192). Nil = the claim carries no forge and the worker
+	// keeps its env forge.
+	ClaimForges *ForgeDirectory
 	// ClaudeSessions enables Runs executed in a Team's self-hosted Claude
 	// environment (ADR-0084). Nil = both of its routes answer 404.
 	ClaudeSessions *ClaudeSessions
@@ -610,6 +615,12 @@ type claimResponse struct {
 	// for a token that lives until it is revoked. The worker refreshes an
 	// expiring token through POST /api/v1/runs/{token}/forge-credential.
 	ForgeTokenExpiresAt *time.Time `json:"forgeTokenExpiresAt,omitempty"`
+	// ForgeDialect and ForgeURL are the forge the Run acts on, resolved from
+	// its Work Target through the forge registry (ADR-0192). Absent when
+	// ploegd resolves none; ForgeURL is also absent when the worker keeps its
+	// own FORGE_URL.
+	ForgeDialect string `json:"forgeDialect,omitempty"`
+	ForgeURL     string `json:"forgeUrl,omitempty"`
 	// Planner marks a Role the team's plan configures as a planner
 	// (ADR-0031).
 	Planner bool `json:"planner,omitempty"`
@@ -713,12 +724,17 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
+	forge, ok := s.claimForge(r.Context(), req.Team, claimed.RunToken, claimed.Item)
+	if !ok {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	s.recordRunConfig(r.Context(), claimed.RunToken, req.Team, "", true, runHarness{Name: req.Harness, Profile: req.HarnessProfile, Version: req.HarnessVersion})
 	s.Log.Info("lease acquired", "team", req.Team, "work_item", claimed.Item.ID, "deadline", claimed.Deadline)
 	writeJSON(w, http.StatusOK, claimResponse{RunToken: claimed.RunToken, Deadline: claimed.Deadline, ExpiresInMs: leaseExpiresInMs(claimed.Deadline), WorkItem: claimed.Item,
 		Context: s.claimContext(r.Context(), claimed.RunToken), Board: s.recordBoardClaim(r.Context(), claimed.RunToken),
 		Briefing:  s.consumeOperatorNotes(r.Context(), claimed.Item.ID, claimed.RunToken, 0),
-		FastCheck: s.fastCheckFor(claimed.Item, true)})
+		FastCheck: s.fastCheckFor(claimed.Item, true), ForgeDialect: forge.Dialect, ForgeURL: forge.URL})
 }
 
 // claimRole serves a Shift-scoped claim, carrying everything the Run needs
@@ -761,6 +777,11 @@ func (s *Server) respondClaimedRun(w http.ResponseWriter, r *http.Request, req c
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
+	forge, ok := s.claimForge(r.Context(), req.Team, run.RunToken, run.Item)
+	if !ok {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	s.recordRunConfig(r.Context(), run.RunToken, req.Team, run.Role, true, runHarness{Name: req.Harness, Profile: req.HarnessProfile, Version: req.HarnessVersion, Model: run.Model})
 	s.recordRunYields(r.Context(), run.RunToken, req.Yields)
 	resp := claimResponse{
@@ -768,6 +789,7 @@ func (s *Server) respondClaimedRun(w http.ResponseWriter, r *http.Request, req c
 		Shift: run.ShiftID, Role: run.Role, Round: run.Round,
 		Writes: run.Writes, Branch: run.Branch, Authorized: run.Authorized,
 		PreAuthor: run.PreAuthor, Model: run.Model,
+		ForgeDialect: forge.Dialect, ForgeURL: forge.URL,
 	}
 	if planners, ok := s.RoleCaps.(PlannerRoles); ok && !run.Writes {
 		resp.Planner = planners.IsPlanner(req.Team, run.Role)
@@ -783,8 +805,9 @@ func (s *Server) respondClaimedRun(w http.ResponseWriter, r *http.Request, req c
 	resp.FastCheck = s.fastCheckFor(run.Item, run.Writes)
 	// Push rights are minted per writing Run, so holding the Lease and being
 	// able to push are one fact rather than two that can disagree. A reader
-	// gets nothing here — it has no Lease and no business pushing.
-	if run.Writes && s.ForgeCreds != nil && run.Item.Target != nil {
+	// is minted read rights on its repository alone, which die with the Run
+	// (ADR-0192); a broker that mints nothing leaves it its pod's read token.
+	if s.ForgeCreds != nil && run.Item.Target != nil {
 		cred, ok := s.mintForgeCredential(r.Context(), req.Team, run)
 		if !ok {
 			w.WriteHeader(http.StatusNoContent)

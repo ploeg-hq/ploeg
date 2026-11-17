@@ -193,6 +193,20 @@ func TestClaimResponseForgeTokenExpiry_MatchesSchema(t *testing.T) {
 	}
 }
 
+func TestClaimResponseForge_MatchesSchema(t *testing.T) {
+	sch := compileSchema(t, "run-api.v1.schema.json#/$defs/claimResponse")
+	claim := map[string]any{"runToken": strings.Repeat("a1", 24), "deadline": "2026-11-17T10:00:00Z",
+		"workItem": fullTaskSpec().WorkItem, "forgeToken": "ghs_x", "forgeTokenPerRun": true,
+		"forgeDialect": ForgeGitHub, "forgeUrl": "https://github.com"}
+	if err := validate(t, sch, claim); err != nil {
+		t.Errorf("claim carrying its forge does not validate: %v", err)
+	}
+	claim["forgeDialect"] = "bitbucket"
+	if err := validate(t, sch, claim); err == nil {
+		t.Error("a claim naming an unknown forge dialect validates")
+	}
+}
+
 func TestClaimRequestHarnessVersion_MatchesSchema(t *testing.T) {
 	sch := compileSchema(t, "run-api.v1.schema.json#/$defs/claimRequest")
 	claim := map[string]any{"team": "bronze", "role": "reviewer", "harness": "acp", "harnessProfile": "opencode", "harnessVersion": "opencode 1.18.30"}
