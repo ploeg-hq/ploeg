@@ -383,3 +383,38 @@ func TestAGatewayTeamsWorkIsNeverClaimedByAClient(t *testing.T) {
 		t.Fatalf("after the refused claim runs = %q, want pending", got)
 	}
 }
+
+func TestTheAuditOfASweptGrantsRunIsStillKeptForItsOwnGatewayOnly(t *testing.T) {
+	s, bootstrap, _ := gatewayFixture(t)
+	claim, _ := claimThroughGateway(t, s, bootstrap, gatewayHeaders(runsGatewayToken))
+	ctx := context.Background()
+	if _, err := testPool.Exec(ctx, `UPDATE agent_runs SET state = 'finished', finished_at = now() WHERE run_token = $1`, claim.RunToken); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := testStore.DropSettledGatewayGrants(ctx); err != nil || n != 1 {
+		t.Fatalf("settled grants dropped=%d %v", n, err)
+	}
+	batch, _ := json.Marshal(gatewaycontract.AuditBatch{
+		Uses:     []gatewaycontract.Use{{RunToken: claim.RunToken, Family: "forge", Credential: "forge_token", Requests: 2}},
+		Refusals: []gatewaycontract.Refusal{{RunToken: claim.RunToken, Family: "forge", Method: "POST", Route: "/x", Reason: "run_settled", Status: 403}},
+	})
+	for _, token := range []string{otherGatewayToken, runsGatewayToken} {
+		r := httptest.NewRequest(http.MethodPost, gatewaycontract.AuditPath, bytes.NewReader(batch))
+		r.Header.Set(gatewaycontract.AuthorizationHeader, "Bearer "+token)
+		w := httptest.NewRecorder()
+		s.Handler().ServeHTTP(w, r)
+		if w.Code != http.StatusNoContent {
+			t.Fatalf("audit=%d %s", w.Code, w.Body.String())
+		}
+	}
+	var refusals, requests int
+	if err := testPool.QueryRow(ctx, `SELECT count(*) FROM audit_log WHERE action = 'credential_gateway.refused' AND detail->>'reason' = 'run_settled'`).Scan(&refusals); err != nil {
+		t.Fatal(err)
+	}
+	if err := testPool.QueryRow(ctx, `SELECT COALESCE(sum(requests), 0) FROM credential_gateway_use WHERE run_token = $1`, claim.RunToken).Scan(&requests); err != nil {
+		t.Fatal(err)
+	}
+	if refusals != 1 || requests != 2 {
+		t.Fatalf("after the sweep: refusal rows=%d requests=%d, want the Run's own gateway's 1 and 2", refusals, requests)
+	}
+}
