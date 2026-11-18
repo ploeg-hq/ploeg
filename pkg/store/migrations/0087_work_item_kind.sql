@@ -75,6 +75,18 @@ BEGIN
 
     GRANT SELECT (id, at, actor, action, work_item_id) ON audit_log TO ploeg_observer;
 
+    GRANT SELECT (id, tenant, port, kind, instance, method, state, invalid_reason,
+        expires_at, hand_over_agent, revision, created_at, updated_at, reconnected_at,
+        last_probe_at, removed_at)
+        ON connections TO ploeg_observer;
+
+    IF to_regclass('tracker_bindings') IS NOT NULL THEN
+        EXECUTE 'GRANT SELECT (id, tenant, team, connection, scope_id, default_target,
+            allow_targets, revision, state, invalid_reason, webhook_state, webhook_id,
+            webhook_source, created_at, updated_at, removed_at)
+            ON tracker_bindings TO ploeg_observer';
+    END IF;
+
     GRANT SELECT (id, work_item_id, shift_id, round, consumer, actor, audit_actor,
         expected_shift_id, branch, requested_at, yielded_at, yielded_commit,
         work_in_progress, pushed, handed_back_at, handed_back_shift_id)
