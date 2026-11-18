@@ -27,9 +27,9 @@ import (
 func connectors() map[string]provider.Connector {
 	return map[string]provider.Connector{
 		"clickup": {Authorizer: clickup.Connector{}, Prober: clickup.Connector{}},
-		"gitlab":  {Authorizer: gitlab.Connector{}, Prober: gitlab.Connector{}, Repos: gitlab.Connector{}},
-		"forgejo": {Authorizer: forgejo.Connector{}, Prober: forgejo.Connector{}, Repos: forgejo.Connector{}},
-		"github":  {Prober: github.Connector{}, Manifest: github.Connector{}, Repos: github.Connector{}},
+		"gitlab":  {Authorizer: gitlab.Connector{}, Prober: gitlab.Connector{}, Repos: gitlab.Connector{}, Grants: gitlab.Connector{}},
+		"forgejo": {Authorizer: forgejo.Connector{}, Prober: forgejo.Connector{}, Repos: forgejo.Connector{}, Grants: forgejo.Connector{}},
+		"github":  {Prober: github.Connector{}, Manifest: github.Connector{}, Repos: github.Connector{}, Grants: github.Connector{}},
 	}
 }
 
