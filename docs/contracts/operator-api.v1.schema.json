@@ -183,6 +183,24 @@
     },
     {
       "$ref": "#/$defs/workTargetErrorResponse"
+    },
+    {
+      "$ref": "#/$defs/mcpServersResponse"
+    },
+    {
+      "$ref": "#/$defs/mcpServerResponse"
+    },
+    {
+      "$ref": "#/$defs/skillSourcesResponse"
+    },
+    {
+      "$ref": "#/$defs/skillSourceResponse"
+    },
+    {
+      "$ref": "#/$defs/teamToolsResponse"
+    },
+    {
+      "$ref": "#/$defs/toolErrorResponse"
     }
   ],
   "$defs": {
@@ -10646,6 +10664,589 @@
           }
         }
       ]
+    },
+    "toolCheck": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "ok"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "detail": {
+          "type": "string"
+        }
+      }
+    },
+    "toolAuth": {
+      "description": "How the credential gateway authenticates to an MCP server (ADR-0199 section 1).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "none",
+            "bearer",
+            "header",
+            "oauth-client-credentials"
+          ]
+        },
+        "header": {
+          "type": "string"
+        },
+        "tokenUrl": {
+          "type": "string"
+        },
+        "clientId": {
+          "type": "string"
+        },
+        "scopes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "allowedTool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "access"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "access": {
+          "enum": [
+            "read",
+            "write"
+          ]
+        }
+      }
+    },
+    "toolCredential": {
+      "description": "Whether a credential is kept. Never a value: a consumer with manageTools also sees the secret store reference or, for a static entry, the environment variable ploegd reads.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "set"
+      ],
+      "properties": {
+        "set": {
+          "type": "boolean"
+        },
+        "ref": {
+          "$ref": "#/$defs/secretRef"
+        },
+        "env": {
+          "type": "string"
+        }
+      }
+    },
+    "mcpServer": {
+      "description": "A registered MCP server (ADR-0199 section 1). A consumer without manageTools sees only servers attached to Teams it may read, without the URL's query.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "key",
+        "name",
+        "source",
+        "state",
+        "revision",
+        "host",
+        "transport",
+        "auth",
+        "credential",
+        "tools"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "source": {
+          "enum": [
+            "static",
+            "runtime"
+          ]
+        },
+        "state": {
+          "enum": [
+            "active",
+            "shadowed"
+          ]
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "url": {
+          "type": "string"
+        },
+        "host": {
+          "type": "string"
+        },
+        "transport": {
+          "const": "streamable-http"
+        },
+        "auth": {
+          "$ref": "#/$defs/toolAuth"
+        },
+        "credential": {
+          "$ref": "#/$defs/toolCredential"
+        },
+        "tools": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/allowedTool"
+          }
+        },
+        "adapter": {
+          "const": "gateway-access-groups"
+        }
+      }
+    },
+    "offeredTool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "readOnlyHint": {
+          "type": "boolean"
+        },
+        "destructiveHint": {
+          "type": "boolean"
+        }
+      }
+    },
+    "mcpServersResponse": {
+      "description": "200 from GET /api/v1/operator/mcp-servers.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "mcpServers"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "1.0"
+        },
+        "mcpServers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/mcpServer"
+          }
+        }
+      }
+    },
+    "mcpServerResponse": {
+      "description": "200 from GET /api/v1/operator/mcp-servers/{server}; 201 (created true) or 200 (created false, same key and body) from POST; 200 from PUT with the new revision as ETag; 200 with dryRun true from POST or PUT ?dryRun=true, which probes the server (initialize and tools/list) and writes nothing. DELETE answers 204.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "mcpServer"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "1.0"
+        },
+        "mcpServer": {
+          "$ref": "#/$defs/mcpServer"
+        },
+        "created": {
+          "type": "boolean"
+        },
+        "dryRun": {
+          "const": true
+        },
+        "checks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/toolCheck"
+          }
+        },
+        "offered": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/offeredTool"
+          }
+        },
+        "protocolVersion": {
+          "type": "string"
+        }
+      }
+    },
+    "skillSource": {
+      "description": "A registered skill source pinned by digest (ADR-0199 section 2).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "key",
+        "name",
+        "source",
+        "state",
+        "revision",
+        "kind",
+        "digest",
+        "skills",
+        "credential"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "source": {
+          "enum": [
+            "static",
+            "runtime"
+          ]
+        },
+        "state": {
+          "enum": [
+            "active",
+            "shadowed"
+          ]
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "kind": {
+          "enum": [
+            "oci",
+            "https",
+            "git"
+          ]
+        },
+        "ref": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "commit": {
+          "type": "string"
+        },
+        "digest": {
+          "type": "string"
+        },
+        "bundleDigest": {
+          "type": "string"
+        },
+        "skills": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "credential": {
+          "$ref": "#/$defs/toolCredential"
+        }
+      }
+    },
+    "skillSourcesResponse": {
+      "description": "200 from GET /api/v1/operator/skill-sources.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "skillSources"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "1.0"
+        },
+        "skillSources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/skillSource"
+          }
+        }
+      }
+    },
+    "skillSourceResponse": {
+      "description": "200 from GET /api/v1/operator/skill-sources/{source}; 201 or 200 from POST; 200 from PUT; 200 with dryRun true from POST or PUT ?dryRun=true, which fetches the source, verifies its digest and the bundle rules and writes nothing. DELETE answers 204.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "skillSource"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "1.0"
+        },
+        "skillSource": {
+          "$ref": "#/$defs/skillSource"
+        },
+        "created": {
+          "type": "boolean"
+        },
+        "dryRun": {
+          "const": true
+        },
+        "checks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/toolCheck"
+          }
+        }
+      }
+    },
+    "roleTools": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mcp": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "server"
+            ],
+            "properties": {
+              "server": {
+                "type": "string"
+              },
+              "tools": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "skills": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "toolGrant": {
+      "description": "What a Run of one Role is given: servers with their tools and access, and skill bundles by digest. Never a URL or a credential.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "servers",
+        "skills"
+      ],
+      "properties": {
+        "servers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "key",
+              "tools"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "key": {
+                "type": "string"
+              },
+              "tools": {
+                "type": "object",
+                "additionalProperties": {
+                  "enum": [
+                    "read",
+                    "write"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "skills": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "key",
+              "digest"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "key": {
+                "type": "string"
+              },
+              "digest": {
+                "type": "string"
+              },
+              "skills": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "teamToolsResponse": {
+      "description": "200 from GET, PUT (If-Match, or If-None-Match: * for the first) and PUT ?dryRun=true of /api/v1/operator/teams/{team}/tools (ADR-0199 section 3). DELETE answers 204.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "teamTools"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "1.0"
+        },
+        "dryRun": {
+          "const": true
+        },
+        "teamTools": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "team",
+            "source",
+            "exists",
+            "revision",
+            "roles",
+            "grants"
+          ],
+          "properties": {
+            "team": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "key"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "key": {
+                  "type": "string"
+                }
+              }
+            },
+            "source": {
+              "enum": [
+                "static",
+                "runtime"
+              ]
+            },
+            "exists": {
+              "type": "boolean"
+            },
+            "revision": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "roles": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/roleTools"
+              }
+            },
+            "grants": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/toolGrant"
+              }
+            }
+          }
+        }
+      }
+    },
+    "toolErrorResponse": {
+      "description": "An error from a tool registry route that names the field it refuses or carries the probe's checks (ADR-0199 section 6). Errors with only code and message are answered as errorResponse.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "error"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "1.0"
+        },
+        "error": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "code",
+            "message"
+          ],
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "field": {
+              "type": "string"
+            },
+            "checks": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/toolCheck"
+              }
+            }
+          },
+          "anyOf": [
+            {
+              "required": [
+                "field"
+              ]
+            },
+            {
+              "required": [
+                "checks"
+              ]
+            }
+          ]
+        }
+      }
     }
   }
 }

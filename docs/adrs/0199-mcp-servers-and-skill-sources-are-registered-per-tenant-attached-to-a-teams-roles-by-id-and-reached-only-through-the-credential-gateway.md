@@ -69,7 +69,7 @@ An **MCP server** is one row per Tenant (ADR-0178):
 
 **Read-only versus write is Ploeg's annotation, and the server can only make it stricter.** The registrar sets `access` per tool. The dry-run probe (section 6) reads the server's `tools/list` and its annotations; a tool the server marks `destructiveHint: true` or `readOnlyHint: false` cannot be registered `read` (`422 tool_access_conflicts`), and a server's `readOnlyHint: true` never makes a tool `read` on its own. A `write` tool is accepted only when the installation sets `toolRegistry.allowWriteTools: true`. This replaces ADR-0078's "read-only only; a write-capable group needs a further ADR" with a rule Ploeg checks.
 
-A static installation declares servers in the configuration file under `toolRegistry.mcpServers.<key>` with the same fields and a `credentialSecret` (a Kubernetes Secret name and key the gateway's grant reads through ploegd, never mounted in a Run pod). Static wins on a key conflict, as for targets and Teams: a runtime server whose key a static one takes turns `shadowed`.
+A static installation declares servers in the configuration file under `toolRegistry.mcpServers.<key>` with the same fields and a `credentialEnv`, the environment variable of ploegd that holds its credential (ploegd holds root credentials, ADR-0197 section 4; the value reaches only the gateway's grant, never a Run pod). A static entry's id is `mcp_static_<key>` (`skl_static_<key>` for a skill source), because the file is its identity. Static wins on a key conflict, as for targets and Teams: a runtime server whose key a static one takes turns `shadowed`.
 
 ### 2. The skill source registry
 
