@@ -56,3 +56,24 @@ func TestAMintForAConnectionAsksThatConnectionAloneAndRevokesThroughIt(t *testin
 		t.Fatalf("no base broker mints nothing for a static target: %+v, %v", cred, err)
 	}
 }
+
+func TestForgettingAConnectionResolvesItsBrokerAgain(t *testing.T) {
+	resolved := 0
+	w := &WithConnections{Resolve: func(context.Context, string) (Broker, error) {
+		resolved++
+		return &countingBroker{name: "acme"}, nil
+	}}
+	ctx := context.Background()
+	for range 2 {
+		if _, err := w.Mint(ctx, MintRequest{RunToken: "r", Owner: "acme", Repo: "app", Connection: "gh-acme"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	w.Forget("gh-acme")
+	if _, err := w.Mint(ctx, MintRequest{RunToken: "r", Owner: "acme", Repo: "app", Connection: "gh-acme"}); err != nil {
+		t.Fatal(err)
+	}
+	if resolved != 2 {
+		t.Fatalf("resolved %d times, want 2: a reconnected connection must not mint with its old credential", resolved)
+	}
+}

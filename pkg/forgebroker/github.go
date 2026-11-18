@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -59,7 +60,17 @@ func (g *GitHubApp) Mint(ctx context.Context, req MintRequest) (Credential, erro
 	if req.Read {
 		perms = githubapp.ReaderPermissions()
 	}
-	tok, err := g.App.Mint(ctx, req.Owner, req.Repo, perms)
+	var tok githubapp.Token
+	var err error
+	if g.App.Installation != 0 {
+		id, perr := strconv.ParseInt(req.RepositoryID, 10, 64)
+		if perr != nil || id <= 0 {
+			return Credential{}, errors.New("forgebroker: a connection's mint needs the repository id its target stored")
+		}
+		tok, err = g.App.MintRepository(ctx, req.Owner, req.Repo, id, perms)
+	} else {
+		tok, err = g.App.Mint(ctx, req.Owner, req.Repo, perms)
+	}
 	if err != nil {
 		return Credential{}, err
 	}

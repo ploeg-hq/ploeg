@@ -55,8 +55,9 @@ type Minter struct {
 	// full installation permissions, which a caller should avoid.
 	Permissions Permissions
 	// Installation pins every token to this installation, as for a
-	// connection that holds one installation's grant (ADR-0193); zero looks
-	// the installation up per repository.
+	// connection that holds one installation's grant (ADR-0193); such a
+	// Minter mints only through MintRepository. Zero looks the installation
+	// up per repository.
 	Installation int64
 	// HC is optional; nil uses a 30-second client.
 	HC *http.Client
@@ -153,9 +154,6 @@ func (m *Minter) forgetInstallation(key string) {
 }
 
 func (m *Minter) installation(ctx context.Context, owner, repo string) (int64, error) {
-	if m.Installation != 0 {
-		return m.Installation, nil
-	}
 	key := strings.ToLower(owner + "/" + repo)
 	m.mu.Lock()
 	id, ok := m.installations[key]

@@ -41,33 +41,84 @@ type Token struct {
 // Mint mints a fresh installation token for owner/repo with perms, bypassing
 // the cache Token keeps, so the caller owns it alone and can revoke it
 // without affecting anyone else. A token GitHub grants beyond perms is
-// revoked and refused.
+// revoked and refused. A Minter pinned to one Installation mints only
+// through MintRepository: GitHub reads a bare repository name against the
+// installation's own account, which may hold a same-named repository.
 func (m *Minter) Mint(ctx context.Context, owner, repo string, perms Permissions) (Token, error) {
-	if m.AppID == "" || m.Key == nil {
-		return Token{}, errors.New("githubapp: App id and private key are required")
+	if m.Installation != 0 {
+		return Token{}, errors.New("githubapp: a minter pinned to one installation mints by repository id")
 	}
-	if owner == "" || repo == "" || len(perms) == 0 {
-		return Token{}, errors.New("githubapp: a minted token needs a repository and its permissions")
+	if err := m.mintable(owner, repo, perms); err != nil {
+		return Token{}, err
 	}
 	installation, err := m.installation(ctx, owner, repo)
 	if err != nil {
 		return Token{}, err
 	}
-	var minted struct {
-		Token       string            `json:"token"`
-		ExpiresAt   time.Time         `json:"expires_at"`
-		Permissions map[string]string `json:"permissions"`
-	}
-	path := fmt.Sprintf("/app/installations/%d/access_tokens", installation)
-	if err := m.appCall(ctx, http.MethodPost, path, map[string]any{"repositories": []string{repo}, "permissions": perms}, &minted); err != nil {
+	minted, err := m.accessToken(ctx, installation, map[string]any{"repositories": []string{repo}, "permissions": perms})
+	if err != nil {
 		if errors.Is(err, errNotFound) {
 			m.forgetInstallation(strings.ToLower(owner + "/" + repo))
 		}
-		if m.Installation != 0 && (errors.Is(err, errNotFound) || errors.Is(err, errUnprocessable)) {
-			return Token{}, fmt.Errorf("%w: %s/%s", ErrNotGranted, owner, repo)
-		}
 		return Token{}, err
 	}
+	return m.accepted(ctx, minted, owner, repo, perms)
+}
+
+// MintRepository mints a token for the repository GitHub knows by
+// repositoryID through the pinned Installation, and refuses it unless that
+// id is owner/repo: a token for another repository, or one outside the
+// installation's grant, is ErrNotGranted (ADR-0193).
+func (m *Minter) MintRepository(ctx context.Context, owner, repo string, repositoryID int64, perms Permissions) (Token, error) {
+	if m.Installation == 0 || repositoryID == 0 {
+		return Token{}, errors.New("githubapp: minting by repository id needs a pinned installation and the id")
+	}
+	if err := m.mintable(owner, repo, perms); err != nil {
+		return Token{}, err
+	}
+	minted, err := m.accessToken(ctx, m.Installation, map[string]any{"repository_ids": []int64{repositoryID}, "permissions": perms})
+	if errors.Is(err, errNotFound) || errors.Is(err, errUnprocessable) {
+		return Token{}, fmt.Errorf("%w: %s/%s", ErrNotGranted, owner, repo)
+	}
+	if err != nil {
+		return Token{}, err
+	}
+	if len(minted.Repositories) != 1 || minted.Repositories[0].ID != repositoryID ||
+		!strings.EqualFold(minted.Repositories[0].FullName, owner+"/"+repo) {
+		_ = m.Revoke(context.WithoutCancel(ctx), minted.Token)
+		return Token{}, fmt.Errorf("%w: the token GitHub minted is not for %s/%s alone", ErrNotGranted, owner, repo)
+	}
+	return m.accepted(ctx, minted, owner, repo, perms)
+}
+
+type mintedToken struct {
+	Token        string            `json:"token"`
+	ExpiresAt    time.Time         `json:"expires_at"`
+	Permissions  map[string]string `json:"permissions"`
+	Repositories []struct {
+		ID       int64  `json:"id"`
+		FullName string `json:"full_name"`
+	} `json:"repositories"`
+}
+
+func (m *Minter) mintable(owner, repo string, perms Permissions) error {
+	if m.AppID == "" || m.Key == nil {
+		return errors.New("githubapp: App id and private key are required")
+	}
+	if owner == "" || repo == "" || len(perms) == 0 {
+		return errors.New("githubapp: a minted token needs a repository and its permissions")
+	}
+	return nil
+}
+
+func (m *Minter) accessToken(ctx context.Context, installation int64, body map[string]any) (mintedToken, error) {
+	var minted mintedToken
+	path := fmt.Sprintf("/app/installations/%d/access_tokens", installation)
+	err := m.appCall(ctx, http.MethodPost, path, body, &minted)
+	return minted, err
+}
+
+func (m *Minter) accepted(ctx context.Context, minted mintedToken, owner, repo string, perms Permissions) (Token, error) {
 	if minted.Token == "" {
 		return Token{}, errors.New("githubapp: GitHub returned no installation token")
 	}
