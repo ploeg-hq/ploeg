@@ -21,6 +21,29 @@ An existing deployment that needs temporary compatibility must opt in through `e
 
 A team that cannot move yet sets `executor.harnessContainer: shared` (or `harness.harnessContainer: shared` on one team or Role), which renders the old single container byte for byte and prints a deprecation note on install and upgrade. `shared` is deprecated now and removed in the minor after 0.2 ([compatibility policy](compatibility.md#deprecation)). Workloads with DinD, a credential proxy off or `claude-environment` keep the single container without a setting, because they are outside the profile the separate container protects; asking for `separate` on one of them fails the render.
 
+### Credential isolation is required
+
+**Every Role now runs with its credentials isolated from its harness** ([ADR 0034](../adrs/0034-the-harness-gets-placeholders-the-worker-keeps-credentials.md), amendment of 2026-11-18). Writers and readers alike need both `executor.forgeTokenIsolation` and `executor.litellm.keyIsolation` at `proxy`, a harness qualified for them (`openhands`, `acp` with profile `openhands`, or `exec`) and no DinD. This holds under every `supportProfile`, `unsupported` included. The credential gateway of [ADR 0197](../adrs/0197-no-credential-enters-a-run-pod-and-a-credential-gateway-outside-it-attaches-each-one-a-run-uses.md) will be accepted in place of the proxies once it is built; it is not today.
+
+Two places refuse what misses it, and both name the Team, the Role and what is missing under `credential_isolation_required`:
+
+* `helm template` and `helm upgrade` fail the render.
+* `ploegd` answers a worker's claim with `403 credential_isolation_required` before it claims a Run, so the Work Item stays queued. A worker from before this release sends no `llmKeyIsolation` and is refused too: upgrade `ploegd` and the workers together, as [compatibility](compatibility.md#version-pairs) already requires.
+
+What stops, and how to fix it:
+
+| What the values have | What happens now | Fix |
+| --- | --- | --- |
+| `executor.forgeTokenIsolation: ""` or `executor.litellm.keyIsolation: ""` | Every Role is refused | Set both back to `proxy`, the default |
+| `harness.credentialIsolation: ""` on a Role, team or `executor.harness` | That workload is refused | Remove the override, or set it to `proxy` |
+| `harness.dind: true` (with `acknowledgePrivilegedDind`) | That workload is refused; DinD turns both proxies off and reaches a daemon that is root on the node | Set `harness.dind: false` and give the Role its toolchains as image volumes ([toolchains and checks](../how-to/give-runs-a-toolchain-and-checks.md)) |
+| `harness.name: claude-code` | Refused; it is not qualified with both proxies | Run the Role on `openhands`, `acp` profile `openhands` or `exec` |
+| `harness.name: acp` with a profile other than `openhands` (`opencode`, the default, and every other profile) | Refused, also as an entry of a team's `harnesses` | Use `acp.profile: openhands`, or another qualified harness |
+| `harness.name: claude-environment`, dispatched by a worker or carried by a person's client (`claudeEnvironment.carrier: client`) | Refused; the claude-runner and the person's client hold the Run's forge credential themselves | Move the Role to a qualified harness until the credential gateway carries Claude environments |
+| OpenHands writers on a deployment with the forge proxy off | Refused; only the forge proxy refuses a push that changes `.openhands/hooks.json` ([ADR 0148](../adrs/0148-every-acp-profile-asks-before-a-mutation-outside-allow-always-and-openhands-refuses-a-repository-that-ships-hooks.md)) | Set `executor.forgeTokenIsolation: proxy` before upgrading |
+
+Before upgrading, render the new chart against your values with `helm template`; every refusal it prints is a Role that would stop taking work. A standalone worker sets `PLOEG_FORGE_TOKEN_ISOLATION=proxy` and `PLOEG_LLM_KEY_ISOLATION=proxy` itself.
+
 ## Configure the controller
 
 Keep LiteLLM management authority in the controller workload. Worker bootstrap credentials, controller signing material and the bootstrap registry originate in the vault and reach Kubernetes through the estate's ExternalSecret process. Commit Secret references and configuration structure, never their values.
