@@ -110,6 +110,10 @@ func run(ctx context.Context, log *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("PLOEG_CONFIG: %w", err)
 	}
+	gate.enter("reconciling Teams")
+	teams := teamDirectory(ctx, log, cfg, st)
+	go backfillTeamIDs(ctx, log, st)
+	gate.enter("resolving configuration")
 
 	// Tracker write-backs are opt-in by credential: without a URL and token
 	// the provider keeps its logging no-op, so a deployment that has not been
@@ -456,6 +460,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 	}
 	srv := &httpapi.Server{
 		OperatorConfig: operator,
+		Teams:          teams,
 		WorkerSecurity: workerSecurity,
 		LLMControl:     llmControl,
 		Store:          st,
