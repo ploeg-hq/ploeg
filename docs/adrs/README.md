@@ -262,6 +262,7 @@ fails otherwise.
 | [0194](0194-a-repository-missing-only-its-instruction-file-may-receive-one-run-that-adds-it.md) | A repository missing only its instruction file may receive one kind of work: a Run whose only deliverable is a pull request that adds it | proposed | 2026-11-17 |
 | [0195](0195-a-proven-operator-makes-and-manages-a-tracker-or-forge-connection-through-a-flow-ploeg-starts-and-the-consumer-only-relays-codes.md) | A proven operator makes and manages a tracker or forge connection through a flow Ploeg starts, and the consumer only relays codes | proposed | 2026-11-17 |
 | [0196](0196-an-operator-consumer-reads-a-tracker-connections-scopes-and-items-through-ploeg-and-holds-no-tracker-credential.md) | An operator consumer reads a tracker connection's Scopes and items through Ploeg and holds no tracker credential | proposed | 2026-11-18 |
+| [0197](0197-no-credential-enters-a-run-pod-and-a-credential-gateway-outside-it-attaches-each-one-a-run-uses.md) | No credential enters a Run's pod, and a credential gateway outside it attaches each one a Run uses | proposed | 2026-11-18 |
 
 
 ## Review calendar
