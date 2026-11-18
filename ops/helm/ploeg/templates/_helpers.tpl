@@ -1181,3 +1181,20 @@ true
 {{- end -}}
 {{- printf "%dMiB" (int64 (floor (divf (mulf (float64 $number) (get $units $suffix) 0.9) 1048576.0))) -}}
 {{- end -}}
+
+{{/*
+The dedicated namespace of the Kubernetes connection secret store
+(ADR-0184). The release namespace holds the database URL, the gateway key
+and the forge credentials, and RBAC cannot limit a Role to the Secrets
+Ploeg created, so the chart refuses it and an empty value.
+*/}}
+{{- define "ploeg.secretStoreNamespace" -}}
+{{- $namespace := .Values.secretStore.kubernetes.namespace | default "" | trim -}}
+{{- if not $namespace -}}
+{{- fail "secretStore.kubernetes.namespace is required when secretStore.type is kubernetes: name a dedicated namespace that holds nothing but Ploeg's connection Secrets" -}}
+{{- end -}}
+{{- if eq $namespace .Release.Namespace -}}
+{{- fail (printf "secretStore.kubernetes.namespace must not be the release namespace %s: the Role it grants could read every Secret there, including the database URL and the forge credentials" .Release.Namespace) -}}
+{{- end -}}
+{{- $namespace -}}
+{{- end -}}

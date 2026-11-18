@@ -1052,14 +1052,15 @@
             "authMount": {"type": "string", "default": "kubernetes", "description": "Kubernetes auth mount."},
             "role": {"type": "string", "description": "Kubernetes auth role bound to ploegd's ServiceAccount; required for type openbao."},
             "kvMount": {"type": "string", "default": "secret", "description": "KV v2 mount."},
-            "pathPrefix": {"type": "string", "default": "ploeg", "description": "The only path under kvMount Ploeg writes; the role's policy allows nothing else."}
+            "pathPrefix": {"type": "string", "default": "ploeg", "description": "The only path under kvMount Ploeg writes; the role's policy allows nothing else."},
+            "allowInsecureHttp": {"type": "boolean", "default": false, "description": "Accept an http:// address. Off, ploegd refuses one, because every request carries its token."}
           }
         },
         "kubernetes": {
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "namespace": {"type": "string", "description": "The namespace that holds the connection Secrets and the chart's Role; empty = the release namespace. Use one that holds nothing else."}
+            "namespace": {"type": "string", "description": "The dedicated namespace that holds the connection Secrets and the chart's Role; required for type kubernetes, and the chart refuses the release namespace. It must hold nothing else: RBAC cannot limit the Role to the Secrets Ploeg created."}
           }
         }
       }

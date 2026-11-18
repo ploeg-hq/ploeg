@@ -79,7 +79,8 @@ for case in ":default" \
 	"ops/helm/ploeg/ci/knowledge-graph-values.yaml:knowledge-graph" \
 	"ops/helm/ploeg/ci/mcp-values.yaml:mcp" \
 	"ops/helm/ploeg/ci/claude-runner-values.yaml:claude-runner" \
-	"ops/helm/ploeg/ci/name-overrides-values.yaml:name-overrides"; do
+	"ops/helm/ploeg/ci/name-overrides-values.yaml:name-overrides" \
+	"ops/helm/ploeg/ci/secret-store-kubernetes-values.yaml:secret-store-kubernetes"; do
 	values=${case%%:*}
 	name=${case##*:}
 	if [ "$mode" = "update" ]; then
@@ -132,7 +133,9 @@ for case in "ops/helm/ploeg/ci/reject-reader-without-read-token-values.yaml:read
 	"ops/helm/ploeg/ci/reject-dind-without-acknowledgement-values.yaml:harness.dind is true without harness.acknowledgePrivilegedDind: true" \
 	"ops/helm/ploeg/ci/reject-worker-admission-with-dind-values.yaml:security.workerAdmission forbids privileged DinD" \
 	"ops/helm/ploeg/ci/reject-separate-harness-container-with-dind-values.yaml:a separate harness container needs both credential proxies and no DinD" \
-	"ops/helm/ploeg/ci/reject-unknown-harness-container-values.yaml:value must be one of 'separate', 'shared'"; do
+	"ops/helm/ploeg/ci/reject-unknown-harness-container-values.yaml:value must be one of 'separate', 'shared'" \
+	"ops/helm/ploeg/ci/reject-secret-store-without-namespace-values.yaml:secretStore.kubernetes.namespace is required when secretStore.type is kubernetes" \
+	"ops/helm/ploeg/ci/reject-secret-store-in-release-namespace-values.yaml:secretStore.kubernetes.namespace must not be the release namespace default"; do
 	values=${case%%:*}
 	expected=${case#*:}
 	if out=$(helm template ploeg ops/helm/ploeg -f "$REQUIRED" -f "$values" 2>&1); then

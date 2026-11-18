@@ -58,6 +58,8 @@ Either type mounts ploegd's ServiceAccount token, which both adapters sign in wi
        role: ploeg
    ```
 
+   ploegd accepts only an `https://` address and never follows a redirect, because every request carries its token. For a test cluster without TLS, `secretStore.openbao.allowInsecureHttp: true` accepts `http://`.
+
 ## Kubernetes Secrets
 
 ```yaml
@@ -67,7 +69,7 @@ secretStore:
     namespace: ploeg-connection-secrets
 ```
 
-Create the namespace first. The chart renders a Role (`get`, `list`, `create`, `update`, `patch`, `delete` on Secrets) and a RoleBinding to ploegd's ServiceAccount in it. Each connection is one Secret named `ploeg-secret-<hash>`, labelled `app.kubernetes.io/managed-by: ploeg` and `ploeg.dev/secret-store: connection`, with its path and version in annotations. A Secret keeps only its latest version.
+Create the namespace first. The chart refuses an empty `namespace` and the release namespace, which holds the database URL, the gateway key and the forge credentials. It renders a Role (`get`, `list`, `create`, `update`, `delete` on Secrets) and a RoleBinding to ploegd's ServiceAccount in it. Kubernetes RBAC cannot narrow that Role further: a label selector on `list` is not enforced, and `resourceNames` cannot cover `create` or `list`, nor names ploegd derives at run time, so the namespace must hold nothing else. Each connection is one Secret named `ploeg-secret-<hash>`, labelled `app.kubernetes.io/managed-by: ploeg` and `ploeg.dev/secret-store: connection`, with its path and version in annotations. A Secret keeps only its latest version.
 
 ## Verify
 

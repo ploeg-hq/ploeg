@@ -427,10 +427,14 @@ knowledgeGraph: {}
 #     ploegd's ServiceAccount; its policy allows only
 #     <kvMount>/data/<pathPrefix>/* and <kvMount>/metadata/<pathPrefix>/*
 #     (docs/how-to/configure-a-connection-secret-store.md).
-#   kubernetes: one Secret per connection in namespace (empty = the
-#     release namespace), through a Role the chart grants there. RBAC cannot
-#     limit a Role to the Secrets Ploeg created, so use a namespace that holds
-#     nothing else; ploegd itself refuses any Secret without its labels.
+#     allowInsecureHttp accepts an http:// address; off, ploegd refuses one.
+#   kubernetes: one Secret per connection in namespace, through a Role the
+#     chart grants there. namespace is required and must not be the release
+#     namespace, which holds the database URL, the gateway key and the forge
+#     credentials. RBAC cannot limit a Role to the Secrets Ploeg created (a
+#     label selector on list is not enforced, and resourceNames cannot cover
+#     create or list, nor names derived at run time), so the namespace must
+#     hold nothing else; ploegd itself refuses any Secret without its labels.
 secretStore:
   type: ""
   openbao:
@@ -439,6 +443,7 @@ secretStore:
     role: ""
     kvMount: secret
     pathPrefix: ploeg
+    allowInsecureHttp: false
   kubernetes:
     namespace: ""
 
