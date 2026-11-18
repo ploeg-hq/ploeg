@@ -182,6 +182,7 @@ type Server struct {
 
 	pipelineWork  sync.WaitGroup
 	pipelineOnce  sync.Once
+	trackerReads  trackerReadCache
 	pipelineSlots chan struct{}
 }
 

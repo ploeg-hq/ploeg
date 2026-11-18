@@ -32,6 +32,24 @@ type OperatorPrincipal struct {
 	CanVerify      bool
 	CanReadContent bool
 	BudgetLimitUSD float64
+	// ReadTrackers names the tracker connections whose Scopes and items the
+	// consumer may read (ADR-0196). Nil reads none; AllTrackers reads every
+	// one.
+	ReadTrackers []string
+}
+
+// AllTrackers is the readTrackers grant for every tracker connection.
+const AllTrackers = "*"
+
+// CanReadTracker reports whether the consumer may read the Scopes and items
+// of the tracker connection named connection.
+func (p OperatorPrincipal) CanReadTracker(connection string) bool {
+	for _, allowed := range p.ReadTrackers {
+		if allowed == AllTrackers || allowed == connection {
+			return true
+		}
+	}
+	return false
 }
 
 // AllTeams is the team scope that grants an Operator Consumer every Team. A
@@ -98,11 +116,12 @@ func ParseOperatorConsumers(raw string, lookup func(string) (string, bool)) ([]O
 		ClientIDs     []string            `json:"clientIds"`
 		Audiences     []string            `json:"audiences"`
 		RequireClaims map[string][]string `json:"requireClaims"`
+		ReadTrackers  []string            `json:"readTrackers"`
 	}
 	decoder := json.NewDecoder(strings.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&configs); err != nil {
-		return nil, errors.New("operator consumers must be a JSON array of name, tokenEnv, teams, execute, verify, readContent, maxBudgetUsd, clientIds, audiences and requireClaims")
+		return nil, errors.New("operator consumers must be a JSON array of name, tokenEnv, teams, execute, verify, readContent, maxBudgetUsd, clientIds, audiences, requireClaims and readTrackers")
 	}
 	if err := decoder.Decode(new(any)); err != io.EOF {
 		return nil, errors.New("operator consumers must contain one JSON value")
@@ -128,6 +147,10 @@ func ParseOperatorConsumers(raw string, lookup func(string) (string, bool)) ([]O
 			return nil, fmt.Errorf("operator consumer %s has too many team scopes", cfg.Name)
 		}
 		teams, err := consumerTeamScope(cfg.Name, cfg.Teams)
+		if err != nil {
+			return nil, err
+		}
+		readTrackers, err := consumerTrackerGrant(cfg.Name, cfg.ReadTrackers)
 		if err != nil {
 			return nil, err
 		}
@@ -159,7 +182,7 @@ func ParseOperatorConsumers(raw string, lookup func(string) (string, bool)) ([]O
 		if err != nil {
 			return nil, err
 		}
-		consumers = append(consumers, OperatorConsumer{Principal: OperatorPrincipal{Name: cfg.Name, Teams: teams, CanExecute: cfg.Execute, CanVerify: cfg.Verify, CanReadContent: readContent, BudgetLimitUSD: budgetLimit}, tokenHash: hash, clientIDs: cfg.ClientIDs, audiences: cfg.Audiences, requiredClaims: required})
+		consumers = append(consumers, OperatorConsumer{Principal: OperatorPrincipal{Name: cfg.Name, Teams: teams, CanExecute: cfg.Execute, CanVerify: cfg.Verify, CanReadContent: readContent, BudgetLimitUSD: budgetLimit, ReadTrackers: readTrackers}, tokenHash: hash, clientIDs: cfg.ClientIDs, audiences: cfg.Audiences, requiredClaims: required})
 		names[cfg.Name], hashes[hash] = true, true
 	}
 	return consumers, nil
@@ -179,6 +202,26 @@ func consumerTeamScope(name string, configured []string) ([]string, error) {
 		teams = append(teams, team)
 	}
 	return teams, nil
+}
+
+func consumerTrackerGrant(name string, configured []string) ([]string, error) {
+	if len(configured) == 0 {
+		return nil, nil
+	}
+	if len(configured) > 100 {
+		return nil, fmt.Errorf("operator consumer %s names more than 100 readTrackers", name)
+	}
+	if slices.Equal(configured, []string{AllTrackers}) {
+		return []string{AllTrackers}, nil
+	}
+	seen := map[string]bool{}
+	for _, connection := range configured {
+		if !operatorName.MatchString(connection) || seen[connection] {
+			return nil, fmt.Errorf("operator consumer %s has an invalid or duplicated readTrackers entry; %q grants every tracker connection only on its own", name, AllTrackers)
+		}
+		seen[connection] = true
+	}
+	return slices.Clone(configured), nil
 }
 
 // OperatorConsumersNameClientIDs reports whether any consumer accepts person
@@ -419,6 +462,7 @@ func (s *Server) operatorRoutes() *http.ServeMux {
 	mux.HandleFunc("GET /api/v1/operator/events", s.handleOperatorEvents)
 	mux.HandleFunc("GET /api/v1/operator/route-refusals", s.handleOperatorRouteRefusals)
 	mux.HandleFunc("GET /api/v1/operator/connections", s.handleOperatorConnections)
+	s.registerTrackerReads(mux)
 	mux.HandleFunc("GET /api/v1/operator/allowances", s.handleOperatorAllowance)
 	s.registerOperatorExecution(mux)
 	s.registerOperatorWorkAdmission(mux)

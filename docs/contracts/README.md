@@ -113,6 +113,14 @@ The check does not compare enum values: a consumer must treat an unknown value a
   whether each in-scope Team's tracker users can see it, and every
   repository a board or label can reach with its readiness and when its
   forge last sent an event. An older Ploeg answers 404.
+- `GET /api/v1/operator/tracker-connections/{connection}/scopes`,
+  `.../scopes/{scope}/items` and `.../items/{item}` are new responses,
+  `trackerScopesResponse`, `trackerScopeItemsResponse` and
+  `trackerItemResponse` ([ADR-0196](../adrs/0196-an-operator-consumer-reads-a-tracker-connections-scopes-and-items-through-ploeg-and-holds-no-tracker-credential.md)):
+  the containers a tracker connection reaches, a page of a Scope's open
+  items and one item, read through Ploeg's credential, with tracker text
+  under `untrusted`. They need the consumer's new `readTrackers`. An older
+  Ploeg answers 404.
 - Since VIK-1698 Ploeg keeps the paths a pull request changes at a head
   (`path`, `status` `added`, `modified`, `deleted`, `renamed` or `copied`,
   and `previousPath` for a rename or copy), at most 300 in the forge's
