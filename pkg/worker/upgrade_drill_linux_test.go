@@ -296,15 +296,16 @@ func upgradeFrom(t *testing.T, lineage releaseLineage, release *olderRelease) {
 	}
 
 	holder.proceed()
-	reclaimed := holder.await("claimed")
-	if reclaimed.ExternalID != "7" || reclaimed.Token == inFlight.Token {
-		t.Fatalf("the older worker's claim after the upgrade = %+v, want item 7 under a new token", reclaimed)
+	if refused := holder.await("claim_refused"); !strings.Contains(refused.Err, "credential_isolation_required") {
+		t.Fatalf("the older worker's claim after the upgrade = %+v, want 403 credential_isolation_required: it sends no llmKeyIsolation (ADR-0034, amended 2026-11-18)", refused)
 	}
-	if e := holder.await("reclaimed_reported"); e.Err != "" {
-		t.Fatalf("the older worker's new attempt was refused: %s", e.Err)
+	reclaimed := cp.mustClaim(api, leaseTeam, leaseRole)
+	if reclaimed.WorkItem.ExternalID != "7" || reclaimed.RunToken == inFlight.Token {
+		t.Fatalf("a current worker's claim after the upgrade = %+v, want item 7 under a new token", reclaimed)
 	}
-	if got := cp.run(reclaimed.Token); got.State != "finished" || got.Outcome != string(work.OutcomeNoChangeNeeded) {
-		t.Fatalf("the older worker's new attempt = %+v", got)
+	cp.mustReport(api, reclaimed.RunToken, harness.OutcomeReport{Outcome: work.OutcomeNoChangeNeeded, Summary: "re-dispatched after the upgrade"})
+	if got := cp.run(reclaimed.RunToken); got.State != "finished" || got.Outcome != string(work.OutcomeNoChangeNeeded) {
+		t.Fatalf("the current worker's new attempt = %+v", got)
 	}
 
 	redispatched := map[string]bool{}
@@ -351,14 +352,12 @@ func handshakeWithAFutureControlPlane(t *testing.T, cp *controlPlane, release *o
 	if len(events) == 0 {
 		t.Fatalf("the %s worker reported nothing against ploegd %s", release.tag, future)
 	}
-	if !release.sendsVersion {
-		if events[0].Event != "claimed" {
-			t.Fatalf("a %s worker, which predates the version handshake, got %+v from ploegd %s; the policy does not judge it", release.tag, events[0], future)
+	switch {
+	case !release.sendsVersion:
+		if events[0].Event != "claim_refused" || !strings.Contains(events[0].Err, "credential_isolation_required") {
+			t.Fatalf("a %s worker, which predates the version handshake and sends no llmKeyIsolation, got %+v from ploegd %s; want 403 credential_isolation_required", release.tag, events[0], future)
 		}
-		t.Logf("a %s worker predates the version handshake: ploegd %s served it, and only lease fencing guards it", release.tag, future)
-		return
-	}
-	if events[0].Event != "claim_refused" || !strings.Contains(events[0].Err, "426") && !strings.Contains(events[0].Err, release.version) {
+	case events[0].Event != "claim_refused" || !strings.Contains(events[0].Err, "426") && !strings.Contains(events[0].Err, release.version):
 		t.Fatalf("the %s worker's claim against ploegd %s = %+v, want 426 naming its version", release.tag, future, events[0])
 	}
 	if got := cp.count(`SELECT count(*) FROM agent_runs WHERE work_item_id = $1`, id); got != runsBefore {
