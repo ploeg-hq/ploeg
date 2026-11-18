@@ -36,6 +36,13 @@ type OperatorPrincipal struct {
 	// consumer may read (ADR-0196). Nil reads none; AllTrackers reads every
 	// one.
 	ReadTrackers []string
+	// CanManageConnections lets the consumer make, probe, change and remove
+	// tracker and forge connections for a proven person (ADR-0195). It is
+	// not narrowed by Team scope.
+	CanManageConnections bool
+	// ConnectionRedirectURIs are the exact HTTPS callbacks a connection
+	// flow may send the person back to.
+	ConnectionRedirectURIs []string
 }
 
 // AllTrackers is the readTrackers grant for every tracker connection.
@@ -117,11 +124,13 @@ func ParseOperatorConsumers(raw string, lookup func(string) (string, bool)) ([]O
 		Audiences     []string            `json:"audiences"`
 		RequireClaims map[string][]string `json:"requireClaims"`
 		ReadTrackers  []string            `json:"readTrackers"`
+		ManageConns   bool                `json:"manageConnections"`
+		RedirectURIs  []string            `json:"connectionRedirectUris"`
 	}
 	decoder := json.NewDecoder(strings.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&configs); err != nil {
-		return nil, errors.New("operator consumers must be a JSON array of name, tokenEnv, teams, execute, verify, readContent, maxBudgetUsd, clientIds, audiences, requireClaims and readTrackers")
+		return nil, errors.New("operator consumers must be a JSON array of name, tokenEnv, teams, execute, verify, readContent, maxBudgetUsd, clientIds, audiences, requireClaims, readTrackers, manageConnections and connectionRedirectUris")
 	}
 	if err := decoder.Decode(new(any)); err != io.EOF {
 		return nil, errors.New("operator consumers must contain one JSON value")
@@ -178,11 +187,15 @@ func ParseOperatorConsumers(raw string, lookup func(string) (string, bool)) ([]O
 				seen[id] = true
 			}
 		}
+		if err := checkConnectionRedirectURIs(cfg.Name, cfg.RedirectURIs); err != nil {
+			return nil, err
+		}
 		required, err := requiredPersonClaims(cfg.Name, cfg.RequireClaims, len(cfg.ClientIDs)+len(cfg.Audiences) > 0)
 		if err != nil {
 			return nil, err
 		}
-		consumers = append(consumers, OperatorConsumer{Principal: OperatorPrincipal{Name: cfg.Name, Teams: teams, CanExecute: cfg.Execute, CanVerify: cfg.Verify, CanReadContent: readContent, BudgetLimitUSD: budgetLimit, ReadTrackers: readTrackers}, tokenHash: hash, clientIDs: cfg.ClientIDs, audiences: cfg.Audiences, requiredClaims: required})
+		consumers = append(consumers, OperatorConsumer{Principal: OperatorPrincipal{Name: cfg.Name, Teams: teams, CanExecute: cfg.Execute, CanVerify: cfg.Verify, CanReadContent: readContent, BudgetLimitUSD: budgetLimit, ReadTrackers: readTrackers,
+			CanManageConnections: cfg.ManageConns, ConnectionRedirectURIs: slices.Clone(cfg.RedirectURIs)}, tokenHash: hash, clientIDs: cfg.ClientIDs, audiences: cfg.Audiences, requiredClaims: required})
 		names[cfg.Name], hashes[hash] = true, true
 	}
 	return consumers, nil
@@ -278,6 +291,9 @@ func (s *Server) operatorAuth(next http.Handler) http.Handler {
 		}
 		if r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/api/v1/operator/teams/") && strings.HasSuffix(r.URL.Path, "/chats") {
 			timeout = 30 * time.Second
+		}
+		if isConnectionVendorCall(r) {
+			timeout = 60 * time.Second
 		}
 		if isContextUpload(r) {
 			timeout = 60 * time.Second
@@ -473,6 +489,7 @@ func (s *Server) operatorRoutes() *http.ServeMux {
 	s.registerContext(mux)
 	s.registerFacts(mux)
 	s.registerOperatorKnowledge(mux)
+	s.registerOperatorConnections(mux)
 	return mux
 }
 

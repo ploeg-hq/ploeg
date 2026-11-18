@@ -50,6 +50,24 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(renderPoolMetrics(s.Store.PoolStat()))
 	_, _ = w.Write(renderProviderAPIMetrics(apilimit.Snapshot()))
 	_, _ = w.Write(s.Loops.render())
+	_, _ = w.Write(s.renderConnectionMetrics(r))
+}
+
+func (s *Server) renderConnectionMetrics(r *http.Request) []byte {
+	if s.ConnectionService == nil {
+		return nil
+	}
+	counts, err := s.ConnectionService.StateCounts(r.Context())
+	if err != nil {
+		return nil
+	}
+	keys := slices.SortedFunc(maps.Keys(counts), func(a, b [2]string) int { return strings.Compare(a[0]+"\x00"+a[1], b[0]+"\x00"+b[1]) })
+	var b metricWriter
+	b.family("ploeg_connections", "gauge", "Live runtime tracker and forge connections (ADR-0195), by kind and state.")
+	for _, k := range keys {
+		b.sample("ploeg_connections", float64(counts[k]), "kind", k[0], "state", k[1])
+	}
+	return b.Bytes()
 }
 
 func renderProviderAPIMetrics(counts []apilimit.Counts) []byte {
