@@ -567,7 +567,7 @@ Harness is the fast-churning boundary to agent tools. A **Harness Adapter** make
 
 #### Defending against the repository under change
 
-- **OpenHands repository hooks refused** — A Run refuses a clone that ships `.openhands/hooks.json` (ADR-0148 proposed, partly present). — `shipped` — [pkg/harness/adapters/openhands/hooks.go](../../pkg/harness/adapters/openhands/hooks.go)
+- **OpenHands repository hooks set aside** — An OpenHands Run takes the clone's `.openhands/hooks.json` out of the working tree while the agent runs, clears any hooks file before the session starts, puts the shipped file back byte for byte, and the forge proxy refuses a push that changes it (ADR-0148 proposed, amended 2026-11-18). — `shipped` — [pkg/harness/adapters/openhands/hooks.go](../../pkg/harness/adapters/openhands/hooks.go), [pkg/worker/repository_hooks.go](../../pkg/worker/repository_hooks.go)
 - **Repository agent config switched off** — For OpenCode, Qwen Code and Goose, the clone's own agent config, plugins and MCP servers are disabled (ADR-0126 accepted). — `shipped` — [pkg/harness/adapters/acp/profiles.go](../../pkg/harness/adapters/acp/profiles.go)
 - **Attack drill** — Every Harness runs against a hostile repository on a recurring schedule (ADR-0126 accepted). — `shipped` (test, opt-in env; scheduled workflow) — [pkg/harness/adapters/acp/hostile_repository_test.go](../../pkg/harness/adapters/acp/hostile_repository_test.go), [.github/workflows/attack-drill.yml](../../.github/workflows/attack-drill.yml), [docs/ops/attack-drill.md](../../docs/ops/attack-drill.md)
 
