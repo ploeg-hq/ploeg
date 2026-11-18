@@ -46,6 +46,7 @@ asserted
 {{- if .connectionRedirectUris -}}{{- $_ := set $consumer "connectionRedirectUris" .connectionRedirectUris -}}{{- end -}}
 {{- if .bindScopes -}}{{- $_ := set $consumer "bindScopes" true -}}{{- end -}}
 {{- if .registerTargets -}}{{- $_ := set $consumer "registerTargets" true -}}{{- end -}}
+{{- if .manageTools -}}{{- $_ := set $consumer "manageTools" true -}}{{- end -}}
 {{- $consumers = append $consumers $consumer }}
 - name: {{ $tokenEnv }}
   valueFrom:

@@ -64,6 +64,9 @@ type File struct {
 	// runtime for repositories a store-backed forge connection was granted
 	// (ADR-0193). Omitted = none is accepted.
 	TargetRegistration *TargetRegistration `yaml:"targetRegistration"`
+	// ToolRegistry registers MCP servers and skill sources and lets a
+	// proven operator change them at runtime (ADR-0199). Omitted = none.
+	ToolRegistry *ToolRegistry `yaml:"toolRegistry"`
 }
 
 type Trackers struct {
@@ -193,6 +196,10 @@ type Team struct {
 	// TrackerBindings lets an Operator Consumer bind tracker Scopes to this
 	// Team while ploegd runs (ADR-0186). Omitted = the Team accepts none.
 	TrackerBindings *TrackerBindings `yaml:"trackerBindings"`
+	// Tools gives this Team's Roles registered MCP servers and skill
+	// sources by Role or "*" (ADR-0199). Set here, the file is the
+	// authority and the operator API refuses to change it.
+	Tools TeamTools `yaml:"tools"`
 }
 
 // PremiseCheck names the gateway model a Team's premise check calls. ploegd
@@ -395,6 +402,9 @@ func (f *File) Validate() error {
 		return err
 	}
 	if err := f.validateTargetRegistration(); err != nil {
+		return err
+	}
+	if err := f.validateToolRegistry(); err != nil {
 		return err
 	}
 	if err := f.validateFastChecks(); err != nil {
