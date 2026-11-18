@@ -7,16 +7,19 @@ Each release publishes `ghcr.io/ploeg-hq/agent-runner:<version>` for `linux/amd6
 | Tool | Version | Installed from |
 | --- | --- | --- |
 | OpenHands CLI (`openhands`) | 1.16.0 | PyPI with uv, constrained by [openhands-1.16.0.constraints.txt](openhands-1.16.0.constraints.txt) and [openhands-overrides.txt](openhands-overrides.txt) |
-| OpenCode (`opencode`) | 1.19.5 | npm, [tools/opencode](tools/opencode/package-lock.json) |
-| Qwen Code (`qwen`) | 0.26.5 | npm, [tools/qwen-code](tools/qwen-code/package-lock.json) |
-| goose (`goose`) | 1.57.0 | the GitHub release's musl archive, checked against a pinned sha256 |
+| OpenCode (`opencode`) | 1.19.6 | npm, [tools/opencode](tools/opencode/package-lock.json) |
+| Qwen Code (`qwen`) | 0.28.0 | npm, [tools/qwen-code](tools/qwen-code/package-lock.json) |
+| goose (`goose`) | 1.60.1 | the GitHub release's musl archive, checked against a pinned sha256 |
 | moon (`moon`, `moonx`) | 2.6.5 | npm, [tools/moon](tools/moon/package-lock.json) |
-| openspec (`openspec`) | 1.16.0 | npm, [tools/openspec](tools/openspec/package-lock.json) |
+| openspec (`openspec`) | 2.1.0 | npm, [tools/openspec](tools/openspec/package-lock.json) |
 | Python, PyYAML | 3.12, 6.0.3 | Wolfi `python-3.12`, uv |
 | Node.js | 24 | Wolfi `nodejs-24` |
 | git, bash | Wolfi | apk |
+| uv | 0.13.9 | `ghcr.io/astral-sh/uv` |
 
-The image is built on the digest-pinned `cgr.dev/chainguard/wolfi-base` the other Ploeg images use, so its C library is glibc. `apk add` takes the current Wolfi package at build time, and the BuildKit SBOM of each release records what shipped. npm is used only to install the tools during the build and is not in the image. Wolfi's npm 12 runs no package's install script unless it is allowed, so the build runs `opencode-ai`'s `postinstall.mjs` itself, which puts the platform's `opencode` binary in place. Qwen Code's optional `@qwen-code/audio-capture` install script, which only builds a microphone backend, does not run.
+Every version above was the newest stable release on 2026-11-18.
+
+The image is built on the digest-pinned `cgr.dev/chainguard/wolfi-base` the other Ploeg images use, so its C library is glibc. Like those images, it pins no apk version: `apk upgrade` and `apk add` take the current Wolfi package at every build, because Wolfi withdraws old versions ([ADR-0144](../../../docs/adrs/0144-every-published-image-is-built-on-a-base-that-scans-clean-and-pulls-without-credentials.md)). The daily `image-security` run rebuilds and scans the image, so a new finding in a Wolfi package turns it red, and the BuildKit SBOM of each release records what shipped. npm is used only to install the tools during the build and is not in the image. Wolfi's npm 12 runs no package's install script unless it is allowed, so the build runs `opencode-ai`'s `postinstall.mjs` itself, which puts the platform's `opencode` binary in place. Qwen Code's optional `@qwen-code/audio-capture` install script, which only builds a microphone backend, does not run.
 
 No Claude Code ([ADR-0141](../../../docs/adrs/0141-the-claude-runner-image-carries-no-claude-code-and-installs-anthropics-signed-release-at-start.md)) and no language toolchain: a Run gets its toolchains mounted ([give Runs a toolchain and checks](../../../docs/how-to/give-runs-a-toolchain-and-checks.md)). The image has no `USER`; the chart runs the harness container as a non-root user, and the build checks that OpenHands runs as uid 1000.
 
@@ -51,16 +54,15 @@ The Dockerfile fails rather than publish an image that would fail a Run:
 - The image Qwen Code was proven in had no `node-pty`, because its prebuilds crash on musl. The build still removes them, so Qwen Code runs its shell without a PTY as before, and fails if either still resolves. `qwen` and `opencode` must report their pinned versions, and `goose` its pinned release.
 - `litellm-key mint` must fail when nothing is configured, so it can never hand an agent an empty key.
 
-## Changing a version
+## Keeping it current
 
-- **Base image, uv and PyYAML.** Renovate proposes them: the `FROM` digests through its Dockerfile manager and `PYYAML_VERSION` through the `# renovate:` line above it. Python and Node.js follow Wolfi's `python-3.12` and `nodejs-24` packages on every build.
-- **OpenCode, Qwen Code, moon and openspec.** Renovate proposes them through each `tools/<tool>/package.json` and its lockfile.
-- **OpenHands.** Not managed by Renovate, because the version and its constraints file change together. Run `bash ops/docker/agent-runner/openhands-constraints.sh <version>` (it needs `uv`), set `OPENHANDS_VERSION` in the Dockerfile, and commit the new constraints file. The script exports the CLI release's own lockfile and leaves out every package [openhands-overrides.txt](openhands-overrides.txt) names.
-- **goose.** Not managed by Renovate, because the version and its two checksums change together. Set `GOOSE_VERSION` at the top of the Dockerfile and `GOOSE_SHA256_AMD64` and `GOOSE_SHA256_ARM64` to the sha256 of the release's `goose-x86_64-unknown-linux-musl.tar.gz` and `goose-aarch64-unknown-linux-musl.tar.gz`.
+Nothing in the image should wait for a person to notice a new release:
 
-- **Overrides.** [openhands-overrides.txt](openhands-overrides.txt) raises the OpenHands dependencies that had a Critical or High advisory to their first fixed version, plus the packages those need newer. uv installs each at that version whatever OpenHands declares (ADR-0199). On an OpenHands bump, drop each override the new lockfile already meets, rerun the script, and add an override for each new finding the `cve-budget (agent-runner)` job reports. To see a finding before CI does, resolve the set with `uv pip compile` (`--python-platform x86_64-manylinux_2_28`, the constraints and `--override`) into a `requirements.txt` and run `grype dir:` on its directory. Qwen Code's `package.json` raises `sharp` the same way through npm `overrides`.
+- **Base image, uv, PyYAML, OpenCode, Qwen Code, moon and openspec.** Renovate proposes them: the `FROM` digests through its Dockerfile manager, `PYYAML_VERSION` through the `# renovate:` line above it, and each `tools/<tool>/package.json` with its lockfile through the npm manager. Python and Node.js follow Wolfi's `python-3.12` and `nodejs-24` packages on every build.
+- **Overrides.** Renovate also proposes every line of [openhands-overrides.txt](openhands-overrides.txt). The file raises OpenHands dependencies above the CLI release's lockfile: each package that had a Critical or High advisory, at its newest release OpenHands still imports, plus the packages those need newer or bring in. uv installs each at that version whatever OpenHands declares (ADR-0199). Qwen Code's `package.json` raises `sharp` the same way through npm `overrides`. Drop an override once OpenHands' own lockfile reaches its version.
+- **OpenHands and goose.** Renovate cannot regenerate the constraints file or the goose checksums, so the [Agent image pins workflow](../../../.github/workflows/agent-image-pins.yml) runs [update-agent-runner-pins.sh](../../../scripts/update-agent-runner-pins.sh) every day. When PyPI has a newer `openhands` or `aaif-goose/goose` a newer release, it regenerates the constraints with [openhands-constraints.sh](openhands-constraints.sh), or downloads both goose archives and writes their sha256, and opens a pull request. It runs only once the repository has the variable `AGENT_IMAGE_PINS_APP_ID` and the secret `AGENT_IMAGE_PINS_APP_PRIVATE_KEY` of a GitHub App with contents and pull request write on this repository: a pull request opened with the workflow's own token would start no CI.
 
-Before changing a harness version or an override, run `mise run harness-conformance` inside the image ([managed workers](../../../docs/ops/managed-workers.md)).
+By hand, the same steps are `bash scripts/update-agent-runner-pins.sh` (it needs `uv`, `jq` and `sha256sum`). To see a Python finding before CI does, resolve the set with `uv pip compile` (`--python-platform x86_64-manylinux_2_28`, `-c` the constraints, `--override` the overrides) into a `requirements.txt` and run `grype dir:` on its directory. Before merging a harness version or an override change, run `mise run harness-conformance` inside the image ([managed workers](../../../docs/ops/managed-workers.md)).
 
 ## Building it locally
 

@@ -1,0 +1,63 @@
+name: Agent image pins
+on:
+  schedule:
+    - cron: '41 4 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: agent-image-pins
+  cancel-in-progress: false
+jobs:
+  update:
+    if: github.repository == 'ploeg-hq/ploeg' && vars.AGENT_IMAGE_PINS_APP_ID != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Mint an installation token that writes only this repository
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ vars.AGENT_IMAGE_PINS_APP_ID }}
+          private-key: ${{ secrets.AGENT_IMAGE_PINS_APP_PRIVATE_KEY }}
+          repositories: ploeg
+          permission-contents: write
+          permission-pull-requests: write
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: development
+          token: ${{ steps.app.outputs.token }}
+          persist-credentials: true
+      - uses: jdx/mise-action@7a4e45a543138629540c9a1616d08632b893e492 # v5.0.1
+        with:
+          version: 2026.9.18
+          install_args: uv
+          cache: false
+      - name: Raise OpenHands and goose to their newest releases
+        id: pins
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: mise exec -- bash scripts/update-agent-runner-pins.sh
+      - name: Open a pull request unless one for these versions exists
+        if: steps.pins.outputs.branch != ''
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          BRANCH: ${{ steps.pins.outputs.branch }}
+          SUMMARY: ${{ steps.pins.outputs.summary }}
+          APP_SLUG: ${{ steps.app.outputs.app-slug }}
+        run: |
+          if git ls-remote --exit-code --heads origin "$BRANCH" > /dev/null; then
+            echo "$BRANCH already exists; its pull request carries these versions"
+            exit 0
+          fi
+          user_id=$(gh api "/users/${APP_SLUG}[bot]" --jq .id)
+          git config user.name "${APP_SLUG}[bot]"
+          git config user.email "${user_id}+${APP_SLUG}[bot]@users.noreply.github.com"
+          git switch -c "$BRANCH"
+          git add -- ops/docker/agent-runner
+          git commit -s -m "fix(deps): raise the agent image's $SUMMARY"
+          git push origin "$BRANCH"
+          gh pr create --base development --head "$BRANCH" --title "fix(deps): raise the agent image's $SUMMARY" \
+            --body "Opened by the [agent image pins workflow](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}). It regenerated the OpenHands constraints with \`openhands-constraints.sh\` and the goose checksums from the release archives. Before merging, check that \`cve-budget (agent-runner)\` is green, drop each entry of \`openhands-overrides.txt\` that the new OpenHands lock already meets, and run \`mise run harness-conformance\` inside the image (ops/docker/agent-runner/README.md)."
