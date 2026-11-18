@@ -34,6 +34,7 @@ var (
 	idPattern      = regexp.MustCompile(`^(mcp|skl)_[0-9a-hjkmnp-tv-z]{26}$`)
 	scopePattern   = regexp.MustCompile(`^[\x21\x23-\x5b\x5d-\x7e]{1,128}$`)
 	clientIDFormat = regexp.MustCompile(`^[\x21-\x7e]{1,256}$`)
+	outboundURL    = regexp.MustCompile(`^https?://[A-Za-z0-9.-]+(:[0-9]{1,5})?(/[\x21-\x7e]*)?$`)
 )
 
 var forbiddenHeaders = map[string]bool{
@@ -425,3 +426,7 @@ func findSource(sources []SkillSource, ref string) (SkillSource, bool) {
 	}
 	return SkillSource{}, false
 }
+
+// errOutboundURL is a URL ploegd refuses to call: not http or https, user
+// info, or a host that is not a plain name or address.
+var errOutboundURL = fmt.Errorf("toolregistry: refused outbound URL")

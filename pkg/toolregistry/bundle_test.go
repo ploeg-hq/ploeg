@@ -272,3 +272,12 @@ func TestFetchGitPinsTheCommitAndTheTreeDigest(t *testing.T) {
 		t.Fatalf("got %v, want digest_mismatch", e)
 	}
 }
+
+func TestOutboundCallsRefuseURLsWithUserInfoOrOtherSchemes(t *testing.T) {
+	f := &Fetcher{Client: SafeClient(loopbackPolicy(), 0)}
+	for _, u := range []string{"https://user:pw@127.0.0.1/x", "file:///etc/passwd", "gopher://127.0.0.1/x"} {
+		if _, _, err := f.get(context.Background(), u, nil, 10); err != errOutboundURL {
+			t.Errorf("%s: got %v, want errOutboundURL", u, err)
+		}
+	}
+}

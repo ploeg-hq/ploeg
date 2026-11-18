@@ -119,6 +119,9 @@ type probeConn struct {
 }
 
 func (c *probeConn) request(ctx context.Context, body []byte) (*http.Response, *Error) {
+	if !outboundURL.MatchString(c.url) {
+		return nil, probeFault("The server URL is not usable.")
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.url, bytes.NewReader(body))
 	if err != nil {
 		return nil, probeFault("The server URL is not usable.")
