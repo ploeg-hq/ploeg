@@ -12,7 +12,6 @@ import (
 	"net/url"
 	"regexp"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -514,6 +513,7 @@ func (s *Server) operatorRoutes() *http.ServeMux {
 	s.registerOperatorConnections(mux)
 	s.registerOperatorTrackerBindings(mux)
 	s.registerOperatorTargets(mux)
+	s.registerOperatorTeams(mux)
 	s.registerOperatorTools(mux)
 	return mux
 }
@@ -532,21 +532,12 @@ func (s *Server) handleOperatorTeams(w http.ResponseWriter, r *http.Request) {
 		operatorReadError(w, err)
 		return
 	}
-	for i := range teams {
-		if assignees := s.OperatorConfig.TeamAssignees[teams[i].ID]; len(assignees) > 0 {
-			teams[i].Assignees = append([]string{}, assignees...)
-			sort.Strings(teams[i].Assignees)
-		}
-		if scopes := s.OperatorConfig.TeamScopes[teams[i].ID]; len(scopes) > 0 {
-			teams[i].PinnedScopes = append([]string{}, scopes...)
-			sort.Strings(teams[i].PinnedScopes)
-		}
-		teams[i].PrepareRepository = &store.OperatorPrepareRepository{MaxBudgetUSD: s.prepareCap(teams[i].ID)}
-	}
+	s.decorateTeams(teams)
 	if err := s.describeRoles(r.Context(), teams); err != nil {
 		operatorReadError(w, err)
 		return
 	}
+	s.identifyTeams(teams)
 	operatorJSON(w, 200, map[string]any{"schemaVersion": "1.0", "teams": teams})
 }
 

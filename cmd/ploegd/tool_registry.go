@@ -11,6 +11,7 @@ import (
 	"github.com/ploeg-hq/ploeg/pkg/httpapi"
 	"github.com/ploeg-hq/ploeg/pkg/secretstore"
 	"github.com/ploeg-hq/ploeg/pkg/store"
+	"github.com/ploeg-hq/ploeg/pkg/team"
 	"github.com/ploeg-hq/ploeg/pkg/toolregistry"
 )
 
@@ -18,9 +19,27 @@ var _ toolregistry.Store = (*store.Store)(nil)
 
 type configTeams map[string]toolregistry.Team
 
-func (t configTeams) Resolve(ref string) (toolregistry.Team, bool) {
-	team, ok := t[ref]
-	return team, ok
+// directoryTeams resolves an id, key or alias through ADR-0198's directory
+// and takes the Roles from the configuration file; a Team the directory
+// does not hold yet resolves by its key with no id.
+type directoryTeams struct {
+	byKey     configTeams
+	directory *team.Directory
+}
+
+func (t directoryTeams) Resolve(ref string) (toolregistry.Team, bool) {
+	if t.directory != nil {
+		if found, _, ok := t.directory.Resolve(ref); ok {
+			roles, known := t.byKey[found.Key]
+			if !known {
+				return toolregistry.Team{}, false
+			}
+			roles.ID = found.ID
+			return roles, true
+		}
+	}
+	found, ok := t.byKey[ref]
+	return found, ok
 }
 
 func toolTeams(cfg *config.File) configTeams {
@@ -124,7 +143,7 @@ func staticTeamTools(cfg *config.File, servers []toolregistry.Server, sources []
 // toolRegistry builds the MCP server and skill source registry of
 // ADR-0199 when the configuration file has a toolRegistry section, and
 // fetches the static skill sources once. Nil registers nothing.
-func toolRegistry(ctx context.Context, log *slog.Logger, cfg *config.File, st *store.Store, secrets secretstore.Store) *httpapi.ToolRegistry {
+func toolRegistry(ctx context.Context, log *slog.Logger, cfg *config.File, st *store.Store, secrets secretstore.Store, directory *team.Directory) *httpapi.ToolRegistry {
 	tr := cfg.ToolRegistry
 	if tr == nil {
 		return nil
@@ -133,7 +152,7 @@ func toolRegistry(ctx context.Context, log *slog.Logger, cfg *config.File, st *s
 	client := toolregistry.SafeClient(policy, 60*time.Second)
 	gitBinary, _ := exec.LookPath("git")
 	servers, sources, sourceEnv := staticToolEntries(tr)
-	svc := &toolregistry.Service{Store: st, Secrets: secrets, Teams: toolTeams(cfg), Policy: policy,
+	svc := &toolregistry.Service{Store: st, Secrets: secrets, Teams: directoryTeams{byKey: toolTeams(cfg), directory: directory}, Policy: policy,
 		Prober: &toolregistry.Prober{Client: client}, Fetcher: &toolregistry.Fetcher{Client: client, Git: gitBinary},
 		Accepting: tr.Accepting(), Limit: tr.Limit(), StaticServers: servers, StaticSources: sources, StaticSourceEnv: sourceEnv, Log: log}
 	svc.LoadStatic(ctx)
