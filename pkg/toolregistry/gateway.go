@@ -23,11 +23,11 @@ type RunRef struct {
 // gateway-access-groups server is left out here: the gateway attaches the
 // Run's model key to it from the model grant.
 func (s *Service) GatewayGrant(ctx context.Context, run RunRef) (mcpgateway.Grant, []string, error) {
-	g, e := s.GrantFor(ctx, run.Team, run.Role)
+	g, e := s.GrantFor(ctx, run.Tenant, run.Team, run.Role)
 	if e != nil {
 		return mcpgateway.Grant{}, nil, e
 	}
-	out := mcpgateway.Grant{RunID: run.RunID, WorkItem: run.WorkItem, Tenant: run.Tenant, Servers: map[string]mcpgateway.ServerGrant{}}
+	out := mcpgateway.Grant{RunID: run.RunID, WorkItem: run.WorkItem, Tenant: s.tenant(), Servers: map[string]mcpgateway.ServerGrant{}}
 	var withheld []string
 	for _, srv := range g.Servers {
 		if srv.Adapter == AdapterGatewayAccessGroups {

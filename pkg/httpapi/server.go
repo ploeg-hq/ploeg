@@ -28,6 +28,7 @@ import (
 	"github.com/ploeg-hq/ploeg/pkg/store"
 	"github.com/ploeg-hq/ploeg/pkg/target"
 	"github.com/ploeg-hq/ploeg/pkg/team"
+	"github.com/ploeg-hq/ploeg/pkg/teamruntime"
 	"github.com/ploeg-hq/ploeg/pkg/txntoken"
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
@@ -36,7 +37,10 @@ type Server struct {
 	OperatorConfig OperatorConfig
 	// Teams resolves a Team's id, key or alias (ADR-0198). Nil = ploegd
 	// knows no Team identity, and reads show none.
-	Teams          *team.Directory
+	Teams *team.Directory
+	// RuntimeTeams serves the Teams people create at runtime (ADR-0198).
+	// Nil refuses every change with creation_not_accepted.
+	RuntimeTeams   *teamruntime.Service
 	WorkerSecurity *WorkerSecurity
 	LLMControl     *LLMControl
 	// CredentialGateways is set when Teams run behind a credential gateway
@@ -282,10 +286,50 @@ type TeamCaps interface {
 }
 
 func (s *Server) maxRunning(team string) int {
+	if rt, ok := s.runtimeTeam(team); ok {
+		return rt.Manifest.MaxRunning
+	}
 	if s.TeamCaps == nil {
 		return 0
 	}
 	return s.TeamCaps.MaxRunning(team)
+}
+
+// runtimeTeam is the live runtime Team a key names (ADR-0198); a static
+// Team's key never names one, because static wins.
+func (s *Server) runtimeTeam(key string) (store.RuntimeTeam, bool) {
+	if s.RuntimeTeams == nil {
+		return store.RuntimeTeam{}, false
+	}
+	return s.RuntimeTeams.Lookup(context.Background(), key)
+}
+
+// teamSponsor is the person a Team's Runs act for when nobody handed the
+// work over: teams.<key>.sponsor, or a runtime Team's sponsor.
+func (s *Server) teamSponsor(team string) string {
+	if sponsor := s.TeamSponsors[team]; sponsor != "" {
+		return sponsor
+	}
+	if rt, ok := s.runtimeTeam(team); ok {
+		return rt.Manifest.Sponsor
+	}
+	return ""
+}
+
+// roleCap is a Role's per-Run cap, from the plan or a runtime manifest.
+func (s *Server) roleCap(team, role string) float64 {
+	if rt, ok := s.runtimeTeam(team); ok {
+		for _, r := range rt.Manifest.Roles() {
+			if r.Name == role {
+				return r.Cap
+			}
+		}
+		return 0
+	}
+	if s.RoleCaps == nil {
+		return 0
+	}
+	return s.RoleCaps.RoleCap(team, role)
 }
 
 // ShiftEngine is implemented by pkg/shiftengine. An interface here rather
@@ -854,10 +898,7 @@ func (resp *claimResponse) carryForgeCredential(cred forgebroker.Credential) {
 // the budget ceiling its credential must be minted at, and the briefing of
 // earlier Rounds' findings (ADR-0011 — the agent fetches nothing itself).
 func (s *Server) claimRole(w http.ResponseWriter, r *http.Request, req claimRequest) {
-	cap := 0.0
-	if s.RoleCaps != nil {
-		cap = s.RoleCaps.RoleCap(req.Team, req.Role)
-	}
+	cap := s.roleCap(req.Team, req.Role)
 	run, err := s.Store.ClaimRoleFor(r.Context(), req.Team, req.Role, req.harnessKey(), s.LeaseTTL, cap, s.maxRunning(req.Team))
 	switch {
 	case errors.Is(err, store.ErrNoWork):

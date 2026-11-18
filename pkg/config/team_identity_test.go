@@ -68,3 +68,12 @@ teams:
 		t.Fatalf("Teams made differently share a digest: %v", got)
 	}
 }
+
+func TestTeamCreationsBindingPolicyIsValidatedLikeATeams(t *testing.T) {
+	if _, err := Load(write(t, "teamCreation:\n  trackerBindings:\n    connections: [\"*:clickup\"]\n")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(write(t, "teamCreation:\n  trackerBindings:\n    connections: []\n")); err == nil || !strings.Contains(err.Error(), "teamCreation.trackerBindings") {
+		t.Fatalf("an empty policy: %v", err)
+	}
+}

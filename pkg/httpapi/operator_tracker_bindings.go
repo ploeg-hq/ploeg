@@ -17,6 +17,7 @@ import (
 
 	"github.com/ploeg-hq/ploeg/pkg/provider"
 	"github.com/ploeg-hq/ploeg/pkg/store"
+	"github.com/ploeg-hq/ploeg/pkg/team"
 	"github.com/ploeg-hq/ploeg/pkg/trackerbinding"
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
@@ -123,7 +124,7 @@ func (s *Server) bindingCallerFor(w http.ResponseWriter, r *http.Request, team s
 		operatorError(w, 400, "invalid_request", "Invalid team identifier.")
 		return p, store.Attribution{}, false
 	}
-	if team != "" && !p.AllowsTeam(team) {
+	if team != "" && !s.allowsTeamKey(p, team) {
 		operatorError(w, 403, "team_not_allowed", "This team is outside the consumer scope.")
 		return p, store.Attribution{}, false
 	}
@@ -132,7 +133,7 @@ func (s *Server) bindingCallerFor(w http.ResponseWriter, r *http.Request, team s
 		return p, store.Attribution{}, false
 	}
 	if team != "" && knownTeam {
-		if _, ok := s.TrackerBindings.Registry.Config.Teams[team]; !ok {
+		if !s.TrackerBindings.Registry.KnowsTeam(team) {
 			operatorError(w, 404, "unknown_team", "No Team "+team+" is configured.")
 			return p, store.Attribution{}, false
 		}
@@ -236,7 +237,7 @@ func (f bindingFieldsRequest) fields() (store.TrackerBindingFields, string) {
 
 func (s *Server) bindingConnection(ctx context.Context, w http.ResponseWriter, team, id string) (trackerbinding.Connection, bool) {
 	reg := s.TrackerBindings.Registry
-	policy, accepts := reg.Config.TeamTrackerBindings(team)
+	policy, accepts := reg.TeamPolicy(team)
 	if !accepts {
 		operatorError(w, 422, "bindings_not_accepted", "Team "+team+" accepts no runtime tracker bindings: its manifest names no trackerBindings.")
 		return trackerbinding.Connection{}, false
@@ -333,7 +334,7 @@ func (s *Server) handleCreateTrackerBinding(w http.ResponseWriter, r *http.Reque
 		s.answerExisting(ctx, w, *existing, fields, audit)
 		return
 	}
-	policy, _ := reg.Config.TeamTrackerBindings(team)
+	policy, _ := reg.TeamPolicy(team)
 	webhook, state, fresh := reg.Wire(ctx, conn, res.ScopeID, res.Webhook)
 	b, created, err := s.Store.CreateTrackerBinding(ctx, store.NewTrackerBinding{Team: team, Connection: conn.ID, ScopeID: res.ScopeID,
 		ScopeName: res.ScopeName, TrackerBindingFields: fields, State: state, Webhook: webhook, Max: policy.Limit()}, audit)
@@ -405,7 +406,7 @@ func (s *Server) liveCount(team string) int {
 }
 
 func (s *Server) teamLimit(team string) int {
-	policy, _ := s.TrackerBindings.Registry.Config.TeamTrackerBindings(team)
+	policy, _ := s.TrackerBindings.Registry.TeamPolicy(team)
 	return policy.Limit()
 }
 
@@ -694,4 +695,14 @@ func (s *Server) renderBindingMetrics() []byte {
 		b.sample("ploeg_tracker_bindings", float64(counts[state]), "state", state)
 	}
 	return b.Bytes()
+}
+
+// allowsTeamKey reports whether the consumer may use the Team key names: by
+// its Team scope, or for a runtime Team through manageTeams (ADR-0198).
+func (s *Server) allowsTeamKey(p OperatorPrincipal, key string) bool {
+	if p.AllowsTeam(key) {
+		return true
+	}
+	t, how, ok := s.Teams.Resolve(key)
+	return ok && how == team.ByKey && p.allowsResolvedTeam(t)
 }

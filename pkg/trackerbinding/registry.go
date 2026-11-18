@@ -18,6 +18,7 @@ import (
 	"github.com/ploeg-hq/ploeg/pkg/provider"
 	"github.com/ploeg-hq/ploeg/pkg/store"
 	"github.com/ploeg-hq/ploeg/pkg/target"
+	"github.com/ploeg-hq/ploeg/pkg/team"
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
@@ -138,6 +139,12 @@ type Registry struct {
 	DefaultForge string
 	Connections  Connections
 	Runtime      RuntimeTargets
+	// Teams resolves a binding's Team id (ADR-0198). Nil decides by the
+	// configuration file's Teams alone.
+	Teams func(id string) (team.Team, bool)
+	// TeamByKey resolves a Team's current key (ADR-0198). Nil knows only the
+	// configuration file's Teams.
+	TeamByKey func(key string) (team.Team, bool)
 	// Readiness gates the static targets.
 	Readiness *target.Gate
 	Live      *target.Live
@@ -233,8 +240,8 @@ func (r *Registry) logTransition(b store.TrackerBinding, next store.BindingState
 // StateOf decides the state a live binding is in under the current static
 // configuration and effective registry (ADR-0186 section 4).
 func (r *Registry) StateOf(ctx context.Context, b store.TrackerBinding) store.BindingStateChange {
-	if _, ok := r.Config.Teams[b.Team]; !ok {
-		return store.BindingStateChange{State: store.BindingInvalid, InvalidReason: store.BindingTeamRemoved}
+	if state, decided := r.teamState(b); decided {
+		return state
 	}
 	if b.State == store.BindingInvalid && b.InvalidDetail != nil && b.InvalidDetail.TargetState == RuntimeTargetRemoved {
 		return store.BindingStateChange{State: store.BindingInvalid, InvalidReason: b.InvalidReason, InvalidDetail: b.InvalidDetail}
@@ -551,3 +558,52 @@ func (r *Registry) log() *slog.Logger {
 }
 
 func normalIdentity(s string) string { return strings.ToLower(strings.TrimSpace(s)) }
+
+// teamState decides a binding by its Team: a runtime Team that is shadowed
+// or invalid makes it invalid with team_unavailable (ADR-0198 section 13); a
+// Team in neither the file nor the runtime directory makes it invalid with
+// team_removed. decided false lets the other checks run.
+func (r *Registry) teamState(b store.TrackerBinding) (store.BindingStateChange, bool) {
+	if r.Teams != nil && b.TeamID != "" {
+		if t, ok := r.Teams(b.TeamID); ok && t.Source == team.SourceRuntime {
+			if t.State != team.StateActive {
+				return store.BindingStateChange{State: store.BindingInvalid, InvalidReason: store.BindingTeamUnavailable}, true
+			}
+			return store.BindingStateChange{}, false
+		}
+	}
+	if _, ok := r.Config.Teams[b.Team]; !ok {
+		return store.BindingStateChange{State: store.BindingInvalid, InvalidReason: store.BindingTeamRemoved}, true
+	}
+	return store.BindingStateChange{}, false
+}
+
+// TeamPolicy is the binding policy of the Team key names: its
+// teams.<key>.trackerBindings, or for an active runtime Team the
+// installation's teamCreation.trackerBindings. false accepts no binding.
+func (r *Registry) TeamPolicy(key string) (config.TrackerBindings, bool) {
+	if policy, ok := r.Config.TeamTrackerBindings(key); ok {
+		return policy, true
+	}
+	if _, static := r.Config.Teams[key]; static || r.TeamByKey == nil || r.Config.TeamCreation == nil || r.Config.TeamCreation.TrackerBindings == nil {
+		return config.TrackerBindings{}, false
+	}
+	t, ok := r.TeamByKey(key)
+	if !ok || t.Source != team.SourceRuntime || t.State != team.StateActive {
+		return config.TrackerBindings{}, false
+	}
+	return *r.Config.TeamCreation.TrackerBindings, true
+}
+
+// KnowsTeam reports whether key names a Team in the file or a live runtime
+// Team.
+func (r *Registry) KnowsTeam(key string) bool {
+	if _, ok := r.Config.Teams[key]; ok {
+		return true
+	}
+	if r.TeamByKey == nil {
+		return false
+	}
+	t, ok := r.TeamByKey(key)
+	return ok && t.Source == team.SourceRuntime
+}

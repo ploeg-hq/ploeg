@@ -349,7 +349,7 @@ func TestAStaticServerKeyWinsAndAStaticAttachmentCannotBeReplaced(t *testing.T) 
 	if e == nil || e.Code != "attachment_set_by_configuration" {
 		t.Fatalf("got %v", e)
 	}
-	g, e := svc.GrantFor(context.Background(), "bronze", "builder")
+	g, e := svc.GrantFor(context.Background(), DefaultTenant, "bronze", "builder")
 	if e != nil || len(g.Servers) != 1 || g.Servers[0].Tools["search_logs"] != AccessRead {
 		t.Fatalf("static grant: %+v %v", g, e)
 	}
@@ -376,7 +376,7 @@ func TestAttachmentGrantAndRemovalWhileInUse(t *testing.T) {
 	if e := svc.RemoveServer(context.Background(), nil, "obs"); e == nil || e.Code != "server_in_use" {
 		t.Fatalf("got %v, want server_in_use", e)
 	}
-	g, _ := svc.GrantFor(context.Background(), "bronze", "builder")
+	g, _ := svc.GrantFor(context.Background(), DefaultTenant, "bronze", "builder")
 	value, _, err := svc.Credential(context.Background(), g.Servers[0])
 	if err != nil || value != "server-secret" {
 		t.Fatalf("the gateway's credential: %q %v", value, err)
