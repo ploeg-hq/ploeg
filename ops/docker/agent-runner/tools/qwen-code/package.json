@@ -1,0 +1,10 @@
+{
+  "name": "agent-runner-qwen-code",
+  "private": true,
+  "dependencies": {
+    "@qwen-code/qwen-code": "0.28.0"
+  },
+  "overrides": {
+    "sharp": "0.35.5"
+  }
+}

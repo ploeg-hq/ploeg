@@ -12,11 +12,12 @@ Config files and agent home directories are written to the scratch directory wit
 
 ## Profiles
 
-The upstream facts below come from reading each project's source at the named tag on 27 September 2026. No live Run has measured them yet. `mise run harness-conformance` does that for the versions an image ships ([live_test.go](../../pkg/harness/harnesstest/live_test.go), harness names `acp`, `acp-qwen-code` and `acp-goose`).
+The upstream facts below come from reading each project's source at the named tag on 27 September 2026. No live Run has measured them yet. The agent image ships newer versions than were read (the row after it); nobody has re-read the upstream source at those versions, so the facts below are as of the checked versions. `mise run harness-conformance` does that for the versions an image ships ([live_test.go](../../pkg/harness/harnesstest/live_test.go), harness names `acp`, `acp-qwen-code` and `acp-goose`).
 
 | | `opencode` (default) | `qwen-code` | `goose` |
 | --- | --- | --- | --- |
 | Upstream checked | `opencode-ai` 1.18.30, as pinned when checked | [QwenLM/qwen-code](https://github.com/QwenLM/qwen-code) v0.24.6 (2026-09-26), npm `@qwen-code/qwen-code`, Apache-2.0 | [aaif-goose/goose](https://github.com/aaif-goose/goose) (formerly `block/goose`) v1.52.0 (2026-09-23), Apache-2.0 |
+| Shipped in `agent-runner` (2026-11-18) | `opencode-ai` 1.19.6 | `@qwen-code/qwen-code` 0.28.0 | v1.60.1 |
 | Command | `opencode acp` | `qwen --acp --auth-type=openai` (`--acp` exists since v0.6.1; the older `--experimental-acp` is deprecated) | `goose acp` |
 | Gateway wiring | Generated `OPENCODE_CONFIG` file with an `@ai-sdk/openai-compatible` provider; the key is the reference `{env:LLM_API_KEY}` | `OPENAI_API_KEY`, `OPENAI_BASE_URL` and `OPENAI_MODEL` | `GOOSE_PROVIDER=litellm`, `GOOSE_MODEL`, and `LITELLM_HOST`/`LITELLM_BASE_PATH`/`LITELLM_API_KEY`, with the base URL split into host and `<path>/chat/completions` |
 | Repository config, switched off | `OPENCODE_DISABLE_PROJECT_CONFIG=true`, so the repository's own `opencode.json` and `.opencode/` do not load. The attack drill ([ADR-0126](../adrs/0126-a-recurring-attack-drill-runs-every-harness-against-a-hostile-repository.md)) found that without it OpenCode 1.18.30 started a repository plugin and a repository MCP server at `session/new`; with it neither ran, `session/new` still succeeded, and the root `AGENTS.md` still loaded | repository `.qwen/settings.json` merged below system settings (see below) | repository `.agents/plugins/` disabled per plugin (see below) |
@@ -64,10 +65,10 @@ Why this profile exists alongside the native adapter: ACP gives structured tool 
 
 ## What an image needs
 
-Ploeg does not install agents. Every profile's binary must be on `PATH` in the image that the team's `executor.harness.image` names (by default `executor.runnerImage`, `agent-runner`, which is built outside this repository). The worker checks this before it claims ([adapters.go](../../pkg/worker/adapters.go)). `executor.harness.entrypoint` replaces the binary path and keeps the profile's arguments.
+Ploeg does not install agents. Every profile's binary must be on `PATH` in the image that the team's `executor.harness.image` names (by default `executor.runnerImage`). [`ghcr.io/ploeg-hq/agent-runner`](../../ops/docker/agent-runner/README.md), which each release publishes, carries `opencode`, `qwen`, `goose` and `openhands` at the versions its README lists. The worker checks this before it claims ([adapters.go](../../pkg/worker/adapters.go)). `executor.harness.entrypoint` replaces the binary path and keeps the profile's arguments.
 
-- `qwen-code`: Node.js 22 or later and `npm install -g @qwen-code/qwen-code@0.24.6`, which provides `qwen`. Upstream releases every few days, so pin the version.
-- `goose`: the `goose-x86_64-unknown-linux-musl` (or `aarch64`) release archive for v1.52.0, which is a static `goose` binary.
+- `qwen-code`: Node.js 22 or later and `npm install -g @qwen-code/qwen-code@<version>`, which provides `qwen`; the agent image pins 0.28.0. Upstream releases every few days, so pin the version.
+- `goose`: the `goose-x86_64-unknown-linux-musl` (or `aarch64`) release archive, which is a static `goose` binary; the agent image pins v1.60.1.
 
 ## Codex is not a profile yet
 

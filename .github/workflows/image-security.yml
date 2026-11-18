@@ -68,6 +68,26 @@ jobs:
           path: ${{ runner.temp }}/cve/${{ matrix.image.name }}
           if-no-files-found: ignore
           retention-days: 30
+  arm64-build:
+    needs: catalogue
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ${{ fromJSON(needs.catalogue.outputs.images) }}
+    name: arm64-build (${{ matrix.image.name }})
+    env:
+      REPOSITORY: ${{ matrix.image.repository }}
+      DOCKERFILE: ${{ matrix.image.dockerfile }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: contains(matrix.image.platforms, 'linux/arm64')
+        with:
+          persist-credentials: false
+      - name: Build the image for linux/arm64 as the release does
+        if: contains(matrix.image.platforms, 'linux/arm64')
+        run: docker build --platform linux/arm64 --file "$DOCKERFILE" --tag "$REPOSITORY:ci-arm64" .
   cve-gate-self-test:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
