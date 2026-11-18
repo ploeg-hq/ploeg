@@ -88,7 +88,7 @@ func New(cfg Config) (*Gateway, error) {
 	g := &Gateway{
 		cfg:       cfg,
 		ploegd:    ploegd,
-		grants:    &grantCache{ploegd: ploegd, now: cfg.Now, entries: map[[32]byte]cachedGrant{}},
+		grants:    &grantCache{ploegd: ploegd, now: cfg.Now, entries: map[string]cachedGrant{}},
 		pods:      &podCache{lookup: cfg.Pods, namespace: cfg.Namespace, selector: cfg.RunPodSelector, now: cfg.Now, entries: map[string]cachedPods{}},
 		limits:    newLimiter(cfg.Limits, cfg.Now),
 		audit:     newAuditor(ploegd, cfg.Log),
@@ -169,7 +169,7 @@ func (g *Gateway) serveUpstream(u Upstream) http.Handler {
 		run := g.runFor(grant)
 		defer func() {
 			g.audit.record(entry{run: grant, family: u.Family(), credential: u.Credential(grant), method: r.Method,
-				route: routeOf(r, capability), status: rec.status, bytes: rec.bytes + r.ContentLength, duration: g.cfg.Now().Sub(started),
+				route: routeOf(r, capability), status: rec.status, bytes: max(r.ContentLength, 0), duration: g.cfg.Now().Sub(started),
 				reason: rec.Header().Get(gatewaycontract.RefusalHeader)})
 		}()
 		if grant.Pin.PodIP != ip || !g.pods.holds(r.Context(), ip, grant.Pin.PodUID) {
@@ -240,7 +240,6 @@ func routeOf(r *http.Request, capability string) string {
 type recorder struct {
 	http.ResponseWriter
 	status      int
-	bytes       int64
 	wroteHeader bool
 }
 
@@ -249,13 +248,6 @@ func (r *recorder) WriteHeader(status int) {
 		r.status, r.wroteHeader = status, true
 	}
 	r.ResponseWriter.WriteHeader(status)
-}
-
-func (r *recorder) Write(b []byte) (int, error) {
-	r.wroteHeader = true
-	n, err := r.ResponseWriter.Write(b)
-	r.bytes += int64(n)
-	return n, err
 }
 
 func (r *recorder) Flush() {
