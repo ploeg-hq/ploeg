@@ -798,7 +798,7 @@ spec:
     - name: harness
       image: {{ $hImage }}
       restartPolicy: Always
-      command: ["/mnt/bin/ploeg-worker", "harness-serve", "/run/ploeg/launcher/launcher.sock"]
+      command: ["/mnt/bin/ploeg-worker", "harness-serve", "/run/ploeg/launcher/launcher.json"]
       volumeMounts:
         - name: worker-bin
           mountPath: /mnt/bin
@@ -1075,7 +1075,7 @@ spec:
           value: /mnt/ci-shared
         {{- if $separate }}
         - name: PLOEG_HARNESS_LAUNCHER
-          value: /run/ploeg/launcher/launcher.sock
+          value: /run/ploeg/launcher/launcher.json
         {{- with include "ploeg.goMemLimitEnv" (dict "goMemLimit" "" "resources" $root.Values.executor.workerContainerResources) | trim }}{{ . | nindent 8 }}{{- end }}
         {{- end }}
         {{- if $hDind }}

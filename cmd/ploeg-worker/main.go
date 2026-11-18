@@ -47,7 +47,7 @@ func main() {
 
 	if len(os.Args) >= 3 && os.Args[1] == "harness-serve" {
 		if err := runHarnessServe(os.Args[2]); err != nil {
-			log.Error("harness launcher exiting", "socket", os.Args[2], "err", err)
+			log.Error("harness launcher exiting", "rendezvous", os.Args[2], "err", err)
 			os.Exit(1)
 		}
 		return
