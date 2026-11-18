@@ -24,9 +24,13 @@ func (s *Server) runGrant(ctx context.Context, token string) (toolregistry.Grant
 	if err != nil {
 		return empty, false, &toolregistry.Error{Status: 503, Code: "run_unavailable", Message: "run state unavailable"}
 	}
-	g, e := svc.GrantFor(ctx, run.Team, run.Role)
+	tenant, err := s.runTenant(ctx, svc, token)
+	if err != nil {
+		return empty, false, &toolregistry.Error{Status: 503, Code: "run_unavailable", Message: "run state unavailable"}
+	}
+	g, e := svc.GrantFor(ctx, tenant, run.Team, run.Role)
 	if e != nil {
-		if e.Code == "unknown_team" {
+		if e.Code == "unknown_team" || e.Code == "tenant_mismatch" {
 			return empty, false, nil
 		}
 		return empty, false, e
@@ -96,12 +100,28 @@ func (s *Server) handleRunSkillBundle(w http.ResponseWriter, r *http.Request) {
 // gatewayMCP is the MCP part of a Run's gateway grant, with each server's
 // credential read now; a server whose credential cannot be read is left
 // out, never served without one.
-func (s *Server) gatewayMCP(ctx context.Context, team, role string) []gatewaycontract.MCPServer {
+func (s *Server) runTenant(ctx context.Context, svc *toolregistry.Service, token string) (string, error) {
+	tenant, err := s.Store.RunTenant(ctx, token)
+	if err != nil || tenant != "" {
+		return tenant, err
+	}
+	if svc.Tenant != "" {
+		return svc.Tenant, nil
+	}
+	return toolregistry.DefaultTenant, nil
+}
+
+func (s *Server) gatewayMCP(ctx context.Context, runToken, team, role string) []gatewaycontract.MCPServer {
 	svc := s.toolService()
 	if svc == nil {
 		return nil
 	}
-	g, withheld, err := svc.GatewayGrant(ctx, toolregistry.RunRef{Team: team, Role: role})
+	tenant, err := s.runTenant(ctx, svc, runToken)
+	if err != nil {
+		s.Log.Warn("credential gateway grant carries no MCP servers: the Run's Tenant is unknown", "team", team, "role", role, "err", err)
+		return nil
+	}
+	g, withheld, err := svc.GatewayGrant(ctx, toolregistry.RunRef{Tenant: tenant, Team: team, Role: role})
 	if err != nil {
 		s.Log.Warn("credential gateway grant carries no MCP servers", "team", team, "role", role, "err", err)
 		return nil

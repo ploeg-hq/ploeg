@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	grantCacheLimit  = 60 * time.Second
+	grantCacheLimit  = 10 * time.Second
 	grantRefreshSlop = 2 * time.Minute
 )
 
@@ -84,12 +84,12 @@ type grantCache struct {
 	entries map[string]cachedGrant
 }
 
-func grantKey(capability, sourceIP string) string {
-	return capability + "\x00" + sourceIP
+func grantKey(capability, sourceIP, sourceUID string) string {
+	return capability + "\x00" + sourceIP + "\x00" + sourceUID
 }
 
-func (c *grantCache) get(ctx context.Context, capability, sourceIP string) (gatewaycontract.Grant, error) {
-	key := grantKey(capability, sourceIP)
+func (c *grantCache) get(ctx context.Context, capability, sourceIP, sourceUID string) (gatewaycontract.Grant, error) {
+	key := grantKey(capability, sourceIP, sourceUID)
 	now := c.now()
 	c.mu.Lock()
 	entry, hit := c.entries[key]
@@ -98,7 +98,7 @@ func (c *grantCache) get(ctx context.Context, capability, sourceIP string) (gate
 		return entry.grant, nil
 	}
 	var grant gatewaycontract.Grant
-	status, err := c.ploegd.post(ctx, gatewaycontract.GrantsPath, gatewaycontract.GrantRequest{Capability: capability, SourceIP: sourceIP}, &grant)
+	status, err := c.ploegd.post(ctx, gatewaycontract.GrantsPath, gatewaycontract.GrantRequest{Capability: capability, SourceIP: sourceIP, SourceUID: sourceUID}, &grant)
 	switch {
 	case err != nil:
 		return grant, fmt.Errorf("%w: %v", errGatewayUnavailable, err)
@@ -134,5 +134,15 @@ func (c *grantCache) get(ctx context.Context, capability, sourceIP string) (gate
 func (c *grantCache) forget(key string) {
 	c.mu.Lock()
 	delete(c.entries, key)
+	c.mu.Unlock()
+}
+
+func (c *grantCache) forgetRun(run string) {
+	c.mu.Lock()
+	for k, v := range c.entries {
+		if v.grant.Run == run {
+			delete(c.entries, k)
+		}
+	}
 	c.mu.Unlock()
 }

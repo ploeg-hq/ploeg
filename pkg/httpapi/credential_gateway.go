@@ -238,21 +238,26 @@ func (s *Server) recordGatewayClaim(ctx context.Context, claimed claimResponse, 
 	return s.Store.RecordGatewayGrant(ctx, store.GatewayGrant{RunToken: claimed.RunToken, Pin: pin, Sealed: sealed})
 }
 
-func (s *Server) gatewayClaim(w http.ResponseWriter, r *http.Request, b WorkerBootstrap, worker string, req claimRequest, claimed claimResponse, result map[string]any) bool {
-	binding, gated := s.CredentialGateways.bindingForTeam(b.Team)
+// admitGatewayClaim refuses, before anything is claimed, a claim for a
+// Team that runs behind a credential gateway unless that Team's gateway
+// identified the claiming pod and the pod is the claiming worker.
+func (s *Server) admitGatewayClaim(w http.ResponseWriter, r *http.Request, team, worker string) (gatewaycontract.Pin, bool, bool) {
+	binding, gated := s.CredentialGateways.bindingForTeam(team)
 	if !gated {
-		return true
+		return gatewaycontract.Pin{}, false, true
 	}
-	stripClaimCredentials(result)
 	pin, viaGateway := s.CredentialGateways.claimingPod(r, binding)
-	if !viaGateway {
-		return true
+	if !viaGateway || (pin.PodName != worker && pin.PodUID != worker) {
+		s.Log.Warn("claim refused: the Team runs behind a credential gateway and this claim did not come through it", "team", team)
+		w.Header().Set(gatewaycontract.RefusalHeader, gatewaycontract.RefusedClaim)
+		http.Error(w, gatewaycontract.RefusedClaim+": this Team's Runs are claimed only through its credential gateway", http.StatusForbidden)
+		return pin, true, false
 	}
-	if pin.PodName != worker && pin.PodUID != worker {
-		s.Log.Warn("credential gateway claim names another worker than its pod", "team", b.Team, "role", b.Role)
-		http.Error(w, "managed claim unavailable", http.StatusServiceUnavailable)
-		return false
-	}
+	return pin, true, true
+}
+
+func (s *Server) gatewayClaim(w http.ResponseWriter, r *http.Request, b WorkerBootstrap, req claimRequest, claimed claimResponse, result map[string]any, pin gatewaycontract.Pin) bool {
+	stripClaimCredentials(result)
 	if err := s.recordGatewayClaim(r.Context(), claimed, b.Team, loadsRepositoryHooks(req), pin); err != nil {
 		s.Log.Error("credential gateway claim not recorded", "team", b.Team, "role", b.Role, "err", err)
 		http.Error(w, "credential gateway grant unavailable", http.StatusServiceUnavailable)
@@ -262,16 +267,61 @@ func (s *Server) gatewayClaim(w http.ResponseWriter, r *http.Request, b WorkerBo
 	return true
 }
 
-func (s *Server) refuseGatewayRunCredential(w http.ResponseWriter, r *http.Request, runToken, route string) bool {
-	if s.CredentialGateways == nil || (route != "llm/credential" && route != "forge-credential") {
-		return false
+type gatewayRunKey struct{}
+
+func withGatewayRun(ctx context.Context) context.Context {
+	return context.WithValue(ctx, gatewayRunKey{}, true)
+}
+
+func gatewayRunFrom(ctx context.Context) bool {
+	gated, _ := ctx.Value(gatewayRunKey{}).(bool)
+	return gated
+}
+
+// pinGatewayRunRoute admits a worker-control call for a Run behind a
+// credential gateway only from that Run's gateway, naming the pod the Run
+// is pinned to. It reports whether the Run is a gateway Run.
+func (s *Server) pinGatewayRunRoute(w http.ResponseWriter, r *http.Request, runToken, worker string, run store.RunControlState) (bool, bool) {
+	g := s.CredentialGateways
+	if g == nil {
+		return false, true
 	}
-	gateway, err := s.Store.IsGatewayRun(r.Context(), runToken)
+	refusePin := func(why string) (bool, bool) {
+		s.Log.Warn("gateway Run route refused", "run", prefix12(runToken), "reason", why)
+		w.Header().Set(gatewaycontract.RefusalHeader, gatewaycontract.RefusedPin)
+		http.Error(w, gatewaycontract.RefusedPin+": this Run is reached only through its credential gateway, from the pod it is pinned to", http.StatusForbidden)
+		return true, false
+	}
+	stored, err := s.Store.GatewayGrantFor(r.Context(), runToken)
+	if errors.Is(err, store.ErrNoGatewayGrant) {
+		if _, gated := g.bindingForTeam(run.Team); gated {
+			return refusePin("the Team runs behind a credential gateway and no gateway claimed this Run")
+		}
+		return false, true
+	}
 	if err != nil {
 		http.Error(w, "credential gateway state unavailable", http.StatusServiceUnavailable)
-		return true
+		return true, false
 	}
-	if !gateway {
+	binding, ok := g.authenticate(r)
+	if !ok || binding.Namespace != stored.Pin.Namespace || !slices.Contains(binding.Teams, run.Team) {
+		return refusePin("not the Run's gateway")
+	}
+	asked := gatewaycontract.Pin{Namespace: binding.Namespace, PodName: r.Header.Get(gatewaycontract.PodNameHeader),
+		PodUID: r.Header.Get(gatewaycontract.PodUIDHeader), PodIP: r.Header.Get(gatewaycontract.PodIPHeader)}
+	if asked != stored.Pin {
+		return refusePin("another pod than the one the Run is pinned to")
+	}
+	if worker != stored.Pin.PodName && worker != stored.Pin.PodUID {
+		return refusePin("another worker than the pinned pod")
+	}
+	return true, true
+}
+
+var gatewayRefusedRunRoutes = map[string]bool{"llm/credential": true, "forge-credential": true, "identity": true}
+
+func refuseGatewayRunCredential(w http.ResponseWriter, gateway bool, route string) bool {
+	if !gateway || !gatewayRefusedRunRoutes[route] {
 		return false
 	}
 	w.Header().Set(gatewaycontract.RefusalHeader, gatewaycontract.RefusedGatewayMode)
@@ -297,7 +347,7 @@ func (s *Server) handleGatewayGrant(w http.ResponseWriter, r *http.Request) {
 	}
 	var req gatewaycontract.GrantRequest
 	if err := decodeBounded(w, r, gatewayBodyLimit, &req); err != nil || req.Capability == "" {
-		http.Error(w, `body must be {"capability": "...", "sourceIp": "..."}`, http.StatusBadRequest)
+		http.Error(w, `body must be {"capability": "...", "sourceIp": "...", "sourceUid": "..."}`, http.StatusBadRequest)
 		return
 	}
 	c, ok := s.WorkerSecurity.verify(req.Capability)
@@ -340,7 +390,7 @@ func (s *Server) handleGatewayGrant(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "capability refused", http.StatusForbidden)
 		return
 	}
-	if req.SourceIP != stored.Pin.PodIP {
+	if req.SourceIP != stored.Pin.PodIP || req.SourceUID != stored.Pin.PodUID {
 		http.Error(w, "the capability is pinned to another pod", http.StatusForbidden)
 		return
 	}
@@ -358,7 +408,16 @@ func (s *Server) handleGatewayGrant(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	grant.Deadline = run.Deadline
-	grant.MCP = s.gatewayMCP(r.Context(), run.Team, run.Role)
+	grant.MCP = s.gatewayMCP(r.Context(), c.RunToken, run.Team, run.Role)
+	if s.TransactionTokens != nil {
+		token, _, err := s.issueTransactionToken(r.Context(), c.RunToken, c.WorkerID)
+		if err != nil {
+			s.Log.Error("credential gateway grant got no transaction token", "run", prefix12(c.RunToken), "err", err)
+			http.Error(w, "transaction token unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		grant.TransactionToken = token
+	}
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, grant)
 }

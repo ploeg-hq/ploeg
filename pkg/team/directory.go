@@ -16,6 +16,9 @@ type Team struct {
 	Name       string
 	NameSource NameSource
 	Revision   int64
+	// Draining is a runtime Team whose drain started: it takes no new
+	// work and no new binding.
+	Draining bool
 }
 
 // Resolution is how a reference reached a Team.
@@ -54,7 +57,16 @@ func (d *Directory) Set(teams []Team) {
 		t.Aliases = slices.Clone(t.Aliases)
 		byID[t.ID] = t
 		order = append(order, t.ID)
-		byRef[strings.ToLower(t.Key)] = t.ID
+	}
+	for _, staticFirst := range []bool{true, false} {
+		for _, t := range teams {
+			if (t.Source == SourceStatic) != staticFirst {
+				continue
+			}
+			if _, taken := byRef[strings.ToLower(t.Key)]; !taken {
+				byRef[strings.ToLower(t.Key)] = t.ID
+			}
+		}
 	}
 	for _, t := range teams {
 		for _, a := range t.Aliases {
@@ -88,6 +100,17 @@ func (d *Directory) Resolve(ref string) (Team, Resolution, bool) {
 		return cloneTeam(t), ByKey, true
 	}
 	return cloneTeam(t), ByAlias, true
+}
+
+// StaticKeys maps every static Team's lowercased key to its id.
+func (d *Directory) StaticKeys() map[string]string {
+	out := map[string]string{}
+	for _, t := range d.All() {
+		if t.Source == SourceStatic {
+			out[strings.ToLower(t.Key)] = t.ID
+		}
+	}
+	return out
 }
 
 // ID is the id of the Team ref names, or "" when none does.

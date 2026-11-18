@@ -3,6 +3,7 @@ package cvegate
 import (
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 
 	"go.yaml.in/yaml/v3"
@@ -27,11 +28,16 @@ type Budgets struct {
 }
 
 type Image struct {
-	Name       string `yaml:"name" json:"name"`
-	Repository string `yaml:"repository" json:"repository"`
-	Dockerfile string `yaml:"dockerfile" json:"dockerfile"`
-	ShipsGo    bool   `yaml:"ships_go" json:"ships_go"`
+	Name       string   `yaml:"name" json:"name"`
+	Repository string   `yaml:"repository" json:"repository"`
+	Dockerfile string   `yaml:"dockerfile" json:"dockerfile"`
+	ShipsGo    bool     `yaml:"ships_go" json:"ships_go"`
+	Platforms  []string `yaml:"platforms,omitempty" json:"platforms"`
 }
+
+const DefaultPlatform = "linux/amd64"
+
+var supportedPlatforms = []string{DefaultPlatform, "linux/arm64"}
 
 type Catalogue struct {
 	Images []Image `yaml:"images"`
@@ -89,7 +95,7 @@ func LoadCatalogue(path string) (Catalogue, error) {
 		return Catalogue{}, err
 	}
 	seen := map[string]bool{}
-	for _, image := range catalogue.Images {
+	for i, image := range catalogue.Images {
 		if image.Name == "" || image.Repository == "" || image.Dockerfile == "" {
 			return Catalogue{}, fmt.Errorf("%s: every image needs a name, a repository and a dockerfile", path)
 		}
@@ -97,8 +103,33 @@ func LoadCatalogue(path string) (Catalogue, error) {
 			return Catalogue{}, fmt.Errorf("%s: image %s is listed twice", path, image.Name)
 		}
 		seen[image.Name] = true
+		platforms, err := image.platforms()
+		if err != nil {
+			return Catalogue{}, fmt.Errorf("%s: image %s: %w", path, image.Name, err)
+		}
+		catalogue.Images[i].Platforms = platforms
 	}
 	return catalogue, nil
+}
+
+func (i Image) platforms() ([]string, error) {
+	if len(i.Platforms) == 0 {
+		return []string{DefaultPlatform}, nil
+	}
+	seen := map[string]bool{}
+	for _, platform := range i.Platforms {
+		if !slices.Contains(supportedPlatforms, platform) {
+			return nil, fmt.Errorf("platform %q is not one of %v", platform, supportedPlatforms)
+		}
+		if seen[platform] {
+			return nil, fmt.Errorf("platform %s is listed twice", platform)
+		}
+		seen[platform] = true
+	}
+	if !seen[DefaultPlatform] {
+		return nil, fmt.Errorf("platforms must include %s, the platform the CVE gate scans", DefaultPlatform)
+	}
+	return i.Platforms, nil
 }
 
 func (c Catalogue) Find(name string) (Image, error) {

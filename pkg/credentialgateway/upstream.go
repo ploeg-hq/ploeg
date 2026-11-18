@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"path"
+	"strings"
 
 	"github.com/ploeg-hq/ploeg/pkg/gatewaycontract"
 	"github.com/ploeg-hq/ploeg/pkg/harness"
@@ -65,9 +67,9 @@ func (f forgeUpstream) fence(run Run) (http.Handler, error) {
 		run.state.forgeErr = errors.New("ploegd minted no forge credential for this Run")
 		return nil, run.state.forgeErr
 	}
-	capability, sourceIP := run.Capability, grant.Pin.PodIP
+	capability, sourceIP, sourceUID := run.Capability, grant.Pin.PodIP, grant.Pin.PodUID
 	token := func(ctx context.Context) string {
-		current, err := g.grants.get(ctx, capability, sourceIP)
+		current, err := g.grants.get(ctx, capability, sourceIP, sourceUID)
 		if err != nil {
 			return ""
 		}
@@ -108,7 +110,35 @@ func (modelUpstream) Family() string { return FamilyModel }
 
 func (modelUpstream) Credential(gatewaycontract.Grant) string { return "model_key" }
 
+var inferenceRoutes = map[string]string{
+	"chat/completions":      http.MethodPost,
+	"completions":           http.MethodPost,
+	"embeddings":            http.MethodPost,
+	"responses":             http.MethodPost,
+	"messages":              http.MethodPost,
+	"messages/count_tokens": http.MethodPost,
+	"models":                http.MethodGet,
+	"model/info":            http.MethodGet,
+}
+
+func inferenceRoute(r *http.Request) bool {
+	raw := r.URL.EscapedPath()
+	if raw != path.Clean(raw) || strings.Contains(raw, "%") || strings.Contains(raw, "//") {
+		return false
+	}
+	route := strings.TrimPrefix(strings.TrimPrefix(raw, "/"), "v1/")
+	if route == "mcp" || strings.HasPrefix(route, "mcp/") {
+		return true
+	}
+	method, ok := inferenceRoutes[route]
+	return ok && r.Method == method
+}
+
 func (m modelUpstream) Serve(w http.ResponseWriter, r *http.Request, run Run) {
+	if !inferenceRoute(r) {
+		refuse(w, http.StatusForbidden, gatewaycontract.RefusedRoute, "credential gateway: the model route family serves inference only")
+		return
+	}
 	if run.Grant.ModelKey == "" {
 		refuse(w, http.StatusForbidden, gatewaycontract.RefusedCapability, "credential gateway: ploegd minted no model key for this Run")
 		return

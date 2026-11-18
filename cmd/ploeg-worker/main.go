@@ -109,7 +109,7 @@ func run(log *slog.Logger) error {
 		APIURL:         requireEnv("PLOEG_API_URL"),
 		BootstrapToken: os.Getenv("PLOEG_WORKER_BOOTSTRAP_TOKEN"),
 		WorkerID:       envOr("PLOEG_WORKER_ID", os.Getenv("POD_UID")),
-		Team:           requireEnv("PLOEG_TEAM"),
+		Team:           workerTeam(),
 		Version:        version,
 		// This pod's slot in a Round. NOT boot-required: unset is the
 		// pre-Shift claim over queued work items, which is exactly what a
@@ -500,4 +500,14 @@ func refuseCredentialsInGatewayMode(cfg worker.Config) error {
 		return errors.New("PLOEG_CREDENTIAL_GATEWAY: PLOEG_CREDENTIAL_GATEWAY_FORGE_URL and LLM_BASE_URL must name the gateway")
 	}
 	return worker.RefuseServiceAccountToken()
+}
+
+// workerTeam is the Team the worker claims for. A runtime Team pool's
+// worker (PLOEG_POOL, ADR-0198) names none: its bootstrap decides, and the
+// claim names the Team and Role of the Run it got.
+func workerTeam() string {
+	if os.Getenv("PLOEG_POOL") != "" {
+		return ""
+	}
+	return requireEnv("PLOEG_TEAM")
 }

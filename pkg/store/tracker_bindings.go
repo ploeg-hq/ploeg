@@ -23,6 +23,9 @@ const (
 const (
 	BindingTeamRemoved       = "team_removed"
 	BindingTargetUnavailable = "target_unavailable"
+	// BindingTeamUnavailable is a binding whose runtime Team is shadowed or
+	// invalid (ADR-0198 section 13).
+	BindingTeamUnavailable = "team_unavailable"
 )
 
 // Where the webhook a binding relies on came from.
@@ -95,9 +98,12 @@ type BindingWebhook struct {
 
 // TrackerBinding is one runtime Routing Rule (ADR-0186).
 type TrackerBinding struct {
-	ID         int64
-	Tenant     string
-	Team       string
+	ID     int64
+	Tenant string
+	Team   string
+	// TeamID is the id of the Team the binding routes to (ADR-0198);
+	// empty while its Team has none.
+	TeamID     string
 	Connection string
 	ScopeID    string
 	ScopeName  string
@@ -164,7 +170,7 @@ func (e *StaleRevisionError) Error() string { return "the binding's revision cha
 
 const bindingColumns = `id, tenant, team, connection, scope_id, scope_name, default_target, allow_targets,
 	statuses, label, revision, state, shadowed_by, invalid_reason, invalid_detail, webhook_state,
-	webhook_id, webhook_source, created_by, updated_by, created_at, updated_at, removed_at`
+	webhook_id, webhook_source, created_by, updated_by, created_at, updated_at, removed_at, coalesce(team_id, '')`
 
 const bindingWriteLock = `SELECT pg_advisory_xact_lock(hashtextextended('ploeg.tracker-bindings', 0))`
 
@@ -174,7 +180,7 @@ func scanBinding(row pgx.Row) (TrackerBinding, error) {
 	var invalidReason, webhookID *string
 	err := row.Scan(&b.ID, &b.Tenant, &b.Team, &b.Connection, &b.ScopeID, &b.ScopeName, &b.Default, &b.Allow,
 		&statuses, &b.Label, &b.Revision, &b.State, &shadowed, &invalidReason, &invalid, &b.Webhook.State,
-		&webhookID, &b.Webhook.Source, &b.CreatedBy, &b.UpdatedBy, &b.CreatedAt, &b.UpdatedAt, &b.RemovedAt)
+		&webhookID, &b.Webhook.Source, &b.CreatedBy, &b.UpdatedBy, &b.CreatedAt, &b.UpdatedAt, &b.RemovedAt, &b.TeamID)
 	if err != nil {
 		return b, err
 	}

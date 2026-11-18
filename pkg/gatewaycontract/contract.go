@@ -44,6 +44,7 @@ type Pin struct {
 type GrantRequest struct {
 	Capability string `json:"capability"`
 	SourceIP   string `json:"sourceIp"`
+	SourceUID  string `json:"sourceUid"`
 }
 
 // Grant is what a credential gateway attaches for one Run. It never leaves
@@ -72,6 +73,10 @@ type Grant struct {
 	MCP      []MCPServer `json:"mcp,omitempty"`
 	Pin      Pin         `json:"pin"`
 	Deadline time.Time   `json:"deadline"`
+	// TransactionToken is the Run's transaction token, signed for this
+	// answer only. The gateway attaches it to the Run's worker-control
+	// calls in place of the capability, so it never enters the Run pod.
+	TransactionToken string `json:"transactionToken,omitempty"`
 }
 
 // MCPServer is one MCP server a Run may reach through the gateway's mcp

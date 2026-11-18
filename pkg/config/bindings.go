@@ -81,26 +81,34 @@ func (f *File) TeamTrackerBindings(team string) (TrackerBindings, bool) {
 
 func (f *File) validateTrackerBindings() error {
 	for _, name := range sortedTeamNames(f.Teams) {
-		b := f.Teams[name].TrackerBindings
-		if b == nil {
-			continue
+		if err := validateBindingPolicy(f.Teams[name].TrackerBindings, fmt.Sprintf("teams.%s.trackerBindings", name)); err != nil {
+			return err
 		}
-		where := fmt.Sprintf("teams.%s.trackerBindings", name)
-		if len(b.Connections) == 0 {
-			return fmt.Errorf("%s.connections: name at least one connection, \"*\" or \"*:<kind>\"", where)
+	}
+	if f.TeamCreation != nil {
+		return validateBindingPolicy(f.TeamCreation.TrackerBindings, "teamCreation.trackerBindings")
+	}
+	return nil
+}
+
+func validateBindingPolicy(b *TrackerBindings, where string) error {
+	if b == nil {
+		return nil
+	}
+	if len(b.Connections) == 0 {
+		return fmt.Errorf("%s.connections: name at least one connection, \"*\" or \"*:<kind>\"", where)
+	}
+	seen := map[string]bool{}
+	for i, entry := range b.Connections {
+		valid := entry == "*" || bindingConnectionName.MatchString(entry) ||
+			(strings.HasPrefix(entry, "*:") && bindingConnectionKind.MatchString(strings.TrimPrefix(entry, "*:")))
+		if !valid || seen[entry] {
+			return fmt.Errorf("%s.connections[%d]: %q is not a connection name, \"*\" or \"*:<kind>\", or is named twice", where, i, entry)
 		}
-		seen := map[string]bool{}
-		for i, entry := range b.Connections {
-			valid := entry == "*" || bindingConnectionName.MatchString(entry) ||
-				(strings.HasPrefix(entry, "*:") && bindingConnectionKind.MatchString(strings.TrimPrefix(entry, "*:")))
-			if !valid || seen[entry] {
-				return fmt.Errorf("%s.connections[%d]: %q is not a connection name, \"*\" or \"*:<kind>\", or is named twice", where, i, entry)
-			}
-			seen[entry] = true
-		}
-		if b.Max != nil && (*b.Max < 1 || *b.Max > MaxTrackerBindingsCeiling) {
-			return fmt.Errorf("%s.max: must be between 1 and %d, got %d", where, MaxTrackerBindingsCeiling, *b.Max)
-		}
+		seen[entry] = true
+	}
+	if b.Max != nil && (*b.Max < 1 || *b.Max > MaxTrackerBindingsCeiling) {
+		return fmt.Errorf("%s.max: must be between 1 and %d, got %d", where, MaxTrackerBindingsCeiling, *b.Max)
 	}
 	return nil
 }

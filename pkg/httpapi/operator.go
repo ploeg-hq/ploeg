@@ -36,7 +36,10 @@ type OperatorPrincipal struct {
 	// CanRegisterTargets lets the consumer register, change and remove
 	// runtime Work Targets (ADR-0193); not narrowed by Team scope.
 	CanRegisterTargets bool
-	BudgetLimitUSD     float64
+	// CanManageTeams lets the consumer create, change and remove runtime
+	// Teams of its Tenant (ADR-0198).
+	CanManageTeams bool
+	BudgetLimitUSD float64
 	// ReadTrackers names the tracker connections whose Scopes and items the
 	// consumer may read (ADR-0196). Nil reads none; AllTrackers reads every
 	// one.
@@ -138,11 +141,12 @@ func ParseOperatorConsumers(raw string, lookup func(string) (string, bool)) ([]O
 		BindScopes      bool                `json:"bindScopes"`
 		RegisterTargets bool                `json:"registerTargets"`
 		ManageTools     bool                `json:"manageTools"`
+		ManageTeams     bool                `json:"manageTeams"`
 	}
 	decoder := json.NewDecoder(strings.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&configs); err != nil {
-		return nil, errors.New("operator consumers must be a JSON array of name, tokenEnv, teams, execute, verify, readContent, maxBudgetUsd, clientIds, audiences, requireClaims, readTrackers, manageConnections, connectionRedirectUris, bindScopes, registerTargets and manageTools")
+		return nil, errors.New("operator consumers must be a JSON array of name, tokenEnv, teams, execute, verify, readContent, maxBudgetUsd, clientIds, audiences, requireClaims, readTrackers, manageConnections, connectionRedirectUris, bindScopes, registerTargets, manageTools and manageTeams")
 	}
 	if err := decoder.Decode(new(any)); err != io.EOF {
 		return nil, errors.New("operator consumers must contain one JSON value")
@@ -206,7 +210,7 @@ func ParseOperatorConsumers(raw string, lookup func(string) (string, bool)) ([]O
 		if err != nil {
 			return nil, err
 		}
-		consumers = append(consumers, OperatorConsumer{Principal: OperatorPrincipal{Name: cfg.Name, Teams: teams, CanExecute: cfg.Execute, CanVerify: cfg.Verify, CanReadContent: readContent, CanBindScopes: cfg.BindScopes, CanRegisterTargets: cfg.RegisterTargets, BudgetLimitUSD: budgetLimit, ReadTrackers: readTrackers,
+		consumers = append(consumers, OperatorConsumer{Principal: OperatorPrincipal{Name: cfg.Name, Teams: teams, CanExecute: cfg.Execute, CanVerify: cfg.Verify, CanReadContent: readContent, CanBindScopes: cfg.BindScopes, CanRegisterTargets: cfg.RegisterTargets, CanManageTeams: cfg.ManageTeams, BudgetLimitUSD: budgetLimit, ReadTrackers: readTrackers,
 			CanManageConnections: cfg.ManageConns, ConnectionRedirectURIs: slices.Clone(cfg.RedirectURIs), CanManageTools: cfg.ManageTools}, tokenHash: hash, clientIDs: cfg.ClientIDs, audiences: cfg.Audiences, requiredClaims: required})
 		names[cfg.Name], hashes[hash] = true, true
 	}
@@ -538,7 +542,7 @@ func (s *Server) handleOperatorTeams(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.identifyTeams(teams)
-	operatorJSON(w, 200, map[string]any{"schemaVersion": "1.0", "teams": teams})
+	operatorJSON(w, 200, map[string]any{"schemaVersion": "1.0", "teams": s.withRuntimeTeams(r, principal, teams)})
 }
 
 func (s *Server) handleOperatorItems(w http.ResponseWriter, r *http.Request) {

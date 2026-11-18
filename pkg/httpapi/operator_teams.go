@@ -6,9 +6,11 @@ import (
 	"net/http"
 	"slices"
 	"sort"
+	"strconv"
 
 	"github.com/ploeg-hq/ploeg/pkg/store"
 	"github.com/ploeg-hq/ploeg/pkg/team"
+	"github.com/ploeg-hq/ploeg/pkg/teamruntime"
 )
 
 const teamBodyLimit = 64 * 1024
@@ -16,6 +18,7 @@ const teamBodyLimit = 64 * 1024
 func (s *Server) registerOperatorTeams(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/operator/teams/{team}", s.handleOperatorTeam)
 	mux.HandleFunc("PATCH /api/v1/operator/teams/{team}", s.handlePatchTeam)
+	s.registerOperatorRuntimeTeams(mux)
 }
 
 func (s *Server) identifyTeams(teams []store.OperatorTeam) {
@@ -64,7 +67,7 @@ func roleHarnesses(roles []store.OperatorRole) []team.RoleHarness {
 }
 
 func (p OperatorPrincipal) allowsResolvedTeam(t team.Team) bool {
-	if p.Teams == nil {
+	if p.Teams == nil || (t.Source == team.SourceRuntime && p.CanManageTeams) {
 		return true
 	}
 	for _, ref := range append([]string{t.ID, t.Key}, t.Aliases...) {
@@ -84,6 +87,13 @@ func (s *Server) resolveTeamRef(w http.ResponseWriter, r *http.Request) (team.Te
 	t, how, ok := s.Teams.Resolve(ref)
 	p, _ := OperatorPrincipalFromContext(r.Context())
 	if !ok || !p.allowsResolvedTeam(t) {
+		if !ok && s.RuntimeTeams != nil {
+			if until, err := s.RuntimeTeams.ReservedUntil(r.Context(), ref); err == nil && until != nil {
+				teamRefusal(w, &teamruntime.Error{Status: 404, Code: "unknown_team", ReservedUntil: until,
+					Message: "Key " + ref + " was released and no longer names a Team; it stays reserved so it cannot reach a new one."})
+				return team.Team{}, 0, false
+			}
+		}
 		operatorError(w, 404, "unknown_team", "No Team "+ref+" is in this consumer's scope.")
 		return team.Team{}, 0, false
 	}
@@ -99,13 +109,23 @@ func (s *Server) handleOperatorTeam(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if how == team.ByAlias {
+		w.Header().Set("Content-Location", "/api/v1/operator/teams/"+t.Key)
+	}
+	if t.Source == team.SourceRuntime && s.RuntimeTeams != nil {
+		rt, err := s.RuntimeTeams.Team(r.Context(), t.ID)
+		if err != nil {
+			operatorError(w, 404, "unknown_team", "No Team "+t.Key+" is live.")
+			return
+		}
+		w.Header().Set("ETag", `"`+strconv.FormatInt(rt.Revision, 10)+`"`)
+		operatorJSON(w, 200, map[string]any{"schemaVersion": "1.0", "team": runtimeTeamJSON(rt)})
+		return
+	}
 	view, err := s.operatorTeamView(r, t)
 	if err != nil {
 		operatorReadError(w, err)
 		return
-	}
-	if how == team.ByAlias {
-		w.Header().Set("Content-Location", "/api/v1/operator/teams/"+t.Key)
 	}
 	operatorJSON(w, 200, map[string]any{"schemaVersion": "1.0", "team": view})
 }
@@ -175,5 +195,5 @@ func (s *Server) handlePatchTeam(w http.ResponseWriter, r *http.Request) {
 		}})
 		return
 	}
-	operatorError(w, 422, "creation_not_accepted", "This Ploeg serves no runtime Teams, so no Team name is changed through the operator API.")
+	s.patchRuntimeName(w, r, t, *patch.Name)
 }

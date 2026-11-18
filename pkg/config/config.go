@@ -67,6 +67,9 @@ type File struct {
 	// ToolRegistry registers MCP servers and skill sources and lets a
 	// proven operator change them at runtime (ADR-0199). Omitted = none.
 	ToolRegistry *ToolRegistry `yaml:"toolRegistry"`
+	// TeamCreation lets a proven person create Teams at runtime
+	// (ADR-0198). Omitted = runtime Teams are refused.
+	TeamCreation *TeamCreation `yaml:"teamCreation"`
 }
 
 type Trackers struct {
@@ -405,6 +408,9 @@ func (f *File) Validate() error {
 		return err
 	}
 	if err := f.validateToolRegistry(); err != nil {
+		return err
+	}
+	if err := f.validateTeamCreation(); err != nil {
 		return err
 	}
 	if err := f.validateFastChecks(); err != nil {

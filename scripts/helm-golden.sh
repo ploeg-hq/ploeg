@@ -81,7 +81,8 @@ for case in ":default" \
 	"ops/helm/ploeg/ci/claude-runner-values.yaml:claude-runner" \
 	"ops/helm/ploeg/ci/name-overrides-values.yaml:name-overrides" \
 	"ops/helm/ploeg/ci/secret-store-kubernetes-values.yaml:secret-store-kubernetes" \
-	"ops/helm/ploeg/ci/executor-credential-gateway-values.yaml:executor-credential-gateway"; do
+	"ops/helm/ploeg/ci/executor-credential-gateway-values.yaml:executor-credential-gateway" \
+	"ops/helm/ploeg/ci/executor-runtime-teams-values.yaml:executor-runtime-teams"; do
 	values=${case%%:*}
 	name=${case##*:}
 	if [ "$mode" = "update" ]; then
@@ -146,7 +147,13 @@ for case in "ops/helm/ploeg/ci/reject-reader-without-read-token-values.yaml:read
 	"ops/helm/ploeg/ci/reject-credential-gateway-sandbox-network-policy-values.yaml:executor.sandbox.networkPolicy cannot be set with executor.credentialGateway.enabled" \
 	"ops/helm/ploeg/ci/reject-mcp-adapter-undigested-values.yaml:does not match pattern '@sha256:[0-9a-f]{64}\$'" \
 	"ops/helm/ploeg/ci/reject-mcp-adapter-without-gateway-values.yaml:executor.credentialGateway.mcp.adapters needs executor.credentialGateway.enabled" \
-	"ops/helm/ploeg/ci/reject-mcp-adapter-without-team-values.yaml:executor.credentialGateway.mcp.adapters[grafana].team names the one Team whose Runs use this adapter"; do
+	"ops/helm/ploeg/ci/reject-mcp-adapter-without-team-values.yaml:executor.credentialGateway.mcp.adapters[grafana].team names the one Team whose Runs use this adapter" \
+	"ops/helm/ploeg/ci/reject-runtime-pool-unqualified-harness-values.yaml:is not qualified for credential isolation" \
+	"ops/helm/ploeg/ci/reject-runtime-pool-twice-values.yaml:a second pool for tenant default and harness openhands" \
+	"ops/helm/ploeg/ci/reject-runtime-pool-gateway-values.yaml:isolation gateway qualifies a pool only once the credential gateway" \
+	"ops/helm/ploeg/ci/reject-runtime-pools-without-team-creation-values.yaml:executor.runtimeTeams.enabled and config.teamCreation.enabled must agree" \
+	"ops/helm/ploeg/ci/reject-runtime-pool-with-dind-values.yaml:a pool never runs DinD" \
+	"ops/helm/ploeg/ci/reject-runtime-pool-without-isolation-values.yaml:a pool needs executor.litellm.keyIsolation and executor.forgeTokenIsolation on"; do
 	values=${case%%:*}
 	expected=${case#*:}
 	if out=$(helm template ploeg ops/helm/ploeg -f "$REQUIRED" -f "$values" 2>&1); then

@@ -77,6 +77,10 @@
     fileFilters: ['docs/cncf/license-inventory.yaml', 'THIRD-PARTY-NOTICES'],
     executionMode: 'branch',
   },
+  pip_requirements: {
+    description: 'The agent image\'s openhands-overrides.txt is a requirements file by another name: each line raises one OpenHands dependency above the CLI release\'s lockfile, so each gets update pull requests like any other pin (ops/docker/agent-runner/README.md).',
+    managerFilePatterns: ['/(^|/)openhands-overrides\\.txt$/'],
+  },
   customManagers: [
     {
       description: 'Versions pinned in workflow env with a `# renovate:` line above them, such as RELEASE_CONFIG_VERSION.',
@@ -84,6 +88,14 @@
       managerFilePatterns: ['/^\\.github/workflows/[^/]+\\.ya?ml$/'],
       matchStrings: [
         '# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)(?: registryUrl=(?<registryUrl>\\S+))?\\s*\\n\\s*[A-Z0-9_]+:\\s*["\']?(?<currentValue>[^"\'\\s]+)',
+      ],
+    },
+    {
+      description: 'Versions pinned as a Dockerfile ARG with a `# renovate:` line above them, such as PYYAML_VERSION in the agent image. OPENHANDS_VERSION and GOOSE_VERSION carry no such line on purpose: the first is paired with its constraints file and the second with its checksums, so the Agent image pins workflow raises them instead (ops/docker/agent-runner/README.md).',
+      customType: 'regex',
+      managerFilePatterns: ['/(^|/)Dockerfile$/'],
+      matchStrings: [
+        '# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\s*\\nARG [A-Z0-9_]+=(?<currentValue>\\S+)',
       ],
     },
   ],

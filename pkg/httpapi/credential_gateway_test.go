@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ploeg-hq/ploeg/pkg/gatewaycontract"
 	"github.com/ploeg-hq/ploeg/pkg/kubeauth"
@@ -72,7 +73,11 @@ func gatewayHeaders(token string) map[string]string {
 }
 
 func askGrant(s *Server, gatewayToken, capability, sourceIP string) *httptest.ResponseRecorder {
-	body, _ := json.Marshal(gatewaycontract.GrantRequest{Capability: capability, SourceIP: sourceIP})
+	return askGrantFrom(s, gatewayToken, capability, sourceIP, "uid-1")
+}
+
+func askGrantFrom(s *Server, gatewayToken, capability, sourceIP, sourceUID string) *httptest.ResponseRecorder {
+	body, _ := json.Marshal(gatewaycontract.GrantRequest{Capability: capability, SourceIP: sourceIP, SourceUID: sourceUID})
 	r := httptest.NewRequest(http.MethodPost, gatewaycontract.GrantsPath, bytes.NewReader(body))
 	if gatewayToken != "" {
 		r.Header.Set(gatewaycontract.AuthorizationHeader, "Bearer "+gatewayToken)
@@ -119,12 +124,11 @@ func TestAGatewayClaimCarriesNoCredentialAndItsGrantGoesOnlyToItsGateway(t *test
 		})
 	}
 
-	if got := workerRequest(s, "POST", "/api/v1/runs/"+claim.RunToken+"/llm/credential", claim.ControlToken, "pod", ""); got.Code != http.StatusForbidden ||
-		got.Header().Get(gatewaycontract.RefusalHeader) != gatewaycontract.RefusedGatewayMode {
-		t.Fatalf("a gateway Run's pod minted its own key: %d %s", got.Code, got.Body.String())
-	}
-	if got := workerRequest(s, "POST", "/api/v1/runs/"+claim.RunToken+"/forge-credential", claim.ControlToken, "pod", ""); got.Code != http.StatusForbidden {
-		t.Fatalf("a gateway Run's pod refreshed its own forge credential: %d", got.Code)
+	for _, route := range []string{"llm/credential", "forge-credential", "identity"} {
+		if got := gatewayRunRequest(s, claim.RunToken, route, claim.ControlToken, gatewayHeaders(runsGatewayToken)); got.Code != http.StatusForbidden ||
+			got.Header().Get(gatewaycontract.RefusalHeader) != gatewaycontract.RefusedGatewayMode {
+			t.Fatalf("a gateway Run's %s answered its pod: %d %s", route, got.Code, got.Body.String())
+		}
 	}
 
 	if _, err := testPool.Exec(context.Background(), `UPDATE agent_runs SET state = 'finished', finished_at = now() WHERE run_token = $1`, claim.RunToken); err != nil {
@@ -138,23 +142,135 @@ func TestAGatewayClaimCarriesNoCredentialAndItsGrantGoesOnlyToItsGateway(t *test
 	}
 }
 
-func TestAGatewayTeamsClaimWithoutItsGatewayGetsNoCredentialAndNoGrant(t *testing.T) {
-	s, bootstrap, _ := gatewayFixture(t)
-	for name, headers := range map[string]map[string]string{
-		"no gateway":                {gatewaycontract.PodIPHeader: "10.1.2.3", gatewaycontract.PodNameHeader: "pod", gatewaycontract.PodUIDHeader: "uid-1"},
-		"the gateway of another ns": gatewayHeaders(otherGatewayToken),
+func TestAGatewayTeamsClaimWithoutItsGatewayIsRefusedBeforeAnythingIsClaimed(t *testing.T) {
+	s, bootstrap, broker := gatewayFixture(t)
+	for name, tc := range map[string]struct {
+		headers map[string]string
+		worker  string
+	}{
+		"no gateway":                {map[string]string{gatewaycontract.PodIPHeader: "10.1.2.3", gatewaycontract.PodNameHeader: "pod", gatewaycontract.PodUIDHeader: "uid-1"}, "pod"},
+		"a forged gateway token":    {gatewayHeaders("forged"), "pod"},
+		"the gateway of another ns": {gatewayHeaders(otherGatewayToken), "pod"},
+		"another worker than the pod the gateway identified": {gatewayHeaders(runsGatewayToken), "someone-else"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			reset(t)
 			shiftFixture(t, "auth-fixture", 5, []store.Role{{Name: "reviewer", Cap: 1}})
-			claim, raw := claimThroughGateway(t, s, bootstrap, headers)
-			if claim.CredentialGateway || claim.ForgeToken != "" {
-				t.Fatalf("claim %s", raw)
+			minted := broker.calls
+			r := httptest.NewRequest(http.MethodPost, "/api/v1/claim", strings.NewReader(`{"team":"bronze","role":"reviewer"}`))
+			r.Header.Set("Authorization", "Bearer "+bootstrap)
+			r.Header.Set("X-Ploeg-Worker-ID", tc.worker)
+			for k, v := range tc.headers {
+				r.Header.Set(k, v)
 			}
-			if got := askGrant(s, runsGatewayToken, claim.ControlToken, "10.1.2.3"); got.Code != http.StatusForbidden {
-				t.Fatalf("a Run no gateway claimed has a grant: %d", got.Code)
+			w := httptest.NewRecorder()
+			s.Handler().ServeHTTP(w, r)
+			if w.Code != http.StatusForbidden || w.Header().Get(gatewaycontract.RefusalHeader) != gatewaycontract.RefusedClaim ||
+				strings.Contains(w.Body.String(), "fixture-inference") || strings.Contains(w.Body.String(), "controlToken") {
+				t.Fatalf("a gated Team's claim outside its gateway answered %d %s", w.Code, w.Body.String())
+			}
+			var runs int
+			if err := testPool.QueryRow(context.Background(), `SELECT count(*) FROM agent_runs WHERE state = 'running'`).Scan(&runs); err != nil {
+				t.Fatal(err)
+			}
+			if runs != 0 || broker.calls != minted {
+				t.Fatalf("the refused claim still claimed %d Runs and minted %d keys", runs, broker.calls-minted)
 			}
 		})
+	}
+}
+
+func gatewayRunRequest(s *Server, runToken, route, token string, headers map[string]string) *httptest.ResponseRecorder {
+	r := httptest.NewRequest(http.MethodPost, "/api/v1/runs/"+runToken+"/"+route, strings.NewReader(`{}`))
+	r.Header.Set("Authorization", "Bearer "+token)
+	r.Header.Set("X-Ploeg-Worker-ID", "pod")
+	for k, v := range headers {
+		r.Header.Set(k, v)
+	}
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, r)
+	return w
+}
+
+func withHeader(headers map[string]string, key, value string) map[string]string {
+	out := map[string]string{}
+	for k, v := range headers {
+		out[k] = v
+	}
+	out[key] = value
+	return out
+}
+
+func TestAGatewayRunIsControlledOnlyThroughItsGatewayFromItsPinnedPod(t *testing.T) {
+	s, bootstrap, _ := gatewayFixture(t)
+	claim, _ := claimThroughGateway(t, s, bootstrap, gatewayHeaders(runsGatewayToken))
+	pinned := gatewayHeaders(runsGatewayToken)
+	for name, headers := range map[string]map[string]string{
+		"the bare capability":                 nil,
+		"pin headers without a gateway token": withHeader(pinned, gatewaycontract.AuthorizationHeader, ""),
+		"a forged gateway token":              gatewayHeaders("forged"),
+		"the gateway of another ns":           gatewayHeaders(otherGatewayToken),
+		"another pod name":                    withHeader(pinned, gatewaycontract.PodNameHeader, "other-pod"),
+		"another pod uid":                     withHeader(pinned, gatewaycontract.PodUIDHeader, "uid-2"),
+		"another pod address":                 withHeader(pinned, gatewaycontract.PodIPHeader, "10.9.9.9"),
+	} {
+		t.Run(name, func(t *testing.T) {
+			got := gatewayRunRequest(s, claim.RunToken, "renew", claim.ControlToken, headers)
+			if got.Code != http.StatusForbidden || got.Header().Get(gatewaycontract.RefusalHeader) != gatewaycontract.RefusedPin {
+				t.Fatalf("renew=%d %s", got.Code, got.Body.String())
+			}
+		})
+	}
+	if got := gatewayRunRequest(s, claim.RunToken, "renew", claim.ControlToken, pinned); got.Code != http.StatusOK {
+		t.Fatalf("the gateway's renew from the pinned pod answered %d %s", got.Code, got.Body.String())
+	}
+}
+
+func TestAGatewayRunsTransactionTokenNeverReachesItsPod(t *testing.T) {
+	s, bootstrap, _ := gatewayFixture(t)
+	s.TransactionTokens = txnSigner(t)
+	s.TeamSponsors = map[string]string{"bronze": txnSponsor}
+	claim, raw := claimThroughGateway(t, s, bootstrap, gatewayHeaders(runsGatewayToken))
+	if strings.Contains(raw, "transactionToken") {
+		t.Fatalf("a gateway claim handed the pod a transaction token: %s", raw)
+	}
+	w := askGrant(s, runsGatewayToken, claim.ControlToken, "10.1.2.3")
+	var grant gatewaycontract.Grant
+	if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &grant) != nil || grant.TransactionToken == "" {
+		t.Fatalf("the gateway's grant carries no transaction token: %d %s", w.Code, w.Body.String())
+	}
+	renewed := gatewayRunRequest(s, claim.RunToken, "renew", grant.TransactionToken, gatewayHeaders(runsGatewayToken))
+	if renewed.Code != http.StatusOK || strings.Contains(renewed.Body.String(), "transactionToken") {
+		t.Fatalf("renew through the gateway answered %d %s", renewed.Code, renewed.Body.String())
+	}
+	if got := gatewayRunRequest(s, claim.RunToken, "renew", grant.TransactionToken, nil); got.Code != http.StatusForbidden {
+		t.Fatalf("the transaction token alone controlled a gateway Run: %d", got.Code)
+	}
+}
+
+func TestAGrantIsServedOnlyForTheCapabilitysOwnRunTeamRoleAndPod(t *testing.T) {
+	s, bootstrap, _ := gatewayFixture(t)
+	claim, _ := claimThroughGateway(t, s, bootstrap, gatewayHeaders(runsGatewayToken))
+	sign := func(c workerCapability) string {
+		c.Audience, c.RunToken, c.Expires = "ploeg-worker-run", claim.RunToken, time.Now().Add(time.Hour).Unix()
+		return s.WorkerSecurity.sign(c)
+	}
+	for name, capability := range map[string]string{
+		"another worker than the pinned pod": sign(workerCapability{WorkerID: "someone-else", Team: "bronze", Role: "reviewer"}),
+		"another Team than the Run's":        sign(workerCapability{WorkerID: "pod", Team: "silver", Role: "reviewer"}),
+		"another Role than the Run's":        sign(workerCapability{WorkerID: "pod", Team: "bronze", Role: "builder"}),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := askGrant(s, runsGatewayToken, capability, "10.1.2.3"); got.Code != http.StatusForbidden || strings.Contains(got.Body.String(), "fixture-inference") {
+				t.Fatalf("grant=%d %s", got.Code, got.Body.String())
+			}
+		})
+	}
+	if got := askGrantFrom(s, runsGatewayToken, claim.ControlToken, "10.1.2.3", "uid-2"); got.Code != http.StatusForbidden {
+		t.Fatalf("a pod reusing the pinned address got the grant: %d", got.Code)
+	}
+	if got := askGrant(s, runsGatewayToken, sign(workerCapability{WorkerID: "uid-1", Team: "bronze", Role: "reviewer"}), "10.1.2.3"); got.Code != http.StatusOK {
+		t.Fatalf("the pinned pod named by its uid was refused: %d %s", got.Code, got.Body.String())
 	}
 }
 

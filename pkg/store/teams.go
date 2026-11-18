@@ -48,6 +48,7 @@ type TeamRecord struct {
 	State     string
 	RemovedAt *time.Time
 	Digest    string
+	Draining  bool
 }
 
 // SuspectedRename is a static key that left the file in the same boot as
@@ -368,14 +369,14 @@ func (s *Store) LiveTeams(ctx context.Context) ([]TeamRecord, error) {
 		SELECT t.id, coalesce(t.tenant, ''), t.source, coalesce(t.name, ''), t.revision, t.state,
 			coalesce((SELECT k.key FROM team_keys k WHERE k.team_id = t.id AND k.kind = 'current' AND k.released_at IS NULL), ''),
 			coalesce((SELECT array_agg(k.key ORDER BY k.key) FROM team_keys k WHERE k.team_id = t.id AND k.kind = 'alias'
-				AND k.released_at IS NULL), '{}')
+				AND k.released_at IS NULL), '{}'), t.draining_since IS NOT NULL
 		FROM teams t WHERE t.removed_at IS NULL ORDER BY t.id`)
 	if err != nil {
 		return nil, err
 	}
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (TeamRecord, error) {
 		var rec TeamRecord
-		err := r.Scan(&rec.ID, &rec.Tenant, &rec.Source, &rec.Name, &rec.Revision, &rec.State, &rec.Key, &rec.Aliases)
+		err := r.Scan(&rec.ID, &rec.Tenant, &rec.Source, &rec.Name, &rec.Revision, &rec.State, &rec.Key, &rec.Aliases, &rec.Draining)
 		return rec, err
 	})
 }
@@ -526,7 +527,7 @@ func backfillTeamTable(ctx context.Context, conn *pgx.Conn, table, key, tenant s
 func Directory(records []TeamRecord) []team.Team {
 	out := make([]team.Team, 0, len(records))
 	for _, r := range records {
-		t := team.Team{ID: r.ID, Key: r.Key, Aliases: slices.Clone(r.Aliases), Source: r.Source, State: r.State, Name: r.Name, Revision: r.Revision}
+		t := team.Team{ID: r.ID, Key: r.Key, Aliases: slices.Clone(r.Aliases), Source: r.Source, State: r.State, Name: r.Name, Revision: r.Revision, Draining: r.Draining}
 		if r.Source == team.SourceRuntime {
 			t.NameSource = team.NameSource{Source: team.NameFromOperatorAPI}
 		}

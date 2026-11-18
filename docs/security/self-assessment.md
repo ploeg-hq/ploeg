@@ -223,7 +223,7 @@ The facts below were read from the repository and the GitHub API on 2026-10-23.
   - Each image digest carries a keyless cosign attestation of type `openvex`, and the same document is a release asset. It lists every finding the project judged not exploitable, with its justification. Consumers verify it and apply it with `grype --vex` or `trivy --vex` ([ops/vex](../../ops/vex/README.md#verify-and-apply-it)).
   - The chart is stamped with both image digests.
   - Release tarballs, the chart archive and `SHA256SUMS` are not signed, and the only stable release, v0.1.0, predates signing ([F-20](threat-model.md#findings), [#306](https://github.com/ploeg-hq/ploeg/issues/306)).
-- **Container images.** `ploegd` runs as uid 65532 on distroless with a read-only root filesystem. The worker container is restricted by default. Ploeg publishes no agent image; the installer supplies one.
+- **Container images.** `ploegd` runs as uid 65532 on distroless with a read-only root filesystem. The worker container is restricted by default. Each release publishes an agent image, `agent-runner`, with the OpenHands, OpenCode, Qwen Code and goose harnesses on Wolfi, gated and signed like the others ([ADR 0200](../adrs/0200-ploeg-publishes-an-agent-image-with-the-harnesses-it-runs-from-its-own-release.md)); the chart does not default to it, so the installer names it or an image of their own.
 
 ### Communication channels
 

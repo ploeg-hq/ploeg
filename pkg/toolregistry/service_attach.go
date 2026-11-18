@@ -123,9 +123,14 @@ func (s *Service) RemoveTeamTools(ctx context.Context, audit Audit, ref string) 
 	return nil
 }
 
-// GrantFor is the grant of a Run of team and role, the part of the
-// credential gateway's grant that names servers and skills.
-func (s *Service) GrantFor(ctx context.Context, team, role string) (Grant, *Error) {
+// GrantFor is the grant of a Run of tenant, team and role, the part of the
+// credential gateway's grant that names servers and skills. A Run of
+// another Tenant, or one that names none, gets nothing from this Tenant's
+// registry.
+func (s *Service) GrantFor(ctx context.Context, tenant, team, role string) (Grant, *Error) {
+	if tenant != s.tenant() {
+		return Grant{}, refuse(403, "tenant_mismatch", "The Run's Tenant is not the Tenant this registry serves.")
+	}
 	t, e := s.team(team)
 	if e != nil {
 		return Grant{}, e

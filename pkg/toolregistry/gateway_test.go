@@ -3,6 +3,7 @@ package toolregistry
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -36,7 +37,7 @@ func TestARegistryGrantReachesTheServerOnlyThroughTheGatewayWithTheStoredCredent
 	if _, e := svc.ReplaceTeamTools(context.Background(), nil, "bronze", map[string]RoleTools{"*": {MCP: []ServerUse{{Server: "obs", Tools: []string{"search_logs"}}}}}, nil, false); e != nil {
 		t.Fatal(e)
 	}
-	grant, withheld, err := svc.GatewayGrant(context.Background(), RunRef{RunID: "run-7", Team: "bronze", Role: "reviewer"})
+	grant, withheld, err := svc.GatewayGrant(context.Background(), RunRef{RunID: 7, Tenant: DefaultTenant, Team: "bronze", Role: "reviewer"})
 	if err != nil || len(withheld) != 0 || grant.Servers["obs"].Credential != "server-secret" || len(grant.Servers["obs"].Tools) != 1 {
 		t.Fatalf("%+v %v %v", grant, withheld, err)
 	}
@@ -82,5 +83,28 @@ func TestARegistryGrantReachesTheServerOnlyThroughTheGatewayWithTheStoredCredent
 		if auth != "Bearer server-secret" {
 			t.Fatalf("the server saw %q, not the stored credential", auth)
 		}
+	}
+}
+
+func TestARunOfAnotherTenantGetsNoServerFromThisTenantsRegistry(t *testing.T) {
+	fake := &mcpFake{tools: []map[string]any{tool("search_logs", ptr(true), nil)}}
+	svc, _, _, url := newService(t, fake)
+	if _, e := svc.CreateServer(context.Background(), nil, ServerRequest{Key: "obs", Name: "obs", URL: url, Transport: TransportStreamableHTTP,
+		Auth: Auth{Kind: AuthBearer}, Tools: []Tool{{Name: "search_logs", Access: AccessRead}}, Credential: secret("server-secret")}, false); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := svc.ReplaceTeamTools(context.Background(), nil, "bronze", map[string]RoleTools{"*": {MCP: []ServerUse{{Server: "obs"}}}}, nil, false); e != nil {
+		t.Fatal(e)
+	}
+	for _, tenant := range []string{"other", "", "Default"} {
+		grant, _, err := svc.GatewayGrant(context.Background(), RunRef{RunID: 9, Tenant: tenant, Team: "bronze", Role: "reviewer"})
+		var refused *Error
+		if !errors.As(err, &refused) || refused.Code != "tenant_mismatch" || len(grant.Servers) != 0 {
+			t.Fatalf("tenant %q: grant %+v, err %v", tenant, grant, err)
+		}
+	}
+	grant, _, err := svc.GatewayGrant(context.Background(), RunRef{RunID: 7, Tenant: DefaultTenant, Team: "bronze", Role: "reviewer"})
+	if err != nil || grant.Tenant != DefaultTenant || grant.Servers["obs"].Credential != "server-secret" {
+		t.Fatalf("the Run's own Tenant: %+v %v", grant, err)
 	}
 }

@@ -454,6 +454,30 @@ func run(ctx context.Context, log *slog.Logger) error {
 	bindings := trackerBindings(ctx, log, st, cfg, staticTable, targets, readiness, trackers, forgeID, secrets, runtimeConns)
 	workTargets := runtimeTargets(ctx, log, cfg, st, runtimeConns, staticTable, readiness, bindings, forgeID, release.directory())
 	tools := toolRegistry(ctx, log, cfg, st, secrets, teams)
+	runtimeTeams, err := runtimeTeamService(ctx, log, cfg, st, teams, func(key string) bool {
+		if _, ok := staticTable.Targets[key]; ok {
+			return true
+		}
+		if workTargets == nil {
+			return false
+		}
+		for _, t := range workTargets.Live() {
+			if t.Key == key {
+				return true
+			}
+		}
+		return false
+	}, bindings)
+	if err != nil {
+		return fmt.Errorf("runtime Teams: %w", err)
+	}
+	if llmControl != nil {
+		llmControl.Runtime = runtimeLLMPolicy(runtimeTeams, llmControl.Policies)
+	}
+	if engine != nil {
+		engine.Runtime = runtimeTeams.Plan
+		engine.Selections = httpapi.RunSelections{Harnesses: operator.TeamHarnesses, LLM: llmControl, Runtime: runtimeTeams.Harness}
+	}
 	if workTargets != nil {
 		withConnections := &forgebroker.WithConnections{Base: forgeCreds, BaseSweeper: forgeSweeper, Resolve: connectionBroker(runtimeConns)}
 		forgeCreds, forgeSweeper = withConnections, withConnections
@@ -467,6 +491,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 		CredentialGateways: credentialGateways,
 		OperatorConfig:     operator,
 		Teams:              teams,
+		RuntimeTeams:       runtimeTeams,
 		WorkerSecurity:     workerSecurity,
 		LLMControl:         llmControl,
 		Store:              st,
@@ -516,6 +541,10 @@ func run(ctx context.Context, log *slog.Logger) error {
 		WorkTargets:           &httpapi.WorkTargets{Service: workTargets},
 		ToolRegistry:          tools,
 	}
+	runtimeTeams.OnStopped = func(ctx context.Context, runTokens, forgeTokenIDs []string) {
+		srv.StopRunCredentials(ctx, "expired Team drain", runTokens, forgeTokenIDs)
+	}
+
 	if notes != nil {
 		srv.Notes = notes
 	}
@@ -609,6 +638,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 	loops.Go(func() { deployCheckLoop(ctx, srv, deployCheckEvery) })
 	loops.Go(func() { connectionReconcileLoop(ctx, runtimeConns, time.Hour) })
 	loops.Go(func() { bindings.Poll(ctx) })
+	loops.Go(func() { runtimeTeamLoop(ctx, log, runtimeTeams, time.Minute) })
 	if workTargets != nil {
 		loops.Go(func() { workTargets.Poll(ctx) })
 	}

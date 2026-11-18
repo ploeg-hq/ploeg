@@ -25,6 +25,7 @@ const (
 	settledCapabilty = "settled-run-capability-012345678"
 	realForgeToken   = "real-forge-token-0123456789abcdef"
 	realModelKey     = "sk-real-model-key-0123456789abcdef"
+	runTxnToken      = "run-1-transaction-token-0123456789"
 	gatewaySAToken   = "projected-gateway-token"
 	bootstrapToken   = "bootstrap-capability-0123456789abcdef0123"
 	podUID           = "pod-uid-1"
@@ -89,6 +90,8 @@ type fixture struct {
 	pods    *fakePods
 	pinIP   string
 	down    bool
+	settled bool
+	grants  int
 	mu      sync.Mutex
 	control *httptest.Server
 	forgeGW *httptest.Server
@@ -134,6 +137,13 @@ func newFixture(t *testing.T, limits Limits) *fixture {
 		case gatewaycontract.GrantsPath:
 			var req gatewaycontract.GrantRequest
 			_ = json.NewDecoder(r.Body).Decode(&req)
+			f.mu.Lock()
+			f.grants++
+			settled := f.settled
+			f.mu.Unlock()
+			if settled {
+				req.Capability = settledCapabilty
+			}
 			switch req.Capability {
 			case runCapability:
 				f.mu.Lock()
@@ -144,6 +154,7 @@ func newFixture(t *testing.T, limits Limits) *fixture {
 					ForgeDialect: "forgejo", ForgeURL: forge.URL, Owner: "acme", Repo: "widgets", BaseBranch: "main",
 					ForgeToken: realForgeToken, ModelKey: realModelKey, ModelAlias: "run-1-alias",
 					Pin: gatewaycontract.Pin{Namespace: "runs", PodName: podName, PodUID: podUID, PodIP: pin}, Deadline: time.Now().Add(time.Hour),
+					TransactionToken: runTxnToken,
 				})
 			case settledCapabilty:
 				http.Error(w, "settled", http.StatusGone)
@@ -433,20 +444,181 @@ func TestClaimGetsTheBootstrapAndPinOnlyForTheClaimingPod(t *testing.T) {
 	}
 }
 
-func TestRunRoutesPassThroughWithNothingAttached(t *testing.T) {
+func TestRunRoutesCarryTheTransactionTokenOnlyFromThePinnedPod(t *testing.T) {
 	f := newFixture(t, Limits{})
 	resp := do(t, http.MethodPost, f.control.URL+"/api/v1/runs/run-1/renew", strings.NewReader(`{}`),
-		map[string]string{"Authorization": "Bearer " + runCapability, gatewaycontract.AuthorizationHeader: "Bearer forged"})
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("status %d", resp.StatusCode)
+		map[string]string{"Authorization": "Bearer " + runCapability, workerIDHeader: podName, gatewaycontract.AuthorizationHeader: "Bearer forged",
+			gatewaycontract.PodUIDHeader: "forged-uid"})
+	if resp.StatusCode != http.StatusOK || f.ploegd.count() != 1 {
+		t.Fatalf("status %d, ploegd saw %d", resp.StatusCode, f.ploegd.count())
 	}
 	got := f.ploegd.last()
-	if got.Header.Get("Authorization") != "Bearer "+runCapability || got.Header.Get(gatewaycontract.AuthorizationHeader) != "" {
-		t.Fatalf("pass-through attached or forwarded a gateway credential: %v", got.Header)
+	want := map[string]string{"Authorization": "Bearer " + runTxnToken, gatewaycontract.AuthorizationHeader: "Bearer " + gatewaySAToken,
+		gatewaycontract.PodNameHeader: podName, gatewaycontract.PodUIDHeader: podUID, gatewaycontract.PodIPHeader: "127.0.0.1"}
+	for k, v := range want {
+		if got.Header.Get(k) != v {
+			t.Errorf("ploegd got %s %q, want %q", k, got.Header.Get(k), v)
+		}
+	}
+	for _, values := range got.Header {
+		for _, v := range values {
+			if strings.Contains(v, runCapability) {
+				t.Fatalf("ploegd saw the capability in %q", v)
+			}
+		}
+	}
+	refused := []struct {
+		name    string
+		path    string
+		headers map[string]string
+		prepare func(*fixture)
+		reason  string
+	}{
+		{"no capability", "/api/v1/runs/run-1/renew", map[string]string{workerIDHeader: podName}, nil, gatewaycontract.RefusedNoCapability},
+		{"another worker identity", "/api/v1/runs/run-1/renew", map[string]string{"Authorization": "Bearer " + runCapability, workerIDHeader: "someone-else"}, nil, gatewaycontract.RefusedPin},
+		{"another Run's routes", "/api/v1/runs/run-2/renew", map[string]string{"Authorization": "Bearer " + runCapability, workerIDHeader: podName}, nil, gatewaycontract.RefusedCapability},
+		{"another source pod", "/api/v1/runs/run-1/renew", map[string]string{"Authorization": "Bearer " + runCapability, workerIDHeader: podName},
+			func(f *fixture) { f.pinIP = "10.0.0.9" }, gatewaycontract.RefusedPin},
+		{"a pod reusing the claimant's IP", "/api/v1/runs/run-1/renew", map[string]string{"Authorization": "Bearer " + runCapability, workerIDHeader: podName},
+			func(f *fixture) { p := runPod(); p.UID = "pod-uid-2"; f.pods.set(p) }, gatewaycontract.RefusedPin},
+		{"a forged capability", "/api/v1/runs/run-1/renew", map[string]string{"Authorization": "Bearer " + otherCapability, workerIDHeader: podName}, nil, gatewaycontract.RefusedCapability},
+	}
+	for _, tc := range refused {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFixture(t, Limits{})
+			if tc.prepare != nil {
+				tc.prepare(f)
+			}
+			resp := do(t, http.MethodPost, f.control.URL+tc.path, strings.NewReader(`{}`), tc.headers)
+			if resp.StatusCode != http.StatusForbidden || resp.Header.Get(gatewaycontract.RefusalHeader) != tc.reason || f.ploegd.count() != 0 {
+				t.Fatalf("status %d reason %q, ploegd saw %d", resp.StatusCode, resp.Header.Get(gatewaycontract.RefusalHeader), f.ploegd.count())
+			}
+		})
 	}
 	resp = do(t, http.MethodGet, f.control.URL+"/api/v1/operator/work-items", nil, nil)
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("an operator route passed: %d", resp.StatusCode)
+	}
+}
+
+func TestTheCapabilityStopsWhenItsRunSettles(t *testing.T) {
+	f := newFixture(t, Limits{})
+	forge := map[string]string{"Authorization": "token " + runCapability}
+	if resp := do(t, http.MethodGet, f.forgeGW.URL+"/api/v1/repos/acme/widgets/pulls", nil, forge); resp.StatusCode != http.StatusOK {
+		t.Fatalf("before the outcome: %d", resp.StatusCode)
+	}
+	resp := do(t, http.MethodPost, f.control.URL+"/api/v1/runs/run-1/outcome", strings.NewReader(`{}`),
+		map[string]string{"Authorization": "Bearer " + runCapability, workerIDHeader: podName})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("outcome: %d", resp.StatusCode)
+	}
+	for _, url := range []string{f.forgeGW.URL + "/api/v1/repos/acme/widgets/pulls", f.modelGW.URL + "/v1/models"} {
+		resp := do(t, http.MethodGet, url, nil, forge)
+		if resp.StatusCode != http.StatusForbidden || resp.Header.Get(gatewaycontract.RefusalHeader) != gatewaycontract.RefusedRunSettled {
+			t.Fatalf("%s after the outcome: %d %q", url, resp.StatusCode, resp.Header.Get(gatewaycontract.RefusalHeader))
+		}
+	}
+	if f.forge.count() != 1 || f.model.count() != 0 {
+		t.Fatalf("a settled Run reached an upstream: forge %d model %d", f.forge.count(), f.model.count())
+	}
+}
+
+func TestACachedGrantLapsesSoonAfterItsRunSettlesElsewhere(t *testing.T) {
+	f := newFixture(t, Limits{})
+	now := time.Now()
+	f.gateway.grants.now = func() time.Time { return now }
+	forge := map[string]string{"Authorization": "token " + runCapability}
+	if resp := do(t, http.MethodGet, f.forgeGW.URL+"/api/v1/repos/acme/widgets/pulls", nil, forge); resp.StatusCode != http.StatusOK {
+		t.Fatalf("before settling: %d", resp.StatusCode)
+	}
+	f.mu.Lock()
+	f.settled = true
+	f.mu.Unlock()
+	now = now.Add(15 * time.Second)
+	resp := do(t, http.MethodGet, f.forgeGW.URL+"/api/v1/repos/acme/widgets/pulls", nil, forge)
+	if resp.StatusCode != http.StatusForbidden || resp.Header.Get(gatewaycontract.RefusalHeader) != gatewaycontract.RefusedRunSettled {
+		t.Fatalf("15s after its Run settled the capability got %d %q", resp.StatusCode, resp.Header.Get(gatewaycontract.RefusalHeader))
+	}
+}
+
+func TestOnlyOneRunningPodAtTheAddressHoldsThePin(t *testing.T) {
+	for name, pods := range map[string][]kubeauth.Pod{
+		"a pending pod":                     {func() kubeauth.Pod { p := runPod(); p.Phase = "Pending"; return p }()},
+		"a pod being deleted":               {func() kubeauth.Pod { p := runPod(); p.Deleting = true; return p }()},
+		"two pods at the address":           {runPod(), func() kubeauth.Pod { p := runPod(); p.UID = "pod-uid-2"; p.Name = "other"; return p }()},
+		"the pinned uid under another name": {func() kubeauth.Pod { p := runPod(); p.Name = "other"; return p }()},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newFixture(t, Limits{})
+			f.pods.set(pods...)
+			resp := do(t, http.MethodGet, f.forgeGW.URL+"/api/v1/repos/acme/widgets/pulls", nil, map[string]string{"Authorization": "token " + runCapability})
+			if resp.StatusCode != http.StatusForbidden || resp.Header.Get(gatewaycontract.RefusalHeader) != gatewaycontract.RefusedPin || f.forge.count() != 0 {
+				t.Fatalf("status %d reason %q", resp.StatusCode, resp.Header.Get(gatewaycontract.RefusalHeader))
+			}
+		})
+	}
+}
+
+func TestAClaimIsRefusedWhenTheGatewayHoldsABootstrapForTheClaimedTeamButNotThePods(t *testing.T) {
+	for name, body := range map[string]string{
+		"another Team than the pod's": `{"team":"admins","role":"writer"}`,
+		"another Role than the pod's": `{"team":"builders","role":"reviewer"}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newFixture(t, Limits{})
+			f.gateway.cfg.Bootstraps["admins--writer"] = bootstrapToken + "-admins"
+			f.gateway.cfg.Bootstraps["builders--reviewer"] = bootstrapToken + "-reviewer"
+			resp := do(t, http.MethodPost, f.control.URL+claimPath, strings.NewReader(body), map[string]string{workerIDHeader: podName})
+			if resp.StatusCode != http.StatusForbidden || f.ploegd.count() != 0 {
+				t.Fatalf("status %d, ploegd saw %d claims", resp.StatusCode, f.ploegd.count())
+			}
+		})
+	}
+}
+
+func TestTheModelFamilyServesInferenceRoutesOnly(t *testing.T) {
+	f := newFixture(t, Limits{})
+	key := map[string]string{"Authorization": "Bearer " + runCapability}
+	for _, tc := range []struct{ method, path string }{
+		{http.MethodPost, "/key/generate"}, {http.MethodPost, "/v1/key/generate"}, {http.MethodGet, "/key/info"},
+		{http.MethodPost, "/user/new"}, {http.MethodGet, "/spend/logs"}, {http.MethodGet, "/global/spend"},
+		{http.MethodPost, "/v1/chat/completions/../../key/generate"}, {http.MethodPost, "/v1/%6bey/generate"},
+		{http.MethodGet, "/v1/chat/completions"}, {http.MethodDelete, "/v1/models"}, {http.MethodPost, "/team/new"},
+	} {
+		req, _ := http.NewRequest(tc.method, f.modelGW.URL+tc.path, strings.NewReader(`{}`))
+		req.URL.RawPath = tc.path
+		req.Header.Set("Authorization", key["Authorization"])
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusForbidden || resp.Header.Get(gatewaycontract.RefusalHeader) != gatewaycontract.RefusedRoute {
+			t.Fatalf("%s %s: %d %q", tc.method, tc.path, resp.StatusCode, resp.Header.Get(gatewaycontract.RefusalHeader))
+		}
+	}
+	if f.model.count() != 0 {
+		t.Fatalf("a management route reached the model gateway %d times", f.model.count())
+	}
+	for _, tc := range []struct{ method, path string }{
+		{http.MethodPost, "/v1/chat/completions"}, {http.MethodPost, "/chat/completions"}, {http.MethodPost, "/v1/messages"},
+		{http.MethodPost, "/v1/messages/count_tokens"}, {http.MethodGet, "/v1/models"}, {http.MethodPost, "/v1/responses"}, {http.MethodPost, "/mcp/tools/list"},
+	} {
+		if resp := do(t, tc.method, f.modelGW.URL+tc.path, strings.NewReader(`{}`), key); resp.StatusCode != http.StatusOK {
+			t.Fatalf("%s %s: %d", tc.method, tc.path, resp.StatusCode)
+		}
+	}
+}
+
+func TestTheModelGatewayGetsNoOtherCredentialHeaderThanTheKey(t *testing.T) {
+	f := newFixture(t, Limits{})
+	resp := do(t, http.MethodPost, f.modelGW.URL+"/v1/chat/completions", strings.NewReader(`{}`), map[string]string{"Private-Token": runCapability})
+	if resp.StatusCode != http.StatusOK || f.model.count() != 1 {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	got := f.model.last().Header
+	if got.Get("Private-Token") != "" || got.Get("Authorization") != "Bearer "+realModelKey {
+		t.Fatalf("the model gateway got %v", got)
 	}
 }
 
@@ -455,6 +627,7 @@ func TestAuditReachesPloegdWithEveryUseAndRefusal(t *testing.T) {
 	do(t, http.MethodGet, f.forgeGW.URL+"/api/v1/repos/acme/widgets/pulls", nil, map[string]string{"Authorization": "token " + runCapability})
 	do(t, http.MethodGet, f.forgeGW.URL+"/api/v1/repos/acme/other/pulls", nil, map[string]string{"Authorization": "token " + runCapability})
 	do(t, http.MethodPost, f.modelGW.URL+"/v1/chat/completions", strings.NewReader(`{}`), map[string]string{"Authorization": "Bearer " + runCapability})
+	do(t, http.MethodPost, f.control.URL+"/api/v1/runs/run-1/checkpoint", strings.NewReader(`{}`), map[string]string{"Authorization": "Bearer " + runCapability, workerIDHeader: podName})
 	totals := map[string]gatewaycontract.Use{}
 	var batch gatewaycontract.AuditBatch
 	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
@@ -472,11 +645,11 @@ func TestAuditReachesPloegdWithEveryUseAndRefusal(t *testing.T) {
 		}
 		f.audits = nil
 		f.mu.Unlock()
-		if totals[FamilyModel].Requests == 1 {
+		if totals[FamilyModel].Requests == 1 && totals[FamilyPloegd].Requests == 1 {
 			break
 		}
 	}
-	if totals[FamilyForge].Requests != 1 || totals[FamilyForge].Refused != 1 || totals[FamilyModel].Requests != 1 {
+	if totals[FamilyForge].Requests != 1 || totals[FamilyForge].Refused != 1 || totals[FamilyModel].Requests != 1 || totals[FamilyPloegd].Requests != 1 {
 		t.Fatalf("uses %+v", totals)
 	}
 	if len(batch.Refusals) != 1 || batch.Refusals[0].Reason != "outside_repository" || batch.Refusals[0].RunToken != "run-1" {

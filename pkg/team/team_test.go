@@ -125,3 +125,16 @@ func TestStaticNameSourceNamesTheFileKey(t *testing.T) {
 		t.Fatalf("%+v", got)
 	}
 }
+
+func TestAStaticKeyResolvesToTheStaticTeamOverAShadowedRuntimeTeam(t *testing.T) {
+	d := NewDirectory([]Team{{ID: "team_r", Key: "docs", Source: SourceRuntime, State: StateShadowed}, {ID: "team_s", Key: "docs", Source: SourceStatic}})
+	if got, _, _ := d.Resolve("docs"); got.ID != "team_s" {
+		t.Fatalf("docs resolved to %s", got.ID)
+	}
+	if got, _, ok := d.Resolve("team_r"); !ok || got.ID != "team_r" {
+		t.Fatal("the shadowed Team is not reachable by id")
+	}
+	if keys := d.StaticKeys(); len(keys) != 1 || keys["docs"] != "team_s" {
+		t.Fatalf("StaticKeys = %v", keys)
+	}
+}

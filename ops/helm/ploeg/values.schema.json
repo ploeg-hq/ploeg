@@ -1142,6 +1142,10 @@
                 "type": "boolean",
                 "description": "Lets the consumer register MCP servers and skill sources and attach them to a Team's Roles through /api/v1/operator/mcp-servers, /api/v1/operator/skill-sources and /api/v1/operator/teams/{team}/tools (ADR-0199). Not narrowed by teams. Needs config.toolRegistry.enabled and a proven person in every attribution mode. Default false."
               },
+              "manageTeams": {
+                "type": "boolean",
+                "description": "Lets the consumer create, change and remove runtime Teams of its Tenant through /api/v1/operator/teams (ADR-0198). Needs config.teamCreation.enabled, executor.runtimeTeams.enabled and a proven person in every attribution mode. Default false."
+              },
               "maxBudgetUsd": {
                 "type": "number",
                 "minimum": 0.01,
@@ -1501,6 +1505,28 @@
             }
           },
           "additionalProperties": false
+        },
+        "runtimeTeams": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Generic worker pools for runtime Teams (ADR-0198 section 7): one ScaledJob per tenant and harness. enabled must agree with config.teamCreation.enabled. A pool renders only for an isolation-qualified harness, with both credential proxies on (isolation proxy), and never with DinD. Isolation gateway is refused until the credential gateway outside the Run pod (ADR-0197) serves pools.",
+          "properties": {
+            "enabled": {"type": "boolean"},
+            "pools": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["tenant", "harness"],
+                "properties": {
+                  "tenant": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,30}$"},
+                  "harness": {"type": "string", "pattern": "^[a-z0-9][a-z0-9/._-]{0,40}$"},
+                  "maxReplicaCount": {"type": "integer", "minimum": 1, "maximum": 100},
+                  "isolation": {"enum": ["proxy", "gateway"]}
+                }
+              }
+            }
+          }
         },
         "teams": {
           "type": "array",
