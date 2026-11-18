@@ -50,17 +50,13 @@ func (c *podCache) at(ctx context.Context, ip string, fresh bool) ([]kubeauth.Po
 	return pods, nil
 }
 
-func (c *podCache) holds(ctx context.Context, ip, uid string) bool {
+func (c *podCache) runningAt(ctx context.Context, ip string) (kubeauth.Pod, bool) {
 	pods, err := c.at(ctx, ip, false)
-	if err != nil {
-		return false
+	if err != nil || len(pods) != 1 {
+		return kubeauth.Pod{}, false
 	}
-	for _, p := range pods {
-		if p.UID == uid && p.IP == ip && p.Phase == "Running" && !p.Deleting {
-			return true
-		}
-	}
-	return false
+	p := pods[0]
+	return p, p.UID != "" && p.IP == ip && p.Phase == "Running" && !p.Deleting
 }
 
 var runPodOwners = map[string]bool{"Job": true, "Sandbox": true}

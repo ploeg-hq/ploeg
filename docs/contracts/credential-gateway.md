@@ -28,34 +28,38 @@ The worker of a gateway Team sends `POST /api/v1/claim` to the gateway with no `
 
 The gateway drops any of these headers a pod sends. Any other refusal answers `403` with `X-Ploeg-Refusal: claim_refused`.
 
-ploegd answers a claim for a gateway Team without `forgeToken`, `forgeTokenPerRun` and `forgeTokenExpiresAt`, whoever sent it. When the gateway token verifies for the Team's binding and the pin names the claiming worker, ploegd also mints the Run's model key at claim, seals the grant with the forge credential it minted, the model key and the pin, stores it in `credential_gateway_grants`, and answers `"credentialGateway": true`. A claim for a gateway Team that did not come through its gateway gets no grant, so no request of its Run is ever served with a credential.
+ploegd refuses a claim for a gateway Team, before it claims anything, unless the gateway token verifies for the Team's binding and the pin names the claiming worker: `403` with `X-Ploeg-Refusal: claim_refused`. A worker of an older release, or one in another namespace, therefore never gets a Run of a gateway Team. For a claim that came through the gateway, ploegd mints the Run's model key, seals the grant with the forge credential it minted, the model key and the pin, stores it in `credential_gateway_grants`, and answers `"credentialGateway": true` with the Run's `controlToken` and without `forgeToken`, `forgeTokenPerRun`, `forgeTokenExpiresAt` and `transactionToken`. The `controlToken` is the only value of the Run that enters its pod.
 
-For a Run with a grant, ploegd answers `403` with `X-Ploeg-Refusal: credential_gateway_mode` to `POST /api/v1/runs/{token}/llm/credential` and `POST /api/v1/runs/{token}/forge-credential`: the pod cannot fetch a credential itself.
+## A gateway Run's worker-control routes
+
+ploegd serves `/api/v1/runs/{token}/...` for a Run with a grant, or a Run of a gateway Team, only when the request carries a gateway token that verifies for the pin's namespace and the Run's Team, pin headers equal to the stored pin, and a worker identity that is the pinned pod's name or UID. Anything else answers `403 pinned_to_another_pod`, whatever the Run's `controlToken` or transaction token says. A renewal of a gateway Run answers no `transactionToken`.
+
+For such a Run ploegd also answers `403 credential_gateway_mode` to `POST /api/v1/runs/{token}/llm/credential`, `POST /api/v1/runs/{token}/forge-credential` and `POST /api/v1/runs/{token}/identity`: neither the pod nor its gateway fetches a credential or a Run identity token there.
 
 ## Grants
 
-`POST /api/v1/credential-gateway/grants`, authenticated as a gateway, with `{"capability": "<controlToken>", "sourceIp": "<address the request came from>"}`.
+`POST /api/v1/credential-gateway/grants`, authenticated as a gateway, with `{"capability": "<controlToken>", "sourceIp": "<address the request came from>", "sourceUid": "<UID of the one running pod at that address>"}`.
 
 | Answer | When |
 | --- | --- |
-| `200` and the grant, `Cache-Control: no-store` | the capability verifies, its Run is running and before its deadline, a gateway claimed it, the asking gateway's namespace is the pin's and is bound to the Run's Team, the capability's worker is the pinned pod, and the source address is the pinned pod's |
+| `200` and the grant, `Cache-Control: no-store` | the capability verifies, its Run is running and before its deadline, a gateway claimed it, the asking gateway's namespace is the pin's and is bound to the Run's Team, the capability's worker is the pinned pod, and the source address and pod UID are the pinned pod's |
 | `401` | the gateway token does not verify |
 | `403` | anything else about the capability, the Run, the namespace or the pin |
 | `410` | the Run has settled or its deadline passed |
 
-The grant carries the Run, Work Item, Team, Role, whether it writes, its branch, whether it prepares a repository, whether its harness loads repository hooks, the forge dialect and URL, owner, repository and base branch, the forge credential and its expiry, the model key and alias, the MCP access groups, the pin and the Run's deadline. When the forge credential expires within five minutes, ploegd mints a new one before it answers (the refresh the worker used to do), revokes the old one and reseals the grant. The orphan sweep deletes the grants of every Run that no longer runs.
+The grant carries the Run, Work Item, Team, Role, whether it writes, its branch, whether it prepares a repository, whether its harness loads repository hooks, the forge dialect and URL, owner, repository and base branch, the forge credential and its expiry, the model key and alias, the MCP access groups, the pin and the Run's deadline. When ploegd signs transaction tokens it adds a `transactionToken` signed for that answer, which the gateway attaches to the Run's worker-control calls. When the forge credential expires within five minutes, ploegd mints a new one before it answers (the refresh the worker used to do), revokes the old one and reseals the grant. The orphan sweep deletes the grants of every Run that no longer runs.
 
 ## Route families
 
 The gateway serves each family on its own listener: ploegd on `:8080`, the forge on `:8081`, the model gateway on `:8082`, and `/healthz` on `:8090`.
 
-- **ploegd** passes `POST /api/v1/claim` (above) and every `/api/v1/runs/...` route through with nothing attached. Everything else answers `403 forbidden_route`.
+- **ploegd** passes `POST /api/v1/claim` (above). A `/api/v1/runs/{token}/...` call must present the Run's `controlToken` as `Authorization: Bearer`, come from the pinned pod with its name or UID as the worker identity, and name the capability's own Run. The gateway then replaces the capability with the grant's transaction token (or keeps the `controlToken` when ploegd signs none), adds its own token and the stored pin headers, and audits the call under the `ploegd` family. After ploegd accepts the Run's outcome, the gateway forgets the Run's grant and refuses every further forge, model and MCP request of it with `run_settled`. Everything else answers `403 forbidden_route`.
 - **forge** serves git smart-HTTP and the forge API of the Run's own repository behind the fences of the worker's forge proxy, one implementation in [pkg/worker](../../pkg/worker/gatewayfence.go): repository and Role allowlist, path normalisation, the push fence to `refs/heads/<run branch>` without deletion, the prepare-repository fence of ADR-0194, the OpenHands hooks-file fence of ADR-0148 (when the claim named an OpenHands harness) and leak inspection. The gateway checks a push's content from the pushed pack itself: it fetches the forge's base branch into a bare repository of its own, indexes the pack with `--fix-thin`, and refuses a prepare Run's push unless it only adds the root `AGENTS.md`, and an OpenHands Run's push that touches `.openhands/hooks.json`. A Run without a base branch cannot pass those checks.
-- **model** forwards to `PLOEG_GATEWAY_MODEL_URL` with the Run's key in the header the caller used (`Authorization: Bearer`, `X-Api-Key` or LiteLLM's key header), streaming unchanged.
+- **model** forwards inference only: `POST` to `chat/completions`, `completions`, `embeddings`, `responses`, `messages` and `messages/count_tokens`, `GET` of `models` and `model/info`, each with or without a `/v1` prefix, and LiteLLM's `/mcp` routes. Any other path, LiteLLM's `/key/*`, `/user/*`, `/team/*` and `/spend/*` among them, and any path that is not already clean, answers `403 forbidden_route`. It forwards to `PLOEG_GATEWAY_MODEL_URL` with the Run's key in the header the caller used (`Authorization: Bearer`, `X-Api-Key` or LiteLLM's key header), streaming unchanged, and removes every other header a capability can be presented in.
 
 A request presents the capability where a credential goes: a Basic password, a `token` or `Bearer` authorization, `PRIVATE-TOKEN`, `X-Api-Key` or LiteLLM's key header. The gateway removes it before forwarding. A git request without any credential gets a `401` Basic challenge; any other request without one gets `403 missing_capability`.
 
-Before any upstream is reached, the gateway fetches the grant (cached in memory for at most 60 seconds, two minutes before the forge credential expires, or the Run's deadline, whichever is first) and checks that the request comes from the pinned pod's address and that a running pod with the pinned UID still holds it. Refusals carry `X-Ploeg-Refusal`:
+Before any upstream is reached, the gateway resolves the source address to exactly one running pod that is not being deleted, fetches the grant for that pod's address and UID (cached in memory for at most 10 seconds, two minutes before the forge credential expires, or the Run's deadline, whichever is first, so a Run settled elsewhere loses its capability within 10 seconds), and checks that the pod's address, UID and name are the pin's. A new pod that reuses a settled pod's address has another UID and is refused. Refusals carry `X-Ploeg-Refusal`:
 
 | Reason | Status |
 | --- | --- |

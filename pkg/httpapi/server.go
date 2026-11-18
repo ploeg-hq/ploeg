@@ -1126,7 +1126,7 @@ func (s *Server) handleRenew(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	body := map[string]any{"deadline": deadline, "expiresInMs": leaseExpiresInMs(deadline)}
-	if worker := runWorkerFrom(r.Context()); s.TransactionTokens != nil && worker != "" {
+	if worker := runWorkerFrom(r.Context()); s.TransactionTokens != nil && worker != "" && !gatewayRunFrom(r.Context()) {
 		renewed, _, err := s.issueTransactionToken(r.Context(), token, worker)
 		if err != nil {
 			s.Log.Error("renewed run got no transaction token", "err", err)

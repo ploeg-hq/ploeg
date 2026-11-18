@@ -164,6 +164,7 @@ func swapModelKey(h http.Header, key string) {
 	h.Del("Authorization")
 	h.Del("X-Api-Key")
 	h.Del("Api-Key")
+	h.Del("Private-Token")
 	h.Del(liteLLMKeyHeader)
 	if litellm {
 		h.Set(liteLLMKeyHeader, "Bearer "+key)

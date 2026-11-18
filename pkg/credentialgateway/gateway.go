@@ -53,8 +53,9 @@ type Gateway struct {
 	audit     *auditor
 	upstreams map[string]Upstream
 
-	mu   sync.Mutex
-	runs map[string]*runState
+	mu      sync.Mutex
+	runs    map[string]*runState
+	settled map[string]time.Time
 }
 
 type runState struct {
@@ -94,6 +95,7 @@ func New(cfg Config) (*Gateway, error) {
 		audit:     newAuditor(ploegd, cfg.Log),
 		upstreams: map[string]Upstream{},
 		runs:      map[string]*runState{},
+		settled:   map[string]time.Time{},
 	}
 	g.Register(forgeUpstream{g: g})
 	if cfg.ModelURL != "" {
@@ -159,7 +161,13 @@ func (g *Gateway) serveUpstream(u Upstream) http.Handler {
 			g.audit.anonymous(u.Family(), r, rec.status, ip)
 			return
 		}
-		grant, err := g.grants.get(r.Context(), capability, ip)
+		pod, running := g.pods.runningAt(r.Context(), ip)
+		if !running {
+			refuse(rec, http.StatusForbidden, gatewaycontract.RefusedPin, "this Run's capability is pinned to the pod that claimed it")
+			g.audit.anonymous(u.Family(), r, rec.status, ip)
+			return
+		}
+		grant, err := g.grants.get(r.Context(), capability, ip, pod.UID)
 		if err != nil {
 			status, reason := grantRefusal(err)
 			refuse(rec, status, reason, "credential gateway: "+reason)
@@ -172,8 +180,12 @@ func (g *Gateway) serveUpstream(u Upstream) http.Handler {
 				route: routeOf(r, capability), status: rec.status, bytes: max(r.ContentLength, 0), duration: g.cfg.Now().Sub(started),
 				reason: rec.Header().Get(gatewaycontract.RefusalHeader)})
 		}()
-		if grant.Pin.PodIP != ip || !g.pods.holds(r.Context(), ip, grant.Pin.PodUID) {
+		if !pinned(grant, ip, pod) {
 			refuse(rec, http.StatusForbidden, gatewaycontract.RefusedPin, "this Run's capability is pinned to the pod that claimed it")
+			return
+		}
+		if g.hasSettled(grant.Run) {
+			refuse(rec, http.StatusForbidden, gatewaycontract.RefusedRunSettled, "credential gateway: the Run has settled")
 			return
 		}
 		if reason, ok := g.limits.admit(grant.Run, u.Family(), r); !ok {
@@ -189,6 +201,33 @@ func (g *Gateway) serveUpstream(u Upstream) http.Handler {
 		u.Serve(rec, r, Run{Grant: grant, Capability: capability, state: run})
 	})
 }
+
+func pinned(grant gatewaycontract.Grant, ip string, pod kubeauth.Pod) bool {
+	return grant.Pin.PodIP == ip && grant.Pin.PodUID == pod.UID && grant.Pin.PodName == pod.Name
+}
+
+func (g *Gateway) settle(run string) {
+	g.grants.forgetRun(run)
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	now := g.cfg.Now()
+	for token, until := range g.settled {
+		if now.After(until) {
+			delete(g.settled, token)
+		}
+	}
+	g.settled[run] = now.Add(settledRemembered)
+	delete(g.runs, run)
+}
+
+func (g *Gateway) hasSettled(run string) bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	until, ok := g.settled[run]
+	return ok && g.cfg.Now().Before(until)
+}
+
+const settledRemembered = 24 * time.Hour
 
 func grantRefusal(err error) (int, string) {
 	switch {

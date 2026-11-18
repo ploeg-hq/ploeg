@@ -185,6 +185,10 @@ func (s *Server) WorkerHandler(next http.Handler) http.Handler {
 					return
 				}
 			}
+			pin, gated, admitted := s.admitGatewayClaim(w, r, b.Team, worker)
+			if !admitted {
+				return
+			}
 			r.Body = io.NopCloser(bytes.NewReader(body))
 			capture := &workerResponse{header: make(http.Header)}
 			next.ServeHTTP(capture, r)
@@ -199,13 +203,13 @@ func (s *Server) WorkerHandler(next http.Handler) http.Handler {
 					http.Error(w, "inference policy could not reserve claim", http.StatusServiceUnavailable)
 					return
 				}
-				if !s.gatewayClaim(w, r, b, worker, req, claimed, result) {
+				if gated && !s.gatewayClaim(w, r, b, req, claimed, result, pin) {
 					return
 				}
 				if !a.RetireHMAC {
 					result["controlToken"] = a.sign(workerCapability{Audience: "ploeg-worker-run", RunToken: claimed.RunToken, WorkerID: worker, Team: b.Team, Role: b.Role, Expires: time.Now().Add(24 * time.Hour).Unix()})
 				}
-				if s.TransactionTokens != nil {
+				if s.TransactionTokens != nil && !gated {
 					token, _, err := s.issueTransactionToken(r.Context(), claimed.RunToken, worker)
 					if err != nil {
 						s.Log.Error("claimed run got no transaction token", "team", b.Team, "role", b.Role, "err", err)
@@ -251,7 +255,14 @@ func (s *Server) WorkerHandler(next http.Handler) http.Handler {
 				return
 			}
 		}
-		if len(parts) >= 2 && s.refuseGatewayRunCredential(w, r, parts[0], strings.Join(parts[1:], "/")) {
+		gateway, admitted := s.pinGatewayRunRoute(w, r, parts[0], worker, run)
+		if !admitted {
+			return
+		}
+		if gateway {
+			ctx = withGatewayRun(ctx)
+		}
+		if refuseGatewayRunCredential(w, gateway, strings.Join(parts[1:], "/")) {
 			return
 		}
 		terminalReplay := len(parts) == 2 && parts[1] == "outcome" && run.State == "finished"
