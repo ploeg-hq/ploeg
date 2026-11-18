@@ -11,6 +11,8 @@ const (
 	CapabilityWebhookChecker     = "webhook_checker"
 	CapabilityWebhookRegistrar   = "webhook_registrar"
 	CapabilityReferenceNamer     = "reference_namer"
+	CapabilityScopeLister        = "scope_lister"
+	CapabilityScopeItemLister    = "scope_item_lister"
 )
 
 // TrackerCapabilities names the optional tracker port interfaces t
@@ -45,6 +47,12 @@ func TrackerCapabilities(t TrackerProvider) []string {
 	}
 	if _, ok := t.(ReferenceNamer); ok {
 		out = append(out, CapabilityReferenceNamer)
+	}
+	if _, ok := t.(ScopeLister); ok {
+		out = append(out, CapabilityScopeLister)
+	}
+	if _, ok := t.(ScopeItemLister); ok {
+		out = append(out, CapabilityScopeItemLister)
 	}
 	return out
 }

@@ -1072,6 +1072,16 @@
                 "minimum": 0.01,
                 "maximum": 10000
               },
+              "readTrackers": {
+                "type": "array",
+                "maxItems": 100,
+                "uniqueItems": true,
+                "description": "Tracker connections whose Scopes and items the consumer may read through Ploeg (ADR-0196): [clickup], or [\"*\"] for every tracker connection. Unset or empty reads none.",
+                "items": {
+                  "type": "string",
+                  "pattern": "^(\\*|[A-Za-z0-9][A-Za-z0-9_.:-]{0,127})$"
+                }
+              },
               "tokenSecret": {
                 "type": "object",
                 "additionalProperties": false,

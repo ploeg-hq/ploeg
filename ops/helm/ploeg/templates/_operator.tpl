@@ -41,6 +41,7 @@ asserted
 {{- if .clientIds -}}{{- $_ := set $consumer "clientIds" .clientIds -}}{{- $clientIds = true -}}{{- end -}}
 {{- if .audiences -}}{{- $_ := set $consumer "audiences" .audiences -}}{{- end -}}
 {{- if .requireClaims -}}{{- $_ := set $consumer "requireClaims" .requireClaims -}}{{- end -}}
+{{- if .readTrackers -}}{{- $_ := set $consumer "readTrackers" .readTrackers -}}{{- end -}}
 {{- $consumers = append $consumers $consumer }}
 - name: {{ $tokenEnv }}
   valueFrom:

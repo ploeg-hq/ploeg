@@ -309,12 +309,15 @@ operator:
   # Team. teams is required; a consumer that lists none reads none.
   # readContent grants Run transcripts and briefings, attached context and
   # Work Item Note reviews; unset follows execute, so a read-only consumer
-  # sees metadata only.
+  # sees metadata only. readTrackers names the tracker connections whose
+  # Scopes and items the consumer may read through Ploeg (ADR-0196), or
+  # ["*"] for every one; unset reads none.
   #   consumers:
   #     - name: mcp-reader
   #       teams: [silver]
   #       execute: false
   #       readContent: false
+  #       readTrackers: [clickup]
   #       tokenSecret: {name: ploeg-mcp-reader, key: token}
   consumers: []
   deliveryPolicies: []
