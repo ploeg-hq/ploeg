@@ -266,7 +266,7 @@ func proposedItems(t *testing.T, base string) []string {
 	var claim struct {
 		RunToken string `json:"runToken"`
 	}
-	if err := json.Unmarshal(post("/api/v1/claim", map[string]string{"team": "tin"}), &claim); err != nil || claim.RunToken == "" {
+	if err := json.Unmarshal(post("/api/v1/claim", map[string]string{"team": "tin", "harness": "openhands", "forgeTokenIsolation": "proxy", "llmKeyIsolation": "proxy"}), &claim); err != nil || claim.RunToken == "" {
 		t.Fatalf("claim: %v", err)
 	}
 	items := []harness.CreatedWorkItem{

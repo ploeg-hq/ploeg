@@ -244,7 +244,7 @@ func TestIngestRefusalQueuesNothingAndTellsTheTicket(t *testing.T) {
 			if len(comments) != 1 || !strings.Contains(comments[0], "did not queue") {
 				t.Fatalf("ticket comments = %q, want one refusal comment", comments)
 			}
-			if status, _ := postClaim(t, h, `{"team":"bronze"}`); status != http.StatusNoContent {
+			if status, _ := postClaim(t, h, `{"team":"bronze","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`); status != http.StatusNoContent {
 				t.Errorf("claim after a refusal = %d; nothing may run, least of all in the worker's env repository", status)
 			}
 		})
@@ -314,7 +314,7 @@ func TestClaimStopsARunWhoseTargetBecameUnready(t *testing.T) {
 			}
 
 			forge.set("webgrip/homelab-cluster", provider.RepositoryState{})
-			if status, _ := postClaim(t, h, `{"team":"bronze"}`); status != http.StatusNoContent {
+			if status, _ := postClaim(t, h, `{"team":"bronze","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`); status != http.StatusNoContent {
 				t.Fatalf("claim = %d, want no run started", status)
 			}
 
@@ -339,7 +339,7 @@ func TestClaimRetriesWhenReadinessCannotBeChecked(t *testing.T) {
 	forge.mu.Lock()
 	forge.down = true
 	forge.mu.Unlock()
-	if status, _ := postClaim(t, h, `{"team":"bronze"}`); status != http.StatusNoContent {
+	if status, _ := postClaim(t, h, `{"team":"bronze","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`); status != http.StatusNoContent {
 		t.Fatalf("claim = %d, want no run started", status)
 	}
 	outcome, _, failureReason, state := finishedRun(t, "5008")
@@ -350,7 +350,7 @@ func TestClaimRetriesWhenReadinessCannotBeChecked(t *testing.T) {
 	forge.mu.Lock()
 	forge.down = false
 	forge.mu.Unlock()
-	status, claimed := postClaim(t, h, `{"team":"bronze"}`)
+	status, claimed := postClaim(t, h, `{"team":"bronze","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	if status != http.StatusOK || claimed.WorkItem.Target == nil || *claimed.WorkItem.Target != appTarget {
 		t.Fatalf("claim after the forge recovered = %d %+v", status, claimed.WorkItem.Target)
 	}

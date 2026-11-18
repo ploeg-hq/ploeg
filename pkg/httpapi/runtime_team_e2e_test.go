@@ -114,7 +114,7 @@ func TestARuntimeTeamsAdmittedWorkBecomesAShiftWhoseRunThePoolClaimsAndFinishes(
 	}
 	w := worker.New(worker.Config{APIURL: srv.URL, BootstrapToken: rig.poolBoot, WorkerID: "pool-pod",
 		WorkDir: t.TempDir(), ForgeURL: forgeURL, DefaultForge: harness.ForgeForgejo, BuilderToken: "tok",
-		HarnessTimeout: time.Minute}, adapter, nil, slog.New(slog.DiscardHandler))
+		HarnessTimeout: time.Minute, ForgeTokenIsolation: worker.ForgeTokenIsolationProxy, LLMKeyIsolation: worker.KeyIsolationProxy}, adapter, nil, slog.New(slog.DiscardHandler))
 	if err := w.RunContext(ctx); err != nil {
 		t.Fatalf("pool worker: %v", err)
 	}

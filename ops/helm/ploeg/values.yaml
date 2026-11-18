@@ -604,13 +604,14 @@ executor:
   # run API.
   type: keda
   forge: forgejo
-  # "proxy" keeps a writer's forge token inside ploeg-worker: git and the forge
+  # "proxy" keeps a Run's forge token inside ploeg-worker: git and the forge
   # API reach only the Run's own repository through a loopback proxy that adds
-  # the token, and the harness sees a placeholder. "" hands the token over.
-  # Applies only to a qualified harness without DinD (openhands, acp profile
-  # openhands, exec; docs/research/2026-10-04-isolation-qualification.md); any
-  # other workload renders with it off, and ploeg-worker logs why. A team's or
-  # Role's harness.credentialIsolation overrides both proxies explicitly.
+  # the token, and the harness sees a placeholder. Required: every Role runs
+  # with it on, on a qualified harness without DinD (openhands, acp profile
+  # openhands, exec; docs/research/2026-10-04-isolation-qualification.md), and
+  # the render fails with credential_isolation_required otherwise (ADR-0034,
+  # amended 2026-11-18). A team's or Role's harness.credentialIsolation
+  # overrides both proxies explicitly.
   forgeTokenIsolation: proxy
   # true copies everything a Run's harness prints (its prompt, tool output,
   # file contents and any secret the agent reads) into the worker pod's log,
@@ -824,10 +825,9 @@ executor:
     keyDuration: 4h
     # "proxy" keeps the per-Run key inside ploeg-worker: the harness gets a
     # placeholder and a loopback URL, and the worker swaps in the real key on
-    # the way to LiteLLM. "" hands the key to the harness. Like
-    # forgeTokenIsolation, it applies only to a qualified harness without DinD,
-    # because a harness calling the model from inside a DinD container cannot
-    # reach the worker's loopback.
+    # the way to LiteLLM. Required like forgeTokenIsolation: the render fails
+    # with credential_isolation_required for any Role without it (ADR-0034,
+    # amended 2026-11-18).
     keyIsolation: proxy
   workerAuth:
     mode: managed

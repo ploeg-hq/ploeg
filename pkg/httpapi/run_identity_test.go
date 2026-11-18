@@ -85,7 +85,7 @@ func TestRunIdentityNamesTheRunFromPloegdsOwnRecords(t *testing.T) {
 	signer := identitySigner(t)
 	h := identityServer(signer).Handler()
 	targetedWriterShift(t, "1490")
-	code, claim := postClaim(t, h, `{"team":"bronze","role":"builder","harness":"claude-code"}`)
+	code, claim := postClaim(t, h, `{"team":"bronze","role":"builder","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	if code != http.StatusOK {
 		t.Fatalf("claim: %d", code)
 	}
@@ -115,7 +115,7 @@ func TestRunIdentityNamesTheRunFromPloegdsOwnRecords(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := runidentity.Run{ID: strconv.FormatInt(runID, 10), WorkItemID: strconv.FormatInt(workItemID, 10), ShiftID: strconv.FormatInt(shiftID, 10),
-		Round: round, Role: "builder", Team: "bronze", Harness: "claude-code", Branch: "agent/vik-1490", Trace: "ploeg-" + claim.RunToken[:12]}
+		Round: round, Role: "builder", Team: "bronze", Harness: "openhands", Branch: "agent/vik-1490", Trace: "ploeg-" + claim.RunToken[:12]}
 	if got.Run != want {
 		t.Errorf("run = %+v, want %+v", got.Run, want)
 	}
@@ -134,7 +134,7 @@ func TestRunIdentityRefusals(t *testing.T) {
 	reset(t)
 	h := identityServer(identitySigner(t)).Handler()
 	targetedWriterShift(t, "1491")
-	_, claim := postClaim(t, h, `{"team":"bronze","role":"builder","harness":"claude-code"}`)
+	_, claim := postClaim(t, h, `{"team":"bronze","role":"builder","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	for name, body := range map[string]string{
 		"no audience":      `{"audiences":[]}`,
 		"plain http":       `{"audiences":["http://observer.example"]}`,
@@ -169,7 +169,7 @@ func TestRunIdentityRefusesAnAudienceTheRunsTeamAndRoleDoNotList(t *testing.T) {
 	s.Log = slog.New(slog.NewJSONHandler(&logged, nil))
 	h := s.Handler()
 	targetedWriterShift(t, "1493")
-	_, claim := postClaim(t, h, `{"team":"bronze","role":"builder","harness":"claude-code"}`)
+	_, claim := postClaim(t, h, `{"team":"bronze","role":"builder","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	for name, body := range map[string]string{
 		"another service":         `{"audiences":["https://elsewhere.example/sessions"]}`,
 		"another Role's audience": `{"audiences":["urn:example:reviewer-only"]}`,
@@ -202,7 +202,7 @@ func TestRunIdentityIsOffWithoutASigningKey(t *testing.T) {
 	reset(t)
 	h := identityServer(nil).Handler()
 	targetedWriterShift(t, "1492")
-	_, claim := postClaim(t, h, `{"team":"bronze","role":"builder"}`)
+	_, claim := postClaim(t, h, `{"team":"bronze","role":"builder","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	if rec, _ := requestIdentity(t, h, claim.RunToken, `{"audiences":["urn:example:a"]}`); rec.Code != http.StatusNotFound {
 		t.Errorf("identity without a key: %d", rec.Code)
 	}
@@ -217,7 +217,7 @@ func TestManagedRunIdentityNeedsTheRunsControlCapability(t *testing.T) {
 	s, bootstrap := secureWorkerFixture(t, &managedBrokerFixture{})
 	s.RunIdentity = identitySigner(t)
 	s.RunIdentityAudiences = identityAllowlist
-	w := workerRequest(s, "POST", "/api/v1/claim", bootstrap, "pod", `{"team":"bronze","role":"reviewer"}`)
+	w := workerRequest(s, "POST", "/api/v1/claim", bootstrap, "pod", `{"team":"bronze","role":"reviewer","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	var claim struct {
 		RunToken     string `json:"runToken"`
 		ControlToken string `json:"controlToken"`
@@ -247,7 +247,7 @@ func TestRunIdentityBodiesMatchTheRunAPIContract(t *testing.T) {
 	}
 	signer := identitySigner(t)
 	token, exp, err := signer.Sign(runidentity.Run{ID: "1", WorkItemID: "2", ShiftID: "3", Round: 1, Role: "builder", Team: "bronze",
-		Harness: "claude-code", Branch: "agent/vik-2", Trace: "ploeg-0123456789ab"}, identityAudience, time.Now().Add(time.Minute))
+		Harness: "openhands", Branch: "agent/vik-2", Trace: "ploeg-0123456789ab"}, identityAudience, time.Now().Add(time.Minute))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -233,6 +233,46 @@ Context: (dict "root" $ "team" <team> "role" <role>).
 {{- list "openhands" "acp/openhands" "exec" | toJson -}}
 {{- end -}}
 
+{{/*
+ploeg.credentialModesOutsideHarness lists the per-workload credential modes
+under which the harness never holds the Run's forge token or model key
+(ADR-0034). The chart renders no credential gateway (ADR-0197) yet, so only
+both in-worker proxies qualify; ploegd also accepts a claim its Team's
+gateway admitted.
+*/}}
+{{- define "ploeg.credentialModesOutsideHarness" -}}
+{{- list "proxy" | toJson -}}
+{{- end -}}
+
+{{/*
+ploeg.requireCredentialIsolation fails the render for a Role workload whose
+harness would hold its Run's forge token or model key: an unqualified
+harness, DinD, or either credential proxy off. It holds under every
+supportProfile (ADR-0034, amended 2026-11-18). Context: (dict "root" $
+"who" <team/role> "harness" <qualification key> "dind" <bool> "isolation"
+<ploeg.credentialIsolation result>).
+*/}}
+{{- define "ploeg.requireCredentialIsolation" -}}
+{{- $modes := include "ploeg.credentialModesOutsideHarness" .root | fromJsonArray -}}
+{{- $qualified := include "ploeg.isolationQualifiedHarnesses" .root | fromJsonArray -}}
+{{- $missing := list -}}
+{{- if not (has .harness $qualified) -}}
+{{- $missing = append $missing (printf "harness %s is not qualified to run with its credentials isolated (qualified: %s)" .harness (join ", " $qualified)) -}}
+{{- end -}}
+{{- if .dind -}}
+{{- $missing = append $missing "harness.dind is true, and a DinD harness reaches a privileged Docker daemon that is root on the node" -}}
+{{- end -}}
+{{- if not (has .isolation.forgeToken $modes) -}}
+{{- $missing = append $missing "forge token isolation is off (executor.forgeTokenIsolation or harness.credentialIsolation is not proxy)" -}}
+{{- end -}}
+{{- if not (has .isolation.llmKey $modes) -}}
+{{- $missing = append $missing "model key isolation is off (executor.litellm.keyIsolation or harness.credentialIsolation is not proxy)" -}}
+{{- end -}}
+{{- if $missing -}}
+{{- fail (printf "team %s: credential_isolation_required: every Role runs with its forge token and model key isolated from its harness (ADR-0034), and %s. Run it on a qualified harness with both proxies on and no DinD; see docs/ops/managed-workers.md#credential-isolation-is-required" .who (join "; " $missing)) -}}
+{{- end -}}
+{{- end -}}
+
 {{- define "ploeg.qualifiedHarnesses" -}}
 {{- list "openhands" "acp/openhands" "exec" | toJson -}}
 {{- end -}}
@@ -667,6 +707,7 @@ global executor.harness defaults field-by-field (explicit hasKey checks, so
 {{- if and (eq $hName "acp") (eq ($acpProfile | default "opencode") "custom") (not $acpArgv) }}
 {{- fail (printf "team %s: harness.acp.profile=custom requires harness.acp.argv" $who) }}
 {{- end -}}
+{{- include "ploeg.requireCredentialIsolation" (dict "root" $root "who" $who "harness" (include "ploeg.qualificationHarnessName" (dict "name" $hName "acpProfile" $acpProfile)) "dind" $hDind "isolation" $isolation) -}}
 metadata:
   labels:
     app.kubernetes.io/name: ploeg-worker

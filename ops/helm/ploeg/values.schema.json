@@ -2214,7 +2214,7 @@
         },
         "dind": {
           "type": "boolean",
-          "description": "false (the chart default) renders no privileged sidecar and keeps both credential proxies on for a qualified harness. true adds the privileged docker:dind sidecar, mounts its client certificates into the harness container and turns both credential proxies off for that workload (PLOEG_CREDENTIAL_ISOLATION_OFF_REASON=dind); the render refuses it without acknowledgePrivilegedDind (ADR-0136)."
+          "description": "false (the chart default) renders no privileged sidecar and keeps both credential proxies on for a qualified harness. true adds the privileged docker:dind sidecar, mounts its client certificates into the harness container and turns both credential proxies off for that workload (PLOEG_CREDENTIAL_ISOLATION_OFF_REASON=dind); the render refuses it without acknowledgePrivilegedDind (ADR-0136), and since credential isolation is required for every Role it refuses it with one too (credential_isolation_required, ADR-0034 amended 2026-11-18) until the credential gateway of ADR-0197 is built."
         },
         "acknowledgePrivilegedDind": {
           "type": "boolean",
@@ -2225,7 +2225,7 @@
             "",
             "proxy"
           ],
-          "description": "Explicit per-workload setting for both credential proxies (ADR-0034). Unset = executor.forgeTokenIsolation and executor.litellm.keyIsolation apply to a qualified harness without DinD, and every other workload runs with both off."
+          "description": "Explicit per-workload setting for both credential proxies (ADR-0034). Unset = executor.forgeTokenIsolation and executor.litellm.keyIsolation apply to a qualified harness without DinD. Anything but proxy, on any workload, fails the render with credential_isolation_required (ADR-0034, amended 2026-11-18)."
         },
         "timeout": {
           "type": "string",
@@ -2296,7 +2296,7 @@
         },
         "dind": {
           "type": "boolean",
-          "description": "false (the chart default) renders no privileged sidecar and keeps both credential proxies on for a qualified harness. true adds the privileged docker:dind sidecar, mounts its client certificates into the harness container and turns both credential proxies off for that workload (PLOEG_CREDENTIAL_ISOLATION_OFF_REASON=dind); the render refuses it without acknowledgePrivilegedDind (ADR-0136)."
+          "description": "false (the chart default) renders no privileged sidecar and keeps both credential proxies on for a qualified harness. true adds the privileged docker:dind sidecar, mounts its client certificates into the harness container and turns both credential proxies off for that workload (PLOEG_CREDENTIAL_ISOLATION_OFF_REASON=dind); the render refuses it without acknowledgePrivilegedDind (ADR-0136), and since credential isolation is required for every Role it refuses it with one too (credential_isolation_required, ADR-0034 amended 2026-11-18) until the credential gateway of ADR-0197 is built."
         },
         "acknowledgePrivilegedDind": {
           "type": "boolean",
@@ -2307,7 +2307,7 @@
             "",
             "proxy"
           ],
-          "description": "Explicit per-workload setting for both credential proxies (ADR-0034). Unset = executor.forgeTokenIsolation and executor.litellm.keyIsolation apply to a qualified harness without DinD, and every other workload runs with both off."
+          "description": "Explicit per-workload setting for both credential proxies (ADR-0034). Unset = executor.forgeTokenIsolation and executor.litellm.keyIsolation apply to a qualified harness without DinD. Anything but proxy, on any workload, fails the render with credential_isolation_required (ADR-0034, amended 2026-11-18)."
         },
         "timeout": {
           "type": "string",

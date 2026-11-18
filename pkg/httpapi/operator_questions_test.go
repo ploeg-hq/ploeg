@@ -21,7 +21,7 @@ func TestFindingsAndQuestionsOverTheAPIs(t *testing.T) {
 	s, token := notesServer(t)
 	id, shift := shiftFixtureItem(t, "5601", []store.Role{{Name: "reviewer", Cap: 1}})
 	h := s.Handler()
-	status, claim := postClaim(t, h, `{"team":"bronze","role":"reviewer"}`)
+	status, claim := postClaim(t, h, `{"team":"bronze","role":"reviewer","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	if status != http.StatusOK {
 		t.Fatalf("claim: %d", status)
 	}
@@ -79,7 +79,7 @@ func TestFindingsAndQuestionsOverTheAPIs(t *testing.T) {
 	if _, err := testStore.OpenRound(ctx, shift, 1, []store.Role{{Name: "builder", Writes: true, Cap: 1}}); err != nil {
 		t.Fatal(err)
 	}
-	status, next := postClaim(t, h, `{"team":"bronze","role":"builder"}`)
+	status, next := postClaim(t, h, `{"team":"bronze","role":"builder","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	if status != http.StatusOK {
 		t.Fatalf("second claim: %d", status)
 	}
