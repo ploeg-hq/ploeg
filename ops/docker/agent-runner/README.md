@@ -6,15 +6,17 @@ Each release publishes `ghcr.io/ploeg-hq/agent-runner:<version>` for `linux/amd6
 
 | Tool | Version | Installed from |
 | --- | --- | --- |
-| OpenHands CLI (`openhands`) | 1.16.0 | PyPI with uv, constrained by [openhands-1.16.0.constraints.txt](openhands-1.16.0.constraints.txt) |
+| OpenHands CLI (`openhands`) | 1.16.0 | PyPI with uv, constrained by [openhands-1.16.0.constraints.txt](openhands-1.16.0.constraints.txt) and [openhands-overrides.txt](openhands-overrides.txt) |
 | OpenCode (`opencode`) | 1.19.5 | npm, [tools/opencode](tools/opencode/package-lock.json) |
 | Qwen Code (`qwen`) | 0.26.5 | npm, [tools/qwen-code](tools/qwen-code/package-lock.json) |
 | goose (`goose`) | 1.57.0 | the GitHub release's musl archive, checked against a pinned sha256 |
 | moon (`moon`, `moonx`) | 2.6.5 | npm, [tools/moon](tools/moon/package-lock.json) |
 | openspec (`openspec`) | 1.16.0 | npm, [tools/openspec](tools/openspec/package-lock.json) |
-| Python, PyYAML | 3.12.16, 6.0.3 | `docker.io/library/python` Alpine 3.24, pip |
-| Node.js, npm | 24.22.3 | `docker.io/library/node` Alpine 3.24 |
-| git, bash | Alpine 3.24 | apk |
+| Python, PyYAML | 3.12, 6.0.3 | Wolfi `python-3.12`, uv |
+| Node.js | 24 | Wolfi `nodejs-24` |
+| git, bash | Wolfi | apk |
+
+The image is built on the digest-pinned `cgr.dev/chainguard/wolfi-base` the other Ploeg images use, so its C library is glibc. `apk add` takes the current Wolfi package at build time, and the BuildKit SBOM of each release records what shipped. npm is used only to install the tools during the build and is not in the image.
 
 No Claude Code ([ADR-0141](../../../docs/adrs/0141-the-claude-runner-image-carries-no-claude-code-and-installs-anthropics-signed-release-at-start.md)) and no language toolchain: a Run gets its toolchains mounted ([give Runs a toolchain and checks](../../../docs/how-to/give-runs-a-toolchain-and-checks.md)). The image has no `USER`; the chart runs the harness container as a non-root user, and the build checks that OpenHands runs as uid 1000.
 
@@ -46,17 +48,19 @@ The Dockerfile fails rather than publish an image that would fail a Run:
 - OpenHands must start and be executable as uid 1000, and its `lmnr` must accept the `rollout_entrypoint` argument the SDK's tracing passes.
 - The OpenHands CLI loads public skills from GitHub at every start and has no setting to stop it. The build changes `load_public_skills=True` to `False` in its `agent_store.py` and fails if that line moves, so a Run without GitHub egress does not wait for the clone to time out. `LITELLM_LOCAL_MODEL_COST_MAP=True` stops LiteLLM fetching its cost map at start for the same reason.
 - `openhands --version` takes minutes to import at a worker's CPU limit, so the build writes it to `/etc/openhands-version` and the entrypoint reads that.
-- Qwen Code's `node-pty` prebuilds are for glibc and crash on musl; the build removes them and fails if either still resolves. `qwen` and `opencode` must report their pinned versions, and `goose` its pinned release.
+- The image Qwen Code was proven in had no `node-pty`, because its prebuilds crash on musl. The build still removes them, so Qwen Code runs its shell without a PTY as before, and fails if either still resolves. `qwen` and `opencode` must report their pinned versions, and `goose` its pinned release.
 - `litellm-key mint` must fail when nothing is configured, so it can never hand an agent an empty key.
 
 ## Changing a version
 
-- **Base images, uv and PyYAML.** Renovate proposes them: the `FROM` digests through its Dockerfile manager and `PYYAML_VERSION` through the `# renovate:` line above it.
+- **Base image, uv and PyYAML.** Renovate proposes them: the `FROM` digests through its Dockerfile manager and `PYYAML_VERSION` through the `# renovate:` line above it. Python and Node.js follow Wolfi's `python-3.12` and `nodejs-24` packages on every build.
 - **OpenCode, Qwen Code, moon and openspec.** Renovate proposes them through each `tools/<tool>/package.json` and its lockfile.
-- **OpenHands.** Not managed by Renovate, because the version and its constraints file change together. Run `bash ops/docker/agent-runner/openhands-constraints.sh <version>` (it needs `uv` and GNU `sed`), set `OPENHANDS_VERSION` in the Dockerfile, and commit the new constraints file. The script exports the CLI release's own lockfile and pins `psutil` to a version with musl wheels for amd64 and arm64.
+- **OpenHands.** Not managed by Renovate, because the version and its constraints file change together. Run `bash ops/docker/agent-runner/openhands-constraints.sh <version>` (it needs `uv`), set `OPENHANDS_VERSION` in the Dockerfile, and commit the new constraints file. The script exports the CLI release's own lockfile and leaves out every package [openhands-overrides.txt](openhands-overrides.txt) names.
 - **goose.** Not managed by Renovate, because the version and its two checksums change together. Set `GOOSE_VERSION` at the top of the Dockerfile and `GOOSE_SHA256_AMD64` and `GOOSE_SHA256_ARM64` to the sha256 of the release's `goose-x86_64-unknown-linux-musl.tar.gz` and `goose-aarch64-unknown-linux-musl.tar.gz`.
 
-Before changing a harness version, run `mise run harness-conformance` inside the image ([managed workers](../../../docs/ops/managed-workers.md)). The node binary is copied from the Node.js image onto the Python image, so both must stay on the same Alpine release.
+- **Overrides.** [openhands-overrides.txt](openhands-overrides.txt) raises the OpenHands dependencies that had a Critical or High advisory to their first fixed version, plus the packages those need newer. uv installs each at that version whatever OpenHands declares (ADR-0199). On an OpenHands bump, drop each override the new lockfile already meets, rerun the script, and add an override for each new finding the `cve-budget (agent-runner)` job reports. To see a finding before CI does, resolve the set with `uv pip compile` (`--python-platform x86_64-manylinux_2_28`, the constraints and `--override`) into a `requirements.txt` and run `grype dir:` on its directory. Qwen Code's `package.json` raises `sharp` the same way through npm `overrides`.
+
+Before changing a harness version or an override, run `mise run harness-conformance` inside the image ([managed workers](../../../docs/ops/managed-workers.md)).
 
 ## Building it locally
 
