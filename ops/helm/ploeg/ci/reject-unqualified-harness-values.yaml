@@ -1,0 +1,20 @@
+# Credential isolation is mandatory (ADR-0034, amended 2026-11-18): a
+# harness not qualified with both proxies fails the render, in a plan's
+# reading Role as much as in a writer.
+executor:
+  enabled: true
+  forgejo:
+    readTokenSecret:
+      name: agent-reader-token
+      key: FORGEJO_TOKEN
+  teams:
+    - name: silver
+      model: litellm_proxy/deepseek-chat
+      budget: "2"
+      harness: {name: openhands, dind: false}
+      plan:
+        - roles:
+            - {name: builder, writes: true, cap: "1.00"}
+        - roles:
+            - {name: reviewer, writes: false, cap: "0.50", harness: {name: acp, acp: {profile: opencode}}}
+supportProfile: unsupported

@@ -442,14 +442,13 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/name: ploeg-worker
-        ploeg.webgrip.dev/privileged-dind: "true"
         ploeg.webgrip.dev/team: kata
     spec:
       activeDeadlineSeconds: 7200
       automountServiceAccountToken: false
       containers:
       - command:
-        - /mnt/bin/ploeg-worker
+        - /usr/local/bin/ploeg-worker
         env:
         - name: PLOEG_API_URL
           value: http://ploeg:8080
@@ -469,8 +468,10 @@ spec:
           value: 4h
         - name: LLM_BASE_URL
           value: http://litellm.ai.svc.cluster.local:4000/v1
-        - name: PLOEG_CREDENTIAL_ISOLATION_OFF_REASON
-          value: dind
+        - name: PLOEG_LLM_KEY_ISOLATION
+          value: proxy
+        - name: PLOEG_FORGE_TOKEN_ISOLATION
+          value: proxy
         - name: PLOEG_LLM_CREDENTIAL_MODE
           value: managed
         - name: PLOEG_WORKER_BOOTSTRAP_TOKEN
@@ -503,47 +504,44 @@ spec:
               fieldPath: metadata.uid
         - name: WORK_DIR
           value: /mnt/ci-shared
-        - name: DOCKER_HOST
-          value: tcp://localhost:2376
-        - name: DOCKER_CERT_PATH
-          value: /certs/client
-        - name: DOCKER_TLS_VERIFY
-          value: "1"
-        image: registry.example/agent-runner:1.3.0@sha256:db06af1d9c0969ed594a21ee2b3369a79d6e91abb36b94d29223918581963027
+        - name: PLOEG_HARNESS_LAUNCHER
+          value: /run/ploeg/launcher/launcher.sock
+        - name: GOMEMLIMIT
+          value: 460MiB
+        image: ghcr.io/ploeg-hq/ploeg-worker:CHART-VERSION@sha256:cc5bedc5be0fe1c8546671c1ccbf76c62646c87e3bf52908de7c317852848e14
         name: worker
         resources:
           limits:
-            cpu: "1"
-            memory: 1Gi
+            cpu: 250m
+            memory: 512Mi
           requests:
-            cpu: "1"
-            memory: 1Gi
+            cpu: 250m
+            memory: 512Mi
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
             drop:
             - ALL
+          readOnlyRootFilesystem: true
           runAsGroup: 1000
           runAsNonRoot: true
           runAsUser: 1000
           seccompProfile:
             type: RuntimeDefault
         volumeMounts:
-        - mountPath: /mnt/bin
-          name: worker-bin
-          readOnly: true
-        - mountPath: /certs
-          name: docker-certs
-          readOnly: true
         - mountPath: /mnt/ci-shared
           name: ci-shared
+        - mountPath: /run/ploeg/launcher
+          name: harness-launcher
+        - mountPath: /tmp
+          name: worker-tmp
       dnsPolicy: ClusterFirst
       initContainers:
       - command:
         - /usr/local/bin/ploeg-worker
         - install
         - /mnt/bin/ploeg-worker
-        image: ghcr.io/ploeg-hq/ploegd:CHART-VERSION@sha256:da0cc1526c299863f227760b0f3f4d8428fd762de5edfeaa2effe75e3b739a36
+        image: ghcr.io/ploeg-hq/ploeg-worker:CHART-VERSION@sha256:cc5bedc5be0fe1c8546671c1ccbf76c62646c87e3bf52908de7c317852848e14
         name: worker-bin
         resources:
           limits:
@@ -564,32 +562,37 @@ spec:
         volumeMounts:
         - mountPath: /mnt/bin
           name: worker-bin
-      - env:
-        - name: DOCKER_TLS_CERTDIR
-          value: /certs
-        image: docker.io/library/docker:29.8.2-dind@sha256:7dcdfc4a20246236f558175182ccace1eb15a41bd3eb119dd2284f393498b7c1
-        name: dind
+      - command:
+        - /mnt/bin/ploeg-worker
+        - harness-serve
+        - /run/ploeg/launcher/launcher.sock
+        image: registry.example/agent-runner:1.3.0@sha256:db06af1d9c0969ed594a21ee2b3369a79d6e91abb36b94d29223918581963027
+        name: harness
         resources:
           limits:
             cpu: "1"
-            memory: 1536Mi
+            memory: 1Gi
           requests:
             cpu: "1"
-            memory: 1536Mi
+            memory: 1Gi
         restartPolicy: Always
         securityContext:
-          privileged: true
-        startupProbe:
-          failureThreshold: 60
-          periodSeconds: 2
-          tcpSocket:
-            port: 2376
-          timeoutSeconds: 5
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          runAsGroup: 1000
+          runAsNonRoot: true
+          runAsUser: 1000
+          seccompProfile:
+            type: RuntimeDefault
         volumeMounts:
-        - mountPath: /certs
-          name: docker-certs
-        - mountPath: /var/lib/docker
-          name: docker-storage
+        - mountPath: /mnt/bin
+          name: worker-bin
+          readOnly: true
+        - mountPath: /run/ploeg/launcher
+          name: harness-launcher
+          readOnly: true
         - mountPath: /mnt/ci-shared
           name: ci-shared
       restartPolicy: Never
@@ -603,10 +606,13 @@ spec:
       volumes:
       - emptyDir: {}
         name: worker-bin
-      - emptyDir: {}
-        name: docker-certs
-      - emptyDir: {}
-        name: docker-storage
+      - emptyDir:
+          medium: Memory
+          sizeLimit: 1Mi
+        name: harness-launcher
+      - emptyDir:
+          sizeLimit: 1Gi
+        name: worker-tmp
       - emptyDir:
           sizeLimit: 8Gi
         name: ci-shared
@@ -666,7 +672,6 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/name: ploeg-worker
-        ploeg.webgrip.dev/privileged-dind: "true"
         ploeg.webgrip.dev/role: builder
         ploeg.webgrip.dev/team: gvisor
     spec:
@@ -674,7 +679,7 @@ spec:
       automountServiceAccountToken: false
       containers:
       - command:
-        - /mnt/bin/ploeg-worker
+        - /usr/local/bin/ploeg-worker
         env:
         - name: PLOEG_API_URL
           value: http://ploeg:8080
@@ -696,8 +701,10 @@ spec:
           value: 4h
         - name: LLM_BASE_URL
           value: http://litellm.ai.svc.cluster.local:4000/v1
-        - name: PLOEG_CREDENTIAL_ISOLATION_OFF_REASON
-          value: dind
+        - name: PLOEG_LLM_KEY_ISOLATION
+          value: proxy
+        - name: PLOEG_FORGE_TOKEN_ISOLATION
+          value: proxy
         - name: PLOEG_LLM_CREDENTIAL_MODE
           value: managed
         - name: PLOEG_WORKER_BOOTSTRAP_TOKEN
@@ -726,47 +733,44 @@ spec:
               fieldPath: metadata.uid
         - name: WORK_DIR
           value: /mnt/ci-shared
-        - name: DOCKER_HOST
-          value: tcp://localhost:2376
-        - name: DOCKER_CERT_PATH
-          value: /certs/client
-        - name: DOCKER_TLS_VERIFY
-          value: "1"
-        image: registry.example/agent-runner:1.3.0@sha256:db06af1d9c0969ed594a21ee2b3369a79d6e91abb36b94d29223918581963027
+        - name: PLOEG_HARNESS_LAUNCHER
+          value: /run/ploeg/launcher/launcher.sock
+        - name: GOMEMLIMIT
+          value: 460MiB
+        image: ghcr.io/ploeg-hq/ploeg-worker:CHART-VERSION@sha256:cc5bedc5be0fe1c8546671c1ccbf76c62646c87e3bf52908de7c317852848e14
         name: worker
         resources:
           limits:
-            cpu: "1"
-            memory: 1Gi
+            cpu: 250m
+            memory: 512Mi
           requests:
-            cpu: "1"
-            memory: 1Gi
+            cpu: 250m
+            memory: 512Mi
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
             drop:
             - ALL
+          readOnlyRootFilesystem: true
           runAsGroup: 1000
           runAsNonRoot: true
           runAsUser: 1000
           seccompProfile:
             type: RuntimeDefault
         volumeMounts:
-        - mountPath: /mnt/bin
-          name: worker-bin
-          readOnly: true
-        - mountPath: /certs
-          name: docker-certs
-          readOnly: true
         - mountPath: /mnt/ci-shared
           name: ci-shared
+        - mountPath: /run/ploeg/launcher
+          name: harness-launcher
+        - mountPath: /tmp
+          name: worker-tmp
       dnsPolicy: ClusterFirst
       initContainers:
       - command:
         - /usr/local/bin/ploeg-worker
         - install
         - /mnt/bin/ploeg-worker
-        image: ghcr.io/ploeg-hq/ploegd:CHART-VERSION@sha256:da0cc1526c299863f227760b0f3f4d8428fd762de5edfeaa2effe75e3b739a36
+        image: ghcr.io/ploeg-hq/ploeg-worker:CHART-VERSION@sha256:cc5bedc5be0fe1c8546671c1ccbf76c62646c87e3bf52908de7c317852848e14
         name: worker-bin
         resources:
           limits:
@@ -787,32 +791,37 @@ spec:
         volumeMounts:
         - mountPath: /mnt/bin
           name: worker-bin
-      - env:
-        - name: DOCKER_TLS_CERTDIR
-          value: /certs
-        image: docker.io/library/docker:29.8.2-dind@sha256:7dcdfc4a20246236f558175182ccace1eb15a41bd3eb119dd2284f393498b7c1
-        name: dind
+      - command:
+        - /mnt/bin/ploeg-worker
+        - harness-serve
+        - /run/ploeg/launcher/launcher.sock
+        image: registry.example/agent-runner:1.3.0@sha256:db06af1d9c0969ed594a21ee2b3369a79d6e91abb36b94d29223918581963027
+        name: harness
         resources:
           limits:
             cpu: "1"
-            memory: 1536Mi
+            memory: 1Gi
           requests:
             cpu: "1"
-            memory: 1536Mi
+            memory: 1Gi
         restartPolicy: Always
         securityContext:
-          privileged: true
-        startupProbe:
-          failureThreshold: 60
-          periodSeconds: 2
-          tcpSocket:
-            port: 2376
-          timeoutSeconds: 5
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          runAsGroup: 1000
+          runAsNonRoot: true
+          runAsUser: 1000
+          seccompProfile:
+            type: RuntimeDefault
         volumeMounts:
-        - mountPath: /certs
-          name: docker-certs
-        - mountPath: /var/lib/docker
-          name: docker-storage
+        - mountPath: /mnt/bin
+          name: worker-bin
+          readOnly: true
+        - mountPath: /run/ploeg/launcher
+          name: harness-launcher
+          readOnly: true
         - mountPath: /mnt/ci-shared
           name: ci-shared
       restartPolicy: Never
@@ -826,10 +835,13 @@ spec:
       volumes:
       - emptyDir: {}
         name: worker-bin
-      - emptyDir: {}
-        name: docker-certs
-      - emptyDir: {}
-        name: docker-storage
+      - emptyDir:
+          medium: Memory
+          sizeLimit: 1Mi
+        name: harness-launcher
+      - emptyDir:
+          sizeLimit: 1Gi
+        name: worker-tmp
       - emptyDir:
           sizeLimit: 8Gi
         name: ci-shared

@@ -66,11 +66,9 @@ for case in ":default" \
 	"ops/helm/ploeg/ci/executor-sandbox-runtimeclass-values.yaml:executor-sandbox-runtimeclass" \
 	"ops/helm/ploeg/ci/executor-sandbox-team-values.yaml:executor-sandbox-team" \
 	"ops/helm/ploeg/ci/executor-isolation-values.yaml:executor-isolation" \
-	"ops/helm/ploeg/ci/executor-isolation-disabled-values.yaml:executor-isolation-disabled" \
 	"ops/helm/ploeg/ci/executor-default-worker-values.yaml:executor-default-worker" \
 	"ops/helm/ploeg/ci/executor-public-endpoints-values.yaml:executor-public-endpoints" \
 	"ops/helm/ploeg/ci/executor-worker-admission-values.yaml:executor-worker-admission" \
-	"ops/helm/ploeg/ci/executor-acknowledged-dind-values.yaml:executor-acknowledged-dind" \
 	"ops/helm/ploeg/ci/executor-harness-container-shared-values.yaml:executor-harness-container-shared" \
 	"ops/helm/ploeg/ci/executor-harness-selection-values.yaml:executor-harness-selection" \
 	"ops/helm/ploeg/ci/monitoring-values.yaml:monitoring" \
@@ -135,7 +133,13 @@ for case in "ops/helm/ploeg/ci/reject-reader-without-read-token-values.yaml:read
 	"ops/helm/ploeg/ci/reject-separate-harness-container-with-dind-values.yaml:a separate harness container needs both credential proxies and no DinD" \
 	"ops/helm/ploeg/ci/reject-unknown-harness-container-values.yaml:value must be one of 'separate', 'shared'" \
 	"ops/helm/ploeg/ci/reject-secret-store-without-namespace-values.yaml:secretStore.kubernetes.namespace is required when secretStore.type is kubernetes" \
-	"ops/helm/ploeg/ci/reject-secret-store-in-release-namespace-values.yaml:secretStore.kubernetes.namespace must not be the release namespace default"; do
+	"ops/helm/ploeg/ci/reject-secret-store-in-release-namespace-values.yaml:secretStore.kubernetes.namespace must not be the release namespace default" \
+	"ops/helm/ploeg/ci/reject-forge-token-isolation-off-values.yaml:team qualified: credential_isolation_required: every Role runs with its forge token and model key isolated from its harness (ADR-0034), and forge token isolation is off" \
+	"ops/helm/ploeg/ci/reject-llm-key-isolation-off-values.yaml:team qualified: credential_isolation_required: every Role runs with its forge token and model key isolated from its harness (ADR-0034), and model key isolation is off" \
+	"ops/helm/ploeg/ci/reject-dind-values.yaml:team acknowledged: credential_isolation_required: every Role runs with its forge token and model key isolated from its harness (ADR-0034), and harness.dind is true" \
+	"ops/helm/ploeg/ci/reject-unqualified-harness-values.yaml:team silver/reviewer: credential_isolation_required: every Role runs with its forge token and model key isolated from its harness (ADR-0034), and harness acp/opencode is not qualified" \
+	"ops/helm/ploeg/ci/reject-claude-environment-harness-values.yaml:team pewter: credential_isolation_required: every Role runs with its forge token and model key isolated from its harness (ADR-0034), and harness claude-environment is not qualified" \
+	"ops/helm/ploeg/ci/reject-client-carrier-values.yaml:team brass: credential_isolation_required: every Role runs with its forge token and model key isolated from its harness (ADR-0034), and harness.claudeEnvironment.carrier client"; do
 	values=${case%%:*}
 	expected=${case#*:}
 	if out=$(helm template ploeg ops/helm/ploeg -f "$REQUIRED" -f "$values" 2>&1); then
@@ -160,8 +164,9 @@ for secret in github-builder-token github-reader-token agent-builder-token agent
 		status=1
 	fi
 done
-if ! helm template ploeg ops/helm/ploeg -f "$REQUIRED" -f "$FORGE_SECRET_VALUES" --set "$plugin_secret=session-link-token" >/dev/null 2>&1; then
-	echo "chart refused a Claude Code plugin reading an unrelated Secret beside two forges, which it must render"
+if out=$(helm template ploeg ops/helm/ploeg -f "$REQUIRED" -f "$FORGE_SECRET_VALUES" --set "$plugin_secret=session-link-token" 2>&1) || printf '%s' "$out" | grep -qF "which holds a Ploeg credential" || ! printf '%s' "$out" | grep -qF "harness claude-code is not qualified"; then
+	echo "chart judged a Claude Code plugin reading an unrelated Secret beside two forges by its Secret, or rendered the unqualified claude-code harness:"
+	echo "$out"
 	status=1
 fi
 
@@ -195,12 +200,7 @@ leaves_p1 'team defaults: the sandbox executor runs while security.workerAdmissi
 leaves_p1 'team defaults: the sandbox executor runs while security.workerAdmission.runtimeClassNames is empty' --set 'executor.teams[0].executorType=sandbox' --set 'executor.teams[0].sandbox.runtimeClassName=kata'
 leaves_p1 'team defaults: runtimeClassName "kata" is not in security.workerAdmission.runtimeClassNames ["gvisor"]' --set executor.type=sandbox --set executor.sandbox.runtimeClassName=kata --set 'security.workerAdmission.runtimeClassNames={gvisor}'
 leaves_p1 'team defaults: runtimeClassName "" is not in security.workerAdmission.runtimeClassNames ["kata"]' --set 'security.workerAdmission.runtimeClassNames={kata}'
-leaves_p1 'executor.litellm.keyIsolation is not proxy' --set executor.litellm.keyIsolation=
-leaves_p1 'executor.forgeTokenIsolation is not proxy' --set executor.forgeTokenIsolation=
 leaves_p1 'harness.credentialIsolation is set to "proxy"; P1 has no credentialIsolation override' --set 'executor.teams[0].harness.credentialIsolation=proxy'
-leaves_p1 'team defaults harness claude-code: the harness is not qualified with both credential proxies on' --set 'executor.teams[0].harness.name=claude-code'
-leaves_p1 'team defaults harness acp/opencode: the harness is not qualified with both credential proxies on' --set 'executor.teams[0].harness.name=acp' --set 'executor.teams[0].harness.acp.profile=opencode'
-leaves_p1 'team defaults harness openhands: harness.dind is true' --set 'executor.teams[0].harness.dind=true' --set 'executor.teams[0].harness.acknowledgePrivilegedDind=true'
 leaves_p1 'team defaults harness openhands: harnessContainer resolves to shared' --set executor.harnessContainer=shared
 leaves_p1 'executor.workerSecurityContext (runAsNonRoot is not true, runAsUser is 0' --set executor.workerSecurityContext.runAsNonRoot=false --set executor.workerSecurityContext.runAsUser=0
 leaves_p1 'executor.workerSecurityContext (allowPrivilegeEscalation is not false, capabilities.drop lacks ALL, seccompProfile.type is not RuntimeDefault or Localhost)' --set executor.workerSecurityContext.allowPrivilegeEscalation=true --set 'executor.workerSecurityContext.capabilities.drop=null' --set executor.workerSecurityContext.seccompProfile.type=Unconfined
@@ -214,7 +214,6 @@ leaves_p1 '(worker.image) is not pinned by digest' --set worker.image.digest=
 leaves_p1 'the worker image registry.example/ploeg-worker:0.2.0 (executor.workerImage) is not pinned by digest' --set executor.workerImage=registry.example/ploeg-worker:0.2.0
 leaves_p1 'the worker-bin image registry.example/ploegd:0.2.0 (executor.workerImage) is not pinned by digest' --set executor.harnessContainer=shared --set executor.workerImage=registry.example/ploegd:0.2.0
 leaves_p1 'the sandbox launcher image ghcr.io/ploeg-hq/ploegd:' --set executor.type=sandbox --set executor.sandbox.runtimeClassName=kata --set image.digest= --set 'security.workerAdmission.runtimeClassNames={kata}'
-leaves_p1 'the dind image docker.io/library/docker:29.8.2-dind (executor.dindImage) is not pinned by digest' --set 'executor.teams[0].harness.dind=true' --set 'executor.teams[0].harness.acknowledgePrivilegedDind=true' --set executor.dindImage=docker.io/library/docker:29.8.2-dind
 leaves_p1 'the claude-runner image ghcr.io/ploeg-hq/claude-runner:latest (claudeRunner.image) is not pinned by digest' --set claudeRunner.enabled=true --set claudeRunner.environmentSecret.name=claude-runner-environment --set claudeRunner.image.tag=latest
 leaves_p1 'team defaults resolves no spend cap (executor.spendCap, executor.teams[].spendCap or config.teams.defaults.spendCap)' --set executor.spendCap.usd=0
 leaves_p1 'team defaults resolves no spend cap' --set 'executor.teams[0].spendCap.usd=0'
@@ -222,6 +221,29 @@ leaves_p1 'team defaults resolves no spend cap' --set config.teams.defaults.spen
 leaves_p1 'team defaults resolves no spend cap' --set executor.spendCap=null
 leaves_p1 'PLOEG_MCP_ALLOW_LOOPBACK_HTTP is true on ploeg-mcp; P1 needs an https issuer' -f ops/helm/ploeg/ci/mcp-values.yaml --set-string mcp.env.PLOEG_MCP_ALLOW_LOOPBACK_HTTP=true
 leaves_p1 'PLOEG_MCP_ALLOW_LOOPBACK_HTTP is true on ploeg-mcp; P1 needs an https issuer' -f ops/helm/ploeg/ci/mcp-values.yaml --set 'mcp.extraEnv[0].name=PLOEG_MCP_ALLOW_LOOPBACK_HTTP' --set-string 'mcp.extraEnv[0].value=true'
+ISOLATION_REQUIRED='credential_isolation_required: every Role runs with its forge token and model key isolated from its harness (ADR-0034)'
+refused_in_every_profile() {
+	expected=$1
+	shift
+	for profile in P1 unsupported; do
+		if out=$(helm template ploeg "$P1_CHART" -f "$REQUIRED" -f "$P1_VALUES" --set "supportProfile=$profile" "$@" 2>&1); then
+			echo "chart rendered $* under supportProfile: $profile, which it must refuse whatever the profile"
+			status=1
+		elif ! printf '%s' "$out" | grep -qF -- "$ISOLATION_REQUIRED" || ! printf '%s' "$out" | grep -qF -- "$expected"; then
+			echo "chart refused $* under supportProfile: $profile for the wrong reason (want '$ISOLATION_REQUIRED' and '$expected'):"
+			echo "$out"
+			status=1
+		fi
+	done
+}
+
+refused_in_every_profile 'model key isolation is off' --set executor.litellm.keyIsolation=
+refused_in_every_profile 'forge token isolation is off' --set executor.forgeTokenIsolation=
+refused_in_every_profile 'forge token isolation is off' --set 'executor.teams[0].harness.credentialIsolation='
+refused_in_every_profile 'harness claude-code is not qualified' --set 'executor.teams[0].harness.name=claude-code'
+refused_in_every_profile 'harness acp/opencode is not qualified' --set 'executor.teams[0].harness.name=acp' --set 'executor.teams[0].harness.acp.profile=opencode'
+refused_in_every_profile 'harness claude-code is not qualified' --set 'executor.teams[0].harness.name=claude-code' --set 'executor.teams[0].harness.credentialIsolation=proxy'
+refused_in_every_profile 'harness.dind is true' --set 'executor.teams[0].harness.dind=true' --set 'executor.teams[0].harness.acknowledgePrivilegedDind=true'
 if out=$(helm template ploeg ops/helm/ploeg -f "$REQUIRED" --set supportProfile=P2 2>&1) || ! printf '%s' "$out" | grep -qF "value must be one of 'P1', 'unsupported'"; then
 	echo "chart did not refuse supportProfile P2 by its schema:"
 	echo "$out"
@@ -474,9 +496,6 @@ fi
 must_render_with ops/helm/ploeg/ci/executor-default-worker-values.yaml \
 	'name: PLOEG_LLM_KEY_ISOLATION' 'name: PLOEG_FORGE_TOKEN_ISOLATION' 'runAsNonRoot: true' \
 	-- 'name: dind' 'privileged: true' 'ploeg.webgrip.dev/privileged-dind' 'PLOEG_CREDENTIAL_ISOLATION_OFF_REASON' 'DOCKER_HOST'
-must_render_with ops/helm/ploeg/ci/executor-acknowledged-dind-values.yaml \
-	'name: dind' 'privileged: true' 'ploeg.webgrip.dev/privileged-dind: "true"' 'name: PLOEG_CREDENTIAL_ISOLATION_OFF_REASON' 'value: "dind"' 'name: DOCKER_CERT_PATH' \
-	-- 'name: PLOEG_LLM_KEY_ISOLATION' 'name: PLOEG_FORGE_TOKEN_ISOLATION'
 
 must_render_with ops/helm/ploeg/ci/executor-cronjob-runtimeclass-values.yaml \
 	'runtimeClassName: "gvisor"' 'runtimeClassName: "kata"' \

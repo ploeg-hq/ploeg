@@ -51,7 +51,7 @@ assert_every_image_pinned() { # <label> <helm template args...>
   fi
 }
 assert_every_image_pinned 'the published chart with only the required values' -f "$required_without_source_digests"
-assert_every_image_pinned 'the published chart with ploeg-mcp, claude-runner and a claude-environment team' \
+assert_every_image_pinned 'the published chart with ploeg-mcp and claude-runner' \
   -f "$required_without_source_digests" -f "$ci/mcp-values.yaml" -f "$ci/claude-runner-values.yaml"
 assert_every_image_pinned 'the published chart with a worker whose harness runs in its own container' \
   -f "$required_without_source_digests" -f "$ci/executor-default-worker-values.yaml" --set executor.namespace=ploeg-workers --set executor.harness.image=registry.example/agent-runner:1.3.0@sha256:0000000000000000000000000000000000000000000000000000000000000000

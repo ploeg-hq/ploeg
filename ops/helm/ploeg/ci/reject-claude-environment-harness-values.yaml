@@ -1,0 +1,17 @@
+# Credential isolation is mandatory (ADR-0034, amended 2026-11-18): a Claude
+# environment's runner holds the Run's forge credential itself, so the
+# harness fails the render until the credential gateway of ADR-0197 carries it.
+executor:
+  enabled: true
+  teams:
+    - name: pewter
+      model: litellm_proxy/claude-sonnet-5
+      budget: "1"
+      harness:
+        name: claude-environment
+        image: harbor.webgrip.dev/webgrip/claude-dispatch:0.1.0
+        dind: false
+        claudeEnvironment:
+          environmentId: ccpool_example
+          loginVolume: pewter-claude-login
+supportProfile: unsupported

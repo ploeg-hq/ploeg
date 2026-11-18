@@ -64,7 +64,7 @@ executor:
       budget: "6"
       maxReplicaCount: 1
       harness:
-        name: claude-code
+        name: openhands
         dind: false
       plan:
         - roles:

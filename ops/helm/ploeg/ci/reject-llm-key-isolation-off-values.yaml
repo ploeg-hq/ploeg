@@ -1,0 +1,13 @@
+# Credential isolation is mandatory (ADR-0034, amended 2026-11-18): the model
+# key proxy off fails the render, even on a qualified harness with the forge
+# proxy on.
+executor:
+  enabled: true
+  litellm:
+    keyIsolation: ""
+  teams:
+    - name: qualified
+      model: litellm_proxy/deepseek-chat
+      budget: "1"
+      harness: {name: exec, args: ["/bin/cat", "{taskspec}"], dind: false}
+supportProfile: unsupported
