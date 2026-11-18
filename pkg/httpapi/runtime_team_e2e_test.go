@@ -135,8 +135,8 @@ func TestARuntimeTeamTakesAdmissionsOnlyAsItsIntakeAllows(t *testing.T) {
 		edit   func(*testing.T, runtimeE2E)
 		code   string
 	}{
-		"no admissions":   {team.RuntimeIntake{}, nil, "admissions_not_accepted"},
-		"other target":    {team.RuntimeIntake{Admissions: true, Targets: []string{"app"}}, nil, "target_not_allowed"},
+		"no admissions": {team.RuntimeIntake{}, nil, "admissions_not_accepted"},
+		"other target":  {team.RuntimeIntake{Admissions: true, Targets: []string{"app"}}, nil, "target_not_allowed"},
 		"shadowed": {team.RuntimeIntake{Admissions: true}, func(t *testing.T, r runtimeE2E) {
 			if _, err := testStore.ApplyTeamDecision(context.Background(), r.teamID, team.Decision{State: team.StateShadowed, ShadowedBy: "team_x"}, nil); err != nil {
 				t.Fatal(err)
