@@ -35,6 +35,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/ploeg-hq/ploeg/pkg/apilimit"
@@ -86,6 +87,11 @@ type Provider struct {
 	// with (ADR-0186 runtime bindings); nil, or no entry for a state, keeps
 	// Statuses.
 	ScopeStatuses func(listID string) map[work.State]string
+	// WebhookSecret returns the signing secret of a webhook Ploeg registered,
+	// by the webhook id a delivery names, for a delivery PLOEG_CLICKUP_SECRET
+	// does not verify (ADR-0186). Nil verifies with Secret alone.
+	WebhookSecret func(ctx context.Context, webhookID string) (string, bool)
+	scopes        atomic.Pointer[scopeCache]
 	// HC is optional; nil gets a 30s client.
 	HC  *http.Client
 	Log *slog.Logger
@@ -162,7 +168,7 @@ func (p *Provider) ParseWebhook(r *http.Request) ([]provider.TrackerEvent, error
 	if p.Secret == "" {
 		return nil, errors.New("no webhook secret configured; set PLOEG_CLICKUP_SECRET")
 	}
-	if !verify(p.Secret, body, r.Header.Get("X-Signature")) {
+	if !p.verified(r.Context(), body, r.Header.Get("X-Signature")) {
 		return nil, errors.New("invalid webhook signature")
 	}
 
@@ -244,6 +250,27 @@ func (p *Provider) ParseWebhook(r *http.Request) ([]provider.TrackerEvent, error
 		// than the core consumes.
 		return nil, nil
 	}
+}
+
+// verified checks a delivery's signature with PLOEG_CLICKUP_SECRET, else
+// with the secret of the webhook Ploeg registered that the payload names.
+// The webhook id is read before verification only to choose the key; a
+// delivery is accepted only when the HMAC over its raw body matches.
+func (p *Provider) verified(ctx context.Context, body []byte, signature string) bool {
+	if verify(p.Secret, body, signature) {
+		return true
+	}
+	if p.WebhookSecret == nil {
+		return false
+	}
+	var named struct {
+		WebhookID string `json:"webhook_id"`
+	}
+	if json.Unmarshal(body, &named) != nil || named.WebhookID == "" {
+		return false
+	}
+	secret, ok := p.WebhookSecret(ctx, named.WebhookID)
+	return ok && secret != "" && verify(secret, body, signature)
 }
 
 func (p *Provider) isAgent(identities ...string) bool {

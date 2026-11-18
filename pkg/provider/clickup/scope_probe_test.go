@@ -1,6 +1,7 @@
 package clickup
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -71,5 +72,58 @@ func TestScopeIDByNameFindsOneListOrRefusesToGuess(t *testing.T) {
 	}
 	if _, err := p.ScopeIDByName(ctx, "Absent"); !errors.Is(err, provider.ErrScopeNotFound) {
 		t.Fatalf("Absent: %v", err)
+	}
+}
+
+func TestProbeThenWebhookCheckReadsTheListOnceAndANameResolvesOnce(t *testing.T) {
+	calls := map[string]int{}
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls[r.URL.Path]++
+		reply := func(v any) { _ = json.NewEncoder(w).Encode(v) }
+		switch r.URL.Path {
+		case "/list/1":
+			reply(map[string]any{"id": "1", "name": "Board", "permission_level": "create", "folder": map[string]any{"id": "8"}, "space": map[string]any{"id": "9"}})
+		case "/list/1/member":
+			reply(map[string]any{"members": []map[string]any{{"username": "agent"}}})
+		case "/team/W/webhook":
+			reply(map[string]any{"webhooks": []any{}})
+		case "/team/W/space":
+			reply(map[string]any{"spaces": []map[string]any{{"id": "9"}}})
+		case "/space/9/list":
+			reply(map[string]any{"lists": []map[string]any{{"id": "1", "name": "Board"}}})
+		case "/space/9/folder":
+			reply(map[string]any{"folders": []any{}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(api.Close)
+	p := &Provider{BaseURL: api.URL, Token: "pk", Workspace: "W"}
+	ctx := context.Background()
+	for i := 0; i < 2; i++ {
+		if _, err := p.ScopeIDByName(ctx, "Board"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := p.ProbeScope(ctx, "1"); err != nil {
+		t.Fatal(err)
+	}
+	p.CheckWebhooks(ctx, []string{"1"}, "")
+	if calls["/list/1"] != 1 || calls["/list/1/member"] != 1 || calls["/team/W/space"] != 1 {
+		t.Fatalf("calls = %v, want the List, its members and the Spaces read once", calls)
+	}
+}
+
+func TestADeliverySignedWithARegisteredListWebhookSecretIsAccepted(t *testing.T) {
+	p := &Provider{Secret: "workspace-secret", WebhookSecret: func(_ context.Context, id string) (string, bool) {
+		return "list-secret", id == "wh-7"
+	}}
+	body := []byte(`{"event":"taskUpdated","task_id":"t1","webhook_id":"wh-7","history_items":[]}`)
+	for secret, want := range map[string]bool{"list-secret": true, "workspace-secret": true, "forged": false} {
+		r := httptest.NewRequest(http.MethodPost, WebhookPath, bytes.NewReader(body))
+		r.Header.Set("X-Signature", sign(secret, body))
+		if _, err := p.ParseWebhook(r); (err == nil) != want {
+			t.Errorf("signed with %s: err = %v, want accepted %v", secret, err, want)
+		}
 	}
 }

@@ -25,16 +25,8 @@ func (p *Provider) ProbeScope(ctx context.Context, listID string) (provider.Scop
 	if !p.configured() {
 		return provider.ScopeProbe{}, errors.New("clickup: no API credentials configured; cannot probe lists")
 	}
-	var list struct {
-		ID              flexID `json:"id"`
-		Name            string `json:"name"`
-		PermissionLevel string `json:"permission_level"`
-		Statuses        []struct {
-			Status string `json:"status"`
-		} `json:"statuses"`
-	}
 	probe := provider.ScopeProbe{ID: listID}
-	err := p.do(ctx, http.MethodGet, "/list/"+url.PathEscape(listID), nil, &list)
+	list, err := p.readList(ctx, listID)
 	var status *apiError
 	switch {
 	case errors.As(err, &status) && status.status == http.StatusNotFound:
@@ -57,17 +49,12 @@ func (p *Provider) ProbeScope(ctx context.Context, listID string) (provider.Scop
 }
 
 func (p *Provider) listIdentities(ctx context.Context, listID string) []string {
-	var body struct {
-		Members []struct {
-			Username string `json:"username"`
-			Email    string `json:"email"`
-		} `json:"members"`
-	}
-	if err := p.do(ctx, http.MethodGet, "/list/"+url.PathEscape(listID)+"/member", nil, &body); err != nil {
+	members, err := p.readMembers(ctx, listID)
+	if err != nil {
 		return nil
 	}
 	out := []string{}
-	for _, m := range body.Members {
+	for _, m := range members {
 		for _, id := range []string{m.Username, m.Email} {
 			if id != "" && !slices.Contains(out, id) {
 				out = append(out, id)
@@ -89,6 +76,18 @@ func (p *Provider) ScopeIDByName(ctx context.Context, name string) (string, erro
 	if !p.configured() || p.Workspace == "" {
 		return "", errors.New("clickup: resolving a List name needs API credentials and the Workspace id")
 	}
+	c := p.scopeCache()
+	if id, ok := lookup(c, c.names, name); ok {
+		return id, nil
+	}
+	id, err := p.resolveListName(ctx, name)
+	if err == nil {
+		keep(c, c.names, name, id, nameCacheTTL)
+	}
+	return id, err
+}
+
+func (p *Provider) resolveListName(ctx context.Context, name string) (string, error) {
 	var spaces struct {
 		Spaces []namedLocation `json:"spaces"`
 	}

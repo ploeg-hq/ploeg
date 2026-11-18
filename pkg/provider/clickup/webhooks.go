@@ -100,17 +100,8 @@ func (p *Provider) List(ctx context.Context, listID string) (ListLocation, error
 	if !p.configured() {
 		return ListLocation{}, errors.New("clickup: no API credentials configured; cannot read lists")
 	}
-	var body struct {
-		ID     flexID `json:"id"`
-		Name   string `json:"name"`
-		Folder struct {
-			ID flexID `json:"id"`
-		} `json:"folder"`
-		Space struct {
-			ID flexID `json:"id"`
-		} `json:"space"`
-	}
-	if err := p.do(ctx, http.MethodGet, "/list/"+url.PathEscape(listID), nil, &body); err != nil {
+	body, err := p.readList(ctx, listID)
+	if err != nil {
 		return ListLocation{}, err
 	}
 	if body.ID == "" {
@@ -125,17 +116,12 @@ func (p *Provider) ListMembers(ctx context.Context, listID string) ([]string, er
 	if !p.configured() {
 		return nil, errors.New("clickup: no API credentials configured; cannot list members")
 	}
-	var body struct {
-		Members []struct {
-			Username string `json:"username"`
-			Email    string `json:"email"`
-		} `json:"members"`
-	}
-	if err := p.do(ctx, http.MethodGet, "/list/"+url.PathEscape(listID)+"/member", nil, &body); err != nil {
+	members, err := p.readMembers(ctx, listID)
+	if err != nil {
 		return nil, err
 	}
-	out := make([]string, 0, len(body.Members))
-	for _, m := range body.Members {
+	out := make([]string, 0, len(members))
+	for _, m := range members {
 		if name := firstNonEmpty(m.Username, m.Email); name != "" {
 			out = append(out, name)
 		}
