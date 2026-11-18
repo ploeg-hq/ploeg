@@ -42,6 +42,7 @@ func newPrepareFixture(t *testing.T) prepareFixture {
 		t.Fatal(err)
 	}
 	f.server.OperatorConfig.PersonTokens = tokens
+	f.server.ForgeTokenIsolation = ForgeTokenIsolationProxy
 	return prepareFixture{admissionFixture: f, forge: forge, issuer: is}
 }
 
@@ -272,7 +273,7 @@ func TestAPrepareWhoseTargetBecameReadyBeforeTheClaimIsWithdrawnAndStartsNoRun(t
 	id, _ := admittedPrepare(t, f.proven(t, prepareBody("prepare-ready")))
 	f.forge.set("webgrip/homelab-cluster", provider.RepositoryState{AgentsFile: true})
 
-	if status, _ := postClaim(t, f.server.Handler(), `{"team":"bronze","role":"builder"}`); status != http.StatusNoContent {
+	if status, _ := postClaim(t, f.server.Handler(), proxyClaim); status != http.StatusNoContent {
 		t.Fatalf("claim = %d, want no run started", status)
 	}
 
@@ -295,7 +296,7 @@ func TestAPrepareWhoseTargetWasArchivedBeforeTheClaimEndsStuck(t *testing.T) {
 	id, _ := admittedPrepare(t, f.proven(t, prepareBody("prepare-archived")))
 	f.forge.set("webgrip/homelab-cluster", provider.RepositoryState{Archived: true})
 
-	if status, _ := postClaim(t, f.server.Handler(), `{"team":"bronze","role":"builder"}`); status != http.StatusNoContent {
+	if status, _ := postClaim(t, f.server.Handler(), proxyClaim); status != http.StatusNoContent {
 		t.Fatalf("claim = %d, want no run started", status)
 	}
 
@@ -312,7 +313,7 @@ func TestAPrepareWhoseTargetStillMissesOnlyItsFileStartsItsWriter(t *testing.T) 
 	f := newPrepareFixture(t)
 	admittedPrepare(t, f.proven(t, prepareBody("prepare-claim")))
 
-	status, resp := postClaim(t, f.server.Handler(), `{"team":"bronze","role":"builder"}`)
+	status, resp := postClaim(t, f.server.Handler(), proxyClaim)
 
 	if status != http.StatusOK || resp.WorkItem.Kind != work.KindPrepareRepository {
 		t.Fatalf("claim = %d kind %q, want the prepare writer started", status, resp.WorkItem.Kind)
@@ -379,7 +380,7 @@ func (f prepareFixture) withForgejo(t *testing.T, fp *forgejoPullRequests) {
 
 func (f prepareFixture) openPullRequest(t *testing.T, id int64) {
 	t.Helper()
-	status, claim := postClaim(t, f.server.Handler(), `{"team":"bronze","role":"builder"}`)
+	status, claim := postClaim(t, f.server.Handler(), proxyClaim)
 	if status != http.StatusOK {
 		t.Fatalf("claim = %d", status)
 	}
@@ -532,5 +533,75 @@ func TestConnectionsOfferThePrepareForARegisteredTargetMissingOnlyItsFile(t *tes
 	}
 	if got["app"] || !got["homelab-cluster"] || got["webgrip/homelab-cluster@main"] {
 		t.Errorf("prepareAvailable = %v, want only the registered target missing its file", got)
+	}
+}
+
+const proxyClaim = `{"team":"bronze","role":"builder","forgeTokenIsolation":"proxy"}`
+
+func TestAPrepareIsRefusedForATeamWhoseWriterWouldBypassTheDeliveryFence(t *testing.T) {
+	cases := map[string]struct {
+		setup  func(f prepareFixture)
+		body   func() map[string]any
+		reason string
+	}{
+		"workers without the forge proxy": {setup: func(f prepareFixture) { f.server.ForgeTokenIsolation = "" }, reason: "PLOEG_WORKER_FORGE_TOKEN_ISOLATION is not proxy"},
+		"a client-carried writer": {setup: func(f prepareFixture) {
+			f.server.OperatorConfig.TeamHarnesses = TeamHarnesses{"bronze": {"builder": {OperatorRoleHarness: store.OperatorRoleHarness{Name: claudeEnvironmentHarness}, Carrier: store.CarrierClient}}}
+		}, reason: "carried by a person's own client"},
+		"a writer in a Claude environment": {setup: func(f prepareFixture) {
+			f.server.OperatorConfig.TeamHarnesses = TeamHarnesses{"bronze": {"builder": {OperatorRoleHarness: store.OperatorRoleHarness{Name: claudeEnvironmentHarness}}}}
+		}, reason: "runs in a Claude environment"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			f := newPrepareFixture(t)
+			tc.setup(f)
+
+			w := f.proven(t, prepareBody("prepare-unfenced"))
+
+			e := decodePrepareError(t, w)
+			if w.Code != 422 || e.Error.Code != "prepare_unsupported_for_team" || !strings.Contains(e.Error.Message, tc.reason) {
+				t.Fatalf("admission = %d %+v, want 422 prepare_unsupported_for_team naming %q", w.Code, e.Error, tc.reason)
+			}
+			if n := countRows(t, "SELECT count(*) FROM work_items"); n != 0 {
+				t.Errorf("a refused prepare left %d work items", n)
+			}
+		})
+	}
+}
+
+func TestAPrepareWriterClaimedByAWorkerWithoutTheForgeProxyEndsStuckBeforeItStarts(t *testing.T) {
+	for name, body := range map[string]string{
+		"no isolation":         `{"team":"bronze","role":"builder"}`,
+		"a Claude environment": `{"team":"bronze","role":"builder","forgeTokenIsolation":"proxy","harness":"claude-environment"}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newPrepareFixture(t)
+			id, _ := admittedPrepare(t, f.proven(t, prepareBody("prepare-unfenced-claim")))
+
+			if status, _ := postClaim(t, f.server.Handler(), body); status != http.StatusNoContent {
+				t.Fatalf("claim = %d, want no run started", status)
+			}
+
+			var outcome, reason string
+			if err := testPool.QueryRow(context.Background(), `SELECT outcome, stuck_reason FROM agent_runs WHERE work_item_id=$1 AND state='finished' ORDER BY id DESC LIMIT 1`, id).Scan(&outcome, &reason); err != nil {
+				t.Fatal(err)
+			}
+			if outcome != string(work.OutcomeStuck) || !strings.Contains(reason, "prepare_unsupported_for_team") {
+				t.Errorf("run outcome %q reason %q, want stuck with prepare_unsupported_for_team", outcome, reason)
+			}
+		})
+	}
+}
+
+func TestAPersonsClientCannotClaimAPrepare(t *testing.T) {
+	f := newPrepareFixture(t)
+	id, _ := admittedPrepare(t, f.proven(t, prepareBody("prepare-client")))
+	f.server.OperatorConfig.TeamHarnesses = TeamHarnesses{"bronze": {"builder": {OperatorRoleHarness: store.OperatorRoleHarness{Name: claudeEnvironmentHarness}, Carrier: store.CarrierClient}}}
+
+	w := operatorExecutionRequest(f.server, "POST", fmt.Sprintf("/api/v1/operator/work-items/%d/claim", id), f.token, "alice", nil)
+
+	if w.Code != 422 || operatorErrorCode(t, w) != "prepare_unsupported_for_team" {
+		t.Fatalf("client claim = %d %s, want 422 prepare_unsupported_for_team", w.Code, w.Body)
 	}
 }

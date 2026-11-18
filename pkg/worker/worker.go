@@ -175,6 +175,7 @@ func New(cfg Config, adapter harness.Adapter, broker llmbroker.Broker, log *slog
 		api.HarnessVersion = cfg.HarnessVersion
 		api.Yields = harness.AdapterYields(adapter)
 	}
+	api.ForgeTokenIsolation = cfg.ForgeTokenIsolation
 	if broker == nil {
 		broker = api
 	}
@@ -634,9 +635,9 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	}
 	var deliverable *deliverableFence
 	if writes && item.PreparesRepository() {
-		if forgeToken == "" || w.Cfg.ForgeTokenIsolation != ForgeTokenIsolationProxy {
-			return stuckReport("a prepare_repository Run needs the worker's forge proxy",
-				"Ploeg enforces a prepare Run's one deliverable at the forge proxy (ADR-0194), and this worker hands the harness its forge token: set PLOEG_FORGE_TOKEN_ISOLATION=proxy")
+		if forgeToken == "" || w.Cfg.ForgeTokenIsolation != ForgeTokenIsolationProxy || w.Adapter.Name() == "claude-environment" {
+			return stuckReport("prepare_unsupported_for_team",
+				"Ploeg enforces a prepare Run's one deliverable at the worker's forge proxy (ADR-0194): this worker hands the harness its forge token or runs it in a Claude environment, whose runner pushes on its own. Set PLOEG_FORGE_TOKEN_ISOLATION=proxy and give the writing Role a worker-run Harness")
 		}
 		deliverable = &deliverableFence{dir: cloneDir, cloneURL: cloneURL, base: ref.BaseBranch, start: baseline.start, token: forgeCred.current}
 	}

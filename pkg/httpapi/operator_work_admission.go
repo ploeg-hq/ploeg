@@ -77,6 +77,10 @@ func (s *Server) handleAdmitWorkItem(w http.ResponseWriter, r *http.Request) {
 		if !s.admissionSelection(w, input) {
 			return
 		}
+		if reason := s.prepareUnsupported(input.Team, input.Harness); prepare && reason != "" {
+			refusePrepareUnsupported(w, input.Team, reason)
+			return
+		}
 		if prepare && !s.noUnclosedPrepare(r.Context(), w, target) {
 			return
 		}

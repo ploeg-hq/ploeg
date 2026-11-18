@@ -298,6 +298,8 @@ spec:
               value: "{\"zinc\":2}"
             - name: PLOEG_TEAM_SPEND_CAPS
               value: "{\"brass\":{\"period\":\"day\",\"usd\":20},\"bronze\":{\"period\":\"day\",\"usd\":20},\"copper\":{\"period\":\"day\",\"usd\":20},\"gold\":{\"period\":\"day\",\"usd\":20},\"lead\":{\"period\":\"day\",\"usd\":20},\"pewter\":{\"period\":\"day\",\"usd\":20},\"tin\":{\"period\":\"day\",\"usd\":20},\"zinc\":{\"period\":\"day\",\"usd\":20}}"
+            - name: PLOEG_WORKER_FORGE_TOKEN_ISOLATION
+              value: "proxy"
             - name: PLOEG_FORGEJO_URL
               value: "https://forgejo.example.com"
             - name: PLOEG_FORGEJO_TOKEN

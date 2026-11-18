@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -36,6 +37,50 @@ func (s *Server) preparePullRequestState(ctx context.Context, item *store.Operat
 	}
 	t := work.Target{Forge: item.Target.Forge, Owner: item.Target.Owner, Repo: item.Target.Repo, BaseBranch: item.Target.BaseBranch}
 	item.PullRequest.State = forge.PullRequestStateOf(ctx, t, *item.PullRequest.Number)
+}
+
+// ForgeTokenIsolationProxy is the forge token isolation a deployment needs
+// for prepare_repository work (ADR-0194): the worker's forge proxy is where
+// its one deliverable is enforced.
+const ForgeTokenIsolationProxy = "proxy"
+
+const claudeEnvironmentHarness = "claude-environment"
+
+// prepareUnsupported names why the team cannot run a prepare_repository Work
+// Item without bypassing the worker's delivery fence, or "" when it can: the
+// deployment's workers must isolate the forge token behind their proxy, and
+// no writing Role may be carried by a person's client or dispatched to a
+// Claude environment, whose runner pushes on its own.
+func (s *Server) prepareUnsupported(team, requestedHarness string) string {
+	if s.ForgeTokenIsolation != ForgeTokenIsolationProxy {
+		return "the deployment's workers do not isolate the forge token behind their proxy (PLOEG_WORKER_FORGE_TOKEN_ISOLATION is not proxy), and the proxy is where a prepare Run's one deliverable is enforced"
+	}
+	roles, _ := s.writingRoles(team)
+	for _, role := range roles {
+		h, configured := s.OperatorConfig.TeamHarnesses[team][role]
+		switch {
+		case configured && h.ClientCarried():
+			return fmt.Sprintf("its writing Role %q is carried by a person's own client, which pushes without the worker's forge proxy", role)
+		case configured && h.Name == claudeEnvironmentHarness:
+			return fmt.Sprintf("its writing Role %q runs in a Claude environment, whose runner pushes without the worker's forge proxy", role)
+		case requestedHarness == claudeEnvironmentHarness:
+			return fmt.Sprintf("the requested Harness runs its writing Role %q in a Claude environment, whose runner pushes without the worker's forge proxy", role)
+		}
+	}
+	return ""
+}
+
+func (s *Server) writingRoles(team string) ([]string, bool) {
+	if e, ok := s.Engine.(interface {
+		WritingRoles(team string) ([]string, bool)
+	}); ok {
+		return e.WritingRoles(team)
+	}
+	return nil, false
+}
+
+func refusePrepareUnsupported(w http.ResponseWriter, team, reason string) {
+	operatorError(w, 422, "prepare_unsupported_for_team", "Team "+team+" cannot prepare a repository: "+reason+".")
 }
 
 func prepareTitle(t work.Target) string {

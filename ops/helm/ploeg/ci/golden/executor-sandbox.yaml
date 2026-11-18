@@ -345,6 +345,8 @@ spec:
               value: "{\"bronze\":{\"\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"openhands\",\"qualification\":\"qualified\"}],\"name\":\"openhands\"}},\"gold\":{\"builder\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"openhands\",\"qualification\":\"qualified\"}],\"name\":\"openhands\"},\"reviewer\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"openhands\",\"qualification\":\"qualified\"}],\"name\":\"openhands\"}}}"
             - name: PLOEG_TEAM_SPEND_CAPS
               value: "{\"bronze\":{\"period\":\"day\",\"usd\":20},\"gold\":{\"period\":\"day\",\"usd\":20}}"
+            - name: PLOEG_WORKER_FORGE_TOKEN_ISOLATION
+              value: "proxy"
             - name: PLOEG_FORGEJO_URL
               value: "http://forgejo-http.forgejo.svc.cluster.local:3000"
             - name: PLOEG_FORGEJO_TOKEN

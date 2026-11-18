@@ -3,6 +3,7 @@ package shiftengine
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/ploeg-hq/ploeg/pkg/harness"
 	"github.com/ploeg-hq/ploeg/pkg/plan"
@@ -34,6 +35,24 @@ func verdictsRecordedOnly(reports []store.RunReport) []store.RunReport {
 		out[i] = r
 	}
 	return out
+}
+
+// WritingRoles lists the writing Roles of the team's plan; false when the
+// team gets no Shift.
+func (e *Engine) WritingRoles(team string) ([]string, bool) {
+	tp, ok, _ := e.planFor(team)
+	if !ok {
+		return nil, false
+	}
+	var roles []string
+	for _, round := range tp.Rounds {
+		for _, role := range round.Roles {
+			if role.Writes && !slices.Contains(roles, role.Name) {
+				roles = append(roles, role.Name)
+			}
+		}
+	}
+	return roles, true
 }
 
 const preparePullRequestCancelledComment = "Ploeg closed this pull request: %s cancelled the prepare that opened it. The branch is kept. A new prepare can start at once."

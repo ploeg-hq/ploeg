@@ -490,6 +490,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 		TransactionTokens:     transactionTokens,
 		TeamSponsors:          cfg.Sponsors(),
 		PrepareRepositoryCaps: cfg.PrepareRepositoryCaps(),
+		ForgeTokenIsolation:   os.Getenv("PLOEG_WORKER_FORGE_TOKEN_ISOLATION"),
 	}
 	if notes != nil {
 		srv.Notes = notes

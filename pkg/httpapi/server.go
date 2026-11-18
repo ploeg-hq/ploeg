@@ -72,6 +72,9 @@ type Server struct {
 	// PrepareRepositoryCaps is each Team's prepareRepository.maxBudgetUsd
 	// (ADR-0194); a Team absent here takes DefaultPrepareRepositoryMaxBudgetUSD.
 	PrepareRepositoryCaps map[string]float64
+	// ForgeTokenIsolation is PLOEG_WORKER_FORGE_TOKEN_ISOLATION, the deployment's worker forge token isolation. A
+	// prepare_repository Work Item is admitted only under proxy (ADR-0194).
+	ForgeTokenIsolation string
 	// Engine is the Shift lifecycle fast path (run-multi-agent-shifts): ingest
 	// opens, an outcome report evaluates. Nil = no shift engine configured,
 	// dispatch unchanged. Engine errors are logged, never returned to the
@@ -591,6 +594,10 @@ type claimRequest struct {
 	// Yields says the worker's Harness can stop at a safe point for a person
 	// (ADR-0142); ploegd records it on the claimed Run. Absent is false.
 	Yields bool `json:"yields,omitempty"`
+	// ForgeTokenIsolation is the worker's PLOEG_FORGE_TOKEN_ISOLATION. A
+	// prepare_repository writer starts only on a worker that says proxy
+	// (ADR-0194).
+	ForgeTokenIsolation string `json:"forgeTokenIsolation,omitempty"`
 
 	WorkerVersion string `json:"workerVersion,omitempty"`
 }
@@ -743,7 +750,7 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "claim failed", http.StatusInternalServerError)
 		return
 	}
-	if s.stopUnreadyTarget(r.Context(), req.Team, claimed.RunToken, claimed.Item, true) {
+	if s.stopUnreadyTarget(r.Context(), req.Team, claimed.RunToken, claimed.Item, true) || s.stopUnfencedPrepare(r.Context(), req, claimed.RunToken, claimed.Item, true) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
@@ -821,7 +828,7 @@ func (s *Server) claimRole(w http.ResponseWriter, r *http.Request, req claimRequ
 
 // respondClaimedRun builds the Shift-shaped claim response, briefing and all.
 func (s *Server) respondClaimedRun(w http.ResponseWriter, r *http.Request, req claimRequest, run *store.ClaimedRun) {
-	if s.stopUnreadyTarget(r.Context(), req.Team, run.RunToken, run.Item, run.Writes) {
+	if s.stopUnreadyTarget(r.Context(), req.Team, run.RunToken, run.Item, run.Writes) || s.stopUnfencedPrepare(r.Context(), req, run.RunToken, run.Item, run.Writes) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
@@ -947,6 +954,36 @@ func (s *Server) stopUnreadyTarget(ctx context.Context, team, runToken string, i
 	s.Log.Warn("claim stopped by the target readiness gate; no run started", "team", team,
 		"work_item", item.ID, "target", key, "unknown", v.Unknown, "reason", v.Reason)
 	res, err := s.Store.ReportOutcome(ctx, runToken, report)
+	if err != nil {
+		s.Log.Error("releasing the run failed", "work_item", item.ID, "err", err)
+		return true
+	}
+	if s.Engine != nil && res.ShiftID != nil {
+		if err := s.Engine.EvaluateItem(ctx, res.WorkItemID); err != nil {
+			s.Log.Error("shift evaluate failed; sweeper will repair", "shift", *res.ShiftID, "err", err)
+		}
+	}
+	return true
+}
+
+// stopUnfencedPrepare ends a prepare_repository writer stuck before it
+// starts when the claiming worker does not fence its pushes behind the
+// forge proxy, or its Harness runs in a Claude environment (ADR-0194).
+func (s *Server) stopUnfencedPrepare(ctx context.Context, req claimRequest, runToken string, item work.WorkItem, writes bool) bool {
+	if !writes || !item.PreparesRepository() {
+		return false
+	}
+	reason := ""
+	switch {
+	case req.ForgeTokenIsolation != ForgeTokenIsolationProxy:
+		reason = "the claiming worker does not isolate the forge token behind its proxy, where a prepare Run's one deliverable is enforced"
+	case req.Harness == claudeEnvironmentHarness:
+		reason = "the claiming worker runs its Harness in a Claude environment, whose runner pushes without the worker's forge proxy"
+	default:
+		return false
+	}
+	s.Log.Warn("claim stopped: a prepare run needs the worker's delivery fence; no run started", "team", req.Team, "work_item", item.ID, "reason", reason)
+	res, err := s.Store.ReportOutcome(ctx, runToken, store.Report(work.OutcomeStuck, "prepare_unsupported_for_team", "prepare_unsupported_for_team: "+reason, nil, nil, nil))
 	if err != nil {
 		s.Log.Error("releasing the run failed", "work_item", item.ID, "err", err)
 		return true
