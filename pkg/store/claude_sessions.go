@@ -58,6 +58,9 @@ type ClaudeSessionRun struct {
 	Branch string
 	// BaseBranch, Title and Reference come from the worker's record.
 	BaseBranch, Title, Reference string
+	WorkItemID                   int64
+	// ActsFor is the person the Run acts for; empty for a Run nobody started.
+	ActsFor string
 }
 
 // RecordClaudeSession binds a running Run to the Claude session its worker
@@ -106,7 +109,7 @@ func (s *Store) WriterForClaudeSession(ctx context.Context, environmentID, sessi
 	var writes, leased bool
 	err := s.pool.QueryRow(ctx, `
 		SELECT r.run_token, r.team, r.role, w.target_owner, w.target_repo, w.target_forge, COALESCE(sh.branch, ''),
-		       c.base_branch, c.title, c.reference, r.writes,
+		       c.base_branch, c.title, c.reference, r.writes, w.id, w.acts_for,
 		       EXISTS (SELECT 1 FROM leases l WHERE l.run_token = r.run_token AND l.expires_at > now())
 		FROM claude_sessions c
 		JOIN agent_runs r ON r.id = c.run_id
@@ -114,7 +117,7 @@ func (s *Store) WriterForClaudeSession(ctx context.Context, environmentID, sessi
 		LEFT JOIN shifts sh ON sh.id = r.shift_id
 		WHERE c.environment_id = $1 AND c.session_id = $2 AND r.state = 'running'`,
 		environmentID, sessionID).Scan(&r.RunToken, &r.Team, &r.Role, &r.Owner, &r.Repo, &r.Forge, &r.Branch,
-		&r.BaseBranch, &r.Title, &r.Reference, &writes, &leased)
+		&r.BaseBranch, &r.Title, &r.Reference, &writes, &r.WorkItemID, &r.ActsFor, &leased)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ClaudeSessionRun{}, ErrUnknownRun
 	}

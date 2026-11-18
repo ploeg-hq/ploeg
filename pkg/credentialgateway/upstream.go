@@ -28,6 +28,7 @@ type Run struct {
 	Grant      gatewaycontract.Grant
 	Capability string
 	state      *runState
+	refetch    func(context.Context) (gatewaycontract.Grant, error)
 }
 
 // Upstream is one route family the gateway attaches credentials for. The
@@ -68,8 +69,14 @@ func (f forgeUpstream) fence(run Run) (http.Handler, error) {
 		return nil, run.state.forgeErr
 	}
 	capability, sourceIP, sourceUID := run.Capability, grant.Pin.PodIP, grant.Pin.PodUID
+	refetch := run.refetch
+	if refetch == nil {
+		refetch = func(ctx context.Context) (gatewaycontract.Grant, error) {
+			return g.grants.get(ctx, capability, sourceIP, sourceUID)
+		}
+	}
 	token := func(ctx context.Context) string {
-		current, err := g.grants.get(ctx, capability, sourceIP, sourceUID)
+		current, err := refetch(ctx)
 		if err != nil {
 			return ""
 		}

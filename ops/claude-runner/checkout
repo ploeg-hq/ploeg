@@ -26,6 +26,31 @@ clean=$(mktemp -d)
 trap 'rm -rf "$clean"' EXIT
 printf 'Authorization: Bearer %s\n' "$CLAUDE_CODE_SESSION_ACCESS_TOKEN" >"$clean/session-auth"
 
+if [ "${PLOEG_CREDENTIAL_GATEWAY:-}" = on ]; then
+  code=""
+  for ((attempt = 1; attempt <= attempts; attempt++)); do
+    code=$(curl -sS --max-time 20 -o "$clean/response" -w '%{http_code}' -H @"$clean/session-auth" \
+      "${PLOEG_URL%/}/api/v1/claude-sessions/run") || code=""
+    case "$code" in
+      200) break ;;
+      404 | 503 | "") sleep "$wait_seconds" ;;
+      *) log "the credential gateway refused this session (HTTP $code)"; exit 1 ;;
+    esac
+  done
+  [ "$code" = 200 ] || { log "no running Run recorded this session"; exit 1; }
+  repository=$(jq -re '.repository' "$clean/response") || exit 1
+  base=$(jq -re '.baseBranch' "$clean/response") || exit 1
+  remote="${PLOEG_URL%/}/$repository.git"
+  ref="${CLAUDE_RUNNER_REPO_REF:-$base}"
+  n="${GIT_CONFIG_COUNT:-0}"
+  export GIT_CONFIG_COUNT=$((n + 1)) "GIT_CONFIG_KEY_$n=http.extraHeader" "GIT_CONFIG_VALUE_$n=Authorization: Bearer $CLAUDE_CODE_SESSION_ACCESS_TOKEN"
+  GIT_CONFIG_GLOBAL=/dev/null GIT_TERMINAL_PROMPT=0 GIT_ALLOW_PROTOCOL=http:https \
+    git -c credential.helper= clone -q --branch "$ref" "$remote" "$CLAUDE_RUNNER_CHECKOUT_PATH" ||
+    { log "clone of $repository at $ref through the credential gateway failed"; exit 1; }
+  log "cloned $repository at $ref through the credential gateway"
+  exit 0
+fi
+
 code=""
 for ((attempt = 1; attempt <= attempts; attempt++)); do
   code=$(curl -sS --max-time 20 -o "$clean/response" -w '%{http_code}' -X POST -H @"$clean/session-auth" \

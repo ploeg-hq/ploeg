@@ -57,6 +57,9 @@ func run(log *slog.Logger) error {
 		{envOr("PLOEG_GATEWAY_HEALTH_ADDR", ":8090"), health()},
 	}
 	listeners = append(listeners, listener{envOr("PLOEG_GATEWAY_MCP_ADDR", ":8083"), g.Handler(credentialgateway.FamilyMCP)})
+	if session := g.SessionHandler(); session != nil {
+		listeners = append(listeners, listener{envOr("PLOEG_GATEWAY_SESSION_ADDR", ":8084"), session})
+	}
 	if model := g.Handler(credentialgateway.FamilyModel); model != nil {
 		listeners = append(listeners, listener{envOr("PLOEG_GATEWAY_MODEL_ADDR", ":8082"), model})
 	}
@@ -120,15 +123,16 @@ func configFromEnv(log *slog.Logger) (credentialgateway.Config, error) {
 		return credentialgateway.Config{}, err
 	}
 	cfg := credentialgateway.Config{
-		Namespace:      os.Getenv("POD_NAMESPACE"),
-		PloegdURL:      os.Getenv("PLOEG_API_URL"),
-		TokenFile:      envOr("PLOEG_GATEWAY_TOKEN_FILE", "/var/run/secrets/ploeg/gateway/token"),
-		Bootstraps:     bootstraps,
-		ModelURL:       os.Getenv("PLOEG_GATEWAY_MODEL_URL"),
-		RunPodSelector: envOr("PLOEG_GATEWAY_RUN_POD_SELECTOR", "app.kubernetes.io/name=ploeg-worker"),
-		Limits:         limits,
-		ScratchDir:     envOr("TMPDIR", os.TempDir()),
-		Log:            log,
+		Namespace:          os.Getenv("POD_NAMESPACE"),
+		PloegdURL:          os.Getenv("PLOEG_API_URL"),
+		TokenFile:          envOr("PLOEG_GATEWAY_TOKEN_FILE", "/var/run/secrets/ploeg/gateway/token"),
+		Bootstraps:         bootstraps,
+		ModelURL:           os.Getenv("PLOEG_GATEWAY_MODEL_URL"),
+		RunPodSelector:     envOr("PLOEG_GATEWAY_RUN_POD_SELECTOR", "app.kubernetes.io/name=ploeg-worker"),
+		SessionPodSelector: os.Getenv("PLOEG_GATEWAY_SESSION_POD_SELECTOR"),
+		Limits:             limits,
+		ScratchDir:         envOr("TMPDIR", os.TempDir()),
+		Log:                log,
 	}
 	if cfg.Namespace == "" || cfg.PloegdURL == "" {
 		return cfg, errors.New("POD_NAMESPACE and PLOEG_API_URL are required")

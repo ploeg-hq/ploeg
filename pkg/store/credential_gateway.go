@@ -32,6 +32,55 @@ func (s *Store) RecordGatewayGrant(ctx context.Context, g GatewayGrant) error {
 	return err
 }
 
+// SessionPin is who a routine session's grant is pinned for: the person the
+// Run acts for as subject, its Team and Role as the actor on their behalf.
+type SessionPin struct {
+	Team, Role, ActsFor string
+	WorkItemID          int64
+	EnvironmentID       string
+	SessionID           string
+}
+
+// PinSessionGatewayGrant stores the sealed grant of a routine session's Run
+// the first time a credential gateway asks for it, pinned to the runner pod
+// it asked from, and audits the pin naming the person as subject and the
+// Team and Role as actor. A grant that already exists is never replaced: the
+// stored one is returned with inserted false, so the caller compares pins.
+func (s *Store) PinSessionGatewayGrant(ctx context.Context, g GatewayGrant, pin SessionPin) (GatewayGrant, bool, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return GatewayGrant{}, false, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	tag, err := tx.Exec(ctx, `INSERT INTO credential_gateway_grants (run_token, namespace, pod_name, pod_uid, pod_ip, sealed)
+		VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (run_token) DO NOTHING`,
+		g.RunToken, g.Pin.Namespace, g.Pin.PodName, g.Pin.PodUID, g.Pin.PodIP, g.Sealed)
+	if err != nil {
+		return GatewayGrant{}, false, err
+	}
+	inserted := tag.RowsAffected() == 1
+	if inserted {
+		actor := "team:" + pin.Team + "/role:" + pin.Role
+		detail, err := json.Marshal(map[string]any{"via": "routine", "sub": pin.ActsFor, "act": map[string]any{"sub": actor},
+			"namespace": g.Pin.Namespace, "pod": g.Pin.PodName, "environment": pin.EnvironmentID, "session": pin.SessionID,
+			"credential": "forge_token"})
+		if err != nil {
+			return GatewayGrant{}, false, err
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO audit_log (actor, action, work_item_id, detail)
+			VALUES ($1, 'credential_gateway.session_pinned', $2, $3::jsonb || jsonb_build_object('run', (SELECT id FROM agent_runs WHERE run_token = $4)))`,
+			actor, pin.WorkItemID, detail, g.RunToken); err != nil {
+			return GatewayGrant{}, false, err
+		}
+	}
+	stored := GatewayGrant{RunToken: g.RunToken}
+	if err := tx.QueryRow(ctx, `SELECT namespace, pod_name, pod_uid, pod_ip, sealed FROM credential_gateway_grants WHERE run_token = $1`, g.RunToken).
+		Scan(&stored.Pin.Namespace, &stored.Pin.PodName, &stored.Pin.PodUID, &stored.Pin.PodIP, &stored.Sealed); err != nil {
+		return GatewayGrant{}, false, err
+	}
+	return stored, inserted, tx.Commit(ctx)
+}
+
 // ResealGatewayGrant replaces the sealed credentials of a Run's grant.
 func (s *Store) ResealGatewayGrant(ctx context.Context, runToken string, sealed []byte) error {
 	tag, err := s.pool.Exec(ctx, `UPDATE credential_gateway_grants SET sealed = $2, updated_at = now() WHERE run_token = $1`, runToken, sealed)
@@ -103,8 +152,9 @@ func (s *Store) RecordGatewayAudit(ctx context.Context, namespace string, teams 
 		}
 		if _, err := tx.Exec(ctx, `INSERT INTO audit_log (actor, action, work_item_id, detail)
 			SELECT 'credential-gateway:' || $2, 'credential_gateway.refused', r.work_item_id,
-				$3::jsonb || jsonb_build_object('run', r.id)
-			FROM agent_runs r WHERE r.run_token = $1 AND r.team = ANY($4)`, r.RunToken, namespace, detail, teams); err != nil {
+				$3::jsonb || jsonb_build_object('run', r.id) || CASE WHEN r.carrier = 'routine' THEN jsonb_build_object('via', 'routine',
+					'sub', w.acts_for, 'act', jsonb_build_object('sub', 'team:' || r.team || '/role:' || r.role)) ELSE '{}'::jsonb END
+			FROM agent_runs r JOIN work_items w ON w.id = r.work_item_id WHERE r.run_token = $1 AND r.team = ANY($4)`, r.RunToken, namespace, detail, teams); err != nil {
 			return err
 		}
 	}

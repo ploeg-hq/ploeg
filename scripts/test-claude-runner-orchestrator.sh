@@ -28,6 +28,7 @@ pod = job['spec']['template']['spec']
 runner = next(c for c in pod['containers'] if c['name'] == 'runner')
 orchestrator = next(d for d in documents if d.get('kind') == 'Deployment' and d['metadata']['name'].endswith('-orchestrator'))['spec']['template']['spec']
 session_policy = next(d for d in documents if d.get('kind') == 'NetworkPolicy' and d['metadata']['name'].endswith('-claude-runner-session'))
+gateway_policy = next(d for d in documents if d.get('kind') == 'NetworkPolicy' and d['metadata']['name'].endswith('-credential-gateway'))
 exec(sys.argv[2])
 config['data']['job.json'] = json.dumps(job)
 yaml.safe_dump_all(documents, sys.stdout)
@@ -46,6 +47,8 @@ cases=(
   "orchestrator['affinity']['podAntiAffinity']['requiredDuringSchedulingIgnoredDuringExecution'].pop()|carries no required anti-affinity"
   "orchestrator['containers'][0]['args'] += ['--min-idle', '1']|--min-idle"
   "session_policy['spec']['egress'].append({'to': [{'podSelector': {}}], 'ports': [{'port': 8080, 'protocol': 'TCP'}]})|reach more than DNS, the gateway and Anthropic"
+  "runner['env'] = [e for e in runner['env'] if e['name'] != 'PLOEG_CREDENTIAL_GATEWAY']|PLOEG_CREDENTIAL_GATEWAY is None"
+  "gateway_policy['spec']['ingress'].append({'from': [{'podSelector': {}}], 'ports': [{'port': 8084, 'protocol': 'TCP'}]})|admits more than the runner pods to the session port"
 )
 for case in "${cases[@]}"; do
   code=${case%%|*}

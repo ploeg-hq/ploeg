@@ -51,6 +51,8 @@ type CredentialGateways struct {
 
 	mu       sync.Mutex
 	reviewed map[[32]byte]reviewedGateway
+
+	sessionMu sync.Mutex
 }
 
 type reviewedGateway struct {
@@ -332,6 +334,7 @@ func refuseGatewayRunCredential(w http.ResponseWriter, gateway bool, route strin
 func (s *Server) registerCredentialGateway(mux *http.ServeMux) {
 	mux.HandleFunc("POST "+gatewaycontract.GrantsPath, s.handleGatewayGrant)
 	mux.HandleFunc("POST "+gatewaycontract.AuditPath, s.handleGatewayAudit)
+	mux.HandleFunc("POST "+gatewaycontract.SessionGrantsPath, s.handleGatewaySessionGrant)
 }
 
 func (s *Server) handleGatewayGrant(w http.ResponseWriter, r *http.Request) {

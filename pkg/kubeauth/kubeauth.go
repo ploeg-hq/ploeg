@@ -143,13 +143,14 @@ func contains(xs []string, x string) bool {
 
 // Pod is what the credential gateway reads of a pod.
 type Pod struct {
-	Name      string
-	UID       string
-	IP        string
-	Phase     string
-	Labels    map[string]string
-	OwnerKind string
-	Deleting  bool
+	Name        string
+	UID         string
+	IP          string
+	Phase       string
+	Labels      map[string]string
+	Annotations map[string]string
+	OwnerKind   string
+	Deleting    bool
 }
 
 // PodsAt lists the pods of namespace whose IP is ip and that match selector.
@@ -164,6 +165,7 @@ func (c *Client) PodsAt(ctx context.Context, namespace, selector, ip string) ([]
 				Name              string            `json:"name"`
 				UID               string            `json:"uid"`
 				Labels            map[string]string `json:"labels"`
+				Annotations       map[string]string `json:"annotations"`
 				DeletionTimestamp *string           `json:"deletionTimestamp"`
 				OwnerReferences   []struct {
 					Kind       string `json:"kind"`
@@ -182,7 +184,7 @@ func (c *Client) PodsAt(ctx context.Context, namespace, selector, ip string) ([]
 	pods := make([]Pod, 0, len(out.Items))
 	for _, item := range out.Items {
 		p := Pod{Name: item.Metadata.Name, UID: item.Metadata.UID, IP: item.Status.PodIP, Phase: item.Status.Phase,
-			Labels: item.Metadata.Labels, Deleting: item.Metadata.DeletionTimestamp != nil}
+			Labels: item.Metadata.Labels, Annotations: item.Metadata.Annotations, Deleting: item.Metadata.DeletionTimestamp != nil}
 		for _, o := range item.Metadata.OwnerReferences {
 			if o.Controller {
 				p.OwnerKind = o.Kind

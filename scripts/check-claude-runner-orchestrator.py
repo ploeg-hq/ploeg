@@ -82,6 +82,8 @@ def check_runner_pod(where, template, namespace):
     want = f'http://{GATEWAY_NAME}.{namespace}.svc:{SESSION_PORT}'
     if env.get('PLOEG_URL') != want:
         problems.append(f"{where}: PLOEG_URL is {env.get('PLOEG_URL')!r}, want {want!r}")
+    if env.get('PLOEG_CREDENTIAL_GATEWAY') != 'on':
+        problems.append(f"{where}: PLOEG_CREDENTIAL_GATEWAY is {env.get('PLOEG_CREDENTIAL_GATEWAY')!r}, want 'on' so the hooks clone and push through the gateway")
     if 'PLOEG_CLAUDE_RUNNER_WORK_ORDER' in env:
         problems.append(f"{where}: the template carries a work order; only the spawn-runner hook sets one, per session")
     labels = (template.get('metadata') or {}).get('labels') or {}
@@ -133,6 +135,31 @@ def check_session_egress(documents, namespace):
                 problems.append(f"NetworkPolicy {name} lets runner pods reach more than DNS, the gateway and Anthropic: {rule}")
         if policy['spec'].get('ingress'):
             problems.append(f"NetworkPolicy {name} admits ingress to runner pods")
+    return problems
+
+
+def check_gateway_session_port(documents, namespace):
+    problems = []
+    deployment = next((d for d in documents if d.get('kind') == 'Deployment' and d['metadata']['name'].endswith('-credential-gateway')), None)
+    if deployment is None:
+        return ['no credential gateway Deployment serves the runner pods']
+    container = deployment['spec']['template']['spec']['containers'][0]
+    env = {e['name']: e.get('value') for e in container.get('env') or []}
+    if env.get('PLOEG_GATEWAY_SESSION_POD_SELECTOR') != 'app.kubernetes.io/name=ploeg-claude-runner-session':
+        problems.append(f"the gateway's PLOEG_GATEWAY_SESSION_POD_SELECTOR is {env.get('PLOEG_GATEWAY_SESSION_POD_SELECTOR')!r}")
+    if not any(int(p['containerPort']) == SESSION_PORT for p in container.get('ports') or []):
+        problems.append(f"the gateway does not listen on its session port {SESSION_PORT}")
+    policies = [d for d in documents if d.get('kind') == 'NetworkPolicy' and (d['metadata'].get('namespace') or 'default') == namespace
+                and ((d['spec'].get('podSelector') or {}).get('matchLabels') or {}).get('app.kubernetes.io/name') == GATEWAY_NAME]
+    admitted = [rule for p in policies for rule in p['spec'].get('ingress') or []
+                if {int(port['port']) for port in rule.get('ports') or []} == {SESSION_PORT}
+                and all((peer.get('podSelector') or {}).get('matchLabels') == SESSION_LABEL and set(peer) == {'podSelector'} for peer in rule.get('from') or [{}])]
+    if not admitted:
+        problems.append(f"no NetworkPolicy admits the runner pods to the gateway's session port {SESSION_PORT}, and only them")
+    for p in policies:
+        for rule in p['spec'].get('ingress') or []:
+            if SESSION_PORT in {int(port['port']) for port in rule.get('ports') or []} and rule not in admitted:
+                problems.append(f"NetworkPolicy {p['metadata']['name']} admits more than the runner pods to the session port: {rule}")
     return problems
 
 
@@ -188,6 +215,7 @@ def main(path, namespace, mode=''):
         if single_node and shared != 'true':
             problems.append(f"{where}: the runner pod does not carry {SHARED_NODE_LABEL} under acknowledgeSingleNode")
     problems += check_session_egress(documents, namespace)
+    problems += check_gateway_session_port(documents, namespace)
     problems += check_orchestrator(documents, namespace, single_node)
     for problem in problems:
         print(f"{path}: {problem}")

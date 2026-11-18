@@ -145,6 +145,8 @@ for case in "ops/helm/ploeg/ci/reject-reader-without-read-token-values.yaml:read
 	"ops/helm/ploeg/ci/reject-credential-gateway-claude-login-secret-values.yaml:team pewter/builder: harness.claudeEnvironment.loginSecret cannot be set with executor.credentialGateway.enabled" \
 	"ops/helm/ploeg/ci/reject-credential-gateway-plugin-secret-values.yaml:reads LINK_TOKEN from Secret session-link-plugin, and with executor.credentialGateway.enabled no Secret enters a Run pod" \
 	"ops/helm/ploeg/ci/reject-credential-gateway-claude-runner-values.yaml:claudeRunner.mode fleet cannot run with executor.credentialGateway.enabled" \
+	"ops/helm/ploeg/ci/reject-credential-gateway-worker-dispatched-claude-environment-values.yaml:team pewter: harness claude-environment cannot run with executor.credentialGateway.enabled unless harness.claudeEnvironment.carrier is routine" \
+	"ops/helm/ploeg/ci/reject-credential-gateway-routine-without-orchestrator-values.yaml:team pewter: harness.claudeEnvironment.carrier routine with executor.credentialGateway.enabled needs claudeRunner.enabled with claudeRunner.mode orchestrator" \
 	"ops/helm/ploeg/ci/reject-credential-gateway-dind-values.yaml:team silver: harness.dind cannot run with executor.credentialGateway.enabled" \
 	"ops/helm/ploeg/ci/reject-credential-gateway-sandbox-network-policy-values.yaml:executor.sandbox.networkPolicy cannot be set with executor.credentialGateway.enabled" \
 	"ops/helm/ploeg/ci/reject-credential-gateway-without-network-policy-values.yaml:executor.credentialGateway.enabled needs networkPolicy.enabled" \
