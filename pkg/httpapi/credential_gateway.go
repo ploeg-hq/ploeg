@@ -211,12 +211,16 @@ func gatewayGrantFromClaim(claimed claimResponse, pin gatewaycontract.Pin) Gatew
 	return grant
 }
 
-func (s *Server) recordGatewayClaim(ctx context.Context, claimed claimResponse, team string, pin gatewaycontract.Pin) error {
+func loadsRepositoryHooks(req claimRequest) bool {
+	return req.Harness == "openhands" || (req.Harness == "acp" && req.HarnessProfile == "openhands")
+}
+
+func (s *Server) recordGatewayClaim(ctx context.Context, claimed claimResponse, team string, repositoryHooks bool, pin gatewaycontract.Pin) error {
 	if s.LLMControl == nil {
 		return errors.New("managed inference unavailable")
 	}
 	grant := gatewayGrantFromClaim(claimed, pin)
-	grant.Team = team
+	grant.Team, grant.RepositoryHooks = team, repositoryHooks
 	cred, err := s.LLMControl.Issue(ctx, claimed.RunToken)
 	if err != nil {
 		return fmt.Errorf("mint the Run's model key: %w", err)
@@ -229,7 +233,7 @@ func (s *Server) recordGatewayClaim(ctx context.Context, claimed claimResponse, 
 	return s.Store.RecordGatewayGrant(ctx, store.GatewayGrant{RunToken: claimed.RunToken, Pin: pin, Sealed: sealed})
 }
 
-func (s *Server) gatewayClaim(w http.ResponseWriter, r *http.Request, b WorkerBootstrap, worker string, claimed claimResponse, result map[string]any) bool {
+func (s *Server) gatewayClaim(w http.ResponseWriter, r *http.Request, b WorkerBootstrap, worker string, req claimRequest, claimed claimResponse, result map[string]any) bool {
 	binding, gated := s.CredentialGateways.bindingForTeam(b.Team)
 	if !gated {
 		return true
@@ -244,7 +248,7 @@ func (s *Server) gatewayClaim(w http.ResponseWriter, r *http.Request, b WorkerBo
 		http.Error(w, "managed claim unavailable", http.StatusServiceUnavailable)
 		return false
 	}
-	if err := s.recordGatewayClaim(r.Context(), claimed, b.Team, pin); err != nil {
+	if err := s.recordGatewayClaim(r.Context(), claimed, b.Team, loadsRepositoryHooks(req), pin); err != nil {
 		s.Log.Error("credential gateway claim not recorded", "team", b.Team, "role", b.Role, "err", err)
 		http.Error(w, "credential gateway grant unavailable", http.StatusServiceUnavailable)
 		return false

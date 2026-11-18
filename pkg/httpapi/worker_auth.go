@@ -181,7 +181,7 @@ func (s *Server) WorkerHandler(next http.Handler) http.Handler {
 					http.Error(w, "inference policy could not reserve claim", http.StatusServiceUnavailable)
 					return
 				}
-				if !s.gatewayClaim(w, r, b, worker, claimed, result) {
+				if !s.gatewayClaim(w, r, b, worker, req, claimed, result) {
 					return
 				}
 				if !a.RetireHMAC {

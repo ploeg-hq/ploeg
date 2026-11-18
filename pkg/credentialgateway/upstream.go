@@ -75,7 +75,7 @@ func (f forgeUpstream) fence(run Run) (http.Handler, error) {
 	}
 	run.state.forge, run.state.forgeErr = worker.NewFencedForge(worker.FencedForgeRun{
 		Repo:   harness.RepoRef{Forge: grant.ForgeDialect, ForgeURL: grant.ForgeURL, Owner: grant.Owner, Name: grant.Repo, BaseBranch: grant.BaseBranch},
-		Writes: grant.Writes, Branch: grant.Branch, Prepares: grant.Prepares, ScratchDir: g.cfg.ScratchDir,
+		Writes: grant.Writes, Branch: grant.Branch, Prepares: grant.Prepares, LoadsRepositoryHooks: grant.RepositoryHooks, ScratchDir: g.cfg.ScratchDir,
 		Trace: grant.ModelAlias, WorkItem: grant.WorkItem, Token: token, ModelKey: grant.ModelKey, Capability: capability, Log: g.cfg.Log,
 	})
 	return run.state.forge, run.state.forgeErr

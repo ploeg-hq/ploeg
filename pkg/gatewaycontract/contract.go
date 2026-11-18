@@ -56,6 +56,7 @@ type Grant struct {
 	Writes              bool       `json:"writes"`
 	Branch              string     `json:"branch,omitempty"`
 	Prepares            bool       `json:"prepares,omitempty"`
+	RepositoryHooks     bool       `json:"repositoryHooks,omitempty"`
 	ForgeDialect        string     `json:"forgeDialect,omitempty"`
 	ForgeURL            string     `json:"forgeUrl,omitempty"`
 	Owner               string     `json:"owner,omitempty"`

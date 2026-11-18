@@ -17,7 +17,7 @@ type gatewayPrepareRig struct {
 	bare, checkout, remote string
 }
 
-func newGatewayPrepareRig(t *testing.T, base map[string]string) *gatewayPrepareRig {
+func newGatewayPrepareRig(t *testing.T, base map[string]string, shape ...func(*FencedForgeRun)) *gatewayPrepareRig {
 	t.Helper()
 	execPath, err := exec.Command("git", "--exec-path").Output()
 	if err != nil {
@@ -39,11 +39,15 @@ func newGatewayPrepareRig(t *testing.T, base map[string]string) *gatewayPrepareR
 	gitIn(t, seed, "push", bare, "HEAD:refs/heads/development")
 	forge := httptest.NewServer(&cgi.Handler{Path: backend, Env: []string{"GIT_PROJECT_ROOT=" + projects, "GIT_HTTP_EXPORT_ALL=1"}})
 	t.Cleanup(forge.Close)
-	fenced, err := NewFencedForge(FencedForgeRun{
+	run := FencedForgeRun{
 		Repo:   harness.RepoRef{ForgeURL: forge.URL, Owner: "webgrip", Name: "example", BaseBranch: "development"},
 		Writes: true, Branch: writerBranch, Prepares: true, ScratchDir: t.TempDir(),
 		Token: func(context.Context) string { return "real-forge-token" },
-	})
+	}
+	for _, f := range shape {
+		f(&run)
+	}
+	fenced, err := NewFencedForge(run)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,5 +107,20 @@ func TestTheGatewayRefusesAPrepareRunsPushOutsideItsDeliverable(t *testing.T) {
 				t.Fatal("the forge has the run branch after a refused push")
 			}
 		})
+	}
+}
+
+func TestTheGatewayFencesAnOpenHandsRunOffTheRepositoryHooksFile(t *testing.T) {
+	openHands := func(r *FencedForgeRun) { r.Prepares, r.LoadsRepositoryHooks = false, true }
+	rig := newGatewayPrepareRig(t, map[string]string{"main.go": "package main\n"}, openHands)
+	if err := rig.commitAndPush(t, map[string]string{"main.go": "package main\n\nfunc main() {}\n"}); err != nil {
+		t.Fatalf("an OpenHands push that leaves the hooks file alone was refused: %v", err)
+	}
+	rig = newGatewayPrepareRig(t, map[string]string{"main.go": "package main\n"}, openHands)
+	if err := rig.commitAndPush(t, map[string]string{".openhands/hooks.json": "{}\n"}); err == nil {
+		t.Fatal("an OpenHands push that adds the hooks file passed the gateway")
+	}
+	if rig.forgeHasBranch(t) {
+		t.Fatal("the forge has the run branch after a refused push")
 	}
 }
