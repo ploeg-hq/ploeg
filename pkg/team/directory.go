@@ -16,6 +16,9 @@ type Team struct {
 	Name       string
 	NameSource NameSource
 	Revision   int64
+	// Draining is a runtime Team whose drain started: it takes no new
+	// work and no new binding.
+	Draining bool
 }
 
 // Resolution is how a reference reached a Team.

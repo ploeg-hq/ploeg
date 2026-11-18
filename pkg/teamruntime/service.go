@@ -41,7 +41,10 @@ type Service struct {
 	// OnChange runs after a change or a state transition, so bindings can
 	// follow their Team.
 	OnChange func(ctx context.Context)
-	Log      *slog.Logger
+	// OnStopped blocks the model keys and revokes the forge credentials of
+	// the Runs an expired drain stopped.
+	OnStopped func(ctx context.Context, runTokens, forgeTokenIDs []string)
+	Log       *slog.Logger
 }
 
 // Error is a refusal with its HTTP status and operator error code.
@@ -189,11 +192,11 @@ func (s *Service) Create(ctx context.Context, raw []byte, dryRun bool, audit sto
 		return store.RuntimeTeam{}, false, nil, e, nil
 	}
 	m, e := s.prepare(raw)
+	if e == nil {
+		e = sponsoredBy(&m, audit)
+	}
 	if e != nil {
 		return store.RuntimeTeam{}, false, nil, e, nil
-	}
-	if m.Sponsor == "" {
-		m.Sponsor = audit.Attribution.Actor
 	}
 	decision := s.Installation().Decide(s.tenant(), m.Key, m)
 	limits := s.limits()
@@ -232,11 +235,11 @@ func (s *Service) Replace(ctx context.Context, id string, ifMatch int64, raw []b
 		return store.RuntimeTeam{}, nil, e, nil
 	}
 	m, e := s.prepare(raw)
+	if e == nil {
+		e = sponsoredBy(&m, audit)
+	}
 	if e != nil {
 		return store.RuntimeTeam{}, nil, e, nil
-	}
-	if m.Sponsor == "" {
-		m.Sponsor = audit.Attribution.Actor
 	}
 	decision := s.Installation().Decide(s.tenant(), m.Key, m)
 	if dryRun {
@@ -342,11 +345,18 @@ func (s *Service) Refresh(ctx context.Context) error {
 }
 
 // Reconcile decides every runtime Team's state under the current static
-// Teams and installation, and finishes drains. It never fails boot: a
-// Team it cannot decide keeps its state.
+// Teams and installation, and finishes drains once OnStopped can block and
+// revoke what an expired drain stops; before that it only decides states.
+// It never fails boot: a Team it cannot decide keeps its state.
 func (s *Service) Reconcile(ctx context.Context) error {
-	if _, err := s.Store.FinishDrains(ctx, s.now()); err != nil {
-		return err
+	if s.OnStopped != nil {
+		drained, err := s.Store.FinishDrains(ctx, s.now())
+		if err != nil {
+			return err
+		}
+		if len(drained.StoppedRunTokens) > 0 || len(drained.ForgeTokenIDs) > 0 {
+			s.OnStopped(ctx, drained.StoppedRunTokens, drained.ForgeTokenIDs)
+		}
 	}
 	teams, err := s.Store.RuntimeTeams(ctx)
 	if err != nil {
@@ -454,4 +464,16 @@ func (s *Service) Harness(key, role string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// sponsoredBy makes the proven person who creates or replaces a runtime
+// Team its sponsor (ADR-0156). A sponsor naming anyone else is refused: the
+// transaction token of every Run would act for them.
+func sponsoredBy(m *team.Manifest, audit store.TeamAudit) *Error {
+	actor := audit.Attribution.Actor
+	if m.Sponsor != "" && m.Sponsor != actor {
+		return refusal(team.RefuseFieldNotAllowed, "sponsor", "A runtime Team's sponsor is the proven person who creates or changes it; it cannot name anyone else.")
+	}
+	m.Sponsor = actor
+	return nil
 }

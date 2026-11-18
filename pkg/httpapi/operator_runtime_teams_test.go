@@ -107,7 +107,7 @@ func teamErrCode(out map[string]any) string {
 func teamBody(key string, usd float64, harness string) string {
 	b, _ := json.Marshal(map[string]any{
 		"key":    key,
-		"plan":   map[string]any{"rounds": []any{map[string]any{"roles": []any{map[string]any{"name": "reviewer", "harness": harness, "model": "m1"}}}}},
+		"plan":   map[string]any{"rounds": []any{map[string]any{"roles": []any{map[string]any{"name": "reviewer", "cap": 1, "harness": harness, "model": "m1"}}}}},
 		"spend":  map[string]any{"cap": map[string]any{"usd": usd, "period": "month"}},
 		"intake": map[string]any{"admissions": true},
 	})
@@ -323,4 +323,76 @@ func TestAStaticKeyAddedLaterShadowsTheRuntimeTeam(t *testing.T) {
 
 func workItemFor(teamKey string) work.WorkItem {
 	return work.WorkItem{Provider: "vikunja", ExternalID: "rt-1", Team: teamKey, Title: "t"}
+}
+
+func TestASponsorIsAlwaysThePersonWhoMakesTheChange(t *testing.T) {
+	rig := newRuntimeTeamsRig(t, nil, AttributionAsserted)
+	var body map[string]any
+	_ = json.Unmarshal([]byte(teamBody("docs", 10, "openhands")), &body)
+	body["sponsor"] = "oidc-somebody-else"
+	raw, _ := json.Marshal(body)
+	code, out, _ := rig.call("POST", teamsPath, rig.me(), string(raw))
+	if e, _ := out["error"].(map[string]any); code != 422 || teamErrCode(out) != "field_not_allowed" || e["field"] != "sponsor" {
+		t.Fatalf("a sponsor naming someone else: %d %v", code, out)
+	}
+	code, out, _ = rig.call("POST", teamsPath, rig.me(), teamBody("docs", 10, "openhands"))
+	if code != 201 {
+		t.Fatalf("create %d %v", code, out)
+	}
+	m := out["team"].(map[string]any)["manifest"].(map[string]any)
+	resolved, _, _ := rig.server.Teams.Resolve("docs")
+	if m["sponsor"] == "" || m["sponsor"] == "oidc-somebody-else" || resolved.Source != "runtime" {
+		t.Fatalf("sponsor %v", m["sponsor"])
+	}
+}
+
+func TestARuntimeTeamTakesABindingUnderTheInstallationPolicyUntilItDrains(t *testing.T) {
+	f := newBindingFixture(t, nil, true, false)
+	t.Cleanup(func() { resetTeamIdentity(t) })
+	resetTeamIdentity(t)
+	ctx := context.Background()
+	f.registry.Config.TeamCreation = &config.TeamCreation{Enabled: true, TrackerBindings: &config.TrackerBindings{Connections: []string{"clickup"}}}
+	docs, _, err := testStore.CreateRuntimeTeam(ctx, "default", team.Manifest{Key: "docs", Name: "docs",
+		Plan:  team.RuntimePlan{Rounds: []team.RuntimeRound{{Roles: []team.RuntimeRole{{Name: "builder", Writes: true, Cap: 1, Harness: "openhands", Model: "m1"}}}}},
+		Spend: team.RuntimeSpend{Cap: &spendcap.Cap{USD: 10, Period: "month"}}}, team.Decision{State: team.StateActive},
+		store.TeamLimits{Max: 10, Allowance: spendcap.Cap{USD: 100, Period: "month"}, Reservation: team.AliasReservation, Now: time.Now()},
+		store.TeamAudit{Actor: "p"}, team.MustNewID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	directory := team.NewDirectory(nil)
+	refresh := func() {
+		records, err := testStore.LiveTeams(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		directory.Set(store.Directory(records))
+	}
+	refresh()
+	f.server.Teams = directory
+	f.registry.TeamByKey = func(key string) (team.Team, bool) {
+		t, how, ok := directory.Resolve(key)
+		return t, ok && how == team.ByKey
+	}
+	consumers, token := bindingConsumers(t, []string{"docs"}, true)
+	f.server.OperatorConfig.Consumers, f.token = consumers, token
+	path := "/api/v1/operator/teams/docs/tracker-bindings"
+	if w := f.do(t, "POST", path, `{"connection":"clickup","scope":{"id":"901"},"default":"app"}`); w.Code != 201 {
+		t.Fatalf("a binding of an active runtime Team: %d %s", w.Code, w.Body)
+	}
+	if _, _, err := testStore.IngestAssigned(ctx, workItemFor("docs")); err != nil {
+		t.Fatal(err)
+	}
+	mustExecPool(t, `UPDATE teams SET draining_since = now() WHERE id = $1`, docs.ID)
+	refresh()
+	if w := f.do(t, "POST", path, `{"connection":"clickup","scope":{"id":"902"},"default":"app"}`); w.Code != 409 || bindingErrorCode(t, w) != "team_draining" {
+		t.Fatalf("a binding of a draining runtime Team: %d %s", w.Code, w.Body)
+	}
+}
+
+func mustExecPool(t *testing.T, sql string, args ...any) {
+	t.Helper()
+	if _, err := testPool.Exec(context.Background(), sql, args...); err != nil {
+		t.Fatal(err)
+	}
 }

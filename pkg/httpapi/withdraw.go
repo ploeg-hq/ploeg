@@ -39,6 +39,25 @@ func (s *Server) withdrawGuarded(ctx context.Context, workItemID int64, teams []
 	return wd, blocked, nil
 }
 
+// StopRunCredentials blocks the model keys of runTokens and revokes
+// forgeTokenIDs, for Runs ploegd stopped outside a withdrawal (an expired
+// drain, ADR-0198). A key the block cannot reach is retried by the block
+// sweep.
+func (s *Server) StopRunCredentials(ctx context.Context, reason string, runTokens, forgeTokenIDs []string) {
+	for _, token := range runTokens {
+		if s.LLMControl == nil {
+			break
+		}
+		if _, err := s.Store.LLMAccount(ctx, token); err != nil {
+			continue
+		}
+		if err := s.LLMControl.Block(ctx, token); err != nil {
+			s.Log.Error("stopped run key block unresolved; the block sweep will retry", "reason", reason)
+		}
+	}
+	s.revokeFinishedRunCredentials(ctx, reason, forgeTokenIDs...)
+}
+
 func (s *Server) trackerUnassigned(ctx context.Context, name string, ev provider.TrackerEvent) error {
 	id, item, err := s.Store.TrackerWorkItemID(ctx, name, ev.ExternalID)
 	if errors.Is(err, store.ErrWorkItemNotFound) {

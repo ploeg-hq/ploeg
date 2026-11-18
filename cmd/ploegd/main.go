@@ -536,6 +536,10 @@ func run(ctx context.Context, log *slog.Logger) error {
 		WorkTargets:           &httpapi.WorkTargets{Service: workTargets},
 		ToolRegistry:          tools,
 	}
+	runtimeTeams.OnStopped = func(ctx context.Context, runTokens, forgeTokenIDs []string) {
+		srv.StopRunCredentials(ctx, "expired Team drain", runTokens, forgeTokenIDs)
+	}
+
 	if notes != nil {
 		srv.Notes = notes
 	}
