@@ -55,6 +55,7 @@ assert_has "$worker" 'kubernetes.io/metadata.name: observability' 'workers canno
 assert_has "$worker" 'port: 4318' 'the telemetry rule does not carry the collector port'
 assert_lacks "$worker" 'cidr: 0.0.0.0/0' 'an airgapped worker pool reaches the internet'
 assert_lacks "$worker" 'port: 5432' 'workers reach the database'
+[[ -z "$(policy "$rendered" ploeg-worker-brass-anthropic)" ]] || fail 'a client-carried claude-environment team gets an Anthropic policy it has no worker for'
 [[ -z "$(policy "$rendered" ploeg-worker-bronze-anthropic)" ]] || fail 'a team without claude-environment gets an Anthropic policy'
 ploegd=$(policy "$rendered" ploeg-ploegd)
 assert_has "$ploegd" 'cidr: 0.0.0.0/0' 'ploegd cannot reach the public forge URL or the Anthropic JWKS'

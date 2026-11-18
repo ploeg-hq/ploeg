@@ -184,21 +184,30 @@ Any one of these reopens this record:
   `ploeg.credentialModesOutsideHarness` in the chart and
   `credentialModesOutsideHarness` in
   [credential_isolation.go](../../pkg/httpapi/credential_isolation.go). The
-  chart refuses to render a Role workload, and a Role a person's client
-  carries, that misses any of this, under every `supportProfile`, with
+  chart refuses to render a Role workload that misses any of this, under every `supportProfile`, with
   `credential_isolation_required` naming the Team, the Role and what is
   missing. `ploegd` refuses a claim (`403 credential_isolation_required`)
   from a worker that does not send `harness`, `forgeTokenIsolation: proxy` and
   `llmKeyIsolation: proxy` for a qualified harness, before any Run is
   claimed, so the Work Item waits for a worker that isolates both. Until the
-  gateway is built this stops `claude-code`, `claude-environment` (including
-  client-carried Runs), every `acp` profile but `openhands`, every DinD Role
+  gateway is built this stops `claude-code`, `claude-environment` dispatched by a
+  worker, every `acp` profile but `openhands`, every DinD Role
   and every `credentialIsolation` override that is not `proxy`; the
   [managed-worker upgrade notes](../ops/managed-workers.md#credential-isolation-is-required)
   lists each with its fix. Confirmed by `scripts/helm-golden.sh` (the
   `reject-*-isolation-*`, `reject-dind`, `reject-unqualified-harness`,
-  `reject-claude-environment-harness` and `reject-client-carrier` fixtures,
+  and `reject-claude-environment-harness` fixtures,
   `refused_in_every_profile`, and `executor-isolation` rendering every
   qualified harness) and by `TestClaim_EveryRoleNeedsItsCredentialsIsolatedFromItsHarness`,
   `TestClaim_AQualifiedHarnessBehindBothProxiesClaims` and
   `TestTheClaimCarriesBothCredentialIsolations`.
+* 2026-11-18 — Scope clarified by the owner: the mandatory isolation above
+  covers Run pods in the cluster. A client-carried Run
+  ([ADR-0112](0112-a-claude-environment-run-uses-the-claude-login-of-the-person-it-acts-for.md))
+  runs in the person's own environment, their own Claude Code session on
+  their own machine with their own login, and stays allowed: the chart
+  renders a `claudeEnvironment.carrier: client` Role and `ploegd` serves
+  `POST /api/v1/operator/work-items/{id}/claim` as before. Its forge
+  credential is still minted per Run, for the Run's one repository, and
+  short-lived. Confirmed by the `executor` golden, which renders the
+  client-carried `brass` team.

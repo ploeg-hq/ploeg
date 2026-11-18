@@ -408,7 +408,7 @@ rows:
           path: docs/research/2026-10-04-isolation-qualification.md
           label: isolation qualification 2026-10-04
           contains: ["| `claude-code` | no | No Run with both proxies on yet. |"]
-    limits: Not qualified with both proxies on; `claude-environment` runs outside the pod on a person's login. Since 2026-11-18 the chart refuses to render it and ploegd refuses its claim (`credential_isolation_required`, ADR-0034).
+    limits: Not qualified with both proxies on; `claude-environment` runs outside the pod on a person's login. Since 2026-11-18 the chart refuses to render `claude-code` and a worker-dispatched `claude-environment`, and ploegd refuses their claim (`credential_isolation_required`, ADR-0034); a client-carried Run (ADR-0112) stays allowed.
 
   - id: harness-acp-other
     axis: harness

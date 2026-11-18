@@ -302,9 +302,6 @@ Context: (dict "root" $ "team" <team> "role" <Role entry or empty dict>).
 {{- if and $carrier (not $ce.environmentId) }}
 {{- fail (printf "team %s: harness.claudeEnvironment.carrier client requires harness.claudeEnvironment.environmentId" ($role.name | default $team.name)) }}
 {{- end }}
-{{- if $carrier }}
-{{- fail (printf "team %s: credential_isolation_required: every Role runs with its forge token and model key isolated from its harness (ADR-0034), and harness.claudeEnvironment.carrier client hands its Runs to a person's own client and the claude-runner, which hold the Run's credentials themselves. Run the Role on a qualified harness (%s) instead" ($role.name | default $team.name) (join ", " (include "ploeg.isolationQualifiedHarnesses" $root | fromJsonArray))) }}
-{{- end }}
 {{- $out = append $out (dict "role" $role "key" $key "suffix" "" "default" true "qualified" (has $key $qualified) "carrier" $carrier "environmentId" $ce.environmentId) }}
 {{- else }}
 {{- if not $role.name }}

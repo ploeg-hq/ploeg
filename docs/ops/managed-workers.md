@@ -39,8 +39,10 @@ What stops, and how to fix it:
 | `harness.dind: true` (with `acknowledgePrivilegedDind`) | That workload is refused; DinD turns both proxies off and reaches a daemon that is root on the node | Set `harness.dind: false` and give the Role its toolchains as image volumes ([toolchains and checks](../how-to/give-runs-a-toolchain-and-checks.md)) |
 | `harness.name: claude-code` | Refused; it is not qualified with both proxies | Run the Role on `openhands`, `acp` profile `openhands` or `exec` |
 | `harness.name: acp` with a profile other than `openhands` (`opencode`, the default, and every other profile) | Refused, also as an entry of a team's `harnesses` | Use `acp.profile: openhands`, or another qualified harness |
-| `harness.name: claude-environment`, dispatched by a worker or carried by a person's client (`claudeEnvironment.carrier: client`) | Refused; the claude-runner and the person's client hold the Run's forge credential themselves | Move the Role to a qualified harness until the credential gateway carries Claude environments |
+| `harness.name: claude-environment` dispatched by a worker | Refused; the claude-runner holds the Run's forge credential itself | Move the Role to a qualified harness until the credential gateway carries Claude environments |
 | OpenHands writers on a deployment with the forge proxy off | Refused; only the forge proxy refuses a push that changes `.openhands/hooks.json` ([ADR 0148](../adrs/0148-every-acp-profile-asks-before-a-mutation-outside-allow-always-and-openhands-refuses-a-repository-that-ships-hooks.md)) | Set `executor.forgeTokenIsolation: proxy` before upgrading |
+
+Client-carried Runs (`claudeEnvironment.carrier: client`, [ADR 0112](../adrs/0112-a-claude-environment-run-uses-the-claude-login-of-the-person-it-acts-for.md)) are not affected. The requirement covers Run pods in the cluster. A client-carried Run happens in the person's own Claude Code session on their own machine with their own login. It still gets a forge credential minted per Run, for its one repository, and short-lived.
 
 Before upgrading, render the new chart against your values with `helm template`; every refusal it prints is a Role that would stop taking work. A standalone worker sets `PLOEG_FORGE_TOKEN_ISOLATION=proxy` and `PLOEG_LLM_KEY_ISOLATION=proxy` itself.
 

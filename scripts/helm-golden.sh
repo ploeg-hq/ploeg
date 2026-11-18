@@ -138,8 +138,7 @@ for case in "ops/helm/ploeg/ci/reject-reader-without-read-token-values.yaml:read
 	"ops/helm/ploeg/ci/reject-llm-key-isolation-off-values.yaml:team qualified: credential_isolation_required: every Role runs with its forge token and model key isolated from its harness (ADR-0034), and model key isolation is off" \
 	"ops/helm/ploeg/ci/reject-dind-values.yaml:team acknowledged: credential_isolation_required: every Role runs with its forge token and model key isolated from its harness (ADR-0034), and harness.dind is true" \
 	"ops/helm/ploeg/ci/reject-unqualified-harness-values.yaml:team silver/reviewer: credential_isolation_required: every Role runs with its forge token and model key isolated from its harness (ADR-0034), and harness acp/opencode is not qualified" \
-	"ops/helm/ploeg/ci/reject-claude-environment-harness-values.yaml:team pewter: credential_isolation_required: every Role runs with its forge token and model key isolated from its harness (ADR-0034), and harness claude-environment is not qualified" \
-	"ops/helm/ploeg/ci/reject-client-carrier-values.yaml:team brass: credential_isolation_required: every Role runs with its forge token and model key isolated from its harness (ADR-0034), and harness.claudeEnvironment.carrier client"; do
+	"ops/helm/ploeg/ci/reject-claude-environment-harness-values.yaml:team pewter: credential_isolation_required: every Role runs with its forge token and model key isolated from its harness (ADR-0034), and harness claude-environment is not qualified"; do
 	values=${case%%:*}
 	expected=${case#*:}
 	if out=$(helm template ploeg ops/helm/ploeg -f "$REQUIRED" -f "$values" 2>&1); then
