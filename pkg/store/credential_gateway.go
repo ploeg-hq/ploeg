@@ -71,29 +71,30 @@ func (s *Store) DropSettledGatewayGrants(ctx context.Context) (int64, error) {
 	return tag.RowsAffected(), nil
 }
 
-// RecordGatewayAudit adds a gateway's per-Run totals, writes each refusal as
-// a credential_gateway.refused audit row and each MCP call as an mcp.call
-// audit row for the Run's Work Item.
-func (s *Store) RecordGatewayAudit(ctx context.Context, namespace string, batch gatewaycontract.AuditBatch) error {
-	uses, refusals := batch.Uses, batch.Refusals
+// RecordGatewayAudit adds a gateway's per-Run totals and writes each refusal
+// as a credential_gateway.refused audit row for the Run's Work Item. A row
+// counts only for a Run of one of the gateway's own Teams, read from the Run
+// itself, so the audit of a Run whose grant the sweep already dropped is
+// still kept.
+func (s *Store) RecordGatewayAudit(ctx context.Context, namespace string, teams []string, batch gatewaycontract.AuditBatch) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	for _, u := range uses {
+	for _, u := range batch.Uses {
 		if _, err := tx.Exec(ctx, `INSERT INTO credential_gateway_use (run_token, family, credential, requests, refused, bytes)
-			SELECT g.run_token, $2, $3, $4, $5, $6 FROM credential_gateway_grants g WHERE g.run_token = $1 AND g.namespace = $7
+			SELECT r.run_token, $2, $3, $4, $5, $6 FROM agent_runs r WHERE r.run_token = $1 AND r.team = ANY($7)
 			ON CONFLICT (run_token, family, credential) DO UPDATE SET
 				requests = credential_gateway_use.requests + EXCLUDED.requests,
 				refused = credential_gateway_use.refused + EXCLUDED.refused,
 				bytes = credential_gateway_use.bytes + EXCLUDED.bytes,
 				updated_at = now()`,
-			u.RunToken, u.Family, u.Credential, u.Requests, u.Refused, u.Bytes, namespace); err != nil {
+			u.RunToken, u.Family, u.Credential, u.Requests, u.Refused, u.Bytes, teams); err != nil {
 			return err
 		}
 	}
-	for _, r := range refusals {
+	for _, r := range batch.Refusals {
 		detail, err := json.Marshal(map[string]any{"namespace": namespace, "family": r.Family, "method": r.Method,
 			"route": r.Route, "reason": r.Reason, "status": r.Status})
 		if err != nil {
@@ -102,8 +103,7 @@ func (s *Store) RecordGatewayAudit(ctx context.Context, namespace string, batch 
 		if _, err := tx.Exec(ctx, `INSERT INTO audit_log (actor, action, work_item_id, detail)
 			SELECT 'credential-gateway:' || $2, 'credential_gateway.refused', r.work_item_id,
 				$3::jsonb || jsonb_build_object('run', r.id)
-			FROM agent_runs r JOIN credential_gateway_grants g USING (run_token)
-			WHERE r.run_token = $1 AND g.namespace = $2`, r.RunToken, namespace, detail); err != nil {
+			FROM agent_runs r WHERE r.run_token = $1 AND r.team = ANY($4)`, r.RunToken, namespace, detail, teams); err != nil {
 			return err
 		}
 	}

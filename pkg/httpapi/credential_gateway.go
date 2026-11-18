@@ -153,9 +153,9 @@ func (g *CredentialGateways) authenticate(r *http.Request) (GatewayBinding, bool
 	return GatewayBinding{}, false
 }
 
-func (g *CredentialGateways) claimingPod(r *http.Request, binding GatewayBinding) (gatewaycontract.Pin, bool) {
+func (g *CredentialGateways) claimingPod(r *http.Request, binding GatewayBinding, team string) (gatewaycontract.Pin, bool) {
 	asking, ok := g.authenticate(r)
-	if !ok || asking.Namespace != binding.Namespace {
+	if !ok || asking.Namespace != binding.Namespace || asking.ServiceAccount != binding.ServiceAccount || !slices.Contains(asking.Teams, team) {
 		return gatewaycontract.Pin{}, false
 	}
 	pin := gatewaycontract.Pin{Namespace: binding.Namespace, PodName: r.Header.Get(gatewaycontract.PodNameHeader),
@@ -246,7 +246,7 @@ func (s *Server) admitGatewayClaim(w http.ResponseWriter, r *http.Request, team,
 	if !gated {
 		return gatewaycontract.Pin{}, false, true
 	}
-	pin, viaGateway := s.CredentialGateways.claimingPod(r, binding)
+	pin, viaGateway := s.CredentialGateways.claimingPod(r, binding, team)
 	if !viaGateway || (pin.PodName != worker && pin.PodUID != worker) {
 		s.Log.Warn("claim refused: the Team runs behind a credential gateway and this claim did not come through it", "team", team)
 		w.Header().Set(gatewaycontract.RefusalHeader, gatewaycontract.RefusedClaim)
@@ -458,7 +458,7 @@ func (s *Server) handleGatewayAudit(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "audit batch malformed or too large", http.StatusBadRequest)
 		return
 	}
-	if err := s.Store.RecordGatewayAudit(r.Context(), binding.Namespace, req); err != nil {
+	if err := s.Store.RecordGatewayAudit(r.Context(), binding.Namespace, binding.Teams, req); err != nil {
 		s.Log.Error("credential gateway audit not recorded", "namespace", binding.Namespace, "err", err)
 		http.Error(w, "audit not recorded", http.StatusServiceUnavailable)
 		return
