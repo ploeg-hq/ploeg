@@ -94,9 +94,9 @@ func (c *grantCache) get(ctx context.Context, capability, sourceIP, sourceUID st
 		gatewaycontract.GrantRequest{Capability: capability, SourceIP: sourceIP, SourceUID: sourceUID})
 }
 
-func (c *grantCache) session(ctx context.Context, token, sourceIP, sourceUID, podName string) (gatewaycontract.Grant, error) {
-	return c.fetch(ctx, grantKey(token, sourceIP, sourceUID)+"\x00session", gatewaycontract.SessionGrantsPath,
-		gatewaycontract.SessionGrantRequest{SessionToken: token, SourceIP: sourceIP, SourceUID: sourceUID, PodName: podName})
+func (c *grantCache) session(ctx context.Context, token, sourceIP, sourceUID, podName, annotation string) (gatewaycontract.Grant, error) {
+	return c.fetch(ctx, grantKey(token, sourceIP, sourceUID)+"\x00session\x00"+annotation, gatewaycontract.SessionGrantsPath,
+		gatewaycontract.SessionGrantRequest{SessionToken: token, SourceIP: sourceIP, SourceUID: sourceUID, PodName: podName, SessionAnnotation: annotation})
 }
 
 func (c *grantCache) fetch(ctx context.Context, key, path string, body any) (gatewaycontract.Grant, error) {

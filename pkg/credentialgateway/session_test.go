@@ -1,6 +1,7 @@
 package credentialgateway
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -36,8 +37,10 @@ type sessionFixture struct {
 	reports *seen
 	pods    *fakePods
 	asked   []gatewaycontract.SessionGrantRequest
+	audits  []gatewaycontract.AuditBatch
 	mu      sync.Mutex
 	url     string
+	gateway *Gateway
 }
 
 func newSessionFixture(t *testing.T) *sessionFixture {
@@ -46,7 +49,14 @@ func newSessionFixture(t *testing.T) *sessionFixture {
 	f.pods.set(runnerPod("session_01ROUTINE"))
 	forge := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		f.forge.add(r)
-		_, _ = io.WriteString(w, "[]")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/repos/acme/widgets/pulls/1":
+			_, _ = io.WriteString(w, `{"number":1,"head":{"ref":"agent/vik-9"}}`)
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/repos/acme/widgets/pulls/2":
+			_, _ = io.WriteString(w, `{"number":2,"head":{"ref":"someone-elses-branch"}}`)
+		default:
+			_, _ = io.WriteString(w, "[]")
+		}
 	}))
 	t.Cleanup(forge.Close)
 	ploegd := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -57,6 +67,15 @@ func newSessionFixture(t *testing.T) *sessionFixture {
 		}
 		if r.Header.Get(gatewaycontract.AuthorizationHeader) != "Bearer "+gatewaySAToken {
 			http.Error(w, "unauthenticated", http.StatusUnauthorized)
+			return
+		}
+		if r.URL.Path == gatewaycontract.AuditPath {
+			var batch gatewaycontract.AuditBatch
+			_ = json.NewDecoder(r.Body).Decode(&batch)
+			f.mu.Lock()
+			f.audits = append(f.audits, batch)
+			f.mu.Unlock()
+			w.WriteHeader(http.StatusNoContent)
 			return
 		}
 		if r.URL.Path != gatewaycontract.SessionGrantsPath {
@@ -94,6 +113,7 @@ func newSessionFixture(t *testing.T) *sessionFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
+	f.gateway = g
 	session := httptest.NewServer(g.SessionHandler())
 	t.Cleanup(session.Close)
 	f.url = session.URL
@@ -134,6 +154,24 @@ func TestARoutineSessionReachesTheForgeOnlyWithTheMintedCredential(t *testing.T)
 	if got := do(t, http.MethodPost, f.url+sessionReportPath, strings.NewReader(`{"exitReason":"completed"}`), bearer(routineToken)); got.StatusCode != http.StatusNoContent ||
 		f.reports.last().Header.Get("Authorization") != "Bearer "+routineToken {
 		t.Fatalf("report = %d, want it passed to ploegd with the session token alone", got.StatusCode)
+	}
+	if err := f.gateway.FlushAudit(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	reported := false
+	for _, batch := range f.audits {
+		for _, use := range batch.Uses {
+			if use.RunToken == "run-9" && use.Family == FamilyPloegd && use.Credential == "session_token" && use.Requests == 1 {
+				reported = true
+			}
+		}
+	}
+	if !reported {
+		t.Fatalf("the report reached ploegd unaudited: %+v", f.audits)
+	}
+	if got := do(t, http.MethodGet, f.url+"/api/v1/repos/acme/widgets/pulls", nil, bearer(routineToken)); got.StatusCode != http.StatusForbidden ||
+		got.Header.Get(gatewaycontract.RefusalHeader) != gatewaycontract.RefusedRunSettled {
+		t.Fatalf("after its report the session's forge access = %d, want run_settled", got.StatusCode)
 	}
 }
 
@@ -184,5 +222,50 @@ func TestARoutineSessionsPushIsFencedToItsRunBranch(t *testing.T) {
 	}
 	if got := do(t, http.MethodGet, f.url+"/api/v1/repos/acme/other/pulls", nil, bearer(routineToken)); got.StatusCode != http.StatusForbidden || f.forge.count() != 0 {
 		t.Fatalf("another repository = %d", got.StatusCode)
+	}
+}
+
+func TestARoutineSessionWritesOnlyItsOwnRunBranchsPullRequest(t *testing.T) {
+	f := newSessionFixture(t)
+	writes := func() []string {
+		f.forge.mu.Lock()
+		defer f.forge.mu.Unlock()
+		var out []string
+		for _, r := range f.forge.requests {
+			if r.Method != http.MethodGet {
+				out = append(out, r.Method+" "+r.URL.Path)
+			}
+		}
+		return out
+	}
+	for _, tc := range []struct {
+		name, method, path, body string
+		want                     int
+	}{
+		{"a pull request from another branch", http.MethodPost, "/api/v1/repos/acme/widgets/pulls", `{"head":"main","base":"agent/vik-9","title":"x"}`, http.StatusForbidden},
+		{"a pull request onto another base", http.MethodPost, "/api/v1/repos/acme/widgets/pulls", `{"head":"agent/vik-9","base":"release","title":"x"}`, http.StatusForbidden},
+		{"another pull request edited", http.MethodPatch, "/api/v1/repos/acme/widgets/pulls/2", `{"state":"closed"}`, http.StatusForbidden},
+		{"a comment on another pull request", http.MethodPost, "/api/v1/repos/acme/widgets/issues/2/comments", `{"body":"x"}`, http.StatusForbidden},
+		{"a comment on an issue the forge does not know", http.MethodPost, "/api/v1/repos/acme/widgets/issues/7/comments", `{"body":"x"}`, http.StatusForbidden},
+	} {
+		got := do(t, tc.method, f.url+tc.path, strings.NewReader(tc.body), bearer(routineToken))
+		if got.StatusCode != tc.want || got.Header.Get(gatewaycontract.RefusalHeader) != gatewaycontract.RefusedPullRequest {
+			t.Fatalf("%s = %d %q, want %d %s", tc.name, got.StatusCode, got.Header.Get(gatewaycontract.RefusalHeader), tc.want, gatewaycontract.RefusedPullRequest)
+		}
+	}
+	if w := writes(); len(w) != 0 {
+		t.Fatalf("refused writes reached the forge: %v", w)
+	}
+	for _, tc := range []struct{ method, path, body string }{
+		{http.MethodPost, "/api/v1/repos/acme/widgets/pulls", `{"head":"agent/vik-9","base":"main","title":"x"}`},
+		{http.MethodPatch, "/api/v1/repos/acme/widgets/pulls/1", `{"body":"x"}`},
+		{http.MethodPost, "/api/v1/repos/acme/widgets/issues/1/comments", `{"body":"x"}`},
+	} {
+		if got := do(t, tc.method, f.url+tc.path, strings.NewReader(tc.body), bearer(routineToken)); got.StatusCode != http.StatusOK {
+			t.Fatalf("%s %s on the Run's own pull request = %d %q", tc.method, tc.path, got.StatusCode, got.Header.Get(gatewaycontract.RefusalHeader))
+		}
+	}
+	if w := writes(); len(w) != 3 {
+		t.Fatalf("the Run's own pull request writes reaching the forge = %v, want 3", w)
 	}
 }

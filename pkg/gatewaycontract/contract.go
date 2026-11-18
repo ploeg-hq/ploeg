@@ -33,6 +33,7 @@ const (
 	RefusedNoSession    = "missing_session_token"
 	RefusedSession      = "session_refused"
 	RefusedSessionNone  = "session_unknown"
+	RefusedPullRequest  = "not_the_runs_pull_request"
 )
 
 // Pin is the pod that claimed a Run through a credential gateway: its
@@ -60,6 +61,10 @@ type SessionGrantRequest struct {
 	SourceIP     string `json:"sourceIp"`
 	SourceUID    string `json:"sourceUid"`
 	PodName      string `json:"podName"`
+	// SessionAnnotation is the pod's ploeg.webgrip.dev/claude-session
+	// annotation, which the orchestrator's spawn-runner hook set: ploegd
+	// refuses a token of another session before it pins anything.
+	SessionAnnotation string `json:"sessionAnnotation"`
 }
 
 // Grant is what a credential gateway attaches for one Run. It never leaves

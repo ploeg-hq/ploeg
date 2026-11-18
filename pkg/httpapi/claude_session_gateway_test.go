@@ -24,8 +24,13 @@ func sessionGatewayRig(t *testing.T) (*routineRig, *countingBroker) {
 }
 
 func (rig *routineRig) askSessionGrant(gatewayToken string, claims claudesession.Claims, podUID, podIP string) *httptest.ResponseRecorder {
+	return rig.askSessionGrantFor(gatewayToken, claims, podUID, podIP, "session_"+claims.SessionID)
+}
+
+func (rig *routineRig) askSessionGrantFor(gatewayToken string, claims claudesession.Claims, podUID, podIP, annotation string) *httptest.ResponseRecorder {
 	rig.server.ClaudeSessions.Verifier = fakeSessionVerifier{claims: claims}
-	body, _ := json.Marshal(gatewaycontract.SessionGrantRequest{SessionToken: "sk-ant-cc-session", SourceIP: podIP, SourceUID: podUID, PodName: "runner-" + podUID})
+	body, _ := json.Marshal(gatewaycontract.SessionGrantRequest{SessionToken: "sk-ant-cc-session", SourceIP: podIP, SourceUID: podUID, PodName: "runner-" + podUID,
+		SessionAnnotation: annotation})
 	r := httptest.NewRequest(http.MethodPost, gatewaycontract.SessionGrantsPath, bytes.NewReader(body))
 	if gatewayToken != "" {
 		r.Header.Set(gatewaycontract.AuthorizationHeader, "Bearer "+gatewayToken)
@@ -92,5 +97,24 @@ func TestARoutineSessionsGrantGoesOnlyToItsGatewayPinnedToItsRunnerPod(t *testin
 	}
 	if got := rig.askSessionGrant(runsGatewayToken, session, "uid-runner", runnerPodIP); got.Code != http.StatusGone {
 		t.Fatalf("a settled Run's session grant = %d %s, want 410", got.Code, got.Body)
+	}
+}
+
+func TestAPodStartedForAnotherSessionCannotPinARoutineRunFirst(t *testing.T) {
+	rig, broker := sessionGatewayRig(t)
+	rig.register()
+	id := rig.workFor("bronze", "2202")
+	if code, out := rig.fire(id); code != 200 {
+		t.Fatalf("fire = %d %v", code, out)
+	}
+	session := routineSession(1, "user:owner")
+	if got := rig.askSessionGrantFor(runsGatewayToken, session, "uid-squatter", "10.4.0.9", "session_01ANOTHER"); got.Code != http.StatusForbidden {
+		t.Fatalf("a pod started for another session = %d %s, want 403 before any pin", got.Code, got.Body)
+	}
+	if n := countRows(t, `SELECT count(*) FROM credential_gateway_grants g JOIN agent_runs a ON a.run_token = g.run_token WHERE a.work_item_id = $1`, id); n != 0 || broker.minted != 0 {
+		t.Fatalf("the squatting pod left %d pins and %d mints", n, broker.minted)
+	}
+	if got := rig.askSessionGrant(runsGatewayToken, session, "uid-runner", runnerPodIP); got.Code != http.StatusOK {
+		t.Fatalf("the session's own runner pod = %d %s, want its grant", got.Code, got.Body)
 	}
 }

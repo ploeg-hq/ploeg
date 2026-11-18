@@ -296,7 +296,8 @@ func TestClaudeRunnerPodHoldsNoClaudeCredential(t *testing.T) {
 		}
 	}
 	env := []string{"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH"), "HOME=" + home, "PLOEG_CLAUDE_RUNNER_WORK_ORDER_DIR=" + orderDir,
-		"PLOEG_CHECKOUT_ATTEMPTS=2", "PLOEG_CHECKOUT_WAIT_SECONDS=1"}
+		"PLOEG_CHECKOUT_ATTEMPTS=2", "PLOEG_CHECKOUT_WAIT_SECONDS=1", "PLOEG_CLAUDE_RUNNER_REGISTRATION_SECONDS=1",
+		"PLOEG_CLAUDE_RUNNER_HEALTH_URL=http://127.0.0.1:1/healthz"}
 	for _, e := range runner.Env {
 		if len(e.ValueFrom) > 0 && string(e.ValueFrom) != "null" {
 			t.Fatalf("the runner pod reads %s from %s", e.Name, e.ValueFrom)

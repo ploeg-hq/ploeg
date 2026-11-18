@@ -40,6 +40,11 @@ func (s *Server) handleGatewaySessionGrant(w http.ResponseWriter, r *http.Reques
 		}
 		return
 	}
+	if claudesession.NormalizeSessionID(req.SessionAnnotation) != claims.SessionID {
+		s.Log.Warn("credential gateway session refused: the runner pod was started for another session", "namespace", binding.Namespace, "pod", req.PodName)
+		http.Error(w, gatewaycontract.RefusedSession+": the runner pod was started for another session", http.StatusForbidden)
+		return
+	}
 	routine, err := s.Store.PinRoutineCreator(r.Context(), claims.EnvironmentID, claims.SessionID, claims.Creator)
 	switch {
 	case errors.Is(err, store.ErrRoutineCreatorMismatch):
