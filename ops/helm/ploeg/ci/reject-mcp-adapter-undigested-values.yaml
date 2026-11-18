@@ -8,6 +8,7 @@ executor:
     mcp:
       adapters:
         - name: grafana
+          team: zinc
           image: registry.example/grafana-mcp:latest
           command: ["/usr/local/bin/mcp-grafana"]
   teams:

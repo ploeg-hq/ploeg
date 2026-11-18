@@ -189,12 +189,25 @@ def check_mcp_adapters(documents):
         pod = d['spec']['template']['spec']
         if pod.get('automountServiceAccountToken') is not False:
             problems.append(f"MCP adapter {name} mounts a ServiceAccount token")
+        labels = d['spec']['template']['metadata']['labels']
+        if not labels.get('ploeg.webgrip.dev/team'):
+            problems.append(f"MCP adapter {name} names no Team; an adapter is never shared between Teams")
         for c in pod.get('containers') or []:
             if '@sha256:' not in c.get('image', ''):
                 problems.append(f"MCP adapter {name} runs an image not pinned by digest")
             if not (c.get('securityContext') or {}).get('readOnlyRootFilesystem'):
                 problems.append(f"MCP adapter {name} has a writable root filesystem")
-        labels = d['spec']['template']['metadata']['labels']
+            command = c.get('command') or []
+            bridge = command[:command.index('--')] if '--' in command else command
+            sessions_dir = next((a.split('=', 1)[1] for a in bridge if a.startswith('--sessions-dir=')), None)
+            mounts = {m['mountPath'] for m in c.get('volumeMounts') or []}
+            if sessions_dir is None or sessions_dir not in mounts:
+                problems.append(f"MCP adapter {name} gives its sessions no directories of their own")
+            if any(path == '/tmp' or path.startswith('/tmp/') for path in mounts):
+                problems.append(f"MCP adapter {name} mounts a /tmp its sessions share")
+            for entry in c.get('env') or []:
+                if f"--pass-env={entry['name']}" not in bridge:
+                    problems.append(f"MCP adapter {name} sets {entry['name']} that its sessions do not get by --pass-env")
         policies = [p for p in documents if p.get('kind') == 'NetworkPolicy' and selects(p, labels) and 'Ingress' in (p['spec'].get('policyTypes') or [])]
         if not policies:
             problems.append(f"no NetworkPolicy limits who reaches MCP adapter {name}")

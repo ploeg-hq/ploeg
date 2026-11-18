@@ -1452,6 +1452,8 @@
                     "required": ["name", "image", "command"],
                     "properties": {
                       "name": {"type": "string", "pattern": "^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$"},
+                      "team": {"type": "string", "pattern": "^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$", "description": "The one Team whose Runs use this adapter; register its URL only in that Team's tools. An adapter's sessions share its pod, its user and its credential, so a Team that needs the same server gets an adapter of its own."},
+                      "sessionsSizeLimit": {"type": "string", "pattern": "^[0-9]+(Mi|Gi)$", "description": "sizeLimit of the emptyDir that holds each session's own directory (its HOME, TMPDIR and working directory, created 0700 and removed when the session ends). Default 1Gi. The adapter has no writable /tmp."},
                       "image": {"type": "string", "pattern": "@sha256:[0-9a-f]{64}$", "description": "The stdio MCP server's image, pinned by digest."},
                       "command": {"type": "array", "minItems": 1, "items": {"type": "string"}},
                       "args": {"type": "array", "items": {"type": "string"}},

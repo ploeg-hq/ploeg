@@ -804,10 +804,15 @@ executor:
     # egress lists the NetworkPolicy egress rules the gateway gets for them;
     # [] reaches only the stdio adapters below. Each adapter runs one stdio
     # MCP server in its own pod outside every Run pod, behind
-    # ploeg-mcp-stdio-bridge (one process per MCP session), reachable only
-    # from the gateway; register http://<release>-mcp-<name>.<namespace>.svc:8080/mcp
-    # and list that host in config.toolRegistry.plainHTTPHosts.
+    # ploeg-mcp-stdio-bridge (one process per MCP session, each in its own
+    # 0700 directory as HOME, TMPDIR and working directory, removed when the
+    # session ends, with only PATH, locale and its credential in its
+    # environment), reachable only from the gateway. An adapter serves one
+    # Team: register http://<release>-mcp-<name>.<namespace>.svc:8080/mcp
+    # only in that Team's tools and list that host in
+    # config.toolRegistry.plainHTTPHosts.
     #   - name: grafana
+    #     team: silver
     #     image: registry.example/grafana-mcp@sha256:<64 hex>
     #     command: ["/usr/local/bin/mcp-grafana", "--transport", "stdio"]
     #     credentialSecret: {name: grafana-mcp, key: token, env: GRAFANA_API_KEY}

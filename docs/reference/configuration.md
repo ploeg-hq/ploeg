@@ -348,6 +348,8 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `executor.credentialGateway.mcp.adapters[].name` | string |  |  | values.schema.json |
 | `executor.credentialGateway.mcp.adapters[].resources` | object |  |  | values.schema.json |
 | `executor.credentialGateway.mcp.adapters[].sessions` | integer |  | Concurrent MCP sessions, each one process of the server. Default 16. | values.schema.json |
+| `executor.credentialGateway.mcp.adapters[].sessionsSizeLimit` | string |  | sizeLimit of the emptyDir that holds each session's own directory (its HOME, TMPDIR and working directory, created 0700 and removed when the session ends). Default 1Gi. The adapter has no writable /tmp. | values.schema.json |
+| `executor.credentialGateway.mcp.adapters[].team` | string |  | The one Team whose Runs use this adapter; register its URL only in that Team's tools. An adapter's sessions share its pod, its user and its credential, so a Team that needs the same server gets an adapter of its own. | values.schema.json |
 | `executor.credentialGateway.mcp.egress` | array | `[]` | NetworkPolicy egress rules the credential gateway gets for registered MCP servers. | values.yaml, values.schema.json |
 | `executor.credentialGateway.nodeSelector` | object or null | `{}` | the gateway's own pool; never one executor.nodeSelector names | values.yaml, values.schema.json |
 | `executor.credentialGateway.replicas` | integer | `2` | Gateway replicas, spread over nodes; the PodDisruptionBudget allows one unavailable. | values.yaml, values.schema.json |

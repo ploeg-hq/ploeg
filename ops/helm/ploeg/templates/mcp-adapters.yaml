@@ -20,8 +20,13 @@
 {{- if not $a.command }}
 {{- fail (printf "executor.credentialGateway.mcp.adapters[%s].command names the stdio MCP server to run" $a.name) }}
 {{- end }}
+{{- if not (regexMatch "^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$" (toString ($a.team | default ""))) }}
+{{- fail (printf "executor.credentialGateway.mcp.adapters[%s].team names the one Team whose Runs use this adapter: an adapter's server processes share one credential and one pod, so it is never shared between Teams. Render one adapter per Team" $a.name) }}
+{{- end }}
 {{- $name := printf "%s-mcp-%s" (include "ploeg.fullname" $root) $a.name | trunc 63 | trimSuffix "-" }}
 {{- $labels := dict "app.kubernetes.io/name" "ploeg-mcp-adapter" "app.kubernetes.io/instance" (include "ploeg.instance" $root) "ploeg.webgrip.dev/mcp-adapter" $a.name }}
+{{- $bridgeArgs := list "/ploeg/ploeg-mcp-stdio-bridge" "--listen=:8080" (printf "--sessions=%d" (int ($a.sessions | default 16))) "--sessions-dir=/sessions" }}
+{{- with $a.credentialSecret }}{{- $bridgeArgs = append $bridgeArgs (printf "--pass-env=%s" .env) }}{{- end }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -41,6 +46,7 @@ spec:
         {{- toYaml $labels | nindent 8 }}
         app.kubernetes.io/part-of: ploeg
         ploeg.webgrip.dev/component: mcp-adapter
+        ploeg.webgrip.dev/team: {{ $a.team | quote }}
     spec:
       automountServiceAccountToken: false
       enableServiceLinks: false
@@ -67,7 +73,7 @@ spec:
       containers:
         - name: adapter
           image: {{ $a.image }}
-          command: {{- concat (list "/ploeg/ploeg-mcp-stdio-bridge" "--listen=:8080" (printf "--sessions=%d" (int ($a.sessions | default 16))) "--") $a.command ($a.args | default list) | toJson | nindent 12 }}
+          command: {{- concat $bridgeArgs (list "--") $a.command ($a.args | default list) | toJson | nindent 12 }}
           ports:
             - {name: mcp, containerPort: 8080}
           {{- with $a.credentialSecret }}
@@ -85,10 +91,10 @@ spec:
           resources: {{- toYaml ($a.resources | default (dict "requests" (dict "cpu" "50m" "memory" "64Mi") "limits" (dict "cpu" "1" "memory" "512Mi"))) | nindent 12 }}
           volumeMounts:
             - {name: bridge, mountPath: /ploeg, readOnly: true}
-            - {name: tmp, mountPath: /tmp}
+            - {name: sessions, mountPath: /sessions}
       volumes:
         - {name: bridge, emptyDir: {}}
-        - {name: tmp, emptyDir: {}}
+        - {name: sessions, emptyDir: {sizeLimit: {{ $a.sessionsSizeLimit | default "1Gi" }}}}
 ---
 apiVersion: v1
 kind: Service

@@ -21,6 +21,7 @@ job = next(d for d in documents if d.get('kind') == 'ScaledJob' and d['metadata'
 pod = job['spec']['jobTargetRef']['template']['spec']
 worker = next(c for c in pod['containers'] if c['name'] == 'worker')
 policy = next(d for d in documents if d.get('kind') == 'NetworkPolicy' and d['metadata']['name'].endswith('-worker'))
+adapter = next(d for d in documents if d.get('kind') == 'Deployment' and d['metadata']['name'].endswith('-mcp-grafana'))['spec']['template']
 exec(sys.argv[2])
 yaml.safe_dump_all(documents, sys.stdout)
 PY
@@ -46,6 +47,9 @@ cases=(
   "pod['volumes'].append({'name': 'injected', 'csi': {'driver': 'secrets-store.csi.k8s.io'}})|volume injected is of type csi"
   "pod['volumes'].append({'name': 'injected', 'persistentVolumeClaim': {'claimName': 'login'}})|volume injected is of type persistentVolumeClaim"
   "next(d for d in documents if d.get('kind') == 'SandboxTemplate')['spec']['networkPolicyManagement'] = 'Managed'|adds a managed NetworkPolicy"
+  "del adapter['metadata']['labels']['ploeg.webgrip.dev/team']|names no Team"
+  "adapter['spec']['containers'][0]['volumeMounts'].append({'name': 'sessions', 'mountPath': '/tmp'})|mounts a /tmp its sessions share"
+  "adapter['spec']['containers'][0]['command'].remove('--sessions-dir=/sessions')|gives its sessions no directories of their own"
   "policy['spec']['egress'].append({'to': [{'ipBlock': {'cidr': '0.0.0.0/0'}}], 'ports': [{'protocol': 'TCP', 'port': 4318}]})|lets Run pods reach more than DNS and the gateway"
 )
 for case in "${cases[@]}"; do
