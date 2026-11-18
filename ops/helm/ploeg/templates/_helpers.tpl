@@ -1265,3 +1265,29 @@ credential proxies on and no DinD; isolation is "proxy" today and
 {{- end }}
 {{- dict "name" (printf "pool-%s-%s" .tenant (replace "/" "-" .harness)) "harness" $harness | toJson }}
 {{- end -}}
+
+{{/*
+ploeg.requireRoutineGateway refuses routine-carried claude-environment Runs
+(ADR-0197 section 7) unless the credential gateway is enabled: their sessions
+run in the claude-runner, which may hold no credential. A Role with carrier
+routine also needs PLOEG_CLAUDE_ROUTINES, as ploegd refuses it otherwise.
+*/}}
+{{- define "ploeg.requireRoutineGateway" -}}
+{{- $routines := eq (toString (.Values.env.PLOEG_CLAUDE_ROUTINES | default "")) "true" }}
+{{- $gateway := ((.Values.executor | default dict).credentialGateway | default dict).enabled }}
+{{- if and $routines (not $gateway) }}
+{{- fail "env.PLOEG_CLAUDE_ROUTINES needs executor.credentialGateway.enabled: a routine Run's session runs in the claude-runner, which may hold no forge credential or environment secret (ADR-0197)" }}
+{{- end }}
+{{- $root := . }}
+{{- if and (.Values.executor | default dict).enabled (not $routines) }}
+{{- range $team := .Values.executor.teams }}
+{{- range $role := (include "ploeg.teamRoles" $team | fromJsonArray) }}
+{{- $identity := include "ploeg.roleHarness" (dict "root" $root "team" $team "role" $role) | fromJson }}
+{{- $ce := include "ploeg.claudeEnvironment" (dict "root" $root "team" $team "role" $role) | fromJson }}
+{{- if and (eq $identity.name "claude-environment") (eq $ce.carrier "routine") }}
+{{- fail (printf "team %s: harness.claudeEnvironment.carrier routine needs env.PLOEG_CLAUDE_ROUTINES: \"true\" and the credential gateway (ADR-0197)" $team.name) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end -}}

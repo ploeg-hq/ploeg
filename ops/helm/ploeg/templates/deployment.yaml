@@ -1,3 +1,4 @@
+{{- include "ploeg.requireRoutineGateway" . }}
 {{- include "ploeg.requireIntegrations" . }}
 {{- include "ploeg.requireSupportProfile" . }}
 apiVersion: apps/v1

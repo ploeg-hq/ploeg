@@ -82,7 +82,7 @@ func (s *Server) handleClientClaim(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	item, sessionForge, ok := s.clientClaimable(w, r, p, id)
+	item, sessionForge, ok := s.clientClaimable(w, r, p, id, s.clientCarriesTeam)
 	if !ok {
 		return
 	}
@@ -91,7 +91,7 @@ func (s *Server) handleClientClaim(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	resp, ok := s.clientClaimBody(w, r, claim, person, sessionForge)
+	resp, ok := s.clientClaimBody(w, r, claim, person, sessionForge, true)
 	if !ok {
 		return
 	}
@@ -102,9 +102,9 @@ func (s *Server) handleClientClaim(w http.ResponseWriter, r *http.Request) {
 }
 
 // clientClaimable answers the request itself and returns false unless the
-// Work Item has a Run a client may claim: in the consumer's scope, on a
-// Team that carries Runs from a client, with a resolved repository.
-func (s *Server) clientClaimable(w http.ResponseWriter, r *http.Request, p OperatorPrincipal, id int64) (work.WorkItem, ClaimForge, bool) {
+// Work Item has a Run its person may start: in the consumer's scope, on a
+// Team carries says has such Roles, with a resolved repository.
+func (s *Server) clientClaimable(w http.ResponseWriter, r *http.Request, p OperatorPrincipal, id int64, carries func(team string) bool) (work.WorkItem, ClaimForge, bool) {
 	item, err := s.Store.WorkItem(r.Context(), id)
 	switch {
 	case errors.Is(err, store.ErrWorkItemNotFound) || (err == nil && !p.AllowsTeam(item.Team)):
@@ -118,7 +118,7 @@ func (s *Server) clientClaimable(w http.ResponseWriter, r *http.Request, p Opera
 		operatorError(w, 409, "team_without_sponsor", unsponsoredTeam(item.Team))
 		return item, ClaimForge{}, false
 	}
-	if !s.clientCarriesTeam(item.Team) {
+	if !carries(item.Team) {
 		operatorError(w, 409, "no_client_run", "No Run of this Work Item waits for a client: its Team carries no Run from a client.")
 		return item, ClaimForge{}, false
 	}
@@ -173,9 +173,10 @@ func (s *Server) claimClientRun(w http.ResponseWriter, r *http.Request, p Operat
 }
 
 // clientClaimBody is what a claimed client-carried Run is dispatched with:
-// its prompt, environment and ref, and the Run credential of the worker run
-// API. It answers the request itself when it returns false.
-func (s *Server) clientClaimBody(w http.ResponseWriter, r *http.Request, claim store.ClientClaim, person string, sessionForge ClaimForge) (clientClaimResponse, bool) {
+// its prompt, environment and ref, and, with credential, the Run credential
+// of the worker run API. A Run ploegd dispatches itself gets no credential.
+// It answers the request itself when it returns false.
+func (s *Server) clientClaimBody(w http.ResponseWriter, r *http.Request, claim store.ClientClaim, person string, sessionForge ClaimForge, credential bool) (clientClaimResponse, bool) {
 	s.recordRunConfig(r.Context(), claim.RunToken, claim.Team, claim.Role, true, runHarness{Name: claudeenv.Name, Model: claim.Model})
 	s.recordBoardClaim(r.Context(), claim.RunToken)
 	briefing, findings, questions := s.runBriefing(r.Context(), &claim.ClaimedRun)
@@ -219,8 +220,11 @@ func (s *Server) clientClaimBody(w http.ResponseWriter, r *http.Request, claim s
 			Prompt: taskprompt.ForRun(spec, planner, claim.Writes, "", !claim.Writes && branchExists) +
 				claudeenv.SessionContract(spec, base),
 		},
-		Credential: clientClaimCredential{RunToken: claim.RunToken, Deadline: claim.Deadline},
 	}
+	if !credential {
+		return resp, true
+	}
+	resp.Credential = clientClaimCredential{RunToken: claim.RunToken, Deadline: claim.Deadline}
 	if a := s.WorkerSecurity; a != nil && !(a.AllowLegacy && s.LLMControl == nil) {
 		resp.Credential.WorkerID = clientWorkerPrefix + person
 		if !a.RetireHMAC {

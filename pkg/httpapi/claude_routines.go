@@ -22,6 +22,10 @@ import (
 // routines_not_accepted on every routine route.
 type ClaudeRoutines struct {
 	Client *clauderoutine.Client
+	// GatewayMode is true when the credential gateway of ADR-0197 attaches
+	// every credential a Run uses. ploegd refuses to start routines without
+	// it, and fire-routine refuses while it is false.
+	GatewayMode bool
 	// Limits keep ploegd's hourly fires below Anthropic's 100 per account
 	// and 30 per routine. Zero is DefaultRoutineFireLimits.
 	Limits store.RoutineFireLimits
@@ -213,17 +217,23 @@ func (s *Server) handleDeleteClaudeRoutine(w http.ResponseWriter, r *http.Reques
 		operatorError(w, 404, "not_found", "The resource was not found in the consumer's scope.")
 		return
 	}
-	routine, err := s.Store.DeleteClaudeRoutine(r.Context(), person.ID, team)
+	routine, err := s.Store.ClaudeRoutineFor(r.Context(), person.ID, team)
 	switch {
 	case errors.Is(err, store.ErrNoClaudeRoutine):
 		operatorError(w, 404, "routine_not_registered", "You registered no routine for this Team.")
 		return
 	case err != nil:
-		operatorError(w, 503, "unavailable", "Ploeg could not remove the routine.")
+		operatorError(w, 503, "unavailable", "Ploeg could not read the routine.")
 		return
 	}
 	if err := s.SecretStore.Delete(r.Context(), routine.SecretPath); err != nil {
-		s.Log.Error("deleting a removed routine's trigger token failed; delete it from the claude.ai routine too", "team", team, "err", err)
+		s.Log.Error("deleting a routine's trigger token failed; the routine stays registered so the removal can be retried", "team", team, "err", err)
+		operatorError(w, 503, "secret_store_unavailable", "Ploeg could not delete the routine's trigger token from its secret store, so the routine stays registered. Retry the removal. Nothing changed.")
+		return
+	}
+	if _, err := s.Store.DeleteClaudeRoutine(r.Context(), person.ID, team); err != nil && !errors.Is(err, store.ErrNoClaudeRoutine) {
+		operatorError(w, 503, "unavailable", "Ploeg deleted the routine's trigger token but could not remove the routine; retry the removal.")
+		return
 	}
 	s.Log.Info("routine removed", "team", team, "consumer", p.Name)
 	operatorJSON(w, http.StatusOK, claudeRoutineResponse{SchemaVersion: "1.0", Routine: routineView(routine)})
@@ -247,11 +257,11 @@ func (s *Server) handleFireRoutine(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	item, sessionForge, ok := s.clientClaimable(w, r, p, id)
-	if !ok {
+	if !s.routineTeamReady(w) {
 		return
 	}
-	if !s.routineTeam(w, p, item.Team) {
+	item, sessionForge, ok := s.clientClaimable(w, r, p, id, s.routineCarriesTeam)
+	if !ok {
 		return
 	}
 	routine, err := s.Store.ClaudeRoutineFor(r.Context(), person.ID, item.Team)
@@ -267,7 +277,7 @@ func (s *Server) handleFireRoutine(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	reservation, err := s.Store.ReserveRoutineFire(r.Context(), person.ID, item.Team, s.ClaudeRoutines.limits())
+	reservation, err := s.Store.ReserveRoutineFire(r.Context(), person.ID, item.Team, routine.FireURL, s.ClaudeRoutines.limits())
 	switch {
 	case errors.Is(err, store.ErrRoutineRateLimited):
 		operatorError(w, 429, "routine_rate_limited", "Your routine was fired as often this hour as Ploeg allows below Anthropic's limits. The Run keeps waiting.")
@@ -281,28 +291,37 @@ func (s *Server) handleFireRoutine(w http.ResponseWriter, r *http.Request) {
 		s.dropRoutineFire(r.Context(), reservation)
 		return
 	}
-	body, ok := s.clientClaimBody(w, r, claim, person.ID, sessionForge)
+	body, ok := s.clientClaimBody(w, r, claim, person.ID, sessionForge, false)
 	if !ok {
-		s.dropRoutineFire(r.Context(), reservation)
+		s.endRoutineRun(r.Context(), reservation, claim, "routines_unavailable", "Ploeg could not build the Run's prompt")
 		return
 	}
 	text := clauderoutine.Text(body.Dispatch.Reference, body.Run.ID, body.Dispatch.Branch, body.Dispatch.BaseBranch, body.Dispatch.Prompt)
-	session, err := s.ClaudeRoutines.Client.Fire(r.Context(), routine.FireURL, token, text)
+	ctx := context.WithoutCancel(r.Context())
+	session, err := s.ClaudeRoutines.Client.Fire(ctx, routine.FireURL, token, text)
 	if err != nil {
 		s.routineFireFailed(w, r, reservation, claim, err)
 		return
 	}
 	sessionID := claudesession.NormalizeSessionID(session.ID)
-	if err := s.Store.FinishRoutineFire(r.Context(), reservation, claim.RunID, "fired", sessionID); err != nil {
-		s.Log.Error("recording a routine fire failed", "run", prefix12(claim.RunToken), "err", err)
+	if err := s.Store.FinishRoutineFire(ctx, reservation, claim.RunID, "fired", sessionID); err != nil {
+		s.Log.Error("recording a routine fire failed; the run ends stuck and its session is never bound", "run", prefix12(claim.RunToken), "err", err)
+		s.endRoutineRun(ctx, 0, claim, "routine_fire_unrecorded", "Ploeg could not record the fire, so it cannot tie the session to your routine")
+		operatorError(w, 503, "routine_fire_unrecorded", "Your routine started a session, but Ploeg could not record the fire, so it never binds that session to the Run. The Run ended stuck; stop the session in claude.ai.")
+		return
 	}
-	err = s.Store.RecordClaudeSession(r.Context(), claim.RunToken, store.ClaudeSession{EnvironmentID: body.Dispatch.EnvironmentID,
+	err = s.Store.RecordClaudeSession(ctx, claim.RunToken, store.ClaudeSession{EnvironmentID: body.Dispatch.EnvironmentID,
 		SessionID: sessionID, BaseBranch: body.Dispatch.BaseBranch, Title: body.Dispatch.Title, Reference: body.Dispatch.Reference})
-	if err == nil && s.ClaudeSessions != nil {
-		_, err = s.Store.HoldClientCarriedRun(r.Context(), claim.RunToken, time.Now().Add(s.ClaudeSessions.sessionTimeout()))
-	}
 	if err != nil {
-		s.Log.Error("recording a fired routine's session failed; the run ends at its deadline", "run", prefix12(claim.RunToken), "err", err)
+		s.Log.Error("recording a fired routine's session failed; the run ends stuck", "run", prefix12(claim.RunToken), "err", err)
+		s.endRoutineRun(ctx, 0, claim, "routine_session_unrecorded", "Ploeg could not record the session the routine started")
+		operatorError(w, 503, "routine_session_unrecorded", "Your routine started a session, but Ploeg could not record it on the Run. The Run ended stuck; stop the session in claude.ai.")
+		return
+	}
+	if s.ClaudeSessions != nil {
+		if _, err := s.Store.HoldClientCarriedRun(ctx, claim.RunToken, time.Now().Add(s.ClaudeSessions.sessionTimeout())); err != nil {
+			s.Log.Error("holding a fired routine's run failed; it ends at its lease deadline", "run", prefix12(claim.RunToken), "err", err)
+		}
 	}
 	s.Log.Info("routine fired for a run", "team", claim.Team, "role", claim.Role, "work_item", claim.Item.ID,
 		"run", prefix12(claim.RunToken), "consumer", p.Name)
@@ -333,6 +352,22 @@ func (s *Server) dropRoutineFire(ctx context.Context, reservation int64) {
 	}
 }
 
+// endRoutineRun ends a claimed routine Run as stuck with reason, after
+// anything failed between its claim and a recorded session. A reservation
+// that never reached Anthropic is dropped; the Run was handed no credential,
+// so there is none to revoke.
+func (s *Server) endRoutineRun(ctx context.Context, reservation int64, claim store.ClientClaim, reason, detail string) {
+	ctx = context.WithoutCancel(ctx)
+	if reservation > 0 {
+		s.dropRoutineFire(ctx, reservation)
+	}
+	report := harness.OutcomeReport{Outcome: work.OutcomeStuck, Summary: "the person's routine could not start the Run",
+		StuckReason: reason + ": " + detail}
+	if err := s.applyOutcome(ctx, claim.RunToken, report); err != nil {
+		s.Log.Error("ending a routine run failed; it ends at its deadline", "run", prefix12(claim.RunToken), "err", err)
+	}
+}
+
 // routineFireFailed ends a claimed Run whose routine could not be fired as
 // stuck with the named reason, and answers it.
 func (s *Server) routineFireFailed(w http.ResponseWriter, r *http.Request, reservation int64, claim store.ClientClaim, fireErr error) {
@@ -343,11 +378,7 @@ func (s *Server) routineFireFailed(w http.ResponseWriter, r *http.Request, reser
 	}
 	s.Log.Warn("routine fire refused; the run ends stuck", "team", claim.Team, "role", claim.Role,
 		"run", prefix12(claim.RunToken), "reason", reason, "err", fireErr)
-	report := harness.OutcomeReport{Outcome: work.OutcomeStuck, Summary: "the person's routine could not be fired",
-		StuckReason: reason + ": " + routineReasonText(reason)}
-	if err := s.applyOutcome(ctx, claim.RunToken, report); err != nil {
-		s.Log.Error("ending a run whose routine could not be fired failed; it ends at its deadline", "run", prefix12(claim.RunToken), "err", err)
-	}
+	s.endRoutineRun(ctx, 0, claim, reason, routineReasonText(reason))
 	status := map[string]int{"routine_token_refused": 409, "routine_not_found": 409, "routine_rate_limited": 429}[reason]
 	if status == 0 {
 		status = 503
@@ -368,19 +399,32 @@ func routineReasonText(reason string) string {
 	}
 }
 
-// routineSessionCreator answers the request itself and returns false when
-// the session was started by a fired routine and its creator is not the
-// Anthropic account first seen for that routine (ADR-0197 section 7).
-func (s *Server) routineSessionCreator(w http.ResponseWriter, r *http.Request, claims claudesession.Claims) bool {
-	_, err := s.Store.PinRoutineCreator(r.Context(), claims.SessionID, claims.Creator)
+// routineSessionCreator answers the request itself and returns ok false
+// when the session belongs to a routine and its creator is not the Anthropic
+// account first seen for that routine, or the fire was never recorded
+// (ADR-0197 section 7). routine reports whether the session belongs to a
+// routine.
+func (s *Server) routineSessionCreator(w http.ResponseWriter, r *http.Request, claims claudesession.Claims) (routine, ok bool) {
+	routine, err := s.Store.PinRoutineCreator(r.Context(), claims.EnvironmentID, claims.SessionID, claims.Creator)
 	switch {
 	case errors.Is(err, store.ErrRoutineCreatorMismatch):
 		s.Log.Warn("claude session refused: its creator is not the routine's", "environment", claims.EnvironmentID)
 		http.Error(w, "session_creator_mismatch: the session was not created by the routine's account", http.StatusForbidden)
-		return false
+		return routine, false
 	case err != nil:
 		runError(w, err)
-		return false
+		return routine, false
 	}
-	return true
+	return routine, true
+}
+
+// routineTeamReady answers the request itself and returns false unless the
+// credential gateway is configured (ADR-0197 section 7): a routine Run's
+// session runs in the claude-runner, which may hold no credential.
+func (s *Server) routineTeamReady(w http.ResponseWriter) bool {
+	if s.ClaudeRoutines.GatewayMode {
+		return true
+	}
+	operatorError(w, 409, "credential_gateway_required", "Routine Runs execute in the claude-runner, which may hold no credential: they start only once the credential gateway is configured (ADR-0197). The Run keeps waiting.")
+	return false
 }

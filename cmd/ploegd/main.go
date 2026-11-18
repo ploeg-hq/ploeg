@@ -391,6 +391,10 @@ func run(ctx context.Context, log *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("operator configuration: %w", err)
 	}
+	routines, err := claudeRoutines(log, operator.TeamHarnesses)
+	if err != nil {
+		return err
+	}
 	if err := httpapi.CheckIndependentReview(plans, llmControl, operator.TeamHarnesses); err != nil {
 		return fmt.Errorf("team plans: %w", err)
 	}
@@ -509,7 +513,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 		RegisteredRepository: registeredRepositories(registeredRepository(cfg, forgeID), workTargets),
 		ClaimForges:          release.directory(),
 		ClaudeSessions:       claudeSessions(log),
-		ClaudeRoutines:       claudeRoutines(log),
+		ClaudeRoutines:       routines,
 		CreatedWork:          createdWork,
 
 		MetricsCacheTTL:  durationOr("PLOEG_METRICS_CACHE_TTL", httpapi.DefaultMetricsCacheTTL),

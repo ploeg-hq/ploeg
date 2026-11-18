@@ -42,8 +42,9 @@ func (s *Store) ClaimClientCarriedRun(ctx context.Context, workItemID int64, per
 }
 
 // ClaimClientCarriedRunVia is ClaimClientCarriedRun for a Run a carrier
-// other than the person's own client starts on their behalf, such as their
-// routine (ADR-0197 section 7). Its audit row names the person as subject
+// other than the person's own client starts on their behalf. With via
+// CarrierRoutine it claims only a Run stored with that carrier, and the
+// client claim never takes one (ADR-0197 section 7). Its audit row names the person as subject
 // and the Team and Role as the actor on their behalf, as an RFC 8693 act
 // chain does.
 func (s *Store) ClaimClientCarriedRunVia(ctx context.Context, workItemID int64, person, actor, via string, ttl time.Duration, limits ClaimLimits) (ClientClaim, error) {
@@ -61,16 +62,20 @@ func (s *Store) ClaimClientCarriedRunVia(ctx context.Context, workItemID int64, 
 	if err != nil {
 		return ClientClaim{}, err
 	}
+	carrier := CarrierClient
+	if via == CarrierRoutine {
+		carrier = CarrierRoutine
+	}
 	p := pendingRun{workItemID: workItemID, team: team}
 	err = tx.QueryRow(ctx, `
 		SELECT id, shift_id, run_token, round, writes, COALESCE(model_selected, ''), role FROM agent_runs
-		WHERE work_item_id = $1 AND carrier = 'client' AND state = 'pending'
+		WHERE work_item_id = $1 AND carrier = $2 AND state = 'pending'
 		ORDER BY id LIMIT 1
-		FOR UPDATE`, workItemID).Scan(&p.runID, &p.shiftID, &p.token, &p.round, &p.writes, &p.model, &p.role)
+		FOR UPDATE`, workItemID, carrier).Scan(&p.runID, &p.shiftID, &p.token, &p.round, &p.writes, &p.model, &p.role)
 	if errors.Is(err, pgx.ErrNoRows) {
 		var running bool
 		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM agent_runs
-			WHERE work_item_id = $1 AND carrier = 'client' AND state = 'running')`, workItemID).Scan(&running); err != nil {
+			WHERE work_item_id = $1 AND carrier = $2 AND state = 'running')`, workItemID, carrier).Scan(&running); err != nil {
 			return ClientClaim{}, err
 		}
 		if running {
@@ -97,7 +102,7 @@ func (s *Store) ClaimClientCarriedRunVia(ctx context.Context, workItemID int64, 
 		return ClientClaim{}, ErrNoWork
 	}
 	p.spendCap, p.now = s.TeamSpendCap(team), s.spendNow()
-	detail := map[string]any{"carrier": CarrierClient, "actsFor": person}
+	detail := map[string]any{"carrier": carrier, "actsFor": person}
 	if via != "" {
 		detail["via"] = via
 		detail["sub"] = person
@@ -137,7 +142,7 @@ func (s *Store) HoldClientCarriedRun(ctx context.Context, runToken string, until
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 	tag, err := tx.Exec(ctx, `UPDATE agent_runs r SET expires_at = GREATEST(r.expires_at, $2)
-		WHERE r.run_token = $1 AND r.state = 'running' AND r.carrier = 'client'
+		WHERE r.run_token = $1 AND r.state = 'running' AND r.carrier IN ('client', 'routine')
 		  AND EXISTS (SELECT 1 FROM claude_sessions c WHERE c.run_id = r.id)`, runToken, until)
 	if err != nil || tag.RowsAffected() == 0 {
 		return false, err
@@ -175,7 +180,7 @@ func (s *Store) ClientCarriedSessionRun(ctx context.Context, environmentID, sess
 		JOIN agent_runs a ON a.id = c.run_id
 		JOIN work_items w ON w.id = a.work_item_id
 		LEFT JOIN shifts sh ON sh.id = a.shift_id
-		WHERE c.environment_id = $1 AND c.session_id = $2 AND a.state = 'running' AND a.carrier = 'client'`,
+		WHERE c.environment_id = $1 AND c.session_id = $2 AND a.state = 'running' AND a.carrier IN ('client', 'routine')`,
 		environmentID, sessionID).Scan(&r.RunToken, &r.Writes, &r.Title, &r.Branch, &r.PriorLinks)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ClientSessionRun{}, false, nil

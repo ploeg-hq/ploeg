@@ -40,9 +40,12 @@ type RoleHarnesses struct {
 
 // ClientCarried reports whether the person's own client carries this Role's
 // Runs of its default Harness (ADR-0112).
-func (r RoleHarnesses) ClientCarried() bool {
-	return r.Carrier == store.CarrierClient || r.Carrier == store.CarrierRoutine
-}
+func (r RoleHarnesses) ClientCarried() bool { return r.Carrier == store.CarrierClient }
+
+// PersonCarried reports whether this Role's Runs wait for their person,
+// started from the person's own client or by firing their routine: no
+// worker claims them.
+func (r RoleHarnesses) PersonCarried() bool { return r.ClientCarried() || r.RoutineCarried() }
 
 // RoutineCarried reports whether ploegd starts this Role's Runs by firing the
 // person's own routine (ADR-0197 section 7).

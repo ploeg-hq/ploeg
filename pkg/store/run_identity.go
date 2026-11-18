@@ -33,7 +33,7 @@ func (s *Store) RunIdentityFacts(ctx context.Context, runToken string) (RunIdent
 	var f RunIdentityFacts
 	err := s.pool.QueryRow(ctx, `SELECT r.id, r.work_item_id, r.shift_id, r.round, r.role, r.team,
 		COALESCE(r.harness, ''), COALESCE(sh.branch, ''), r.run_token, r.state,
-		COALESCE(r.expires_at, l.expires_at, now()), r.carrier IS NOT DISTINCT FROM 'client'
+		COALESCE(r.expires_at, l.expires_at, now()), r.carrier IS NOT NULL
 		FROM agent_runs r LEFT JOIN leases l USING (run_token) LEFT JOIN shifts sh ON sh.id = r.shift_id
 		WHERE r.run_token = $1`, runToken).
 		Scan(&f.ID, &f.WorkItemID, &f.ShiftID, &f.Round, &f.Role, &f.Team, &f.Harness, &f.Branch,

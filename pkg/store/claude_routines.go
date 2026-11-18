@@ -102,26 +102,30 @@ type RoutineFireLimits struct {
 
 // ReserveRoutineFire records a pending fire of a person's routine for a
 // Team when the last hour holds fewer fires than limits allow, and returns
-// its id. Over a limit it is ErrRoutineRateLimited and records nothing.
-func (s *Store) ReserveRoutineFire(ctx context.Context, person, team string, limits RoutineFireLimits) (int64, error) {
+// its id. The per-routine count is per trigger: the same fire URL counts
+// once whichever Team it was registered for, as Anthropic counts it. Over a
+// limit it is ErrRoutineRateLimited and records nothing.
+func (s *Store) ReserveRoutineFire(ctx context.Context, person, team, fireURL string, limits RoutineFireLimits) (int64, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return 0, err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
-	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('claude_routine_fires:' || $1))`, person); err != nil {
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('claude_routine_fires'))`); err != nil {
 		return 0, err
 	}
-	var perPerson, perRoutine int
-	if err := tx.QueryRow(ctx, `SELECT count(*), count(*) FILTER (WHERE team = $2) FROM claude_routine_fires
-		WHERE person = $1 AND fired_at > now() - interval '1 hour'`, person, team).Scan(&perPerson, &perRoutine); err != nil {
+	var perPerson, perTrigger int
+	if err := tx.QueryRow(ctx, `SELECT count(*) FILTER (WHERE person = $1), count(*) FILTER (WHERE fire_url = $2)
+		FROM claude_routine_fires WHERE fired_at > now() - interval '1 hour' AND (person = $1 OR fire_url = $2)`,
+		person, fireURL).Scan(&perPerson, &perTrigger); err != nil {
 		return 0, err
 	}
-	if (limits.PerPerson > 0 && perPerson >= limits.PerPerson) || (limits.PerRoutine > 0 && perRoutine >= limits.PerRoutine) {
+	if (limits.PerPerson > 0 && perPerson >= limits.PerPerson) || (limits.PerRoutine > 0 && perTrigger >= limits.PerRoutine) {
 		return 0, ErrRoutineRateLimited
 	}
 	var id int64
-	if err := tx.QueryRow(ctx, `INSERT INTO claude_routine_fires (person, team) VALUES ($1, $2) RETURNING id`, person, team).Scan(&id); err != nil {
+	if err := tx.QueryRow(ctx, `INSERT INTO claude_routine_fires (person, team, fire_url) VALUES ($1, $2, $3) RETURNING id`,
+		person, team, fireURL).Scan(&id); err != nil {
 		return 0, err
 	}
 	return id, tx.Commit(ctx)
@@ -150,26 +154,32 @@ func (s *Store) FinishRoutineFire(ctx context.Context, id, runID int64, outcome,
 }
 
 // PinRoutineCreator checks a session's creator against the routine that
-// started it (ADR-0197 section 7). A session no routine fire recorded
-// reports false. The first session of a routine pins its creator; a later
-// session by another account is ErrRoutineCreatorMismatch.
-func (s *Store) PinRoutineCreator(ctx context.Context, sessionID, creator string) (bool, error) {
+// started it (ADR-0197 section 7). It reports whether the session belongs to
+// a routine: a session recorded on a routine-carried Run, or one a routine
+// fire returned. Such a session fails closed: without a recorded fire, by an
+// account other than a user, or by another account than the one its routine
+// pinned first, it is ErrRoutineCreatorMismatch. Any other session reports
+// false.
+func (s *Store) PinRoutineCreator(ctx context.Context, environmentID, sessionID, creator string) (bool, error) {
+	var routineRun, fired bool
 	var person, team, pinned string
 	err := s.pool.QueryRow(ctx, `
-		SELECT f.person, f.team, COALESCE(r.creator, '') FROM claude_routine_fires f
-		LEFT JOIN claude_routines r ON r.person = f.person AND r.team = f.team
-		WHERE f.session_id = $1 AND f.outcome = 'fired'
-		ORDER BY f.id DESC LIMIT 1`, sessionID).Scan(&person, &team, &pinned)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return false, nil
-	}
+		SELECT COALESCE((SELECT a.carrier = 'routine' FROM claude_sessions c JOIN agent_runs a ON a.id = c.run_id
+		                 WHERE c.environment_id = $1 AND c.session_id = $2), false),
+		       f.id IS NOT NULL, COALESCE(f.person, ''), COALESCE(f.team, ''), COALESCE(r.creator, '')
+		FROM (SELECT 1) one
+		LEFT JOIN LATERAL (SELECT id, person, team FROM claude_routine_fires WHERE session_id = $2
+		                   ORDER BY id DESC LIMIT 1) f ON true
+		LEFT JOIN claude_routines r ON r.person = f.person AND r.team = f.team`,
+		environmentID, sessionID).Scan(&routineRun, &fired, &person, &team, &pinned)
 	if err != nil {
 		return true, err
 	}
-	if !strings.HasPrefix(creator, "user:") {
-		return true, ErrRoutineCreatorMismatch
-	}
 	switch {
+	case !routineRun && !fired:
+		return false, nil
+	case !fired, !strings.HasPrefix(creator, "user:"):
+		return true, ErrRoutineCreatorMismatch
 	case pinned == creator:
 		return true, nil
 	case pinned != "":

@@ -21,14 +21,19 @@ type RoleSelection struct {
 	// ClientCarried lists the Harness keys whose Runs the person's own client
 	// carries (ADR-0112): such a Run is never claimed by a worker.
 	ClientCarried []string
+	// RoutineCarried lists the Harness keys whose Runs ploegd starts by
+	// firing the person's own routine (ADR-0197 section 7). Such a Run is
+	// claimed by neither a worker nor a client.
+	RoutineCarried []string
 }
 
 // CarrierClient is the carrier of a Run the person's own client carries.
 const CarrierClient = "client"
 
 // CarrierRoutine is a Role's carrier when ploegd fires the person's own
-// routine for the Run (ADR-0197 section 7). Its Runs are stored with carrier
-// CarrierClient: no worker claims them and they wait for their person.
+// routine for the Run (ADR-0197 section 7), and the carrier its Runs are
+// stored with: no worker and no client claims them; they wait for their
+// person to fire their routine.
 const CarrierRoutine = "routine"
 
 // NeedsHumanStartFromClient is the needs_human reason code of a Work Item
@@ -68,7 +73,10 @@ func insertPendingRun(ctx context.Context, tx pgx.Tx, workItemID, shiftID int64,
 	}
 	harness, model := r.Selection.Resolve(requestedHarness, requestedModel)
 	carrier := ""
-	if harness != "" && slices.Contains(r.Selection.ClientCarried, harness) {
+	switch {
+	case harness != "" && slices.Contains(r.Selection.RoutineCarried, harness):
+		carrier = CarrierRoutine
+	case harness != "" && slices.Contains(r.Selection.ClientCarried, harness):
 		carrier = CarrierClient
 	}
 	_, err = tx.Exec(ctx, `

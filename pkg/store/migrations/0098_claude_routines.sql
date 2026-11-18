@@ -23,6 +23,7 @@ CREATE TABLE claude_routine_fires (
     id          BIGSERIAL   PRIMARY KEY,
     person      TEXT        NOT NULL,
     team        TEXT        NOT NULL,
+    fire_url    TEXT        NOT NULL,
     run_id      BIGINT      REFERENCES agent_runs(id) ON DELETE SET NULL,
     session_id  TEXT        NOT NULL DEFAULT '',
     outcome     TEXT        NOT NULL DEFAULT 'pending' CHECK (outcome IN ('pending', 'fired', 'routine_token_refused',
@@ -31,4 +32,11 @@ CREATE TABLE claude_routine_fires (
 );
 
 CREATE INDEX claude_routine_fires_recent ON claude_routine_fires (person, fired_at);
+CREATE INDEX claude_routine_fires_trigger ON claude_routine_fires (fire_url, fired_at);
 CREATE INDEX claude_routine_fires_session ON claude_routine_fires (session_id) WHERE session_id <> '';
+
+-- A routine-carried Run is stored with its own carrier, so neither a worker
+-- nor a client claim takes it and a push credential is never handed to the
+-- runner for it.
+ALTER TABLE agent_runs DROP CONSTRAINT agent_runs_carrier_check;
+ALTER TABLE agent_runs ADD CONSTRAINT agent_runs_carrier_check CHECK (carrier IN ('client', 'routine'));
