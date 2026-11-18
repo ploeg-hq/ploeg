@@ -36,7 +36,7 @@ func TestARegistryGrantReachesTheServerOnlyThroughTheGatewayWithTheStoredCredent
 	if _, e := svc.ReplaceTeamTools(context.Background(), nil, "bronze", map[string]RoleTools{"*": {MCP: []ServerUse{{Server: "obs", Tools: []string{"search_logs"}}}}}, nil, false); e != nil {
 		t.Fatal(e)
 	}
-	grant, withheld, err := svc.GatewayGrant(context.Background(), RunRef{RunID: 7, Team: "bronze", Role: "reviewer"})
+	grant, withheld, err := svc.GatewayGrant(context.Background(), RunRef{RunID: "run-7", Team: "bronze", Role: "reviewer"})
 	if err != nil || len(withheld) != 0 || grant.Servers["obs"].Credential != "server-secret" || len(grant.Servers["obs"].Tools) != 1 {
 		t.Fatalf("%+v %v %v", grant, withheld, err)
 	}

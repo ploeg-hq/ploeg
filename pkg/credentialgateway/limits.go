@@ -24,6 +24,7 @@ type Limits struct {
 	Forge                  FamilyLimit `json:"forge"`
 	Model                  FamilyLimit `json:"model"`
 	Ploegd                 FamilyLimit `json:"ploegd"`
+	MCP                    FamilyLimit `json:"mcp"`
 	MaxUpstreamConnections int         `json:"maxUpstreamConnections"`
 }
 
@@ -56,6 +57,7 @@ func (l Limits) withDefaults() Limits {
 	l.Forge = l.Forge.or(FamilyLimit{RequestsPerSecond: 20, Burst: 40, BytesPerSecond: 50 << 20})
 	l.Model = l.Model.or(FamilyLimit{RequestsPerSecond: 10, Burst: 20, BytesPerSecond: 20 << 20})
 	l.Ploegd = l.Ploegd.or(FamilyLimit{RequestsPerSecond: 10, Burst: 20, BytesPerSecond: 10 << 20})
+	l.MCP = l.MCP.or(FamilyLimit{RequestsPerSecond: 5, Burst: 20, BytesPerSecond: 5 << 20})
 	if l.MaxUpstreamConnections <= 0 {
 		l.MaxUpstreamConnections = 256
 	}
@@ -68,6 +70,8 @@ func (l Limits) family(name string) FamilyLimit {
 		return l.Forge
 	case FamilyPloegd:
 		return l.Ploegd
+	case FamilyMCP:
+		return l.MCP
 	default:
 		return l.Model
 	}

@@ -93,6 +93,9 @@ type fixture struct {
 	control *httptest.Server
 	forgeGW *httptest.Server
 	modelGW *httptest.Server
+	mcpGW   *httptest.Server
+	mcp     []gatewaycontract.MCPServer
+	writes  bool
 }
 
 func runPod() kubeauth.Pod {
@@ -102,7 +105,7 @@ func runPod() kubeauth.Pod {
 
 func newFixture(t *testing.T, limits Limits) *fixture {
 	t.Helper()
-	f := &fixture{forge: &seen{}, model: &seen{}, ploegd: &seen{}, pods: &fakePods{}, pinIP: "127.0.0.1"}
+	f := &fixture{forge: &seen{}, model: &seen{}, ploegd: &seen{}, pods: &fakePods{}, pinIP: "127.0.0.1", writes: true}
 	f.pods.set(runPod())
 	forge := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		f.forge.add(r)
@@ -134,10 +137,10 @@ func newFixture(t *testing.T, limits Limits) *fixture {
 			switch req.Capability {
 			case runCapability:
 				f.mu.Lock()
-				pin := f.pinIP
+				pin, mcp, writes := f.pinIP, f.mcp, f.writes
 				f.mu.Unlock()
 				_ = json.NewEncoder(w).Encode(gatewaycontract.Grant{
-					Run: "run-1", WorkItem: "7", Team: "builders", Role: "writer", Writes: true, Branch: "agent/7",
+					Run: "run-1", WorkItem: "7", Team: "builders", Role: "writer", Writes: writes, Branch: "agent/7", MCP: mcp,
 					ForgeDialect: "forgejo", ForgeURL: forge.URL, Owner: "acme", Repo: "widgets", BaseBranch: "main",
 					ForgeToken: realForgeToken, ModelKey: realModelKey, ModelAlias: "run-1-alias",
 					Pin: gatewaycontract.Pin{Namespace: "runs", PodName: podName, PodUID: podUID, PodIP: pin}, Deadline: time.Now().Add(time.Hour),
@@ -178,6 +181,8 @@ func newFixture(t *testing.T, limits Limits) *fixture {
 	t.Cleanup(f.control.Close)
 	t.Cleanup(f.forgeGW.Close)
 	t.Cleanup(f.modelGW.Close)
+	f.mcpGW = httptest.NewServer(g.Handler(FamilyMCP))
+	t.Cleanup(f.mcpGW.Close)
 	return f
 }
 
