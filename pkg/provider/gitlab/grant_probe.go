@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -75,9 +76,19 @@ func (c Connector) ProbeRepositoryGrant(ctx context.Context, inst provider.Conne
 	if err != nil {
 		return provider.RepositoryGrant{}, err
 	}
+	var info struct {
+		Scope []string `json:"scope"`
+	}
+	if err := oauthconn.GetJSON(ctx, oauthconn.Trim(inst.URL)+"/oauth/token/info", "Bearer "+cred.Token, &info); err != nil {
+		return provider.RepositoryGrant{}, err
+	}
 	level := p.accessLevel()
-	return provider.RepositoryGrant{ID: strconv.FormatInt(p.ID, 10), FullName: p.PathWithNamespace, CanWrite: level >= developerAccess,
-		Permissions: []string{"access_level:" + strconv.Itoa(level)}, DefaultBranch: p.DefaultBranch}, nil
+	perms := []string{"access_level:" + strconv.Itoa(level)}
+	for _, scope := range info.Scope {
+		perms = append(perms, "scope:"+scope)
+	}
+	return provider.RepositoryGrant{ID: strconv.FormatInt(p.ID, 10), FullName: p.PathWithNamespace,
+		CanWrite: level >= developerAccess && slices.Contains(info.Scope, "api"), Permissions: perms, DefaultBranch: p.DefaultBranch}, nil
 }
 
 // InspectGrantedRepository reads whether fullName is archived or a mirror

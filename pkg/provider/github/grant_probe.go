@@ -38,10 +38,16 @@ func repoPath(fullName string) (string, error) {
 	return url.PathEscape(parts[0]) + "/" + url.PathEscape(parts[1]), nil
 }
 
+// maxGrantPages bounds how many pages of an installation's repositories a
+// membership check reads: 5000 repositories.
+const maxGrantPages = 50
+
 // ProbeRepositoryGrant reports whether the installation was granted
 // fullName and whether its permissions let a Run push and open pull
-// requests. GitHub shows an installation token only the repositories the
-// installation was granted, so a repository it does not show is not granted.
+// requests. An installation token reads every public repository, so being
+// able to read fullName proves nothing: the repository must be among the
+// installation's own repositories, matched by GitHub's repository id
+// (ADR-0193 section 1).
 func (c Connector) ProbeRepositoryGrant(ctx context.Context, inst provider.ConnectionInstance, cred provider.ConnectionCredential, fullName string) (provider.RepositoryGrant, error) {
 	path, err := repoPath(fullName)
 	if err != nil {
@@ -74,6 +80,13 @@ func (c Connector) ProbeRepositoryGrant(ctx context.Context, inst provider.Conne
 	if !found {
 		return provider.RepositoryGrant{}, fmt.Errorf("github: the installation does not reach %s: %w", fullName, provider.ErrRepositoryNotGranted)
 	}
+	granted, err := installationHolds(ctx, inst, token, repo.ID)
+	if err != nil {
+		return provider.RepositoryGrant{}, err
+	}
+	if !granted {
+		return provider.RepositoryGrant{}, fmt.Errorf("github: %s is readable but not among the installation's repositories: %w", fullName, provider.ErrRepositoryNotGranted)
+	}
 	perms := make([]string, 0, len(installation.Permissions))
 	for k, v := range installation.Permissions {
 		perms = append(perms, k+":"+v)
@@ -82,6 +95,29 @@ func (c Connector) ProbeRepositoryGrant(ctx context.Context, inst provider.Conne
 	canWrite := installation.Permissions["contents"] == "write" && installation.Permissions["pull_requests"] == "write"
 	return provider.RepositoryGrant{ID: strconv.FormatInt(repo.ID, 10), FullName: repo.FullName, CanWrite: canWrite,
 		Permissions: perms, DefaultBranch: repo.DefaultBranch}, nil
+}
+
+func installationHolds(ctx context.Context, inst provider.ConnectionInstance, token string, id int64) (bool, error) {
+	for page := 1; page <= maxGrantPages; page++ {
+		var out struct {
+			TotalCount   int `json:"total_count"`
+			Repositories []struct {
+				ID int64 `json:"id"`
+			} `json:"repositories"`
+		}
+		if err := oauthconn.GetJSON(ctx, fmt.Sprintf("%s/installation/repositories?per_page=100&page=%d", apiBase(inst), page), "Bearer "+token, &out); err != nil {
+			return false, err
+		}
+		for _, r := range out.Repositories {
+			if r.ID == id {
+				return true, nil
+			}
+		}
+		if len(out.Repositories) < 100 || page*100 >= out.TotalCount {
+			return false, nil
+		}
+	}
+	return false, fmt.Errorf("github: the installation holds more than %d repositories: %w", maxGrantPages*100, provider.ErrVendorUnavailable)
 }
 
 // InspectGrantedRepository reads whether fullName is archived or a mirror

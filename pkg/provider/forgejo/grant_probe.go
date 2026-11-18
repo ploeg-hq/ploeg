@@ -65,8 +65,28 @@ func (Connector) ProbeRepositoryGrant(ctx context.Context, inst provider.Connect
 	if repo.Permissions.Admin {
 		perms = append(perms, "admin")
 	}
-	return provider.RepositoryGrant{ID: strconv.FormatInt(repo.ID, 10), FullName: repo.FullName, CanWrite: repo.Permissions.Push,
+	scoped := tokenWritesRepositories(inst)
+	if !scoped {
+		perms = append(perms, "token:read-only")
+	}
+	return provider.RepositoryGrant{ID: strconv.FormatInt(repo.ID, 10), FullName: repo.FullName, CanWrite: repo.Permissions.Push && scoped,
 		Permissions: perms, DefaultBranch: repo.DefaultBranch}, nil
+}
+
+// tokenWritesRepositories reports whether the OAuth tokens of inst may
+// write repositories. Forgejo grants an OAuth token the scopes its
+// application asks for, and every scope when it asks for none.
+func tokenWritesRepositories(inst provider.ConnectionInstance) bool {
+	if inst.OAuth == nil || len(inst.OAuth.Scopes) == 0 {
+		return true
+	}
+	for _, scope := range inst.OAuth.Scopes {
+		switch strings.TrimSpace(scope) {
+		case "all", "write:repository":
+			return true
+		}
+	}
+	return false
 }
 
 // InspectGrantedRepository reads whether fullName is archived or a mirror
