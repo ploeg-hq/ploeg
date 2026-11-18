@@ -278,7 +278,7 @@ components:
     kind: system component
     license: NOASSERTION
     disposition: user-fetched
-    note: An agent image other than ghcr.io/ploeg-hq/agent-runner, such as one with Claude Code or another agent in it, is the operator's to build and to review. The chart still names no agent image by default (values.yaml harness.image is empty and required), so an operator who points it at their own image supplies its licences (ADR-0199).
+    note: An agent image other than ghcr.io/ploeg-hq/agent-runner, such as one with Claude Code or another agent in it, is the operator's to build and to review. The chart still names no agent image by default (values.yaml harness.image is empty and required), so an operator who points it at their own image supplies its licences (ADR-0200).
   - name: Wolfi packages installed into agent-runner
     kind: os packages
     shipped_in:
@@ -294,7 +294,7 @@ components:
       - agent-runner image
     license: MIT AND Apache-2.0 AND NOASSERTION
     disposition: exception-needed
-    note: ghcr.io/ploeg-hq/agent-runner (ADR-0199) carries the OpenHands CLI 1.16.0 (MIT) with the Python packages pinned in ops/docker/agent-runner/openhands-1.16.0.constraints.txt and openhands-overrides.txt (about 200 for Linux), installed with uv 0.13.9 (Apache-2.0 OR MIT, copied from ghcr.io/astral-sh/uv); OpenCode 1.19.6 (MIT), Qwen Code 0.28.0 (Apache-2.0), moon 2.6.5 (MIT) and openspec 2.1.0 (MIT) with the npm trees their lockfiles under ops/docker/agent-runner/tools pin; goose 1.60.1 (Apache-2.0), downloaded from its GitHub release archive and checked against a pinned sha256 rather than installed with a package manager; and PyYAML 6.0.3 (MIT). The top-level licences are on the allowlist or Apache-2.0, but nobody has reviewed the Python and npm dependency trees package by package, and the goose archive is not standard package manager content under the container image guidance (B)(1). The disposition stays exception-needed until that review records each licence or the image drops what fails it.
+    note: ghcr.io/ploeg-hq/agent-runner (ADR-0200) carries the OpenHands CLI 1.16.0 (MIT) with the Python packages pinned in ops/docker/agent-runner/openhands-1.16.0.constraints.txt and openhands-overrides.txt (about 200 for Linux), installed with uv 0.13.9 (Apache-2.0 OR MIT, copied from ghcr.io/astral-sh/uv); OpenCode 1.19.6 (MIT), Qwen Code 0.28.0 (Apache-2.0), moon 2.6.5 (MIT) and openspec 2.1.0 (MIT) with the npm trees their lockfiles under ops/docker/agent-runner/tools pin; goose 1.60.1 (Apache-2.0), downloaded from its GitHub release archive and checked against a pinned sha256 rather than installed with a package manager; and PyYAML 6.0.3 (MIT). The top-level licences are on the allowlist or Apache-2.0, but nobody has reviewed the Python and npm dependency trees package by package, and the goose archive is not standard package manager content under the container image guidance (B)(1). The disposition stays exception-needed until that review records each licence or the image drops what fails it.
   - name: Build, test and release tooling
     kind: tooling
     license: Apache-2.0 AND MIT

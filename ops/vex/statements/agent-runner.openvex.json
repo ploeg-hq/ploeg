@@ -21,7 +21,7 @@
       ],
       "status": "not_affected",
       "justification": "inline_mitigations_already_exist",
-      "impact_statement": "GHSA-fc5q-39xc-vjpf is a regular-expression denial of service in picomatch up to 4.0.7, the newest release, when it compiles a crafted pattern with repeated single-branch extglobs. In this image picomatch is a dependency of the openspec CLI, directly and through tinyglobby; openspec 2.1.0, the newest, still requires picomatch ^4.0.4, so no release removes it. A pattern from a repository a Run works on could reach it. This statement bounds the impact rather than removing it: the worst case is the openspec process spinning on one CPU inside that Run's own harness container until the Run's deadline ends the container. The finding gives no read, write or code execution, and no path out of the container or to another Run. Drop this statement when picomatch publishes a fixed release (ADR-0199)."
+      "impact_statement": "GHSA-fc5q-39xc-vjpf is a regular-expression denial of service in picomatch up to 4.0.7, the newest release, when it compiles a crafted pattern with repeated single-branch extglobs. In this image picomatch is a dependency of the openspec CLI, directly and through tinyglobby; openspec 2.1.0, the newest, still requires picomatch ^4.0.4, so no release removes it. A pattern from a repository a Run works on could reach it. This statement bounds the impact rather than removing it: the worst case is the openspec process spinning on one CPU inside that Run's own harness container until the Run's deadline ends the container. The finding gives no read, write or code execution, and no path out of the container or to another Run. Drop this statement when picomatch publishes a fixed release (ADR-0200)."
     }
   ]
 }
