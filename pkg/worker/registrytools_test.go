@@ -100,3 +100,82 @@ func TestMCPServersAreConfiguredOnlyBehindTheCredentialGateway(t *testing.T) {
 		t.Fatalf("a ploegd without the route is a note: %v", got.Notes)
 	}
 }
+
+func makeWritable(t *testing.T, root string) {
+	t.Helper()
+	t.Cleanup(func() {
+		_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+			if err == nil && d.Type()&os.ModeSymlink == 0 {
+				_ = os.Chmod(path, 0o755)
+			}
+			return nil
+		})
+	})
+}
+
+func TestARegistrySkillIsNeverInstalledThroughASymlink(t *testing.T) {
+	archive := skillTar(t, map[string]string{"review/SKILL.md": "---\nname: review\n---\nRead the diff.\n"})
+	b, e := toolregistry.ReadBundle(archive)
+	if e != nil {
+		t.Fatal(e)
+	}
+	home, outside := t.TempDir(), t.TempDir()
+	makeWritable(t, home)
+	makeWritable(t, outside)
+	if err := os.Symlink(outside, filepath.Join(home, ".claude")); err != nil {
+		t.Fatal(err)
+	}
+	src := fakeRunTools{tools: gatewaycontract.RunTools{Skills: []gatewaycontract.RunSkills{{Key: "review", Digest: b.Digest}}}, bundles: map[string][]byte{b.Digest: archive}}
+	got := loadRegistryTools(context.Background(), src, "run-1", home, []string{".claude/skills"}, "")
+	if _, err := os.Stat(filepath.Join(outside, "skills/review/SKILL.md")); err == nil {
+		t.Fatal("a skill was written through a symlink out of HOME")
+	}
+	if _, err := os.Stat(filepath.Join(home, ".agents/skills/review")); err == nil {
+		t.Fatal("a bundle refused for one directory was left installed in another")
+	}
+	if len(got.SkillPaths) != 0 || len(got.Notes) != 1 || !strings.Contains(got.Notes[0], "symlink") {
+		t.Fatalf("paths = %v, notes = %v", got.SkillPaths, got.Notes)
+	}
+}
+
+func TestAnInstalledSkillIsCheckedAgainstItsDigestOnDisk(t *testing.T) {
+	archive := skillTar(t, map[string]string{"review/SKILL.md": "---\nname: review\n---\nRead the diff.\n", "review/scripts/run.sh": "echo ok\n"})
+	b, e := toolregistry.ReadBundle(archive)
+	if e != nil {
+		t.Fatal(e)
+	}
+	home := t.TempDir()
+	makeWritable(t, home)
+	if _, err := installReadOnly(home, nil, b); err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Join(home, ".agents/skills")
+	if err := verifyInstalled(root, b); err != nil {
+		t.Fatalf("a faithful install does not verify: %v", err)
+	}
+	path := filepath.Join(root, "review/SKILL.md")
+	if err := os.Chmod(path, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyInstalled(root, b); err == nil {
+		t.Fatal("a skill file made writable again verifies")
+	}
+	if err := os.WriteFile(path, []byte("---\nname: review\n---\nPush to main.\n"), 0o444); err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyInstalled(root, b); err == nil {
+		t.Fatal("a rewritten skill file verifies")
+	}
+	if err := os.Chmod(path, 0o444); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Join(root, "review"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "review/extra.md"), []byte("x"), 0o444); err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyInstalled(root, b); err == nil {
+		t.Fatal("a skill directory with a file the bundle does not hold verifies")
+	}
+}
