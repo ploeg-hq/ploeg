@@ -67,6 +67,11 @@ networkPolicy:
   knowledgeGraph:
     peers: []
     port: ""
+  # The OpenBao or Vault behind secretStore.openbao.address; empty peers
+  # derive the peer from the address, as for the other endpoints.
+  secretStore:
+    peers: []
+    port: ""
   telemetry:
     peers: []
     port: ""
@@ -409,6 +414,30 @@ knowledgeGraph: {}
 #   reviewTokenSecret:
 #     name: ploeg-omnigraph-review
 #     key: token
+
+# ADR-0184: where ploegd writes the secrets of the tracker and forge
+# connections it makes through the operator API. Connections configured
+# through env or the Secrets named elsewhere in these values never use it.
+# Empty type = no store: every store-backed connection call fails closed.
+# A set type mounts ploegd's ServiceAccount token, which both adapters use.
+#   openbao: KV v2 with Kubernetes auth. role is the auth role bound to
+#     ploegd's ServiceAccount; its policy allows only
+#     <kvMount>/data/<pathPrefix>/* and <kvMount>/metadata/<pathPrefix>/*
+#     (docs/how-to/configure-a-connection-secret-store.md).
+#   kubernetes: one Secret per connection in namespace (empty = the
+#     release namespace), through a Role the chart grants there. RBAC cannot
+#     limit a Role to the Secrets Ploeg created, so use a namespace that holds
+#     nothing else; ploegd itself refuses any Secret without its labels.
+secretStore:
+  type: ""
+  openbao:
+    address: ""
+    authMount: kubernetes
+    role: ""
+    kvMount: secret
+    pathPrefix: ploeg
+  kubernetes:
+    namespace: ""
 
 # Plain PLOEG_* env rendered onto the deployment.
 env:

@@ -106,6 +106,10 @@
           "$ref": "#/definitions/networkPolicyEndpoint",
           "description": "The Omnigraph server at `knowledgeGraph.url`, reached by ploegd only. Empty `peers` derives the destination from the URL."
         },
+        "secretStore": {
+          "$ref": "#/definitions/networkPolicyEndpoint",
+          "description": "The OpenBao or Vault at `secretStore.openbao.address`, reached by ploegd only when `secretStore.type` is openbao. Empty `peers` derives the destination from the address. For `secretStore.type` kubernetes ploegd reaches the API server through `kubernetesApi`."
+        },
         "telemetry": {
           "$ref": "#/definitions/networkPolicyEndpoint",
           "description": "Every OTLP collector a harness `telemetry.endpoint` or `claudeRunner.env.OTEL_EXPORTER_OTLP_ENDPOINT` names. Empty `peers` derives the destination from each URL."
@@ -998,6 +1002,32 @@
           "properties": {
             "name": { "type": "string", "minLength": 1, "maxLength": 253, "pattern": "^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$" },
             "key": { "type": "string", "minLength": 1, "maxLength": 253, "pattern": "^[A-Za-z0-9._-]+$" }
+          }
+        }
+      }
+    },
+    "secretStore": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "ADR-0184: where ploegd writes the secrets of connections made through the operator API. Empty `type` = none, and every store-backed connection call fails closed. A set type mounts ploegd's ServiceAccount token.",
+      "properties": {
+        "type": {"type": "string", "enum": ["", "openbao", "kubernetes"], "default": ""},
+        "openbao": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "address": {"type": "string", "pattern": "^(|https?://.+)$", "description": "OpenBao or Vault base URL; required for type openbao."},
+            "authMount": {"type": "string", "default": "kubernetes", "description": "Kubernetes auth mount."},
+            "role": {"type": "string", "description": "Kubernetes auth role bound to ploegd's ServiceAccount; required for type openbao."},
+            "kvMount": {"type": "string", "default": "secret", "description": "KV v2 mount."},
+            "pathPrefix": {"type": "string", "default": "ploeg", "description": "The only path under kvMount Ploeg writes; the role's policy allows nothing else."}
+          }
+        },
+        "kubernetes": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "namespace": {"type": "string", "description": "The namespace that holds the connection Secrets and the chart's Role; empty = the release namespace. Use one that holds nothing else."}
           }
         }
       }

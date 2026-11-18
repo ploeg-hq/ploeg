@@ -258,6 +258,10 @@ func run(ctx context.Context, log *slog.Logger) error {
 		return err
 	}
 	forgeCreds, forgeSweeper := release.credentials(log)
+	secrets, err := secretStore(log, secretStoreEnvFromOS())
+	if err != nil {
+		return err
+	}
 
 	// Gateway credential sweeper (llmbroker.Sweeper) for per-run key
 	// lifecycle: nil = no gateway configured, revocation disabled.
@@ -454,6 +458,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 		TeamCaps:       runCaps,
 		Forges:         forges,
 		ForgeCreds:     forgeCreds,
+		SecretStore:    secrets,
 		ClaimForges:    release.directory(),
 		ClaudeSessions: claudeSessions(log),
 		CreatedWork:    createdWork,
