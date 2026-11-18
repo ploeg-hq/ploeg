@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/ploeg-hq/ploeg/pkg/config"
+	"github.com/ploeg-hq/ploeg/pkg/plan"
 	"github.com/ploeg-hq/ploeg/pkg/spendcap"
 	"github.com/ploeg-hq/ploeg/pkg/store"
 	"github.com/ploeg-hq/ploeg/pkg/team"
@@ -428,4 +429,29 @@ func (s *Service) LLMPolicy(key, role string) (models []string, budgetUSD float6
 		}
 	}
 	return nil, 0, false
+}
+
+// Plan is the Shift plan of the active runtime Team key names, for the
+// Shift engine. A shadowed or invalid Team has none, so it opens no Shift.
+func (s *Service) Plan(key string) (plan.TeamPlan, bool) {
+	rt, ok := s.Lookup(context.Background(), key)
+	if !ok || rt.State != team.StateActive {
+		return plan.TeamPlan{}, false
+	}
+	tp, err := rt.Manifest.TeamPlan()
+	return tp, err == nil
+}
+
+// Harness is the Harness a runtime Team's Role runs on.
+func (s *Service) Harness(key, role string) (string, bool) {
+	rt, ok := s.Lookup(context.Background(), key)
+	if !ok {
+		return "", false
+	}
+	for _, r := range rt.Manifest.Roles() {
+		if r.Name == role {
+			return r.Harness, true
+		}
+	}
+	return "", false
 }

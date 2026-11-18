@@ -474,6 +474,10 @@ func run(ctx context.Context, log *slog.Logger) error {
 	if llmControl != nil {
 		llmControl.Runtime = runtimeLLMPolicy(runtimeTeams, llmControl.Policies)
 	}
+	if engine != nil {
+		engine.Runtime = runtimeTeams.Plan
+		engine.Selections = httpapi.RunSelections{Harnesses: operator.TeamHarnesses, LLM: llmControl, Runtime: runtimeTeams.Harness}
+	}
 	if workTargets != nil {
 		withConnections := &forgebroker.WithConnections{Base: forgeCreds, BaseSweeper: forgeSweeper, Resolve: connectionBroker(runtimeConns)}
 		forgeCreds, forgeSweeper = withConnections, withConnections

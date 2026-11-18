@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/ploeg-hq/ploeg/pkg/config"
 	"github.com/ploeg-hq/ploeg/pkg/provider"
 	"github.com/ploeg-hq/ploeg/pkg/store"
 	"github.com/ploeg-hq/ploeg/pkg/team"
@@ -33,5 +34,32 @@ func TestABindingFollowsItsRuntimeTeamsState(t *testing.T) {
 	static.Webhook.State = provider.WebhookPresent
 	if got := r.StateOf(context.Background(), static); got.State != store.BindingActive {
 		t.Errorf("a static Team's binding is %+v", got)
+	}
+}
+
+func TestAnActiveRuntimeTeamTakesTheInstallationsBindingPolicy(t *testing.T) {
+	r := testRegistry()
+	max := 3
+	r.Config.TeamCreation = &config.TeamCreation{Enabled: true, TrackerBindings: &config.TrackerBindings{Connections: []string{"*:clickup"}, Max: &max}}
+	teams := map[string]team.Team{"docs": {ID: "team_docs", Key: "docs", Source: team.SourceRuntime, State: team.StateActive}}
+	r.TeamByKey = func(key string) (team.Team, bool) { t, ok := teams[key]; return t, ok }
+	if !r.KnowsTeam("docs") || r.KnowsTeam("other") || !r.KnowsTeam("silver") {
+		t.Fatal("KnowsTeam")
+	}
+	policy, ok := r.TeamPolicy("docs")
+	if !ok || policy.Limit() != 3 {
+		t.Fatalf("an active runtime Team's policy = %+v %v", policy, ok)
+	}
+	teams["docs"] = team.Team{ID: "team_docs", Key: "docs", Source: team.SourceRuntime, State: team.StateShadowed}
+	if _, ok := r.TeamPolicy("docs"); ok {
+		t.Fatal("a shadowed runtime Team accepts bindings")
+	}
+	if _, ok := r.TeamPolicy("silver"); ok {
+		t.Fatal("a static Team without trackerBindings took the runtime policy")
+	}
+	r.Config.TeamCreation.TrackerBindings = nil
+	teams["docs"] = team.Team{ID: "team_docs", Key: "docs", Source: team.SourceRuntime, State: team.StateActive}
+	if _, ok := r.TeamPolicy("docs"); ok {
+		t.Fatal("runtime Teams accept bindings without teamCreation.trackerBindings")
 	}
 }

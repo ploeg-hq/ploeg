@@ -93,6 +93,10 @@ func runtimeTeamService(ctx context.Context, log *slog.Logger, cfg *config.File,
 			t, how, ok := directory.Resolve(id)
 			return t, ok && how == team.ByID
 		}
+		bindings.TeamByKey = func(key string) (team.Team, bool) {
+			t, how, ok := directory.Resolve(key)
+			return t, ok && how == team.ByKey
+		}
 		svc.OnChange = func(ctx context.Context) {
 			if err := bindings.Rebuild(ctx); err != nil {
 				log.Warn("bindings not rebuilt after a Team change", "err", err)

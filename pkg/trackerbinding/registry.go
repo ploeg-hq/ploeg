@@ -142,6 +142,9 @@ type Registry struct {
 	// Teams resolves a binding's Team id (ADR-0198). Nil decides by the
 	// configuration file's Teams alone.
 	Teams func(id string) (team.Team, bool)
+	// TeamByKey resolves a Team's current key (ADR-0198). Nil knows only the
+	// configuration file's Teams.
+	TeamByKey func(key string) (team.Team, bool)
 	// Readiness gates the static targets.
 	Readiness *target.Gate
 	Live      *target.Live
@@ -573,4 +576,34 @@ func (r *Registry) teamState(b store.TrackerBinding) (store.BindingStateChange, 
 		return store.BindingStateChange{State: store.BindingInvalid, InvalidReason: store.BindingTeamRemoved}, true
 	}
 	return store.BindingStateChange{}, false
+}
+
+// TeamPolicy is the binding policy of the Team key names: its
+// teams.<key>.trackerBindings, or for an active runtime Team the
+// installation's teamCreation.trackerBindings. false accepts no binding.
+func (r *Registry) TeamPolicy(key string) (config.TrackerBindings, bool) {
+	if policy, ok := r.Config.TeamTrackerBindings(key); ok {
+		return policy, true
+	}
+	if _, static := r.Config.Teams[key]; static || r.TeamByKey == nil || r.Config.TeamCreation == nil || r.Config.TeamCreation.TrackerBindings == nil {
+		return config.TrackerBindings{}, false
+	}
+	t, ok := r.TeamByKey(key)
+	if !ok || t.Source != team.SourceRuntime || t.State != team.StateActive {
+		return config.TrackerBindings{}, false
+	}
+	return *r.Config.TeamCreation.TrackerBindings, true
+}
+
+// KnowsTeam reports whether key names a Team in the file or a live runtime
+// Team.
+func (r *Registry) KnowsTeam(key string) bool {
+	if _, ok := r.Config.Teams[key]; ok {
+		return true
+	}
+	if r.TeamByKey == nil {
+		return false
+	}
+	t, ok := r.TeamByKey(key)
+	return ok && t.Source == team.SourceRuntime
 }
