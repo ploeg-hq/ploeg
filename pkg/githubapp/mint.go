@@ -63,6 +63,9 @@ func (m *Minter) Mint(ctx context.Context, owner, repo string, perms Permissions
 		if errors.Is(err, errNotFound) {
 			m.forgetInstallation(strings.ToLower(owner + "/" + repo))
 		}
+		if m.Installation != 0 && (errors.Is(err, errNotFound) || errors.Is(err, errUnprocessable)) {
+			return Token{}, fmt.Errorf("%w: %s/%s", ErrNotGranted, owner, repo)
+		}
 		return Token{}, err
 	}
 	if minted.Token == "" {

@@ -54,6 +54,10 @@ type Minter struct {
 	// Permissions are requested on every token. Empty requests the App's
 	// full installation permissions, which a caller should avoid.
 	Permissions Permissions
+	// Installation pins every token to this installation, as for a
+	// connection that holds one installation's grant (ADR-0193); zero looks
+	// the installation up per repository.
+	Installation int64
 	// HC is optional; nil uses a 30-second client.
 	HC *http.Client
 	// Now is optional; nil uses time.Now.
@@ -149,6 +153,9 @@ func (m *Minter) forgetInstallation(key string) {
 }
 
 func (m *Minter) installation(ctx context.Context, owner, repo string) (int64, error) {
+	if m.Installation != 0 {
+		return m.Installation, nil
+	}
 	key := strings.ToLower(owner + "/" + repo)
 	m.mu.Lock()
 	id, ok := m.installations[key]
@@ -180,6 +187,12 @@ func (m *Minter) installation(ctx context.Context, owner, repo string) (int64, e
 
 var errNotFound = errors.New("githubapp: not found")
 
+// ErrNotGranted is a token GitHub refuses to mint because the repository is
+// outside the installation's grant.
+var ErrNotGranted = errors.New("githubapp: the repository is outside the installation's grant")
+
+var errUnprocessable = errors.New("githubapp: unprocessable")
+
 func (m *Minter) appCall(ctx context.Context, method, path string, body, out any) error {
 	jwt, err := m.jwt()
 	if err != nil {
@@ -210,6 +223,9 @@ func (m *Minter) appCall(ctx context.Context, method, path string, body, out any
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusNotFound {
 		return errNotFound
+	}
+	if resp.StatusCode == http.StatusUnprocessableEntity {
+		return errUnprocessable
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
