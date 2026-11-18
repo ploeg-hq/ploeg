@@ -27,6 +27,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/ploeg-hq/ploeg/pkg/connection"
 	"os"
 	"reflect"
 	"regexp"
@@ -52,6 +53,9 @@ type File struct {
 	Targets map[string]Target `yaml:"targets"`
 	// Teams is the roster: what each team is made of and what it may spend.
 	Teams map[string]Team `yaml:"teams"`
+	// Connections lets a proven operator make tracker and forge connections
+	// at runtime (ADR-0195). Omitted = none is accepted.
+	Connections *connection.Config `yaml:"connections"`
 }
 
 type Trackers struct {
