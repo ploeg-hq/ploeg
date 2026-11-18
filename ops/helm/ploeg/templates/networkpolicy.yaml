@@ -18,6 +18,13 @@
 {{- with (.Values.knowledgeGraph | default dict).url }}
 {{- $ploegdEgress = append $ploegdEgress (include "ploeg.netpol.endpointRule" (dict "root" $root "url" . "endpoint" $np.knowledgeGraph)) }}
 {{- end }}
+{{- if eq .Values.secretStore.type "openbao" }}
+{{- $ploegdEgress = append $ploegdEgress (include "ploeg.netpol.endpointRule" (dict "root" $root "url" .Values.secretStore.openbao.address "endpoint" $np.secretStore)) }}
+{{- else if eq .Values.secretStore.type "kubernetes" }}
+{{- $storeApiRule := dict "ports" $np.kubernetesApi.ports }}
+{{- with $np.kubernetesApi.peers }}{{- $_ := set $storeApiRule "to" . }}{{- end }}
+{{- $ploegdEgress = append $ploegdEgress ($storeApiRule | toJson) }}
+{{- end }}
 {{- if $claudeTeams }}
 {{- $ploegdEgress = append $ploegdEgress (include "ploeg.netpol.endpointRule" (dict "root" $root "url" (.Values.env.PLOEG_CLAUDE_SESSION_JWKS_URL | default "https://api.anthropic.com") "endpoint" dict)) }}
 {{- end }}

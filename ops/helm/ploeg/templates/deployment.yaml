@@ -26,7 +26,7 @@ spec:
       {{- end }}
     spec:
       serviceAccountName: {{ include "ploeg.fullname" . }}
-      automountServiceAccountToken: false
+      automountServiceAccountToken: {{ if .Values.secretStore.type }}true{{ else }}false{{ end }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets: {{- toYaml . | nindent 8 }}
       {{- end }}
@@ -63,6 +63,27 @@ spec:
             {{- end }}
             - name: PLOEG_LISTEN
               value: ":8080"
+            {{- with .Values.secretStore }}
+            {{- if eq .type "openbao" }}
+            - name: PLOEG_SECRET_STORE
+              value: openbao
+            - name: PLOEG_SECRET_STORE_OPENBAO_ADDR
+              value: {{ required "secretStore.openbao.address is required when secretStore.type is openbao" .openbao.address | quote }}
+            - name: PLOEG_SECRET_STORE_OPENBAO_ROLE
+              value: {{ required "secretStore.openbao.role is required when secretStore.type is openbao" .openbao.role | quote }}
+            - name: PLOEG_SECRET_STORE_OPENBAO_AUTH_MOUNT
+              value: {{ .openbao.authMount | default "kubernetes" | quote }}
+            - name: PLOEG_SECRET_STORE_OPENBAO_KV_MOUNT
+              value: {{ .openbao.kvMount | default "secret" | quote }}
+            - name: PLOEG_SECRET_STORE_OPENBAO_PATH_PREFIX
+              value: {{ .openbao.pathPrefix | default "ploeg" | quote }}
+            {{- else if eq .type "kubernetes" }}
+            - name: PLOEG_SECRET_STORE
+              value: kubernetes
+            - name: PLOEG_SECRET_STORE_KUBERNETES_NAMESPACE
+              value: {{ .kubernetes.namespace | default $.Release.Namespace | quote }}
+            {{- end }}
+            {{- end }}
             - name: PLOEG_DATABASE_URL
               valueFrom:
                 secretKeyRef:

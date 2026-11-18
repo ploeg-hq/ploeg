@@ -33,6 +33,15 @@ env:
   PLOEG_CLICKUP_TOKEN: Personal ClickUp token for reads and write-backs (chart `tracker.clickup.tokenSecret`).
   PLOEG_CLICKUP_URL: ClickUp API root (chart `tracker.clickup.url`). Empty means `https://api.clickup.com/api/v2`.
   PLOEG_GITHUB_TRACKER_SECRET: Verifies `X-Hub-Signature-256` on `POST /webhooks/tracker/github` (chart `tracker.github.webhookSecret`). The GitHub Issues tracker is registered when this, `PLOEG_GITHUB_APP_ID` or a `trackers.github.projects` entry is set. Unset rejects every GitHub Issues webhook.
+  PLOEG_SECRET_STORE: "Where ploegd writes the secrets of connections made through the operator API (ADR-0184; chart `secretStore.type`): `openbao` (OpenBao or Vault KV v2) or `kubernetes` (Secrets in one namespace). Empty means none, and every store-backed connection call fails closed; connections configured through env are unaffected. Any other value stops ploegd at boot."
+  PLOEG_SECRET_STORE_OPENBAO_ADDR: "OpenBao or Vault base URL, such as `https://bao.vault.svc:8200` (chart `secretStore.openbao.address`). Required when `PLOEG_SECRET_STORE=openbao`."
+  PLOEG_SECRET_STORE_OPENBAO_ROLE: "Kubernetes auth role ploegd signs in as with its ServiceAccount token (chart `secretStore.openbao.role`). Its policy should allow only the path prefix below. Required when `PLOEG_SECRET_STORE=openbao`."
+  PLOEG_SECRET_STORE_OPENBAO_AUTH_MOUNT: "Kubernetes auth mount (chart `secretStore.openbao.authMount`). Empty means `kubernetes`."
+  PLOEG_SECRET_STORE_OPENBAO_KV_MOUNT: "KV v2 mount (chart `secretStore.openbao.kvMount`). Empty means `secret`."
+  PLOEG_SECRET_STORE_OPENBAO_PATH_PREFIX: "The only path under the KV mount ploegd writes (chart `secretStore.openbao.pathPrefix`). Empty means `ploeg`."
+  PLOEG_SECRET_STORE_OPENBAO_NAMESPACE: "OpenBao or Vault Enterprise namespace, sent as `X-Vault-Namespace`. Empty sends none."
+  PLOEG_SECRET_STORE_OPENBAO_CA_FILE: "PEM bundle that verifies the OpenBao address. Empty uses the system roots."
+  PLOEG_SECRET_STORE_KUBERNETES_NAMESPACE: "Namespace of the connection Secrets when `PLOEG_SECRET_STORE=kubernetes` (chart `secretStore.kubernetes.namespace`, default the release namespace). Empty means the pod's own namespace. ploegd reads, changes and deletes only Secrets carrying its labels."
   PLOEG_GITHUB_API_URL: GitHub REST API root (chart `tracker.github.apiUrl`). Empty means `https://api.github.com`; GitHub Enterprise Server uses `https://<host>/api/v3`.
   PLOEG_GITHUB_APP_ID: GitHub App id whose installation tokens read issues and write comments back (chart `tracker.github.appId`). Each token is scoped to one repository with `issues:write` and `metadata:read` (ADR-0085). With `PLOEG_GITHUB_URL` set the same App is the GitHub forge's identity, and ploegd mints a revocable installation token per writing Run (ADR-0086). Unset keeps reads and write-backs off.
   PLOEG_GITHUB_APP_PRIVATE_KEY: The GitHub App's PEM private key (chart `tracker.github.appPrivateKeySecret`). Required with `PLOEG_GITHUB_APP_ID`; ploegd refuses to start with only one of them or an unreadable key.

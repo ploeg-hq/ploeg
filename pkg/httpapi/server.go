@@ -22,6 +22,7 @@ import (
 	"github.com/ploeg-hq/ploeg/pkg/harness"
 	"github.com/ploeg-hq/ploeg/pkg/provider"
 	"github.com/ploeg-hq/ploeg/pkg/runidentity"
+	"github.com/ploeg-hq/ploeg/pkg/secretstore"
 	"github.com/ploeg-hq/ploeg/pkg/store"
 	"github.com/ploeg-hq/ploeg/pkg/target"
 	"github.com/ploeg-hq/ploeg/pkg/txntoken"
@@ -87,6 +88,10 @@ type Server struct {
 	// (ADR-0192). Nil = the worker keeps its env credential, which is the
 	// pre-tier-2 behaviour.
 	ForgeCreds forgebroker.Broker
+	// SecretStore holds the secrets of connections made through the
+	// operator API (ADR-0184). secretstore.Unconfigured makes every
+	// store-backed call fail closed; static connections never use it.
+	SecretStore secretstore.Store
 	// ClaimForges resolves the forge a claimed Run acts on from its Work
 	// Target (ADR-0192). Nil = the claim carries no forge and the worker
 	// keeps its env forge.
