@@ -10,38 +10,52 @@ concurrency:
   cancel-in-progress: false
 jobs:
   update:
-    if: github.repository == 'ploeg-hq/ploeg' && vars.AGENT_IMAGE_PINS_APP_ID != ''
+    if: github.repository == 'ploeg-hq/ploeg'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
       contents: read
     steps:
+      - name: Check that the release consumer App is configured
+        id: configured
+        env:
+          APP_ID: ${{ secrets.RELEASE_CONSUMER_GITHUB_APP_ID }}
+        run: |
+          if [ -n "$APP_ID" ]; then
+            echo "app=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "RELEASE_CONSUMER_GITHUB_APP_ID is not set; nothing to do"
+          fi
       - name: Mint an installation token that writes only this repository
+        if: steps.configured.outputs.app == 'true'
         id: app
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
-          app-id: ${{ vars.AGENT_IMAGE_PINS_APP_ID }}
-          private-key: ${{ secrets.AGENT_IMAGE_PINS_APP_PRIVATE_KEY }}
+          app-id: ${{ secrets.RELEASE_CONSUMER_GITHUB_APP_ID }}
+          private-key: ${{ secrets.RELEASE_CONSUMER_GITHUB_APP_PRIVATE_KEY }}
           repositories: ploeg
           permission-contents: write
           permission-pull-requests: write
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - if: steps.configured.outputs.app == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: development
           token: ${{ steps.app.outputs.token }}
           persist-credentials: true
-      - uses: jdx/mise-action@7a4e45a543138629540c9a1616d08632b893e492 # v5.0.1
+      - if: steps.configured.outputs.app == 'true'
+        uses: jdx/mise-action@7a4e45a543138629540c9a1616d08632b893e492 # v5.0.1
         with:
           version: 2026.9.18
           install_args: uv
           cache: false
       - name: Raise OpenHands and goose to their newest releases
+        if: steps.configured.outputs.app == 'true'
         id: pins
         env:
           GH_TOKEN: ${{ github.token }}
         run: mise exec -- bash scripts/update-agent-runner-pins.sh
       - name: Open a pull request unless one for these versions exists
-        if: steps.pins.outputs.branch != ''
+        if: steps.configured.outputs.app == 'true' && steps.pins.outputs.branch != ''
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           BRANCH: ${{ steps.pins.outputs.branch }}
