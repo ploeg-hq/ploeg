@@ -2,8 +2,8 @@
 type: tutorial
 audience: [operator, integrator, contributor]
 owner: ploeg
-last_verified: 2026-10-26
-verified_by: "Every command below run in order on a fresh kind cluster with Ploeg 0.2.0-rc.77 by scripts/quickstart.sh; the Quickstart workflow repeats the run on a schedule, against the pinned and the newest candidate"
+last_verified: 2026-11-18
+verified_by: "Every command below run in order on a fresh kind cluster with Ploeg 0.2.0-rc.121 by scripts/quickstart.sh; the Quickstart workflow repeats the run on a schedule, against the pinned and the newest candidate"
 ---
 
 # Quickstart: your first Run on a local cluster
@@ -56,10 +56,10 @@ export KUBECONFIG="${TMPDIR:-/tmp}/ploeg-quickstart.kubeconfig"
 
 ## 1. Pick a release and check its signatures
 
-Releases are listed on the [releases page](https://github.com/ploeg-hq/ploeg/releases). This guide was tested with `0.2.0-rc.77`, a release candidate. Do not use `0.1.0`, the only stable release so far: it predates release signing, and its chart sets a default node selector that no kind node matches, so `ploegd` never starts.
+Releases are listed on the [releases page](https://github.com/ploeg-hq/ploeg/releases). This guide was tested with `0.2.0-rc.121`, a release candidate. Do not use `0.1.0`, the only stable release so far: it predates release signing, and its chart sets a default node selector that no kind node matches, so `ploegd` never starts.
 
 ```sh
-export PLOEG_VERSION=0.2.0-rc.77
+export PLOEG_VERSION=0.2.0-rc.121
 ```
 
 Every release signs its image and its chart with [cosign](https://docs.sigstore.dev/) keyless signing. There is no signing key to trust. Instead, cosign checks that the signature was made by Ploeg's release workflow on GitHub and that it is recorded in the public transparency log. The identity rule comes from [CI and infrastructure](ops/ci-and-infra.md#credentials-and-signing).
