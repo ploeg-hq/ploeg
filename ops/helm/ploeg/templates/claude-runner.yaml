@@ -14,6 +14,9 @@
 {{- if not ($r.environmentSecret | default dict).name }}
 {{- fail "claudeRunner.environmentSecret.name is required when claudeRunner.enabled is true: the Secret holding SELF_HOSTED_RUNNER_ENVIRONMENT_SECRET, which registers the runner with its Claude environment" }}
 {{- end }}
+{{- if include "ploeg.claudeRunnerOrchestrator" . }}
+{{- include "ploeg.claudeRunnerOrchestratorObjects" . }}
+{{- else }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -147,6 +150,7 @@ spec:
           emptyDir:
             sizeLimit: 1Gi
         {{- end }}
+{{- end }}
 {{- end }}
 {{- range .Values.claudeRunner.loginVolumes }}
 ---

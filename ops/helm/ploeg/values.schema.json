@@ -172,6 +172,17 @@
             }
           }
         },
+        "anthropic": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "peers": {
+              "type": "array",
+              "items": {"type": "object"},
+              "description": "NetworkPolicyPeers the claude-runner's sessions and orchestrator reach api.anthropic.com at on 443; empty is the internet"
+            }
+          }
+        },
         "mcp": {
           "type": "object",
           "additionalProperties": false,
@@ -466,6 +477,26 @@
               "pattern": "^([a-f0-9]{64})?$",
               "description": "Expected sha256 of the version's Linux binary; empty trusts the signed manifest alone"
             }
+          }
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["fleet", "orchestrator"],
+          "description": "fleet: a Deployment of runners holding the environment secret. orchestrator: Anthropic's on-demand runners, one runner Job per session started by an orchestrator that alone holds the environment secret; the only mode with executor.credentialGateway.enabled (ADR-0197 section 7)"
+        },
+        "orchestrator": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "replicas": {"type": "integer", "minimum": 0},
+            "args": {"type": "array", "items": {"type": "string"}},
+            "extraArgs": {"type": "array", "items": {"type": "string"}},
+            "terminationGracePeriodSeconds": {"type": "integer", "minimum": 0},
+            "runnerActiveDeadlineSeconds": {"type": "integer", "minimum": 60},
+            "runnerTtlSecondsAfterFinished": {"type": "integer", "minimum": 0},
+            "resources": {"type": "object"},
+            "nodeSelector": {"type": "object", "additionalProperties": {"type": "string"}},
+            "tolerations": {"type": "array", "items": {"type": "object"}}
           }
         },
         "replicas": {

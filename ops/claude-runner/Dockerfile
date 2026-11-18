@@ -14,6 +14,8 @@ COPY ops/claude-runner/claude-code.env /opt/ploeg/claude-runner/claude-code.env
 COPY --chmod=0755 ops/claude-runner/install-claude-code /usr/local/bin/ploeg-install-claude-code
 COPY --chmod=0755 ops/claude-runner/claude /usr/local/bin/claude
 COPY --chmod=0755 ops/claude-runner/checkout ops/claude-runner/post-session /opt/ploeg/claude-runner/hooks/
+COPY --chmod=0755 ops/claude-runner/spawn-runner /opt/ploeg/claude-runner/orchestrator-hooks/
+COPY --chmod=0755 ops/claude-runner/runner-from-work-order /usr/local/bin/ploeg-claude-runner-from-work-order
 RUN adduser -D -u 1000 -s /bin/bash runner \
  && install -d -m 0755 /opt/claude-code
 COPY --chown=runner:runner ops/claude-runner/claude-home/ /home/runner/.claude/

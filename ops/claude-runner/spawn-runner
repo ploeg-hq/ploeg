@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+PERMANENT=
+permanent() { printf 'ploeg spawn-runner: %s\n' "$*" >&2; PERMANENT=1; exit 2; }
+retry() { printf 'ploeg spawn-runner: %s\n' "$*" >&2; exit 1; }
+clean=""
+trap 'rc=$?; [ -n "$clean" ] && rm -rf "$clean"; [ "$rc" -eq 0 ] || [ -n "${PERMANENT:-}" ] || exit 1' EXIT
+set -e -u -o pipefail
+
+template="${PLOEG_CLAUDE_RUNNER_JOB:-/etc/ploeg/claude-runner/job.json}"
+prefix="${PLOEG_CLAUDE_RUNNER_JOB_PREFIX:-claude-runner}"
+serviceaccount="${PLOEG_KUBERNETES_SERVICEACCOUNT_DIR:-/var/run/secrets/kubernetes.io/serviceaccount}"
+api="${PLOEG_KUBERNETES_API_URL:-https://${KUBERNETES_SERVICE_HOST:-}:${KUBERNETES_SERVICE_PORT:-443}}"
+
+[ -n "${POD_NAMESPACE:-}" ] || permanent "POD_NAMESPACE is not set"
+[ -r "$template" ] || permanent "no runner Job template at $template"
+[ -r "$serviceaccount/token" ] || permanent "no ServiceAccount token to submit the runner Job with"
+order="${CLAUDE_RUNNER_ORDER_ID:-}"
+[ -n "$order" ] || permanent "the spawn request carries no order id"
+session="${CLAUDE_RUNNER_SESSION_ID:-}"
+[ -n "$session" ] || permanent "pre-warming is off: a standby runner registers unbound and would claim any session, so start the orchestrator without --min-idle"
+[ -r "${CLAUDE_RUNNER_WORK_ORDER_FILE:-}" ] || permanent "the spawn request carries no work order"
+
+clean=$(mktemp -d)
+name="$prefix-$(printf '%s' "$order" | sha256sum | cut -c1-16)"
+printf 'Authorization: Bearer %s\n' "$(cat "$serviceaccount/token")" >"$clean/auth"
+jq --arg name "$name" --arg order "$order" --arg session "$session" \
+  --rawfile workorder "$CLAUDE_RUNNER_WORK_ORDER_FILE" '
+  .metadata.name = $name
+  | .metadata.annotations["ploeg.webgrip.dev/claude-order"] = $order
+  | .metadata.annotations["ploeg.webgrip.dev/claude-session"] = $session
+  | .spec.template.metadata.annotations["ploeg.webgrip.dev/claude-session"] = $session
+  | .spec.template.spec.containers |= map(
+      if .name == "runner"
+      then .env = ((.env // []) + [{name: "PLOEG_CLAUDE_RUNNER_WORK_ORDER", value: ($workorder | rtrimstr("\n"))}])
+      else . end)' "$template" >"$clean/job.json" || permanent "the runner Job template does not parse"
+
+ca=()
+[ -r "$serviceaccount/ca.crt" ] && ca=(--cacert "$serviceaccount/ca.crt")
+code=$(curl -sS --max-time 20 ${ca[@]+"${ca[@]}"} -H @"$clean/auth" -H 'Content-Type: application/json' \
+  -o "$clean/response" -w '%{http_code}' --data-binary @"$clean/job.json" \
+  "${api%/}/apis/batch/v1/namespaces/$POD_NAMESPACE/jobs") || code=""
+rm -f "$clean/job.json"
+case "$code" in
+  201) printf 'ploeg spawn-runner: submitted %s for %s\n' "$name" "$session" >&2 ;;
+  409) printf 'ploeg spawn-runner: %s exists; a redelivered request\n' "$name" >&2 ;;
+  400 | 403 | 404 | 422) permanent "Kubernetes refused runner Job $name (HTTP $code)" ;;
+  *) retry "runner Job $name not submitted (HTTP ${code:-none})" ;;
+esac

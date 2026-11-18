@@ -61,9 +61,10 @@ value that would put a secret into a Run pod or that the gateway cannot serve.
 {{- if include "ploeg.runtimePools" . | fromJsonArray -}}
 {{- fail "executor.runtimeTeams.pools cannot run with executor.credentialGateway.enabled: a pool's worker holds a pool bootstrap and the in-worker credential proxies, and no secret enters a Run pod (ADR-0197, ADR-0198)" -}}
 {{- end -}}
-{{- if .Values.claudeRunner.enabled -}}
-{{- fail "claudeRunner.enabled cannot run with executor.credentialGateway.enabled: the runner pod, where a claude-environment session's Claude Code runs, holds claudeRunner.environmentSecret and receives the Run's forge token, and its route through the gateway's anthropic upstream is not built yet (ADR-0197)" -}}
+{{- if and .Values.claudeRunner.enabled (not (include "ploeg.claudeRunnerOrchestrator" .)) -}}
+{{- fail "claudeRunner.mode fleet cannot run with executor.credentialGateway.enabled: a fixed fleet mounts claudeRunner.environmentSecret into the pod where sessions run, and no secret enters a pod where an agent runs (ADR-0197 section 7). Set claudeRunner.mode: orchestrator" -}}
 {{- end -}}
+{{- include "ploeg.refuseClaudeLogins" . -}}
 {{- if and (include "ploeg.anyTeamOnSandbox" .) (.Values.executor.sandbox | default dict).networkPolicy -}}
 {{- fail "executor.sandbox.networkPolicy cannot be set with executor.credentialGateway.enabled: its rules are added to the Run pod's egress, and a gateway-mode Run pod reaches only DNS and the credential gateway (ADR-0197)" -}}
 {{- end -}}
@@ -87,6 +88,26 @@ value that would put a secret into a Run pod or that the gateway cannot serve.
 {{- end -}}
 {{- end -}}
 {{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "ploeg.refuseClaudeLogins" -}}
+{{- $levels := list (dict "who" "executor" "harness" (.Values.executor.harness | default dict)) -}}
+{{- range $team := .Values.executor.teams -}}
+{{- $levels = append $levels (dict "who" (printf "team %s" $team.name) "harness" ($team.harness | default dict)) -}}
+{{- range $role := (include "ploeg.teamRoles" $team | fromJsonArray) -}}
+{{- with $role.name -}}
+{{- $levels = append $levels (dict "who" (printf "team %s/%s" $team.name .) "harness" ($role.harness | default dict)) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- range $level := $levels -}}
+{{- $ce := $level.harness.claudeEnvironment | default dict -}}
+{{- range $field := list "loginVolume" "loginSecret" -}}
+{{- if index $ce $field -}}
+{{- fail (printf "%s: harness.claudeEnvironment.%s cannot be set with executor.credentialGateway.enabled: it puts a person's Claude login into a pod where an agent runs, and Ploeg stores, relays and mounts no Claude login (ADR-0197 section 7). A routine Run starts through the person's own routine (carrier: routine)" $level.who $field) -}}
 {{- end -}}
 {{- end -}}
 {{- end -}}
@@ -162,42 +183,8 @@ it. Same context as ploeg.workerPodTemplate.
 {{- $pod -}}
 {{- end -}}
 
-{{/*
-ploeg.credentialGatewayAffinity keeps the gateway off every node that runs a
-Run pod and out of executor.nodeSelector's pool, and spreads its replicas.
-acknowledgeSingleNode relaxes the first two to preferred. One node selector
-term per executor.nodeSelector entry: a node is excluded only when it carries
-every entry, as a Run pod's node does.
-*/}}
 {{- define "ploeg.credentialGatewayAffinity" -}}
-{{- $gw := .Values.executor.credentialGateway -}}
-{{- $runPods := dict "labelSelector" (dict "matchLabels" (dict "app.kubernetes.io/name" "ploeg-worker")) "topologyKey" "kubernetes.io/hostname" -}}
-{{- $replicas := dict "labelSelector" (dict "matchLabels" (include "ploeg.credentialGatewaySelectorLabels" . | fromYaml)) "topologyKey" "kubernetes.io/hostname" -}}
-{{- $antiAffinity := dict -}}
-{{- $preferred := list (dict "weight" 100 "podAffinityTerm" $replicas) -}}
-{{- if $gw.acknowledgeSingleNode -}}
-{{- $preferred = prepend $preferred (dict "weight" 100 "podAffinityTerm" $runPods) -}}
-{{- else -}}
-{{- $_ := set $antiAffinity "requiredDuringSchedulingIgnoredDuringExecution" (list $runPods) -}}
-{{- end -}}
-{{- $_ := set $antiAffinity "preferredDuringSchedulingIgnoredDuringExecution" $preferred -}}
-{{- $affinity := dict "podAntiAffinity" $antiAffinity -}}
-{{- with .Values.executor.nodeSelector -}}
-{{- $terms := list -}}
-{{- range $key, $value := . -}}
-{{- $terms = append $terms (dict "matchExpressions" (list (dict "key" $key "operator" "NotIn" "values" (list $value)))) -}}
-{{- end -}}
-{{- if $gw.acknowledgeSingleNode -}}
-{{- $weighted := list -}}
-{{- range $term := $terms -}}
-{{- $weighted = append $weighted (dict "weight" 100 "preference" $term) -}}
-{{- end -}}
-{{- $_ := set $affinity "nodeAffinity" (dict "preferredDuringSchedulingIgnoredDuringExecution" $weighted) -}}
-{{- else -}}
-{{- $_ := set $affinity "nodeAffinity" (dict "requiredDuringSchedulingIgnoredDuringExecution" (dict "nodeSelectorTerms" $terms)) -}}
-{{- end -}}
-{{- end -}}
-{{- toYaml $affinity -}}
+{{- include "ploeg.offRunNodesAffinity" (dict "root" . "self" (include "ploeg.credentialGatewaySelectorLabels" . | fromYaml)) -}}
 {{- end -}}
 
 {{/*

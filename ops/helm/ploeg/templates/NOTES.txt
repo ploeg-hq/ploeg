@@ -74,3 +74,10 @@ From chart 0.3.0, supportProfile: P1 refuses this render (ADR-0169); set
 executor.namespace now and the upgrade changes nothing.
 {{- end }}
 {{- end }}
+{{- if and (include "ploeg.claudeRunnerOrchestrator" .) (not ((.Values.networkPolicy.anthropic | default dict).peers)) }}
+WARNING: networkPolicy.anthropic.peers is empty, so every claude-runner
+session pod, where model-directed code runs, and the orchestrator reach the
+whole internet on 443. Set networkPolicy.anthropic.peers to Anthropic's
+published ranges or enforce api.anthropic.com with an FQDN-capable CNI
+(docs/ops/network.md).
+{{- end }}

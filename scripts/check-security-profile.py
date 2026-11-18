@@ -4,6 +4,7 @@ import json
 import celpy
 from celpy.adapter import json_to_cel
 
+import claude_runner_admission_cases as claude
 from worker_admission_cases import ALLOWED_RUNTIME_CLASS, UNAPPROVED_RUNTIME_CLASS, VARIANTS, admission, chart, hostile_mutations, only, render, worker_pods
 
 
@@ -53,10 +54,10 @@ def check_variant(variant):
     documents = render(variant.values, variant.namespace)
     policy = check_policy_shape(variant, documents)
     compiled = compile_policy(policy)
-    selector = policy["spec"]["matchConstraints"]["objectSelector"]["matchLabels"]
+    selector = policy["spec"]["matchConstraints"]["objectSelector"]["matchExpressions"]
     denied = 0
     for source, pod in worker_pods(documents, variant.namespace):
-        assert all(pod["metadata"]["labels"].get(k) == v for k, v in selector.items()), f"{source} escapes the admission selector"
+        assert all(pod["metadata"]["labels"].get(e["key"]) in e["values"] for e in selector), f"{source} escapes the admission selector"
         check_worker_network_policy(documents, pod)
         assert refusals(compiled, pod) == set(), f"{source}: the rendered worker pod must pass, refused {refusals(compiled, pod)}"
         for mutation in hostile_mutations(pod, variant.runtime_class_names):
@@ -110,7 +111,34 @@ def check_contract():
     assert (chart / "SECURITY.md").is_file()
 
 
+def check_claude_runner_admission():
+    _, template, policy, binding, agent = claude.rendered()
+    assert policy["spec"]["failurePolicy"] == "Fail" and binding["spec"]["validationActions"] == ["Deny"]
+    assert policy["spec"]["matchConstraints"]["resourceRules"][0]["resources"] == ["jobs"]
+    conditions = [c["expression"] for c in policy["spec"]["matchConditions"]]
+    assert conditions == [f'request.userInfo.username == "system:serviceaccount:{claude.NAMESPACE}:{claude.ORCHESTRATOR}"'], conditions
+    compiled = compile_policy(policy)
+    job = claude.spawned(template)
+    assert refusals(compiled, claude.as_admitted(job)) == set(), f"the runner Job spawn-runner submits must pass, refused {refusals(compiled, claude.as_admitted(job))}"
+    assert refusals(compiled, claude.as_admitted(template)) == {claude.RUNNER}, f"a runner Job without its work order must be refused, refused {refusals(compiled, claude.as_admitted(template))}"
+    denied = 0
+    for hostile in claude.hostile_jobs(job):
+        refused = refusals(compiled, claude.as_admitted(hostile.job))
+        assert refused == hostile.messages, f"runner Job with {hostile.name}: expected {sorted(hostile.messages)}, refused {sorted(refused)}"
+        denied += 1
+    agent_compiled = compile_policy(agent)
+    selector = agent["spec"]["matchConstraints"]["objectSelector"]["matchExpressions"]
+    pod = claude.session_pod(job)
+    assert all(pod["metadata"]["labels"].get(e["key"]) in e["values"] for e in selector), "the runner session pod escapes the agent admission policy"
+    assert refusals(agent_compiled, pod) == set(), f"the runner session pod must pass the agent admission policy, refused {refusals(agent_compiled, pod)}"
+    for mutation in hostile_mutations(pod, ()):
+        assert refusals(agent_compiled, mutation.pod) == {mutation.message}, f"runner session pod {mutation.name}: refused {refusals(agent_compiled, mutation.pod)}"
+        denied += 1
+    return denied
+
+
 denied = sum(check_variant(variant) for variant in VARIANTS)
+denied += check_claude_runner_admission()
 check_dind_is_refused()
 check_version_floor_and_default()
 check_p1_sandbox_names_its_runtime_class()

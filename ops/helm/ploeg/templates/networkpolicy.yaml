@@ -39,6 +39,7 @@
 {{- $ploegdIngress = append $ploegdIngress (dict "from" $np.ploegd.ingressFrom "ports" (list $ploegdPort)) }}
 {{- $callers := list "ploeg-worker" "ploeg-sandbox-launcher" (include "ploeg.mcpName" .) (include "ploeg.claudeRunnerName" .) }}
 {{- if $gateway }}{{- $callers = append $callers "ploeg-credential-gateway" }}{{- end }}
+{{- if and (include "ploeg.claudeRunnerOrchestrator" .) (not $gateway) }}{{- $callers = append $callers "ploeg-claude-runner-session" }}{{- end }}
 {{- $ploegdIngress = append $ploegdIngress (dict "from" (list (dict "podSelector" (dict "matchExpressions" (list (dict "key" "app.kubernetes.io/name" "operator" "In" "values" $callers))))) "ports" (list $ploegdPort)) }}
 {{- else }}
 {{- $ploegdIngress = append $ploegdIngress (dict "ports" (list $ploegdPort)) }}
@@ -46,6 +47,7 @@
 {{- if and $np.ploegd.ingressFrom $ex.enabled (include "ploeg.executorNamespaceSeparate" .) }}
 {{- $executorCallers := list "ploeg-worker" "ploeg-sandbox-launcher" }}
 {{- if $gateway }}{{- $executorCallers = append $executorCallers "ploeg-credential-gateway" }}{{- end }}
+{{- if and (include "ploeg.claudeRunnerOrchestrator" .) (not $gateway) }}{{- $executorCallers = append $executorCallers "ploeg-claude-runner-session" }}{{- end }}
 {{- $workerCallers := dict "matchExpressions" (list (dict "key" "app.kubernetes.io/name" "operator" "In" "values" $executorCallers)) }}
 {{- $ploegdIngress = append $ploegdIngress (dict "from" (list (dict "namespaceSelector" (dict "matchLabels" (dict "kubernetes.io/metadata.name" (include "ploeg.executorNamespace" .))) "podSelector" $workerCallers)) "ports" (list $ploegdPort)) }}
 {{- end }}
@@ -163,7 +165,58 @@ spec:
   egress: {{- include "ploeg.netpol.rules" (dict "rules" $launcherEgress "extra" $np.sandboxLauncher.extraEgress) | fromJsonArray | toYaml | nindent 4 }}
 {{- end }}
 {{- end }}
-{{- if .Values.claudeRunner.enabled }}
+{{- if include "ploeg.claudeRunnerOrchestrator" . }}
+{{- $r := .Values.claudeRunner }}
+{{- $anthropic := include "ploeg.netpol.endpointRule" (dict "root" $root "url" "https://api.anthropic.com" "endpoint" $np.anthropic) }}
+{{- $sessionEgress := list (include "ploeg.netpol.dnsRule" .) }}
+{{- $sessionExtra := list }}
+{{- if include "ploeg.credentialGatewayEnabled" . }}
+{{- $sessionEgress = append $sessionEgress (dict "to" (list (dict "podSelector" (dict "matchLabels" (include "ploeg.credentialGatewaySelectorLabels" . | fromYaml)))) "ports" (list (dict "protocol" "TCP" "port" 8084)) | toJson) }}
+{{- $sessionEgress = append $sessionEgress $anthropic }}
+{{- else }}
+{{- $sessionEgress = append $sessionEgress (include "ploeg.netpol.ploegdRule" (dict "root" . "url" $r.ploegUrl "namespace" (ternary .Release.Namespace "" (eq (include "ploeg.executorNamespaceSeparate" .) "true")))) }}
+{{- range (include "ploeg.netpol.forgeUrls" (dict "root" . "side" "ploegd") | fromJsonArray) }}
+{{- $sessionEgress = append $sessionEgress (include "ploeg.netpol.endpointRule" (dict "root" $root "url" . "endpoint" $np.forge)) }}
+{{- end }}
+{{- $sessionEgress = append $sessionEgress (include "ploeg.netpol.internetRule" (dict "root" . "port" 443)) }}
+{{- with ($r.env | default dict).OTEL_EXPORTER_OTLP_ENDPOINT }}
+{{- $sessionEgress = append $sessionEgress (include "ploeg.netpol.endpointRule" (dict "root" $root "url" . "endpoint" $np.telemetry)) }}
+{{- end }}
+{{- $sessionExtra = $np.claudeRunner.extraEgress }}
+{{- end }}
+{{- $orchestratorEgress := list (include "ploeg.netpol.dnsRule" .) ($kubeApiRule | toJson) $anthropic }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "ploeg.netpol.name" (dict "root" . "suffix" "claude-runner-session") }}
+  {{- with include "ploeg.executorNamespaceMetadata" . }}
+  {{ . }}
+  {{- end }}
+  labels: {{- include "ploeg.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- include "ploeg.claudeRunnerSessionSelectorLabels" . | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress: []
+  egress: {{- include "ploeg.netpol.rules" (dict "rules" $sessionEgress "extra" $sessionExtra) | fromJsonArray | toYaml | nindent 4 }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "ploeg.netpol.name" (dict "root" . "suffix" "claude-runner-orchestrator") }}
+  {{- with include "ploeg.executorNamespaceMetadata" . }}
+  {{ . }}
+  {{- end }}
+  labels: {{- include "ploeg.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "ploeg.claudeRunnerOrchestratorName" . }}
+  policyTypes: [Ingress, Egress]
+  ingress: []
+  egress: {{- include "ploeg.netpol.rules" (dict "rules" $orchestratorEgress "extra" list) | fromJsonArray | toYaml | nindent 4 }}
+{{- else if .Values.claudeRunner.enabled }}
 {{- $r := .Values.claudeRunner }}
 {{- $runnerEgress := list (include "ploeg.netpol.dnsRule" .) (include "ploeg.netpol.ploegdRule" (dict "root" . "url" $r.ploegUrl)) }}
 {{- range (include "ploeg.netpol.forgeUrls" (dict "root" . "side" "ploegd") | fromJsonArray) }}
