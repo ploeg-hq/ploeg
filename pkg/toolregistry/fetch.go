@@ -112,6 +112,9 @@ func scrub(s string) string {
 }
 
 func (f *Fetcher) get(ctx context.Context, rawURL string, header http.Header, limit int64) (*http.Response, []byte, error) {
+	if !outboundURL.MatchString(rawURL) {
+		return nil, nil, errOutboundURL
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return nil, nil, err

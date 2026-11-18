@@ -499,6 +499,9 @@ func (s *Service) clientCredentialsToken(ctx context.Context, a Auth, secret str
 	if len(a.Scopes) > 0 {
 		form.Set("scope", strings.Join(a.Scopes, " "))
 	}
+	if !outboundURL.MatchString(a.TokenURL) {
+		return Token{}, refuse(422, "invalid_url", "auth.tokenUrl is not usable.")
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, a.TokenURL, strings.NewReader(form.Encode()))
 	if err != nil {
 		return Token{}, refuse(422, "invalid_url", "auth.tokenUrl is not usable.")
