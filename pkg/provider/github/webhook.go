@@ -39,6 +39,7 @@ type installationHook struct {
 }
 
 type grantRepository struct {
+	ID       int64  `json:"id"`
 	FullName string `json:"full_name"`
 }
 
@@ -61,9 +62,11 @@ func grantEvent(event, appID string, body []byte) ([]provider.ForgeEvent, error)
 		AccountID: strconv.FormatInt(h.Installation.Account.ID, 10)}
 	for _, r := range h.RepositoriesAdded {
 		grant.Added = append(grant.Added, r.FullName)
+		grant.AddedIDs = append(grant.AddedIDs, strconv.FormatInt(r.ID, 10))
 	}
 	for _, r := range h.RepositoriesRemoved {
 		grant.Removed = append(grant.Removed, r.FullName)
+		grant.RemovedIDs = append(grant.RemovedIDs, strconv.FormatInt(r.ID, 10))
 	}
 	return []provider.ForgeEvent{{Kind: provider.ForgeGrantChanged, Grant: grant}}, nil
 }

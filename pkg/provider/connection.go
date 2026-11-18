@@ -170,6 +170,38 @@ type RepositoryLister interface {
 	ListGrantedRepositories(ctx context.Context, inst ConnectionInstance, cred ConnectionCredential, page, perPage int) ([]GrantedRepository, bool, error)
 }
 
+// ErrRepositoryNotFound is a forge that does not show the repository at all.
+var ErrRepositoryNotFound = errors.New("connection: the forge does not show the repository")
+
+// ErrRepositoryNotGranted is a repository the forge shows but the
+// connection's grant does not reach.
+var ErrRepositoryNotGranted = errors.New("connection: the grant does not reach the repository")
+
+// RepositoryGrant is what a forge connection's grant allows on one
+// repository (ADR-0193 section 4).
+type RepositoryGrant struct {
+	// ID is the forge's own repository id, which survives a rename.
+	ID string
+	// FullName is the repository's current path as the forge spells it.
+	FullName string
+	// CanWrite reports that the grant may read, push branches and open pull
+	// requests.
+	CanWrite bool
+	// Permissions are the permissions the grant holds, for the report.
+	Permissions []string
+	// DefaultBranch is the repository's default branch.
+	DefaultBranch string
+}
+
+// RepositoryGrantProber answers, for one forge connection, whether its
+// grant reaches a repository and with which permissions, and inspects a
+// granted repository's readiness with the connection's own credential
+// (ADR-0193 section 4). A kind without it cannot register runtime targets.
+type RepositoryGrantProber interface {
+	ProbeRepositoryGrant(ctx context.Context, inst ConnectionInstance, cred ConnectionCredential, fullName string) (RepositoryGrant, error)
+	InspectGrantedRepository(ctx context.Context, inst ConnectionInstance, cred ConnectionCredential, fullName, branch string) (RepositoryState, error)
+}
+
 // Connector is everything one kind offers for runtime connections; nil
 // fields are capabilities the kind lacks.
 type Connector struct {
@@ -177,6 +209,7 @@ type Connector struct {
 	Prober     ConnectionProber
 	Manifest   AppManifest
 	Repos      RepositoryLister
+	Grants     RepositoryGrantProber
 	// TokenOnly reports that the kind offers no OAuth flow at all, so a
 	// pasted token is always allowed (ADR-0184 rule 1).
 	TokenOnly bool
@@ -193,4 +226,8 @@ type GrantEvent struct {
 	AccountID      string
 	Added          []string
 	Removed        []string
+	// AddedIDs and RemovedIDs are the forge repository ids of Added and
+	// Removed, in the same order.
+	AddedIDs   []string
+	RemovedIDs []string
 }

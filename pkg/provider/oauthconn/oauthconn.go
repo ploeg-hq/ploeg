@@ -174,3 +174,39 @@ func PostForm(ctx context.Context, rawURL string, form url.Values) error {
 	}
 	return nil
 }
+
+// Lookup reads rawURL like GetJSON, except that a 404 is found false with
+// no error, so a caller can tell a missing resource from a refused
+// credential.
+func Lookup(ctx context.Context, rawURL, authorization string, out any) (bool, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return false, fmt.Errorf("vendor request: %w", provider.ErrVendorUnavailable)
+	}
+	if authorization != "" {
+		req.Header.Set("Authorization", authorization)
+	}
+	req.Header.Set("Accept", "application/json")
+	resp, err := Client.Do(req)
+	if err != nil {
+		return false, fmt.Errorf("vendor unreachable: %w", provider.ErrVendorUnavailable)
+	}
+	defer resp.Body.Close()
+	switch {
+	case resp.StatusCode == http.StatusNotFound:
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
+		return false, nil
+	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
+		return false, fmt.Errorf("GET %s answered %d: %w", stripQuery(rawURL), resp.StatusCode, provider.ErrCredentialRefused)
+	case resp.StatusCode >= 300:
+		return false, fmt.Errorf("GET %s answered %d: %w", stripQuery(rawURL), resp.StatusCode, provider.ErrVendorUnavailable)
+	}
+	if out == nil {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
+		return true, nil
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(out); err != nil {
+		return false, fmt.Errorf("GET %s: unreadable answer: %w", stripQuery(rawURL), provider.ErrVendorUnavailable)
+	}
+	return true, nil
+}
