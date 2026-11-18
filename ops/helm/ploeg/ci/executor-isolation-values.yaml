@@ -1,3 +1,7 @@
+# CI-only values: credential isolation is mandatory (ADR-0034, amended
+# 2026-11-18), so every qualified harness renders with both proxies on, and an
+# explicit credentialIsolation: proxy override on a Role renders the same.
+# The cases that fail the render are the reject-*-values fixtures.
 executor:
   enabled: true
   forgejo:
@@ -9,18 +13,10 @@ executor:
       model: litellm_proxy/deepseek-chat
       budget: "1"
       harness: {name: openhands, dind: false}
-    - name: dind
+    - name: exec
       model: litellm_proxy/deepseek-chat
       budget: "1"
-      harness: {name: openhands, dind: true, acknowledgePrivilegedDind: true}
-    - name: unqualified
-      model: litellm_proxy/claude-sonnet-5
-      budget: "1"
-      harness: {name: claude-code, dind: false}
-    - name: acp-opencode
-      model: litellm_proxy/deepseek-chat
-      budget: "1"
-      harness: {name: acp, dind: false}
+      harness: {name: exec, args: ["/bin/cat", "{taskspec}"], dind: false}
     - name: acp-openhands
       model: litellm_proxy/deepseek-chat
       budget: "1"
@@ -28,10 +24,10 @@ executor:
     - name: override
       model: litellm_proxy/deepseek-chat
       budget: "2"
-      harness: {name: openhands, dind: false, credentialIsolation: ""}
+      harness: {name: openhands, dind: false}
       plan:
         - roles:
-            - {name: optin, writes: false, cap: "0.50", harness: {name: claude-code, credentialIsolation: proxy}}
+            - {name: optin, writes: false, cap: "0.50", harness: {credentialIsolation: proxy}}
         - roles:
             - {name: builder, writes: true, cap: "1.00"}
 supportProfile: unsupported

@@ -56,7 +56,7 @@ type ServerGrant struct {
 
 // Grant is what one Run may reach through the MCP route family.
 type Grant struct {
-	RunID    int64
+	RunID    string
 	WorkItem string
 	Tenant   string
 	Servers  map[string]ServerGrant
@@ -80,7 +80,7 @@ type GrantSource interface {
 
 // Call is one audit record. It never carries a tool's arguments or result.
 type Call struct {
-	Run      int64
+	Run      string
 	WorkItem string
 	Tenant   string
 	ServerID string

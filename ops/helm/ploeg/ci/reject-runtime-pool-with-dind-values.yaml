@@ -8,6 +8,7 @@ executor:
     - name: bronze
       model: litellm_proxy/deepseek-chat
       budget: "2"
+      harness: {dind: false}
   runtimeTeams:
     enabled: true
     pools:

@@ -188,7 +188,7 @@ func TestClaimCarriesContextAndTheRunRouteServesOnlyItsOwn(t *testing.T) {
 		t.Fatalf("upload: %d", code)
 	}
 
-	code, claim := postClaim(t, s.Handler(), `{"team":"bronze","role":"builder"}`)
+	code, claim := postClaim(t, s.Handler(), `{"team":"bronze","role":"builder","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	if code != 200 || len(claim.Context) != 1 {
 		t.Fatalf("claim: %d context %+v", code, claim.Context)
 	}
@@ -246,7 +246,7 @@ func TestManagedRunContextNeedsTheRunCapability(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	w := workerRequest(s, "POST", "/api/v1/claim", bootstrap, "pod", `{"team":"bronze","role":"reviewer"}`)
+	w := workerRequest(s, "POST", "/api/v1/claim", bootstrap, "pod", `{"team":"bronze","role":"reviewer","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	var claim struct {
 		RunToken     string `json:"runToken"`
 		ControlToken string `json:"controlToken"`

@@ -408,7 +408,7 @@ rows:
           path: docs/research/2026-10-04-isolation-qualification.md
           label: isolation qualification 2026-10-04
           contains: ["| `claude-code` | no | No Run with both proxies on yet. |"]
-    limits: Not qualified with both proxies on; `claude-environment` runs outside the pod on a person's login.
+    limits: Not qualified with both proxies on; `claude-environment` runs outside the pod on a person's login. Since 2026-11-18 the chart refuses to render `claude-code` and a worker-dispatched `claude-environment`, and ploegd refuses their claim (`credential_isolation_required`, ADR-0034); a client-carried Run (ADR-0112) stays allowed.
 
   - id: harness-acp-other
     axis: harness
@@ -423,7 +423,7 @@ rows:
           workflow: attack-drill.yml
           job: real-binary
           contains: ["OPENCODE_VERSION", "GOOSE_VERSION"]
-    limits: The attack drill runs opencode and goose against a hostile repository, which does not qualify the proxies.
+    limits: The attack drill runs opencode and goose against a hostile repository, which does not qualify the proxies. Since 2026-11-18 the chart refuses to render them and ploegd refuses their claim (`credential_isolation_required`, ADR-0034).
 
   - id: harness-dind
     axis: harness
@@ -434,7 +434,7 @@ rows:
           path: docs/security/threat-model.md#what-the-profile-excludes
           label: threat model, excluded
           contains: ["Privileged sidecar whose client certificates the harness holds. It also turns both credential proxies off"]
-    limits: 'Renders only with `harness.acknowledgePrivilegedDind: true`, and never under `supportProfile: P1`.'
+    limits: 'Refused by the chart under every `supportProfile` since 2026-11-18 (`credential_isolation_required`, ADR-0034), with or without `harness.acknowledgePrivilegedDind: true`.'
 
   - id: forge-github-app
     axis: forge

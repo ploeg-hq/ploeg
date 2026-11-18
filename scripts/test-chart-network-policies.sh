@@ -55,10 +55,6 @@ assert_has "$worker" 'kubernetes.io/metadata.name: observability' 'workers canno
 assert_has "$worker" 'port: 4318' 'the telemetry rule does not carry the collector port'
 assert_lacks "$worker" 'cidr: 0.0.0.0/0' 'an airgapped worker pool reaches the internet'
 assert_lacks "$worker" 'port: 5432' 'workers reach the database'
-pewter=$(policy "$rendered" ploeg-worker-pewter-anthropic)
-assert_has "$pewter" 'ploeg.webgrip.dev/team: pewter' 'the claude-environment team policy does not select its team'
-assert_has "$pewter" 'cidr: 0.0.0.0/0' 'a claude-environment team cannot reach Anthropic'
-assert_has "$pewter" '172.16.0.0/12' 'the internet rule does not exclude private ranges'
 [[ -z "$(policy "$rendered" ploeg-worker-brass-anthropic)" ]] || fail 'a client-carried claude-environment team gets an Anthropic policy it has no worker for'
 [[ -z "$(policy "$rendered" ploeg-worker-bronze-anthropic)" ]] || fail 'a team without claude-environment gets an Anthropic policy'
 ploegd=$(policy "$rendered" ploeg-ploegd)
@@ -155,17 +151,6 @@ assert_has "$worker" 'cidr: 203.0.113.8/32' 'worker.extraEgress is not rendered'
 assert_has "$worker" 'app.kubernetes.io/name: forgejo' 'named forge peers for a svc URL do not reach the worker policy'
 assert_count "$worker" 'kubernetes.io/metadata.name: forgejo' 1 'the namespace-wide forge rule survives named peers for a svc URL'
 assert_lacks "$worker" 'cidr: 203.0.113.7/32' 'ploegd.extraEgress leaks into the worker policy'
-
-rendered=$(render -f "$ci/executor-values.yaml" --set 'networkPolicy.privateCidrs=null')
-assert_denies "$rendered" ploeg-worker-pewter-anthropic 169.254.169.254 443 'an empty privateCidrs lets a claude-environment worker reach link-local addresses'
-assert_denies "$rendered" ploeg-worker-pewter-anthropic 127.0.0.1 443 'an empty privateCidrs lets a claude-environment worker reach loopback'
-assert_admits "$rendered" ploeg-worker-pewter-anthropic 10.1.2.3 443 'an empty privateCidrs still excepts a private range'
-assert_admits "$rendered" ploeg-worker-pewter-anthropic 1.1.1.1 443 'a claude-environment worker cannot reach a public address on 443'
-
-rendered=$(render -f "$ci/executor-values.yaml" --set 'networkPolicy.privateCidrs={10.0.0.0/8,169.254.0.0/16}')
-pewter=$(policy "$rendered" ploeg-worker-pewter-anthropic)
-assert_count "$pewter" '169.254.0.0/16' 1 'a privateCidrs entry that is also node-local is excepted twice'
-assert_count "$pewter" '127.0.0.0/8' 1 'loopback is not excepted once when privateCidrs is set'
 
 rendered=$(render -f "$ci/executor-public-endpoints-values.yaml")
 assert_denies "$rendered" ploeg-worker 169.254.169.254 80 'workers on a public http forge reach the instance metadata service on 80'

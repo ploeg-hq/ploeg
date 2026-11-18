@@ -150,7 +150,7 @@
           "properties": {
             "extraEgress": {
               "$ref": "#/definitions/networkPolicyEgressRules",
-              "description": "Further egress rules for every worker pod, such as the registry a DinD sidecar pulls from or the allowlist proxy of ADR-0037. Each rule widens what a model-directed harness can reach."
+              "description": "Further egress rules for every worker pod, such as the registry a DinD sidecar pulls from or the allowlist proxy of ADR-0037. Each rule widens what a model-directed harness can reach. Not applied with executor.credentialGateway.enabled, where a Run pod reaches only DNS and the credential gateway."
             }
           }
         },
@@ -1419,6 +1419,68 @@
           "type": "boolean",
           "description": "true keeps the worker workloads in the release namespace under supportProfile P1. Without it, P1 warns before chart 0.3.0 and refuses from it while executor.namespace is empty or names the release namespace (F-44, ADR-0169)."
         },
+        "credentialGateway": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "PROPOSED (ADR-0197), opt-in: renders ploeg-credential-gateway in the executor namespace and makes every Run pod credential-free; the Run pod reaches ploegd, its forge and the model gateway only through the gateway.",
+          "properties": {
+            "enabled": {"type": "boolean", "description": "true renders the gateway's Deployment, Service, PodDisruptionBudget, ServiceAccount, Role and NetworkPolicy, ploegd's TokenReview ClusterRole and PLOEG_CREDENTIAL_GATEWAYS, and renders every Run pod with PLOEG_CREDENTIAL_GATEWAY=on and no secret."},
+            "replicas": {"type": "integer", "minimum": 1, "description": "Gateway replicas, spread over nodes; the PodDisruptionBudget allows one unavailable."},
+            "scratchSizeLimit": {"type": "string", "pattern": "^[0-9]+(Mi|Gi)$", "description": "sizeLimit of the gateway's /tmp emptyDir, where it checks a prepare or OpenHands Run's push from its pack: up to 64 MiB of pack, its indexed copy and a fetch of the forge's base branch per push. The default 2Gi holds four such pushes at once with a base branch of up to 384 MiB packed; scripts/check-credential-gateway.py refuses less than one (512Mi)."},
+            "acknowledgeSingleNode": {
+              "type": "boolean",
+              "description": "true relaxes the gateway's anti-affinity against Run pods and its exclusion of executor.nodeSelector's pool to preferred, and labels every Run pod and the gateway ploeg.webgrip.dev/credential-gateway-shared-node. The chart cannot count nodes; set it only where no node is free of Run pods."
+            },
+            "limits": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "forge": {"$ref": "#/definitions/credentialGatewayLimit"},
+                "model": {"$ref": "#/definitions/credentialGatewayLimit"},
+                "ploegd": {"$ref": "#/definitions/credentialGatewayLimit"},
+                "mcp": {"$ref": "#/definitions/credentialGatewayLimit"},
+                "maxUpstreamConnections": {"type": "integer", "minimum": 1}
+              }
+            },
+            "mcp": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "Registered MCP servers (ADR-0199): the gateway's egress to them, and stdio servers run as sandboxed adapters outside every Run pod.",
+              "properties": {
+                "egress": {"type": "array", "items": {"type": "object"}, "description": "NetworkPolicy egress rules the credential gateway gets for registered MCP servers."},
+                "adapters": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["name", "image", "command"],
+                    "properties": {
+                      "name": {"type": "string", "pattern": "^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$"},
+                      "team": {"type": "string", "pattern": "^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$", "description": "The one Team whose Runs use this adapter; register its URL only in that Team's tools. An adapter's sessions share its pod, its user and its credential, so a Team that needs the same server gets an adapter of its own."},
+                      "sessionsSizeLimit": {"type": "string", "pattern": "^[0-9]+(Mi|Gi)$", "description": "sizeLimit of the emptyDir that holds each session's own directory (its HOME, TMPDIR and working directory, created 0700 and removed when the session ends). Default 1Gi. The adapter has no writable /tmp."},
+                      "image": {"type": "string", "pattern": "@sha256:[0-9a-f]{64}$", "description": "The stdio MCP server's image, pinned by digest."},
+                      "command": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+                      "args": {"type": "array", "items": {"type": "string"}},
+                      "sessions": {"type": "integer", "minimum": 1, "maximum": 256, "description": "Concurrent MCP sessions, each one process of the server. Default 16."},
+                      "credentialSecret": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["name", "key", "env"],
+                        "properties": {"name": {"type": "string"}, "key": {"type": "string"}, "env": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]*$"}},
+                        "description": "The server's credential, mounted only into the adapter pod, never a Run pod."
+                      },
+                      "egress": {"type": "array", "items": {"type": "object"}, "description": "NetworkPolicy egress rules of the adapter pod besides DNS."},
+                      "resources": {"type": "object"}
+                    }
+                  }
+                }
+              }
+            },
+            "resources": {"type": "object"},
+            "nodeSelector": {"type": ["object", "null"], "additionalProperties": {"type": "string"}},
+            "tolerations": {"type": ["array", "null"], "items": {"type": "object"}}
+          }
+        },
         "cronjob": {
           "type": "object",
           "properties": {
@@ -2004,6 +2066,15 @@
     }
   },
   "definitions": {
+    "credentialGatewayLimit": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "requestsPerSecond": {"type": "number", "exclusiveMinimum": 0},
+        "burst": {"type": "integer", "minimum": 1},
+        "bytesPerSecond": {"type": "integer", "minimum": 1}
+      }
+    },
     "spendCap": {
       "type": "object",
       "additionalProperties": false,
@@ -2214,7 +2285,7 @@
         },
         "dind": {
           "type": "boolean",
-          "description": "false (the chart default) renders no privileged sidecar and keeps both credential proxies on for a qualified harness. true adds the privileged docker:dind sidecar, mounts its client certificates into the harness container and turns both credential proxies off for that workload (PLOEG_CREDENTIAL_ISOLATION_OFF_REASON=dind); the render refuses it without acknowledgePrivilegedDind (ADR-0136)."
+          "description": "false (the chart default) renders no privileged sidecar and keeps both credential proxies on for a qualified harness. true adds the privileged docker:dind sidecar, mounts its client certificates into the harness container and turns both credential proxies off for that workload (PLOEG_CREDENTIAL_ISOLATION_OFF_REASON=dind); the render refuses it without acknowledgePrivilegedDind (ADR-0136), and since credential isolation is required for every Role it refuses it with one too (credential_isolation_required, ADR-0034 amended 2026-11-18) until the credential gateway of ADR-0197 is built."
         },
         "acknowledgePrivilegedDind": {
           "type": "boolean",
@@ -2225,7 +2296,7 @@
             "",
             "proxy"
           ],
-          "description": "Explicit per-workload setting for both credential proxies (ADR-0034). Unset = executor.forgeTokenIsolation and executor.litellm.keyIsolation apply to a qualified harness without DinD, and every other workload runs with both off."
+          "description": "Explicit per-workload setting for both credential proxies (ADR-0034). Unset = executor.forgeTokenIsolation and executor.litellm.keyIsolation apply to a qualified harness without DinD. Anything but proxy, on any workload, fails the render with credential_isolation_required (ADR-0034, amended 2026-11-18)."
         },
         "timeout": {
           "type": "string",
@@ -2296,7 +2367,7 @@
         },
         "dind": {
           "type": "boolean",
-          "description": "false (the chart default) renders no privileged sidecar and keeps both credential proxies on for a qualified harness. true adds the privileged docker:dind sidecar, mounts its client certificates into the harness container and turns both credential proxies off for that workload (PLOEG_CREDENTIAL_ISOLATION_OFF_REASON=dind); the render refuses it without acknowledgePrivilegedDind (ADR-0136)."
+          "description": "false (the chart default) renders no privileged sidecar and keeps both credential proxies on for a qualified harness. true adds the privileged docker:dind sidecar, mounts its client certificates into the harness container and turns both credential proxies off for that workload (PLOEG_CREDENTIAL_ISOLATION_OFF_REASON=dind); the render refuses it without acknowledgePrivilegedDind (ADR-0136), and since credential isolation is required for every Role it refuses it with one too (credential_isolation_required, ADR-0034 amended 2026-11-18) until the credential gateway of ADR-0197 is built."
         },
         "acknowledgePrivilegedDind": {
           "type": "boolean",
@@ -2307,7 +2378,7 @@
             "",
             "proxy"
           ],
-          "description": "Explicit per-workload setting for both credential proxies (ADR-0034). Unset = executor.forgeTokenIsolation and executor.litellm.keyIsolation apply to a qualified harness without DinD, and every other workload runs with both off."
+          "description": "Explicit per-workload setting for both credential proxies (ADR-0034). Unset = executor.forgeTokenIsolation and executor.litellm.keyIsolation apply to a qualified harness without DinD. Anything but proxy, on any workload, fails the render with credential_isolation_required (ADR-0034, amended 2026-11-18)."
         },
         "timeout": {
           "type": "string",

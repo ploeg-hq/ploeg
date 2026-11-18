@@ -22,10 +22,10 @@ func TestClaim_OverTheTeamCapIsEmptyHanded(t *testing.T) {
 		TeamCaps:       config.RunCaps{"bronze": 1},
 	}).Handler()
 
-	if code, _ := postClaim(t, h, `{"team":"bronze","role":"analyst"}`); code != http.StatusOK {
+	if code, _ := postClaim(t, h, `{"team":"bronze","role":"analyst","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`); code != http.StatusOK {
 		t.Fatalf("first claim returned %d, want 200", code)
 	}
-	if code, _ := postClaim(t, h, `{"team":"bronze","role":"analyst"}`); code != http.StatusNoContent {
+	if code, _ := postClaim(t, h, `{"team":"bronze","role":"analyst","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`); code != http.StatusNoContent {
 		t.Fatalf("claim over the cap returned %d, want 204 so the worker exits 0", code)
 	}
 	if n, _ := testStore.PendingRuns(context.Background(), "bronze", "analyst"); n != 1 {
@@ -49,10 +49,10 @@ func TestClaim_RoleLessClaimHonoursTheTeamCap(t *testing.T) {
 		TeamCaps:       config.RunCaps{"bronze": 1},
 	}).Handler()
 
-	if code, _ := postClaim(t, h, `{"team":"bronze"}`); code != http.StatusOK {
+	if code, _ := postClaim(t, h, `{"team":"bronze","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`); code != http.StatusOK {
 		t.Fatalf("first claim returned %d, want 200", code)
 	}
-	if code, _ := postClaim(t, h, `{"team":"bronze"}`); code != http.StatusNoContent {
+	if code, _ := postClaim(t, h, `{"team":"bronze","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`); code != http.StatusNoContent {
 		t.Fatalf("claim over the cap returned %d, want 204", code)
 	}
 }

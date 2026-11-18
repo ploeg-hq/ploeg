@@ -248,7 +248,7 @@ spec:
             - name: PLOEG_TEAM_PLANS
               value: "{\"gold\":{\"independentReview\":{\"model\":true},\"maxFixRounds\":0,\"pool\":\"6\",\"rounds\":[{\"roles\":[{\"cap\":\"3.00\",\"model\":\"litellm_proxy/deepseek-v4\",\"models\":[\"deepseek-v4\",\"kimi-k3\"],\"name\":\"builder\",\"writes\":true}]},{\"roles\":[{\"cap\":\"0.75\",\"harnesses\":[\"openhands\"],\"name\":\"reviewer\",\"writes\":false}]}]}}"
             - name: PLOEG_TEAM_HARNESSES
-              value: "{\"gold\":{\"builder\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"openhands\",\"qualification\":\"qualified\"},{\"name\":\"acp\",\"profile\":\"opencode\",\"qualification\":\"unqualified\"},{\"name\":\"acp\",\"profile\":\"qwen-code\",\"qualification\":\"unqualified\"}],\"name\":\"openhands\"},\"reviewer\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"openhands\",\"qualification\":\"qualified\"}],\"name\":\"openhands\"}},\"silver\":{\"\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"openhands\",\"qualification\":\"qualified\"}],\"name\":\"openhands\"}}}"
+              value: "{\"gold\":{\"builder\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"openhands\",\"qualification\":\"qualified\"},{\"name\":\"acp\",\"profile\":\"openhands\",\"qualification\":\"qualified\"},{\"name\":\"exec\",\"qualification\":\"qualified\"}],\"name\":\"openhands\"},\"reviewer\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"openhands\",\"qualification\":\"qualified\"}],\"name\":\"openhands\"}},\"silver\":{\"\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"openhands\",\"qualification\":\"qualified\"}],\"name\":\"openhands\"}}}"
             - name: PLOEG_TEAM_SPEND_CAPS
               value: "{\"gold\":{\"period\":\"day\",\"usd\":20},\"silver\":{\"period\":\"day\",\"usd\":20}}"
             - name: PLOEG_WORKER_FORGE_TOKEN_ISOLATION
@@ -419,7 +419,7 @@ spec:
           - name: harness
             image: registry.example/agent-runner:1.3.0@sha256:db06af1d9c0969ed594a21ee2b3369a79d6e91abb36b94d29223918581963027
             restartPolicy: Always
-            command: ["/mnt/bin/ploeg-worker", "harness-serve", "/run/ploeg/launcher/launcher.sock"]
+            command: ["/mnt/bin/ploeg-worker", "harness-serve", "/run/ploeg/launcher/launcher.json"]
             volumeMounts:
               - name: worker-bin
                 mountPath: /mnt/bin
@@ -507,7 +507,7 @@ spec:
               - name: WORK_DIR
                 value: /mnt/ci-shared
               - name: PLOEG_HARNESS_LAUNCHER
-                value: /run/ploeg/launcher/launcher.sock
+                value: /run/ploeg/launcher/launcher.json
               - name: GOMEMLIMIT
                 value: "460MiB"
             volumeMounts:
@@ -658,7 +658,7 @@ spec:
           - name: harness
             image: registry.example/agent-runner:1.3.0@sha256:db06af1d9c0969ed594a21ee2b3369a79d6e91abb36b94d29223918581963027
             restartPolicy: Always
-            command: ["/mnt/bin/ploeg-worker", "harness-serve", "/run/ploeg/launcher/launcher.sock"]
+            command: ["/mnt/bin/ploeg-worker", "harness-serve", "/run/ploeg/launcher/launcher.json"]
             volumeMounts:
               - name: worker-bin
                 mountPath: /mnt/bin
@@ -750,7 +750,7 @@ spec:
               - name: WORK_DIR
                 value: /mnt/ci-shared
               - name: PLOEG_HARNESS_LAUNCHER
-                value: /run/ploeg/launcher/launcher.sock
+                value: /run/ploeg/launcher/launcher.json
               - name: GOMEMLIMIT
                 value: "460MiB"
             volumeMounts:
@@ -836,7 +836,7 @@ spec:
 apiVersion: keda.sh/v1alpha1
 kind: ScaledJob
 metadata:
-  name: ploeg-worker-gold-builder-acp-opencode
+  name: ploeg-worker-gold-builder-acp-openhands
   labels:
     app.kubernetes.io/name: ploeg
     app.kubernetes.io/instance: ploeg
@@ -888,7 +888,7 @@ spec:
           # Extracts ploeg-worker from the distroless ploegd image via
           # self-copy (no shell in distroless).
           - name: worker-bin
-            image: ghcr.io/ploeg-hq/ploegd:CHART-VERSION@sha256:da0cc1526c299863f227760b0f3f4d8428fd762de5edfeaa2effe75e3b739a36
+            image: ghcr.io/ploeg-hq/ploeg-worker:CHART-VERSION@sha256:cc5bedc5be0fe1c8546671c1ccbf76c62646c87e3bf52908de7c317852848e14
             command: ["/usr/local/bin/ploeg-worker", "install", "/mnt/bin/ploeg-worker"]
             securityContext:
               runAsNonRoot: true
@@ -908,10 +908,40 @@ spec:
               requests:
                 cpu: 50m
                 memory: 64Mi
+          - name: harness
+            image: harbor.webgrip.dev/webgrip/openhands-acp-runner:0.1.0
+            restartPolicy: Always
+            command: ["/mnt/bin/ploeg-worker", "harness-serve", "/run/ploeg/launcher/launcher.json"]
+            volumeMounts:
+              - name: worker-bin
+                mountPath: /mnt/bin
+                readOnly: true
+              - name: harness-launcher
+                mountPath: /run/ploeg/launcher
+                readOnly: true
+              - name: ci-shared
+                mountPath: /mnt/ci-shared
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop:
+                - ALL
+              runAsGroup: 1000
+              runAsNonRoot: true
+              runAsUser: 1000
+              seccompProfile:
+                type: RuntimeDefault
+            resources:
+              limits:
+                cpu: "1"
+                memory: 1Gi
+              requests:
+                cpu: "1"
+                memory: 1Gi
         containers:
           - name: worker
-            image: harbor.webgrip.dev/webgrip/opencode-runner:0.1.0
-            command: ["/mnt/bin/ploeg-worker"]
+            image: ghcr.io/ploeg-hq/ploeg-worker:CHART-VERSION@sha256:cc5bedc5be0fe1c8546671c1ccbf76c62646c87e3bf52908de7c317852848e14
+            command: ["/usr/local/bin/ploeg-worker"]
             env:
               - name: PLOEG_API_URL
                 value: "http://ploeg:8080"
@@ -926,7 +956,7 @@ spec:
               - name: PLOEG_HARNESS_IDLE_TIMEOUT
                 value: "15m"
               - name: PLOEG_ACP_PROFILE
-                value: "opencode"
+                value: "openhands"
               - name: LLM_MODEL
                 value: "litellm_proxy/deepseek-v4"
               - name: LITELLM_KEY_BUDGET
@@ -935,8 +965,10 @@ spec:
                 value: "4h"
               - name: LLM_BASE_URL
                 value: "http://litellm.ai.svc.cluster.local:4000/v1"
-              - name: PLOEG_CREDENTIAL_ISOLATION_OFF_REASON
-                value: "unqualified"
+              - name: PLOEG_LLM_KEY_ISOLATION
+                value: "proxy"
+              - name: PLOEG_FORGE_TOKEN_ISOLATION
+                value: "proxy"
               - name: PLOEG_LLM_CREDENTIAL_MODE
                 value: "managed"
               - name: PLOEG_WORKER_BOOTSTRAP_TOKEN
@@ -972,17 +1004,23 @@ spec:
                     fieldPath: metadata.uid
               - name: WORK_DIR
                 value: /mnt/ci-shared
+              - name: PLOEG_HARNESS_LAUNCHER
+                value: /run/ploeg/launcher/launcher.json
+              - name: GOMEMLIMIT
+                value: "460MiB"
             volumeMounts:
-              - name: worker-bin
-                mountPath: /mnt/bin
-                readOnly: true
               - name: ci-shared
                 mountPath: /mnt/ci-shared
+              - name: harness-launcher
+                mountPath: /run/ploeg/launcher
+              - name: worker-tmp
+                mountPath: /tmp
             securityContext:
               allowPrivilegeEscalation: false
               capabilities:
                 drop:
                 - ALL
+              readOnlyRootFilesystem: true
               runAsGroup: 1000
               runAsNonRoot: true
               runAsUser: 1000
@@ -990,14 +1028,21 @@ spec:
                 type: RuntimeDefault
             resources:
               limits:
-                cpu: "1"
-                memory: 1Gi
+                cpu: 250m
+                memory: 512Mi
               requests:
-                cpu: "1"
-                memory: 1Gi
+                cpu: 250m
+                memory: 512Mi
         volumes:
           - name: worker-bin
             emptyDir: {}
+          - name: harness-launcher
+            emptyDir:
+              medium: Memory
+              sizeLimit: 1Mi
+          - name: worker-tmp
+            emptyDir:
+              sizeLimit: 1Gi
           # Disk-backed (not tmpfs): repo checkout + gate builds are large.
           # Same absolute path in worker AND dind so `docker run -v`
           # bind-mounts resolve on the daemon's filesystem.
@@ -1027,7 +1072,7 @@ spec:
         # this system can have. TestClaimRoleAgreesWithPendingRuns keeps the
         # two Go callers honest; TestTheChartsScalerQueryCountsWhatItsWorkerClaims
         # runs this rendered query against them.
-        query: "SELECT COUNT(*) FROM agent_runs WHERE team = 'gold' AND role = 'builder' AND state = 'pending' AND (harness_requested IS NULL OR harness_requested = 'acp/opencode') AND carrier IS NULL"
+        query: "SELECT COUNT(*) FROM agent_runs WHERE team = 'gold' AND role = 'builder' AND state = 'pending' AND (harness_requested IS NULL OR harness_requested = 'acp/openhands') AND carrier IS NULL"
         targetQueryValue: "1"
         activationTargetQueryValue: "0"
       authenticationRef:
@@ -1046,7 +1091,7 @@ spec:
 apiVersion: keda.sh/v1alpha1
 kind: ScaledJob
 metadata:
-  name: ploeg-worker-gold-builder-acp-qwen-code
+  name: ploeg-worker-gold-builder-exec
   labels:
     app.kubernetes.io/name: ploeg
     app.kubernetes.io/instance: ploeg
@@ -1098,7 +1143,7 @@ spec:
           # Extracts ploeg-worker from the distroless ploegd image via
           # self-copy (no shell in distroless).
           - name: worker-bin
-            image: ghcr.io/ploeg-hq/ploegd:CHART-VERSION@sha256:da0cc1526c299863f227760b0f3f4d8428fd762de5edfeaa2effe75e3b739a36
+            image: ghcr.io/ploeg-hq/ploeg-worker:CHART-VERSION@sha256:cc5bedc5be0fe1c8546671c1ccbf76c62646c87e3bf52908de7c317852848e14
             command: ["/usr/local/bin/ploeg-worker", "install", "/mnt/bin/ploeg-worker"]
             securityContext:
               runAsNonRoot: true
@@ -1118,10 +1163,40 @@ spec:
               requests:
                 cpu: 50m
                 memory: 64Mi
+          - name: harness
+            image: harbor.webgrip.dev/webgrip/custom-agent:0.1.0
+            restartPolicy: Always
+            command: ["/mnt/bin/ploeg-worker", "harness-serve", "/run/ploeg/launcher/launcher.json"]
+            volumeMounts:
+              - name: worker-bin
+                mountPath: /mnt/bin
+                readOnly: true
+              - name: harness-launcher
+                mountPath: /run/ploeg/launcher
+                readOnly: true
+              - name: ci-shared
+                mountPath: /mnt/ci-shared
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop:
+                - ALL
+              runAsGroup: 1000
+              runAsNonRoot: true
+              runAsUser: 1000
+              seccompProfile:
+                type: RuntimeDefault
+            resources:
+              limits:
+                cpu: "1"
+                memory: 1Gi
+              requests:
+                cpu: "1"
+                memory: 1Gi
         containers:
           - name: worker
-            image: harbor.webgrip.dev/webgrip/qwen-runner:0.1.0
-            command: ["/mnt/bin/ploeg-worker"]
+            image: ghcr.io/ploeg-hq/ploeg-worker:CHART-VERSION@sha256:cc5bedc5be0fe1c8546671c1ccbf76c62646c87e3bf52908de7c317852848e14
+            command: ["/usr/local/bin/ploeg-worker"]
             env:
               - name: PLOEG_API_URL
                 value: "http://ploeg:8080"
@@ -1130,13 +1205,13 @@ spec:
               - name: PLOEG_ROLE
                 value: "builder"
               - name: PLOEG_HARNESS
-                value: "acp"
+                value: "exec"
+              - name: PLOEG_HARNESS_ARGS
+                value: "[\"/usr/local/bin/agent\",\"{taskfile}\"]"
               - name: PLOEG_HARNESS_TIMEOUT
                 value: "100m"
               - name: PLOEG_HARNESS_IDLE_TIMEOUT
                 value: "15m"
-              - name: PLOEG_ACP_PROFILE
-                value: "qwen-code"
               - name: LLM_MODEL
                 value: "litellm_proxy/deepseek-v4"
               - name: LITELLM_KEY_BUDGET
@@ -1145,8 +1220,10 @@ spec:
                 value: "4h"
               - name: LLM_BASE_URL
                 value: "http://litellm.ai.svc.cluster.local:4000/v1"
-              - name: PLOEG_CREDENTIAL_ISOLATION_OFF_REASON
-                value: "unqualified"
+              - name: PLOEG_LLM_KEY_ISOLATION
+                value: "proxy"
+              - name: PLOEG_FORGE_TOKEN_ISOLATION
+                value: "proxy"
               - name: PLOEG_LLM_CREDENTIAL_MODE
                 value: "managed"
               - name: PLOEG_WORKER_BOOTSTRAP_TOKEN
@@ -1182,17 +1259,23 @@ spec:
                     fieldPath: metadata.uid
               - name: WORK_DIR
                 value: /mnt/ci-shared
+              - name: PLOEG_HARNESS_LAUNCHER
+                value: /run/ploeg/launcher/launcher.json
+              - name: GOMEMLIMIT
+                value: "460MiB"
             volumeMounts:
-              - name: worker-bin
-                mountPath: /mnt/bin
-                readOnly: true
               - name: ci-shared
                 mountPath: /mnt/ci-shared
+              - name: harness-launcher
+                mountPath: /run/ploeg/launcher
+              - name: worker-tmp
+                mountPath: /tmp
             securityContext:
               allowPrivilegeEscalation: false
               capabilities:
                 drop:
                 - ALL
+              readOnlyRootFilesystem: true
               runAsGroup: 1000
               runAsNonRoot: true
               runAsUser: 1000
@@ -1200,14 +1283,21 @@ spec:
                 type: RuntimeDefault
             resources:
               limits:
-                cpu: "1"
-                memory: 1Gi
+                cpu: 250m
+                memory: 512Mi
               requests:
-                cpu: "1"
-                memory: 1Gi
+                cpu: 250m
+                memory: 512Mi
         volumes:
           - name: worker-bin
             emptyDir: {}
+          - name: harness-launcher
+            emptyDir:
+              medium: Memory
+              sizeLimit: 1Mi
+          - name: worker-tmp
+            emptyDir:
+              sizeLimit: 1Gi
           # Disk-backed (not tmpfs): repo checkout + gate builds are large.
           # Same absolute path in worker AND dind so `docker run -v`
           # bind-mounts resolve on the daemon's filesystem.
@@ -1237,7 +1327,7 @@ spec:
         # this system can have. TestClaimRoleAgreesWithPendingRuns keeps the
         # two Go callers honest; TestTheChartsScalerQueryCountsWhatItsWorkerClaims
         # runs this rendered query against them.
-        query: "SELECT COUNT(*) FROM agent_runs WHERE team = 'gold' AND role = 'builder' AND state = 'pending' AND (harness_requested IS NULL OR harness_requested = 'acp/qwen-code') AND carrier IS NULL"
+        query: "SELECT COUNT(*) FROM agent_runs WHERE team = 'gold' AND role = 'builder' AND state = 'pending' AND (harness_requested IS NULL OR harness_requested = 'exec') AND carrier IS NULL"
         targetQueryValue: "1"
         activationTargetQueryValue: "0"
       authenticationRef:
@@ -1331,7 +1421,7 @@ spec:
           - name: harness
             image: registry.example/agent-runner:1.3.0@sha256:db06af1d9c0969ed594a21ee2b3369a79d6e91abb36b94d29223918581963027
             restartPolicy: Always
-            command: ["/mnt/bin/ploeg-worker", "harness-serve", "/run/ploeg/launcher/launcher.sock"]
+            command: ["/mnt/bin/ploeg-worker", "harness-serve", "/run/ploeg/launcher/launcher.json"]
             volumeMounts:
               - name: worker-bin
                 mountPath: /mnt/bin
@@ -1423,7 +1513,7 @@ spec:
               - name: WORK_DIR
                 value: /mnt/ci-shared
               - name: PLOEG_HARNESS_LAUNCHER
-                value: /run/ploeg/launcher/launcher.sock
+                value: /run/ploeg/launcher/launcher.json
               - name: GOMEMLIMIT
                 value: "460MiB"
             volumeMounts:

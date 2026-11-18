@@ -174,3 +174,51 @@ Any one of these reopens this record:
   proxies of this record stay; the worker that holds them now runs in a
   container the harness cannot see into, and the dumpable flag is a second
   layer. The status and the decision above are unchanged.
+* 2026-11-18 — Amended by the owner: the opt-in becomes mandatory. Every Role,
+  writer and reader, on every harness, runs with both
+  `PLOEG_FORGE_TOKEN_ISOLATION` and `PLOEG_LLM_KEY_ISOLATION` set to `proxy`,
+  on a harness qualified for them (`openhands`, `acp` profile `openhands`,
+  `exec`) and without DinD. The credential gateway of
+  [ADR-0197](0197-no-credential-enters-a-run-pod-and-a-credential-gateway-outside-it-attaches-each-one-a-run-uses.md),
+  once built, is the only other accepted mode: it joins
+  `ploeg.credentialModesOutsideHarness` in the chart and
+  `credentialModesOutsideHarness` in
+  [credential_isolation.go](../../pkg/httpapi/credential_isolation.go). The
+  chart refuses to render a Role workload that misses any of this, under every `supportProfile`, with
+  `credential_isolation_required` naming the Team, the Role and what is
+  missing. `ploegd` refuses a claim (`403 credential_isolation_required`)
+  from a worker that does not send `harness`, `forgeTokenIsolation: proxy` and
+  `llmKeyIsolation: proxy` for a qualified harness, before any Run is
+  claimed, so the Work Item waits for a worker that isolates both. Until the
+  gateway is built this stops `claude-code`, `claude-environment` dispatched by a
+  worker, every `acp` profile but `openhands`, every DinD Role
+  and every `credentialIsolation` override that is not `proxy`; the
+  [managed-worker upgrade notes](../ops/managed-workers.md#credential-isolation-is-required)
+  lists each with its fix. Confirmed by `scripts/helm-golden.sh` (the
+  `reject-*-isolation-*`, `reject-dind`, `reject-unqualified-harness`,
+  and `reject-claude-environment-harness` fixtures,
+  `refused_in_every_profile`, and `executor-isolation` rendering every
+  qualified harness) and by `TestClaim_EveryRoleNeedsItsCredentialsIsolatedFromItsHarness`,
+  `TestClaim_AQualifiedHarnessBehindBothProxiesClaims` and
+  `TestTheClaimCarriesBothCredentialIsolations`.
+* 2026-11-18 — Scope clarified by the owner: the mandatory isolation above
+  covers Run pods in the cluster. A client-carried Run
+  ([ADR-0112](0112-a-claude-environment-run-uses-the-claude-login-of-the-person-it-acts-for.md))
+  runs in the person's own environment, their own Claude Code session on
+  their own machine with their own login, and stays allowed: the chart
+  renders a `claudeEnvironment.carrier: client` Role and `ploegd` serves
+  `POST /api/v1/operator/work-items/{id}/claim` as before. Its forge
+  credential is still minted per Run, for the Run's one repository, and
+  short-lived. Confirmed by the `executor` golden, which renders the
+  client-carried `brass` team.
+* 2026-11-18 — With the credential gateway of
+  [ADR-0197](0197-no-credential-enters-a-run-pod-and-a-credential-gateway-outside-it-attaches-each-one-a-run-uses.md)
+  merged, a claim that a gateway Team's own gateway admitted satisfies the
+  mandatory isolation without `forgeTokenIsolation` or `llmKeyIsolation`,
+  because neither credential enters its Run pod; it still needs a qualified
+  harness. Any other claim for a gateway Team is refused before isolation is
+  judged (`claim_refused`). The client-carried exemption above does not reach
+  gateway Teams: `ploegd` refuses their client claim with
+  `409 credential_gateway_team`. Confirmed by
+  `TestClaim_AGatewayTeamsClaimNeedsNoWorkerProxiesButAQualifiedHarness` and
+  `TestAGatewayTeamsWorkIsNeverClaimedByAClient`.

@@ -639,13 +639,28 @@ var _ harness.Adapter = (*Adapter)(nil)
 // only when the Run's key was granted MCP access groups and the agent says it
 // speaks MCP over HTTP. Otherwise the session gets no servers (ADR-0078).
 func mcpServers(llm harness.LLMEnv, caps sdk.McpCapabilities) []sdk.McpServer {
-	if llm.MCPURL == "" || llm.APIKey == "" || !caps.Http {
-		return []sdk.McpServer{}
+	out := []sdk.McpServer{}
+	if llm.APIKey == "" || !caps.Http {
+		return out
 	}
-	return []sdk.McpServer{{Http: &sdk.McpServerHttpInline{
-		Name:    "litellm",
-		Type:    "http",
-		Url:     llm.MCPURL,
-		Headers: []sdk.HttpHeader{{Name: "x-litellm-api-key", Value: "Bearer " + llm.APIKey}},
-	}}}
+	if llm.MCPURL != "" {
+		out = append(out, sdk.McpServer{Http: &sdk.McpServerHttpInline{
+			Name:    "litellm",
+			Type:    "http",
+			Url:     llm.MCPURL,
+			Headers: []sdk.HttpHeader{{Name: "x-litellm-api-key", Value: "Bearer " + llm.APIKey}},
+		}})
+	}
+	for _, s := range llm.MCPServers {
+		if s.Name == "litellm" {
+			continue
+		}
+		out = append(out, sdk.McpServer{Http: &sdk.McpServerHttpInline{
+			Name:    s.Name,
+			Type:    "http",
+			Url:     s.URL,
+			Headers: []sdk.HttpHeader{{Name: "Authorization", Value: "Bearer " + llm.APIKey}},
+		}})
+	}
+	return out
 }

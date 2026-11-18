@@ -53,7 +53,7 @@ func TestClaim_NeverReturnsTheSharedForgeToken(t *testing.T) {
 	targetedWriterShift(t, "990")
 	h := forgeClaimServer(forgebroker.Static{Token: "the-shared-org-wide-pat"})
 
-	code, resp := postClaim(t, h, `{"team":"bronze","role":"builder"}`)
+	code, resp := postClaim(t, h, `{"team":"bronze","role":"builder","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	if code != http.StatusOK {
 		t.Fatalf("claim returned %d, want 200", code)
 	}
@@ -67,7 +67,7 @@ func TestClaim_ReturnsAMintedForgeToken(t *testing.T) {
 	targetedWriterShift(t, "991")
 	h := forgeClaimServer(mintingBroker{})
 
-	code, resp := postClaim(t, h, `{"team":"bronze","role":"builder"}`)
+	code, resp := postClaim(t, h, `{"team":"bronze","role":"builder","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	if code != http.StatusOK {
 		t.Fatalf("claim returned %d, want 200", code)
 	}
@@ -87,7 +87,7 @@ func TestClaim_AFailedMintEndsTheRunAsAnInfraNodeFailure(t *testing.T) {
 	targetedWriterShift(t, "992")
 	h := forgeClaimServer(failingMintBroker{})
 
-	code, _ := postClaim(t, h, `{"team":"bronze","role":"builder"}`)
+	code, _ := postClaim(t, h, `{"team":"bronze","role":"builder","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	if code != http.StatusNoContent {
 		t.Fatalf("claim returned %d, want 204: nothing may run without its push credential", code)
 	}

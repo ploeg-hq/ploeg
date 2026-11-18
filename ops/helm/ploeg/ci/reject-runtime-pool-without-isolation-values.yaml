@@ -6,6 +6,7 @@ executor:
     - name: bronze
       model: litellm_proxy/deepseek-chat
       budget: "2"
+      harness: {credentialIsolation: proxy}
   forgeTokenIsolation: ""
   runtimeTeams:
     enabled: true

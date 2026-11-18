@@ -15,6 +15,7 @@ change either side and the test tells you.
 | [tracker-execution.md](tracker-execution.md), [v1 schema](tracker-execution.v1.schema.json) | Scoped source lookup and exclusive operator binding of an existing pristine tracker Work Item. |
 | [acp-profiles.md](acp-profiles.md) | The `acp` harness profiles: launch command, gateway wiring, instruction files and approval mapping per agent, and what an image needs to run them. |
 | [executor.md](executor.md) | The executor SPI: what any launcher (KEDA, CronJob, agent-sandbox, a human with curl) must and must not do. |
+| [credential-gateway.md](credential-gateway.md) | The credential gateway of [ADR-0197](../adrs/0197-no-credential-enters-a-run-pod-and-a-credential-gateway-outside-it-attaches-each-one-a-run-uses.md) (proposed, opt-in): how it proves itself to ploegd, the gateway claim, the grants and audit routes, its route families and refusals. |
 
 ## Schema identifiers
 

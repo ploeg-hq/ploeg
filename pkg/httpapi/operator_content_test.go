@@ -81,7 +81,7 @@ func contentServer(t *testing.T, consumers string) (*Server, int64, int64) {
 	}
 	s := &Server{Store: testStore, LeaseTTL: time.Minute, Log: slog.New(slog.DiscardHandler),
 		WorkerSecurity: &WorkerSecurity{AllowLegacy: true}, OperatorConfig: OperatorConfig{Consumers: parsed}}
-	code, claimed := postClaim(t, s.Handler(), `{"team":"bronze","role":"reviewer"}`)
+	code, claimed := postClaim(t, s.Handler(), `{"team":"bronze","role":"reviewer","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	if code != http.StatusOK {
 		t.Fatalf("claim: %d", code)
 	}

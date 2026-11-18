@@ -43,8 +43,11 @@ type Server struct {
 	RuntimeTeams   *teamruntime.Service
 	WorkerSecurity *WorkerSecurity
 	LLMControl     *LLMControl
-	Store          *store.Store
-	Trackers       map[string]provider.TrackerProvider
+	// CredentialGateways is set when Teams run behind a credential gateway
+	// (ADR-0197).
+	CredentialGateways *CredentialGateways
+	Store              *store.Store
+	Trackers           map[string]provider.TrackerProvider
 	// Targets resolves a tracker scope to the repository the work lands in.
 	// Nil = no mapping configured; every item stays unresolved and workers use
 	// their env-configured repo (the pre-decoupling behavior).
@@ -371,6 +374,7 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("GET /api/v1/runs/{token}/claude-session", s.handleClaudeSessionState)
 	mux.HandleFunc("POST /api/v1/runs/{token}/transcript", s.handleRunTranscript)
 	mux.HandleFunc("POST /api/v1/runs/{token}/forge-credential", s.handleRefreshForgeCredential)
+	s.registerRunTools(mux)
 	mux.HandleFunc("POST /api/v1/claude-sessions/forge-credential", s.handleClaudeForgeCredential)
 	mux.HandleFunc("POST /api/v1/claude-sessions/report", s.handleClaudeSessionReport)
 	mux.HandleFunc("GET /api/v1/queue/{team}", s.handleQueue)
@@ -379,6 +383,7 @@ func (s *Server) routes() *http.ServeMux {
 	s.RegisterLLMControl(mux)
 	s.registerRunIdentity(mux)
 	s.registerTransactionTokens(mux)
+	s.registerCredentialGateway(mux)
 	return mux
 }
 
@@ -692,10 +697,11 @@ type claimRequest struct {
 	// Yields says the worker's Harness can stop at a safe point for a person
 	// (ADR-0142); ploegd records it on the claimed Run. Absent is false.
 	Yields bool `json:"yields,omitempty"`
-	// ForgeTokenIsolation is the worker's PLOEG_FORGE_TOKEN_ISOLATION. A
-	// prepare_repository writer starts only on a worker that says proxy
-	// (ADR-0194).
+	// ForgeTokenIsolation and LLMKeyIsolation are the worker's
+	// PLOEG_FORGE_TOKEN_ISOLATION and PLOEG_LLM_KEY_ISOLATION. ploegd hands a
+	// Run only to a worker that says proxy for both (ADR-0034).
 	ForgeTokenIsolation string `json:"forgeTokenIsolation,omitempty"`
+	LLMKeyIsolation     string `json:"llmKeyIsolation,omitempty"`
 
 	WorkerVersion string `json:"workerVersion,omitempty"`
 }
@@ -807,6 +813,9 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 	if s.refuseUnsponsoredTeam(w, req.Team) {
 		return
 	}
+	if s.refuseUnisolatedCredentials(w, r, req) {
+		return
+	}
 	if req.Role != "" {
 		s.claimRole(w, r, req)
 		return
@@ -849,7 +858,7 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.stopInactiveRuntimeTarget(r.Context(), req.Team, claimed.RunToken, claimed.Item) ||
-		s.stopUnreadyTarget(r.Context(), req.Team, claimed.RunToken, claimed.Item, true) || s.stopUnfencedPrepare(r.Context(), req, claimed.RunToken, claimed.Item, true) {
+		s.stopUnreadyTarget(r.Context(), req.Team, claimed.RunToken, claimed.Item, true) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
@@ -925,7 +934,7 @@ func (s *Server) claimRole(w http.ResponseWriter, r *http.Request, req claimRequ
 // respondClaimedRun builds the Shift-shaped claim response, briefing and all.
 func (s *Server) respondClaimedRun(w http.ResponseWriter, r *http.Request, req claimRequest, run *store.ClaimedRun) {
 	if s.stopInactiveRuntimeTarget(r.Context(), req.Team, run.RunToken, run.Item) ||
-		s.stopUnreadyTarget(r.Context(), req.Team, run.RunToken, run.Item, run.Writes) || s.stopUnfencedPrepare(r.Context(), req, run.RunToken, run.Item, run.Writes) {
+		s.stopUnreadyTarget(r.Context(), req.Team, run.RunToken, run.Item, run.Writes) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
@@ -1063,36 +1072,6 @@ func (s *Server) stopUnreadyTarget(ctx context.Context, team, runToken string, i
 	return true
 }
 
-// stopUnfencedPrepare ends a prepare_repository writer stuck before it
-// starts when the claiming worker does not fence its pushes behind the
-// forge proxy, or its Harness runs in a Claude environment (ADR-0194).
-func (s *Server) stopUnfencedPrepare(ctx context.Context, req claimRequest, runToken string, item work.WorkItem, writes bool) bool {
-	if !writes || !item.PreparesRepository() {
-		return false
-	}
-	reason := ""
-	switch {
-	case req.ForgeTokenIsolation != ForgeTokenIsolationProxy:
-		reason = "the claiming worker does not isolate the forge token behind its proxy, where a prepare Run's one deliverable is enforced"
-	case req.Harness == claudeEnvironmentHarness:
-		reason = "the claiming worker runs its Harness in a Claude environment, whose runner pushes without the worker's forge proxy"
-	default:
-		return false
-	}
-	s.Log.Warn("claim stopped: a prepare run needs the worker's delivery fence; no run started", "team", req.Team, "work_item", item.ID, "reason", reason)
-	res, err := s.Store.ReportOutcome(ctx, runToken, store.Report(work.OutcomeStuck, "prepare_unsupported_for_team", "prepare_unsupported_for_team: "+reason, nil, nil, nil))
-	if err != nil {
-		s.Log.Error("releasing the run failed", "work_item", item.ID, "err", err)
-		return true
-	}
-	if s.Engine != nil && res.ShiftID != nil {
-		if err := s.Engine.EvaluateItem(ctx, res.WorkItemID); err != nil {
-			s.Log.Error("shift evaluate failed; sweeper will repair", "shift", *res.ShiftID, "err", err)
-		}
-	}
-	return true
-}
-
 // withdrawAlreadyPrepared withdraws a prepare_repository Work Item whose
 // target became ready before its writer started (ADR-0194): no Run starts,
 // its hold is released and work_item.prepare_not_needed is written.
@@ -1124,7 +1103,7 @@ func (s *Server) handleRenew(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	body := map[string]any{"deadline": deadline, "expiresInMs": leaseExpiresInMs(deadline)}
-	if worker := runWorkerFrom(r.Context()); s.TransactionTokens != nil && worker != "" {
+	if worker := runWorkerFrom(r.Context()); s.TransactionTokens != nil && worker != "" && !gatewayRunFrom(r.Context()) {
 		renewed, _, err := s.issueTransactionToken(r.Context(), token, worker)
 		if err != nil {
 			s.Log.Error("renewed run got no transaction token", "err", err)

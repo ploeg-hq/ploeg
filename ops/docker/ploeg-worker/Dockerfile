@@ -13,7 +13,13 @@ ARG IMAGE_VERSION=0.0.0-dev
 ENV CGO_ENABLED=0
 RUN GOOS=$TARGETOS GOARCH=$TARGETARCH \
     go build -trimpath -ldflags "-s -w -X main.version=${IMAGE_VERSION}" \
-    -o /out/ploeg-worker ./cmd/ploeg-worker
+    -o /out/ploeg-worker ./cmd/ploeg-worker && \
+    GOOS=$TARGETOS GOARCH=$TARGETARCH \
+    go build -trimpath -ldflags "-s -w -X main.version=${IMAGE_VERSION}" \
+    -o /out/ploeg-credential-gateway ./cmd/ploeg-credential-gateway && \
+    GOOS=$TARGETOS GOARCH=$TARGETARCH \
+    go build -trimpath -ldflags "-s -w" \
+    -o /out/ploeg-mcp-stdio-bridge ./cmd/ploeg-mcp-stdio-bridge
 
 FROM ${REGISTRY_CHAINGUARD}/chainguard/wolfi-base:latest@sha256:2c12da5496e21e99003b3db3b9246f025e53d533c4df334205391260f1e8f85b AS rootfs
 RUN printf 'https://packages.wolfi.dev/os\n' > /etc/apk/repositories \
@@ -42,5 +48,7 @@ LABEL org.opencontainers.image.title="ploeg-worker" \
 COPY --from=rootfs /rootfs/ /
 COPY LICENSE NOTICE THIRD-PARTY-NOTICES /usr/share/doc/ploeg/
 COPY --from=builder /out/ploeg-worker /usr/local/bin/ploeg-worker
+COPY --from=builder /out/ploeg-credential-gateway /usr/local/bin/ploeg-credential-gateway
+COPY --from=builder /out/ploeg-mcp-stdio-bridge /usr/local/bin/ploeg-mcp-stdio-bridge
 USER 65532:65532
 ENTRYPOINT ["/usr/local/bin/ploeg-worker"]

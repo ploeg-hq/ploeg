@@ -110,56 +110,11 @@ type forgeCredentialResponse struct {
 }
 
 func (s *Server) handleRefreshForgeCredential(w http.ResponseWriter, r *http.Request) {
-	runToken := r.PathValue("token")
-	if s.ForgeCreds == nil {
-		http.Error(w, "per-run forge credentials are not configured", http.StatusConflict)
-		return
-	}
-	writes := true
-	target, err := s.Store.WritingRunTarget(r.Context(), runToken)
-	if errors.Is(err, store.ErrNotAWriter) {
-		writes = false
-		target, err = s.Store.ReadingRunTarget(r.Context(), runToken)
-	}
+	cred, status, err := s.refreshForgeCredential(r.Context(), r.PathValue("token"))
 	if err != nil {
-		runError(w, err)
+		http.Error(w, err.Error(), status)
 		return
 	}
-	claim, err := s.mintConnection(r.Context(), &target)
-	var cred forgebroker.Credential
-	if err == nil {
-		cred, err = s.ForgeCreds.Mint(r.Context(), forgebroker.MintRequest{RunToken: runToken, Owner: target.Owner, Repo: target.Repo, Forge: s.mintForgeID(target.Forge),
-			Connection: claim.Connection, RepositoryID: claim.RepositoryID, Read: !writes})
-		s.mintRefusedByGrant(r.Context(), &target, claim.Connection, err)
-	}
-	if err != nil {
-		s.Log.Error("forge credential refresh failed", "run", prefix12(runToken), "writes", writes, "err", err)
-		http.Error(w, "could not mint a "+credentialKind(writes), http.StatusServiceUnavailable)
-		return
-	}
-	if cred.ID == "" {
-		http.Error(w, "per-run forge credentials are not configured", http.StatusConflict)
-		return
-	}
-	var previous string
-	if writes {
-		previous, err = s.Store.SwapForgeToken(r.Context(), runToken, cred.ID)
-	} else {
-		previous, err = s.Store.SwapReaderForgeToken(r.Context(), runToken, cred.ID)
-	}
-	if err != nil {
-		s.revokeForgeCredential(r.Context(), runToken, cred)
-		if errors.Is(err, store.ErrLeaseLost) {
-			http.Error(w, err.Error(), http.StatusNotFound)
-			return
-		}
-		runError(w, err)
-		return
-	}
-	if previous != "" && previous != cred.ID {
-		s.revokeForgeCredential(r.Context(), runToken, forgebroker.Credential{ID: previous})
-	}
-	s.Log.Info("forge credential refreshed", "run", prefix12(runToken), "writes", writes, "repo", target.Owner+"/"+target.Repo)
 	resp := forgeCredentialResponse{ForgeToken: cred.Token}
 	if !cred.ExpiresAt.IsZero() {
 		expires := cred.ExpiresAt.UTC()
@@ -167,6 +122,59 @@ func (s *Server) handleRefreshForgeCredential(w http.ResponseWriter, r *http.Req
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, resp)
+}
+
+func (s *Server) refreshForgeCredential(ctx context.Context, runToken string) (forgebroker.Credential, int, error) {
+	if s.ForgeCreds == nil {
+		return forgebroker.Credential{}, http.StatusConflict, errors.New("per-run forge credentials are not configured")
+	}
+	writes := true
+	target, err := s.Store.WritingRunTarget(ctx, runToken)
+	if errors.Is(err, store.ErrNotAWriter) {
+		writes = false
+		target, err = s.Store.ReadingRunTarget(ctx, runToken)
+	}
+	if err != nil {
+		if errors.Is(err, store.ErrUnknownRun) {
+			return forgebroker.Credential{}, http.StatusNotFound, err
+		}
+		return forgebroker.Credential{}, http.StatusInternalServerError, err
+	}
+	claim, err := s.mintConnection(ctx, &target)
+	var cred forgebroker.Credential
+	if err == nil {
+		cred, err = s.ForgeCreds.Mint(ctx, forgebroker.MintRequest{RunToken: runToken, Owner: target.Owner, Repo: target.Repo, Forge: s.mintForgeID(target.Forge),
+			Connection: claim.Connection, RepositoryID: claim.RepositoryID, Read: !writes})
+		s.mintRefusedByGrant(ctx, &target, claim.Connection, err)
+	}
+	if err != nil {
+		s.Log.Error("forge credential refresh failed", "run", prefix12(runToken), "writes", writes, "err", err)
+		return forgebroker.Credential{}, http.StatusServiceUnavailable, errors.New("could not mint a " + credentialKind(writes))
+	}
+	if cred.ID == "" {
+		return forgebroker.Credential{}, http.StatusConflict, errors.New("per-run forge credentials are not configured")
+	}
+	var previous string
+	if writes {
+		previous, err = s.Store.SwapForgeToken(ctx, runToken, cred.ID)
+	} else {
+		previous, err = s.Store.SwapReaderForgeToken(ctx, runToken, cred.ID)
+	}
+	if err != nil {
+		s.revokeForgeCredential(ctx, runToken, cred)
+		if errors.Is(err, store.ErrLeaseLost) {
+			return forgebroker.Credential{}, http.StatusNotFound, err
+		}
+		if errors.Is(err, store.ErrUnknownRun) {
+			return forgebroker.Credential{}, http.StatusNotFound, err
+		}
+		return forgebroker.Credential{}, http.StatusInternalServerError, err
+	}
+	if previous != "" && previous != cred.ID {
+		s.revokeForgeCredential(ctx, runToken, forgebroker.Credential{ID: previous})
+	}
+	s.Log.Info("forge credential refreshed", "run", prefix12(runToken), "writes", writes, "repo", target.Owner+"/"+target.Repo)
+	return cred, http.StatusOK, nil
 }
 
 func forgeDeliveryID(h http.Header) string {

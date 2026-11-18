@@ -129,8 +129,8 @@ func newFixture(t *testing.T, answer func(http.ResponseWriter, rpcMessage), muta
 	a := &audit{}
 	h := &Handler{
 		Grants: grants{
-			runCapability:   {RunID: 7, WorkItem: "wi-7", Tenant: "default", Servers: map[string]ServerGrant{"logs": server}},
-			otherCapability: {RunID: 8, WorkItem: "wi-8", Tenant: "default", Servers: map[string]ServerGrant{"logs": server}},
+			runCapability:   {RunID: "7", WorkItem: "wi-7", Tenant: "default", Servers: map[string]ServerGrant{"logs": server}},
+			otherCapability: {RunID: "8", WorkItem: "wi-8", Tenant: "default", Servers: map[string]ServerGrant{"logs": server}},
 		},
 		Audit: a,
 	}
@@ -540,7 +540,7 @@ func TestASessionIsBoundToTheRunThatOpenedIt(t *testing.T) {
 	if got := f.send(t, runCapability, "logs", toolCall(3, "search_logs"), "Mcp-Session-Id", "session-honest"); got.status != 200 {
 		t.Fatalf("own session refused: %d %s", got.status, got.body)
 	}
-	f.handler.Forget(7)
+	f.handler.Forget("7")
 	if got := f.send(t, runCapability, "logs", toolCall(4, "search_logs"), "Mcp-Session-Id", "session-honest"); got.status != 404 {
 		t.Fatalf("a settled Run's session still served: %d", got.status)
 	}
@@ -593,7 +593,7 @@ func TestEveryCallIsAuditedWithoutItsArguments(t *testing.T) {
 		t.Fatalf("audit carries arguments, results or credentials: %s", raw)
 	}
 	first := f.audit.calls[0]
-	if first.Run != 7 || first.ServerID != "mcp_01" || first.Tool != "search_logs" || first.Access != AccessRead || first.Outcome != "allowed" || first.BytesIn == 0 || first.BytesOut == 0 {
+	if first.Run != "7" || first.ServerID != "mcp_01" || first.Tool != "search_logs" || first.Access != AccessRead || first.Outcome != "allowed" || first.BytesIn == 0 || first.BytesOut == 0 {
 		t.Fatalf("audit record %+v", first)
 	}
 	if f.audit.calls[2].Status != http.StatusAccepted {

@@ -105,7 +105,7 @@ func TestOperatorWorkAdmissionEndToEndWithAWorker(t *testing.T) {
 	}
 	w := worker.New(worker.Config{Team: "bronze", Role: "builder", APIURL: srv.URL, BootstrapToken: bootstrap, WorkerID: "pod",
 		WorkDir: t.TempDir(), ForgeURL: forgeURL, DefaultForge: harness.ForgeForgejo, BuilderToken: "tok",
-		HarnessTimeout: time.Minute}, adapter, nil, log)
+		HarnessTimeout: time.Minute, ForgeTokenIsolation: worker.ForgeTokenIsolationProxy, LLMKeyIsolation: worker.KeyIsolationProxy}, adapter, nil, log)
 	if err := w.RunContext(ctx); err != nil {
 		t.Fatalf("worker: %v", err)
 	}

@@ -57,7 +57,10 @@ Context: (dict "root" $ "team" <team> "role" <role>).
 {{/*
 ploeg.sandboxLauncherPodTemplate is the ScaledJob pod for executor.type
 sandbox: it creates one SandboxClaim for its Job and waits for it. It holds the
-only Kubernetes API token in the executor, scoped by its Role to sandboxclaims.
+only Kubernetes API token in the executor besides the credential gateway's,
+scoped by its Role to sandboxclaims. It runs no harness, so it is not a Run
+pod: with executor.credentialGateway on it keeps its bootstrap token and calls
+ploegd directly (ADR-0197).
 Context: (dict "root" $ "team" <team> "role" <role>).
 */}}
 {{- define "ploeg.sandboxLauncherPodTemplate" -}}

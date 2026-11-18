@@ -137,7 +137,7 @@ func TestClaim_AMintThatOutlivesTheLeaseIsRevokedAndRefused(t *testing.T) {
 		}
 	}
 
-	code, resp := postClaim(t, forgeClaimServer(forge.broker()), `{"team":"bronze","role":"builder"}`)
+	code, resp := postClaim(t, forgeClaimServer(forge.broker()), `{"team":"bronze","role":"builder","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	if code != http.StatusNoContent || resp.ForgeToken != "" {
 		t.Fatalf("claim = %d with token %q, want 204 and no token", code, resp.ForgeToken)
 	}
@@ -154,7 +154,7 @@ func TestClaim_AnUnrecordableTokenIsRevokedAndTheRunReleased(t *testing.T) {
 	forge := newFakeTokenForge(t)
 	breakForgeTokenColumn(t)
 
-	code, resp := postClaim(t, forgeClaimServer(forge.broker()), `{"team":"bronze","role":"builder"}`)
+	code, resp := postClaim(t, forgeClaimServer(forge.broker()), `{"team":"bronze","role":"builder","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	if code != http.StatusNoContent || resp.ForgeToken != "" {
 		t.Fatalf("claim = %d with token %q, want 204 and no token", code, resp.ForgeToken)
 	}
@@ -172,7 +172,7 @@ func TestClaim_ATokenTheForgeDidNotRestrictIsRevokedAndTheRunReleased(t *testing
 	forge := newFakeTokenForge(t)
 	forge.unrestricted = true
 
-	code, resp := postClaim(t, forgeClaimServer(forge.broker()), `{"team":"bronze","role":"builder"}`)
+	code, resp := postClaim(t, forgeClaimServer(forge.broker()), `{"team":"bronze","role":"builder","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	if code != http.StatusNoContent || resp.ForgeToken != "" {
 		t.Fatalf("claim = %d with token %q, want 204 and no token", code, resp.ForgeToken)
 	}
@@ -194,7 +194,7 @@ func TestForgeSweep_AfterARestartRevokesATokenWhoseRevokeFailed(t *testing.T) {
 	breakForgeTokenColumn(t)
 	forge.setRefuseRevoke(true)
 
-	if code, _ := postClaim(t, forgeClaimServer(forge.broker()), `{"team":"bronze","role":"builder"}`); code != http.StatusNoContent {
+	if code, _ := postClaim(t, forgeClaimServer(forge.broker()), `{"team":"bronze","role":"builder","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`); code != http.StatusNoContent {
 		t.Fatalf("claim = %d, want 204", code)
 	}
 	if forge.live() != 1 {
@@ -215,7 +215,7 @@ func TestForgeSweep_SparesARunningWritersToken(t *testing.T) {
 	targetedWriterShift(t, "996")
 	forge := newFakeTokenForge(t)
 
-	code, resp := postClaim(t, forgeClaimServer(forge.broker()), `{"team":"bronze","role":"builder"}`)
+	code, resp := postClaim(t, forgeClaimServer(forge.broker()), `{"team":"bronze","role":"builder","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	if code != http.StatusOK || resp.ForgeToken == "" {
 		t.Fatalf("claim = %d with token %q, want 200 and a minted token", code, resp.ForgeToken)
 	}

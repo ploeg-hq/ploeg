@@ -45,7 +45,7 @@ var drillCredentials = runCredentials{
 	perRunForge: "per-run-forge-SECRET-c4d2",
 }
 
-func runHarnessContainer(socket string) int {
+func runHarnessContainer(rendezvous string) int {
 	if err := syscall.Mount("", "/", "", syscall.MS_REC|syscall.MS_PRIVATE, ""); err != nil {
 		fmt.Fprintln(os.Stderr, "make mounts private:", err)
 		return harnessContainerMountFail
@@ -56,7 +56,7 @@ func runHarnessContainer(socket string) int {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	if err := launch.Serve(ctx, socket); err != nil {
+	if err := launch.Serve(ctx, rendezvous); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
@@ -78,13 +78,13 @@ func startHarnessContainer(t *testing.T) *launch.Client {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(dir) })
-	socket := filepath.Join(dir, "launcher.sock")
+	rendezvous := filepath.Join(dir, "launcher.json")
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	accepted := make(chan *launch.Client, 1)
 	acceptErr := make(chan error, 1)
 	go func() {
-		client, err := launch.Accept(ctx, socket)
+		client, err := launch.Accept(ctx, rendezvous)
 		if err != nil {
 			acceptErr <- err
 			return
@@ -93,7 +93,7 @@ func startHarnessContainer(t *testing.T) *launch.Client {
 	}()
 
 	container := exec.Command(os.Args[0], "-test.run=^$")
-	container.Env = []string{"PATH=" + os.Getenv("PATH"), harnessContainerEnv + "=" + socket}
+	container.Env = []string{"PATH=" + os.Getenv("PATH"), harnessContainerEnv + "=" + rendezvous}
 	container.SysProcAttr = &syscall.SysProcAttr{
 		Cloneflags:  syscall.CLONE_NEWUSER | syscall.CLONE_NEWPID | syscall.CLONE_NEWNS,
 		UidMappings: []syscall.SysProcIDMap{{ContainerID: 0, HostID: os.Getuid(), Size: 1}},

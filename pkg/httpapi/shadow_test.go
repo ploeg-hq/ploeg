@@ -40,7 +40,7 @@ func TestBriefingLeavesOutShadowFindings(t *testing.T) {
 		}
 	}
 	for role, findings := range map[string]string{"reviewer": "- reviewer: add a test", "shadow-reviewer": "- shadow: rename it"} {
-		code, claim := postClaim(t, h, `{"team":"bronze","role":"`+role+`"}`)
+		code, claim := postClaim(t, h, `{"harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy","team":"bronze","role":"`+role+`"}`)
 		if code != http.StatusOK {
 			t.Fatalf("claim %s returned %d", role, code)
 		}
@@ -51,7 +51,7 @@ func TestBriefingLeavesOutShadowFindings(t *testing.T) {
 	if _, err := testStore.OpenRound(ctx, shiftID, 1, []store.Role{{Name: "builder", Writes: true, Cap: 3}}); err != nil {
 		t.Fatal(err)
 	}
-	_, writer := postClaim(t, h, `{"team":"bronze","role":"builder"}`)
+	_, writer := postClaim(t, h, `{"team":"bronze","role":"builder","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	if len(writer.Briefing) != 1 || writer.Briefing[0].Role != "reviewer" {
 		t.Fatalf("briefing = %+v, want the reviewer's findings only", writer.Briefing)
 	}

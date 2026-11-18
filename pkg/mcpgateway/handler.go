@@ -54,11 +54,11 @@ type Handler struct {
 	limits   Limits
 	mu       sync.Mutex
 	sessions map[string]sessionBinding
-	buckets  map[int64]*bucket
+	buckets  map[string]*bucket
 }
 
 type sessionBinding struct {
-	run    int64
+	run    string
 	server string
 }
 
@@ -101,7 +101,7 @@ func (h *Handler) init() {
 		h.client = &c
 		h.limits = h.Limits.orDefault()
 		h.sessions = map[string]sessionBinding{}
-		h.buckets = map[int64]*bucket{}
+		h.buckets = map[string]*bucket{}
 	})
 }
 
@@ -233,7 +233,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.answer(w, &call, resp, msg, server, key, tool, capability, grant.RunID)
 }
 
-func (h *Handler) answer(w http.ResponseWriter, call *Call, resp *http.Response, req rpcMessage, server ServerGrant, key, tool, capability string, run int64) {
+func (h *Handler) answer(w http.ResponseWriter, call *Call, resp *http.Response, req rpcMessage, server ServerGrant, key, tool, capability string, run string) {
 	switch {
 	case resp.StatusCode >= 300 && resp.StatusCode < 400:
 		h.refuseHTTP(w, call, http.StatusBadGateway, "upstream_redirected", "The MCP server answered with a redirect, which the gateway never follows.")
@@ -497,7 +497,7 @@ func (h *Handler) decodeResponse(contentType string, raw []byte) ([]rpcMessage, 
 	}
 }
 
-func (h *Handler) take(run int64) bool {
+func (h *Handler) take(run string) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	now := h.now()
@@ -516,14 +516,14 @@ func (h *Handler) take(run int64) bool {
 	return true
 }
 
-func (h *Handler) sessionBelongs(session string, run int64, server string) bool {
+func (h *Handler) sessionBelongs(session string, run string, server string) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	b, ok := h.sessions[session]
 	return ok && b.run == run && b.server == server
 }
 
-func (h *Handler) bindSession(session string, run int64, server string) bool {
+func (h *Handler) bindSession(session string, run string, server string) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if b, ok := h.sessions[session]; ok {
@@ -534,7 +534,7 @@ func (h *Handler) bindSession(session string, run int64, server string) bool {
 }
 
 // Forget drops the sessions and the call budget of a Run that settled.
-func (h *Handler) Forget(run int64) {
+func (h *Handler) Forget(run string) {
 	h.init()
 	h.mu.Lock()
 	defer h.mu.Unlock()

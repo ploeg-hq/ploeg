@@ -36,13 +36,16 @@ type APIClient struct {
 	// a safe point for a person (ADR-0142), so ploegd refuses a take-over of
 	// a Run that cannot.
 	Yields bool
-	// ForgeTokenIsolation is sent with each claim, so ploegd starts a
-	// prepare_repository writer only behind the forge proxy (ADR-0194).
+	// ForgeTokenIsolation and LLMKeyIsolation are sent with each claim, so
+	// ploegd hands a Run only to a worker that keeps both credentials out of
+	// the harness's reach (ADR-0034).
 	ForgeTokenIsolation string
+	LLMKeyIsolation     string
 	// WorkerVersion is this ploeg-worker's release, sent with each claim so
 	// ploegd can refuse a release it does not serve (ADR-0134).
 	WorkerVersion string
 	controlTokens sync.Map
+	capabilities  sync.Map
 }
 
 // UnsupportedWorkerVersion is ploegd's 426 answer to a claim from a worker
@@ -67,6 +70,9 @@ func (u *UnsupportedWorkerVersion) Error() string {
 type ClaimResponse struct {
 	RunToken     string `json:"runToken"`
 	ControlToken string `json:"controlToken,omitempty"`
+	// CredentialGateway is true when the Run was claimed through its
+	// namespace's credential gateway and ploegd holds its grant (ADR-0197).
+	CredentialGateway bool `json:"credentialGateway,omitempty"`
 	// TransactionToken is the Run's transaction token (ADR-0156). The worker
 	// presents it instead of ControlToken, the deprecated HMAC capability,
 	// and replaces it with the one each renewal answers.
@@ -166,6 +172,9 @@ func (a *APIClient) Claim(team, role string) (*ClaimResponse, error) {
 	if a.ForgeTokenIsolation != "" {
 		req["forgeTokenIsolation"] = a.ForgeTokenIsolation
 	}
+	if a.LLMKeyIsolation != "" {
+		req["llmKeyIsolation"] = a.LLMKeyIsolation
+	}
 	if a.WorkerVersion != "" {
 		req["workerVersion"] = a.WorkerVersion
 	}
@@ -185,6 +194,9 @@ func (a *APIClient) Claim(team, role string) (*ClaimResponse, error) {
 		}
 		if a.BootstrapToken != "" && c.ControlToken == "" && c.TransactionToken == "" {
 			return nil, fmt.Errorf("managed claim returned no run capability")
+		}
+		if c.CredentialGateway && c.ControlToken != "" {
+			a.capabilities.Store(c.RunToken, c.ControlToken)
 		}
 		if c.TransactionToken != "" {
 			a.controlTokens.Store(c.RunToken, c.TransactionToken)
