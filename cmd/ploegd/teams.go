@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -26,7 +28,7 @@ func teamDirectory(ctx context.Context, log *slog.Logger, cfg *config.File, st t
 	static := cfg.StaticTeams()
 	in := make([]store.StaticTeam, 0, len(static))
 	for _, t := range static {
-		in = append(in, store.StaticTeam{Key: t.Key, Aliases: t.Aliases, Name: t.Name})
+		in = append(in, store.StaticTeam{Key: t.Key, Aliases: t.Aliases, Name: t.Name, Digest: t.Digest})
 	}
 	changed, err := st.ReconcileStaticTeams(ctx, in, team.MustNewID)
 	if err != nil {
@@ -39,6 +41,11 @@ func teamDirectory(ctx context.Context, log *slog.Logger, cfg *config.File, st t
 		return team.NewDirectory(nil)
 	}
 	log.Info("Teams reconciled", "live", len(records), "created", changed.Created, "renamed", changed.Renamed, "removed", changed.Removed)
+	for _, r := range changed.SuspectedRenames {
+		log.Warn(fmt.Sprintf("static Team %q left the file as %q appeared with the same configuration, so %q is a new Team with a new id and %q's id %s is retired; if this was a rename, set teams.%s.aliases: [%s] so the old key resolves to it, and list the old key under aliases in the same change next time to keep the id",
+			r.From, r.To, r.To, r.From, r.FromID, r.To, r.From),
+			"from", r.From, "from_team_id", r.FromID, "to", r.To, "to_team_id", r.ToID)
+	}
 	return team.NewDirectory(store.Directory(records))
 }
 
@@ -47,6 +54,10 @@ func teamDirectory(ctx context.Context, log *slog.Logger, cfg *config.File, st t
 func backfillTeamIDs(ctx context.Context, log *slog.Logger, st teamStore) {
 	started := time.Now()
 	set, err := st.BackfillTeamIDs(ctx, teamBackfillBatch)
+	if errors.Is(err, store.ErrTeamBackfillElsewhere) {
+		log.Info("Team id backfill left to the ploegd that holds it")
+		return
+	}
 	if err != nil {
 		log.Error("Team id backfill stopped; reads fall back to the team text and the next boot resumes it", "err", err, "rows", set)
 		return
