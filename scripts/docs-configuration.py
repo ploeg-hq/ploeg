@@ -12,7 +12,7 @@ import yaml
 
 root = Path(__file__).resolve().parent.parent
 APP = '.'
-BINARIES = ['ploegd', 'ploeg-worker']
+BINARIES = ['ploegd', 'ploeg-worker', 'ploeg-credential-gateway']
 CHART = f'{APP}/ops/helm/ploeg'
 OUTPUT = f'{APP}/docs/reference/configuration.md'
 DESCRIPTIONS = f'{APP}/docs/reference/configuration-descriptions.yaml'
