@@ -233,7 +233,7 @@ func TestWorkerAndHarnessNeverHoldAGraphToken(t *testing.T) {
 	h := s.Handler()
 	ingestFor(t, "9350", "bronze")
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/v1/claim", strings.NewReader(`{"team":"bronze"}`)))
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/v1/claim", strings.NewReader(`{"team":"bronze","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)))
 	var claim claimResponse
 	if err := json.Unmarshal(rec.Body.Bytes(), &claim); err != nil {
 		t.Fatal(err)

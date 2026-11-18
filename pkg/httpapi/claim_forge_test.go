@@ -88,7 +88,7 @@ func TestClaim_CarriesTheForgeResolvedFromTheWorkTarget(t *testing.T) {
 			reset(t)
 			shiftOn(t, "1901", forge, store.Role{Name: "builder", Writes: true, Cap: 1})
 			broker := &askedBroker{}
-			code, resp := postClaim(t, multiForgeServer(broker), `{"team":"bronze","role":"builder"}`)
+			code, resp := postClaim(t, multiForgeServer(broker), `{"team":"bronze","role":"builder","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 			if code != http.StatusOK {
 				t.Fatalf("claim returned %d, want 200", code)
 			}
@@ -107,7 +107,7 @@ func TestClaim_AReadingRunReceivesAMintedReadOnlyCredentialRevokedWhenItSettles(
 	shiftOn(t, "1902", "github", store.Role{Name: "reviewer", Writes: false, Cap: 1})
 	broker := &askedBroker{}
 	h := multiForgeServer(broker)
-	code, resp := postClaim(t, h, `{"team":"bronze","role":"reviewer"}`)
+	code, resp := postClaim(t, h, `{"team":"bronze","role":"reviewer","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	if code != http.StatusOK {
 		t.Fatalf("claim returned %d, want 200", code)
 	}
@@ -146,7 +146,7 @@ func TestClaim_AReadingRunReceivesAMintedReadOnlyCredentialRevokedWhenItSettles(
 func TestClaim_AReadingRunGetsNoCredentialFromABrokerThatMintsNone(t *testing.T) {
 	reset(t)
 	shiftOn(t, "1903", "", store.Role{Name: "reviewer", Writes: false, Cap: 1})
-	code, resp := postClaim(t, forgeClaimServer(forgebroker.Static{Token: "the-shared-write-token"}), `{"team":"bronze","role":"reviewer"}`)
+	code, resp := postClaim(t, forgeClaimServer(forgebroker.Static{Token: "the-shared-write-token"}), `{"team":"bronze","role":"reviewer","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	if code != http.StatusOK {
 		t.Fatalf("claim returned %d, want 200", code)
 	}
@@ -159,7 +159,7 @@ func TestClaim_RefusesAWorkTargetOnAForgeTheReleaseDoesNotServe(t *testing.T) {
 	reset(t)
 	shiftOn(t, "1904", "gitlab", store.Role{Name: "builder", Writes: true, Cap: 1})
 	broker := &askedBroker{}
-	code, _ := postClaim(t, multiForgeServer(broker), `{"team":"bronze","role":"builder"}`)
+	code, _ := postClaim(t, multiForgeServer(broker), `{"team":"bronze","role":"builder","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	if code != http.StatusNoContent {
 		t.Fatalf("claim returned %d, want 204", code)
 	}
@@ -182,7 +182,7 @@ func TestClaim_AnUnknownForgeParksItsWorkItemForAPerson(t *testing.T) {
 	s := &Server{Store: testStore, LeaseTTL: time.Minute, Log: slog.New(slog.DiscardHandler), ForgeCreds: &askedBroker{},
 		ClaimForges: twoForges(), WorkerSecurity: &WorkerSecurity{AllowLegacy: true},
 		Engine: &shiftengine.Engine{Store: testStore, Plans: plan.Plans{}, Uniform: true, Log: slog.New(slog.DiscardHandler)}}
-	if code, _ := postClaim(t, s.Handler(), `{"team":"bronze","role":"builder"}`); code != http.StatusNoContent {
+	if code, _ := postClaim(t, s.Handler(), `{"team":"bronze","role":"builder","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`); code != http.StatusNoContent {
 		t.Fatalf("claim returned %d, want 204", code)
 	}
 	var state string
@@ -205,7 +205,7 @@ func TestClaim_ASingleForgeReleaseResolvesAnUnregisteredForgeToItsOnlyForge(t *t
 			"forgejo": {Dialect: harness.ForgeForgejo, PloegdURL: "https://forgejo.example.com"},
 		}},
 		WorkerSecurity: &WorkerSecurity{AllowLegacy: true}}).Handler()
-	code, resp := postClaim(t, h, `{"team":"bronze","role":"builder"}`)
+	code, resp := postClaim(t, h, `{"team":"bronze","role":"builder","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	if code != http.StatusOK {
 		t.Fatalf("claim returned %d, want 200: a single-forge release ignored the id before ADR-0192", code)
 	}
@@ -227,7 +227,7 @@ func TestClaim_ALegacyClaimInAMultiForgeReleaseCarriesACredentialMintedForIt(t *
 	}
 	broker := &askedBroker{}
 	h := multiForgeServer(broker)
-	code, resp := postClaim(t, h, `{"team":"bronze"}`)
+	code, resp := postClaim(t, h, `{"team":"bronze","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	if code != http.StatusOK {
 		t.Fatalf("legacy claim returned %d, want 200", code)
 	}
@@ -256,7 +256,7 @@ func TestClaudeForgeCredential_MintsForTheRunsForgeAndNamesItsRemote(t *testing.
 		ClaimForges: twoForges(), WorkerSecurity: &WorkerSecurity{AllowLegacy: true},
 		ClaudeSessions: &ClaudeSessions{Verifier: fakeSessionVerifier{claims: sessionClaims("gh")}, GitUser: "agent-builder", ForgeURL: "https://forgejo.example.com"},
 	}).Handler()
-	code, resp := postClaim(t, h, `{"team":"bronze","role":"builder"}`)
+	code, resp := postClaim(t, h, `{"team":"bronze","role":"builder","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	if code != http.StatusOK {
 		t.Fatalf("claim returned %d", code)
 	}
@@ -285,7 +285,7 @@ func TestClaudeForgeCredential_RefusesAForgeWithoutAURLASessionCanPushTo(t *test
 		ClaimForges: forges, WorkerSecurity: &WorkerSecurity{AllowLegacy: true},
 		ClaudeSessions: &ClaudeSessions{Verifier: fakeSessionVerifier{claims: sessionClaims("nourl")}, GitUser: "agent-builder", ForgeURL: "https://forgejo.example.com"},
 	}).Handler()
-	_, resp := postClaim(t, h, `{"team":"bronze","role":"builder"}`)
+	_, resp := postClaim(t, h, `{"team":"bronze","role":"builder","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	recordSession(t, h, resp.RunToken, testEnvironment, "session_nourl")
 	minted := len(broker.asked)
 	if code, cred := exchange(t, h); code != http.StatusConflict || cred.Token != "" {
@@ -342,7 +342,7 @@ func TestRefreshForgeCredential_AReadingRunGetsAFreshReadCredential(t *testing.T
 	shiftOn(t, "1905", "github", store.Role{Name: "reviewer", Writes: false, Cap: 1})
 	broker := &askedBroker{}
 	h := multiForgeServer(broker)
-	_, resp := postClaim(t, h, `{"team":"bronze","role":"reviewer"}`)
+	_, resp := postClaim(t, h, `{"team":"bronze","role":"reviewer","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	code, refreshed := refreshForgeCredential(t, h, resp.RunToken)
 	if code != http.StatusOK || refreshed.ForgeToken == "" {
 		t.Fatalf("refresh returned %d %+v", code, refreshed)

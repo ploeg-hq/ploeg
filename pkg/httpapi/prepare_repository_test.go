@@ -544,7 +544,7 @@ func TestConnectionsOfferThePrepareForARegisteredTargetMissingOnlyItsFile(t *tes
 	}
 }
 
-const proxyClaim = `{"team":"bronze","role":"builder","forgeTokenIsolation":"proxy"}`
+const proxyClaim = `{"team":"bronze","role":"builder","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`
 
 func TestAPrepareIsRefusedForATeamWhoseWriterWouldBypassTheDeliveryFence(t *testing.T) {
 	cases := map[string]struct {
@@ -578,25 +578,22 @@ func TestAPrepareIsRefusedForATeamWhoseWriterWouldBypassTheDeliveryFence(t *test
 	}
 }
 
-func TestAPrepareWriterClaimedByAWorkerWithoutTheForgeProxyEndsStuckBeforeItStarts(t *testing.T) {
+func TestAPrepareWriterIsNeverClaimedByAWorkerWithoutTheForgeProxy(t *testing.T) {
 	for name, body := range map[string]string{
-		"no isolation":         `{"team":"bronze","role":"builder"}`,
-		"a Claude environment": `{"team":"bronze","role":"builder","forgeTokenIsolation":"proxy","harness":"claude-environment"}`,
+		"no isolation":         `{"team":"bronze","role":"builder","harness":"openhands","llmKeyIsolation":"proxy"}`,
+		"a Claude environment": `{"team":"bronze","role":"builder","harness":"claude-environment","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			f := newPrepareFixture(t)
 			id, _ := admittedPrepare(t, f.proven(t, prepareBody("prepare-unfenced-claim")))
 
-			if status, _ := postClaim(t, f.server.Handler(), body); status != http.StatusNoContent {
-				t.Fatalf("claim = %d, want no run started", status)
+			rec := httptest.NewRecorder()
+			f.server.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/v1/claim", strings.NewReader(body)))
+			if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), credentialIsolationRequired) {
+				t.Fatalf("claim = %d %s, want 403 %s", rec.Code, rec.Body, credentialIsolationRequired)
 			}
-
-			var outcome, reason string
-			if err := testPool.QueryRow(context.Background(), `SELECT outcome, stuck_reason FROM agent_runs WHERE work_item_id=$1 AND state='finished' ORDER BY id DESC LIMIT 1`, id).Scan(&outcome, &reason); err != nil {
-				t.Fatal(err)
-			}
-			if outcome != string(work.OutcomeStuck) || !strings.Contains(reason, "prepare_unsupported_for_team") {
-				t.Errorf("run outcome %q reason %q, want stuck with prepare_unsupported_for_team", outcome, reason)
+			if got := runStates(t, id); got != "pending" {
+				t.Errorf("runs = %q, want the prepare Run still pending for a worker behind the proxy", got)
 			}
 		})
 	}

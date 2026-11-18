@@ -30,7 +30,11 @@
         },
         "forgeTokenIsolation": {
           "type": "string",
-          "description": "The worker's PLOEG_FORGE_TOKEN_ISOLATION. ploegd starts a prepare_repository writer only on a worker that sends proxy and whose harness is not claude-environment; any other claim of one ends it stuck with prepare_unsupported_for_team before it starts (ADR-0194). Absent is no isolation."
+          "description": "The worker's PLOEG_FORGE_TOKEN_ISOLATION. ploegd hands a Run only to a worker that sends proxy here and in llmKeyIsolation and names a qualified harness (openhands, acp with harnessProfile openhands, or exec); any other claim answers 403 with error.code credential_isolation_required, naming the Team, the Role and what is missing, before any Run is claimed (ADR-0034, amended 2026-11-18). Absent is no isolation."
+        },
+        "llmKeyIsolation": {
+          "type": "string",
+          "description": "The worker's PLOEG_LLM_KEY_ISOLATION. Required to be proxy like forgeTokenIsolation (ADR-0034, amended 2026-11-18). Absent is no isolation."
         },
         "yields": {
           "type": "boolean",

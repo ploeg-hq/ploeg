@@ -44,7 +44,7 @@ func createdServer(policies map[string]followup.Policy) *Server {
 
 func claimLegacy(t *testing.T, h http.Handler, team string) claimResponse {
 	t.Helper()
-	code, c := postClaim(t, h, fmt.Sprintf(`{"team":%q}`, team))
+	code, c := postClaim(t, h, fmt.Sprintf(`{"team":%q,"harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`, team))
 	if code != http.StatusOK {
 		t.Fatalf("claim for %s returned %d", team, code)
 	}
@@ -167,7 +167,7 @@ func TestOutcome_CreatesProposedWorkItemsWithSourceAndRejectsOverLimit(t *testin
 	if state != string(work.StateDone) || outcome != string(work.OutcomeFollowUpCreated) {
 		t.Fatalf("source item %s / run %s", state, outcome)
 	}
-	if code, _ := postClaim(t, h, `{"team":"bronze"}`); code != http.StatusNoContent {
+	if code, _ := postClaim(t, h, `{"team":"bronze","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`); code != http.StatusNoContent {
 		t.Fatalf("a proposed Work Item was claimable: %d", code)
 	}
 }
@@ -392,11 +392,11 @@ func TestClaim_MarksPlannerRoles(t *testing.T) {
 	plans := plan.Plans{"bronze": {Rounds: []plan.Round{{Roles: []plan.Role{{Name: "planner", Planner: true}, {Name: "analyst"}}}}}}
 	h := apiServer(t, plans)
 	shiftFixture(t, "5701", 0, []store.Role{{Name: "planner"}, {Name: "analyst"}})
-	code, planner := postClaim(t, h, `{"team":"bronze","role":"planner"}`)
+	code, planner := postClaim(t, h, `{"team":"bronze","role":"planner","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	if code != http.StatusOK || !planner.Planner {
 		t.Fatalf("planner claim: %d planner=%v", code, planner.Planner)
 	}
-	code, analyst := postClaim(t, h, `{"team":"bronze","role":"analyst"}`)
+	code, analyst := postClaim(t, h, `{"team":"bronze","role":"analyst","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	if code != http.StatusOK || analyst.Planner {
 		t.Fatalf("analyst claim: %d planner=%v", code, analyst.Planner)
 	}

@@ -62,7 +62,7 @@ type txnClaim struct {
 
 func claimTxn(t *testing.T, s *Server, bootstrap, worker string) txnClaim {
 	t.Helper()
-	w := workerRequest(s, "POST", "/api/v1/claim", bootstrap, worker, `{"team":"bronze","role":"reviewer"}`)
+	w := workerRequest(s, "POST", "/api/v1/claim", bootstrap, worker, `{"team":"bronze","role":"reviewer","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	var c txnClaim
 	if w.Code != 200 || json.NewDecoder(w.Body).Decode(&c) != nil || c.TransactionToken == "" {
 		t.Fatalf("claim %d %s", w.Code, w.Body.String())
@@ -147,7 +147,7 @@ func TestAnAssertedPersonIsMarkedAsserted(t *testing.T) {
 func TestATeamWithoutASponsorRunsNothing(t *testing.T) {
 	s, bootstrap := txnWorkerFixture(t)
 	s.TeamSponsors = nil
-	w := workerRequest(s, "POST", "/api/v1/claim", bootstrap, "pod", `{"team":"bronze","role":"reviewer"}`)
+	w := workerRequest(s, "POST", "/api/v1/claim", bootstrap, "pod", `{"team":"bronze","role":"reviewer","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	if w.Code != 403 || !strings.Contains(w.Body.String(), `Team "bronze" has no sponsor`) || !strings.Contains(w.Body.String(), "teams.bronze.sponsor") {
 		t.Fatalf("claim %d %s", w.Code, w.Body.String())
 	}
@@ -156,7 +156,7 @@ func TestATeamWithoutASponsorRunsNothing(t *testing.T) {
 		t.Fatalf("running %d %v", running, err)
 	}
 	s.TransactionTokens = nil
-	if got := workerRequest(s, "POST", "/api/v1/claim", bootstrap, "pod", `{"team":"bronze","role":"reviewer"}`).Code; got != 200 {
+	if got := workerRequest(s, "POST", "/api/v1/claim", bootstrap, "pod", `{"team":"bronze","role":"reviewer","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`).Code; got != 200 {
 		t.Fatalf("without transaction tokens a Team needs no sponsor yet: %d", got)
 	}
 }
@@ -260,7 +260,7 @@ func TestAWorkerUsesItsTransactionTokenEndToEnd(t *testing.T) {
 	srv := httptest.NewServer(s.Handler())
 	t.Cleanup(srv.Close)
 	rec := &recordingTransport{auth: map[string]string{}}
-	api := &worker.APIClient{Base: srv.URL, HC: &http.Client{Transport: rec}, BootstrapToken: bootstrap, WorkerID: "pod-e2e"}
+	api := &worker.APIClient{Base: srv.URL, HC: &http.Client{Transport: rec}, BootstrapToken: bootstrap, WorkerID: "pod-e2e", Harness: "openhands", ForgeTokenIsolation: "proxy", LLMKeyIsolation: "proxy"}
 	claim, err := api.Claim("bronze", "reviewer")
 	if err != nil || claim == nil || claim.TransactionToken == "" {
 		t.Fatalf("claim %+v %v", claim, err)

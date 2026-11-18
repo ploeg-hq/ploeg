@@ -148,7 +148,7 @@ func TestClaim_RoleScoped(t *testing.T) {
 	shiftFixture(t, "801", 10, []store.Role{{Name: "builder", Writes: true, Cap: 3}})
 	h := apiServer(t, nil)
 
-	code, resp := postClaim(t, h, `{"team":"bronze","role":"reviewer"}`)
+	code, resp := postClaim(t, h, `{"team":"bronze","role":"reviewer","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	if code != http.StatusOK {
 		t.Fatalf("claim returned %d, want 200", code)
 	}
@@ -173,7 +173,7 @@ func TestClaim_RoleScoped(t *testing.T) {
 func TestClaim_EmptyRoleQueueIs204(t *testing.T) {
 	reset(t)
 	h := apiServer(t, nil)
-	if code, _ := postClaim(t, h, `{"team":"bronze","role":"ghost"}`); code != http.StatusNoContent {
+	if code, _ := postClaim(t, h, `{"team":"bronze","role":"ghost","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`); code != http.StatusNoContent {
 		t.Errorf("claim for an empty role returned %d, want 204", code)
 	}
 }
@@ -189,7 +189,7 @@ func TestClaim_RolelessIsUnchanged(t *testing.T) {
 	}
 	h := apiServer(t, nil)
 
-	code, resp := postClaim(t, h, `{"team":"silver"}`)
+	code, resp := postClaim(t, h, `{"team":"silver","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	if code != http.StatusOK {
 		t.Fatalf("legacy claim returned %d, want 200", code)
 	}
@@ -213,7 +213,7 @@ func TestClaim_AuthorizationHonoursTheRoleCap(t *testing.T) {
 	}
 	h := apiServer(t, plans)
 
-	_, resp := postClaim(t, h, `{"team":"bronze","role":"analyst"}`)
+	_, resp := postClaim(t, h, `{"team":"bronze","role":"analyst","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	if resp.Authorized != 0.5 {
 		t.Errorf("authorized = %v, want 0.50 from the plan's role cap", resp.Authorized)
 	}
@@ -226,7 +226,7 @@ func TestClaim_ExhaustedBudgetIs204(t *testing.T) {
 	shiftFixture(t, "804", 0.01, []store.Role{{Name: "analyst", Cap: 1}})
 	h := apiServer(t, nil)
 
-	if code, _ := postClaim(t, h, `{"team":"bronze","role":"analyst"}`); code != http.StatusNoContent {
+	if code, _ := postClaim(t, h, `{"team":"bronze","role":"analyst","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`); code != http.StatusNoContent {
 		t.Errorf("claim against a dry pool returned %d, want 204", code)
 	}
 }
@@ -247,7 +247,7 @@ func TestClaim_DryShiftBlocksTheQueueUntilSwept(t *testing.T) {
 	shiftFixture(t, "809", 10, []store.Role{{Name: "analyst", Cap: 1}})
 	h := apiServer(t, nil)
 
-	if code, _ := postClaim(t, h, `{"team":"bronze","role":"analyst"}`); code != http.StatusNoContent {
+	if code, _ := postClaim(t, h, `{"team":"bronze","role":"analyst","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`); code != http.StatusNoContent {
 		t.Fatalf("claim behind a dry shift returned %d, want 204", code)
 	}
 
@@ -255,7 +255,7 @@ func TestClaim_DryShiftBlocksTheQueueUntilSwept(t *testing.T) {
 	if _, err := testStore.CloseShift(context.Background(), dry, "budget exhausted"); err != nil {
 		t.Fatal(err)
 	}
-	code, resp := postClaim(t, h, `{"team":"bronze","role":"analyst"}`)
+	code, resp := postClaim(t, h, `{"team":"bronze","role":"analyst","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	if code != http.StatusOK {
 		t.Fatalf("claim after the sweep returned %d, want 200 — the queue must unblock", code)
 	}
@@ -283,8 +283,8 @@ func TestBriefingCarriesPriorRoundsOnly(t *testing.T) {
 
 	// Round 1: both readers claim; one reports findings while the other is
 	// still running.
-	c1, first := postClaim(t, h, `{"team":"bronze","role":"analyst"}`)
-	c2, second := postClaim(t, h, `{"team":"bronze","role":"tests"}`)
+	c1, first := postClaim(t, h, `{"team":"bronze","role":"analyst","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
+	c2, second := postClaim(t, h, `{"team":"bronze","role":"tests","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	if c1 != http.StatusOK || c2 != http.StatusOK {
 		t.Fatalf("reader claims returned %d/%d, want 200/200", c1, c2)
 	}
@@ -315,7 +315,7 @@ func TestBriefingCarriesPriorRoundsOnly(t *testing.T) {
 		[]store.Role{{Name: "builder", Writes: true, Cap: 3}}); err != nil {
 		t.Fatal(err)
 	}
-	_, writer := postClaim(t, h, `{"team":"bronze","role":"builder"}`)
+	_, writer := postClaim(t, h, `{"team":"bronze","role":"builder","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	if len(writer.Briefing) != 2 {
 		t.Fatalf("briefing carried %d findings, want 2: %+v", len(writer.Briefing), writer.Briefing)
 	}

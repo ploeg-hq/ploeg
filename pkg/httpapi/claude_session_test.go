@@ -71,7 +71,7 @@ func claudeServer(creds forgebroker.Broker, verifier SessionVerifier) http.Handl
 func claimWriter(t *testing.T, h http.Handler, externalID string) string {
 	t.Helper()
 	targetedWriterShift(t, externalID)
-	code, resp := postClaim(t, h, `{"team":"bronze","role":"builder"}`)
+	code, resp := postClaim(t, h, `{"team":"bronze","role":"builder","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	if code != http.StatusOK {
 		t.Fatalf("claim returned %d, want 200", code)
 	}
@@ -187,7 +187,7 @@ func TestClaudeForgeCredential_Refuses(t *testing.T) {
 			verifier: fakeSessionVerifier{claims: sessionClaims("reader")},
 			setup: func(t *testing.T, h http.Handler) {
 				shiftFixture(t, "1212", 10, []store.Role{{Name: "reviewer", Cap: 1}})
-				code, resp := postClaim(t, h, `{"team":"bronze","role":"reviewer"}`)
+				code, resp := postClaim(t, h, `{"team":"bronze","role":"reviewer","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 				if code != http.StatusOK {
 					t.Fatalf("reviewer claim returned %d", code)
 				}

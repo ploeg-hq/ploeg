@@ -152,7 +152,7 @@ func TestOperatorWorkAdmissionQueuesWorkThatAWorkerClaims(t *testing.T) {
 		t.Fatalf("runs = %d, want 1: a replay creates no Run", n)
 	}
 
-	code, claim := postClaim(t, f.server.Handler(), `{"team":"bronze","role":"builder"}`)
+	code, claim := postClaim(t, f.server.Handler(), `{"team":"bronze","role":"builder","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	if code != 200 || fmt.Sprint(claim.Shift) != *got.WorkItem.ShiftID || claim.WorkItem.Target == nil || *claim.WorkItem.Target != appTarget {
 		t.Fatalf("builder claim: %d %+v", code, claim)
 	}
@@ -297,7 +297,7 @@ func TestOperatorWorkAdmissionCancelWithdrawsWithoutATrackerAndStaysWithdrawn(t 
 	f := newAdmissionFixture(t)
 	ctx := context.Background()
 	_, id := f.admit(t, admissionBody("req-cancel"), http.StatusCreated)
-	code, claim := postClaim(t, f.server.Handler(), `{"team":"bronze","role":"builder"}`)
+	code, claim := postClaim(t, f.server.Handler(), `{"team":"bronze","role":"builder","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	if code != 200 {
 		t.Fatalf("builder claim: %d", code)
 	}
@@ -346,7 +346,7 @@ func TestOperatorWorkAdmissionNoteReachesOnlyTheNextRun(t *testing.T) {
 	f := newAdmissionFixture(t)
 	ctx := context.Background()
 	_, id := f.admit(t, admissionBody("req-note"), http.StatusCreated)
-	code, builder := postClaim(t, f.server.Handler(), `{"team":"bronze","role":"builder"}`)
+	code, builder := postClaim(t, f.server.Handler(), `{"team":"bronze","role":"builder","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	if code != 200 {
 		t.Fatalf("builder claim: %d", code)
 	}
@@ -363,7 +363,7 @@ func TestOperatorWorkAdmissionNoteReachesOnlyTheNextRun(t *testing.T) {
 	if err := f.engine.EvaluateItem(ctx, id); err != nil {
 		t.Fatal(err)
 	}
-	code, reviewer := postClaim(t, f.server.Handler(), `{"team":"bronze","role":"reviewer"}`)
+	code, reviewer := postClaim(t, f.server.Handler(), `{"team":"bronze","role":"reviewer","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	if code != 200 {
 		t.Fatalf("reviewer claim: %d", code)
 	}
@@ -377,7 +377,7 @@ func TestOperatorWorkAdmissionRequeueAfterNeedsHumanStaysWithinTheCeiling(t *tes
 	f := newAdmissionFixture(t)
 	ctx := context.Background()
 	_, id := f.admit(t, admissionBody("req-requeue"), http.StatusCreated)
-	code, builder := postClaim(t, f.server.Handler(), `{"team":"bronze","role":"builder"}`)
+	code, builder := postClaim(t, f.server.Handler(), `{"team":"bronze","role":"builder","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	if code != 200 {
 		t.Fatalf("builder claim: %d", code)
 	}
@@ -403,7 +403,7 @@ func TestOperatorWorkAdmissionRequeueAfterNeedsHumanStaysWithinTheCeiling(t *tes
 	if got.State != "queued" || got.FromRound != 1 || got.PoolUSD != 20 || got.ShiftID == nil {
 		t.Fatalf("requeue = %+v", got)
 	}
-	if code, _ := postClaim(t, f.server.Handler(), `{"team":"bronze","role":"builder"}`); code != 200 {
+	if code, _ := postClaim(t, f.server.Handler(), `{"team":"bronze","role":"builder","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`); code != 200 {
 		t.Fatalf("builder claim after requeue: %d", code)
 	}
 	if len(f.comments.matching("")) != 0 {
@@ -416,10 +416,10 @@ func TestOperatorWorkAdmissionRunWaitsBehindTheTeamCap(t *testing.T) {
 	f.server.TeamCaps = config.RunCaps{"bronze": 1}
 	f.admit(t, admissionBody("req-cap-1"), http.StatusCreated)
 	f.admit(t, admissionBody("req-cap-2"), http.StatusCreated)
-	if code, _ := postClaim(t, f.server.Handler(), `{"team":"bronze","role":"builder"}`); code != 200 {
+	if code, _ := postClaim(t, f.server.Handler(), `{"team":"bronze","role":"builder","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`); code != 200 {
 		t.Fatalf("first claim: %d", code)
 	}
-	if code, _ := postClaim(t, f.server.Handler(), `{"team":"bronze","role":"builder"}`); code != http.StatusNoContent {
+	if code, _ := postClaim(t, f.server.Handler(), `{"team":"bronze","role":"builder","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`); code != http.StatusNoContent {
 		t.Fatalf("claim over the cap: %d, want 204", code)
 	}
 	if n, _ := testStore.PendingRuns(context.Background(), "bronze", "builder"); n != 1 {

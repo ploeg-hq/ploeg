@@ -36,7 +36,7 @@ func TestRunRoutesRefuseOversizedBodiesWith413(t *testing.T) {
 		name, path string
 		body       []byte
 	}{
-		{"claim", "/api/v1/claim", jsonWithPadding(`{"team":"`, int(claimBodyLimit), `"}`)},
+		{"claim", "/api/v1/claim", jsonWithPadding(`{"harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy","team":"`, int(claimBodyLimit), `"}`)},
 		{"checkpoint", "/api/v1/runs/no-such-run/checkpoint", jsonWithPadding(`{"phase":"started","branch":"`, int(checkpointBodyLimit), `"}`)},
 		{"outcome", "/api/v1/runs/no-such-run/outcome", jsonWithPadding(`{"outcome":"no_change_needed","summary":"`, int(outcomeBodyLimit), `"}`)},
 		{"transcript", "/api/v1/runs/no-such-run/transcript", jsonWithPadding(`{"entries":[{"text":"`, int(maxTranscriptRequestBytes), `"}]}`)},
