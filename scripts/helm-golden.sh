@@ -80,7 +80,8 @@ for case in ":default" \
 	"ops/helm/ploeg/ci/mcp-values.yaml:mcp" \
 	"ops/helm/ploeg/ci/claude-runner-values.yaml:claude-runner" \
 	"ops/helm/ploeg/ci/name-overrides-values.yaml:name-overrides" \
-	"ops/helm/ploeg/ci/secret-store-kubernetes-values.yaml:secret-store-kubernetes"; do
+	"ops/helm/ploeg/ci/secret-store-kubernetes-values.yaml:secret-store-kubernetes" \
+	"ops/helm/ploeg/ci/executor-credential-gateway-values.yaml:executor-credential-gateway"; do
 	values=${case%%:*}
 	name=${case##*:}
 	if [ "$mode" = "update" ]; then
@@ -135,7 +136,12 @@ for case in "ops/helm/ploeg/ci/reject-reader-without-read-token-values.yaml:read
 	"ops/helm/ploeg/ci/reject-separate-harness-container-with-dind-values.yaml:a separate harness container needs both credential proxies and no DinD" \
 	"ops/helm/ploeg/ci/reject-unknown-harness-container-values.yaml:value must be one of 'separate', 'shared'" \
 	"ops/helm/ploeg/ci/reject-secret-store-without-namespace-values.yaml:secretStore.kubernetes.namespace is required when secretStore.type is kubernetes" \
-	"ops/helm/ploeg/ci/reject-secret-store-in-release-namespace-values.yaml:secretStore.kubernetes.namespace must not be the release namespace default"; do
+	"ops/helm/ploeg/ci/reject-secret-store-in-release-namespace-values.yaml:secretStore.kubernetes.namespace must not be the release namespace default" \
+	"ops/helm/ploeg/ci/reject-credential-gateway-legacy-values.yaml:executor.credentialGateway.enabled needs executor.workerAuth.mode managed" \
+	"ops/helm/ploeg/ci/reject-credential-gateway-hmac-off-values.yaml:executor.credentialGateway.enabled needs executor.workerAuth.hmacCapability issue" \
+	"ops/helm/ploeg/ci/reject-credential-gateway-claude-environment-values.yaml:team pewter: harness claude-environment cannot run with executor.credentialGateway.enabled" \
+	"ops/helm/ploeg/ci/reject-credential-gateway-plugin-secret-values.yaml:reads LINK_TOKEN from Secret session-link-plugin, and with executor.credentialGateway.enabled no Secret enters a Run pod" \
+	"ops/helm/ploeg/ci/reject-credential-gateway-claude-runner-values.yaml:claudeRunner.enabled cannot run with executor.credentialGateway.enabled"; do
 	values=${case%%:*}
 	expected=${case#*:}
 	if out=$(helm template ploeg ops/helm/ploeg -f "$REQUIRED" -f "$values" 2>&1); then
@@ -554,6 +560,63 @@ for version in 0.3.0-rc.1 0.3.0; do
 	fi
 done
 rm -rf "$executor_namespace_chart"
+
+GATEWAY_VALUES=ops/helm/ploeg/ci/executor-credential-gateway-values.yaml
+check_gateway() { # <rendered-file> <bootstrap keys, comma-separated>
+	if ! uv run -q --no-project --with pyyaml==6.0.3 python scripts/check-credential-gateway.py "$1" ploeg-workers "$2"; then
+		status=1
+	fi
+}
+gateway_render=$(mktemp)
+render "$GATEWAY_VALUES" >"$gateway_render"
+check_gateway "$gateway_render" silver--builder,silver--reviewer,zinc--default,tin--default,copper--default
+helm template ploeg ops/helm/ploeg -f "$REQUIRED" -f "$GATEWAY_VALUES" -f ops/helm/ploeg/ci/executor-credential-gateway-cronjob-values.yaml >"$gateway_render"
+if ! grep -qF 'kind: CronJob' "$gateway_render"; then
+	echo "the credential gateway CronJob case renders no CronJob"
+	status=1
+fi
+check_gateway "$gateway_render" silver--builder,silver--reviewer,zinc--default
+shared_node=$(helm template ploeg ops/helm/ploeg -f "$REQUIRED" -f "$GATEWAY_VALUES" --set executor.credentialGateway.acknowledgeSingleNode=true 2>&1)
+run_pods=$(printf '%s\n' "$shared_node" | grep -cE -- '- name: PLOEG_CREDENTIAL_GATEWAY$' || true)
+labelled=$(printf '%s\n' "$shared_node" | grep -cF -- 'ploeg.webgrip.dev/credential-gateway-shared-node: "true"' || true)
+if [ "$run_pods" -eq 0 ] || [ "$labelled" -ne "$((run_pods + 1))" ] || printf '%s' "$shared_node" | grep -qF 'requiredDuringScheduling'; then
+	echo "executor.credentialGateway.acknowledgeSingleNode labels $labelled pods for $run_pods Run pods and the gateway, or leaves the gateway's placement required"
+	status=1
+fi
+if printf '%s' "$(render "$GATEWAY_VALUES")" | grep -qF 'credential-gateway-shared-node'; then
+	echo "a Run pod carries the shared-node label without executor.credentialGateway.acknowledgeSingleNode"
+	status=1
+fi
+if ! helm template ploeg ops/helm/ploeg -f "$REQUIRED" -f ops/helm/ploeg/ci/reject-credential-gateway-plugin-secret-values.yaml --set executor.credentialGateway.enabled=false >/dev/null 2>&1; then
+	echo "chart refused a Claude Code plugin reading an unrelated Secret without the credential gateway, which it must render"
+	status=1
+fi
+rm -f "$gateway_render"
+injected_chart=$(mktemp -d)
+for injection in env volume; do
+	rm -rf "$injected_chart/ploeg"
+	cp -R ops/helm/ploeg "$injected_chart/ploeg"
+	if [ "$injection" = env ]; then
+		awk '{ print } /^        - name: WORK_DIR$/ { print "          value: /mnt/ci-shared"; print "        - name: INJECTED"; print "          valueFrom:"; print "            secretKeyRef: {name: injected, key: token}"; getline }' ops/helm/ploeg/templates/_helpers.tpl >"$injected_chart/ploeg/templates/_helpers.tpl"
+		expected='renders INJECTED into container worker from a Secret'
+	else
+		awk '{ print } /^  volumes:$/ { print "    - name: injected"; print "      secret:"; print "        secretName: injected" }' ops/helm/ploeg/templates/_helpers.tpl >"$injected_chart/ploeg/templates/_helpers.tpl"
+		expected='renders volume injected from a Secret or a projection'
+	fi
+	if ! helm template ploeg "$injected_chart/ploeg" -f "$REQUIRED" -f "$GATEWAY_VALUES" --set executor.credentialGateway.enabled=false >/dev/null 2>&1; then
+		echo "the chart with an injected Secret $injection does not render without the credential gateway, so its refusal proves nothing"
+		status=1
+	fi
+	if out=$(helm template ploeg "$injected_chart/ploeg" -f "$REQUIRED" -f "$GATEWAY_VALUES" 2>&1); then
+		echo "chart rendered a Run pod with an injected Secret $injection under executor.credentialGateway, which it must refuse"
+		status=1
+	elif ! printf '%s' "$out" | grep -qF -- "$expected"; then
+		echo "chart refused an injected Secret $injection for the wrong reason (want '$expected'):"
+		echo "$out"
+		status=1
+	fi
+done
+rm -rf "$injected_chart"
 
 if [ "$mode" = "check" ] && [ "$status" -ne 0 ]; then
 	echo

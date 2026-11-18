@@ -39,8 +39,11 @@ type Server struct {
 	Teams          *team.Directory
 	WorkerSecurity *WorkerSecurity
 	LLMControl     *LLMControl
-	Store          *store.Store
-	Trackers       map[string]provider.TrackerProvider
+	// CredentialGateways is set when Teams run behind a credential gateway
+	// (ADR-0197).
+	CredentialGateways *CredentialGateways
+	Store              *store.Store
+	Trackers           map[string]provider.TrackerProvider
 	// Targets resolves a tracker scope to the repository the work lands in.
 	// Nil = no mapping configured; every item stays unresolved and workers use
 	// their env-configured repo (the pre-decoupling behavior).
@@ -333,6 +336,7 @@ func (s *Server) routes() *http.ServeMux {
 	s.RegisterLLMControl(mux)
 	s.registerRunIdentity(mux)
 	s.registerTransactionTokens(mux)
+	s.registerCredentialGateway(mux)
 	return mux
 }
 
@@ -1029,7 +1033,7 @@ func (s *Server) stopUnfencedPrepare(ctx context.Context, req claimRequest, runT
 	}
 	reason := ""
 	switch {
-	case req.ForgeTokenIsolation != ForgeTokenIsolationProxy:
+	case req.ForgeTokenIsolation != ForgeTokenIsolationProxy && !s.CredentialGateways.gates(req.Team):
 		reason = "the claiming worker does not isolate the forge token behind its proxy, where a prepare Run's one deliverable is enforced"
 	case req.Harness == claudeEnvironmentHarness:
 		reason = "the claiming worker runs its Harness in a Claude environment, whose runner pushes without the worker's forge proxy"

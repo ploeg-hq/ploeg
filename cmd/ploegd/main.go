@@ -459,25 +459,30 @@ func run(ctx context.Context, log *slog.Logger) error {
 		forgeCreds, forgeSweeper = withConnections, withConnections
 		runtimeConns.OnChange = withConnections.Forget
 	}
+	credentialGateways, err := credentialGatewaysFromEnv(workerSecurity, log)
+	if err != nil {
+		return fmt.Errorf("credential gateways: %w", err)
+	}
 	srv := &httpapi.Server{
-		OperatorConfig: operator,
-		Teams:          teams,
-		WorkerSecurity: workerSecurity,
-		LLMControl:     llmControl,
-		Store:          st,
-		Trackers:       trackers,
-		Targets:        bindings.Live,
-		Readiness:      readiness,
-		ScopeTeams:     cfg.ScopeTeams(),
-		TrackerPeople:  cfg.TrackerPeople(),
-		LeaseTTL:       leaseTTL,
-		Log:            log,
-		Version:        version,
-		RoleCaps:       plans,
-		TeamCaps:       runCaps,
-		Forges:         forges,
-		ForgeCreds:     forgeCreds,
-		SecretStore:    secrets,
+		CredentialGateways: credentialGateways,
+		OperatorConfig:     operator,
+		Teams:              teams,
+		WorkerSecurity:     workerSecurity,
+		LLMControl:         llmControl,
+		Store:              st,
+		Trackers:           trackers,
+		Targets:            bindings.Live,
+		Readiness:          readiness,
+		ScopeTeams:         cfg.ScopeTeams(),
+		TrackerPeople:      cfg.TrackerPeople(),
+		LeaseTTL:           leaseTTL,
+		Log:                log,
+		Version:            version,
+		RoleCaps:           plans,
+		TeamCaps:           runCaps,
+		Forges:             forges,
+		ForgeCreds:         forgeCreds,
+		SecretStore:        secrets,
 
 		ConnectionService:    runtimeConns,
 		AppWebhooks:          appWebhooks(log, runtimeConns, forges),

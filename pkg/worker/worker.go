@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/ploeg-hq/ploeg/pkg/boardview"
+	"github.com/ploeg-hq/ploeg/pkg/gatewaycontract"
 	"github.com/ploeg-hq/ploeg/pkg/harness"
 	"github.com/ploeg-hq/ploeg/pkg/harness/claudeplugins"
 	"github.com/ploeg-hq/ploeg/pkg/harness/skills"
@@ -69,6 +70,12 @@ type Config struct {
 	WorkDir          string
 
 	LLMBaseURL string // OpenAI-compatible base URL handed to the harness
+	// CredentialGateway puts the worker in gateway mode (ADR-0197): it holds
+	// no credential, claims through the gateway at APIURL, and reaches the
+	// forge at GatewayForgeURL and the model at LLMBaseURL with the Run's
+	// capability, which the gateway replaces with the Run's credentials.
+	CredentialGateway bool
+	GatewayForgeURL   string
 	// LLMKeyIsolation is KeyIsolationProxy to keep the per-Run model key out of
 	// the harness behind a loopback proxy, or "" to hand the key over.
 	LLMKeyIsolation string
@@ -176,6 +183,9 @@ func New(cfg Config, adapter harness.Adapter, broker llmbroker.Broker, log *slog
 		api.Yields = harness.AdapterYields(adapter)
 	}
 	api.ForgeTokenIsolation = cfg.ForgeTokenIsolation
+	if broker == nil && cfg.CredentialGateway {
+		broker = gatewayBroker{api: api}
+	}
 	if broker == nil {
 		broker = api
 	}
@@ -323,8 +333,14 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	// env one: it dies when the run settles, so a partitioned pod whose Lease
 	// lapsed cannot keep pushing. Empty = the deployment has no forge admin
 	// credential and the shared token stands.
+	if w.Cfg.CredentialGateway && (!claimed.CredentialGateway || claimed.ControlToken == "") {
+		return stuckReport(gatewaycontract.RefusedUnavailable,
+			"this worker runs behind a credential gateway, and ploegd answered a claim the gateway did not record, so no credential can be attached for this Run. The worker never uses a credential of its own (ADR-0197)")
+	}
 	forgeToken := w.Cfg.BuilderToken
-	if claimed.ForgeToken != "" {
+	if w.Cfg.CredentialGateway {
+		forgeToken = claimed.ControlToken
+	} else if claimed.ForgeToken != "" {
 		forgeToken = claimed.ForgeToken
 		// Say which one it actually is. The Static broker returns the SHARED
 		// token in this same field, and logging "per-run" for it claims a
@@ -344,7 +360,7 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	}
 
 	forgeCred := &forgeCredential{token: forgeToken, log: w.Log}
-	if claimed.ForgeTokenPerRun && claimed.ForgeTokenExpiresAt != nil {
+	if claimed.ForgeTokenPerRun && claimed.ForgeTokenExpiresAt != nil && !w.Cfg.CredentialGateway {
 		forgeCred.expiresAt = *claimed.ForgeTokenExpiresAt
 		forgeCred.refresh = func(ctx context.Context) (string, time.Time, error) {
 			return w.API.RefreshForgeCredential(ctx, claimed.RunToken)
@@ -356,6 +372,9 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	ref, err := resolveClaimTarget(w.Cfg, claimed, w.Log)
 	if err != nil {
 		return stuckReport("no repository for this work item", err.Error())
+	}
+	if w.Cfg.CredentialGateway {
+		ref.ForgeURL = w.Cfg.GatewayForgeURL
 	}
 	w.Log.Info("resolved work target", "repo", ref.Owner+"/"+ref.Name, "base", ref.BaseBranch, "forge", ref.Forge, "route_rule", item.RouteRule)
 
@@ -635,7 +654,7 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	}
 	var deliverable *deliverableFence
 	if writes && item.PreparesRepository() {
-		if forgeToken == "" || w.Cfg.ForgeTokenIsolation != ForgeTokenIsolationProxy || w.Adapter.Name() == "claude-environment" {
+		if forgeToken == "" || (w.Cfg.ForgeTokenIsolation != ForgeTokenIsolationProxy && !w.Cfg.CredentialGateway) || w.Adapter.Name() == "claude-environment" {
 			return stuckReport("prepare_unsupported_for_team",
 				"Ploeg enforces a prepare Run's one deliverable at the worker's forge proxy (ADR-0194): this worker hands the harness its forge token or runs it in a Claude environment, whose runner pushes on its own. Set PLOEG_FORGE_TOKEN_ISOLATION=proxy and give the writing Role a worker-run Harness")
 		}

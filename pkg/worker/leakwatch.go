@@ -23,6 +23,7 @@ const (
 	credentialModelKey   credentialKind = "model key"
 	credentialForgeToken credentialKind = "forge token"
 	credentialCanary     credentialKind = "canary credential"
+	credentialCapability credentialKind = "run capability"
 )
 
 const (
@@ -67,7 +68,7 @@ func (w *leakWatch) find(data []byte) (credentialKind, bool) {
 	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	for _, kind := range []credentialKind{credentialModelKey, credentialForgeToken, credentialCanary} {
+	for _, kind := range []credentialKind{credentialModelKey, credentialForgeToken, credentialCanary, credentialCapability} {
 		for _, value := range w.watched[kind] {
 			if bytes.Contains(data, []byte(value)) {
 				return kind, true
