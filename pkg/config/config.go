@@ -25,6 +25,8 @@
 package config
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"github.com/ploeg-hq/ploeg/pkg/connection"
@@ -407,6 +409,9 @@ func (f *File) Validate() error {
 func (f *File) validateTeamIdentity() error {
 	holder := map[string]string{}
 	for _, key := range sortedTeamNames(f.Teams) {
+		if prev, taken := holder[strings.ToLower(key)]; taken {
+			return fmt.Errorf("teams.%s: differs from team %q only in case, and Team keys ignore case", key, prev)
+		}
 		holder[strings.ToLower(key)] = key
 	}
 	for _, key := range sortedTeamNames(f.Teams) {
@@ -857,6 +862,10 @@ type StaticTeamIdentity struct {
 	Key     string
 	Aliases []string
 	Name    string
+	// Digest fingerprints everything the Team is made of except its name
+	// and aliases, so a key that left the file and a new key with the same
+	// Digest read as a rename that forgot its alias.
+	Digest string
 }
 
 // StaticTeams returns the identity of every Team in the file.
@@ -864,7 +873,17 @@ func (f *File) StaticTeams() []StaticTeamIdentity {
 	out := make([]StaticTeamIdentity, 0, len(f.Teams))
 	for _, key := range sortedTeamNames(f.Teams) {
 		t := f.Teams[key]
-		out = append(out, StaticTeamIdentity{Key: key, Aliases: append([]string(nil), t.Aliases...), Name: t.Name})
+		out = append(out, StaticTeamIdentity{Key: key, Aliases: append([]string(nil), t.Aliases...), Name: t.Name, Digest: teamDigest(t)})
 	}
 	return out
+}
+
+func teamDigest(t Team) string {
+	t.Name, t.Aliases = "", nil
+	raw, err := yaml.Marshal(t)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:])
 }
