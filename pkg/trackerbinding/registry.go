@@ -589,7 +589,7 @@ func (r *Registry) TeamPolicy(key string) (config.TrackerBindings, bool) {
 		return config.TrackerBindings{}, false
 	}
 	t, ok := r.TeamByKey(key)
-	if !ok || t.Source != team.SourceRuntime || t.State != team.StateActive {
+	if !ok || t.Source != team.SourceRuntime || t.State != team.StateActive || t.Draining {
 		return config.TrackerBindings{}, false
 	}
 	return *r.Config.TeamCreation.TrackerBindings, true

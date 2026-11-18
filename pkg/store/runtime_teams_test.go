@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"regexp"
 	"strconv"
@@ -218,12 +219,12 @@ func TestARuntimeTeamInUseIsNotRemovedAndADrainRemovesItWhenItsWorkEnds(t *testi
 	if _, err := testStore.ReplaceRuntimeTeam(ctx, docs.ID, draining.Revision, runtimeManifest("docs", 5), activeDecision, teamLimits(time.Now()), person("p")); teamCode(t, err) != TeamDraining {
 		t.Fatalf("a PUT while draining: %v", err)
 	}
-	if removed, err := testStore.FinishDrains(ctx, time.Now()); err != nil || len(removed) != 0 {
-		t.Fatalf("a drain with open work finished: %v %v", removed, err)
+	if drained, err := testStore.FinishDrains(ctx, time.Now()); err != nil || len(drained.Removed) != 0 {
+		t.Fatalf("a drain with open work finished: %v %v", drained, err)
 	}
 	forceItemState(t, item, "done", 0)
-	if removed, err := testStore.FinishDrains(ctx, time.Now()); err != nil || len(removed) != 1 {
-		t.Fatalf("a drained Team was not removed: %v %v", removed, err)
+	if drained, err := testStore.FinishDrains(ctx, time.Now()); err != nil || len(drained.Removed) != 1 {
+		t.Fatalf("a drained Team was not removed: %v %v", drained, err)
 	}
 	if auditCount(t, AuditTeamRemoved) != 1 || auditCount(t, AuditTeamDrainExpired) != 0 {
 		t.Fatal("audit")
@@ -236,14 +237,34 @@ func TestADrainThatRunsOutSendsOpenWorkToAPerson(t *testing.T) {
 	docs := mustCreate(t, "docs", 10)
 	item, shift := teamSelectionItem(t, "docs", "d-2", "", "")
 	mustExec(t, `INSERT INTO agent_runs (work_item_id, shift_id, team, run_token, role, harness_requested, state) VALUES ($1, $2, 'docs', 'drain-run', 'builder', 'openhands', 'pending')`, item, shift)
+	mustExec(t, `INSERT INTO agent_runs (work_item_id, shift_id, team, run_token, role, harness_requested, state, forge_token_id) VALUES ($1, $2, 'docs', 'drain-running', 'reviewer', 'openhands', 'running', 'forge-7')`, item, shift)
 	if _, err := testStore.DrainRuntimeTeam(ctx, docs.ID, nil, person("p")); err != nil {
 		t.Fatal(err)
 	}
-	if removed, err := testStore.FinishDrains(ctx, time.Now().Add(13*24*time.Hour)); err != nil || len(removed) != 0 {
-		t.Fatalf("day 13: %v %v", removed, err)
+	mustExec(t, `INSERT INTO tracker_bindings (team, connection, scope_id, created_by, updated_by, state, team_id, webhook_state, webhook_source)
+		VALUES ('docs', 'clickup', 'late', 'p', 'p', 'active', $1, 'present', 'existing')`, docs.ID)
+	t.Cleanup(func() { mustExec(t, `DELETE FROM tracker_bindings`) })
+	if drained, err := testStore.FinishDrains(ctx, time.Now().Add(13*24*time.Hour)); err != nil || len(drained.Removed) != 0 {
+		t.Fatalf("day 13: %v %v", drained, err)
 	}
-	if removed, err := testStore.FinishDrains(ctx, time.Now().Add(15*24*time.Hour)); err != nil || len(removed) != 1 {
-		t.Fatalf("day 15: %v %v", removed, err)
+	drained, err := testStore.FinishDrains(ctx, time.Now().Add(15*24*time.Hour))
+	if err != nil || len(drained.Removed) != 1 {
+		t.Fatalf("day 15: %v %v", drained, err)
+	}
+	if fmt.Sprint(drained.StoppedRunTokens) != "[drain-running]" || fmt.Sprint(drained.ForgeTokenIDs) != "[forge-7]" {
+		t.Fatalf("stopped %v, forge tokens %v; want the running Run's credentials to revoke", drained.StoppedRunTokens, drained.ForgeTokenIDs)
+	}
+	var running, liveShifts int
+	if err := testStore.pool.QueryRow(ctx, `SELECT count(*) FILTER (WHERE state = 'running') FROM agent_runs WHERE team_id = $1`, docs.ID).Scan(&running); err != nil || running != 0 {
+		t.Fatalf("%d Runs still running (%v)", running, err)
+	}
+	if err := testStore.pool.QueryRow(ctx, `SELECT count(*) FROM shifts WHERE id = $1 AND closed_at IS NULL`, shift).Scan(&liveShifts); err != nil || liveShifts != 0 {
+		t.Fatalf("the Shift is still open (%v)", err)
+	}
+	var bindingState, bindingReason string
+	if err := testStore.pool.QueryRow(ctx, `SELECT state, invalid_reason FROM tracker_bindings WHERE scope_id = 'late'`).Scan(&bindingState, &bindingReason); err != nil ||
+		bindingState != "invalid" || bindingReason != "team_removed" {
+		t.Fatalf("the removed Team's binding is %s %s (%v)", bindingState, bindingReason, err)
 	}
 	if state, _ := itemStateAttempts(t, item); state != "needs_human" {
 		t.Fatalf("Work Item is %s", state)
@@ -441,5 +462,111 @@ func TestTheTeamIdTriggerResolvesRuntimeKeysByTenantAndNeverDropsARuntimeId(t *t
 	var def *string
 	if err := testStore.pool.QueryRow(ctx, `SELECT ploeg_team_id_for('docs', '')`).Scan(&def); err != nil || def == nil || *def != docs.ID {
 		t.Fatalf("the installation Tenant resolved docs to %v (%v)", def, err)
+	}
+}
+
+func TestARuntimeTeamsSpendCapCountsItsSpendUnderEveryKeyItHad(t *testing.T) {
+	withCleanTeams(t)
+	ctx := context.Background()
+	m := runtimeManifest("docs", 1)
+	docs, _, err := testStore.CreateRuntimeTeam(ctx, "default", m, activeDecision, teamLimits(time.Now()), person("p"), team.MustNewID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spent, spentShift := teamSelectionItem(t, "docs-old", "cap-1", "", "")
+	mustExec(t, `UPDATE work_items SET team_id = $2 WHERE id = $1`, spent, docs.ID)
+	mustExec(t, `INSERT INTO agent_runs (work_item_id, shift_id, team, team_id, run_token, role, state, finished_at, usage)
+		VALUES ($1, $2, 'docs-old', $3, 'cap-spent', 'builder', 'finished', now(), '{"costUsd": 1}')`, spent, spentShift, docs.ID)
+	item, shift := teamSelectionItem(t, "docs", "cap-2", "", "")
+	mustExec(t, `INSERT INTO agent_runs (work_item_id, shift_id, team, run_token, role, harness_requested, state, authorized)
+		VALUES ($1, $2, 'docs', 'cap-next', 'builder', 'openhands', 'pending', 0.5)`, item, shift)
+	pool := WithPoolClaim(ctx, PoolClaim{TeamID: docs.ID, SpendCap: *m.Spend.Cap})
+	if _, err := testStore.ClaimRoleFor(pool, "docs", "builder", "openhands", time.Minute, 0.5, 0); !errors.Is(err, ErrTeamSpendCapReached) {
+		t.Fatalf("a renamed runtime Team's earlier spend did not count against its cap: %v", err)
+	}
+	if _, err := testStore.ClaimRoleFor(WithPoolClaim(ctx, PoolClaim{TeamID: docs.ID}), "docs", "builder", "openhands", time.Minute, 0.5, 0); err != nil {
+		t.Fatalf("without a cap on the marker the claim is refused: %v", err)
+	}
+}
+
+func TestATenantsAllowanceCountsWhatRemovedRuntimeTeamsSpent(t *testing.T) {
+	withCleanTeams(t)
+	ctx := context.Background()
+	gone := mustCreate(t, "gone", 60)
+	item, shift := teamSelectionItem(t, "gone", "spent-1", "", "")
+	mustExec(t, `INSERT INTO agent_runs (work_item_id, shift_id, team, run_token, role, state, finished_at, usage)
+		VALUES ($1, $2, 'gone', 'spent-run', 'builder', 'finished', now(), '{"costUsd": 70}')`, item, shift)
+	forceItemState(t, item, "done", 0)
+	if removed, err := testStore.RemoveRuntimeTeam(ctx, gone.ID, nil, person("p")); err != nil || !removed {
+		t.Fatalf("remove %v %v", removed, err)
+	}
+	_, _, err := testStore.CreateRuntimeTeam(ctx, "default", runtimeManifest("next", 40), activeDecision, teamLimits(time.Now()), person("p"), team.MustNewID)
+	var te *TeamError
+	if !errors.As(err, &te) || te.Code != TeamSpendExceeds || te.Headroom == nil || *te.Headroom != 30 {
+		t.Fatalf("a removed Team's 70 USD was not counted: %v %+v", err, te)
+	}
+	if _, _, err := testStore.CreateRuntimeTeam(ctx, "default", runtimeManifest("next", 30), activeDecision, teamLimits(time.Now()), person("p"), team.MustNewID); err != nil {
+		t.Fatalf("what is left fits: %v", err)
+	}
+}
+
+func TestAKeyIsReservedInItsOwnTenantAndAReleasedStaticKeyEverywhere(t *testing.T) {
+	withCleanTeams(t)
+	ctx := context.Background()
+	other, _, err := testStore.CreateRuntimeTeam(ctx, "other", runtimeManifest("docs", 10), activeDecision, teamLimits(time.Now()), person("p"), team.MustNewID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := testStore.RemoveRuntimeTeam(ctx, other.ID, nil, person("p")); err != nil {
+		t.Fatal(err)
+	}
+	if until, err := testStore.ReservedKey(ctx, "default", "docs", teamLimits(time.Now())); err != nil || until != nil {
+		t.Fatalf("another Tenant's released key is reserved here until %v (%v)", until, err)
+	}
+	mustCreate(t, "docs", 10)
+	ids := sequentialIDs()
+	if _, err := testStore.ReconcileStaticTeams(ctx, []StaticTeam{{Key: "bronze"}}, ids); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := testStore.ReconcileStaticTeams(ctx, nil, ids); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := testStore.CreateRuntimeTeam(ctx, "default", runtimeManifest("bronze", 1), activeDecision, teamLimits(time.Now()), person("p"), team.MustNewID); teamCode(t, err) != TeamKeyReserved {
+		t.Fatalf("a key a static Team released: %v", err)
+	}
+}
+
+func TestAPoolClaimTakesOnlyTheRunOfTheTeamItsMarkerNames(t *testing.T) {
+	withCleanTeams(t)
+	ctx := context.Background()
+	mine := mustCreate(t, "docs", 10)
+	theirs, _, err := testStore.CreateRuntimeTeam(ctx, "acme", runtimeManifest("docs", 10), activeDecision, teamLimits(time.Now()), person("p"), team.MustNewID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, id := range []string{theirs.ID, mine.ID} {
+		item, shift := teamSelectionItem(t, "docs", "tenant-"+strconv.Itoa(i), "", "")
+		mustExec(t, `INSERT INTO agent_runs (work_item_id, shift_id, team, team_id, run_token, role, harness_requested, state)
+			VALUES ($1, $2, 'docs', $3, $4, 'builder', 'openhands', 'pending')`, item, shift, id, "tenant-run-"+strconv.Itoa(i))
+	}
+	claimed, err := testStore.ClaimRoleFor(WithPoolClaim(ctx, PoolClaim{TeamID: mine.ID}), "docs", "builder", "openhands", time.Minute, 0, 0)
+	if err != nil || claimed.RunToken != "tenant-run-1" {
+		t.Fatalf("the default pool claimed %+v (%v), want its own Team's Run", claimed, err)
+	}
+	if _, err := testStore.ClaimRoleFor(WithPoolClaim(ctx, PoolClaim{TeamID: mine.ID}), "docs", "builder", "openhands", time.Minute, 0, 0); !errors.Is(err, ErrNoWork) {
+		t.Fatalf("the default pool reached acme's Run: %v", err)
+	}
+	if _, err := testStore.ClaimRoleFor(WithPoolClaim(ctx, PoolClaim{TeamID: "not-an-id"}), "docs", "builder", "openhands", time.Minute, 0, 0); !errors.Is(err, ErrNoWork) {
+		t.Fatalf("a marker without a valid id claimed: %v", err)
+	}
+}
+
+func TestAnAuditRowThatNamesARuntimeTeamGetsItsId(t *testing.T) {
+	withCleanTeams(t)
+	docs := mustCreate(t, "docs", 10)
+	mustExec(t, `INSERT INTO audit_log (actor, action, detail) VALUES ('x', 'test.runtime_event', '{"team":"docs"}')`)
+	var id string
+	if err := testStore.pool.QueryRow(context.Background(), `SELECT coalesce(detail->>'team_id', '') FROM audit_log WHERE action = 'test.runtime_event'`).Scan(&id); err != nil || id != docs.ID {
+		t.Fatalf("detail.team_id = %q (%v), want %s", id, err, docs.ID)
 	}
 }

@@ -139,6 +139,7 @@ for case in "ops/helm/ploeg/ci/reject-reader-without-read-token-values.yaml:read
 	"ops/helm/ploeg/ci/reject-secret-store-in-release-namespace-values.yaml:secretStore.kubernetes.namespace must not be the release namespace default" \
 	"ops/helm/ploeg/ci/reject-runtime-pool-unqualified-harness-values.yaml:is not qualified for credential isolation" \
 	"ops/helm/ploeg/ci/reject-runtime-pool-twice-values.yaml:a second pool for tenant default and harness openhands" \
+	"ops/helm/ploeg/ci/reject-runtime-pool-gateway-values.yaml:isolation gateway qualifies a pool only once the credential gateway" \
 	"ops/helm/ploeg/ci/reject-runtime-pools-without-team-creation-values.yaml:executor.runtimeTeams.enabled and config.teamCreation.enabled must agree" \
 	"ops/helm/ploeg/ci/reject-runtime-pool-with-dind-values.yaml:a pool never runs DinD" \
 	"ops/helm/ploeg/ci/reject-runtime-pool-without-isolation-values.yaml:a pool needs executor.litellm.keyIsolation and executor.forgeTokenIsolation on"; do

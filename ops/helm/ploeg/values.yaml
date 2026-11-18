@@ -1018,7 +1018,7 @@ executor:
     # - tenant: default
     #   harness: openhands
     #   maxReplicaCount: 4
-    #   isolation: proxy
+    #   isolation: proxy   # gateway is refused until ADR-0197's gateway ships
   teams: []
   # - name: bronze
   #   model: litellm_proxy/deepseek-chat

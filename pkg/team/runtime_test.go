@@ -68,6 +68,7 @@ func TestEachPolicyCheckRefusesWithItsCode(t *testing.T) {
 		"unqualified pool": {func(m *Manifest) { m.Plan.Rounds[0].Roles[0].Harness = "raw" }, RefuseHarnessQualified},
 		"model":            {func(m *Manifest) { m.Plan.Rounds[0].Roles[0].Model = "m2" }, RefuseModelNotAllowed},
 		"role cap":         {func(m *Manifest) { m.Plan.Rounds[0].Roles[0].Cap = 6 }, RefusePlanInvalid},
+		"no role cap":      {func(m *Manifest) { m.Plan.Rounds[0].Roles[0].Cap = 0 }, RefusePlanInvalid},
 		"no spend cap":     {func(m *Manifest) { m.Spend.Cap = nil }, RefuseSpendRequired},
 		"zero spend cap":   {func(m *Manifest) { m.Spend.Cap = &spendcap.Cap{} }, RefuseSpendRequired},
 		"maxRunning":       {func(m *Manifest) { m.MaxRunning = 5 }, RefuseInvalidRequest},
@@ -78,7 +79,7 @@ func TestEachPolicyCheckRefusesWithItsCode(t *testing.T) {
 		"nine roles": {func(m *Manifest) {
 			roles := []RuntimeRole{}
 			for range 9 {
-				roles = append(roles, RuntimeRole{Name: "r", Harness: "openhands", Model: "m1"})
+				roles = append(roles, RuntimeRole{Name: "r", Cap: 1, Harness: "openhands", Model: "m1"})
 			}
 			m.Plan.Rounds = []RuntimeRound{{Roles: roles}}
 		}, RefusePlanInvalid},
@@ -95,14 +96,14 @@ func TestEachPolicyCheckRefusesWithItsCode(t *testing.T) {
 	}
 }
 
-func TestAGatewayPoolIsQualifiedAndAPoolWithoutIsolationIsNot(t *testing.T) {
+func TestOnlyAProxyPoolIsQualifiedUntilTheGatewayShips(t *testing.T) {
 	pools, err := ParsePools(`[{"tenant":"default","harness":"openhands","maxReplicaCount":4,"isolation":"gateway"},
 		{"tenant":"default","harness":"acp/opencode","maxReplicaCount":2,"isolation":"proxy"},
 		{"tenant":"default","harness":"raw","maxReplicaCount":1,"isolation":""}]`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for harness, want := range map[string]bool{"openhands": true, "acp/opencode": true, "raw": false} {
+	for harness, want := range map[string]bool{"openhands": false, "acp/opencode": true, "raw": false} {
 		p, ok := pools.For("default", harness)
 		if !ok || p.Qualified() != want {
 			t.Errorf("%s: qualified %v", harness, p.Qualified())

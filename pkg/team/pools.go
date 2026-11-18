@@ -8,14 +8,17 @@ import (
 	"strings"
 )
 
-// Credential isolation modes a pool's Harness may run under. A runtime
-// Team's Role runs only on a pool whose mode is one of them: proxy is
-// ADR-0034's placeholders with the worker keeping credentials, gateway is
-// the credential gateway outside the Run pod (ADR-0197).
+// Credential isolation modes of a pool. Only the modes in
+// isolationOutsideHarness count as qualified: proxy is ADR-0034's
+// placeholders with the worker keeping credentials. gateway names the
+// credential gateway outside the Run pod (ADR-0197) and qualifies a pool
+// only once that gateway ships.
 const (
 	IsolationProxy   = "proxy"
 	IsolationGateway = "gateway"
 )
+
+var isolationOutsideHarness = []string{IsolationProxy}
 
 // Pool is one generic worker pool the chart renders for runtime Teams of
 // one Tenant on one Harness (ADR-0198 section 7).
@@ -29,7 +32,7 @@ type Pool struct {
 // Qualified reports whether the pool's Harness runs with its credentials
 // isolated from the Run.
 func (p Pool) Qualified() bool {
-	return p.Isolation == IsolationProxy || p.Isolation == IsolationGateway
+	return slices.Contains(isolationOutsideHarness, p.Isolation)
 }
 
 // Pools are the pools ploegd learns from PLOEG_RUNTIME_POOLS.
