@@ -637,6 +637,18 @@ helm template ploeg ops/helm/ploeg -f "$REQUIRED" -f ops/helm/ploeg/ci/executor-
 if ! uv run -q --no-project --with pyyaml==6.0.3 python scripts/check-claude-runner-orchestrator.py "$gateway_render" ploeg-workers single-node; then
 	status=1
 fi
+ANTHROPIC_WARNING='WARNING: networkPolicy.anthropic.peers is empty'
+anthropic_notes=$(helm install --dry-run=client ploeg ops/helm/ploeg -f "$REQUIRED" -f ops/helm/ploeg/ci/executor-credential-gateway-claude-environment-values.yaml 2>&1)
+if ! printf '%s' "$anthropic_notes" | grep -qF "$ANTHROPIC_WARNING"; then
+	echo "orchestrator mode with networkPolicy.anthropic.peers empty does not warn that runner pods reach the internet on 443"
+	status=1
+fi
+anthropic_notes=$(helm install --dry-run=client ploeg ops/helm/ploeg -f "$REQUIRED" -f ops/helm/ploeg/ci/executor-credential-gateway-claude-environment-values.yaml \
+	--set-json 'networkPolicy.anthropic.peers=[{"ipBlock":{"cidr":"203.0.113.0/24"}}]' 2>&1)
+if printf '%s' "$anthropic_notes" | grep -qF "$ANTHROPIC_WARNING"; then
+	echo "orchestrator mode warns about networkPolicy.anthropic.peers although it is set"
+	status=1
+fi
 rm -f "$gateway_render"
 injected_chart=$(mktemp -d)
 for injection in env volume host-path csi privileged docker-env docker-certs; do

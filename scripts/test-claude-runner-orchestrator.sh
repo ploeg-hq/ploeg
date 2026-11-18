@@ -139,4 +139,22 @@ assert orders == [{'name': 'PLOEG_CLAUDE_RUNNER_WORK_ORDER', 'value': 'eyJ.work-
 assert not any('secretKeyRef' in (e.get('valueFrom') or {}) for e in runner['env'])
 assert job['spec']['template']['spec']['automountServiceAccountToken'] is False
 PY
+mkdir -p "$work/runner/bin" "$work/runner/order" "$work/runner/site"
+: >"$work/runner/site/healthz"
+runner_port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()')
+cat >"$work/runner/bin/claude" <<FAKE
+#!/usr/bin/env bash
+order="\$3"
+{ [ -s "\$order" ] && echo "read at start"; } || echo "missing at start"
+env | grep -q '^PLOEG_CLAUDE_RUNNER_WORK_ORDER=' && echo "work order in the runner's environment"
+python3 -m http.server --bind 127.0.0.1 $runner_port --directory "$work/runner/site" >/dev/null 2>&1 &
+server=\$!
+for _ in \$(seq 50); do [ -e "\$order" ] || break; sleep 0.2; done
+[ -e "\$order" ] && echo "kept after registration" || echo "deleted after registration"
+kill "\$server"
+FAKE
+chmod +x "$work/runner/bin/claude"
+runner_out=$(env -i PATH="$work/runner/bin:$PATH" PLOEG_CLAUDE_RUNNER_WORK_ORDER=eyJ.work-order.sig PLOEG_CLAUDE_RUNNER_WORK_ORDER_DIR="$work/runner/order" \
+  PLOEG_CLAUDE_RUNNER_HEALTH_URL="http://127.0.0.1:$runner_port/healthz" "$root/ops/claude-runner/runner-from-work-order" --capacity 1)
+[ "$runner_out" = "$(printf 'read at start\ndeleted after registration')" ] || fail "the runner's work order: $runner_out"
 echo 'claude-runner orchestrator: ok'
