@@ -94,6 +94,7 @@ func (s *Service) List(visible func(key string) bool) []View {
 				v.Readiness.State, v.Readiness.Reason = "unknown", verdict.Reason
 			default:
 				v.Readiness.State, v.Readiness.Reason = "not_ready", verdict.Reason
+				v.Readiness.Reasons, v.Readiness.PrepareAvailable = append([]string{}, verdict.Reasons...), verdict.PrepareAvailable()
 			}
 		}
 		out = append(out, v)
