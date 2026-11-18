@@ -1,6 +1,6 @@
 # Agent image
 
-Each release publishes `ghcr.io/ploeg-hq/agent-runner:<version>` for `linux/amd64` and `linux/arm64` from [Dockerfile](Dockerfile), signed and CVE-gated like every Ploeg image ([ADR-0199](../../../docs/adrs/0199-ploeg-publishes-an-agent-image-with-the-harnesses-it-runs-from-its-own-release.md)). It is the image a Team's `harness.image` can name for the `openhands` harness and the `acp` profiles `openhands`, `opencode`, `qwen-code` and `goose`. The chart does not default to it yet; set `executor.harness.image` to `ghcr.io/ploeg-hq/agent-runner:<version>@<digest>`, with the digest from the release's `signed-artifacts.txt`.
+Each release publishes `ghcr.io/ploeg-hq/agent-runner:<version>` for `linux/amd64` from [Dockerfile](Dockerfile), signed and CVE-gated like every Ploeg image ([ADR-0199](../../../docs/adrs/0199-ploeg-publishes-an-agent-image-with-the-harnesses-it-runs-from-its-own-release.md)). It is the image a Team's `harness.image` can name for the `openhands` harness and the `acp` profiles `openhands`, `opencode`, `qwen-code` and `goose`. The chart does not default to it yet; set `executor.harness.image` to `ghcr.io/ploeg-hq/agent-runner:<version>@<digest>`, with the digest from the release's `signed-artifacts.txt`.
 
 ## What it carries
 
