@@ -29,6 +29,7 @@ var observerReads = []string{
 	`SELECT work_item_id, shift_id, round, actor, requested_at, yielded_at, pushed, handed_back_at FROM work_item_take_overs`,
 	`SELECT team, connection, scope_id, state, invalid_reason, webhook_state, count(*) FROM tracker_bindings GROUP BY 1, 2, 3, 4, 5, 6`,
 	`SELECT port, kind, state, count(*) FROM connections GROUP BY 1, 2, 3`,
+	`SELECT target_key, connection, forge, repository, state, invalid_reason, count(*) FROM work_targets GROUP BY 1, 2, 3, 4, 5, 6`,
 }
 
 var observerRefusals = []string{
@@ -56,6 +57,8 @@ var observerRefusals = []string{
 	`SELECT command_id FROM work_item_take_overs`,
 	`SELECT label FROM tracker_bindings`,
 	`SELECT created_by, updated_by FROM tracker_bindings`,
+	`SELECT label, readiness FROM work_targets`,
+	`SELECT created_by, updated_by, removed_by FROM work_targets`,
 }
 
 func TestObserverRoleReadsMetadataAndNeverText(t *testing.T) {
