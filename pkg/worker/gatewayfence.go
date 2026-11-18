@@ -16,17 +16,20 @@ import (
 // FencedForgeRun is what the credential gateway knows about one Run's forge
 // access (ADR-0197): the same facts the worker's forge proxy is started with.
 type FencedForgeRun struct {
-	Repo       harness.RepoRef
-	Writes     bool
-	Branch     string
-	Prepares   bool
-	ScratchDir string
-	Trace      string
-	WorkItem   string
-	Token      func(context.Context) string
-	ModelKey   string
-	Capability string
-	Log        *slog.Logger
+	Repo     harness.RepoRef
+	Writes   bool
+	Branch   string
+	Prepares bool
+	// LoadsRepositoryHooks is true for an OpenHands harness, whose push is
+	// fenced off the repository's OpenHands hooks file (ADR-0148).
+	LoadsRepositoryHooks bool
+	ScratchDir           string
+	Trace                string
+	WorkItem             string
+	Token                func(context.Context) string
+	ModelKey             string
+	Capability           string
+	Log                  *slog.Logger
 }
 
 // ErrFenceUnavailable is returned when a Run's grant cannot be fenced, so the
@@ -60,12 +63,18 @@ func NewFencedForge(run FencedForgeRun) (http.Handler, error) {
 	}
 	tokens := guardedTokens{source: run.Token, watch: watch}
 	fence := newPushFence(run.Branch)
-	if run.Writes && run.Prepares {
+	fence.fromPack = true
+	if run.Writes && (run.Prepares || run.LoadsRepositoryHooks) {
 		cloneURL, err := plainURL(run.Repo.ForgeURL, run.Repo.Owner, run.Repo.Name)
 		if err != nil {
 			return nil, fmt.Errorf("%w: %v", ErrFenceUnavailable, err)
 		}
-		fence.deliverable = &deliverableFence{dir: run.ScratchDir, cloneURL: cloneURL, base: run.Repo.BaseBranch, token: tokens.current, fromPack: true}
+		if run.Prepares {
+			fence.content = append(fence.content, &deliverableFence{dir: run.ScratchDir, cloneURL: cloneURL, base: run.Repo.BaseBranch, token: tokens.current})
+		}
+		if run.LoadsRepositoryHooks {
+			fence.content = append(fence.content, &repositoryHooksFence{dir: run.ScratchDir, cloneURL: cloneURL, base: run.Repo.BaseBranch, token: tokens.current})
+		}
 	}
 	refusals := refusalLog{proxy: forgeProxyName, run: run.Trace, log: leaks.log, secrets: watch.values}
 	presented := func(http.ResponseWriter, *http.Request, forgeRequestKind) bool { return true }

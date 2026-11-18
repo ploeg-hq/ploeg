@@ -660,8 +660,19 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 		}
 		deliverable = &deliverableFence{dir: cloneDir, cloneURL: cloneURL, base: ref.BaseBranch, start: baseline.start, token: forgeCred.current}
 	}
+	var hooksFence *repositoryHooksFence
+	if writes && loadsRepositoryHooks(w.Adapter) {
+		hooksFence = &repositoryHooksFence{dir: cloneDir, cloneURL: cloneURL, base: ref.BaseBranch, start: baseline.start, token: forgeCred.current}
+	}
 	if writes && forgeToken != "" && w.Cfg.ForgeTokenIsolation == ForgeTokenIsolationProxy {
-		forgeProxy, err := startForgeTokenProxy(ref, forgeCred, forgeWriter, branch, leaks, deliverable)
+		var fences []contentFence
+		if deliverable != nil {
+			fences = append(fences, deliverable)
+		}
+		if hooksFence != nil {
+			fences = append(fences, hooksFence)
+		}
+		forgeProxy, err := startForgeTokenProxy(ref, forgeCred, forgeWriter, branch, leaks, fences...)
 		if err != nil {
 			return stuckReport("could not isolate the forge token", err.Error())
 		}
@@ -728,7 +739,7 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	forgeToken = forgeCred.current(context.WithoutCancel(ctx))
 	if errors.Is(runErr, harness.ErrYielded) {
 		return w.yielded(ctx, report, yieldCheck{writes: writes, dir: cloneDir, cloneURL: cloneURL, token: forgeToken, branch: branch,
-			baseline: baseline, leaks: leaks, trace: trace, reference: work.Reference(item), deliverable: deliverable}, ref, prior, priorErr)
+			baseline: baseline, leaks: leaks, trace: trace, reference: work.Reference(item), deliverable: deliverable, hooks: hooksFence}, ref, prior, priorErr)
 	}
 	// The PR is the ground truth (git/forge state stays the durable medium).
 	after, prErr := readChangeRequest(ref, forgeToken, branch)
@@ -740,6 +751,7 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 		item.Title, branch, redactedOutput(logTail.Bytes(), leaks.watch), w.Adapter.ExpectsLLM(), writes)
 	final = withReviewedCommit(final, branch, prURL, reviewedCommit)
 	final = deliverable.checkDelivered(final, after.HeadSHA)
+	final = hooksFence.checkDelivered(final, after.HeadSHA)
 	final = guardUnpublishedWork(context.WithoutCancel(ctx), final, deliveryCheck{
 		writes: writes, dir: cloneDir, cloneURL: cloneURL, token: forgeToken, branch: branch, baseline: baseline, prErr: prErr,
 	})

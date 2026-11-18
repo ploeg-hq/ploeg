@@ -27,12 +27,16 @@ import (
 	"github.com/ploeg-hq/ploeg/pkg/secretstore"
 	"github.com/ploeg-hq/ploeg/pkg/store"
 	"github.com/ploeg-hq/ploeg/pkg/target"
+	"github.com/ploeg-hq/ploeg/pkg/team"
 	"github.com/ploeg-hq/ploeg/pkg/txntoken"
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
 type Server struct {
 	OperatorConfig OperatorConfig
+	// Teams resolves a Team's id, key or alias (ADR-0198). Nil = ploegd
+	// knows no Team identity, and reads show none.
+	Teams          *team.Directory
 	WorkerSecurity *WorkerSecurity
 	LLMControl     *LLMControl
 	// CredentialGateways is set when Teams run behind a credential gateway

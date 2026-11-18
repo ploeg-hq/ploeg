@@ -31,7 +31,7 @@ type forgeTokenProxy struct {
 	placeholder string
 }
 
-func startForgeTokenProxy(repo harness.RepoRef, tokens forgeTokenSource, access forgeAccess, runBranch string, leaks leakScope, deliverable ...*deliverableFence) (*forgeTokenProxy, error) {
+func startForgeTokenProxy(repo harness.RepoRef, tokens forgeTokenSource, access forgeAccess, runBranch string, leaks leakScope, fences ...contentFence) (*forgeTokenProxy, error) {
 	target, err := url.Parse(repo.ForgeURL)
 	if err != nil || target.Host == "" || (target.Scheme != "http" && target.Scheme != "https") {
 		return nil, fmt.Errorf("forge URL %q is not absolute", repo.ForgeURL)
@@ -44,9 +44,7 @@ func startForgeTokenProxy(repo harness.RepoRef, tokens forgeTokenSource, access 
 		return nil, fmt.Errorf("a writer's forge proxy needs the Run's branch to fence pushes to")
 	}
 	fence := newPushFence(runBranch)
-	if len(deliverable) > 0 {
-		fence.deliverable = deliverable[0]
-	}
+	fence.content = fences
 	leaks.watch.guard(credentialForgeToken, token)
 	placeholder, err := randomPlaceholder()
 	if err != nil {
@@ -130,10 +128,14 @@ func fencedForgeHandler(repo harness.RepoRef, target *url.URL, tokens forgeToken
 				refusals.refuse(w, r, reason, err.Error())
 				return
 			}
-			if fence.deliverable != nil {
-				if reason, err := fence.deliverable.admitAPI(r); err != nil {
-					refusals.refuse(w, r, reason, err.Error())
-					return
+			for _, content := range fence.content {
+				if api, ok := content.(interface {
+					admitAPI(*http.Request) (refusalReason, error)
+				}); ok {
+					if reason, err := api.admitAPI(r); err != nil {
+						refusals.refuse(w, r, reason, err.Error())
+						return
+					}
 				}
 			}
 		}

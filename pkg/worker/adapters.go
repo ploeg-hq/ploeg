@@ -119,7 +119,7 @@ func firstNonEmpty(values ...string) string {
 func NewAdapter(hc HarnessConfig) (harness.Adapter, error) {
 	switch hc.Name {
 	case "", "openhands":
-		return harness.RunCommand(openhands.New(hc.Entrypoint)), nil
+		return openhands.NewRunner(hc.Entrypoint), nil
 	case "exec":
 		a, err := execbin.New(hc.Args, hc.OutcomeFile)
 		if err != nil {

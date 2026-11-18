@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/ploeg-hq/ploeg/pkg/harness"
+	"github.com/ploeg-hq/ploeg/pkg/team"
 )
 
 var ErrOperatorNotFound = errors.New("operator resource not found")
@@ -38,11 +39,21 @@ type OperatorFilter struct {
 }
 
 type OperatorTeam struct {
-	ID         string         `json:"id"`
-	Paused     *bool          `json:"paused"`
-	QueueDepth int64          `json:"queueDepth"`
-	Roles      []OperatorRole `json:"roles"`
-	Assignees  []string       `json:"assignees"`
+	ID string `json:"id"`
+	// TeamID, Key, Aliases, Name, NameSource, Source and State are the
+	// Team's identity (ADR-0198); ploegd fills them from its Team
+	// directory, and they are absent while it has none.
+	TeamID     string           `json:"teamId,omitempty"`
+	Key        string           `json:"key,omitempty"`
+	Aliases    []string         `json:"aliases,omitempty"`
+	Name       string           `json:"name,omitempty"`
+	NameSource *team.NameSource `json:"nameSource,omitempty"`
+	Source     string           `json:"source,omitempty"`
+	State      string           `json:"state,omitempty"`
+	Paused     *bool            `json:"paused"`
+	QueueDepth int64            `json:"queueDepth"`
+	Roles      []OperatorRole   `json:"roles"`
+	Assignees  []string         `json:"assignees"`
 	// PinnedScopes are the tracker containers whose items always run as this team, whoever is assigned.
 	PinnedScopes []string `json:"pinnedScopes"`
 	// SpendCap is the team's spend cap and its spend in the current period
