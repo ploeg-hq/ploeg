@@ -793,7 +793,23 @@ executor:
       forge: {requestsPerSecond: 20, burst: 40, bytesPerSecond: 52428800}
       model: {requestsPerSecond: 10, burst: 20, bytesPerSecond: 20971520}
       ploegd: {requestsPerSecond: 10, burst: 20, bytesPerSecond: 10485760}
+      mcp: {requestsPerSecond: 5, burst: 20, bytesPerSecond: 5242880}
       maxUpstreamConnections: 256
+    # Registered MCP servers (ADR-0199) are reached only through the gateway.
+    # egress lists the NetworkPolicy egress rules the gateway gets for them;
+    # [] reaches only the stdio adapters below. Each adapter runs one stdio
+    # MCP server in its own pod outside every Run pod, behind
+    # ploeg-mcp-stdio-bridge (one process per MCP session), reachable only
+    # from the gateway; register http://<release>-mcp-<name>.<namespace>.svc:8080/mcp
+    # and list that host in config.toolRegistry.plainHTTPHosts.
+    #   - name: grafana
+    #     image: registry.example/grafana-mcp@sha256:<64 hex>
+    #     command: ["/usr/local/bin/mcp-grafana", "--transport", "stdio"]
+    #     credentialSecret: {name: grafana-mcp, key: token, env: GRAFANA_API_KEY}
+    #     egress: [{to: [{ipBlock: {cidr: 10.0.40.0/24}}], ports: [{protocol: TCP, port: 3000}]}]
+    mcp:
+      egress: []
+      adapters: []
     resources:
       requests: {cpu: 50m, memory: 64Mi}
       limits: {cpu: "1", memory: 256Mi}

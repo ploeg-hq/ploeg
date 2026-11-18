@@ -1433,7 +1433,40 @@
                 "forge": {"$ref": "#/definitions/credentialGatewayLimit"},
                 "model": {"$ref": "#/definitions/credentialGatewayLimit"},
                 "ploegd": {"$ref": "#/definitions/credentialGatewayLimit"},
+                "mcp": {"$ref": "#/definitions/credentialGatewayLimit"},
                 "maxUpstreamConnections": {"type": "integer", "minimum": 1}
+              }
+            },
+            "mcp": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "Registered MCP servers (ADR-0199): the gateway's egress to them, and stdio servers run as sandboxed adapters outside every Run pod.",
+              "properties": {
+                "egress": {"type": "array", "items": {"type": "object"}, "description": "NetworkPolicy egress rules the credential gateway gets for registered MCP servers."},
+                "adapters": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["name", "image", "command"],
+                    "properties": {
+                      "name": {"type": "string", "pattern": "^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$"},
+                      "image": {"type": "string", "pattern": "@sha256:[0-9a-f]{64}$", "description": "The stdio MCP server's image, pinned by digest."},
+                      "command": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+                      "args": {"type": "array", "items": {"type": "string"}},
+                      "sessions": {"type": "integer", "minimum": 1, "maximum": 256, "description": "Concurrent MCP sessions, each one process of the server. Default 16."},
+                      "credentialSecret": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["name", "key", "env"],
+                        "properties": {"name": {"type": "string"}, "key": {"type": "string"}, "env": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]*$"}},
+                        "description": "The server's credential, mounted only into the adapter pod, never a Run pod."
+                      },
+                      "egress": {"type": "array", "items": {"type": "object"}, "description": "NetworkPolicy egress rules of the adapter pod besides DNS."},
+                      "resources": {"type": "object"}
+                    }
+                  }
+                }
               }
             },
             "resources": {"type": "object"},

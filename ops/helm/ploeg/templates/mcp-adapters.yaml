@@ -1,0 +1,126 @@
+{{- $adapters := ((.Values.executor.credentialGateway | default dict).mcp | default dict).adapters | default list }}
+{{- if $adapters }}
+{{- if not (include "ploeg.credentialGatewayEnabled" .) }}
+{{- fail "executor.credentialGateway.mcp.adapters needs executor.credentialGateway.enabled: a stdio MCP server is reached only through the credential gateway (ADR-0199 section 7)" }}
+{{- end }}
+{{- $root := . }}
+{{- $bridge := (include "ploeg.workerImageSource" . | fromJson).image }}
+{{- $seen := dict }}
+{{- range $a := $adapters }}
+{{- if not (regexMatch "^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$" ($a.name | default "")) }}
+{{- fail (printf "executor.credentialGateway.mcp.adapters: %q is not a lowercase name of 1 to 40 characters" ($a.name | default "")) }}
+{{- end }}
+{{- if hasKey $seen $a.name }}
+{{- fail (printf "executor.credentialGateway.mcp.adapters: %s is named twice" $a.name) }}
+{{- end }}
+{{- $_ := set $seen $a.name true }}
+{{- if not (regexMatch "@sha256:[0-9a-f]{64}$" ($a.image | default "")) }}
+{{- fail (printf "executor.credentialGateway.mcp.adapters[%s].image must be pinned by digest (image@sha256:...)" $a.name) }}
+{{- end }}
+{{- if not $a.command }}
+{{- fail (printf "executor.credentialGateway.mcp.adapters[%s].command names the stdio MCP server to run" $a.name) }}
+{{- end }}
+{{- $name := printf "%s-mcp-%s" (include "ploeg.fullname" $root) $a.name | trunc 63 | trimSuffix "-" }}
+{{- $labels := dict "app.kubernetes.io/name" "ploeg-mcp-adapter" "app.kubernetes.io/instance" (include "ploeg.instance" $root) "ploeg.webgrip.dev/mcp-adapter" $a.name }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  {{- with include "ploeg.executorNamespaceMetadata" $root }}
+  {{ . }}
+  {{- end }}
+  labels: {{- include "ploeg.labels" $root | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {{- toYaml $labels | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- toYaml $labels | nindent 8 }}
+        app.kubernetes.io/part-of: ploeg
+        ploeg.webgrip.dev/component: mcp-adapter
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      {{- with $root.Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      affinity: {{- include "ploeg.credentialGatewayAffinity" $root | nindent 8 }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: bridge
+          image: {{ $bridge }}
+          command: ["cp", "/usr/local/bin/ploeg-mcp-stdio-bridge", "/ploeg/ploeg-mcp-stdio-bridge"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          volumeMounts:
+            - {name: bridge, mountPath: /ploeg}
+      containers:
+        - name: adapter
+          image: {{ $a.image }}
+          command: {{- concat (list "/ploeg/ploeg-mcp-stdio-bridge" "--listen=:8080" (printf "--sessions=%d" (int ($a.sessions | default 16))) "--") $a.command ($a.args | default list) | toJson | nindent 12 }}
+          ports:
+            - {name: mcp, containerPort: 8080}
+          {{- with $a.credentialSecret }}
+          env:
+            - name: {{ .env }}
+              valueFrom:
+                secretKeyRef: {name: {{ .name }}, key: {{ .key }}}
+          {{- end }}
+          readinessProbe:
+            httpGet: {path: /healthz, port: mcp}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          resources: {{- toYaml ($a.resources | default (dict "requests" (dict "cpu" "50m" "memory" "64Mi") "limits" (dict "cpu" "1" "memory" "512Mi"))) | nindent 12 }}
+          volumeMounts:
+            - {name: bridge, mountPath: /ploeg, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - {name: bridge, emptyDir: {}}
+        - {name: tmp, emptyDir: {}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  {{- with include "ploeg.executorNamespaceMetadata" $root }}
+  {{ . }}
+  {{- end }}
+  labels: {{- include "ploeg.labels" $root | nindent 4 }}
+spec:
+  selector: {{- toYaml $labels | nindent 4 }}
+  ports:
+    - {name: mcp, port: 8080, targetPort: mcp}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "ploeg.netpol.name" (dict "root" $root "suffix" (printf "mcp-%s" $a.name)) }}
+  {{- with include "ploeg.executorNamespaceMetadata" $root }}
+  {{ . }}
+  {{- end }}
+  labels: {{- include "ploeg.labels" $root | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- toYaml $labels | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: {{- include "ploeg.credentialGatewaySelectorLabels" $root | nindent 14 }}
+      ports:
+        - {protocol: TCP, port: 8080}
+  egress: {{- include "ploeg.netpol.rules" (dict "rules" (list (include "ploeg.netpol.dnsRule" $root)) "extra" ($a.egress | default list)) | fromJsonArray | toYaml | nindent 4 }}
+{{- end }}
+{{- end }}

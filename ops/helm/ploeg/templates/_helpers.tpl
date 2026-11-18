@@ -803,6 +803,8 @@ spec:
           value: "on"
         - name: PLOEG_CREDENTIAL_GATEWAY_FORGE_URL
           value: {{ $gatewayUrls.forge | quote }}
+        - name: PLOEG_CREDENTIAL_GATEWAY_MCP_URL
+          value: {{ $gatewayUrls.mcp | quote }}
         {{- else }}
         - name: PLOEG_API_URL
           value: {{ include "ploeg.workerApiUrl" $root | quote }}
