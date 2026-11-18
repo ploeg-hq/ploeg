@@ -17,6 +17,7 @@ COPY ops/docker/agent-runner/tools/opencode/package.json ops/docker/agent-runner
 RUN for tool in moon openspec qwen-code opencode; do \
       npm ci --prefix "/opt/${tool}" --omit=dev --no-audit --no-fund || exit 1; \
     done \
+ && (cd /opt/opencode/node_modules/opencode-ai && node postinstall.mjs) \
  && rm -rf /opt/qwen-code/node_modules/@lydell /opt/qwen-code/node_modules/@qwen-code/qwen-code/node_modules/@lydell
 
 FROM scratch AS goose-archives

@@ -16,7 +16,7 @@ Each release publishes `ghcr.io/ploeg-hq/agent-runner:<version>` for `linux/amd6
 | Node.js | 24 | Wolfi `nodejs-24` |
 | git, bash | Wolfi | apk |
 
-The image is built on the digest-pinned `cgr.dev/chainguard/wolfi-base` the other Ploeg images use, so its C library is glibc. `apk add` takes the current Wolfi package at build time, and the BuildKit SBOM of each release records what shipped. npm is used only to install the tools during the build and is not in the image.
+The image is built on the digest-pinned `cgr.dev/chainguard/wolfi-base` the other Ploeg images use, so its C library is glibc. `apk add` takes the current Wolfi package at build time, and the BuildKit SBOM of each release records what shipped. npm is used only to install the tools during the build and is not in the image. Wolfi's npm 12 runs no package's install script unless it is allowed, so the build runs `opencode-ai`'s `postinstall.mjs` itself, which puts the platform's `opencode` binary in place. Qwen Code's optional `@qwen-code/audio-capture` install script, which only builds a microphone backend, does not run.
 
 No Claude Code ([ADR-0141](../../../docs/adrs/0141-the-claude-runner-image-carries-no-claude-code-and-installs-anthropics-signed-release-at-start.md)) and no language toolchain: a Run gets its toolchains mounted ([give Runs a toolchain and checks](../../../docs/how-to/give-runs-a-toolchain-and-checks.md)). The image has no `USER`; the chart runs the harness container as a non-root user, and the build checks that OpenHands runs as uid 1000.
 
