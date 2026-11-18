@@ -365,3 +365,21 @@ func TestAGatewayClaimsOnlyForItsOwnServiceAccountsTeams(t *testing.T) {
 		t.Fatal("bronze's own gateway could not claim")
 	}
 }
+
+func TestAGatewayTeamsWorkIsNeverClaimedByAClient(t *testing.T) {
+	reset(t)
+	s, token := clientCarriedServer(t)
+	g, err := NewCredentialGateways(`[{"namespace":"runs","serviceAccount":"gw","teams":["bronze"]}]`, fakeReviewer{}, []byte(strings.Repeat("s", 32)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.CredentialGateways = g
+	id := clientCarriedWork(t, s, "1450", "ryan", clientPerson)
+	w := clientClaim(s, token, clientPerson, "", id)
+	if w.Code != http.StatusConflict || operatorErrorCode(t, w) != "credential_gateway_team" {
+		t.Fatalf("a client's claim of a gateway Team's Run answered %d %s", w.Code, w.Body)
+	}
+	if got := runStates(t, id); got != "pending" {
+		t.Fatalf("after the refused claim runs = %q, want pending", got)
+	}
+}
