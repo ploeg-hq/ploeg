@@ -2,6 +2,9 @@
 // Streamable HTTP transport, as the sandboxed MCP adapter of ADR-0199
 // section 7: one child process per MCP session, so two Runs never share a
 // server's state, each ended on DELETE, when idle, or when the bridge stops.
+// Each session's process runs in a directory of its own, created 0700 and
+// removed when the session ends, as its working directory, HOME and TMPDIR,
+// with only the environment the bridge is given.
 package mcpstdio
 
 import (
@@ -14,7 +17,11 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 )
@@ -27,10 +34,13 @@ const (
 	callTimeout  = 2 * time.Minute
 )
 
-// Bridge serves POST and DELETE on its handler for one stdio command.
+// Bridge serves POST and DELETE on its handler for one stdio command. Env
+// is the whole environment of every session's process; Root holds the
+// sessions' directories and is the system temporary directory when empty.
 type Bridge struct {
 	Command  []string
 	Env      []string
+	Root     string
 	Idle     time.Duration
 	Sessions int
 	Log      *slog.Logger
@@ -41,6 +51,7 @@ type Bridge struct {
 
 type session struct {
 	cmd     *exec.Cmd
+	dir     string
 	stdin   io.WriteCloser
 	writeMu sync.Mutex
 	mu      sync.Mutex
@@ -168,23 +179,33 @@ func (b *Bridge) start() (string, *session, error) {
 		return "", nil, err
 	}
 	id := hex.EncodeToString(raw)
+	dir, err := b.sessionDir()
+	if err != nil {
+		return "", nil, err
+	}
 	cmd := exec.Command(b.Command[0], b.Command[1:]...)
-	cmd.Env = b.Env
+	cmd.Dir = dir
+	cmd.Env = sessionEnv(b.Env, dir)
+	ownGroup(cmd)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
+		_ = os.RemoveAll(dir)
 		return "", nil, err
 	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
+		_ = os.RemoveAll(dir)
 		return "", nil, err
 	}
 	if err := cmd.Start(); err != nil {
+		_ = os.RemoveAll(dir)
 		return "", nil, err
 	}
-	s := &session{cmd: cmd, stdin: stdin, waiting: map[string]chan json.RawMessage{}, last: time.Now(), done: make(chan struct{})}
+	s := &session{cmd: cmd, dir: dir, stdin: stdin, waiting: map[string]chan json.RawMessage{}, last: time.Now(), done: make(chan struct{})}
 	go s.read(stdout)
 	go func() {
 		_ = cmd.Wait()
+		_ = os.RemoveAll(dir)
 		close(s.done)
 		b.mu.Lock()
 		delete(b.sessions, id)
@@ -194,6 +215,55 @@ func (b *Bridge) start() (string, *session, error) {
 	b.sessions[id] = s
 	b.mu.Unlock()
 	return id, s, nil
+}
+
+func (b *Bridge) sessionDir() (string, error) {
+	root := b.Root
+	if root == "" {
+		root = os.TempDir()
+	}
+	dir, err := os.MkdirTemp(root, "session-")
+	if err != nil {
+		return "", err
+	}
+	if err := os.Chmod(dir, 0o700); err != nil {
+		_ = os.RemoveAll(dir)
+		return "", err
+	}
+	if err := os.Mkdir(filepath.Join(dir, "tmp"), 0o700); err != nil {
+		_ = os.RemoveAll(dir)
+		return "", err
+	}
+	return dir, nil
+}
+
+var sessionOwned = []string{"HOME", "TMPDIR", "TMP", "TEMP", "PWD", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_RUNTIME_DIR"}
+
+func sessionEnv(base []string, dir string) []string {
+	env := make([]string, 0, len(base)+3)
+	for _, kv := range base {
+		name, _, _ := strings.Cut(kv, "=")
+		if !slices.Contains(sessionOwned, name) {
+			env = append(env, kv)
+		}
+	}
+	return append(env, "HOME="+dir, "TMPDIR="+filepath.Join(dir, "tmp"), "PWD="+dir)
+}
+
+// ChildEnv is the environment a session's process gets from environ: the
+// variables a process needs to run (PATH, locale, time zone, CA bundle) and
+// the names in pass, such as the server's credential, and nothing else the
+// bridge inherited.
+func ChildEnv(environ, pass []string) []string {
+	keep := append([]string{"PATH", "LANG", "LC_ALL", "TZ", "SSL_CERT_FILE", "SSL_CERT_DIR"}, pass...)
+	var env []string
+	for _, kv := range environ {
+		name, _, ok := strings.Cut(kv, "=")
+		if ok && slices.Contains(keep, name) {
+			env = append(env, kv)
+		}
+	}
+	return env
 }
 
 func (s *session) write(line []byte) error {
@@ -250,7 +320,7 @@ func (b *Bridge) end(id string) {
 	b.mu.Unlock()
 	if s != nil {
 		_ = s.stdin.Close()
-		_ = s.cmd.Process.Kill()
+		killGroup(s.cmd.Process.Pid)
 	}
 }
 
