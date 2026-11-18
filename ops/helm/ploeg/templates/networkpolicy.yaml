@@ -75,11 +75,14 @@ spec:
 {{- $upstreamEgress = append $upstreamEgress (include "ploeg.netpol.endpointRule" (dict "root" $root "url" . "endpoint" $np.forge)) }}
 {{- end }}
 {{- $workerEgress := $upstreamEgress }}
+{{- $workerExtra := $np.worker.extraEgress }}
 {{- if $gateway }}
 {{- $workerEgress = list (include "ploeg.netpol.dnsRule" .) (dict "to" (list (dict "podSelector" (dict "matchLabels" (include "ploeg.credentialGatewaySelectorLabels" . | fromYaml)))) "ports" $gatewayPorts | toJson) }}
-{{- end }}
+{{- $workerExtra = list }}
+{{- else }}
 {{- range (include "ploeg.netpol.telemetryUrls" . | fromJsonArray) }}
 {{- $workerEgress = append $workerEgress (include "ploeg.netpol.endpointRule" (dict "root" $root "url" . "endpoint" $np.telemetry)) }}
+{{- end }}
 {{- end }}
 ---
 apiVersion: networking.k8s.io/v1
@@ -96,7 +99,7 @@ spec:
       app.kubernetes.io/name: ploeg-worker
   policyTypes: [Ingress, Egress]
   ingress: []
-  egress: {{- include "ploeg.netpol.rules" (dict "rules" $workerEgress "extra" $np.worker.extraEgress) | fromJsonArray | toYaml | nindent 4 }}
+  egress: {{- include "ploeg.netpol.rules" (dict "rules" $workerEgress "extra" $workerExtra) | fromJsonArray | toYaml | nindent 4 }}
 {{- if $gateway }}
 ---
 apiVersion: networking.k8s.io/v1

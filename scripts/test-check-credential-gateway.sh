@@ -27,6 +27,14 @@ PY
 }
 
 check "$work/render.yaml" >/dev/null || { echo 'the credential gateway check refuses the gateway render it must pass' >&2; exit 1; }
+helm template ploeg "$chart" -f "$chart/ci/required-values.yaml" -f "$chart/ci/executor-credential-gateway-values.yaml" \
+  --set-json 'executor.harness.telemetry={"endpoint":"http://otel-collector.observability.svc:4318","allowHarnesses":["openhands"]}' \
+  --set-json 'networkPolicy.worker.extraEgress=[{"to":[{"ipBlock":{"cidr":"203.0.113.9/32"}}],"ports":[{"protocol":"TCP","port":443}]}]' >"$work/extra.yaml"
+if ! out=$(check "$work/extra.yaml"); then
+  echo 'a telemetry endpoint or networkPolicy.worker.extraEgress widens the egress of a gateway-mode Run pod:' >&2
+  echo "$out" >&2
+  exit 1
+fi
 
 cases=(
   "worker.setdefault('securityContext', {})['privileged'] = True|container worker is privileged"
@@ -34,6 +42,10 @@ cases=(
   "worker['env'].append({'name': 'DOCKER_HOST', 'value': 'tcp://localhost:2376'})|container worker renders DOCKER_HOST"
   "worker['env'].append({'name': 'DOCKER_CERT_PATH', 'value': '/certs/client'})|container worker renders DOCKER_CERT_PATH"
   "pod['volumes'].append({'name': 'docker-certs', 'emptyDir': {}}); worker['volumeMounts'].append({'name': 'docker-certs', 'mountPath': '/certs'})|a Docker daemon's client certificates"
+  "pod['volumes'].append({'name': 'injected', 'hostPath': {'path': '/var/lib/kubelet'}})|volume injected is of type hostPath"
+  "pod['volumes'].append({'name': 'injected', 'csi': {'driver': 'secrets-store.csi.k8s.io'}})|volume injected is of type csi"
+  "pod['volumes'].append({'name': 'injected', 'persistentVolumeClaim': {'claimName': 'login'}})|volume injected is of type persistentVolumeClaim"
+  "next(d for d in documents if d.get('kind') == 'SandboxTemplate')['spec']['networkPolicyManagement'] = 'Managed'|adds a managed NetworkPolicy"
   "policy['spec']['egress'].append({'to': [{'ipBlock': {'cidr': '0.0.0.0/0'}}], 'ports': [{'protocol': 'TCP', 'port': 4318}]})|lets Run pods reach more than DNS and the gateway"
 )
 for case in "${cases[@]}"; do

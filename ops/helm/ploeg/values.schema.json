@@ -150,7 +150,7 @@
           "properties": {
             "extraEgress": {
               "$ref": "#/definitions/networkPolicyEgressRules",
-              "description": "Further egress rules for every worker pod, such as the registry a DinD sidecar pulls from or the allowlist proxy of ADR-0037. Each rule widens what a model-directed harness can reach."
+              "description": "Further egress rules for every worker pod, such as the registry a DinD sidecar pulls from or the allowlist proxy of ADR-0037. Each rule widens what a model-directed harness can reach. Not applied with executor.credentialGateway.enabled, where a Run pod reaches only DNS and the credential gateway."
             }
           }
         },

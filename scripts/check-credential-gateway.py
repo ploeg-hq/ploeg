@@ -14,6 +14,7 @@ FORBIDDEN_ENV = {
 FORBIDDEN_ENV_PREFIX = 'PLOEG_CLAUDE_PLUGIN_ENV_'
 DOCKER_ENV = {'DOCKER_HOST', 'DOCKER_CERT_PATH', 'DOCKER_TLS_VERIFY'}
 HOST_NAMESPACES = ('hostNetwork', 'hostPID', 'hostIPC')
+RUN_POD_VOLUME_TYPES = {'emptyDir', 'image'}
 GATEWAY_NAME = 'ploeg-credential-gateway'
 GATEWAY_PORTS = {8080, 8081, 8082, 8083}
 RUN_POD_LABEL = {'app.kubernetes.io/name': 'ploeg-worker'}
@@ -44,6 +45,9 @@ def check_run_pod(where, pod, host):
     for volume in pod.get('volumes') or []:
         if 'secret' in volume or 'projected' in volume:
             problems.append(f"{where}: volume {volume['name']} is a Secret or a projection")
+        types = sorted(set(volume) - {'name'})
+        if len(types) != 1 or types[0] not in RUN_POD_VOLUME_TYPES:
+            problems.append(f"{where}: volume {volume['name']} is of type {', '.join(types)}, not emptyDir or image")
         if volume['name'].startswith('docker-'):
             problems.append(f"{where}: volume {volume['name']} is a Docker daemon's")
     containers = (pod.get('initContainers') or []) + (pod.get('containers') or [])
@@ -118,6 +122,9 @@ def check_run_pod_egress(documents, namespace):
                 problems.append(f"NetworkPolicy {policy['metadata']['name']} lets Run pods reach more than DNS and the gateway: {rule}")
         if policy['spec'].get('ingress'):
             problems.append(f"NetworkPolicy {policy['metadata']['name']} admits ingress to Run pods")
+    for template in documents:
+        if template.get('kind') == 'SandboxTemplate' and (template['spec'].get('networkPolicy') or template['spec'].get('networkPolicyManagement') == 'Managed'):
+            problems.append(f"SandboxTemplate {template['metadata']['name']} adds a managed NetworkPolicy to the Run pods' egress")
     return problems
 
 

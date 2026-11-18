@@ -58,6 +58,9 @@ value that would put a secret into a Run pod or that the gateway cannot serve.
 {{- if .Values.claudeRunner.enabled -}}
 {{- fail "claudeRunner.enabled cannot run with executor.credentialGateway.enabled: the runner pod, where a claude-environment session's Claude Code runs, holds claudeRunner.environmentSecret and receives the Run's forge token, and its route through the gateway's anthropic upstream is not built yet (ADR-0197)" -}}
 {{- end -}}
+{{- if and (include "ploeg.anyTeamOnSandbox" .) (.Values.executor.sandbox | default dict).networkPolicy -}}
+{{- fail "executor.sandbox.networkPolicy cannot be set with executor.credentialGateway.enabled: its rules are added to the Run pod's egress, and a gateway-mode Run pod reaches only DNS and the credential gateway (ADR-0197)" -}}
+{{- end -}}
 {{- range $team := .Values.executor.teams -}}
 {{- range $planRole := (include "ploeg.teamRoles" $team | fromJsonArray) -}}
 {{- range $w := (include "ploeg.roleWorkloads" (dict "root" $root "team" $team "role" $planRole) | fromJsonArray) -}}
@@ -128,6 +131,10 @@ Context: (dict "pod" <pod template as a dict> "who" <team or team/role>).
 {{- range $v := ($spec.volumes | default list) -}}
 {{- if or (hasKey $v "secret") (hasKey $v "projected") -}}
 {{- fail (printf "team %s: executor.credentialGateway.enabled renders volume %s from a Secret or a projection; no Secret enters a Run pod (ADR-0197)" $.who $v.name) -}}
+{{- end -}}
+{{- $types := without (keys $v | sortAlpha) "name" -}}
+{{- if or (ne (len $types) 1) (not (has (first $types) (list "emptyDir" "image"))) -}}
+{{- fail (printf "team %s: executor.credentialGateway.enabled renders volume %s of type %s; a Run pod mounts only emptyDir and image volumes, since any other can carry a credential in (ADR-0197)" $.who $v.name (join ", " $types)) -}}
 {{- end -}}
 {{- if hasPrefix "docker-" $v.name -}}
 {{- fail (printf "team %s: executor.credentialGateway.enabled renders volume %s, a Docker daemon's; no secret enters a Run pod (ADR-0197)" $.who $v.name) -}}

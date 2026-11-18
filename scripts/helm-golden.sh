@@ -143,6 +143,7 @@ for case in "ops/helm/ploeg/ci/reject-reader-without-read-token-values.yaml:read
 	"ops/helm/ploeg/ci/reject-credential-gateway-plugin-secret-values.yaml:reads LINK_TOKEN from Secret session-link-plugin, and with executor.credentialGateway.enabled no Secret enters a Run pod" \
 	"ops/helm/ploeg/ci/reject-credential-gateway-claude-runner-values.yaml:claudeRunner.enabled cannot run with executor.credentialGateway.enabled" \
 	"ops/helm/ploeg/ci/reject-credential-gateway-dind-values.yaml:team silver: harness.dind cannot run with executor.credentialGateway.enabled" \
+	"ops/helm/ploeg/ci/reject-credential-gateway-sandbox-network-policy-values.yaml:executor.sandbox.networkPolicy cannot be set with executor.credentialGateway.enabled" \
 	"ops/helm/ploeg/ci/reject-mcp-adapter-undigested-values.yaml:does not match pattern '@sha256:[0-9a-f]{64}\$'" \
 	"ops/helm/ploeg/ci/reject-mcp-adapter-without-gateway-values.yaml:executor.credentialGateway.mcp.adapters needs executor.credentialGateway.enabled"; do
 	values=${case%%:*}
@@ -596,7 +597,7 @@ if ! helm template ploeg ops/helm/ploeg -f "$REQUIRED" -f ops/helm/ploeg/ci/reje
 fi
 rm -f "$gateway_render"
 injected_chart=$(mktemp -d)
-for injection in env volume privileged docker-env docker-certs; do
+for injection in env volume host-path csi privileged docker-env docker-certs; do
 	rm -rf "$injected_chart/ploeg"
 	cp -R ops/helm/ploeg "$injected_chart/ploeg"
 	case "$injection" in
@@ -607,6 +608,14 @@ for injection in env volume privileged docker-env docker-certs; do
 	volume)
 		awk '{ print } /^  volumes:$/ { print "    - name: injected"; print "      secret:"; print "        secretName: injected" }' ops/helm/ploeg/templates/_helpers.tpl >"$injected_chart/ploeg/templates/_helpers.tpl"
 		expected='renders volume injected from a Secret or a projection'
+		;;
+	host-path)
+		awk '{ print } /^  volumes:$/ { print "    - name: injected"; print "      hostPath:"; print "        path: /var/lib/kubelet" }' ops/helm/ploeg/templates/_helpers.tpl >"$injected_chart/ploeg/templates/_helpers.tpl"
+		expected='renders volume injected of type hostPath'
+		;;
+	csi)
+		awk '{ print } /^  volumes:$/ { print "    - name: injected"; print "      csi:"; print "        driver: secrets-store.csi.k8s.io" }' ops/helm/ploeg/templates/_helpers.tpl >"$injected_chart/ploeg/templates/_helpers.tpl"
+		expected='renders volume injected of type csi'
 		;;
 	privileged)
 		awk '{ print } /^        runAsUser: 65532$/ { print "        privileged: true" }' ops/helm/ploeg/templates/_helpers.tpl >"$injected_chart/ploeg/templates/_helpers.tpl"
