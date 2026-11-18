@@ -181,6 +181,9 @@ func (s *Server) WorkerHandler(next http.Handler) http.Handler {
 					http.Error(w, "inference policy could not reserve claim", http.StatusServiceUnavailable)
 					return
 				}
+				if !s.gatewayClaim(w, r, b, worker, claimed, result) {
+					return
+				}
 				if !a.RetireHMAC {
 					result["controlToken"] = a.sign(workerCapability{Audience: "ploeg-worker-run", RunToken: claimed.RunToken, WorkerID: worker, Team: b.Team, Role: b.Role, Expires: time.Now().Add(24 * time.Hour).Unix()})
 				}
@@ -229,6 +232,9 @@ func (s *Server) WorkerHandler(next http.Handler) http.Handler {
 				s.rejectWorker(w, r)
 				return
 			}
+		}
+		if len(parts) >= 2 && s.refuseGatewayRunCredential(w, r, parts[0], strings.Join(parts[1:], "/")) {
+			return
 		}
 		terminalReplay := len(parts) == 2 && parts[1] == "outcome" && run.State == "finished"
 		if !terminalReplay && (run.State != "running" || !run.Deadline.After(time.Now())) {

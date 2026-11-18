@@ -29,6 +29,20 @@ func forgeOrphanSweep(ctx context.Context, log *slog.Logger, st *store.Store, sw
 	}
 }
 
+func gatewayGrantSweep(ctx context.Context, log *slog.Logger, st *store.Store, enabled bool) {
+	if !enabled {
+		return
+	}
+	n, err := st.DropSettledGatewayGrants(ctx)
+	if err != nil {
+		log.Error("credential gateway grant sweep failed", "err", err)
+		return
+	}
+	if n > 0 {
+		log.Info("credential gateway grant sweep: dropped settled Runs' grants", "count", n)
+	}
+}
+
 // orphanSweep revokes gateway credentials that no longer correspond to a
 // live (unfinished) run.
 //
@@ -98,6 +112,7 @@ func startSweepLoops(ctx context.Context, loops *backgroundLoops, log *slog.Logg
 		passLoop(ctx, &server.Loops, "orphans", orphanSweepEvery, func(ctx context.Context) {
 			orphanSweep(ctx, log, st, sweeper)
 			forgeOrphanSweep(ctx, log, st, forgeSweeper)
+			gatewayGrantSweep(ctx, log, st, server.CredentialGateways != nil)
 			managedCorrectionSweep(ctx, log, server)
 		})
 	})
