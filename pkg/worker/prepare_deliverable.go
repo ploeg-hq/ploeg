@@ -52,6 +52,59 @@ func (f *deliverableFence) admit(u refUpdate) (refusalReason, error) {
 		work.PrepareRepositoryDeliverable, strings.Join(capList(outside), ", "))
 }
 
+func (f *deliverableFence) admitPacked(u refUpdate, pack []byte) (refusalReason, error) {
+	outside, err := f.outsidePacked(u, pack)
+	if err != nil {
+		return refusalUninspectablePush, fmt.Errorf("Ploeg could not check this prepare Run's push against its one deliverable: %v", err)
+	}
+	if len(outside) == 0 {
+		return "", nil
+	}
+	f.mu.Lock()
+	f.refused = appendNew(f.refused, outside...)
+	f.mu.Unlock()
+	return refusalOutsideDeliverable, fmt.Errorf("this prepare Run may only add %s at the repository root; the push also changes: %s",
+		work.PrepareRepositoryDeliverable, strings.Join(capList(outside), ", "))
+}
+
+func (f *deliverableFence) outsidePacked(u refUpdate, pack []byte) ([]string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), deliverableCheckTimeout)
+	defer cancel()
+	repo, err := openPushedRepository(ctx, f.dir, f.cloneURL, f.base, f.token(ctx), u, pack)
+	if err != nil {
+		return nil, err
+	}
+	defer repo.remove()
+	return f.outsideIn(ctx, repo, u.newID)
+}
+
+// openPushedRepository is a repository of the gateway's own holding the
+// objects a push carries, thin-pack bases fetched from the forge, so a
+// content fence can read the pushed commit against the forge's base branch.
+func openPushedRepository(ctx context.Context, dir, cloneURL, base, token string, u refUpdate, pack []byte) (*workerRepository, error) {
+	if base == "" {
+		return nil, fmt.Errorf("the Run names no base branch to check its push against")
+	}
+	repo, err := openBareRepository(ctx, dir, cloneURL, token)
+	if err != nil {
+		return nil, err
+	}
+	if strings.Trim(u.oldID, "0") != "" {
+		_ = repo.fetchBranch(ctx, strings.TrimPrefix(u.ref, "refs/heads/"), "refs/ploeg/run-branch")
+	}
+	if err := repo.fetchBranch(ctx, base, "refs/ploeg/pushed-base"); err != nil {
+		repo.remove()
+		return nil, err
+	}
+	if len(pack) > 0 {
+		if err := repo.indexPack(ctx, pack); err != nil {
+			repo.remove()
+			return nil, err
+		}
+	}
+	return repo, nil
+}
+
 func (f *deliverableFence) outside(commit string) ([]string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), deliverableCheckTimeout)
 	defer cancel()

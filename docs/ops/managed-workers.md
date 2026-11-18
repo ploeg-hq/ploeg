@@ -42,7 +42,9 @@ What stops, and how to fix it:
 | `harness.name: claude-environment` dispatched by a worker | Refused; the claude-runner holds the Run's forge credential itself | Move the Role to a qualified harness until the credential gateway carries Claude environments |
 | OpenHands writers on a deployment with the forge proxy off | Refused; only the forge proxy refuses a push that changes `.openhands/hooks.json` ([ADR 0148](../adrs/0148-every-acp-profile-asks-before-a-mutation-outside-allow-always-and-openhands-refuses-a-repository-that-ships-hooks.md)) | Set `executor.forgeTokenIsolation: proxy` before upgrading |
 
-Client-carried Runs (`claudeEnvironment.carrier: client`, [ADR 0112](../adrs/0112-a-claude-environment-run-uses-the-claude-login-of-the-person-it-acts-for.md)) are not affected. The requirement covers Run pods in the cluster. A client-carried Run happens in the person's own Claude Code session on their own machine with their own login. It still gets a forge credential minted per Run, for its one repository, and short-lived.
+A Team behind a credential gateway ([ADR 0197](../adrs/0197-no-credential-enters-a-run-pod-and-a-credential-gateway-outside-it-attaches-each-one-a-run-uses.md), `PLOEG_CREDENTIAL_GATEWAYS`) meets the requirement through its gateway: a claim the gateway admitted needs no worker proxies, only a qualified harness.
+
+Client-carried Runs (`claudeEnvironment.carrier: client`, [ADR 0112](../adrs/0112-a-claude-environment-run-uses-the-claude-login-of-the-person-it-acts-for.md)) are not affected. The requirement covers Run pods in the cluster. A client-carried Run happens in the person's own Claude Code session on their own machine with their own login. It still gets a forge credential minted per Run, for its one repository, and short-lived. The exemption does not reach a Team behind a credential gateway: ploegd refuses its client claim with `409 credential_gateway_team`.
 
 Before upgrading, render the new chart against your values with `helm template`; every refusal it prints is a Role that would stop taking work. A standalone worker sets `PLOEG_FORGE_TOKEN_ISOLATION=proxy` and `PLOEG_LLM_KEY_ISOLATION=proxy` itself.
 

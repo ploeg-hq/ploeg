@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"slices"
@@ -13,9 +14,20 @@ const credentialIsolationRequired = "credential_isolation_required"
 
 // credentialModesOutsideHarness are the worker isolation values under which
 // a Run's forge token and model key stay out of its harness's reach
-// (ADR-0034). The credential gateway of ADR-0197 joins this list when it is
-// built.
+// (ADR-0034). A claim its Team's credential gateway admitted keeps both
+// outside the Run pod instead (ADR-0197) and needs neither value.
 var credentialModesOutsideHarness = []string{ForgeTokenIsolationProxy}
+
+type gatewayClaimKey struct{}
+
+func withGatewayClaim(ctx context.Context) context.Context {
+	return context.WithValue(ctx, gatewayClaimKey{}, true)
+}
+
+func gatewayClaimFrom(ctx context.Context) bool {
+	admitted, _ := ctx.Value(gatewayClaimKey{}).(bool)
+	return admitted
+}
 
 // isolationQualifiedHarnesses are the harnesses qualified to run with both
 // credential proxies on; the chart's ploeg.isolationQualifiedHarnesses is
@@ -28,13 +40,16 @@ func keepsCredentialsFromHarness(mode string) bool {
 
 // credentialIsolationMissing names what keeps a claiming worker from holding
 // its Run's credentials outside the harness's reach, or nothing when it does.
-func (r claimRequest) credentialIsolationMissing() []string {
+func (r claimRequest) credentialIsolationMissing(throughGateway bool) []string {
 	var missing []string
 	switch key := store.HarnessKey(r.Harness, r.HarnessProfile); {
 	case r.Harness == "":
 		missing = append(missing, "the worker names no harness, so ploegd cannot tell whether it is qualified")
 	case !slices.Contains(isolationQualifiedHarnesses, key):
 		missing = append(missing, fmt.Sprintf("harness %s is not qualified to run with its credentials isolated (qualified: %s)", key, strings.Join(isolationQualifiedHarnesses, ", ")))
+	}
+	if throughGateway {
+		return missing
 	}
 	if !keepsCredentialsFromHarness(r.ForgeTokenIsolation) {
 		missing = append(missing, fmt.Sprintf("forge token isolation is %s, not proxy (PLOEG_FORGE_TOKEN_ISOLATION)", isolationValue(r.ForgeTokenIsolation)))
@@ -55,8 +70,8 @@ func isolationValue(v string) string {
 // refuseUnisolatedCredentials refuses a claim from a worker that would hand
 // its harness the Run's forge token or model key, before any Run is claimed,
 // so the Work Item stays queued for a worker that isolates them.
-func (s *Server) refuseUnisolatedCredentials(w http.ResponseWriter, req claimRequest) bool {
-	missing := req.credentialIsolationMissing()
+func (s *Server) refuseUnisolatedCredentials(w http.ResponseWriter, r *http.Request, req claimRequest) bool {
+	missing := req.credentialIsolationMissing(gatewayClaimFrom(r.Context()))
 	if len(missing) == 0 {
 		return false
 	}

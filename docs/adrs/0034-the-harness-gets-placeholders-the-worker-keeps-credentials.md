@@ -211,3 +211,14 @@ Any one of these reopens this record:
   credential is still minted per Run, for the Run's one repository, and
   short-lived. Confirmed by the `executor` golden, which renders the
   client-carried `brass` team.
+* 2026-11-18 — With the credential gateway of
+  [ADR-0197](0197-no-credential-enters-a-run-pod-and-a-credential-gateway-outside-it-attaches-each-one-a-run-uses.md)
+  merged, a claim that a gateway Team's own gateway admitted satisfies the
+  mandatory isolation without `forgeTokenIsolation` or `llmKeyIsolation`,
+  because neither credential enters its Run pod; it still needs a qualified
+  harness. Any other claim for a gateway Team is refused before isolation is
+  judged (`claim_refused`). The client-carried exemption above does not reach
+  gateway Teams: `ploegd` refuses their client claim with
+  `409 credential_gateway_team`. Confirmed by
+  `TestClaim_AGatewayTeamsClaimNeedsNoWorkerProxiesButAQualifiedHarness` and
+  `TestAGatewayTeamsWorkIsNeverClaimedByAClient`.

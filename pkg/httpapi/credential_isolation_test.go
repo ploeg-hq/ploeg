@@ -72,3 +72,23 @@ func TestClaim_AQualifiedHarnessBehindBothProxiesClaims(t *testing.T) {
 		})
 	}
 }
+
+func TestClaim_AGatewayTeamsClaimNeedsNoWorkerProxiesButAQualifiedHarness(t *testing.T) {
+	s, bootstrap, _ := gatewayFixture(t)
+	claim, raw := claimThroughGateway(t, s, bootstrap, gatewayHeaders(runsGatewayToken))
+	if !claim.CredentialGateway {
+		t.Fatalf("a claim through the Team's gateway without worker proxies was not served in gateway mode: %s", raw)
+	}
+
+	r := httptest.NewRequest(http.MethodPost, "/api/v1/claim", strings.NewReader(`{"team":"bronze","role":"reviewer","harness":"acp","harnessProfile":"opencode"}`))
+	r.Header.Set("Authorization", "Bearer "+bootstrap)
+	r.Header.Set("X-Ploeg-Worker-ID", "pod")
+	for k, v := range gatewayHeaders(runsGatewayToken) {
+		r.Header.Set(k, v)
+	}
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, r)
+	if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), credentialIsolationRequired) || !strings.Contains(w.Body.String(), "acp/opencode is not qualified") {
+		t.Fatalf("an unqualified harness through the gateway = %d %s, want 403 %s", w.Code, w.Body, credentialIsolationRequired)
+	}
+}

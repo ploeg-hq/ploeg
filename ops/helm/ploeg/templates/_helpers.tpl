@@ -236,8 +236,9 @@ Context: (dict "root" $ "team" <team> "role" <role>).
 {{/*
 ploeg.credentialModesOutsideHarness lists the per-workload credential modes
 under which the harness never holds the Run's forge token or model key
-(ADR-0034). The credential gateway of ADR-0197 joins this list when it is
-built; until then only both in-worker proxies qualify.
+(ADR-0034). The chart renders no credential gateway (ADR-0197) yet, so only
+both in-worker proxies qualify; ploegd also accepts a claim its Team's
+gateway admitted.
 */}}
 {{- define "ploeg.credentialModesOutsideHarness" -}}
 {{- list "proxy" | toJson -}}

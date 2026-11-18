@@ -42,8 +42,13 @@ type refusalLog struct {
 	secrets func() []string
 }
 
+// RefusalHeader names the reason on every response a credential proxy or the
+// credential gateway refuses, so the gateway's audit records it.
+const RefusalHeader = "X-Ploeg-Refusal"
+
 func (l refusalLog) refuse(w http.ResponseWriter, r *http.Request, reason refusalReason, message string) {
 	l.record(r, reason)
+	w.Header().Set(RefusalHeader, string(reason))
 	http.Error(w, message, http.StatusForbidden)
 }
 

@@ -99,6 +99,10 @@ func (s *Server) handleClientClaim(w http.ResponseWriter, r *http.Request) {
 		operatorError(w, 409, "no_client_run", "No Run of this Work Item waits for a client: its Team carries no Run from a client.")
 		return
 	}
+	if _, gated := s.CredentialGateways.bindingForTeam(item.Team); gated {
+		operatorError(w, 409, "credential_gateway_team", "This Work Item's Team runs behind a credential gateway, so its Runs are claimed only through the gateway and never by a client, which would carry the Run's credentials outside it (ADR-0197).")
+		return
+	}
 	if item.PreparesRepository() {
 		refusePrepareUnsupported(w, item.Team, "a person's own client pushes without the worker's forge proxy, where a prepare Run's one deliverable is enforced")
 		return

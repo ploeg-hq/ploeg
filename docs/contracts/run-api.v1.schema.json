@@ -30,7 +30,7 @@
         },
         "forgeTokenIsolation": {
           "type": "string",
-          "description": "The worker's PLOEG_FORGE_TOKEN_ISOLATION. ploegd hands a Run only to a worker that sends proxy here and in llmKeyIsolation and names a qualified harness (openhands, acp with harnessProfile openhands, or exec); any other claim answers 403 with error.code credential_isolation_required, naming the Team, the Role and what is missing, before any Run is claimed (ADR-0034, amended 2026-11-18). Absent is no isolation."
+          "description": "The worker's PLOEG_FORGE_TOKEN_ISOLATION. ploegd hands a Run only to a worker that sends proxy here and in llmKeyIsolation and names a qualified harness (openhands, acp with harnessProfile openhands, or exec); any other claim answers 403 with error.code credential_isolation_required, naming the Team, the Role and what is missing, before any Run is claimed (ADR-0034, amended 2026-11-18). A claim that a gateway Team's own credential gateway admitted needs neither isolation value, only a qualified harness (ADR-0197). Absent is no isolation."
         },
         "llmKeyIsolation": {
           "type": "string",

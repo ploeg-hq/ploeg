@@ -177,6 +177,16 @@ env:
   PLOEG_TRANSACTION_TOKEN_ISSUER: "The http(s) URL ploegd is reached at, written as every transaction token's `iss` (ADR-0156, chart `transactionToken.issuer`). Required with `PLOEG_TRANSACTION_TOKEN_SIGNING_KEY`; either without the other stops ploegd at boot."
   PLOEG_TRANSACTION_TOKEN_AUDIENCE: "Ploeg's trust domain, every transaction token's `aud`: an http(s) URL or a `urn:` (ADR-0156, chart `transactionToken.audience`). Empty is the issuer."
   PLOEG_TRANSACTION_TOKEN_RETIRED_KEYS: "Concatenated PEM `PUBLIC KEY` blocks of P-256 keys ploegd no longer signs transaction tokens with but still publishes at `/.well-known/jwks.json`, so a token signed before a rotation verifies until its lease ends (ADR-0156, chart `transactionToken.retiredKeysSecret`)."
+  PLOEG_CREDENTIAL_GATEWAYS: "JSON list of credential gateways (ADR-0197, proposed): `namespace` and `serviceAccount` as TokenReview reports them and the `teams` each serves. A Team listed here gets no credential in a claim; only its gateway fetches the Run's grant. Needs the HMAC capability and TokenReview permission (chart `executor.credentialGateway`)."
+  PLOEG_GATEWAY_MODEL_URL: The model gateway the credential gateway forwards model calls to, with the Run's key attached.
+  PLOEG_GATEWAY_LIMITS: "Per-Run token buckets per route family (`forge`, `model`, `ploegd`: `requestsPerSecond`, `burst`, `bytesPerSecond`) and `maxUpstreamConnections` for the namespace, as JSON (chart `executor.credentialGateway.limits`)."
+  PLOEG_GATEWAY_TOKEN_FILE: The projected ServiceAccount token, audience `ploegd`, the credential gateway proves itself to ploegd with.
+  PLOEG_GATEWAY_BOOTSTRAP_DIR: Directory of `<team>--<role or default>` files holding the bootstrap capabilities the credential gateway attaches to a claim it has tied to a Run pod.
+  PLOEG_GATEWAY_RUN_POD_SELECTOR: Label selector of the Run pods the credential gateway serves (default `app.kubernetes.io/name=ploeg-worker`).
+  PLOEG_GATEWAY_CONTROL_ADDR: Listener of the credential gateway's ploegd route family (default `:8080`).
+  PLOEG_GATEWAY_FORGE_ADDR: Listener of the credential gateway's forge route family (default `:8081`).
+  PLOEG_GATEWAY_MODEL_ADDR: Listener of the credential gateway's model route family (default `:8082`).
+  PLOEG_GATEWAY_HEALTH_ADDR: Listener of the credential gateway's `/healthz` (default `:8090`).
   PLOEG_WORKER_HMAC_CAPABILITY: "`issue` (default) still hands each claimed Run the 24-hour HMAC capability as `controlToken` and accepts it, deprecated by ADR-0156 and removed no earlier than the next minor (ADR-0134). `off` issues and accepts the transaction token only; it needs managed mode and `PLOEG_TRANSACTION_TOKEN_SIGNING_KEY`, and refuses a `PLOEG_WORKER_SIGNING_KEY` (chart `executor.workerAuth.hmacCapability`)."
   PLOEG_HARNESS_OUTPUT_IN_LOG: "`on` copies everything the harness prints to the worker's stdout and stderr, so the prompt, tool output, file contents and any secret the agent reads reach the pod log and every log store behind it (chart `executor.harnessOutputInLog`). Debugging only. Default off: the worker keeps the output in an 8 KiB in-memory tail, and only its redacted last 2000 bytes leave the worker, as a stuck reason."
   PLOEG_RUN_TRANSCRIPT_THOUGHTS: "`off` leaves the agent's reasoning (ACP thought chunks) out of the Run's transcript (ADR-0090). Default on."
