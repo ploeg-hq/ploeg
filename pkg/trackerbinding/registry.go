@@ -67,14 +67,14 @@ func (c Connection) Ref() config.ConnectionRef {
 // Connections finds a tracker connection by id. This is the seam ADR-0195's
 // store-backed connections plug into, keyed by connection id.
 type Connections interface {
-	TrackerConnection(id string) (Connection, bool)
+	TrackerConnection(ctx context.Context, id string) (Connection, bool)
 }
 
 // StaticConnections are the configured tracker connections, by id.
 type StaticConnections map[string]Connection
 
 // TrackerConnection implements Connections.
-func (s StaticConnections) TrackerConnection(id string) (Connection, bool) {
+func (s StaticConnections) TrackerConnection(_ context.Context, id string) (Connection, bool) {
 	c, ok := s[id]
 	return c, ok
 }
@@ -83,12 +83,12 @@ func (s StaticConnections) TrackerConnection(id string) (Connection, bool) {
 type Chain []Connections
 
 // TrackerConnection implements Connections.
-func (c Chain) TrackerConnection(id string) (Connection, bool) {
+func (c Chain) TrackerConnection(ctx context.Context, id string) (Connection, bool) {
 	for _, src := range c {
 		if src == nil {
 			continue
 		}
-		if conn, ok := src.TrackerConnection(id); ok {
+		if conn, ok := src.TrackerConnection(ctx, id); ok {
 			return conn, true
 		}
 	}
@@ -123,6 +123,8 @@ type Store interface {
 	TrackerBindingRevision(ctx context.Context) (int64, error)
 	SetTrackerBindingState(ctx context.Context, id int64, from string, to store.BindingStateChange, action string) (bool, error)
 	SetTrackerBindingWebhook(ctx context.Context, id int64, webhookState string) error
+	TrackerBindingWebhookUsers(ctx context.Context, connection, webhookID string, except int64) (int, error)
+	RegisteredTrackerBindingWebhook(ctx context.Context, connection, scope string) (string, error)
 }
 
 // Registry is the effective routing of one ploegd: the static rules first,
@@ -141,12 +143,13 @@ type Registry struct {
 	Live      *target.Live
 	Log       *slog.Logger
 
-	mu       sync.RWMutex
-	revision int64
-	bindings []store.TrackerBinding
-	pins     map[string]string
-	statuses map[string]map[string]map[work.State]string
-	loaded   bool
+	rebuilding sync.Mutex
+	mu         sync.RWMutex
+	revision   int64
+	bindings   []store.TrackerBinding
+	pins       map[string]string
+	statuses   map[string]map[string]map[work.State]string
+	loaded     bool
 }
 
 // Rebuild reads the live bindings, records the state each one is in now,
@@ -154,6 +157,8 @@ type Registry struct {
 // cannot be read the static rules alone stay in force and the error is
 // returned (ADR-0186: a store outage never takes the static routes down).
 func (r *Registry) Rebuild(ctx context.Context) error {
+	r.rebuilding.Lock()
+	defer r.rebuilding.Unlock()
 	rev, err := r.Store.TrackerBindingRevision(ctx)
 	if err != nil {
 		r.swapStaticOnly()
@@ -165,7 +170,7 @@ func (r *Registry) Rebuild(ctx context.Context) error {
 		return fmt.Errorf("tracker bindings: read: %w", err)
 	}
 	for i, b := range live {
-		next := r.StateOf(b)
+		next := r.StateOf(ctx, b)
 		if sameState(b, next) {
 			continue
 		}
@@ -227,7 +232,7 @@ func (r *Registry) logTransition(b store.TrackerBinding, next store.BindingState
 
 // StateOf decides the state a live binding is in under the current static
 // configuration and effective registry (ADR-0186 section 4).
-func (r *Registry) StateOf(b store.TrackerBinding) store.BindingStateChange {
+func (r *Registry) StateOf(ctx context.Context, b store.TrackerBinding) store.BindingStateChange {
 	if _, ok := r.Config.Teams[b.Team]; !ok {
 		return store.BindingStateChange{State: store.BindingInvalid, InvalidReason: store.BindingTeamRemoved}
 	}
@@ -247,7 +252,7 @@ func (r *Registry) StateOf(b store.TrackerBinding) store.BindingStateChange {
 		return store.BindingStateChange{State: store.BindingInvalid, InvalidReason: store.BindingTargetUnavailable, InvalidDetail: detail}
 	}
 	kind := b.Connection
-	if c, ok := r.connection(b.Connection); ok {
+	if c, ok := r.connection(ctx, b.Connection); ok {
 		kind = c.Kind
 	}
 	if entry := r.StaticConflict(kind, b.ScopeID, b.Team); entry != nil {
@@ -306,11 +311,11 @@ func staticEntry(rule target.Rule) *store.StaticEntry {
 	return e
 }
 
-func (r *Registry) connection(id string) (Connection, bool) {
+func (r *Registry) connection(ctx context.Context, id string) (Connection, bool) {
 	if r.Connections == nil {
 		return Connection{}, false
 	}
-	return r.Connections.TrackerConnection(id)
+	return r.Connections.TrackerConnection(ctx, id)
 }
 
 func (r *Registry) swapStaticOnly() {
@@ -362,8 +367,11 @@ func (r *Registry) install(rev int64, live []store.TrackerBinding) {
 		pins, statuses = map[string]string{}, map[string]map[string]map[work.State]string{}
 	}
 	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.loaded && rev < r.revision {
+		return
+	}
 	r.revision, r.bindings, r.pins, r.statuses, r.loaded = rev, live, pins, statuses, true
-	r.mu.Unlock()
 	if r.Live != nil {
 		r.Live.Store(resolver)
 	}
@@ -447,7 +455,7 @@ func (r *Registry) RecheckWebhooks(ctx context.Context) {
 	}
 	changed := false
 	for id, bindings := range byConnection {
-		c, ok := r.connection(id)
+		c, ok := r.connection(ctx, id)
 		if !ok {
 			continue
 		}

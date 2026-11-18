@@ -510,3 +510,25 @@ func nonNilStatuses(statuses map[string]string) map[string]string {
 	}
 	return statuses
 }
+
+// TrackerBindingWebhookUsers counts the live bindings on a connection, other
+// than except, that rely on the webhook id.
+func (s *Store) TrackerBindingWebhookUsers(ctx context.Context, connection, webhookID string, except int64) (int, error) {
+	var n int
+	err := s.pool.QueryRow(ctx, `SELECT count(*) FROM tracker_bindings WHERE removed_at IS NULL AND tenant = ''
+		AND connection = $1 AND webhook_id = $2 AND id <> $3`, connection, webhookID, except).Scan(&n)
+	return n, err
+}
+
+// RegisteredTrackerBindingWebhook returns the webhook a live binding on the
+// connection registered for the Scope, or "".
+func (s *Store) RegisteredTrackerBindingWebhook(ctx context.Context, connection, scope string) (string, error) {
+	var id string
+	err := s.pool.QueryRow(ctx, `SELECT webhook_id FROM tracker_bindings WHERE removed_at IS NULL AND tenant = ''
+		AND connection = $1 AND scope_id = $2 AND webhook_source = 'registered' AND webhook_id IS NOT NULL
+		ORDER BY id LIMIT 1`, connection, scope).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	return id, err
+}

@@ -516,16 +516,29 @@ func (s *Server) pinTeam(item *work.WorkItem) {
 	if item.ExternalScope == "" {
 		return
 	}
-	pinned, ok := s.ScopeTeams[item.ExternalScope]
-	if !ok && s.TrackerBindings != nil && s.TrackerBindings.Registry != nil {
-		pinned, ok = s.TrackerBindings.Registry.ScopeTeam(item.ExternalScope)
-	}
-	if !ok || pinned == "" || pinned == item.Team {
+	pinned, ok := s.pinnedTeam(item.ExternalScope)
+	if !ok || pinned == item.Team {
 		return
 	}
 	s.Log.Info("team pinned by tracker container", "external_id", item.ExternalID,
 		"scope", item.ExternalScope, "assignee_team", item.Team, "team", pinned)
 	item.Team = pinned
+}
+
+// pinnedTeam is the Team a tracker container pins its work to: a static
+// project's team, else the Team of the one runtime binding routing it
+// (ADR-0186).
+func (s *Server) pinnedTeam(scope string) (string, bool) {
+	if scope == "" {
+		return "", false
+	}
+	if pinned := s.ScopeTeams[scope]; pinned != "" {
+		return pinned, true
+	}
+	if s.TrackerBindings != nil && s.TrackerBindings.Registry != nil {
+		return s.TrackerBindings.Registry.ScopeTeam(scope)
+	}
+	return "", false
 }
 
 func (s *Server) resolveTarget(ctx context.Context, item *work.WorkItem, labelsRead bool, ev provider.TrackerEvent) *target.Refusal {

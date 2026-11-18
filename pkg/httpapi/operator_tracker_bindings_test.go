@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/ploeg-hq/ploeg/pkg/config"
+	"github.com/ploeg-hq/ploeg/pkg/provider"
 	"github.com/ploeg-hq/ploeg/pkg/provider/clickup"
 	"github.com/ploeg-hq/ploeg/pkg/store"
 	"github.com/ploeg-hq/ploeg/pkg/target"
@@ -65,7 +67,8 @@ func (f *fakeBindingClickUp) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		var body map[string]any
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		f.registered = append(f.registered, body)
-		writeJSON(map[string]any{"id": "wh-1", "webhook": map[string]any{"id": "wh-1", "secret": "s3cret-signing-value"}})
+		id := fmt.Sprintf("wh-%d", len(f.registered))
+		writeJSON(map[string]any{"id": id, "webhook": map[string]any{"id": id, "secret": "s3cret-signing-value"}})
 	case r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, "/webhook/"):
 		f.removed = append(f.removed, strings.TrimPrefix(r.URL.Path, "/webhook/"))
 		writeJSON(map[string]any{})
@@ -527,5 +530,115 @@ func TestTrackerBindingFollowsItsRuntimeTarget(t *testing.T) {
 	_ = testPool.QueryRow(ctx, `SELECT count(*) FROM audit_log WHERE action = 'tracker_binding.restored'`).Scan(&restored)
 	if restored != 1 {
 		t.Errorf("restored events = %d", restored)
+	}
+}
+
+func TestTrackerBindingPinWithdrawsAnUnassignedItemOfTheBoundTeam(t *testing.T) {
+	f := newBindingFixture(t, nil, true, false)
+	if w := f.do(t, "POST", bindingsPath, `{"connection":"clickup","scope":{"id":"901"},"default":"app"}`); w.Code != 201 {
+		t.Fatalf("create: %d %s", w.Code, w.Body)
+	}
+	ctx := context.Background()
+	id, _, err := testStore.IngestAssigned(ctx, work.WorkItem{Provider: "clickup", ExternalID: "task-bound", Team: "silver", ExternalScope: "901", Title: "bound"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.server.trackerUnassigned(ctx, "clickup", provider.TrackerEvent{Kind: provider.TrackerUnassigned, ExternalID: "task-bound", Team: "default"}); err != nil {
+		t.Fatal(err)
+	}
+	item, err := testStore.WorkItem(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if item.State != work.StateWithdrawn {
+		t.Fatalf("state = %s, want the unassigned item of the bound Team withdrawn", item.State)
+	}
+}
+
+func TestTrackerBindingWebhookIsSharedByItsScopeAndRemovedWithItsLastBinding(t *testing.T) {
+	max := 5
+	cfg := &config.File{
+		Targets: map[string]config.Target{"app": {Repo: "acme/app"}},
+		Teams: map[string]config.Team{
+			"silver": {TrackerBindings: &config.TrackerBindings{Connections: []string{"clickup"}, Max: &max}},
+			"bronze": {TrackerBindings: &config.TrackerBindings{Connections: []string{"clickup"}, Max: &max}},
+		},
+		Trackers: config.Trackers{Clickup: config.TrackerConfig{Agents: []string{"ploeg-agent"}}},
+	}
+	f := newBindingFixture(t, cfg, true, true)
+	var ids []string
+	for _, team := range []string{"silver", "bronze"} {
+		w := f.do(t, "POST", "/api/v1/operator/teams/"+team+"/tracker-bindings", `{"connection":"clickup","scope":{"id":"901"},"default":"app"}`)
+		if w.Code != 201 {
+			t.Fatalf("create for %s: %d %s", team, w.Code, w.Body)
+		}
+		ids = append(ids, bindingBody(t, w)["binding"].(map[string]any)["id"].(string))
+	}
+	if w := f.do(t, "DELETE", "/api/v1/operator/teams/silver/tracker-bindings/"+ids[0], ""); w.Code != 204 {
+		t.Fatalf("remove silver: %d", w.Code)
+	}
+	if len(f.clickup.removed) != 0 {
+		t.Fatalf("a webhook another binding relies on was removed: %v", f.clickup.removed)
+	}
+	if w := f.do(t, "DELETE", "/api/v1/operator/teams/bronze/tracker-bindings/"+ids[1], ""); w.Code != 204 {
+		t.Fatalf("remove bronze: %d", w.Code)
+	}
+	registered := make([]string, len(f.clickup.registered))
+	for i := range f.clickup.registered {
+		registered[i] = fmt.Sprintf("wh-%d", i+1)
+	}
+	if strings.Join(registered, ",") != strings.Join(f.clickup.removed, ",") {
+		t.Fatalf("registered %v, removed %v: a webhook was left at ClickUp", registered, f.clickup.removed)
+	}
+}
+
+func TestTrackerBindingOfARemovedTeamCanStillBeRemoved(t *testing.T) {
+	f := newBindingFixture(t, nil, true, false)
+	w := f.do(t, "POST", bindingsPath, `{"connection":"clickup","scope":{"id":"901"},"default":"app"}`)
+	if w.Code != 201 {
+		t.Fatalf("create: %d %s", w.Code, w.Body)
+	}
+	id := bindingBody(t, w)["binding"].(map[string]any)["id"].(string)
+	delete(f.registry.Config.Teams, "silver")
+	if err := f.registry.Rebuild(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if b := f.registry.Bindings()[0]; b.State != store.BindingInvalid || b.InvalidReason != store.BindingTeamRemoved {
+		t.Fatalf("binding = %+v", b)
+	}
+	if w = f.do(t, "DELETE", bindingsPath+"/"+id, ""); w.Code != 204 {
+		t.Fatalf("remove a binding of a removed Team: %d %s", w.Code, w.Body)
+	}
+	if len(f.registry.Bindings()) != 0 {
+		t.Fatal("the binding is still live")
+	}
+}
+
+type runtimeConnections map[string]trackerbinding.Connection
+
+func (r runtimeConnections) TrackerConnection(_ context.Context, id string) (trackerbinding.Connection, bool) {
+	c, ok := r[id]
+	return c, ok
+}
+
+func TestTrackerBindingThroughAStoreBackedConnectionMatchesTheKindWildcard(t *testing.T) {
+	f := newBindingFixture(t, nil, true, true)
+	static := f.registry.Connections.(trackerbinding.StaticConnections)
+	runtime := static["clickup"]
+	runtime.ID, runtime.Runtime, runtime.Agents, runtime.HandOverAgent = "clickup-acme", true, nil, true
+	f.registry.Connections = trackerbinding.Chain{static, runtimeConnections{"clickup-acme": runtime}}
+	w := f.do(t, "POST", "/api/v1/operator/teams/bronze/tracker-bindings", `{"connection":"clickup-acme","scope":{"id":"903"},"default":"app"}`)
+	if w.Code != 201 {
+		t.Fatalf("binding through a runtime ClickUp connection under \"*:clickup\": %d %s", w.Code, w.Body)
+	}
+	b := bindingBody(t, w)["binding"].(map[string]any)
+	if b["state"] != "active" || b["webhook"].(map[string]any)["createdByBinding"] != true || f.sink.kept["wh-1"] == "" {
+		t.Fatalf("binding = %v, kept = %v; want a registered List webhook with its secret in the store", b, f.sink.kept)
+	}
+	runtime.State = "invalid"
+	f.registry.Connections = trackerbinding.Chain{static, runtimeConnections{"clickup-acme": runtime}}
+	w = f.do(t, "POST", "/api/v1/operator/teams/bronze/tracker-bindings", `{"connection":"clickup-acme","scope":{"id":"901"},"default":"app"}`)
+	if w.Code != 422 || bindingErrorCode(t, w) != "bindings_not_accepted" {
+		t.Fatalf("an invalid runtime connection: %d %s", w.Code, w.Body)
 	}
 }

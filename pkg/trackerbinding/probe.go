@@ -297,49 +297,57 @@ func (r *Registry) checkWebhook(ctx context.Context, c Connection, res *Result) 
 	}
 }
 
-// Wire registers a webhook for the Scope when none delivers its events and
-// the connection may register one (ADR-0186 section 7). It returns the
-// webhook the binding relies on and the state it starts in.
-func (r *Registry) Wire(ctx context.Context, c Connection, scope string, found store.BindingWebhook) (store.BindingWebhook, string) {
+// Wire finds or registers the webhook a new binding relies on (ADR-0186
+// section 7). A webhook another live binding on the same connection and
+// Scope registered is reused, so one Scope never collects a webhook per
+// binding. It returns the webhook, the state the binding starts in and
+// whether this call registered the webhook, which the caller deletes again
+// when the binding is not stored.
+func (r *Registry) Wire(ctx context.Context, c Connection, scope string, found store.BindingWebhook) (store.BindingWebhook, string, bool) {
 	if found.State == provider.WebhookPresent {
-		return found, store.BindingActive
+		return found, store.BindingActive, false
+	}
+	if id, err := r.Store.RegisteredTrackerBindingWebhook(ctx, c.ID, scope); err == nil && id != "" {
+		return store.BindingWebhook{State: provider.WebhookPresent, ID: id, Source: store.BindingWebhookRegistered}, store.BindingActive, false
 	}
 	registrar, ok := c.Tracker.(provider.ScopeWebhookRegistrar)
 	if !ok || !c.RegisterWebhooks || c.Secrets == nil || c.WebhookEndpoint == "" {
-		return found, store.BindingAwaitingWebhook
+		return found, store.BindingAwaitingWebhook, false
 	}
 	id, err := registrar.RegisterScopeWebhook(ctx, scope, c.WebhookEndpoint, c.Secrets)
 	if err != nil {
 		r.log().Warn("tracker binding webhook registration failed; the binding waits for a webhook", "connection", c.ID, "scope", scope, "err", err)
-		return found, store.BindingAwaitingWebhook
+		return found, store.BindingAwaitingWebhook, false
 	}
-	return store.BindingWebhook{State: provider.WebhookPresent, ID: id, Source: store.BindingWebhookRegistered}, store.BindingActive
+	return store.BindingWebhook{State: provider.WebhookPresent, ID: id, Source: store.BindingWebhookRegistered}, store.BindingActive, true
 }
 
 // UnwirePlan says what removing b does to the webhook it relies on:
-// "remove" when this binding registered it, nothing else relies on it and
-// the adapter can delete it; "left" when it stays; "none" when the binding
-// registered none.
-func (r *Registry) UnwirePlan(b store.TrackerBinding) string {
-	_, plan := r.unwirePlan(b)
+// "remove" when this binding registered it, no other live binding holds the
+// same webhook id, no static route covers the Scope and the adapter can
+// delete it; "left" when it stays; "none" when the binding registered none.
+// The webhook is counted by id in the store, not in this replica's
+// snapshot, so neither a binding another replica made nor a second binding
+// on the Scope can leak or orphan it.
+func (r *Registry) UnwirePlan(ctx context.Context, b store.TrackerBinding) string {
+	_, plan := r.unwirePlan(ctx, b)
 	return plan
 }
 
-func (r *Registry) unwirePlan(b store.TrackerBinding) (provider.WebhookRemover, string) {
+func (r *Registry) unwirePlan(ctx context.Context, b store.TrackerBinding) (provider.WebhookRemover, string) {
 	if b.Webhook.Source != store.BindingWebhookRegistered || b.Webhook.ID == "" {
 		return nil, "none"
 	}
-	for _, other := range r.Bindings() {
-		if other.ID != b.ID && other.Connection == b.Connection && other.ScopeID == b.ScopeID {
-			return nil, "left"
-		}
+	users, err := r.Store.TrackerBindingWebhookUsers(ctx, b.Connection, b.Webhook.ID, b.ID)
+	if err != nil || users > 0 {
+		return nil, "left"
 	}
 	for _, rule := range r.Static.Rules {
 		if rule.Scope == b.ScopeID {
 			return nil, "left"
 		}
 	}
-	c, ok := r.connection(b.Connection)
+	c, ok := r.connection(ctx, b.Connection)
 	if !ok {
 		return nil, "left"
 	}
@@ -353,7 +361,7 @@ func (r *Registry) unwirePlan(b store.TrackerBinding) (provider.WebhookRemover, 
 // Unwire deletes the webhook a removed binding registered when UnwirePlan
 // says so, and reports whether it did.
 func (r *Registry) Unwire(ctx context.Context, b store.TrackerBinding) bool {
-	remover, plan := r.unwirePlan(b)
+	remover, plan := r.unwirePlan(ctx, b)
 	if plan != "remove" {
 		return false
 	}

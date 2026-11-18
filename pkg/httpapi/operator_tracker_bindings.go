@@ -108,6 +108,12 @@ func operatorErrorWith(w http.ResponseWriter, status int, code, message string, 
 // name, the consumer's Team scope and, for a change, bindScopes and an
 // actor. It answers the refusal itself.
 func (s *Server) bindingCaller(w http.ResponseWriter, r *http.Request, team string, change bool) (OperatorPrincipal, store.Attribution, bool) {
+	return s.bindingCallerFor(w, r, team, change, true)
+}
+
+// bindingCallerFor is bindingCaller; knownTeam false lets a binding of a Team
+// the file no longer has be removed.
+func (s *Server) bindingCallerFor(w http.ResponseWriter, r *http.Request, team string, change, knownTeam bool) (OperatorPrincipal, store.Attribution, bool) {
 	p, _ := OperatorPrincipalFromContext(r.Context())
 	if change && !p.CanBindScopes {
 		operatorError(w, 403, "permission_required", "This consumer may not bind tracker Scopes; it needs bindScopes.")
@@ -125,7 +131,7 @@ func (s *Server) bindingCaller(w http.ResponseWriter, r *http.Request, team stri
 		operatorError(w, 404, "not_found", "This deployment serves no tracker bindings.")
 		return p, store.Attribution{}, false
 	}
-	if team != "" {
+	if team != "" && knownTeam {
 		if _, ok := s.TrackerBindings.Registry.Config.Teams[team]; !ok {
 			operatorError(w, 404, "unknown_team", "No Team "+team+" is configured.")
 			return p, store.Attribution{}, false
@@ -167,7 +173,7 @@ func (s *Server) handleListTrackerBindings(w http.ResponseWriter, r *http.Reques
 	}
 	for _, b := range reg.Bindings() {
 		if visible(b.Team) {
-			out = append(out, bindingJSON(b, reg.UnwirePlan))
+			out = append(out, bindingJSON(b))
 		}
 	}
 	operatorJSON(w, 200, map[string]any{"schemaVersion": "1.0", "bindings": out})
@@ -228,7 +234,7 @@ func (f bindingFieldsRequest) fields() (store.TrackerBindingFields, string) {
 	return out, ""
 }
 
-func (s *Server) bindingConnection(w http.ResponseWriter, team, id string) (trackerbinding.Connection, bool) {
+func (s *Server) bindingConnection(ctx context.Context, w http.ResponseWriter, team, id string) (trackerbinding.Connection, bool) {
 	reg := s.TrackerBindings.Registry
 	policy, accepts := reg.Config.TeamTrackerBindings(team)
 	if !accepts {
@@ -238,7 +244,7 @@ func (s *Server) bindingConnection(w http.ResponseWriter, team, id string) (trac
 	var c trackerbinding.Connection
 	ok := false
 	if reg.Connections != nil {
-		c, ok = reg.Connections.TrackerConnection(id)
+		c, ok = reg.Connections.TrackerConnection(ctx, id)
 	}
 	if !ok {
 		operatorError(w, 422, "unknown_connection", "No tracker connection "+id+" is configured.")
@@ -290,7 +296,7 @@ func (s *Server) handleCreateTrackerBinding(w http.ResponseWriter, r *http.Reque
 		operatorError(w, 400, "invalid_request", bad)
 		return
 	}
-	conn, ok := s.bindingConnection(w, team, in.Connection)
+	conn, ok := s.bindingConnection(r.Context(), w, team, in.Connection)
 	if !ok {
 		return
 	}
@@ -328,10 +334,10 @@ func (s *Server) handleCreateTrackerBinding(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	policy, _ := reg.Config.TeamTrackerBindings(team)
-	webhook, state := reg.Wire(ctx, conn, res.ScopeID, res.Webhook)
+	webhook, state, fresh := reg.Wire(ctx, conn, res.ScopeID, res.Webhook)
 	b, created, err := s.Store.CreateTrackerBinding(ctx, store.NewTrackerBinding{Team: team, Connection: conn.ID, ScopeID: res.ScopeID,
 		ScopeName: res.ScopeName, TrackerBindingFields: fields, State: state, Webhook: webhook, Max: policy.Limit()}, audit)
-	if webhook.Source == store.BindingWebhookRegistered && (err != nil || !created) {
+	if fresh && (err != nil || !created) {
 		reg.Unwire(ctx, store.TrackerBinding{ID: -1, Connection: conn.ID, ScopeID: res.ScopeID, Webhook: webhook})
 	}
 	if s.answerStoreError(ctx, w, key, err, audit) {
@@ -344,7 +350,7 @@ func (s *Server) handleCreateTrackerBinding(w http.ResponseWriter, r *http.Reque
 	}
 	s.Log.Info("tracker binding created", "binding", b.ID, "team", team, "connection", conn.ID, "scope", b.ScopeID, "state", b.State, "consumer", p.Name)
 	w.Header().Set("ETag", `"`+strconv.FormatInt(b.Revision, 10)+`"`)
-	operatorJSON(w, 201, map[string]any{"schemaVersion": "1.0", "binding": bindingJSON(b, reg.UnwirePlan), "created": true, "checks": checksJSON(res.Checks)})
+	operatorJSON(w, 201, map[string]any{"schemaVersion": "1.0", "binding": bindingJSON(b), "created": true, "checks": checksJSON(res.Checks)})
 }
 
 func liveByKey(reg *trackerbinding.Registry, key store.TrackerBinding) *store.TrackerBinding {
@@ -360,15 +366,14 @@ func liveByKey(reg *trackerbinding.Registry, key store.TrackerBinding) *store.Tr
 }
 
 func (s *Server) answerExisting(ctx context.Context, w http.ResponseWriter, b store.TrackerBinding, fields store.TrackerBindingFields, audit store.BindingAudit) {
-	reg := s.TrackerBindings.Registry
 	if !b.TrackerBindingFields.Same(fields) {
 		s.auditRefusal(ctx, b, "binding_exists", []any{}, audit)
 		operatorErrorWith(w, 409, "binding_exists", "A live binding with this connection, Scope and Team exists with another body; replace it with its revision.",
-			map[string]any{"binding": bindingJSON(b, reg.UnwirePlan)})
+			map[string]any{"binding": bindingJSON(b)})
 		return
 	}
 	w.Header().Set("ETag", `"`+strconv.FormatInt(b.Revision, 10)+`"`)
-	operatorJSON(w, 200, map[string]any{"schemaVersion": "1.0", "binding": bindingJSON(b, reg.UnwirePlan), "created": false, "checks": []any{}})
+	operatorJSON(w, 200, map[string]any{"schemaVersion": "1.0", "binding": bindingJSON(b), "created": false, "checks": []any{}})
 }
 
 func (s *Server) answerDryRun(w http.ResponseWriter, reg *trackerbinding.Registry, team string, proposed store.TrackerBinding, res trackerbinding.Result) {
@@ -382,7 +387,7 @@ func (s *Server) answerDryRun(w http.ResponseWriter, reg *trackerbinding.Registr
 		refusal = map[string]any{"code": "binding_limit", "message": "The Team holds its maximum of live tracker bindings."}
 	}
 	body := map[string]any{"schemaVersion": "1.0", "dryRun": true, "refusal": refusal,
-		"binding": bindingJSON(proposed, nil), "checks": checksJSON(res.Checks)}
+		"binding": bindingJSON(proposed), "checks": checksJSON(res.Checks)}
 	if res.Conflict != nil {
 		body["conflict"] = conflictJSON(res.Conflict)
 	}
@@ -436,7 +441,6 @@ func (s *Server) answerStoreError(ctx context.Context, w http.ResponseWriter, ke
 	if err == nil {
 		return false
 	}
-	reg := s.TrackerBindings.Registry
 	var exists *store.BindingExistsError
 	var elsewhere *store.ScopeBoundElsewhereError
 	var stale *store.StaleRevisionError
@@ -444,7 +448,7 @@ func (s *Server) answerStoreError(ctx context.Context, w http.ResponseWriter, ke
 	case errors.As(err, &exists):
 		s.auditRefusal(ctx, key, "binding_exists", []any{}, audit)
 		operatorErrorWith(w, 409, "binding_exists", "A live binding with this connection, Scope and Team exists with another body; replace it with its revision.",
-			map[string]any{"binding": bindingJSON(exists.Current, reg.UnwirePlan)})
+			map[string]any{"binding": bindingJSON(exists.Current)})
 	case errors.As(err, &elsewhere):
 		s.auditRefusal(ctx, key, "scope_bound_elsewhere", []any{}, audit)
 		operatorErrorWith(w, 409, "scope_bound_elsewhere", "The Scope is bound through connection "+elsewhere.Other.Connection+".",
@@ -455,7 +459,7 @@ func (s *Server) answerStoreError(ctx context.Context, w http.ResponseWriter, ke
 	case errors.As(err, &stale):
 		w.Header().Set("ETag", `"`+strconv.FormatInt(stale.Current.Revision, 10)+`"`)
 		operatorErrorWith(w, 412, "stale_revision", "The binding changed since that revision; read it again.",
-			map[string]any{"binding": bindingJSON(stale.Current, reg.UnwirePlan)})
+			map[string]any{"binding": bindingJSON(stale.Current)})
 	case errors.Is(err, store.ErrOperatorNotFound):
 		operatorError(w, 404, "not_found", "The resource was not found in the consumer's scope.")
 	default:
@@ -527,7 +531,7 @@ func (s *Server) handleReplaceTrackerBinding(w http.ResponseWriter, r *http.Requ
 	if s.answerStoreError(ctx, w, current, err, audit) {
 		return
 	}
-	conn, ok := s.bindingConnection(w, team, current.Connection)
+	conn, ok := s.bindingConnection(ctx, w, team, current.Connection)
 	if !ok {
 		return
 	}
@@ -561,7 +565,7 @@ func (s *Server) handleReplaceTrackerBinding(w http.ResponseWriter, r *http.Requ
 	s.rebuildBindings(ctx)
 	s.Log.Info("tracker binding replaced", "binding", b.ID, "team", team, "revision", b.Revision, "consumer", p.Name)
 	w.Header().Set("ETag", `"`+strconv.FormatInt(b.Revision, 10)+`"`)
-	operatorJSON(w, 200, map[string]any{"schemaVersion": "1.0", "binding": bindingJSON(b, reg.UnwirePlan), "created": false, "checks": checksJSON(res.Checks)})
+	operatorJSON(w, 200, map[string]any{"schemaVersion": "1.0", "binding": bindingJSON(b), "created": false, "checks": checksJSON(res.Checks)})
 }
 
 func (s *Server) handleRemoveTrackerBinding(w http.ResponseWriter, r *http.Request) {
@@ -570,7 +574,7 @@ func (s *Server) handleRemoveTrackerBinding(w http.ResponseWriter, r *http.Reque
 		operatorError(w, 400, "invalid_request", "This resource does not accept query parameters.")
 		return
 	}
-	p, attribution, ok := s.bindingCaller(w, r, team, true)
+	p, attribution, ok := s.bindingCallerFor(w, r, team, true, false)
 	if !ok {
 		return
 	}
@@ -583,7 +587,7 @@ func (s *Server) handleRemoveTrackerBinding(w http.ResponseWriter, r *http.Reque
 	reg := s.TrackerBindings.Registry
 	audit := store.BindingAudit{Attribution: attribution}
 	b, removed, err := s.Store.RemoveTrackerBinding(ctx, team, id, audit, func(b store.TrackerBinding) map[string]any {
-		return map[string]any{"webhook": reg.UnwirePlan(b)}
+		return map[string]any{"webhook": reg.UnwirePlan(ctx, b)}
 	})
 	if s.answerStoreError(ctx, w, store.TrackerBinding{Team: team, ID: id}, err, audit) {
 		return
@@ -631,7 +635,7 @@ func nonNil(s []string) []string {
 	return s
 }
 
-func bindingJSON(b store.TrackerBinding, unwire func(store.TrackerBinding) string) map[string]any {
+func bindingJSON(b store.TrackerBinding) map[string]any {
 	id, revision, created, updated := any(nil), any(nil), any(nil), any(nil)
 	if b.ID > 0 {
 		id, revision = strconv.FormatInt(b.ID, 10), strconv.FormatInt(b.Revision, 10)

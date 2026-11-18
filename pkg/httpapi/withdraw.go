@@ -52,7 +52,7 @@ func (s *Server) trackerUnassigned(ctx context.Context, name string, ev provider
 	if scope == "" {
 		scope = item.ExternalScope
 	}
-	if pinned := s.ScopeTeams[scope]; scope != "" && pinned != "" {
+	if pinned, ok := s.pinnedTeam(scope); ok {
 		team = pinned
 	}
 	if team != item.Team {
