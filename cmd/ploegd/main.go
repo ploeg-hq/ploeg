@@ -445,7 +445,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("connections: %w", err)
 	}
-	bindings := trackerBindings(ctx, log, st, cfg, staticTable, targets, readiness, trackers, forgeID)
+	bindings := trackerBindings(ctx, log, st, cfg, staticTable, targets, readiness, trackers, forgeID, secrets, runtimeConns)
 	srv := &httpapi.Server{
 		OperatorConfig: operator,
 		WorkerSecurity: workerSecurity,
