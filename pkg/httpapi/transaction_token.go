@@ -60,8 +60,8 @@ func (s *Server) issueTransactionToken(ctx context.Context, runToken, worker str
 		if f.ActsForProof == txntoken.ProofProven {
 			run.Proof, run.IdentityActor = txntoken.ProofProven, f.ActsForAct
 		}
-	case s.TeamSponsors[f.Team] != "":
-		run.Person, run.Proof = s.TeamSponsors[f.Team], txntoken.ProofSponsor
+	case s.teamSponsor(f.Team) != "":
+		run.Person, run.Proof = s.teamSponsor(f.Team), txntoken.ProofSponsor
 	}
 	return s.TransactionTokens.Sign(run)
 }
@@ -88,7 +88,7 @@ func (s *Server) verifyTransactionToken(token, worker string, run store.RunContr
 // refuseUnsponsoredTeam answers 403 for a Team without a sponsor while
 // ploegd signs transaction tokens (ADR-0156): such a Team runs nothing.
 func (s *Server) refuseUnsponsoredTeam(w http.ResponseWriter, team string) bool {
-	if s.TransactionTokens == nil || s.TeamSponsors[team] != "" {
+	if s.TransactionTokens == nil || s.teamSponsor(team) != "" {
 		return false
 	}
 	s.Log.Warn("claim refused: the Team has no sponsor", "team", team)
