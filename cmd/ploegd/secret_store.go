@@ -13,6 +13,7 @@ import (
 
 type secretStoreEnv struct {
 	kind, address, authMount, role, kvMount, pathPrefix, namespace, caFile, kubernetesNamespace string
+	allowInsecureHTTP                                                                           bool
 }
 
 func secretStoreEnvFromOS() secretStoreEnv {
@@ -26,6 +27,7 @@ func secretStoreEnvFromOS() secretStoreEnv {
 		namespace:           os.Getenv("PLOEG_SECRET_STORE_OPENBAO_NAMESPACE"),
 		caFile:              os.Getenv("PLOEG_SECRET_STORE_OPENBAO_CA_FILE"),
 		kubernetesNamespace: os.Getenv("PLOEG_SECRET_STORE_KUBERNETES_NAMESPACE"),
+		allowInsecureHTTP:   strings.TrimSpace(os.Getenv("PLOEG_SECRET_STORE_OPENBAO_ALLOW_INSECURE_HTTP")) == "true",
 	}
 }
 
@@ -36,7 +38,7 @@ func secretStore(log *slog.Logger, env secretStoreEnv) (secretstore.Store, error
 		return secretstore.Unconfigured{}, nil
 	case "openbao":
 		s, err := openbao.New(openbao.Config{Address: env.address, AuthMount: env.authMount, Role: env.role,
-			KVMount: env.kvMount, PathPrefix: env.pathPrefix, Namespace: env.namespace, CAFile: env.caFile})
+			KVMount: env.kvMount, PathPrefix: env.pathPrefix, Namespace: env.namespace, CAFile: env.caFile, AllowInsecureHTTP: env.allowInsecureHTTP})
 		if err != nil {
 			return nil, fmt.Errorf("PLOEG_SECRET_STORE=openbao: %w", err)
 		}

@@ -118,7 +118,7 @@ func (f *fakeBao) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func newStore(t *testing.T, fake *fakeBao) *Store {
 	t.Helper()
-	server := httptest.NewServer(fake)
+	server := httptest.NewTLSServer(fake)
 	t.Cleanup(server.Close)
 	tokenFile := filepath.Join(t.TempDir(), "token")
 	if err := os.WriteFile(tokenFile, []byte("sa-token\n"), 0o600); err != nil {
@@ -174,9 +174,55 @@ func TestOpenBaoUnavailable(t *testing.T) {
 }
 
 func TestOpenBaoConfigRefused(t *testing.T) {
-	for _, cfg := range []Config{{Address: "bao:8200", Role: "r"}, {Address: "https://bao", Role: ""}, {Address: "https://bao", Role: "r", PathPrefix: "../x"}} {
+	for _, cfg := range []Config{{Address: "bao:8200", Role: "r"}, {Address: "https://bao", Role: ""}, {Address: "https://bao", Role: "r", PathPrefix: "../x"},
+		{Address: "http://bao:8200", Role: "r"}} {
 		if _, err := New(cfg); err == nil {
 			t.Fatalf("config %+v accepted", cfg)
 		}
+	}
+}
+
+func TestOpenBaoAcceptsHTTPOnlyWhenAskedExplicitly(t *testing.T) {
+	if _, err := New(Config{Address: "http://bao:8200", Role: "r", AllowInsecureHTTP: true}); err != nil {
+		t.Fatalf("explicit insecure http = %v", err)
+	}
+}
+
+func TestOpenBaoNeverFollowsARedirectWithItsTokens(t *testing.T) {
+	var leaked []string
+	var mu sync.Mutex
+	elsewhere := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		leaked = append(leaked, r.Header.Get("X-Vault-Token"))
+		mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(elsewhere.Close)
+	fake := newFakeBao("ploeg")
+	bao := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/auth/kubernetes/login" {
+			fake.ServeHTTP(w, r)
+			return
+		}
+		http.Redirect(w, r, elsewhere.URL+r.URL.Path, http.StatusTemporaryRedirect)
+	}))
+	t.Cleanup(bao.Close)
+	tokenFile := filepath.Join(t.TempDir(), "token")
+	if err := os.WriteFile(tokenFile, []byte("sa-token"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	client := bao.Client()
+	client.Transport.(*http.Transport).TLSClientConfig.RootCAs.AddCert(elsewhere.Certificate())
+	s, err := New(Config{Address: bao.URL, Role: "ploeg", TokenFile: tokenFile, HTTPClient: client})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Put(context.Background(), "a", map[string]string{"k": "v"}); err == nil {
+		t.Fatal("a redirected write succeeded")
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(leaked) != 0 {
+		t.Fatalf("the client followed a redirect and sent %d requests elsewhere", len(leaked))
 	}
 }
