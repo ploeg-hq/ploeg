@@ -82,6 +82,10 @@ type Provider struct {
 	// CheckWebhooks lists and RegisterWebhook writes. Empty reports every
 	// List's webhook as unreadable.
 	Workspace string
+	// ScopeStatuses returns the status names one List overrides SetStatus
+	// with (ADR-0186 runtime bindings); nil, or no entry for a state, keeps
+	// Statuses.
+	ScopeStatuses func(listID string) map[work.State]string
 	// HC is optional; nil gets a 30s client.
 	HC  *http.Client
 	Log *slog.Logger
@@ -366,7 +370,7 @@ func (p *Provider) do(ctx context.Context, method, path string, body, out any) e
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		err := fmt.Errorf("clickup: %s %s: HTTP %d: %s", method, path, resp.StatusCode, bytes.TrimSpace(snippet))
+		err := &apiError{method: method, path: path, status: resp.StatusCode, snippet: string(bytes.TrimSpace(snippet))}
 		if resp.StatusCode == http.StatusNotFound {
 			return provider.NotFound(err)
 		}
@@ -376,6 +380,16 @@ func (p *Provider) do(ctx context.Context, method, path string, body, out any) e
 		return nil
 	}
 	return json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(out)
+}
+
+// apiError is a ClickUp answer outside 2xx.
+type apiError struct {
+	method, path, snippet string
+	status                int
+}
+
+func (e *apiError) Error() string {
+	return fmt.Sprintf("clickup: %s %s: HTTP %d: %s", e.method, e.path, e.status, e.snippet)
 }
 
 // task is the subset of ClickUp's task representation Ploeg mirrors.
@@ -597,6 +611,13 @@ func (p *Provider) SetStatus(ctx context.Context, externalID string, state work.
 		return nil
 	}
 	status := p.statusFor(state)
+	if p.ScopeStatuses != nil {
+		if t, err := p.readTask(ctx, externalID); err == nil && t.List.ID != "" {
+			if name := strings.TrimSpace(p.ScopeStatuses(t.List.ID)[state]); name != "" {
+				status = name
+			}
+		}
+	}
 	if status == "" {
 		p.log().Debug("clickup status write-back skipped (no List status configured for this state)", "external_id", externalID, "state", state)
 		return nil
