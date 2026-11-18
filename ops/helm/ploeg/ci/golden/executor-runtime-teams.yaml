@@ -291,7 +291,7 @@ spec:
             - name: GOMEMLIMIT
               value: "230MiB"
             - name: PLOEG_RUNTIME_POOLS
-              value: "[{\"harness\":\"openhands\",\"isolation\":\"proxy\",\"maxReplicaCount\":4,\"tenant\":\"default\"},{\"harness\":\"acp/openhands\",\"isolation\":\"gateway\",\"maxReplicaCount\":2,\"tenant\":\"default\"}]"
+              value: "[{\"harness\":\"openhands\",\"isolation\":\"proxy\",\"maxReplicaCount\":4,\"tenant\":\"default\"},{\"harness\":\"acp/openhands\",\"isolation\":\"proxy\",\"maxReplicaCount\":2,\"tenant\":\"default\"}]"
             - name: PLOEG_TEAM_HARNESSES
               value: "{\"bronze\":{\"\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"openhands\",\"qualification\":\"qualified\"}],\"name\":\"openhands\"}}}"
             - name: PLOEG_TEAM_SPEND_CAPS

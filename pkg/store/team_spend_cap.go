@@ -78,28 +78,33 @@ func (s *Store) spendNow() time.Time {
 const teamPeriodSettledQuery = `
 	SELECT COALESCE(sum(v), 0)::float8 FROM (
 		SELECT (a.detail->>'delta')::numeric AS v FROM audit_log a JOIN work_items i ON i.id = a.work_item_id
-		WHERE a.action = 'llm.reconciled' AND a.at >= $2 AND jsonb_typeof(a.detail->'delta') = 'number' AND i.team = $1
+		WHERE a.action = 'llm.reconciled' AND a.at >= $2 AND jsonb_typeof(a.detail->'delta') = 'number' AND ` + teamOfItem + `
 		UNION ALL
 		SELECT (r.usage->>'costUsd')::numeric FROM agent_runs r JOIN work_items i ON i.id = r.work_item_id
-		WHERE r.finished_at IS NOT NULL AND r.finished_at >= $2 AND jsonb_typeof(r.usage->'costUsd') = 'number' AND i.team = $1
+		WHERE r.finished_at IS NOT NULL AND r.finished_at >= $2 AND jsonb_typeof(r.usage->'costUsd') = 'number' AND ` + teamOfItem + `
 		AND NOT EXISTS (SELECT 1 FROM run_llm_accounts x WHERE x.run_token = r.run_token)) settled`
 
 const teamHeldQuery = `
 	SELECT COALESCE(sum(h.reserved), 0)::float8 FROM run_budget_holds h
 	JOIN agent_runs r ON r.run_token = h.run_token JOIN work_items i ON i.id = r.work_item_id
-	WHERE i.team = $1 AND h.run_token IN (
+	WHERE ` + teamOfItem + ` AND $2::timestamptz IS NOT NULL AND h.run_token IN (
 		SELECT run_token FROM agent_runs WHERE state = 'running'
 		UNION SELECT run_token FROM run_llm_accounts WHERE state <> 'reconciled' OR COALESCE(observed_spend, 0) > reconciled_spend)`
+
+// teamOfItem matches a Work Item of the Team $1 names: a static Team by its
+// key, a runtime Team by its id ($3 non-empty), whatever key it had when the
+// Work Item was written (ADR-0198).
+const teamOfItem = `(CASE WHEN $3::text <> '' THEN i.team_id = $3 ELSE i.team = $1 END)`
 
 type rowQuerier interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
-func teamPeriodSpend(ctx context.Context, q rowQuerier, team string, since time.Time) (settled, held float64, err error) {
-	if err := q.QueryRow(ctx, teamPeriodSettledQuery, team, since).Scan(&settled); err != nil {
+func teamPeriodSpend(ctx context.Context, q rowQuerier, team, teamID string, since time.Time) (settled, held float64, err error) {
+	if err := q.QueryRow(ctx, teamPeriodSettledQuery, team, since, teamID).Scan(&settled); err != nil {
 		return 0, 0, err
 	}
-	if err := q.QueryRow(ctx, teamHeldQuery, team).Scan(&held); err != nil {
+	if err := q.QueryRow(ctx, teamHeldQuery, team, since, teamID).Scan(&held); err != nil {
 		return 0, 0, err
 	}
 	return settled, held, nil
@@ -122,7 +127,7 @@ func (s *Store) teamPeriodSpends(ctx context.Context, q rowQuerier) ([]TeamPerio
 	for _, team := range teams {
 		c := s.spendCaps[team]
 		start := c.Period.Start(now)
-		settled, held, err := teamPeriodSpend(ctx, q, team, start)
+		settled, held, err := teamPeriodSpend(ctx, q, team, "", start)
 		if err != nil {
 			return nil, err
 		}
@@ -154,12 +159,16 @@ func checkTeamSpendCap(ctx context.Context, tx pgx.Tx, p pendingRun, requested f
 	if !p.spendCap.Capped() {
 		return nil
 	}
+	lockKey := p.team
+	if p.teamID != "" {
+		lockKey = p.teamID
+	}
 	if _, err := tx.Exec(ctx,
-		`SELECT pg_advisory_xact_lock(hashtextextended('ploeg.team-spend:' || $1, 0))`, p.team); err != nil {
+		`SELECT pg_advisory_xact_lock(hashtextextended('ploeg.team-spend:' || $1, 0))`, lockKey); err != nil {
 		return err
 	}
 	start := p.spendCap.Period.Start(p.now)
-	settled, held, err := teamPeriodSpend(ctx, tx, p.team, start)
+	settled, held, err := teamPeriodSpend(ctx, tx, p.team, p.teamID, start)
 	if err != nil {
 		return err
 	}
