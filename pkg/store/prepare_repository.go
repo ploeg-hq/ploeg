@@ -29,10 +29,14 @@ const (
 type PrepareInProgressError struct {
 	WorkItemID     int64
 	PullRequestURL string
+	// PullRequest is the open pull request's number when its URL is unknown.
+	PullRequest int
 }
 
 func (e *PrepareInProgressError) Error() string {
 	switch {
+	case e.PullRequestURL == "" && e.PullRequest > 0:
+		return fmt.Sprintf("prepare Work Item %d left pull request #%d open on its branch", e.WorkItemID, e.PullRequest)
 	case e.PullRequestURL != "" && e.WorkItemID != 0:
 		return fmt.Sprintf("prepare Work Item %d left pull request %s open", e.WorkItemID, e.PullRequestURL)
 	case e.WorkItemID != 0:
@@ -98,6 +102,32 @@ func (s *Store) UnclosedPrepareCancellations(ctx context.Context, t work.Target)
 		out = append(out, c)
 	}
 	return out, rows.Err()
+}
+
+// WithdrawnPrepares lists the newest withdrawn prepare_repository Work Items
+// on target t, at most limit, so an Admission can ask the forge whether a
+// Run that was still running at the cancel opened a pull request after it.
+func (s *Store) WithdrawnPrepares(ctx context.Context, t work.Target, limit int) ([]work.WorkItem, error) {
+	rows, err := s.pool.Query(ctx, `SELECT id FROM work_items
+		WHERE kind='prepare_repository' AND state='withdrawn'
+		  AND target_forge=$1 AND target_owner=$2 AND target_repo=$3 AND target_base_branch=$4
+		ORDER BY id DESC LIMIT $5`, t.Forge, t.Owner, t.Repo, t.BaseBranch, limit)
+	if err != nil {
+		return nil, err
+	}
+	ids, err := pgx.CollectRows(rows, pgx.RowTo[int64])
+	if err != nil {
+		return nil, err
+	}
+	out := make([]work.WorkItem, 0, len(ids))
+	for _, id := range ids {
+		item, err := s.WorkItem(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, item)
+	}
+	return out, nil
 }
 
 // PrepareCancelled is what a cancel did to a prepare_repository Work Item's

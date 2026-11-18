@@ -336,6 +336,9 @@ type forgejoPullRequests struct {
 	closed    []string
 	comments  []string
 	deletions int
+	// lateBranch, when set, is the head of an open pull request the forge
+	// lists, as a Run still running at a cancel would open it.
+	lateBranch string
 }
 
 func (fp *forgejoPullRequests) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -345,7 +348,12 @@ func (fp *forgejoPullRequests) ServeHTTP(w http.ResponseWriter, r *http.Request)
 	case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/pulls/7"):
 		_ = json.NewEncoder(w).Encode(map[string]any{"state": fp.state, "merged": false, "head": map[string]any{"sha": "abc"}})
 	case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/pulls"):
-		_ = json.NewEncoder(w).Encode([]any{})
+		if fp.lateBranch == "" {
+			_ = json.NewEncoder(w).Encode([]any{})
+			return
+		}
+		_ = json.NewEncoder(w).Encode([]any{map[string]any{"number": 7, "head": map[string]any{"ref": fp.lateBranch,
+			"repo": map[string]any{"full_name": "webgrip/homelab-cluster"}}}})
 	case r.Method == http.MethodPatch && strings.HasSuffix(r.URL.Path, "/pulls/7"):
 		if fp.refuse {
 			http.Error(w, "forbidden", http.StatusForbidden)
@@ -604,4 +612,53 @@ func TestAPersonsClientCannotClaimAPrepare(t *testing.T) {
 	if w.Code != 422 || operatorErrorCode(t, w) != "prepare_unsupported_for_team" {
 		t.Fatalf("client claim = %d %s, want 422 prepare_unsupported_for_team", w.Code, w.Body)
 	}
+}
+
+func TestAPrepareIsNeverTakenOver(t *testing.T) {
+	f := newPrepareFixture(t)
+	id, _ := admittedPrepare(t, f.proven(t, prepareBody("prepare-take-over")))
+	if status, _ := postClaim(t, f.server.Handler(), proxyClaim); status != http.StatusOK {
+		t.Fatalf("claim = %d", status)
+	}
+
+	w := operatorExecutionRequest(f.server, "POST", fmt.Sprintf("/api/v1/operator/work-items/%d/take-over", id), f.token, "alice",
+		map[string]any{"commandId": "take-prepare"})
+
+	if w.Code != http.StatusConflict || operatorErrorCode(t, w) != "prepare_not_taken_over" {
+		t.Fatalf("take-over = %d %s, want 409 prepare_not_taken_over", w.Code, w.Body)
+	}
+	if n := countRows(t, "SELECT count(*) FROM work_item_take_overs WHERE work_item_id=$1", id); n != 0 {
+		t.Errorf("%d take-overs recorded, want none", n)
+	}
+}
+
+func TestAPullRequestARunOpenedAfterItsPrepareWasCancelledBlocksTheNextPrepare(t *testing.T) {
+	f := newPrepareFixture(t)
+	fp := &forgejoPullRequests{state: "open"}
+	f.withForgejo(t, fp)
+	id, _ := admittedPrepare(t, f.proven(t, prepareBody("prepare-late-pr")))
+	got := f.cancel(t, id)
+	if got["withdrawn"] != true || got["pullRequest"] != nil {
+		t.Fatalf("cancellation = %v, want withdrawn with no pull request yet", got)
+	}
+	item, err := testStore.WorkItem(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fp.mu.Lock()
+	fp.lateBranch = work.Branch(item)
+	fp.mu.Unlock()
+
+	w := f.proven(t, prepareBody("prepare-after-late-pr"))
+
+	e := decodePrepareError(t, w)
+	if w.Code != http.StatusConflict || e.Error.Code != "prepare_in_progress" || e.Error.WorkItemID != strconv.FormatInt(id, 10) ||
+		!strings.Contains(e.Error.Message, "#7") {
+		t.Fatalf("admission = %d %+v, want prepare_in_progress naming pull request 7 of the cancelled item", w.Code, e.Error)
+	}
+
+	fp.mu.Lock()
+	fp.lateBranch = ""
+	fp.mu.Unlock()
+	admittedPrepare(t, f.proven(t, prepareBody("prepare-after-late-pr-closed")))
 }

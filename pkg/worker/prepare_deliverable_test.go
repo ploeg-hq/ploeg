@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"context"
 	"fmt"
 	"net/http/cgi"
 	"net/http/httptest"
@@ -11,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/ploeg-hq/ploeg/pkg/harness"
+	"github.com/ploeg-hq/ploeg/pkg/llmbroker"
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
@@ -146,15 +148,145 @@ func TestTheDeliverableRuleAllowsOnlyOneAddedRootInstructionFile(t *testing.T) {
 		changes []work.ChangedPath
 		outside int
 	}{
-		"only the file":    {changes: []work.ChangedPath{{Status: "A", Path: "AGENTS.md"}}},
+		"only the file":    {changes: []work.ChangedPath{{Status: "A", Path: "AGENTS.md", Mode: "100644"}}},
 		"nothing at all":   {outside: 1},
-		"a modified file":  {changes: []work.ChangedPath{{Status: "M", Path: "AGENTS.md"}}, outside: 2},
-		"a deleted path":   {changes: []work.ChangedPath{{Status: "A", Path: "AGENTS.md"}, {Status: "D", Path: "README.md"}}, outside: 1},
-		"a case lookalike": {changes: []work.ChangedPath{{Status: "A", Path: "agents.md"}}, outside: 2},
+		"a modified file":  {changes: []work.ChangedPath{{Status: "M", Path: "AGENTS.md", Mode: "100644"}}, outside: 2},
+		"a deleted path":   {changes: []work.ChangedPath{{Status: "A", Path: "AGENTS.md", Mode: "100644"}, {Status: "D", Path: "README.md"}}, outside: 1},
+		"a symbolic link":  {changes: []work.ChangedPath{{Status: "A", Path: "AGENTS.md", Mode: "120000"}}, outside: 2},
+		"a gitlink":        {changes: []work.ChangedPath{{Status: "A", Path: "AGENTS.md", Mode: "160000"}}, outside: 2},
+		"a case lookalike": {changes: []work.ChangedPath{{Status: "A", Path: "agents.md", Mode: "100644"}}, outside: 2},
 	} {
 		t.Run(name, func(t *testing.T) {
 			if got := work.OutsidePrepareDeliverable(tc.changes); len(got) != tc.outside {
 				t.Errorf("outside = %q, want %d entries", got, tc.outside)
+			}
+		})
+	}
+}
+
+type namedAdapter struct {
+	harness.Adapter
+	name string
+}
+
+func (a namedAdapter) Name() string { return a.name }
+
+func runPrepareWriter(t *testing.T, forge *writerForge, adapter harness.Adapter, isolation string) harness.OutcomeReport {
+	t.Helper()
+	var rec checkpointRecorder
+	w := New(Config{APIURL: rec.server(t), ForgeURL: forge.url, DefaultForge: harness.ForgeForgejo, BuilderToken: "tok",
+		RepoOwner: "webgrip", RepoName: "example", BaseBranch: "development", WorkDir: t.TempDir(), ForgeTokenIsolation: isolation},
+		adapter, llmbroker.Static{}, discardLog())
+	claimed := &ClaimResponse{RunToken: "rt", Role: "builder", Writes: true,
+		WorkItem: work.WorkItem{ID: "1", ExternalID: "7", Title: "Add AGENTS.md to webgrip/example", Kind: work.KindPrepareRepository}}
+	return w.execute(context.Background(), claimed, writerBranch, "trace", "", "")
+}
+
+func TestAPrepareWriterOnAWorkerWithoutTheForgeProxyEndsStuckBeforeItsHarnessRuns(t *testing.T) {
+	forge := newWriterForge(t, false, pullsNone)
+	report := runPrepareWriter(t, forge, acpAgentDuringPrompt(t, `printf x > AGENTS.md`), "")
+
+	wantStuck(t, report, "a prepare Run needs the forge proxy", "PLOEG_FORGE_TOKEN_ISOLATION=proxy")
+	if report.Summary != "prepare_unsupported_for_team" {
+		t.Errorf("summary = %q, want prepare_unsupported_for_team", report.Summary)
+	}
+}
+
+func TestAPrepareWriterInAClaudeEnvironmentEndsStuckBeforeItsHarnessRuns(t *testing.T) {
+	forge := newWriterForge(t, false, pullsNone)
+	adapter := namedAdapter{Adapter: acpAgentDuringPrompt(t, `printf x > AGENTS.md`), name: "claude-environment"}
+	report := runPrepareWriter(t, forge, adapter, ForgeTokenIsolationProxy)
+
+	wantStuck(t, report, "a Claude environment's runner pushes on its own", "Claude environment")
+	if forge.hasBranch() {
+		t.Error("the run branch reached the forge")
+	}
+}
+
+func TestAPrepareWriterThatPushesMoreThanTheFileIsRefusedAtTheProxyAndEndsOutsideTheDeliverable(t *testing.T) {
+	forge := newWriterForge(t, false, pullsForPushedBranch)
+	push := `printf '# Example\n' > AGENTS.md; printf '// x\n' >> main.go; ` +
+		`git -c user.name=t -c user.email=t@example.com add -A >/dev/null 2>&1; ` +
+		`git -c user.name=t -c user.email=t@example.com commit -qm prepare >/dev/null 2>&1; ` +
+		`git push -q origin HEAD:refs/heads/` + writerBranch + ` >/dev/null 2>&1`
+	report := runPrepareWriter(t, forge, acpAgentDuringPrompt(t, push), ForgeTokenIsolationProxy)
+
+	if forge.hasBranch() {
+		t.Fatal("a push outside the deliverable reached the forge")
+	}
+	wantStuck(t, report, "the proxy refused the push", "outside_deliverable", "M main.go")
+}
+
+func TestAPrepareYieldThatWouldPushMoreThanTheFilePushesNothing(t *testing.T) {
+	rig := newPrepareRig(t, map[string]string{"main.go": "package main\n"})
+	writeTree(t, rig.checkout, map[string]string{"AGENTS.md": "# x\n", "main.go": "package main\n\nfunc main() {}\n"})
+
+	y := yieldWork(context.Background(), yieldCheck{writes: true, dir: rig.checkout, cloneURL: rig.remote, token: "real-forge-token",
+		branch: writerBranch, baseline: writerBaseline{start: rig.fence.start}, leaks: testLeakScope(newLeakWatch()), deliverable: rig.fence})
+
+	if y.Pushed || !strings.Contains(y.Detail, "outside_deliverable") || !strings.Contains(y.Detail, "M main.go") {
+		t.Fatalf("yield = %+v, want nothing pushed and the outside path named", y)
+	}
+	if rig.forgeHasBranch(t) {
+		t.Fatal("the yield pushed work outside the deliverable")
+	}
+}
+
+func TestAPrepareYieldOfOnlyTheFilePushes(t *testing.T) {
+	rig := newPrepareRig(t, map[string]string{"main.go": "package main\n"})
+	writeTree(t, rig.checkout, map[string]string{"AGENTS.md": "# x\n"})
+
+	y := yieldWork(context.Background(), yieldCheck{writes: true, dir: rig.checkout, cloneURL: rig.remote, token: "real-forge-token",
+		branch: writerBranch, baseline: writerBaseline{start: rig.fence.start}, leaks: testLeakScope(newLeakWatch()), deliverable: rig.fence})
+
+	if !y.Pushed || !rig.forgeHasBranch(t) {
+		t.Fatalf("yield = %+v, want only AGENTS.md pushed", y)
+	}
+}
+
+func TestAPrepareRunMayNotDeliverASymlinkOrAnExecutableAsItsFile(t *testing.T) {
+	for name, prepare := range map[string]func(t *testing.T, dir string){
+		"a symbolic link": func(t *testing.T, dir string) {
+			if err := os.Symlink("README.md", filepath.Join(dir, "AGENTS.md")); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"an executable": func(t *testing.T, dir string) {
+			if err := os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			rig := newPrepareRig(t, map[string]string{"README.md": "# r\n"})
+			prepare(t, rig.checkout)
+			gitIn(t, rig.checkout, "add", "-A")
+			gitIn(t, rig.checkout, "commit", "-m", "prepare")
+
+			if err := rig.push(t); err == nil {
+				t.Fatal("an AGENTS.md that is not a regular file reached the forge")
+			}
+		})
+	}
+}
+
+func TestAPrepareRunCannotRetargetItsPullRequest(t *testing.T) {
+	fence := &deliverableFence{base: "development"}
+	for name, tc := range map[string]struct {
+		method, path, body string
+		refused            bool
+	}{
+		"open against the base":       {method: "POST", path: "/api/v1/repos/webgrip/example/pulls", body: `{"base":"development","head":"agent/vik-7"}`},
+		"open against another branch": {method: "POST", path: "/api/v1/repos/webgrip/example/pulls", body: `{"base":"main","head":"agent/vik-7"}`, refused: true},
+		"edit the base":               {method: "PATCH", path: "/api/v1/repos/webgrip/example/pulls/3", body: `{"base":"main"}`, refused: true},
+		"edit the title":              {method: "PATCH", path: "/api/v1/repos/webgrip/example/pulls/3", body: `{"title":"t"}`},
+		"retarget a merge request":    {method: "PUT", path: "/api/v4/projects/1/merge_requests/3", body: `target_branch=main`, refused: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
+			_, err := fence.admitAPI(r)
+			if (err != nil) != tc.refused {
+				t.Errorf("refused = %v (%v), want %v", err != nil, err, tc.refused)
 			}
 		})
 	}

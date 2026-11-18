@@ -131,6 +131,30 @@ func (e *Engine) PullRequestStateOf(ctx context.Context, t work.Target, number i
 	return string(state)
 }
 
+// OpenPullRequestOn reports the first open pull request whose head is the
+// Work Item's branch. A forge that cannot list them answers ok false.
+func (e *Engine) OpenPullRequestOn(ctx context.Context, item work.WorkItem) (number int, ok bool) {
+	if item.Target == nil {
+		return 0, false
+	}
+	fp, skip := e.forgeOf(*item.Target)
+	if skip != "" {
+		return 0, false
+	}
+	closer, can := fp.(provider.PullRequestCloser)
+	if !can {
+		return 0, false
+	}
+	open, err := closer.OpenPullRequests(ctx, item.Target.Owner+"/"+item.Target.Repo, work.Branch(item))
+	if err != nil {
+		return 0, false
+	}
+	if len(open) == 0 {
+		return 0, true
+	}
+	return open[0], true
+}
+
 // PullRequestStillOpen reports whether a pull request a cancelled prepare
 // left open still is. A forge that cannot answer counts as open, so a second
 // prepare never starts beside a live one.

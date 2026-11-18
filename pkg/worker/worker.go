@@ -709,7 +709,7 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	forgeToken = forgeCred.current(context.WithoutCancel(ctx))
 	if errors.Is(runErr, harness.ErrYielded) {
 		return w.yielded(ctx, report, yieldCheck{writes: writes, dir: cloneDir, cloneURL: cloneURL, token: forgeToken, branch: branch,
-			baseline: baseline, leaks: leaks, trace: trace, reference: work.Reference(item)}, ref, prior, priorErr)
+			baseline: baseline, leaks: leaks, trace: trace, reference: work.Reference(item), deliverable: deliverable}, ref, prior, priorErr)
 	}
 	// The PR is the ground truth (git/forge state stays the durable medium).
 	after, prErr := readChangeRequest(ref, forgeToken, branch)
@@ -734,7 +734,7 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 		synced := syncWithBase(ctx, w.side(), baseCandidate{
 			pushedCandidate: pushedCandidate{dir: filepath.Join(w.Cfg.WorkDir, "rebase-vik-"+item.ExternalID), cloneURL: cloneURL, token: forgeToken,
 				branch: branch, commit: after.HeadSHA},
-			base: pullRequestBase(after, ref),
+			base: syncBase(after, ref, deliverable),
 		}, checkEnv, fastCheck, w.Cfg.VerifyTimeout)
 		w.Log.Info("brought the pull request up to date with its base", "result", string(synced.result), "base", synced.base,
 			"base_commit", synced.baseCommit, "head", synced.head, "rebased", synced.rebased, "conflicts", synced.conflicts,

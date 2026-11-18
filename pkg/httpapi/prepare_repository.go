@@ -24,7 +24,10 @@ type PreparePullRequests interface {
 	ClosePreparePullRequest(ctx context.Context, workItemID int64, actor string) store.PrepareCancelled
 	PullRequestStillOpen(ctx context.Context, t work.Target, number int) bool
 	PullRequestStateOf(ctx context.Context, t work.Target, number int) string
+	OpenPullRequestOn(ctx context.Context, item work.WorkItem) (number int, ok bool)
 }
+
+const withdrawnPreparesChecked = 10
 
 func (s *Server) preparePullRequestState(ctx context.Context, item *store.OperatorItem) {
 	if item.Kind != string(work.KindPrepareRepository) || item.PullRequest == nil || item.Target == nil {
@@ -133,6 +136,21 @@ func (s *Server) noUnclosedPrepare(ctx context.Context, w http.ResponseWriter, t
 		}
 		refusePrepareInProgress(w, &store.PrepareInProgressError{WorkItemID: c.WorkItemID, PullRequestURL: c.PullRequestURL})
 		return false
+	}
+	if forge == nil {
+		return true
+	}
+	withdrawn, err := s.Store.WithdrawnPrepares(ctx, t, withdrawnPreparesChecked)
+	if err != nil {
+		operatorError(w, 503, "unavailable", "Ploeg could not confirm the admission.")
+		return false
+	}
+	for _, item := range withdrawn {
+		if number, ok := forge.OpenPullRequestOn(ctx, item); ok && number > 0 {
+			id, _ := strconv.ParseInt(item.ID, 10, 64)
+			refusePrepareInProgress(w, &store.PrepareInProgressError{WorkItemID: id, PullRequest: number})
+			return false
+		}
 	}
 	return true
 }

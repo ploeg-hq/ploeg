@@ -110,6 +110,12 @@ func startForgeTokenProxy(repo harness.RepoRef, tokens forgeTokenSource, access 
 				refusals.refuse(w, r, reason, err.Error())
 				return
 			}
+			if fence.deliverable != nil {
+				if reason, err := fence.deliverable.admitAPI(r); err != nil {
+					refusals.refuse(w, r, reason, err.Error())
+					return
+				}
+			}
 		}
 		if isReceivePack(r) {
 			if reason, err := fence.admit(r); err != nil {

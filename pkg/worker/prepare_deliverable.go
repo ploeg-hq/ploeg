@@ -1,8 +1,13 @@
 package worker
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -50,7 +55,18 @@ func (f *deliverableFence) admit(u refUpdate) (refusalReason, error) {
 func (f *deliverableFence) outside(commit string) ([]string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), deliverableCheckTimeout)
 	defer cancel()
-	changes, err := f.changes(ctx, commit)
+	repo, err := openWorkerRepository(ctx, f.dir, f.cloneURL, f.token(ctx))
+	if err != nil {
+		return nil, err
+	}
+	defer repo.remove()
+	return f.outsideIn(ctx, repo, commit)
+}
+
+// outsideIn is outside for a commit in repo, such as the work in progress a
+// yield commits in its own git directory.
+func (f *deliverableFence) outsideIn(ctx context.Context, repo *workerRepository, commit string) ([]string, error) {
+	changes, err := f.changes(ctx, repo, commit)
 	if err != nil {
 		return nil, err
 	}
@@ -61,12 +77,7 @@ func (f *deliverableFence) outside(commit string) ([]string, error) {
 	return outside, nil
 }
 
-func (f *deliverableFence) changes(ctx context.Context, commit string) ([]work.ChangedPath, error) {
-	repo, err := openWorkerRepository(ctx, f.dir, f.cloneURL, f.token(ctx))
-	if err != nil {
-		return nil, err
-	}
-	defer repo.remove()
+func (f *deliverableFence) changes(ctx context.Context, repo *workerRepository, commit string) ([]work.ChangedPath, error) {
 	base := f.start
 	if f.base != "" {
 		if err := repo.fetchBranch(ctx, f.base, deliverableBaseRef); err != nil {
@@ -79,20 +90,26 @@ func (f *deliverableFence) changes(ctx context.Context, commit string) ([]work.C
 		return nil, fmt.Errorf("git merge-base: %v: %s", err, tail(out, 400))
 	}
 	fork := strings.TrimSpace(string(out))
-	out, err = repo.local(ctx, "", "diff-tree", "-r", "-z", "--no-renames", "--name-status", fork, commit).CombinedOutput()
+	out, err = repo.local(ctx, "", "diff-tree", "-r", "-z", "--no-renames", "--raw", "--no-abbrev", fork, commit).CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("git diff-tree: %v: %s", err, tail(out, 400))
 	}
-	return parseNameStatus(string(out)), nil
+	return parseRawDiff(string(out))
 }
 
-func parseNameStatus(out string) []work.ChangedPath {
+// parseRawDiff reads `git diff-tree -r -z --raw`: per change a header
+// ":<old mode> <new mode> <old id> <new id> <status>" and its path.
+func parseRawDiff(out string) ([]work.ChangedPath, error) {
 	fields := strings.Split(strings.TrimSuffix(out, "\x00"), "\x00")
 	var changes []work.ChangedPath
 	for i := 0; i+1 < len(fields); i += 2 {
-		changes = append(changes, work.ChangedPath{Status: fields[i], Path: fields[i+1]})
+		header := strings.Fields(strings.TrimPrefix(fields[i], ":"))
+		if len(header) != 5 {
+			return nil, fmt.Errorf("git diff-tree printed an unexpected line %q", fields[i])
+		}
+		changes = append(changes, work.ChangedPath{Status: header[4], Mode: header[1], Path: fields[i+1]})
 	}
-	return changes
+	return changes, nil
 }
 
 func (f *deliverableFence) refusedPaths() []string {
@@ -146,4 +163,47 @@ func appendNew(xs []string, more ...string) []string {
 		}
 	}
 	return xs
+}
+
+var pullRequestBaseFields = []string{"base", "target_branch"}
+
+// admitAPI pins a prepare Run's pull request to the configured base branch:
+// a request that opens or edits a pull request (merge request) naming
+// another base, or that edits the base of one, is refused, so the one
+// deliverable cannot be retargeted past the fence's base (ADR-0194).
+func (f *deliverableFence) admitAPI(r *http.Request) (refusalReason, error) {
+	if r.Method != http.MethodPost && r.Method != http.MethodPatch && r.Method != http.MethodPut {
+		return "", nil
+	}
+	path := strings.ToLower(r.URL.Path)
+	if !strings.Contains(path, "/pulls") && !strings.Contains(path, "/merge_requests") {
+		return "", nil
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxInspectedAPIBody+1))
+	if err != nil || len(body) > maxInspectedAPIBody {
+		return refusalUninspectableBody, fmt.Errorf("the forge proxy could not read the pull request request's body")
+	}
+	r.Body = io.NopCloser(bytes.NewReader(body))
+	values := map[string]any{}
+	if json.Unmarshal(body, &values) != nil {
+		form, _ := url.ParseQuery(string(body))
+		for k := range form {
+			values[k] = form.Get(k)
+		}
+		for k := range r.URL.Query() {
+			values[k] = r.URL.Query().Get(k)
+		}
+	}
+	for _, field := range pullRequestBaseFields {
+		raw, named := values[field]
+		if !named {
+			continue
+		}
+		base, _ := raw.(string)
+		if (f.base != "" && base == f.base) || (f.base == "" && r.Method == http.MethodPost) {
+			continue
+		}
+		return refusalOutsideDeliverable, fmt.Errorf("this prepare Run's pull request must target %q; the request names base %q", f.base, base)
+	}
+	return "", nil
 }

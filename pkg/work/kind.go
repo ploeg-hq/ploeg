@@ -41,20 +41,31 @@ func (it WorkItem) PreparesRepository() bool { return it.Kind == KindPrepareRepo
 type ChangedPath struct {
 	Status string
 	Path   string
+	// Mode is git's mode of the path after the change: 100644 for a regular
+	// file, 120000 for a symbolic link, 160000 for a gitlink.
+	Mode string
 }
 
+// RegularFileMode is the only mode the prepare deliverable may have.
+const RegularFileMode = "100644"
+
 // OutsidePrepareDeliverable returns the changes a prepare_repository Run may
-// not deliver: anything but exactly one added root AGENTS.md. An empty
+// not deliver: anything but exactly one added root AGENTS.md that is a
+// regular, non-executable file (not a symbolic link or a gitlink). An empty
 // change set is outside too, named as the missing deliverable.
 func OutsidePrepareDeliverable(changes []ChangedPath) []string {
 	var outside []string
 	added := false
 	for _, c := range changes {
-		if c.Path == PrepareRepositoryDeliverable && c.Status == "A" && !added {
+		if c.Path == PrepareRepositoryDeliverable && c.Status == "A" && c.Mode == RegularFileMode && !added {
 			added = true
 			continue
 		}
-		outside = append(outside, c.Status+" "+c.Path)
+		entry := c.Status + " " + c.Path
+		if c.Mode != "" && c.Mode != RegularFileMode && c.Status != "D" {
+			entry += " (mode " + c.Mode + ")"
+		}
+		outside = append(outside, entry)
 	}
 	if !added {
 		outside = append(outside, "missing: no added "+PrepareRepositoryDeliverable)

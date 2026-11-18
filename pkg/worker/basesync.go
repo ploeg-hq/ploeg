@@ -232,6 +232,16 @@ func withBaseSync(report harness.OutcomeReport, s baseSync) harness.OutcomeRepor
 	return report
 }
 
+// syncBase is the base the worker brings a delivered branch up to date
+// with: the pull request's, except for a prepare Run, whose base is pinned
+// to the configured one (ADR-0194).
+func syncBase(pr changeRequest, ref harness.RepoRef, deliverable *deliverableFence) string {
+	if deliverable != nil && ref.BaseBranch != "" {
+		return ref.BaseBranch
+	}
+	return pullRequestBase(pr, ref)
+}
+
 func pullRequestBase(pr changeRequest, ref harness.RepoRef) string {
 	if pr.BaseBranch != "" {
 		return pr.BaseBranch
