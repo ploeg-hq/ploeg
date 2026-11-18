@@ -18,6 +18,9 @@ RUN_POD_VOLUME_TYPES = {'emptyDir', 'image'}
 GATEWAY_NAME = 'ploeg-credential-gateway'
 GATEWAY_PORTS = {8080, 8081, 8082, 8083}
 RUN_POD_LABEL = {'app.kubernetes.io/name': 'ploeg-worker'}
+MAX_FENCED_PACK_MIB = 64
+MAX_BASE_FETCH_MIB = 384
+ONE_FENCED_PUSH_MIB = 2 * MAX_FENCED_PACK_MIB + MAX_BASE_FETCH_MIB
 
 
 def run_pods(document):
@@ -128,6 +131,15 @@ def check_run_pod_egress(documents, namespace):
     return problems
 
 
+def mebibytes(quantity):
+    units = {'Mi': 1, 'Gi': 1024, 'Ti': 1024 * 1024}
+    text = str(quantity or '')
+    for suffix, factor in units.items():
+        if text.endswith(suffix) and text[:-len(suffix)].isdigit():
+            return int(text[:-len(suffix)]) * factor
+    return 0
+
+
 def check_gateway(documents, namespace, bootstrap_keys):
     problems = []
     deployments = [d for d in documents if d.get('kind') == 'Deployment' and d['metadata']['name'].endswith('-credential-gateway')]
@@ -153,6 +165,11 @@ def check_gateway(documents, namespace, bootstrap_keys):
     for name in secrets:
         if name not in mounted:
             problems.append(f"the gateway does not mount its volume {name}")
+    scratch = next((v.get('emptyDir') for v in pod.get('volumes') or [] if v['name'] == 'tmp'), None)
+    if scratch is None:
+        problems.append('the gateway has no tmp emptyDir to check pushes in')
+    elif mebibytes(scratch.get('sizeLimit')) < ONE_FENCED_PUSH_MIB:
+        problems.append(f"the gateway's tmp sizeLimit {scratch.get('sizeLimit')!r} holds less than one fenced push ({ONE_FENCED_PUSH_MIB}Mi)")
     tokens = [s['serviceAccountToken'] for v in pod.get('volumes') or []
               for s in (v.get('projected') or {}).get('sources') or [] if 'serviceAccountToken' in s]
     if not any(t.get('audience') == 'ploegd' for t in tokens):

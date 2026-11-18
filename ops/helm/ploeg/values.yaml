@@ -786,6 +786,11 @@ executor:
     # relaxes both to preferred and labels every Run pod and the gateway
     # ploeg.webgrip.dev/credential-gateway-shared-node: "true".
     acknowledgeSingleNode: false
+    # sizeLimit of the gateway's /tmp, where it checks a prepare or OpenHands
+    # Run's push from its pack: per push up to 64 MiB of pack, its indexed
+    # copy and a fetch of the forge's base branch. 2Gi holds four such pushes
+    # at once with a base branch of up to 384 MiB packed (4 x 512 MiB).
+    scratchSizeLimit: 2Gi
     # Per Run and route family, a token bucket on requests and on request
     # bytes; maxUpstreamConnections caps the gateway's concurrent upstream
     # connections (PLOEG_GATEWAY_LIMITS).

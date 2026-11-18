@@ -355,6 +355,7 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `executor.credentialGateway.resources.limits.memory` |  | `256Mi` |  | values.yaml |
 | `executor.credentialGateway.resources.requests.cpu` |  | `50m` |  | values.yaml |
 | `executor.credentialGateway.resources.requests.memory` |  | `64Mi` |  | values.yaml |
+| `executor.credentialGateway.scratchSizeLimit` | string | `2Gi` | sizeLimit of the gateway's /tmp emptyDir, where it checks a prepare or OpenHands Run's push from its pack: up to 64 MiB of pack, its indexed copy and a fetch of the forge's base branch per push. The default 2Gi holds four such pushes at once with a base branch of up to 384 MiB packed; scripts/check-credential-gateway.py refuses less than one (512Mi). | values.yaml, values.schema.json |
 | `executor.credentialGateway.tolerations` | array or null | `[]` |  | values.yaml, values.schema.json |
 | `executor.cronjob.schedule` | string | `*/2 * * * *` | type=cronjob only: how often each team polls for work. Idle ticks are free (empty-handed claim = exit 0). | values.yaml, values.schema.json |
 | `executor.defaultTarget` | object |  | fallback repo for teams that declare none; empty = a team with no repoOwner/repoName gets no env target and relies entirely on the work item's resolved target | values.yaml, values.schema.json |

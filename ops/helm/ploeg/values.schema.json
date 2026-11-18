@@ -1422,6 +1422,7 @@
           "properties": {
             "enabled": {"type": "boolean", "description": "true renders the gateway's Deployment, Service, PodDisruptionBudget, ServiceAccount, Role and NetworkPolicy, ploegd's TokenReview ClusterRole and PLOEG_CREDENTIAL_GATEWAYS, and renders every Run pod with PLOEG_CREDENTIAL_GATEWAY=on and no secret."},
             "replicas": {"type": "integer", "minimum": 1, "description": "Gateway replicas, spread over nodes; the PodDisruptionBudget allows one unavailable."},
+            "scratchSizeLimit": {"type": "string", "pattern": "^[0-9]+(Mi|Gi)$", "description": "sizeLimit of the gateway's /tmp emptyDir, where it checks a prepare or OpenHands Run's push from its pack: up to 64 MiB of pack, its indexed copy and a fetch of the forge's base branch per push. The default 2Gi holds four such pushes at once with a base branch of up to 384 MiB packed; scripts/check-credential-gateway.py refuses less than one (512Mi)."},
             "acknowledgeSingleNode": {
               "type": "boolean",
               "description": "true relaxes the gateway's anti-affinity against Run pods and its exclusion of executor.nodeSelector's pool to preferred, and labels every Run pod and the gateway ploeg.webgrip.dev/credential-gateway-shared-node. The chart cannot count nodes; set it only where no node is free of Run pods."
