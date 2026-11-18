@@ -55,6 +55,9 @@ value that would put a secret into a Run pod or that the gateway cannot serve.
 {{- if eq ($auth.hmacCapability | default "issue") "off" -}}
 {{- fail "executor.credentialGateway.enabled needs executor.workerAuth.hmacCapability issue: the per-Run capability the gateway accepts is the HMAC controlToken, which hmacCapability off stops issuing (ADR-0197)" -}}
 {{- end -}}
+{{- if not (.Values.networkPolicy | default dict).enabled -}}
+{{- fail "executor.credentialGateway.enabled needs networkPolicy.enabled: without the Run pod's NetworkPolicy a Run pod reaches ploegd, the forge and the model gateway directly, around the credential gateway (ADR-0197)" -}}
+{{- end -}}
 {{- if .Values.claudeRunner.enabled -}}
 {{- fail "claudeRunner.enabled cannot run with executor.credentialGateway.enabled: the runner pod, where a claude-environment session's Claude Code runs, holds claudeRunner.environmentSecret and receives the Run's forge token, and its route through the gateway's anthropic upstream is not built yet (ADR-0197)" -}}
 {{- end -}}
