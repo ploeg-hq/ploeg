@@ -175,6 +175,7 @@ func New(cfg Config, adapter harness.Adapter, broker llmbroker.Broker, log *slog
 		api.HarnessVersion = cfg.HarnessVersion
 		api.Yields = harness.AdapterYields(adapter)
 	}
+	api.ForgeTokenIsolation = cfg.ForgeTokenIsolation
 	if broker == nil {
 		broker = api
 	}
@@ -632,8 +633,16 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	if writes {
 		gitEnv = gitAuthenticationEnvironment(cloneURL, forgeToken)
 	}
+	var deliverable *deliverableFence
+	if writes && item.PreparesRepository() {
+		if forgeToken == "" || w.Cfg.ForgeTokenIsolation != ForgeTokenIsolationProxy || w.Adapter.Name() == "claude-environment" {
+			return stuckReport("prepare_unsupported_for_team",
+				"Ploeg enforces a prepare Run's one deliverable at the worker's forge proxy (ADR-0194): this worker hands the harness its forge token or runs it in a Claude environment, whose runner pushes on its own. Set PLOEG_FORGE_TOKEN_ISOLATION=proxy and give the writing Role a worker-run Harness")
+		}
+		deliverable = &deliverableFence{dir: cloneDir, cloneURL: cloneURL, base: ref.BaseBranch, start: baseline.start, token: forgeCred.current}
+	}
 	if writes && forgeToken != "" && w.Cfg.ForgeTokenIsolation == ForgeTokenIsolationProxy {
-		forgeProxy, err := startForgeTokenProxy(ref, forgeCred, forgeWriter, branch, leaks)
+		forgeProxy, err := startForgeTokenProxy(ref, forgeCred, forgeWriter, branch, leaks, deliverable)
 		if err != nil {
 			return stuckReport("could not isolate the forge token", err.Error())
 		}
@@ -700,7 +709,7 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	forgeToken = forgeCred.current(context.WithoutCancel(ctx))
 	if errors.Is(runErr, harness.ErrYielded) {
 		return w.yielded(ctx, report, yieldCheck{writes: writes, dir: cloneDir, cloneURL: cloneURL, token: forgeToken, branch: branch,
-			baseline: baseline, leaks: leaks, trace: trace, reference: work.Reference(item)}, ref, prior, priorErr)
+			baseline: baseline, leaks: leaks, trace: trace, reference: work.Reference(item), deliverable: deliverable}, ref, prior, priorErr)
 	}
 	// The PR is the ground truth (git/forge state stays the durable medium).
 	after, prErr := readChangeRequest(ref, forgeToken, branch)
@@ -711,6 +720,7 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	final := resolveOutcome(w.Adapter.Name(), report, runErr, context.Cause(ctx), prURL, samePullRequest(prior, after),
 		item.Title, branch, redactedOutput(logTail.Bytes(), leaks.watch), w.Adapter.ExpectsLLM(), writes)
 	final = withReviewedCommit(final, branch, prURL, reviewedCommit)
+	final = deliverable.checkDelivered(final, after.HeadSHA)
 	final = guardUnpublishedWork(context.WithoutCancel(ctx), final, deliveryCheck{
 		writes: writes, dir: cloneDir, cloneURL: cloneURL, token: forgeToken, branch: branch, baseline: baseline, prErr: prErr,
 	})
@@ -724,7 +734,7 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 		synced := syncWithBase(ctx, w.side(), baseCandidate{
 			pushedCandidate: pushedCandidate{dir: filepath.Join(w.Cfg.WorkDir, "rebase-vik-"+item.ExternalID), cloneURL: cloneURL, token: forgeToken,
 				branch: branch, commit: after.HeadSHA},
-			base: pullRequestBase(after, ref),
+			base: syncBase(after, ref, deliverable),
 		}, checkEnv, fastCheck, w.Cfg.VerifyTimeout)
 		w.Log.Info("brought the pull request up to date with its base", "result", string(synced.result), "base", synced.base,
 			"base_commit", synced.baseCommit, "head", synced.head, "rebased", synced.rebased, "conflicts", synced.conflicts,

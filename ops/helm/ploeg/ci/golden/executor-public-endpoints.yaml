@@ -280,6 +280,8 @@ spec:
               value: "{\"defaults\":{\"\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"openhands\",\"qualification\":\"qualified\"}],\"name\":\"openhands\"}}}"
             - name: PLOEG_TEAM_SPEND_CAPS
               value: "{\"defaults\":{\"period\":\"day\",\"usd\":20}}"
+            - name: PLOEG_WORKER_FORGE_TOKEN_ISOLATION
+              value: "proxy"
             - name: PLOEG_FORGEJO_URL
               value: "http://forgejo.example.com"
             - name: PLOEG_FORGEJO_TOKEN

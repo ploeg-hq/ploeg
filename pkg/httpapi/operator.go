@@ -516,6 +516,7 @@ func (s *Server) handleOperatorTeams(w http.ResponseWriter, r *http.Request) {
 			teams[i].PinnedScopes = append([]string{}, scopes...)
 			sort.Strings(teams[i].PinnedScopes)
 		}
+		teams[i].PrepareRepository = &store.OperatorPrepareRepository{MaxBudgetUSD: s.prepareCap(teams[i].ID)}
 	}
 	if err := s.describeRoles(r.Context(), teams); err != nil {
 		operatorReadError(w, err)
@@ -563,6 +564,7 @@ func (s *Server) handleOperatorItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.linkTask(&detail.Item)
+	s.preparePullRequestState(r.Context(), &detail.Item)
 	detail.Resume = s.resumeOffer(r.Context(), id)
 	detail.TakeOver = s.takeOverDetail(r.Context(), id)
 	operatorJSON(w, 200, struct {

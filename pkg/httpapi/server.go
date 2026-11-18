@@ -12,6 +12,7 @@ import (
 	"html"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -68,6 +69,12 @@ type Server struct {
 	// handed their work over (ADR-0156). While TransactionTokens is set, a
 	// Team absent here runs nothing.
 	TeamSponsors map[string]string
+	// PrepareRepositoryCaps is each Team's prepareRepository.maxBudgetUsd
+	// (ADR-0194); a Team absent here takes DefaultPrepareRepositoryMaxBudgetUSD.
+	PrepareRepositoryCaps map[string]float64
+	// ForgeTokenIsolation is PLOEG_WORKER_FORGE_TOKEN_ISOLATION, the deployment's worker forge token isolation. A
+	// prepare_repository Work Item is admitted only under proxy (ADR-0194).
+	ForgeTokenIsolation string
 	// Engine is the Shift lifecycle fast path (run-multi-agent-shifts): ingest
 	// opens, an outcome report evaluates. Nil = no shift engine configured,
 	// dispatch unchanged. Engine errors are logged, never returned to the
@@ -540,7 +547,8 @@ func (s *Server) resolveTarget(ctx context.Context, item *work.WorkItem, labelsR
 			s.Log.Warn("target readiness unknown at ingest; the claim checks it again",
 				"external_id", ev.ExternalID, "target", route.Key, "reason", v.Reason)
 		case !v.Ready:
-			return &target.Refusal{Code: target.RefusalTargetNotReady, Reason: fmt.Sprintf("target %q is not ready: %s", route.Key, v.Reason), Allowed: []string{}}
+			return &target.Refusal{Code: target.RefusalTargetNotReady, Reason: fmt.Sprintf("target %q is not ready: %s", route.Key, v.Reason), Allowed: []string{},
+				PrepareAvailable: v.PrepareAvailable()}
 		}
 	}
 	item.Target = &route.Target
@@ -555,7 +563,7 @@ func (s *Server) resolveTarget(ctx context.Context, item *work.WorkItem, labelsR
 func (s *Server) refuseRoute(ctx context.Context, tp provider.TrackerProvider, item work.WorkItem, refusal *target.Refusal) error {
 	s.Log.Warn("tracker item refused by routing; nothing queued", "provider", item.Provider,
 		"external_id", item.ExternalID, "scope", item.ExternalScope, "team", item.Team, "reason", refusal.Reason)
-	if err := s.Store.RefuseRoute(ctx, item, refusal.Code, refusal.Reason, refusal.Allowed); err != nil {
+	if err := s.Store.RefuseRoute(ctx, item, refusal.Code, refusal.Reason, refusal.Allowed, refusal.PrepareAvailable); err != nil {
 		return err
 	}
 	if err := tp.Comment(ctx, item.ExternalID, routeRefusalComment(refusal)); err != nil {
@@ -586,6 +594,10 @@ type claimRequest struct {
 	// Yields says the worker's Harness can stop at a safe point for a person
 	// (ADR-0142); ploegd records it on the claimed Run. Absent is false.
 	Yields bool `json:"yields,omitempty"`
+	// ForgeTokenIsolation is the worker's PLOEG_FORGE_TOKEN_ISOLATION. A
+	// prepare_repository writer starts only on a worker that says proxy
+	// (ADR-0194).
+	ForgeTokenIsolation string `json:"forgeTokenIsolation,omitempty"`
 
 	WorkerVersion string `json:"workerVersion,omitempty"`
 }
@@ -738,7 +750,7 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "claim failed", http.StatusInternalServerError)
 		return
 	}
-	if s.stopUnreadyTarget(r.Context(), req.Team, claimed.RunToken, claimed.Item) {
+	if s.stopUnreadyTarget(r.Context(), req.Team, claimed.RunToken, claimed.Item, true) || s.stopUnfencedPrepare(r.Context(), req, claimed.RunToken, claimed.Item, true) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
@@ -816,7 +828,7 @@ func (s *Server) claimRole(w http.ResponseWriter, r *http.Request, req claimRequ
 
 // respondClaimedRun builds the Shift-shaped claim response, briefing and all.
 func (s *Server) respondClaimedRun(w http.ResponseWriter, r *http.Request, req claimRequest, run *store.ClaimedRun) {
-	if s.stopUnreadyTarget(r.Context(), req.Team, run.RunToken, run.Item) {
+	if s.stopUnreadyTarget(r.Context(), req.Team, run.RunToken, run.Item, run.Writes) || s.stopUnfencedPrepare(r.Context(), req, run.RunToken, run.Item, run.Writes) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
@@ -911,7 +923,7 @@ func (s *Server) runBriefing(ctx context.Context, run *store.ClaimedRun) ([]harn
 	return briefing, findings, questions
 }
 
-func (s *Server) stopUnreadyTarget(ctx context.Context, team, runToken string, item work.WorkItem) bool {
+func (s *Server) stopUnreadyTarget(ctx context.Context, team, runToken string, item work.WorkItem, writes bool) bool {
 	if s.Readiness == nil || item.Target == nil {
 		return false
 	}
@@ -920,6 +932,17 @@ func (s *Server) stopUnreadyTarget(ctx context.Context, team, runToken string, i
 		return false
 	}
 	v := s.Readiness.Check(ctx, key)
+	if item.PreparesRepository() {
+		switch {
+		case v.PrepareAvailable():
+			return false
+		case v.Ready && !writes:
+			return false
+		case v.Ready:
+			s.withdrawAlreadyPrepared(ctx, team, item, key)
+			return true
+		}
+	}
 	if v.Ready {
 		return false
 	}
@@ -941,6 +964,55 @@ func (s *Server) stopUnreadyTarget(ctx context.Context, team, runToken string, i
 		}
 	}
 	return true
+}
+
+// stopUnfencedPrepare ends a prepare_repository writer stuck before it
+// starts when the claiming worker does not fence its pushes behind the
+// forge proxy, or its Harness runs in a Claude environment (ADR-0194).
+func (s *Server) stopUnfencedPrepare(ctx context.Context, req claimRequest, runToken string, item work.WorkItem, writes bool) bool {
+	if !writes || !item.PreparesRepository() {
+		return false
+	}
+	reason := ""
+	switch {
+	case req.ForgeTokenIsolation != ForgeTokenIsolationProxy:
+		reason = "the claiming worker does not isolate the forge token behind its proxy, where a prepare Run's one deliverable is enforced"
+	case req.Harness == claudeEnvironmentHarness:
+		reason = "the claiming worker runs its Harness in a Claude environment, whose runner pushes without the worker's forge proxy"
+	default:
+		return false
+	}
+	s.Log.Warn("claim stopped: a prepare run needs the worker's delivery fence; no run started", "team", req.Team, "work_item", item.ID, "reason", reason)
+	res, err := s.Store.ReportOutcome(ctx, runToken, store.Report(work.OutcomeStuck, "prepare_unsupported_for_team", "prepare_unsupported_for_team: "+reason, nil, nil, nil))
+	if err != nil {
+		s.Log.Error("releasing the run failed", "work_item", item.ID, "err", err)
+		return true
+	}
+	if s.Engine != nil && res.ShiftID != nil {
+		if err := s.Engine.EvaluateItem(ctx, res.WorkItemID); err != nil {
+			s.Log.Error("shift evaluate failed; sweeper will repair", "shift", *res.ShiftID, "err", err)
+		}
+	}
+	return true
+}
+
+// withdrawAlreadyPrepared withdraws a prepare_repository Work Item whose
+// target became ready before its writer started (ADR-0194): no Run starts,
+// its hold is released and work_item.prepare_not_needed is written.
+func (s *Server) withdrawAlreadyPrepared(ctx context.Context, team string, item work.WorkItem, key string) {
+	id, err := strconv.ParseInt(item.ID, 10, 64)
+	if err != nil {
+		return
+	}
+	s.Log.Info("prepare not needed: the target became ready before the claim; no run started", "team", team,
+		"work_item", item.ID, "target", key)
+	if _, _, err := s.withdraw(ctx, id, nil, "ploegd:readiness", store.CloseReasonAlreadyPrepared); err != nil {
+		s.Log.Error("withdrawing the prepared work item failed", "work_item", item.ID, "err", err)
+		return
+	}
+	if err := s.Store.RecordPrepareNotNeeded(ctx, id, key); err != nil {
+		s.Log.Error("prepare_not_needed not audited", "work_item", item.ID, "err", err)
+	}
 }
 
 func leaseExpiresInMs(deadline time.Time) int64 {

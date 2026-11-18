@@ -122,7 +122,7 @@ func (e *Engine) EnsureShift(ctx context.Context, workItemID int64, item work.Wo
 // ensureShift is EnsureShift. A non-nil sweep allows premise checks; the
 // fast path leaves them to the next sweep.
 func (e *Engine) ensureShift(ctx context.Context, workItemID int64, item work.WorkItem, sweep *sweepAllowance) error {
-	tp, planned, _ := e.planForItem(item.Team, item.Origin)
+	tp, planned, _ := e.planForItem(item.Team, item.Origin, item.Kind)
 	if !planned {
 		return nil
 	}
@@ -235,11 +235,12 @@ func (e *Engine) planFor(team string) (tp plan.TeamPlan, ok, synthesized bool) {
 // someone else opened (ADR-0109) gets only the reading Roles of its Team's
 // review Round: nothing may write to that pull request's branch, and no
 // verdict re-opens a writer. A Team whose plan has no such Round cannot
-// read, and the item is not planned.
-func (e *Engine) planForItem(team string, origin work.Origin) (tp plan.TeamPlan, ok, synthesized bool) {
+// read, and the item is not planned. A prepare_repository Work Item runs no
+// fix round (ADR-0194).
+func (e *Engine) planForItem(team string, origin work.Origin, kind work.Kind) (tp plan.TeamPlan, ok, synthesized bool) {
 	tp, ok, synthesized = e.planFor(team)
 	if !ok || origin != work.OriginPullRequest {
-		return tp, ok, synthesized
+		return withoutFixRounds(tp, kind), ok, synthesized
 	}
 	review, found := tp.ReviewOnly()
 	if !found {
@@ -266,7 +267,7 @@ func (e *Engine) EvaluateItem(ctx context.Context, workItemID int64) error {
 // them has finished; the next Round comes from the plan; a stuck Run freezes
 // the plan; an exhausted plan closes the Shift and asks a person to merge.
 func (e *Engine) evaluate(ctx context.Context, si store.ShiftInfo) error {
-	tp, planned, synthesized := e.planForItem(si.Team, si.Origin)
+	tp, planned, synthesized := e.planForItem(si.Team, si.Origin, si.Kind)
 	if !planned {
 		if si.Origin == work.OriginPullRequest {
 			return e.close(ctx, si, "no reading role in the plan",
@@ -484,6 +485,9 @@ func settleState(si store.ShiftInfo, closeReason string, synthesized bool, repor
 	next := work.StateNeedsHuman
 	if closeReason == work.CloseReasonTakenOver {
 		return next
+	}
+	if si.Kind == work.KindPrepareRepository {
+		reports = verdictsRecordedOnly(reports)
 	}
 	if synthesized {
 		if outcome, ok := terminalOutcome(reports); ok {

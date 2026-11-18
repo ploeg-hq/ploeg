@@ -28,6 +28,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/ploeg-hq/ploeg/pkg/connection"
+	"math"
 	"os"
 	"reflect"
 	"regexp"
@@ -158,6 +159,9 @@ type Team struct {
 	// a claim whose hold would take the period's settled and held spend over
 	// it starts nothing. Omitted = no cap.
 	SpendCap *spendcap.Cap `yaml:"spendCap"`
+	// PrepareRepository bounds a prepare_repository Work Item of this team
+	// (ADR-0194). Omitted = a cap of USD 2.00.
+	PrepareRepository *PrepareRepository `yaml:"prepareRepository"`
 	// ForgeFollowUps opts this team in to acting on forge events on its pull
 	// requests. Omitted = forge events are recorded and nothing else happens.
 	ForgeFollowUps work.ForgeFollowUps `yaml:"forgeFollowUps"`
@@ -323,6 +327,11 @@ func (f *File) Validate() error {
 			if err := c.Validate(); err != nil {
 				return fmt.Errorf("teams.%s.spendCap: %w", name, err)
 			}
+		}
+	}
+	for _, name := range sortedTeamNames(f.Teams) {
+		if p := f.Teams[name].PrepareRepository; p != nil && (p.MaxBudgetUSD == nil || !(*p.MaxBudgetUSD > 0) || math.IsInf(*p.MaxBudgetUSD, 0)) {
+			return fmt.Errorf("teams.%s.prepareRepository.maxBudgetUsd: must be a finite number above 0", name)
 		}
 	}
 	for name, t := range f.Teams {
@@ -686,6 +695,27 @@ func (f *File) SpendCaps(base spendcap.Caps) spendcap.Caps {
 	for team, t := range f.Teams {
 		if t.SpendCap != nil {
 			out[team] = *t.SpendCap
+		}
+	}
+	return out
+}
+
+// PrepareRepository is a team's bound on prepare_repository Work Items
+// (ADR-0194).
+type PrepareRepository struct {
+	// MaxBudgetUSD caps the Shift pool of each prepare_repository Work Item,
+	// below the plan's pool, the consumer's maxBudgetUsd and the Admission's
+	// budgetUsd.
+	MaxBudgetUSD *float64 `yaml:"maxBudgetUsd"`
+}
+
+// PrepareRepositoryCaps returns each team's prepareRepository.maxBudgetUsd;
+// a team that sets none is absent and takes the default.
+func (f *File) PrepareRepositoryCaps() map[string]float64 {
+	out := map[string]float64{}
+	for name, t := range f.Teams {
+		if t.PrepareRepository != nil && t.PrepareRepository.MaxBudgetUSD != nil {
+			out[name] = *t.PrepareRepository.MaxBudgetUSD
 		}
 	}
 	return out

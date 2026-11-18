@@ -48,6 +48,15 @@ type OperatorTeam struct {
 	// SpendCap is the team's spend cap and its spend in the current period
 	// (ADR-0162); nil when the team has none.
 	SpendCap *OperatorSpendCap `json:"spendCap"`
+	// PrepareRepository is the team's bound on prepare_repository Work
+	// Items (ADR-0194); ploegd fills it from its configuration.
+	PrepareRepository *OperatorPrepareRepository `json:"prepareRepository,omitempty"`
+}
+
+// OperatorPrepareRepository is a Team's prepare cap as the Teams read shows
+// it (ADR-0194).
+type OperatorPrepareRepository struct {
+	MaxBudgetUSD float64 `json:"maxBudgetUsd"`
 }
 
 // OperatorSpendCap is a Team's spend cap as the Teams read shows it.
@@ -167,6 +176,10 @@ type OperatorPullRequest struct {
 	HeadSHA               string                      `json:"headSha,omitempty"`
 	MergeCommitSHA        string                      `json:"mergeCommitSha,omitempty"`
 	Reviews               []OperatorPullRequestReview `json:"reviews"`
+	// State is the pull request's state as the forge answers it now: open,
+	// merged, closed or unknown. Set on a prepare_repository Work Item only
+	// (ADR-0194).
+	State string `json:"state,omitempty"`
 }
 
 // OperatorPullRequestReview is one review a forge reported on the pull
@@ -186,6 +199,7 @@ type OperatorItem struct {
 	Revision       string               `json:"revision"`
 	Team           string               `json:"team"`
 	State          string               `json:"state"`
+	Kind           string               `json:"kind"`
 	Title          string               `json:"title"`
 	Description    string               `json:"description"`
 	URL            string               `json:"url"`
@@ -453,7 +467,7 @@ const operatorAgentVerdictJSON = `(
 
 const operatorItemJSON = `jsonb_build_object(
 	'id', i.id::text, 'provider', i.provider, 'externalId', i.external_id, 'revision', i.revision,
-	'team', i.team, 'state', i.state, 'title', left(i.title, 4096), 'description', left(i.description, 16384),
+	'team', i.team, 'state', i.state, 'kind', i.kind, 'title', left(i.title, 4096), 'description', left(i.description, 16384),
 	'url', left(i.url, 4096), 'priority', i.priority, 'attempts', i.attempts, 'infraFailures', i.infra_failures,
 	'nextEligibleAt', i.next_eligible_at, 'createdAt', i.created_at, 'updatedAt', i.updated_at,
 	'target', CASE WHEN i.target_forge <> '' AND i.target_owner <> '' AND i.target_repo <> '' THEN

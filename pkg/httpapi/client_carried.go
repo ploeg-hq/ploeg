@@ -99,6 +99,10 @@ func (s *Server) handleClientClaim(w http.ResponseWriter, r *http.Request) {
 		operatorError(w, 409, "no_client_run", "No Run of this Work Item waits for a client: its Team carries no Run from a client.")
 		return
 	}
+	if item.PreparesRepository() {
+		refusePrepareUnsupported(w, item.Team, "a person's own client pushes without the worker's forge proxy, where a prepare Run's one deliverable is enforced")
+		return
+	}
 	if item.Target == nil || !item.Target.Resolved() {
 		operatorError(w, 409, "no_target", "The Work Item has no resolved repository, so a client cannot dispatch it.")
 		return

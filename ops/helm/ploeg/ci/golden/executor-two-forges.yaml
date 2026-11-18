@@ -309,6 +309,8 @@ spec:
               value: "{\"silver\":{\"builder\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"claude-code\",\"qualification\":\"unqualified\"}],\"name\":\"claude-code\"},\"reviewer\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"claude-code\",\"qualification\":\"unqualified\"}],\"name\":\"claude-code\"}}}"
             - name: PLOEG_TEAM_SPEND_CAPS
               value: "{\"silver\":{\"period\":\"day\",\"usd\":20}}"
+            - name: PLOEG_WORKER_FORGE_TOKEN_ISOLATION
+              value: "proxy"
             - name: PLOEG_FORGEJO_URL
               value: "https://forgejo.example.com"
             - name: PLOEG_FORGEJO_TOKEN

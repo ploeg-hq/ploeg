@@ -202,8 +202,9 @@ func (s *Store) WithdrawWorkItemGuarded(ctx context.Context, workItemID int64, t
 
 	var state string
 	var operatorOwned bool
-	err = tx.QueryRow(ctx, `SELECT state, operator_owned FROM work_items
-		WHERE id = $1 AND ($2::text[] IS NULL OR team = ANY($2)) FOR UPDATE`, workItemID, teams).Scan(&state, &operatorOwned)
+	var kind work.Kind
+	err = tx.QueryRow(ctx, `SELECT state, operator_owned, kind FROM work_items
+		WHERE id = $1 AND ($2::text[] IS NULL OR team = ANY($2)) FOR UPDATE`, workItemID, teams).Scan(&state, &operatorOwned, &kind)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return out, ErrWorkItemNotFound
 	}
@@ -242,6 +243,8 @@ func (s *Store) WithdrawWorkItemGuarded(ctx context.Context, workItemID int64, t
 	switch out.State {
 	case work.StateIngested, work.StateQueued, work.StateActive:
 		live = true
+	case work.StateNeedsHuman, work.StateAwaitingReview, work.StateStale, work.StateProposed:
+		live = live || kind == work.KindPrepareRepository
 	}
 	if !live {
 		return out, tx.Commit(ctx)

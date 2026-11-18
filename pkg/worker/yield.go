@@ -35,6 +35,9 @@ type yieldCheck struct {
 	leaks     leakScope
 	trace     string
 	reference string
+	// deliverable fences a prepare_repository Run's yield push as its own
+	// pushes are fenced (ADR-0194); nil for every other Run.
+	deliverable *deliverableFence
 }
 
 // yieldedReport turns the adapter's report of a Run that yielded to a person
@@ -116,6 +119,16 @@ func yieldWork(ctx context.Context, c yieldCheck) harness.YieldReport {
 	} else if found {
 		c.leaks.report(credentialLeak{kind: kind, where: "work in progress for " + c.branch})
 		return fail("the work in progress carried one of the Run's credentials, so the worker pushed nothing")
+	}
+	if c.deliverable != nil {
+		outside, err := c.deliverable.outsideIn(ctx, repo, tip)
+		if err != nil {
+			return fail("the worker could not check the work in progress against the prepare Run's one deliverable, so it pushed nothing: %v", err)
+		}
+		if len(outside) > 0 {
+			return fail("outside_deliverable: the work in progress changes more than an added root %s (%s), so the worker pushed nothing",
+				work.PrepareRepositoryDeliverable, strings.Join(capList(outside), ", "))
+		}
 	}
 	if tip != c.baseline.branch.commit {
 		out, err := repo.networked(ctx, "push", "--no-verify", "--quiet", repo.remote, tip+":refs/heads/"+c.branch).CombinedOutput()

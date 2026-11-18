@@ -180,6 +180,8 @@
         },
         "origin": { "type": "string", "enum": ["assignment", "follow_up", "pull_request"],
           "description": "pull_request is a Work Item that explains a pull request someone else opened, read on its own branch by reading Roles only (ADR-0109)." },
+        "kind": { "type": "string", "enum": ["change", "prepare_repository"],
+          "description": "What the Work Item may deliver (ADR-0194). prepare_repository: the writer gets Ploeg's own brief instead of the description, and the worker refuses any push whose branch changes anything but an added root AGENTS.md. Absent from older ploegd, and read as change." },
         "priority": { "type": "integer" },
         "title": { "type": "string" },
         "description": { "type": "string" },

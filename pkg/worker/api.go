@@ -36,6 +36,9 @@ type APIClient struct {
 	// a safe point for a person (ADR-0142), so ploegd refuses a take-over of
 	// a Run that cannot.
 	Yields bool
+	// ForgeTokenIsolation is sent with each claim, so ploegd starts a
+	// prepare_repository writer only behind the forge proxy (ADR-0194).
+	ForgeTokenIsolation string
 	// WorkerVersion is this ploeg-worker's release, sent with each claim so
 	// ploegd can refuse a release it does not serve (ADR-0134).
 	WorkerVersion string
@@ -159,6 +162,9 @@ func (a *APIClient) Claim(team, role string) (*ClaimResponse, error) {
 	}
 	if a.Yields {
 		req["yields"] = true
+	}
+	if a.ForgeTokenIsolation != "" {
+		req["forgeTokenIsolation"] = a.ForgeTokenIsolation
 	}
 	if a.WorkerVersion != "" {
 		req["workerVersion"] = a.WorkerVersion

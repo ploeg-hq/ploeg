@@ -10,6 +10,7 @@ import (
 	"github.com/ploeg-hq/ploeg/pkg/forgefacts"
 	"github.com/ploeg-hq/ploeg/pkg/provider"
 	"github.com/ploeg-hq/ploeg/pkg/store"
+	"github.com/ploeg-hq/ploeg/pkg/target"
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
@@ -45,7 +46,17 @@ type ReviewWatch struct {
 	// under the reconcile interval; zero claims only for the call itself.
 	// A conflicted poll repeated within half of it does not count again.
 	ClaimFor time.Duration
-	Log      *slog.Logger
+	// Readiness re-inspects a target as soon as a prepare_repository pull
+	// request on it merged (ADR-0194). Nil leaves it to the next inspection.
+	Readiness ReadinessRecheck
+	Log       *slog.Logger
+}
+
+// ReadinessRecheck inspects a registered target again and returns the
+// verdict seen before and the new one; target.Gate implements it.
+type ReadinessRecheck interface {
+	Recheck(ctx context.Context, t work.Target) (before, after target.Readiness, seen, registered bool)
+	KeyOf(t work.Target) (string, bool)
 }
 
 // ConflictFollowUps acts on a pull request the forge confirmed as
@@ -330,7 +341,38 @@ func (w *ReviewWatch) settle(ctx context.Context, t reviewTarget, next work.Stat
 		}
 	}
 	w.notify(ctx, t, next)
+	if next == work.StateDone && t.item.Kind == work.KindPrepareRepository {
+		w.recheckPrepared(ctx, t)
+	}
 	return nil
+}
+
+// recheckPrepared re-inspects the target of a merged prepare pull request at
+// once and writes target.readiness_changed when the verdict moved.
+func (w *ReviewWatch) recheckPrepared(ctx context.Context, t reviewTarget) {
+	if w.Readiness == nil || t.item.Target == nil {
+		return
+	}
+	before, after, seen, registered := w.Readiness.Recheck(ctx, *t.item.Target)
+	if !registered || after.Unknown || (seen && before.Ready == after.Ready) {
+		return
+	}
+	key, _ := w.Readiness.KeyOf(*t.item.Target)
+	w.log().Info("target readiness changed after its prepare pull request merged", "work_item", t.item.WorkItemID,
+		"target", key, "ready", after.Ready)
+	if err := w.Store.RecordReadinessChanged(ctx, t.item.WorkItemID, key, *t.item.Target, readinessWord(before, seen), readinessWord(after, true)); err != nil {
+		w.log().Error("target.readiness_changed not audited", "work_item", t.item.WorkItemID, "err", err)
+	}
+}
+
+func readinessWord(r target.Readiness, seen bool) string {
+	switch {
+	case !seen || r.Unknown:
+		return "unknown"
+	case r.Ready:
+		return "ready"
+	}
+	return "not_ready"
 }
 
 func (w *ReviewWatch) notify(ctx context.Context, t reviewTarget, next work.State) {

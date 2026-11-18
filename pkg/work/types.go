@@ -243,8 +243,11 @@ type WorkItem struct {
 	Team       string `json:"team"`       // team the item is queued for; empty until assigned
 	State      State  `json:"state"`
 	Origin     Origin `json:"origin"`
-	Priority   int    `json:"priority"` // rank mirrored from the tracker; drives queue order (R10)
-	Title      string `json:"title"`
+	// Kind is what the Work Item may deliver (ADR-0194); empty reads as
+	// KindChange.
+	Kind     Kind   `json:"kind,omitempty"`
+	Priority int    `json:"priority"` // rank mirrored from the tracker; drives queue order (R10)
+	Title    string `json:"title"`
 	// Description is the tracker item body (Vikunja sends HTML); the harness
 	// adapter composes it into the task prompt.
 	Description string `json:"description"`

@@ -19,7 +19,27 @@ type Readiness struct {
 	// Unknown means the forge could not be asked. It is not a verdict on the
 	// repository, so it is retried rather than trusted.
 	Unknown bool
-	Reason  string
+	// Reasons are the structured reasons a target that the forge described
+	// is not ready, in the order ReasonArchived, ReasonMirror,
+	// ReasonInstructionFileMissing (ADR-0194). Empty when Ready or Unknown,
+	// and when the target is not registered or its forge cannot describe it.
+	Reasons []string
+	// Reason is the sentence Ploeg comments and answers with.
+	Reason string
+}
+
+// The structured readiness reasons (ADR-0194).
+const (
+	ReasonArchived               = "archived"
+	ReasonMirror                 = "mirror"
+	ReasonInstructionFileMissing = "instruction_file_missing"
+)
+
+// PrepareAvailable reports whether the only thing keeping the target from
+// ready is its missing instruction file, so a prepare_repository Work Item
+// may make it ready (ADR-0194).
+func (r Readiness) PrepareAvailable() bool {
+	return !r.Ready && !r.Unknown && len(r.Reasons) == 1 && r.Reasons[0] == ReasonInstructionFileMissing
 }
 
 // Gate holds the readiness of every registered target. It is checked when the
@@ -95,6 +115,23 @@ func (g *Gate) KeyOf(t work.Target) (string, bool) {
 	return "", false
 }
 
+// Recheck inspects the registered target t now (ADR-0194), as after a merged
+// prepare pull request, and returns the verdict last seen before it and the
+// new one. registered is false when no key names t.
+func (g *Gate) Recheck(ctx context.Context, t work.Target) (before, after Readiness, seen, registered bool) {
+	if g == nil {
+		return Readiness{}, Readiness{}, false, false
+	}
+	key, ok := g.KeyOf(t)
+	if !ok {
+		return Readiness{}, Readiness{}, false, false
+	}
+	g.mu.Lock()
+	before, seen = g.verdicts[key]
+	g.mu.Unlock()
+	return before, g.Check(ctx, key), seen, true
+}
+
 func (g *Gate) inspect(ctx context.Context, t work.Target) Readiness {
 	inspector, ok := g.inspectors[t.Forge]
 	if !ok {
@@ -104,18 +141,19 @@ func (g *Gate) inspect(ctx context.Context, t work.Target) Readiness {
 	if err != nil {
 		return Readiness{Unknown: true, Reason: fmt.Sprintf("could not read %s/%s from forge %q: %v", t.Owner, t.Repo, t.Forge, err)}
 	}
-	var reasons []string
+	var reasons, sentences []string
 	if state.Archived {
-		reasons = append(reasons, "is archived")
+		reasons, sentences = append(reasons, ReasonArchived), append(sentences, "is archived")
 	}
 	if state.Mirror {
-		reasons = append(reasons, "is a mirror")
+		reasons, sentences = append(reasons, ReasonMirror), append(sentences, "is a mirror")
 	}
 	if !state.AgentsFile {
-		reasons = append(reasons, fmt.Sprintf("has no AGENTS.md on branch %q", state.Branch))
+		reasons = append(reasons, ReasonInstructionFileMissing)
+		sentences = append(sentences, fmt.Sprintf("has no AGENTS.md on branch %q", state.Branch))
 	}
 	if len(reasons) > 0 {
-		return Readiness{Reason: fmt.Sprintf("%s/%s %s", t.Owner, t.Repo, strings.Join(reasons, ", "))}
+		return Readiness{Reasons: reasons, Reason: fmt.Sprintf("%s/%s %s", t.Owner, t.Repo, strings.Join(sentences, ", "))}
 	}
 	return Readiness{Ready: true}
 }

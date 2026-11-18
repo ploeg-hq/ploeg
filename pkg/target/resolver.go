@@ -85,6 +85,9 @@ type Refusal struct {
 	// Allowed are the repo/ labels the matched board rule allows, sorted; empty
 	// and non-nil when no rule matched or the caller cannot know them.
 	Allowed []string
+	// PrepareAvailable is set on a target_not_ready refusal whose only
+	// readiness reason is the missing instruction file (ADR-0194).
+	PrepareAvailable bool
 }
 
 func (r *Refusal) Error() string { return r.Reason }

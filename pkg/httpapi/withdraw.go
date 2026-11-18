@@ -151,27 +151,37 @@ func (s *Server) handleOperatorCancel(w http.ResponseWriter, r *http.Request) {
 		operatorError(w, 503, "unavailable", "Ploeg could not confirm the cancellation.")
 		return
 	}
+	var prepared *store.PrepareCancelled
 	if wd.Withdrawn {
 		s.notifyWithdrawn(r.Context(), id, actor)
+		prepared = s.closePreparePullRequest(r.Context(), id, actor)
 	}
 	var shift *string
 	if wd.ShiftID != 0 {
 		value := strconv.FormatInt(wd.ShiftID, 10)
 		shift = &value
 	}
+	cancellation := map[string]any{
+		"workItemId":    strconv.FormatInt(id, 10),
+		"state":         string(wd.State),
+		"withdrawn":     wd.Withdrawn,
+		"shiftId":       shift,
+		"cancelledRuns": wd.CancelledRuns,
+		"stoppedRuns":   len(wd.StoppedRunTokens),
+		"keysBlocked":   blocked,
+		"commandId":     optionalString(wd.CommandID),
+		"replayed":      wd.Replayed,
+	}
+	if prepared != nil {
+		state := "open"
+		if prepared.Closed {
+			state = "closed"
+		}
+		cancellation["pullRequest"] = map[string]any{"url": prepared.PullRequestURL, "state": state}
+	}
 	operatorJSON(w, 200, map[string]any{
 		"schemaVersion": "1.0",
-		"cancellation": map[string]any{
-			"workItemId":    strconv.FormatInt(id, 10),
-			"state":         string(wd.State),
-			"withdrawn":     wd.Withdrawn,
-			"shiftId":       shift,
-			"cancelledRuns": wd.CancelledRuns,
-			"stoppedRuns":   len(wd.StoppedRunTokens),
-			"keysBlocked":   blocked,
-			"commandId":     optionalString(wd.CommandID),
-			"replayed":      wd.Replayed,
-		},
+		"cancellation":  cancellation,
 	})
 }
 
