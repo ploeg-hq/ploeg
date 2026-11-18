@@ -441,6 +441,10 @@ func run(ctx context.Context, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	runtimeConns, err := runtimeConnections(log, cfg, st, secrets, trackers, forges)
+	if err != nil {
+		return fmt.Errorf("connections: %w", err)
+	}
 	srv := &httpapi.Server{
 		OperatorConfig: operator,
 		WorkerSecurity: workerSecurity,
@@ -459,9 +463,12 @@ func run(ctx context.Context, log *slog.Logger) error {
 		Forges:         forges,
 		ForgeCreds:     forgeCreds,
 		SecretStore:    secrets,
-		ClaimForges:    release.directory(),
-		ClaudeSessions: claudeSessions(log),
-		CreatedWork:    createdWork,
+
+		ConnectionService:    runtimeConns,
+		RegisteredRepository: registeredRepository(cfg, forgeID),
+		ClaimForges:          release.directory(),
+		ClaudeSessions:       claudeSessions(log),
+		CreatedWork:          createdWork,
 
 		MetricsCacheTTL:  durationOr("PLOEG_METRICS_CACHE_TTL", httpapi.DefaultMetricsCacheTTL),
 		AskAllowanceUSD:  askAllowance,
@@ -571,6 +578,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 		loops.Go(func() { pullRequestReadLoop(ctx, readPullRequests, reviewEvery) })
 	}
 	loops.Go(func() { deployCheckLoop(ctx, srv, deployCheckEvery) })
+	loops.Go(func() { connectionReconcileLoop(ctx, runtimeConns, time.Hour) })
 	if srv.Notes != nil {
 		notesEvery := durationOr("PLOEG_NOTES_WRITE_INTERVAL", 15*time.Second)
 		loops.Go(func() { noteWriteLoop(ctx, srv, notesEvery) })
