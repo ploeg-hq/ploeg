@@ -632,8 +632,16 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	if writes {
 		gitEnv = gitAuthenticationEnvironment(cloneURL, forgeToken)
 	}
+	var deliverable *deliverableFence
+	if writes && item.PreparesRepository() {
+		if forgeToken == "" || w.Cfg.ForgeTokenIsolation != ForgeTokenIsolationProxy {
+			return stuckReport("a prepare_repository Run needs the worker's forge proxy",
+				"Ploeg enforces a prepare Run's one deliverable at the forge proxy (ADR-0194), and this worker hands the harness its forge token: set PLOEG_FORGE_TOKEN_ISOLATION=proxy")
+		}
+		deliverable = &deliverableFence{dir: cloneDir, cloneURL: cloneURL, base: ref.BaseBranch, start: baseline.start, token: forgeCred.current}
+	}
 	if writes && forgeToken != "" && w.Cfg.ForgeTokenIsolation == ForgeTokenIsolationProxy {
-		forgeProxy, err := startForgeTokenProxy(ref, forgeCred, forgeWriter, branch, leaks)
+		forgeProxy, err := startForgeTokenProxy(ref, forgeCred, forgeWriter, branch, leaks, deliverable)
 		if err != nil {
 			return stuckReport("could not isolate the forge token", err.Error())
 		}
@@ -711,6 +719,7 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	final := resolveOutcome(w.Adapter.Name(), report, runErr, context.Cause(ctx), prURL, samePullRequest(prior, after),
 		item.Title, branch, redactedOutput(logTail.Bytes(), leaks.watch), w.Adapter.ExpectsLLM(), writes)
 	final = withReviewedCommit(final, branch, prURL, reviewedCommit)
+	final = deliverable.checkDelivered(final, after.HeadSHA)
 	final = guardUnpublishedWork(context.WithoutCancel(ctx), final, deliveryCheck{
 		writes: writes, dir: cloneDir, cloneURL: cloneURL, token: forgeToken, branch: branch, baseline: baseline, prErr: prErr,
 	})

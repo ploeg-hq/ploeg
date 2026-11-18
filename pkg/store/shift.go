@@ -480,11 +480,11 @@ func startPendingRun(ctx context.Context, tx pgx.Tx, p pendingRun, ttl time.Dura
 		WHERE id = $1 AND NOT operator_owned
 		RETURNING provider, external_id, revision, team, origin, priority, title, description, url,
 			external_scope, target_forge, target_owner, target_repo, target_base_branch, route_rule, route_hint,
-			COALESCE(source_work_item_id::text, ''), source_branch, source_pr`,
+			COALESCE(source_work_item_id::text, ''), source_branch, source_pr, kind`,
 		workItemID).Scan(&it.Provider, &it.ExternalID, &it.Revision, &it.Team, &it.Origin,
 		&it.Priority, &it.Title, &it.Description, &it.URL,
 		&it.ExternalScope, &tg.Forge, &tg.Owner, &tg.Repo, &tg.BaseBranch, &it.RouteRule, &it.RouteHint,
-		&it.SourceWorkItemID, &it.SourceBranch, &it.SourcePR); err != nil {
+		&it.SourceWorkItemID, &it.SourceBranch, &it.SourcePR, &it.Kind); err != nil {
 		return nil, err
 	}
 	it.ID = fmt.Sprint(workItemID)
@@ -730,6 +730,9 @@ type ShiftInfo struct {
 	// Origin is the Work Item's origin. A Shift on a Work Item of
 	// OriginPullRequest runs only reading Roles (ADR-0109).
 	Origin work.Origin
+	// Kind is the Work Item's kind. A prepare_repository Shift runs no fix
+	// round (ADR-0194).
+	Kind work.Kind
 }
 
 // LiveShifts enumerates every open Shift — the sweeper's worklist. Without
@@ -737,7 +740,7 @@ type ShiftInfo struct {
 // outcome report and its evaluation would strand the Shift forever (R2).
 func (s *Store) LiveShifts(ctx context.Context) ([]ShiftInfo, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT s.id, s.work_item_id, s.team, s.round, s.branch, w.origin FROM shifts s
+		SELECT s.id, s.work_item_id, s.team, s.round, s.branch, w.origin, w.kind FROM shifts s
 		JOIN work_items w ON w.id = s.work_item_id
 		WHERE s.closed_at IS NULL AND NOT EXISTS(SELECT 1 FROM operator_executions e WHERE e.shift_id=s.id) ORDER BY s.id`)
 	if err != nil {
@@ -747,7 +750,7 @@ func (s *Store) LiveShifts(ctx context.Context) ([]ShiftInfo, error) {
 	var out []ShiftInfo
 	for rows.Next() {
 		var si ShiftInfo
-		if err := rows.Scan(&si.ID, &si.WorkItemID, &si.Team, &si.Round, &si.Branch, &si.Origin); err != nil {
+		if err := rows.Scan(&si.ID, &si.WorkItemID, &si.Team, &si.Round, &si.Branch, &si.Origin, &si.Kind); err != nil {
 			return nil, err
 		}
 		out = append(out, si)
@@ -797,7 +800,7 @@ func (s *Store) ShiftInfoByID(ctx context.Context, shiftID int64) (ShiftInfo, er
 }
 
 const liveShiftForItemQuery = `
-		SELECT s.id, s.work_item_id, s.team, s.round, s.branch, w.origin FROM shifts s
+		SELECT s.id, s.work_item_id, s.team, s.round, s.branch, w.origin, w.kind FROM shifts s
 		JOIN work_items w ON w.id = s.work_item_id
 		WHERE s.work_item_id = $1 AND s.closed_at IS NULL AND NOT EXISTS(SELECT 1 FROM operator_executions e WHERE e.shift_id=s.id)`
 
@@ -807,7 +810,7 @@ const liveShiftForItemQuery = `
 func (s *Store) LiveShiftForItem(ctx context.Context, workItemID int64) (*ShiftInfo, error) {
 	var si ShiftInfo
 	err := s.pool.QueryRow(ctx, liveShiftForItemQuery, workItemID).
-		Scan(&si.ID, &si.WorkItemID, &si.Team, &si.Round, &si.Branch, &si.Origin)
+		Scan(&si.ID, &si.WorkItemID, &si.Team, &si.Round, &si.Branch, &si.Origin, &si.Kind)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}

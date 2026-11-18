@@ -81,7 +81,7 @@ func TestRouteRefusalsStayInsideTheConsumersTeams(t *testing.T) {
 		{Provider: "vikunja", ExternalID: "5201", ExternalScope: "10", Team: "silver", Title: "visible refusal"},
 		{Provider: "vikunja", ExternalID: "5202", ExternalScope: "10", Team: "gold", Title: "hidden refusal"},
 	} {
-		if err := testStore.RefuseRoute(ctx, item, "label_missing", "needs a label", []string{"repo/app"}); err != nil {
+		if err := testStore.RefuseRoute(ctx, item, "label_missing", "needs a label", []string{"repo/app"}, false); err != nil {
 			t.Fatal(err)
 		}
 	}

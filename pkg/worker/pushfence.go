@@ -24,6 +24,7 @@ var errUnparseablePush = errors.New("the push's ref update list is not a well-fo
 
 type pushFence struct {
 	runBranchRef string
+	deliverable  *deliverableFence
 }
 
 func newPushFence(runBranch string) pushFence {
@@ -89,6 +90,9 @@ func (f pushFence) permits(u refUpdate) (refusalReason, error) {
 	}
 	if u.deletes() {
 		return refusalBranchDeletion, fmt.Errorf("this Run may not delete its own branch %s", u.ref)
+	}
+	if f.deliverable != nil {
+		return f.deliverable.admit(u)
 	}
 	return "", nil
 }

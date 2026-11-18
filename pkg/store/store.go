@@ -304,7 +304,7 @@ func trackerEstimate(item work.WorkItem) *int64 {
 // RefuseRoute records a tracker item that routing refused (ADR-0038): an
 // audit row and no Work Item, so nothing is queued anywhere. code is a
 // target.Refusal code and allowed the repo/ labels the board allows.
-func (s *Store) RefuseRoute(ctx context.Context, item work.WorkItem, code, reason string, allowed []string) error {
+func (s *Store) RefuseRoute(ctx context.Context, item work.WorkItem, code, reason string, allowed []string, prepareAvailable bool) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -315,7 +315,7 @@ func (s *Store) RefuseRoute(ctx context.Context, item work.WorkItem, code, reaso
 	}
 	detail := map[string]any{"external_id": item.ExternalID, "team": item.Team, "title": item.Title,
 		"external_scope": item.ExternalScope, "labels": item.Labels, "reason": reason,
-		"code": code, "allowed_labels": allowed}
+		"code": code, "allowed_labels": allowed, "prepare_available": prepareAvailable}
 	if err := audit(ctx, tx, "webhook:"+item.Provider, "work_item.route_refused", nil, detail); err != nil {
 		return err
 	}
@@ -378,10 +378,10 @@ func (s *Store) ClaimWithin(ctx context.Context, team string, ttl time.Duration,
 		WHERE id = (`+nextClaimableQuery+`)
 		RETURNING id, provider, external_id, revision, team, origin, priority, title, description, url,
 			external_scope, target_forge, target_owner, target_repo, target_base_branch, route_rule, route_hint,
-			COALESCE(source_work_item_id::text, ''), source_branch, source_pr`,
+			COALESCE(source_work_item_id::text, ''), source_branch, source_pr, kind`,
 		team).Scan(&id, &it.Provider, &it.ExternalID, &it.Revision, &it.Team, &it.Origin, &it.Priority, &it.Title, &it.Description, &it.URL,
 		&it.ExternalScope, &t.Forge, &t.Owner, &t.Repo, &t.BaseBranch, &it.RouteRule, &it.RouteHint,
-		&it.SourceWorkItemID, &it.SourceBranch, &it.SourcePR)
+		&it.SourceWorkItemID, &it.SourceBranch, &it.SourcePR, &it.Kind)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNoWork
 	}
@@ -921,12 +921,12 @@ func (s *Store) WorkItem(ctx context.Context, id int64) (work.WorkItem, error) {
 	err := s.pool.QueryRow(ctx, `
 		SELECT provider, external_id, revision, team, state, origin, priority, title, description, url,
 			external_scope, target_forge, target_owner, target_repo, target_base_branch, route_rule, route_hint,
-			COALESCE(source_work_item_id::text, ''), source_branch, source_pr
+			COALESCE(source_work_item_id::text, ''), source_branch, source_pr, kind
 		FROM work_items WHERE id = $1`, id).
 		Scan(&it.Provider, &it.ExternalID, &it.Revision, &it.Team, &it.State, &it.Origin,
 			&it.Priority, &it.Title, &it.Description, &it.URL,
 			&it.ExternalScope, &t.Forge, &t.Owner, &t.Repo, &t.BaseBranch, &it.RouteRule, &it.RouteHint,
-			&it.SourceWorkItemID, &it.SourceBranch, &it.SourcePR)
+			&it.SourceWorkItemID, &it.SourceBranch, &it.SourcePR, &it.Kind)
 	if err != nil {
 		return work.WorkItem{}, err
 	}

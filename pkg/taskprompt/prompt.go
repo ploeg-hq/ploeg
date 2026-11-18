@@ -56,7 +56,12 @@ func Compose(spec harness.TaskSpec, writes bool, priorPR string, onReviewBranch 
 	if spec.Role != "" {
 		fmt.Fprintf(&b, "# Your role: %s\n\n", spec.Role)
 	}
-	writeWorkItem(&b, ref, item)
+	prepare := item.PreparesRepository()
+	if prepare && writes {
+		writePrepareBrief(&b, ref)
+	} else {
+		writeWorkItem(&b, ref, item)
+	}
 	writeYourRun(&b, spec, writes)
 	writeContext(&b, spec)
 	if writes {
@@ -129,6 +134,9 @@ func Compose(spec harness.TaskSpec, writes bool, priorPR string, onReviewBranch 
 `, priorPR, noun)
 		}
 		writeReaderRepositoryInstructions(&b, base, onReviewBranch)
+		if prepare {
+			writePrepareReview(&b)
+		}
 		return b.String()
 	}
 
@@ -200,7 +208,11 @@ func Compose(spec harness.TaskSpec, writes bool, priorPR string, onReviewBranch 
 - If the Work Item cannot be completed, explain why on stderr and exit non-zero.
 `, noun)
 	writeBlackboardContract(&b, spec, true)
-	writeWriterRepositoryInstructions(&b, noun)
+	if prepare {
+		writePrepareRepositoryInstructions(&b, noun)
+	} else {
+		writeWriterRepositoryInstructions(&b, noun)
+	}
 	return b.String()
 }
 

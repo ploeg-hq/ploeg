@@ -489,6 +489,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 		RunIdentityAudiences:  identityAudiences,
 		TransactionTokens:     transactionTokens,
 		TeamSponsors:          cfg.Sponsors(),
+		PrepareRepositoryCaps: cfg.PrepareRepositoryCaps(),
 	}
 	if notes != nil {
 		srv.Notes = notes
@@ -518,6 +519,9 @@ func run(ctx context.Context, log *slog.Logger) error {
 			Log:             log,
 		}
 		reviews.Conflicts = srv
+		if readiness != nil {
+			reviews.Readiness = readiness
+		}
 		srv.Reviews = reviews
 		log.Info("pull request merge detection enabled", "reconcile_every", reviewEvery,
 			"tracker_done_on_merge", reviews.MarkTrackerDone)

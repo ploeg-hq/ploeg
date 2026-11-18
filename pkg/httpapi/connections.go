@@ -126,16 +126,20 @@ type connectionsResponse struct {
 }
 
 type connectionRepositoryV1 struct {
-	Key             string     `json:"key"`
-	Label           *string    `json:"label"`
-	Forge           string     `json:"forge"`
-	Owner           string     `json:"owner"`
-	Repo            string     `json:"repo"`
-	BaseBranch      string     `json:"baseBranch"`
-	Readiness       string     `json:"readiness"`
-	Reason          string     `json:"reason"`
-	LastForgeEvent  *time.Time `json:"lastForgeEventAt"`
-	BoardsRoutingTo []string   `json:"boards"`
+	Key        string  `json:"key"`
+	Label      *string `json:"label"`
+	Forge      string  `json:"forge"`
+	Owner      string  `json:"owner"`
+	Repo       string  `json:"repo"`
+	BaseBranch string  `json:"baseBranch"`
+	Readiness  string  `json:"readiness"`
+	Reason     string  `json:"reason"`
+	// PrepareAvailable is true when the repository is a registered target
+	// whose only readiness reason is its missing instruction file, so a
+	// prepare_repository Admission may make it ready (ADR-0194).
+	PrepareAvailable bool       `json:"prepareAvailable"`
+	LastForgeEvent   *time.Time `json:"lastForgeEventAt"`
+	BoardsRoutingTo  []string   `json:"boards"`
 }
 
 type connectionBoardV1 struct {
@@ -267,6 +271,7 @@ func connectionRepository(ctx context.Context, c *Connections, repo ConnectionRe
 			view.Reason = v.Reason
 		default:
 			view.Readiness, view.Reason = "not_ready", v.Reason
+			view.PrepareAvailable = repo.Label != "" && v.PrepareAvailable()
 		}
 	}
 	if at, ok := events[store.ForgeEventKey(forge, t.Owner+"/"+t.Repo)]; ok {

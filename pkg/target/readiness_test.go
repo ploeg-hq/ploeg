@@ -107,3 +107,60 @@ func TestGateCheckSeesATargetThatBecameUnready(t *testing.T) {
 		t.Error("an unregistered target must have no key")
 	}
 }
+
+func TestGateReturnsStructuredReasonsAndOffersThePrepareOnlyForTheMissingFileAlone(t *testing.T) {
+	inspector := &fakeInspector{states: map[string]provider.RepositoryState{
+		"webgrip/bare":            {},
+		"webgrip/archived":        {Archived: true},
+		"webgrip/archived-with":   {Archived: true, AgentsFile: true},
+		"webgrip/mirror":          {Mirror: true},
+		"webgrip/archived-mirror": {Archived: true, Mirror: true},
+		"webgrip/app":             {AgentsFile: true},
+	}}
+	targets := map[string]work.Target{}
+	for repo := range inspector.states {
+		targets[strings.TrimPrefix(repo, "webgrip/")] = work.Target{Forge: "forgejo", Owner: "webgrip", Repo: strings.TrimPrefix(repo, "webgrip/")}
+	}
+	targets["gitlab"] = work.Target{Forge: "gitlab", Owner: "acme", Repo: "app"}
+	targets["missing"] = work.Target{Forge: "forgejo", Owner: "webgrip", Repo: "missing"}
+	verdicts := gateFor(inspector, targets).Load(context.Background())
+
+	for key, want := range map[string]struct {
+		reasons []string
+		prepare bool
+	}{
+		"bare":            {reasons: []string{ReasonInstructionFileMissing}, prepare: true},
+		"archived":        {reasons: []string{ReasonArchived, ReasonInstructionFileMissing}},
+		"archived-with":   {reasons: []string{ReasonArchived}},
+		"mirror":          {reasons: []string{ReasonMirror, ReasonInstructionFileMissing}},
+		"archived-mirror": {reasons: []string{ReasonArchived, ReasonMirror, ReasonInstructionFileMissing}},
+		"app":             {},
+		"gitlab":          {},
+		"missing":         {},
+	} {
+		v := verdicts[key]
+		if strings.Join(v.Reasons, ",") != strings.Join(want.reasons, ",") || v.PrepareAvailable() != want.prepare {
+			t.Errorf("%s = %+v (prepare %v), want reasons %v and prepare %v", key, v, v.PrepareAvailable(), want.reasons, want.prepare)
+		}
+	}
+	if !strings.Contains(verdicts["archived"].Reason, `is archived, has no AGENTS.md on branch ""`) {
+		t.Errorf("the sentence changed: %q", verdicts["archived"].Reason)
+	}
+}
+
+func TestGateRecheckReportsTheVerdictBeforeAndAfter(t *testing.T) {
+	inspector := &fakeInspector{states: map[string]provider.RepositoryState{"webgrip/bare": {}}}
+	bare := work.Target{Forge: "forgejo", Owner: "webgrip", Repo: "bare"}
+	g := gateFor(inspector, map[string]work.Target{"bare": bare})
+	g.Load(context.Background())
+	inspector.states["webgrip/bare"] = provider.RepositoryState{AgentsFile: true}
+
+	before, after, seen, registered := g.Recheck(context.Background(), bare)
+
+	if !registered || !seen || before.Ready || !after.Ready {
+		t.Errorf("recheck = %+v -> %+v (seen %v, registered %v), want not ready then ready", before, after, seen, registered)
+	}
+	if _, _, _, registered := g.Recheck(context.Background(), work.Target{Owner: "o", Repo: "r"}); registered {
+		t.Error("an unregistered target was rechecked")
+	}
+}

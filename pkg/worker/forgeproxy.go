@@ -31,7 +31,7 @@ type forgeTokenProxy struct {
 	placeholder string
 }
 
-func startForgeTokenProxy(repo harness.RepoRef, tokens forgeTokenSource, access forgeAccess, runBranch string, leaks leakScope) (*forgeTokenProxy, error) {
+func startForgeTokenProxy(repo harness.RepoRef, tokens forgeTokenSource, access forgeAccess, runBranch string, leaks leakScope, deliverable ...*deliverableFence) (*forgeTokenProxy, error) {
 	target, err := url.Parse(repo.ForgeURL)
 	if err != nil || target.Host == "" || (target.Scheme != "http" && target.Scheme != "https") {
 		return nil, fmt.Errorf("forge URL %q is not absolute", repo.ForgeURL)
@@ -44,6 +44,9 @@ func startForgeTokenProxy(repo harness.RepoRef, tokens forgeTokenSource, access 
 		return nil, fmt.Errorf("a writer's forge proxy needs the Run's branch to fence pushes to")
 	}
 	fence := newPushFence(runBranch)
+	if len(deliverable) > 0 {
+		fence.deliverable = deliverable[0]
+	}
 	leaks.watch.guard(credentialForgeToken, token)
 	placeholder, err := randomPlaceholder()
 	if err != nil {

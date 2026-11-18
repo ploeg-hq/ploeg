@@ -46,6 +46,9 @@ type ReviewItem struct {
 	// writer's delivered head, or else the head the forge CI gate last
 	// waited on for the last Shift. Empty when neither is known.
 	GatedHead string
+	// Kind is the Work Item's kind: a merged prepare_repository pull request
+	// re-inspects its target (ADR-0194).
+	Kind work.Kind
 }
 
 // CloseReasonPullRequestClosed replaces the close reason of a CI-parked Work
@@ -70,7 +73,8 @@ const reviewItemSelect = `
 		       COALESCE(lastshift.id, 0), COALESCE(lastshift.branch, ''),
 		       w.state = 'needs_human',
 		       COALESCE((SELECT g.head_sha FROM forge_ci_gates g WHERE g.shift_id = lastshift.id
-		                 ORDER BY g.waiting_since DESC LIMIT 1), '')
+		                 ORDER BY g.waiting_since DESC LIMIT 1), ''),
+		       w.kind
 		FROM work_items w
 		LEFT JOIN LATERAL (SELECT sh.id, sh.branch FROM shifts sh WHERE sh.work_item_id = w.id
 		                   ORDER BY sh.id DESC LIMIT 1) lastshift ON true
@@ -133,7 +137,7 @@ func (s *Store) reviewItems(ctx context.Context, query string, args ...any) ([]R
 		var delivery []byte
 		if err := rows.Scan(&it.WorkItemID, &it.Provider, &it.ExternalID,
 			&t.Forge, &t.Owner, &t.Repo, &t.BaseBranch, &it.Links, &delivery, &it.Origin, &it.SourcePR, &it.ShiftID, &it.Branch,
-			&it.CIParked, &it.GatedHead); err != nil {
+			&it.CIParked, &it.GatedHead, &it.Kind); err != nil {
 			return nil, err
 		}
 		if delivery != nil {
