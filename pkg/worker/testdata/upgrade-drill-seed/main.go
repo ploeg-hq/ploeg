@@ -119,12 +119,15 @@ func newClient(api, workerVersion string) *worker.APIClient {
 
 func claimIsolated(client *worker.APIClient) {
 	fields := reflect.ValueOf(client).Elem()
-	llm := fields.FieldByName("LLMKeyIsolation")
-	if !llm.IsValid() || llm.Kind() != reflect.String {
+	if llm := fields.FieldByName("LLMKeyIsolation"); !llm.IsValid() || llm.Kind() != reflect.String {
 		return
 	}
-	llm.SetString("proxy")
-	for name, value := range map[string]string{"ForgeTokenIsolation": "proxy", "Harness": "exec"} {
+	setClaimFields(client, map[string]string{"LLMKeyIsolation": "proxy", "ForgeTokenIsolation": "proxy", "Harness": "exec"})
+}
+
+func setClaimFields(client *worker.APIClient, values map[string]string) {
+	fields := reflect.ValueOf(client).Elem()
+	for name, value := range values {
 		if field := fields.FieldByName(name); field.IsValid() && field.Kind() == reflect.String {
 			field.SetString(value)
 		}
@@ -456,6 +459,7 @@ func hold(ctx context.Context, args []string) error {
 		return nil
 	}
 	r.account, r.branch = "", ""
+	setClaimFields(client, map[string]string{"LLMKeyIsolation": "", "ForgeTokenIsolation": "", "Harness": ""})
 	again, err := r.start(ctx, client)
 	if err != nil || again == nil {
 		return err
