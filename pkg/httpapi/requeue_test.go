@@ -228,7 +228,7 @@ func TestOperatorRequeueReRunsTheReviewWithABriefing(t *testing.T) {
 		t.Fatalf("tracker restart comments = %v, want 1", comments)
 	}
 
-	code, claim := postClaim(t, f.server.Handler(), `{"team":"bronze","role":"reviewer"}`)
+	code, claim := postClaim(t, f.server.Handler(), `{"team":"bronze","role":"reviewer","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	if code != 200 || claim.Round != 2 || fmt.Sprint(claim.Shift) != *got.ShiftID {
 		t.Fatalf("reviewer claim: %d %+v", code, claim)
 	}
@@ -243,7 +243,7 @@ func TestOperatorRequeueReRunsTheReviewWithABriefing(t *testing.T) {
 			t.Errorf("briefing does not carry %q:\n%s", want, brief)
 		}
 	}
-	if code, _ := postClaim(t, f.server.Handler(), `{"team":"bronze","role":"builder"}`); code != http.StatusNoContent {
+	if code, _ := postClaim(t, f.server.Handler(), `{"team":"bronze","role":"builder","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`); code != http.StatusNoContent {
 		t.Errorf("builder claim = %d, want 204: the writing Round is not run again", code)
 	}
 
@@ -278,7 +278,7 @@ func TestOperatorRequeueWithoutABodyStartsAgainFromRoundOne(t *testing.T) {
 	if got.FromRound != 1 || got.PoolUSD != 10 || got.CommandID != nil || got.ShiftID == nil {
 		t.Fatalf("requeue = %+v, want Round 1 with the plan's pool", got)
 	}
-	code, claim := postClaim(t, f.server.Handler(), `{"team":"bronze","role":"builder"}`)
+	code, claim := postClaim(t, f.server.Handler(), `{"team":"bronze","role":"builder","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	if code != 200 || claim.Round != 1 {
 		t.Fatalf("builder claim: %d %+v", code, claim)
 	}

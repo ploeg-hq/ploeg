@@ -10,18 +10,14 @@ SEPARATE = {
 }
 SHARED = {
     'executor-harness-container-shared',
-    'executor-acknowledged-dind',
-    'executor-isolation-disabled',
 }
 POD_SHAPES = {
     'executor-isolation': {
         'ScaledJob/ploeg-worker-qualified': True,
+        'ScaledJob/ploeg-worker-exec': True,
         'ScaledJob/ploeg-worker-acp-openhands': True,
         'ScaledJob/ploeg-worker-override-optin': True,
-        'ScaledJob/ploeg-worker-dind': False,
-        'ScaledJob/ploeg-worker-unqualified': False,
-        'ScaledJob/ploeg-worker-acp-opencode': False,
-        'ScaledJob/ploeg-worker-override-builder': False,
+        'ScaledJob/ploeg-worker-override-builder': True,
     },
 }
 

@@ -108,12 +108,12 @@ func TestClientCarriedRunIsNeverClaimedByAWorker(t *testing.T) {
 	id := clientCarriedWork(t, s, "1301", "ryan", clientPerson)
 	h := s.Handler()
 	for _, body := range []string{
-		`{"team":"bronze","role":"builder"}`,
-		`{"team":"bronze","role":"builder","harness":"claude-environment"}`,
-		`{"team":"bronze"}`,
+		`{"team":"bronze","role":"builder","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`,
+		`{"team":"bronze","role":"builder","harness":"claude-environment","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`,
+		`{"team":"bronze","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`,
 	} {
-		if code, _ := postClaim(t, h, body); code != http.StatusNoContent {
-			t.Errorf("worker claim %s answered %d, want 204", body, code)
+		if code, _ := postClaim(t, h, body); code == http.StatusOK {
+			t.Errorf("worker claim %s answered %d, want no Run claimed", body, code)
 		}
 	}
 	if got := runStates(t, id); got != "pending" {
@@ -355,7 +355,7 @@ func TestATrackerWorkItemActsForThePersonItsHandingUserMapsTo(t *testing.T) {
 	if got := countRows(t, `SELECT count(*) FROM agent_runs WHERE carrier = 'client' AND state = 'pending'`); got != 1 {
 		t.Fatalf("pending client-carried Runs = %d, want the one Run still waiting", got)
 	}
-	if code, _ := postClaim(t, s.Handler(), `{"team":"bronze"}`); code != http.StatusNoContent {
+	if code, _ := postClaim(t, s.Handler(), `{"team":"bronze","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`); code != http.StatusNoContent {
 		t.Fatalf("a worker claimed the client-carried Run: %d", code)
 	}
 }

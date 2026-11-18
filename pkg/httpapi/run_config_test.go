@@ -81,7 +81,7 @@ func TestClaimRecordsTheRunsConfigurationAndOperatorReadsReturnIt(t *testing.T) 
 	consumers, operator := operatorTestConsumers(t, []string{"bronze"}, false)
 	s.OperatorConfig = OperatorConfig{Consumers: consumers}
 
-	w := workerRequest(s, "POST", "/api/v1/claim", bootstrap, "pod", `{"team":"bronze","role":"reviewer","harness":"acp","harnessProfile":"opencode"}`)
+	w := workerRequest(s, "POST", "/api/v1/claim", bootstrap, "pod", `{"team":"bronze","role":"reviewer","harness":"acp","harnessProfile":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	var claim struct {
 		RunToken string `json:"runToken"`
 	}
@@ -98,7 +98,7 @@ func TestClaimRecordsTheRunsConfigurationAndOperatorReadsReturnIt(t *testing.T) 
 			t.Fatalf("%s: no Run carries the configuration fields", endpoint)
 		}
 		for _, v := range views {
-			if strOf(v.ConfiguredModel) != "trusted-model" || strOf(v.Harness) != "acp" || strOf(v.HarnessProfile) != "opencode" ||
+			if strOf(v.ConfiguredModel) != "trusted-model" || strOf(v.Harness) != "acp" || strOf(v.HarnessProfile) != "openhands" ||
 				strOf(v.PlanHash) != plans.Hash("bronze") || strOf(v.PloegdVersion) != "1.2.3-test" ||
 				v.ModelMismatch == nil || !*v.ModelMismatch {
 				t.Fatalf("%s: run configuration = %+v (model %s, harness %s, profile %s, plan %s, version %s)", endpoint, v,

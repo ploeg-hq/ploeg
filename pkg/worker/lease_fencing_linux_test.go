@@ -257,7 +257,7 @@ func (cp *controlPlane) itemState(workItemID int64) string {
 }
 
 func (cp *controlPlane) client() *APIClient {
-	return &APIClient{Base: cp.url, HC: &http.Client{Timeout: 10 * time.Second}}
+	return &APIClient{Base: cp.url, HC: &http.Client{Timeout: 10 * time.Second}, Harness: "exec", ForgeTokenIsolation: ForgeTokenIsolationProxy, LLMKeyIsolation: KeyIsolationProxy}
 }
 
 type partition struct {
@@ -400,6 +400,7 @@ func startWorker(t *testing.T, cp *controlPlane, forge *writerForge, team, role 
 		RepoOwner: "webgrip", RepoName: "example", BaseBranch: "development", WorkDir: t.TempDir(), Team: team, Role: role},
 		adapter, llmbroker.Static{}, discardLog())
 	w.API.HC = &http.Client{Transport: net, Timeout: 10 * time.Second}
+	w.API.Harness, w.API.ForgeTokenIsolation, w.API.LLMKeyIsolation = "exec", ForgeTokenIsolationProxy, KeyIsolationProxy
 	w.RenewTicks = ticks.start
 	clock := newManualClock()
 	w.clock = clock

@@ -186,6 +186,7 @@ func New(cfg Config, adapter harness.Adapter, broker llmbroker.Broker, log *slog
 		api.Yields = harness.AdapterYields(adapter)
 	}
 	api.ForgeTokenIsolation = cfg.ForgeTokenIsolation
+	api.LLMKeyIsolation = cfg.LLMKeyIsolation
 	if broker == nil && cfg.CredentialGateway {
 		broker = gatewayBroker{api: api}
 	}

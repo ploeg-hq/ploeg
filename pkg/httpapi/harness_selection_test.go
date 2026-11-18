@@ -16,6 +16,7 @@ import (
 const selectionHarnesses = `{"bronze":{
 	"builder":{"name":"openhands","allowed":[
 		{"name":"openhands","qualification":"qualified"},
+		{"name":"acp","profile":"openhands","qualification":"qualified"},
 		{"name":"acp","profile":"opencode","qualification":"qualified"},
 		{"name":"acp","profile":"qwen-code","qualification":"unqualified"}]},
 	"reviewer":{"name":"openhands","allowed":[{"name":"openhands","qualification":"qualified"}]}}}`
@@ -126,7 +127,7 @@ func (f selectionFixture) admitSelection(t *testing.T, body map[string]any, stat
 
 func (f selectionFixture) claim(t *testing.T, harness, profile string) (int, map[string]any) {
 	t.Helper()
-	body, _ := json.Marshal(map[string]string{"team": "bronze", "role": "builder", "harness": harness, "harnessProfile": profile})
+	body, _ := json.Marshal(map[string]string{"team": "bronze", "role": "builder", "harness": harness, "harnessProfile": profile, "forgeTokenIsolation": "proxy", "llmKeyIsolation": "proxy"})
 	w := workerRequest(f.server, "POST", "/api/v1/claim", f.bootstrap, "pod", string(body))
 	var out map[string]any
 	if w.Code == http.StatusOK {
@@ -139,18 +140,18 @@ func (f selectionFixture) claim(t *testing.T, harness, profile string) (int, map
 
 func TestAnAdmissionChoosesTheHarnessAndModelOfEachRole(t *testing.T) {
 	f := newSelectionFixture(t)
-	w, id := f.admitSelection(t, selectionBody("req-choice", "acp/opencode", "kimi-k3"), http.StatusCreated)
+	w, id := f.admitSelection(t, selectionBody("req-choice", "acp/openhands", "kimi-k3"), http.StatusCreated)
 	roles := admissionRoles(t, w)
-	wantResolved(t, roles, "builder", "acp/opencode", "kimi-k3")
+	wantResolved(t, roles, "builder", "acp/openhands", "kimi-k3")
 	wantResolved(t, roles, "reviewer", "openhands", "glm-4.7")
-	if harness, model := pendingBuilder(t, id); harness != "acp/opencode" || model != "kimi-k3" {
-		t.Fatalf("builder Run stores %q/%q, want acp/opencode and kimi-k3", harness, model)
+	if harness, model := pendingBuilder(t, id); harness != "acp/openhands" || model != "kimi-k3" {
+		t.Fatalf("builder Run stores %q/%q, want acp/openhands and kimi-k3", harness, model)
 	}
 
 	if code, _ := f.claim(t, "openhands", ""); code != http.StatusNoContent {
-		t.Fatalf("an openhands worker claimed the acp/opencode Run: %d", code)
+		t.Fatalf("an openhands worker claimed the acp/openhands Run: %d", code)
 	}
-	code, claimed := f.claim(t, "acp", "")
+	code, claimed := f.claim(t, "acp", "openhands")
 	if code != http.StatusOK || claimed["model"] != "kimi-k3" {
 		t.Fatalf("acp worker claim = %d %v, want the Run with model kimi-k3", code, claimed)
 	}
@@ -193,9 +194,9 @@ func TestAnAdmissionRefusesAHarnessOrModelItCannotHonour(t *testing.T) {
 		prepare                    func(selectionFixture)
 	}{
 		{name: "harness outside the allowlist", harness: "acp/goose", code: "harness_not_allowed",
-			mentions: []string{"builder: openhands, acp/opencode, acp/qwen-code", "reviewer: openhands"}},
+			mentions: []string{"builder: openhands, acp/openhands, acp/opencode, acp/qwen-code", "reviewer: openhands"}},
 		{name: "unqualified harness without the opt-in", harness: "acp/qwen-code", code: "harness_unqualified", mentions: []string{"allowUnqualifiedHarnesses"}},
-		{name: "a deployment without an allowlist admits only the default", harness: "acp/opencode", code: "harness_not_allowed",
+		{name: "a deployment without an allowlist admits only the default", harness: "acp/openhands", code: "harness_not_allowed",
 			prepare: func(f selectionFixture) {
 				h, _ := ParseTeamHarnesses(`{"bronze":{"builder":{"name":"openhands"},"reviewer":{"name":"openhands"}}}`)
 				f.server.OperatorConfig.TeamHarnesses = h
@@ -309,8 +310,8 @@ func selectionTeamsRole(t *testing.T, f selectionFixture, role string) map[strin
 
 func TestTheTeamsReadShowsWhatAPersonCanChoose(t *testing.T) {
 	f := newSelectionFixture(t)
-	_, id := f.admitSelection(t, selectionBody("req-teams", "acp/opencode", ""), http.StatusCreated)
-	if _, err := testPool.Exec(context.Background(), `UPDATE agent_runs SET harness = 'acp', harness_profile = 'opencode', harness_version = '1.18.30', harness_recorded_at = now()
+	_, id := f.admitSelection(t, selectionBody("req-teams", "acp/openhands", ""), http.StatusCreated)
+	if _, err := testPool.Exec(context.Background(), `UPDATE agent_runs SET harness = 'acp', harness_profile = 'openhands', harness_version = '1.18.30', harness_recorded_at = now()
 		WHERE work_item_id = $1`, id); err != nil {
 		t.Fatal(err)
 	}
@@ -320,10 +321,10 @@ func TestTheTeamsReadShowsWhatAPersonCanChoose(t *testing.T) {
 		entry := h.(map[string]any)
 		byKey[entry["key"].(string)] = entry
 	}
-	if byKey["acp/qwen-code"]["qualification"] != "unqualified" || byKey["openhands"]["default"] != true || byKey["acp/opencode"]["default"] != false {
+	if byKey["acp/qwen-code"]["qualification"] != "unqualified" || byKey["openhands"]["default"] != true || byKey["acp/openhands"]["default"] != false {
 		t.Fatalf("builder harnesses = %v", builder["harnesses"])
 	}
-	if byKey["acp/opencode"]["observedVersion"] != "1.18.30" || byKey["openhands"]["observedVersion"] != nil {
+	if byKey["acp/openhands"]["observedVersion"] != "1.18.30" || byKey["openhands"]["observedVersion"] != nil {
 		t.Fatalf("observed versions = %v", builder["harnesses"])
 	}
 	if !slices.Equal(anyStrings(builder["models"]), []string{"deepseek-v4", "kimi-k3"}) || builder["defaultModel"] != "deepseek-v4" || builder["model"] != "deepseek-v4" {
@@ -345,7 +346,7 @@ func anyStrings(v any) []string {
 
 func TestARunWhoseHarnessLeftTheAllowlistIsReportedAndKept(t *testing.T) {
 	f := newSelectionFixture(t)
-	_, id := f.admitSelection(t, selectionBody("req-stranded", "acp/opencode", ""), http.StatusCreated)
+	_, id := f.admitSelection(t, selectionBody("req-stranded", "acp/openhands", ""), http.StatusCreated)
 	narrowed, err := ParseTeamHarnesses(`{"bronze":{"builder":{"name":"openhands","allowed":[{"name":"openhands","qualification":"qualified"}]},"reviewer":{"name":"openhands"}}}`)
 	if err != nil {
 		t.Fatal(err)
@@ -357,18 +358,18 @@ func TestARunWhoseHarnessLeftTheAllowlistIsReportedAndKept(t *testing.T) {
 	if len(pending) != 1 {
 		t.Fatalf("pendingByHarness = %v, want one entry", pending)
 	}
-	if entry := pending[0].(map[string]any); entry["harness"] != "acp/opencode" || entry["pending"] != float64(1) || entry["allowed"] != false {
-		t.Fatalf("pendingByHarness = %v, want one acp/opencode Run outside the allowlist", pending)
+	if entry := pending[0].(map[string]any); entry["harness"] != "acp/openhands" || entry["pending"] != float64(1) || entry["allowed"] != false {
+		t.Fatalf("pendingByHarness = %v, want one acp/openhands Run outside the allowlist", pending)
 	}
 
 	r := httptest.NewRequest("GET", "/metrics", nil)
 	w := httptest.NewRecorder()
 	f.server.Handler().ServeHTTP(w, r)
 	metrics, _ := io.ReadAll(w.Body)
-	if !strings.Contains(string(metrics), `ploeg_runs_pending_outside_allowlist{team="bronze",role="builder",harness="acp/opencode"} 1`) {
+	if !strings.Contains(string(metrics), `ploeg_runs_pending_outside_allowlist{team="bronze",role="builder",harness="acp/openhands"} 1`) {
 		t.Fatalf("metrics do not report the stranded Run:\n%s", metrics)
 	}
-	if harness, _ := pendingBuilder(t, id); harness != "acp/opencode" {
+	if harness, _ := pendingBuilder(t, id); harness != "acp/openhands" {
 		t.Fatalf("the stranded Run now stores %q; ploegd must leave it", harness)
 	}
 	var state string

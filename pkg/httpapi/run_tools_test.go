@@ -101,7 +101,7 @@ func TestARunOutsideTheGatewayGetsSkillsButNoMCPServer(t *testing.T) {
 	s, bootstrap, _ := gatewayFixture(t)
 	withRunTools(t, s)
 	s.CredentialGateways = nil
-	claim, _ := claimThroughGateway(t, s, bootstrap, nil)
+	claim, _ := claimWithBody(t, s, bootstrap, nil, `{"team":"bronze","role":"reviewer","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	tools := runGetFrom(s, "/api/v1/runs/"+claim.RunToken+"/tools", claim.ControlToken, nil)
 	var rt gatewaycontract.RunTools
 	if tools.Code != http.StatusOK || json.Unmarshal(tools.Body.Bytes(), &rt) != nil {

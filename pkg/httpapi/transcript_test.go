@@ -45,7 +45,7 @@ func transcriptServer(t *testing.T, teams []string) (*Server, string, string) {
 	consumers, operator := operatorTestConsumers(t, teams, false)
 	s := &Server{Store: testStore, LeaseTTL: time.Minute, Log: slog.New(slog.DiscardHandler),
 		WorkerSecurity: &WorkerSecurity{AllowLegacy: true}, OperatorConfig: OperatorConfig{Consumers: consumers}}
-	code, claimed := postClaim(t, s.Handler(), `{"team":"bronze","role":"reviewer"}`)
+	code, claimed := postClaim(t, s.Handler(), `{"team":"bronze","role":"reviewer","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	if code != http.StatusOK {
 		t.Fatalf("claim: %d", code)
 	}
@@ -62,7 +62,7 @@ func operatorGet(s *Server, token, path string) *httptest.ResponseRecorder {
 
 func TestRunTranscriptRequiresTheRunsOwnCapability(t *testing.T) {
 	s, bootstrap := secureWorkerFixture(t, &managedBrokerFixture{})
-	w := workerRequest(s, "POST", "/api/v1/claim", bootstrap, "pod", `{"team":"bronze","role":"reviewer"}`)
+	w := workerRequest(s, "POST", "/api/v1/claim", bootstrap, "pod", `{"team":"bronze","role":"reviewer","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	var claim struct {
 		RunToken     string `json:"runToken"`
 		ControlToken string `json:"controlToken"`

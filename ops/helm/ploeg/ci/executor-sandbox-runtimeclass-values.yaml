@@ -3,7 +3,7 @@
 # takes the global fallback; team `gvisor` overrides it, and gvisor's reviewer
 # Role overrides once more. The render must show three distinct runtimeClassName
 # values (kata, gvisor, gvisor-systrap) and prove role -> team -> global
-# precedence, including `harness: {dind: false}` on the reading Role.
+# precedence.
 executor:
   enabled: true
   type: sandbox
@@ -54,13 +54,13 @@ executor:
       repoName: example
       baseBranch: development
       maxReplicaCount: 1
-      harness: {dind: true, acknowledgePrivilegedDind: true}
+      harness: {dind: false}
     # A team-level override, and a reading Role that overrides again.
     - name: gvisor
       model: litellm_proxy/deepseek-chat
       budget: "4"
       maxReplicaCount: 1
-      harness: {dind: true, acknowledgePrivilegedDind: true}
+      harness: {dind: false}
       sandbox:
         runtimeClassName: gvisor
       plan:

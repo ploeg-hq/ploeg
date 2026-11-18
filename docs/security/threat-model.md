@@ -348,7 +348,7 @@ Each tree is an OR of branches unless a node says AND. A branch marked **closed 
   - Write `http.proxy` (and `http.sslVerify=false` for an HTTPS forge) into the clone's `.git/config` and listen on loopback for the board watch's `git ls-remote` — **closed in P1** (T-WK-2; F-24 fixed in PR #230)
 - Read the shared builder token (AS5) from the worker container
   - Harness reads the worker's env, or a credentialed `git` child's, through `/proc` — **closed in P1** by the separate harness container (T-WK-4; F-03 fixed by ADR-0138); open with `harnessContainer: shared`
-  - Harness receives it because isolation is off (acknowledged `dind: true` opt-in or unqualified harness) — **open outside P1**, never by default since PR #231 (F-01)
+  - Harness receives it because isolation is off (acknowledged `dind: true` opt-in or unqualified harness) — **closed in every profile** since 2026-11-18: the chart refuses to render such a Role and ploegd refuses its worker's claim with `credential_isolation_required` (ADR-0034 amendment; F-01)
   - Node compromise reads pod env — through the acknowledged DinD opt-in **open outside P1** (F-01); through a kernel bug, residual
 - Read the bot password or App key (AS4) — requires ploegd compromise (T-PD-11)
 - Use a per-Run Forgejo token beyond its repository — needs the token to leave the proxy (closed in P1) AND a forge that reports a restriction it does not enforce: the broker refuses Forgejo older than 15 and any token not reported as restricted (F-10, fixed)

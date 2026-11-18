@@ -35,7 +35,7 @@ func TestContextBundlesEndToEnd(t *testing.T) {
 		t.Fatalf("upload before the Run: %d", code)
 	}
 
-	api := &worker.APIClient{Base: srv.URL, HC: srv.Client()}
+	api := &worker.APIClient{Base: srv.URL, HC: srv.Client(), Harness: "openhands", ForgeTokenIsolation: "proxy", LLMKeyIsolation: "proxy"}
 	first := runOnce(t, api, "first")
 	if len(first.spec.Context) != 1 || first.spec.Context[0].Name != "design.zip" {
 		t.Fatalf("first Run context %+v", first.spec.Context)

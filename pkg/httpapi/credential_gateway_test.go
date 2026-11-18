@@ -52,7 +52,12 @@ type gatewayClaim struct {
 
 func claimThroughGateway(t *testing.T, s *Server, bootstrap string, headers map[string]string) (gatewayClaim, string) {
 	t.Helper()
-	r := httptest.NewRequest(http.MethodPost, "/api/v1/claim", strings.NewReader(`{"team":"bronze","role":"reviewer"}`))
+	return claimWithBody(t, s, bootstrap, headers, `{"team":"bronze","role":"reviewer","harness":"openhands"}`)
+}
+
+func claimWithBody(t *testing.T, s *Server, bootstrap string, headers map[string]string, body string) (gatewayClaim, string) {
+	t.Helper()
+	r := httptest.NewRequest(http.MethodPost, "/api/v1/claim", strings.NewReader(body))
 	r.Header.Set("Authorization", "Bearer "+bootstrap)
 	r.Header.Set("X-Ploeg-Worker-ID", "pod")
 	for k, v := range headers {
@@ -325,7 +330,7 @@ func TestAWritersMintedForgeCredentialGoesIntoTheGrantAndNotTheClaim(t *testing.
 	reset(t)
 	targetedWriterShift(t, "991")
 	s.WorkerSecurity, s.LLMControl, s.ForgeCreds = a, c, mintingBroker{}
-	r := httptest.NewRequest(http.MethodPost, "/api/v1/claim", strings.NewReader(`{"team":"bronze","role":"builder"}`))
+	r := httptest.NewRequest(http.MethodPost, "/api/v1/claim", strings.NewReader(`{"team":"bronze","role":"builder","harness":"openhands"}`))
 	r.Header.Set("Authorization", "Bearer "+bootstrap)
 	r.Header.Set("X-Ploeg-Worker-ID", "pod")
 	for k, v := range gatewayHeaders(runsGatewayToken) {

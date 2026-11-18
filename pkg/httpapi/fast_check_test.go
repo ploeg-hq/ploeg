@@ -43,7 +43,7 @@ func fastCheckServer() http.Handler {
 func TestClaim_AWritingRunGetsItsRepositorysFastCheck(t *testing.T) {
 	reset(t)
 	targetedShift(t, "2397", []store.Role{{Name: "builder", Writes: true}})
-	code, claim := postClaim(t, fastCheckServer(), `{"team":"bronze","role":"builder"}`)
+	code, claim := postClaim(t, fastCheckServer(), `{"team":"bronze","role":"builder","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	if code != http.StatusOK || !slices.Equal(claim.FastCheck, []string{"go vet ./...", "go test -short ./..."}) {
 		t.Fatalf("claim: %d fastCheck=%v, want the repository's two commands", code, claim.FastCheck)
 	}
@@ -52,13 +52,13 @@ func TestClaim_AWritingRunGetsItsRepositorysFastCheck(t *testing.T) {
 func TestClaim_AReadingRunAndAnUndeclaredRepositoryGetNoFastCheck(t *testing.T) {
 	reset(t)
 	targetedShift(t, "2398", []store.Role{{Name: "reviewer"}})
-	if code, claim := postClaim(t, fastCheckServer(), `{"team":"bronze","role":"reviewer"}`); code != http.StatusOK || claim.FastCheck != nil {
+	if code, claim := postClaim(t, fastCheckServer(), `{"team":"bronze","role":"reviewer","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`); code != http.StatusOK || claim.FastCheck != nil {
 		t.Fatalf("reader claim: %d fastCheck=%v, want none: a reader never pushes", code, claim.FastCheck)
 	}
 
 	reset(t)
 	shiftFixture(t, "2399", 0, []store.Role{{Name: "builder", Writes: true}})
-	if code, claim := postClaim(t, fastCheckServer(), `{"team":"bronze","role":"builder"}`); code != http.StatusOK || claim.FastCheck != nil {
+	if code, claim := postClaim(t, fastCheckServer(), `{"team":"bronze","role":"builder","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`); code != http.StatusOK || claim.FastCheck != nil {
 		t.Fatalf("claim without a declared fast check: %d fastCheck=%v, want none", code, claim.FastCheck)
 	}
 }

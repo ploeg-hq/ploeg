@@ -43,7 +43,7 @@ func TestClaim_RolelessWorkerLosingTheShiftRunLeasesNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	code, resp := postClaim(t, h, `{"team":"bronze"}`)
+	code, resp := postClaim(t, h, `{"team":"bronze","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	if err := sibling.Rollback(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +54,7 @@ func TestClaim_RolelessWorkerLosingTheShiftRunLeasesNothing(t *testing.T) {
 		t.Fatalf("losing worker left %+v, want no claimed run, no unpooled run and no lease", c)
 	}
 
-	code, resp = postClaim(t, h, `{"team":"bronze"}`)
+	code, resp = postClaim(t, h, `{"team":"bronze","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	if code != http.StatusOK || resp.Shift == 0 {
 		t.Fatalf("sibling claim got %d with %+v, want the Shift's Run", code, resp)
 	}
@@ -77,7 +77,7 @@ func TestClaim_ConcurrentRolelessWorkersClaimOneShiftRun(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			<-start
-			code, _ := postClaim(t, h, `{"team":"bronze"}`)
+			code, _ := postClaim(t, h, `{"team":"bronze","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 			codes <- code
 		}()
 	}
@@ -114,7 +114,7 @@ func TestClaim_ExhaustedShiftIsNotFollowedByALegacyClaim(t *testing.T) {
 	}
 	h := apiServer(t, nil)
 
-	if code, resp := postClaim(t, h, `{"team":"bronze"}`); code != http.StatusNoContent {
+	if code, resp := postClaim(t, h, `{"team":"bronze","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`); code != http.StatusNoContent {
 		t.Fatalf("claim behind an exhausted Shift got %d with %+v, want 204", code, resp)
 	}
 	for _, id := range []string{"812", "813"} {

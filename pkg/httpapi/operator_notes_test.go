@@ -169,7 +169,7 @@ func TestOperatorNoteIsInjectedIntoTheNextClaimedRunExactlyOnce(t *testing.T) {
 		}
 	}
 	h := s.Handler()
-	status, first := postClaim(t, h, `{"team":"bronze","role":"reviewer"}`)
+	status, first := postClaim(t, h, `{"team":"bronze","role":"reviewer","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	if status != http.StatusOK {
 		t.Fatalf("claim: %d", status)
 	}
@@ -183,7 +183,7 @@ func TestOperatorNoteIsInjectedIntoTheNextClaimedRunExactlyOnce(t *testing.T) {
 	if n := countRows(t, `SELECT count(*) FROM audit_log WHERE work_item_id=$1 AND action='operator.note.consumed'`, id); n != 2 {
 		t.Fatalf("operator.note.consumed events = %d", n)
 	}
-	status, second := postClaim(t, h, `{"team":"bronze","role":"security"}`)
+	status, second := postClaim(t, h, `{"team":"bronze","role":"security","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	if status != http.StatusOK {
 		t.Fatalf("second claim: %d", status)
 	}
@@ -193,7 +193,7 @@ func TestOperatorNoteIsInjectedIntoTheNextClaimedRunExactlyOnce(t *testing.T) {
 	if w := operatorExecutionRequest(s, "POST", notesPath(id), token, "alice", map[string]any{"commandId": "n2", "text": "Third instruction."}); w.Code != 201 {
 		t.Fatalf("third note: %d %s", w.Code, w.Body)
 	}
-	status, third := postClaim(t, h, `{"team":"bronze","role":"docs"}`)
+	status, third := postClaim(t, h, `{"team":"bronze","role":"docs","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	if status != http.StatusOK {
 		t.Fatalf("third claim: %d", status)
 	}
@@ -219,7 +219,7 @@ func TestOperatorNoteReachesAPreShiftClaim(t *testing.T) {
 	if note := decodeNote(t, w); note.ShiftID != nil {
 		t.Fatalf("a note without a Shift reported one: %+v", note)
 	}
-	status, claim := postClaim(t, s.Handler(), `{"team":"bronze"}`)
+	status, claim := postClaim(t, s.Handler(), `{"team":"bronze","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	if status != http.StatusOK {
 		t.Fatalf("claim: %d", status)
 	}

@@ -22,7 +22,7 @@ func TestManagedMintCarriesThePolicysTeamAndMCPAccessGroups(t *testing.T) {
 		t.Fatal(err)
 	}
 	s.LLMControl = c
-	w := workerRequest(s, "POST", "/api/v1/claim", bootstrap, "pod", `{"team":"bronze","role":"reviewer"}`)
+	w := workerRequest(s, "POST", "/api/v1/claim", bootstrap, "pod", `{"team":"bronze","role":"reviewer","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	var claim struct {
 		RunToken     string `json:"runToken"`
 		ControlToken string `json:"controlToken"`
@@ -53,7 +53,7 @@ func TestManagedMintWithoutATeamGrantsNoMCP(t *testing.T) {
 	b := &managedBrokerFixture{}
 	s, bootstrap := secureWorkerFixture(t, b)
 	s.Log = slog.New(slog.DiscardHandler)
-	w := workerRequest(s, "POST", "/api/v1/claim", bootstrap, "pod", `{"team":"bronze","role":"reviewer"}`)
+	w := workerRequest(s, "POST", "/api/v1/claim", bootstrap, "pod", `{"team":"bronze","role":"reviewer","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	var claim struct {
 		RunToken     string `json:"runToken"`
 		ControlToken string `json:"controlToken"`

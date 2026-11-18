@@ -190,6 +190,9 @@ func (s *Server) WorkerHandler(next http.Handler) http.Handler {
 				return
 			}
 			r.Body = io.NopCloser(bytes.NewReader(body))
+			if gated {
+				r = r.WithContext(withGatewayClaim(r.Context()))
+			}
 			capture := &workerResponse{header: make(http.Header)}
 			next.ServeHTTP(capture, r)
 			if capture.status == http.StatusOK {
