@@ -32,6 +32,7 @@ const (
 type deliverableFence struct {
 	dir, cloneURL, base, start string
 	token                      func(context.Context) string
+	fromPack                   bool
 
 	mu      sync.Mutex
 	refused []string
@@ -50,6 +51,43 @@ func (f *deliverableFence) admit(u refUpdate) (refusalReason, error) {
 	f.mu.Unlock()
 	return refusalOutsideDeliverable, fmt.Errorf("this prepare Run may only add %s at the repository root; the push also changes: %s",
 		work.PrepareRepositoryDeliverable, strings.Join(capList(outside), ", "))
+}
+
+func (f *deliverableFence) admitPacked(u refUpdate, pack []byte) (refusalReason, error) {
+	outside, err := f.outsidePacked(u, pack)
+	if err != nil {
+		return refusalUninspectablePush, fmt.Errorf("Ploeg could not check this prepare Run's push against its one deliverable: %v", err)
+	}
+	if len(outside) == 0 {
+		return "", nil
+	}
+	f.mu.Lock()
+	f.refused = appendNew(f.refused, outside...)
+	f.mu.Unlock()
+	return refusalOutsideDeliverable, fmt.Errorf("this prepare Run may only add %s at the repository root; the push also changes: %s",
+		work.PrepareRepositoryDeliverable, strings.Join(capList(outside), ", "))
+}
+
+func (f *deliverableFence) outsidePacked(u refUpdate, pack []byte) ([]string, error) {
+	if f.base == "" {
+		return nil, fmt.Errorf("the Run names no base branch to check its push against")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), deliverableCheckTimeout)
+	defer cancel()
+	repo, err := openBareRepository(ctx, f.dir, f.cloneURL, f.token(ctx))
+	if err != nil {
+		return nil, err
+	}
+	defer repo.remove()
+	if strings.Trim(u.oldID, "0") != "" {
+		_ = repo.fetchBranch(ctx, strings.TrimPrefix(u.ref, "refs/heads/"), "refs/ploeg/run-branch")
+	}
+	if len(pack) > 0 {
+		if err := repo.indexPack(ctx, pack); err != nil {
+			return nil, err
+		}
+	}
+	return f.outsideIn(ctx, repo, u.newID)
 }
 
 func (f *deliverableFence) outside(commit string) ([]string, error) {

@@ -16,6 +16,7 @@ const (
 	pktLengthSize       = 4
 	maxPktLength        = 65520
 	maxCommandListBytes = 1 << 20
+	maxFencedPushBytes  = 64 << 20
 	pushCertificate     = "push-cert"
 	shallowAdvertised   = "shallow "
 )
@@ -39,6 +40,9 @@ func (f pushFence) admit(r *http.Request) (refusalReason, error) {
 	body, err := decodedPushBody(r)
 	if err != nil {
 		return refusalUninspectablePush, err
+	}
+	if f.deliverable != nil && f.deliverable.fromPack {
+		return f.admitWithPack(r, body)
 	}
 	var inspected bytes.Buffer
 	updates, err := readRefUpdates(io.LimitReader(io.TeeReader(body, &inspected), maxCommandListBytes))
@@ -84,15 +88,50 @@ func (u refUpdate) deletes() bool {
 	return strings.Trim(u.newID, "0") == ""
 }
 
+func (f pushFence) admitWithPack(r *http.Request, body io.Reader) (refusalReason, error) {
+	raw, err := io.ReadAll(io.LimitReader(body, maxFencedPushBytes+1))
+	if err != nil {
+		return refusalUninspectablePush, errUnparseablePush
+	}
+	if len(raw) > maxFencedPushBytes {
+		return refusalUninspectablePush, fmt.Errorf("a prepare Run's push larger than %d bytes cannot be checked against its one deliverable", maxFencedPushBytes)
+	}
+	commands := bytes.NewReader(raw)
+	updates, err := readRefUpdates(commands)
+	if err != nil {
+		return refusalUninspectablePush, err
+	}
+	pack := raw[len(raw)-commands.Len():]
+	for _, u := range updates {
+		if reason, err := f.permitsBranch(u); err != nil {
+			return reason, err
+		}
+		if reason, err := f.deliverable.admitPacked(u, pack); err != nil {
+			return reason, err
+		}
+	}
+	r.Body = io.NopCloser(bytes.NewReader(raw))
+	r.ContentLength = int64(len(raw))
+	r.Header.Set("Content-Length", strconv.Itoa(len(raw)))
+	return "", nil
+}
+
 func (f pushFence) permits(u refUpdate) (refusalReason, error) {
+	if reason, err := f.permitsBranch(u); err != nil {
+		return reason, err
+	}
+	if f.deliverable != nil {
+		return f.deliverable.admit(u)
+	}
+	return "", nil
+}
+
+func (f pushFence) permitsBranch(u refUpdate) (refusalReason, error) {
 	if u.ref != f.runBranchRef {
 		return refusalPushToOtherBranch, fmt.Errorf("this Run may push only %s, not %s", f.runBranchRef, u.ref)
 	}
 	if u.deletes() {
 		return refusalBranchDeletion, fmt.Errorf("this Run may not delete its own branch %s", u.ref)
-	}
-	if f.deliverable != nil {
-		return f.deliverable.admit(u)
 	}
 	return "", nil
 }

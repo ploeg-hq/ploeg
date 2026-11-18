@@ -56,7 +56,6 @@ func startForgeTokenProxy(repo harness.RepoRef, tokens forgeTokenSource, access 
 	if err != nil {
 		return nil, fmt.Errorf("listen for the forge token proxy: %w", err)
 	}
-	scope := newForgeScope(repo, access)
 	refusals := refusalLog{
 		proxy: forgeProxyName,
 		run:   leaks.run,
@@ -65,6 +64,33 @@ func startForgeTokenProxy(repo harness.RepoRef, tokens forgeTokenSource, access 
 			return append(leaks.watch.values(), placeholder)
 		},
 	}
+	presented := func(w http.ResponseWriter, r *http.Request, kind forgeRequestKind) bool {
+		if kind == forgeGit && !carriesForgeCredential(r.Header) {
+			challengeGitForPlaceholder(w)
+			return false
+		}
+		if !presentsForgePlaceholder(r.Header, placeholder) {
+			refusals.refuse(w, r, placeholderRefusal(carriesForgeCredential(r.Header)),
+				"this Run's forge proxy serves only requests that present the Run's placeholder")
+			return false
+		}
+		return true
+	}
+	handler := fencedForgeHandler(repo, target, tokens, newForgeScope(repo, access), fence, leaks, refusals, presented)
+	p := &forgeTokenProxy{
+		server:      &http.Server{Handler: handler, ReadHeaderTimeout: 30 * time.Second},
+		baseURL:     "http://" + ln.Addr().String(),
+		upstream:    target.Scheme + "://" + target.Host,
+		placeholder: placeholder,
+	}
+	go func() { _ = p.server.Serve(ln) }()
+	return p, nil
+}
+
+type forgePresentation func(w http.ResponseWriter, r *http.Request, kind forgeRequestKind) bool
+
+func fencedForgeHandler(repo harness.RepoRef, target *url.URL, tokens forgeTokenSource, scope forgeScope, fence pushFence,
+	leaks leakScope, refusals refusalLog, presented forgePresentation) http.Handler {
 	publicGitHubAPI := repo.Dialect() == harness.ForgeGitHub && strings.EqualFold(target.Host, "github.com")
 	proxy := &httputil.ReverseProxy{
 		Rewrite: func(r *httputil.ProxyRequest) {
@@ -86,19 +112,13 @@ func startForgeTokenProxy(repo harness.RepoRef, tokens forgeTokenSource, access 
 		},
 		FlushInterval: -1,
 	}
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		kind, outOfScope := scope.classify(r)
 		if kind == forgeOutOfScope {
 			refusals.refuse(w, r, outOfScope, "this Run's forge access is limited to what its Role needs in "+repo.ProjectPath())
 			return
 		}
-		if kind == forgeGit && !carriesForgeCredential(r.Header) {
-			challengeGitForPlaceholder(w)
-			return
-		}
-		if !presentsForgePlaceholder(r.Header, placeholder) {
-			refusals.refuse(w, r, placeholderRefusal(carriesForgeCredential(r.Header)),
-				"this Run's forge proxy serves only requests that present the Run's placeholder")
+		if !presented(w, r, kind) {
 			return
 		}
 		if _, leaked := leaks.watch.leak(); leaked && writesToTheForge(kind, r) {
@@ -125,14 +145,6 @@ func startForgeTokenProxy(repo harness.RepoRef, tokens forgeTokenSource, access 
 		}
 		proxy.ServeHTTP(w, r)
 	})
-	p := &forgeTokenProxy{
-		server:      &http.Server{Handler: handler, ReadHeaderTimeout: 30 * time.Second},
-		baseURL:     "http://" + ln.Addr().String(),
-		upstream:    target.Scheme + "://" + target.Host,
-		placeholder: placeholder,
-	}
-	go func() { _ = p.server.Serve(ln) }()
-	return p, nil
 }
 
 func (p *forgeTokenProxy) close() {
