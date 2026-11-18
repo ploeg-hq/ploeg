@@ -95,7 +95,8 @@ def check_pod(where, pod):
     launcher = [e for e in worker.get('env') or [] if e.get('name') == 'PLOEG_HARNESS_LAUNCHER']
     if not launcher:
         problems.append(f"{where}: the worker container does not listen for the launcher")
-    if not credential_sources(worker, secrets):
+    gateway = any(e.get('name') == 'PLOEG_CREDENTIAL_GATEWAY' and e.get('value') == 'on' for e in worker.get('env') or [])
+    if not gateway and not credential_sources(worker, secrets):
         problems.append(f"{where}: the worker container holds no credential, so the check proves nothing")
     return problems, True
 

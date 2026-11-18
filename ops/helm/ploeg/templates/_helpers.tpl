@@ -653,6 +653,12 @@ global executor.harness defaults field-by-field (explicit hasKey checks, so
 {{- if hasKey $rh "harnessContainer" }}{{- $layoutOverride = dict "value" $rh.harnessContainer }}{{- else if hasKey $th "harnessContainer" }}{{- $layoutOverride = dict "value" $th.harnessContainer }}{{- end }}
 {{- $separate := eq (include "ploeg.harnessContainer" (dict "root" $root "name" $hName "dind" $hDind "isolation" $isolation "override" $layoutOverride "who" $who)) "separate" }}
 {{- $workerImage := (include "ploeg.workerImageSource" $root | fromJson).image }}
+{{- $gateway := include "ploeg.credentialGatewayEnabled" $root }}
+{{- $gatewayUrls := dict }}
+{{- if $gateway }}
+{{- include "ploeg.requireCredentialGatewayValues" $root }}
+{{- $gatewayUrls = include "ploeg.credentialGatewayUrls" $root | fromJson }}
+{{- end }}
 {{- /* claude-environment harness (ADR-0084): same override chain. */}}
 {{- $gce := $gh.claudeEnvironment | default dict }}
 {{- $tce := $th.claudeEnvironment | default dict }}
@@ -681,6 +687,9 @@ metadata:
     # the full baseline — so adding a Role costs no security-repo change, and
     # readers are not waived for a privilege they do not take.
     ploeg.webgrip.dev/privileged-dind: "true"
+    {{- end }}
+    {{- if and $gateway $root.Values.executor.credentialGateway.acknowledgeSharedNode }}
+    ploeg.webgrip.dev/credential-gateway-shared-node: "true"
     {{- end }}
 spec:
   restartPolicy: Never
@@ -787,8 +796,17 @@ spec:
       command: ["/mnt/bin/ploeg-worker"]
       {{- end }}
       env:
+        {{- if $gateway }}
+        - name: PLOEG_API_URL
+          value: {{ $gatewayUrls.control | quote }}
+        - name: PLOEG_CREDENTIAL_GATEWAY
+          value: "on"
+        - name: PLOEG_CREDENTIAL_GATEWAY_FORGE_URL
+          value: {{ $gatewayUrls.forge | quote }}
+        {{- else }}
         - name: PLOEG_API_URL
           value: {{ include "ploeg.workerApiUrl" $root | quote }}
+        {{- end }}
         - name: PLOEG_TEAM
           value: {{ $team.name | quote }}
         {{- if $role.name }}
@@ -908,7 +926,8 @@ spec:
         - name: LITELLM_KEY_DURATION
           value: {{ $root.Values.executor.litellm.keyDuration | quote }}
         - name: LLM_BASE_URL
-          value: {{ $root.Values.executor.litellm.baseUrl | quote }}
+          value: {{ ternary $gatewayUrls.model $root.Values.executor.litellm.baseUrl (eq $gateway "true") | quote }}
+        {{- if not $gateway }}
         {{- with $isolation.llmKey }}
         - name: PLOEG_LLM_KEY_ISOLATION
           value: {{ . | quote }}
@@ -921,13 +940,15 @@ spec:
         - name: PLOEG_CREDENTIAL_ISOLATION_OFF_REASON
           value: {{ . | quote }}
         {{- end }}
+        {{- end }}
         {{- if $root.Values.executor.harnessOutputInLog }}
         - name: PLOEG_HARNESS_OUTPUT_IN_LOG
           value: "on"
         {{- end }}
         - name: PLOEG_LLM_CREDENTIAL_MODE
           value: {{ ternary "static-compatibility" "managed" (eq $root.Values.executor.workerAuth.mode "legacy") | quote }}
-        {{- if eq $root.Values.executor.workerAuth.mode "managed" }}
+        {{- if $gateway }}
+        {{- else if eq $root.Values.executor.workerAuth.mode "managed" }}
         - name: PLOEG_WORKER_BOOTSTRAP_TOKEN
           valueFrom:
             secretKeyRef:
@@ -947,7 +968,7 @@ spec:
         {{- /* ADR-0192: a worker of a multi-forge release holds no forge URL
              and no forge credential. Each claim carries the Run's forge and
              a credential ploegd minted for that Run alone. */}}
-        {{- if not $multiForge }}
+        {{- if not (or $multiForge $gateway) }}
         - name: FORGE_URL
           value: {{ $forge.url | quote }}
         {{- end }}
@@ -968,7 +989,7 @@ spec:
         - name: PLOEG_FORGE_TOKEN_ACCESS
           value: {{ ternary "read-only" "read-write" $isReader | quote }}
         {{- end }}
-        {{- if not $multiForge }}
+        {{- if not (or $multiForge $gateway) }}
         - name: AGENT_BUILDER_TOKEN
           valueFrom:
             secretKeyRef:

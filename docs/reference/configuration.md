@@ -322,6 +322,21 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `executor.acknowledgeSharedNamespace` | boolean | `false` | true keeps the worker workloads in the release namespace under supportProfile P1. Without it, P1 warns before chart 0.3.0 and refuses from it while executor.namespace is empty or names the release namespace (F-44, ADR-0169). | values.yaml, values.schema.json |
 | `executor.activeDeadlineSeconds` |  | `7200` | Backstop only: the DB lease always expires first, so Ploeg decides requeue/stale; this just guarantees the pod dies (backlog #52). | values.yaml |
 | `executor.apiUrl` | string | `""` | empty = http://<fullname>:<service.port> | values.yaml, values.schema.json |
+| `executor.credentialGateway` | object |  | PROPOSED (ADR-0197), opt-in: renders ploeg-credential-gateway in the executor namespace and makes every Run pod credential-free; the Run pod reaches ploegd, its forge and the model gateway only through the gateway. | values.yaml, values.schema.json |
+| `executor.credentialGateway.acknowledgeSharedNode` | boolean | `false` | true relaxes the gateway's anti-affinity against Run pods and its exclusion of executor.nodeSelector's pool to preferred, and labels every Run pod and the gateway ploeg.webgrip.dev/credential-gateway-shared-node. The chart cannot count nodes; set it only where no node is free of Run pods. | values.yaml, values.schema.json |
+| `executor.credentialGateway.enabled` | boolean | `false` | true renders the gateway's Deployment, Service, PodDisruptionBudget, ServiceAccount, Role and NetworkPolicy, ploegd's TokenReview ClusterRole and PLOEG_CREDENTIAL_GATEWAYS, and renders every Run pod with PLOEG_CREDENTIAL_GATEWAY=on and no secret. | values.yaml, values.schema.json |
+| `executor.credentialGateway.limits` | object |  | Per Run and route family, a token bucket on requests and on request bytes; maxUpstreamConnections caps the gateway's concurrent upstream connections (PLOEG_GATEWAY_LIMITS). | values.yaml, values.schema.json |
+| `executor.credentialGateway.limits.forge` | [credentialGatewayLimit](#credentialgatewaylimit) | `{"requestsPerSecond": 20, "burst": 40, "bytesPerSecond": 52428800}` |  | values.yaml, values.schema.json |
+| `executor.credentialGateway.limits.maxUpstreamConnections` | integer | `256` |  | values.yaml, values.schema.json |
+| `executor.credentialGateway.limits.model` | [credentialGatewayLimit](#credentialgatewaylimit) | `{"requestsPerSecond": 10, "burst": 20, "bytesPerSecond": 20971520}` |  | values.yaml, values.schema.json |
+| `executor.credentialGateway.limits.ploegd` | [credentialGatewayLimit](#credentialgatewaylimit) | `{"requestsPerSecond": 10, "burst": 20, "bytesPerSecond": 10485760}` |  | values.yaml, values.schema.json |
+| `executor.credentialGateway.nodeSelector` | object or null | `{}` | the gateway's own pool; never one executor.nodeSelector names | values.yaml, values.schema.json |
+| `executor.credentialGateway.replicas` | integer | `2` | Gateway replicas, spread over nodes; the PodDisruptionBudget allows one unavailable. | values.yaml, values.schema.json |
+| `executor.credentialGateway.resources.limits.cpu` |  | `1` |  | values.yaml |
+| `executor.credentialGateway.resources.limits.memory` |  | `256Mi` |  | values.yaml |
+| `executor.credentialGateway.resources.requests.cpu` |  | `50m` |  | values.yaml |
+| `executor.credentialGateway.resources.requests.memory` |  | `64Mi` |  | values.yaml |
+| `executor.credentialGateway.tolerations` | array or null | `[]` |  | values.yaml, values.schema.json |
 | `executor.cronjob.schedule` | string | `*/2 * * * *` | type=cronjob only: how often each team polls for work. Idle ticks are free (empty-handed claim = exit 0). | values.yaml, values.schema.json |
 | `executor.defaultTarget` | object |  | fallback repo for teams that declare none; empty = a team with no repoOwner/repoName gets no env target and relies entirely on the work item's resolved target | values.yaml, values.schema.json |
 | `executor.defaultTarget.baseBranch` | string | `""` |  | values.yaml, values.schema.json |
@@ -725,6 +740,14 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 ## Shared value shapes
 
 Several keys above share one schema definition.
+
+### credentialGatewayLimit
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `requestsPerSecond` | number |  |
+| `burst` | integer |  |
+| `bytesPerSecond` | integer |  |
 
 ### spendCap
 

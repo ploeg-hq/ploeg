@@ -54,7 +54,7 @@ spec:
     {{- else }}
     activeDeadlineSeconds: {{ $root.Values.executor.activeDeadlineSeconds }}
     template:
-      {{- include "ploeg.workerPodTemplate" (dict "root" $root "team" $team "role" $role) | nindent 6 }}
+      {{- include "ploeg.runPodTemplate" (dict "root" $root "team" $team "role" $role) | nindent 6 }}
     {{- end }}
   triggers:
     - type: postgresql

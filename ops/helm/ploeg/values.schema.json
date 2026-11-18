@@ -1411,6 +1411,32 @@
           "type": "boolean",
           "description": "true keeps the worker workloads in the release namespace under supportProfile P1. Without it, P1 warns before chart 0.3.0 and refuses from it while executor.namespace is empty or names the release namespace (F-44, ADR-0169)."
         },
+        "credentialGateway": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "PROPOSED (ADR-0197), opt-in: renders ploeg-credential-gateway in the executor namespace and makes every Run pod credential-free; the Run pod reaches ploegd, its forge and the model gateway only through the gateway.",
+          "properties": {
+            "enabled": {"type": "boolean", "description": "true renders the gateway's Deployment, Service, PodDisruptionBudget, ServiceAccount, Role and NetworkPolicy, ploegd's TokenReview ClusterRole and PLOEG_CREDENTIAL_GATEWAYS, and renders every Run pod with PLOEG_CREDENTIAL_GATEWAY=on and no secret."},
+            "replicas": {"type": "integer", "minimum": 1, "description": "Gateway replicas, spread over nodes; the PodDisruptionBudget allows one unavailable."},
+            "acknowledgeSharedNode": {
+              "type": "boolean",
+              "description": "true relaxes the gateway's anti-affinity against Run pods and its exclusion of executor.nodeSelector's pool to preferred, and labels every Run pod and the gateway ploeg.webgrip.dev/credential-gateway-shared-node. The chart cannot count nodes; set it only where no node is free of Run pods."
+            },
+            "limits": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "forge": {"$ref": "#/definitions/credentialGatewayLimit"},
+                "model": {"$ref": "#/definitions/credentialGatewayLimit"},
+                "ploegd": {"$ref": "#/definitions/credentialGatewayLimit"},
+                "maxUpstreamConnections": {"type": "integer", "minimum": 1}
+              }
+            },
+            "resources": {"type": "object"},
+            "nodeSelector": {"type": ["object", "null"], "additionalProperties": {"type": "string"}},
+            "tolerations": {"type": ["array", "null"], "items": {"type": "object"}}
+          }
+        },
         "cronjob": {
           "type": "object",
           "properties": {
@@ -1974,6 +2000,15 @@
     }
   },
   "definitions": {
+    "credentialGatewayLimit": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "requestsPerSecond": {"type": "number", "exclusiveMinimum": 0},
+        "burst": {"type": "integer", "minimum": 1},
+        "bytesPerSecond": {"type": "integer", "minimum": 1}
+      }
+    },
     "spendCap": {
       "type": "object",
       "additionalProperties": false,

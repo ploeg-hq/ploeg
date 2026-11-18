@@ -765,6 +765,40 @@ executor:
   apiUrl: ""      # empty = http://<fullname>:<service.port>
   namespace: ""
   acknowledgeSharedNamespace: false
+  # PROPOSED (ADR-0197), opt-in: true renders ploeg-credential-gateway, a
+  # Deployment in the executor namespace that attaches every credential a Run
+  # uses, and makes each Run pod of this release credential-free: no
+  # secretKeyRef, no Secret or projected volume, no ServiceAccount token. A
+  # Run pod reaches ploegd, its forge and the model gateway only through the
+  # gateway's Service, with its per-Run capability as its one bearer value.
+  # The gateway mounts the bootstrap Secret's entries for this release's teams
+  # and Roles and authenticates to ploegd with a projected ServiceAccount
+  # token that ploegd checks through TokenReview. The render refuses it with
+  # workerAuth.mode legacy, workerAuth.hmacCapability off, claudeRunner, a
+  # claude-environment harness or a Claude Code plugin variable read from a
+  # Secret.
+  credentialGateway:
+    enabled: false
+    replicas: 2
+    # A required pod anti-affinity keeps the gateway off every node that runs
+    # a Run pod, and a node affinity keeps it out of executor.nodeSelector's
+    # pool. The chart cannot count nodes: where that leaves no node, true
+    # relaxes both to preferred and labels every Run pod and the gateway
+    # ploeg.webgrip.dev/credential-gateway-shared-node: "true".
+    acknowledgeSharedNode: false
+    # Per Run and route family, a token bucket on requests and on request
+    # bytes; maxUpstreamConnections caps the gateway's concurrent upstream
+    # connections (PLOEG_GATEWAY_LIMITS).
+    limits:
+      forge: {requestsPerSecond: 20, burst: 40, bytesPerSecond: 52428800}
+      model: {requestsPerSecond: 10, burst: 20, bytesPerSecond: 20971520}
+      ploegd: {requestsPerSecond: 10, burst: 20, bytesPerSecond: 10485760}
+      maxUpstreamConnections: 256
+    resources:
+      requests: {cpu: 50m, memory: 64Mi}
+      limits: {cpu: "1", memory: 256Mi}
+    nodeSelector: {} # the gateway's own pool; never one executor.nodeSelector names
+    tolerations: []
   cronjob:
     # type=cronjob only: how often each team polls for work. Idle ticks are
     # free (empty-handed claim = exit 0).
