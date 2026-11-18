@@ -1276,11 +1276,14 @@ credential proxies on and no DinD; isolation is "proxy" today and
 {{- fail (printf "executor.runtimeTeams.pools: harness %s is not qualified for credential isolation, so no runtime Team may run on it (ADR-0034, ADR-0198)" $p.harness) }}
 {{- end }}
 {{- $isolation := $p.isolation | default "proxy" }}
-{{- if not (has $isolation (list "proxy" "gateway")) }}
-{{- fail (printf "executor.runtimeTeams.pools: isolation is proxy or gateway, not %q" $isolation) }}
+{{- if eq $isolation "gateway" }}
+{{- fail "executor.runtimeTeams.pools: isolation gateway qualifies a pool only once the credential gateway outside the Run pod ships (ADR-0197); use proxy" }}
+{{- end }}
+{{- if ne $isolation "proxy" }}
+{{- fail (printf "executor.runtimeTeams.pools: isolation is proxy, not %q" $isolation) }}
 {{- end }}
 {{- if or (not $.Values.executor.litellm.keyIsolation) (not $.Values.executor.forgeTokenIsolation) }}
-{{- fail "executor.runtimeTeams.pools: a pool needs executor.litellm.keyIsolation and executor.forgeTokenIsolation on; a gateway pool keeps them until the credential gateway's chart serves it" }}
+{{- fail "executor.runtimeTeams.pools: a pool needs executor.litellm.keyIsolation and executor.forgeTokenIsolation on" }}
 {{- end }}
 {{- if (($.Values.executor.harness | default dict).dind) }}
 {{- fail "executor.runtimeTeams.pools: a pool never runs DinD, and executor.harness.dind is on" }}

@@ -272,7 +272,10 @@ func (m *Manifest) validatePlan(p Policy) *Refusal {
 		if !slices.Contains(p.Models, role.Model) {
 			return &Refusal{Code: RefuseModelNotAllowed, Field: field + ".model", Message: "Model " + role.Model + " is not in teamCreation.models."}
 		}
-		if math.IsNaN(role.Cap) || role.Cap < 0 || (p.MaxRoleCap > 0 && role.Cap > p.MaxRoleCap) {
+		if math.IsNaN(role.Cap) || math.IsInf(role.Cap, 0) || role.Cap <= 0 {
+			return &Refusal{Code: RefusePlanInvalid, Field: field + ".cap", Message: "A runtime Role needs a per-Run cap above 0."}
+		}
+		if p.MaxRoleCap > 0 && role.Cap > p.MaxRoleCap {
 			return &Refusal{Code: RefusePlanInvalid, Field: field + ".cap", Message: fmt.Sprintf("A Role's cap is at most teamCreation.maxRoleCap (%.2f).", p.MaxRoleCap)}
 		}
 	}

@@ -1447,7 +1447,7 @@
         "runtimeTeams": {
           "type": "object",
           "additionalProperties": false,
-          "description": "Generic worker pools for runtime Teams (ADR-0198 section 7): one ScaledJob per tenant and harness. enabled must agree with config.teamCreation.enabled. A pool renders only for an isolation-qualified harness, with both credential proxies on (isolation proxy) or behind the credential gateway (isolation gateway), and never with DinD.",
+          "description": "Generic worker pools for runtime Teams (ADR-0198 section 7): one ScaledJob per tenant and harness. enabled must agree with config.teamCreation.enabled. A pool renders only for an isolation-qualified harness, with both credential proxies on (isolation proxy), and never with DinD. Isolation gateway is refused until the credential gateway outside the Run pod (ADR-0197) serves pools.",
           "properties": {
             "enabled": {"type": "boolean"},
             "pools": {

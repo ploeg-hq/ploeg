@@ -16,7 +16,6 @@ executor:
       - tenant: default
         harness: acp/openhands
         maxReplicaCount: 2
-        isolation: gateway
 config:
   teamCreation:
     enabled: true

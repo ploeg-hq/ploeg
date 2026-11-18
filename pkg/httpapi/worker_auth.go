@@ -328,6 +328,13 @@ func (w *workerResponse) copyTo(dst http.ResponseWriter) {
 // only a runtime Team's Run under its spend cap, and the capability is
 // bound to that Team and Role as for any claim. No claimable Run answers
 // 204.
+func poolHarnessFields(key string) (string, string) {
+	if profile, ok := strings.CutPrefix(key, "acp/"); ok {
+		return "acp", profile
+	}
+	return key, ""
+}
+
 func (s *Server) poolClaim(w http.ResponseWriter, r *http.Request, body []byte, b WorkerBootstrap) (*http.Request, []byte, WorkerBootstrap, bool) {
 	if s.RuntimeTeams == nil {
 		w.WriteHeader(http.StatusNoContent)
@@ -344,11 +351,13 @@ func (s *Server) poolClaim(w http.ResponseWriter, r *http.Request, body []byte, 
 		return r, body, b, false
 	}
 	var fields map[string]any
-	if err := json.Unmarshal(body, &fields); err != nil {
+	var req claimRequest
+	if json.Unmarshal(body, &fields) != nil || json.Unmarshal(body, &req) != nil || req.harnessKey() != b.Pool.Harness {
 		s.rejectWorker(w, r)
 		return r, body, b, false
 	}
 	fields["team"], fields["role"] = next.Team, next.Role
+	fields["harness"], fields["harnessProfile"] = poolHarnessFields(b.Pool.Harness)
 	rewritten, err := json.Marshal(fields)
 	if err != nil {
 		http.Error(w, "claim failed", http.StatusInternalServerError)

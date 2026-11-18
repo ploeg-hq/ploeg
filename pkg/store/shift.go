@@ -385,7 +385,7 @@ func (s *Store) ClaimRoleFor(ctx context.Context, team, role, harness string, tt
 	p.team, p.role = team, role
 	p.spendCap, p.now = s.TeamSpendCap(team), s.spendNow()
 	if pool, ok := poolClaimFrom(ctx); ok {
-		p.spendCap = pool.SpendCap
+		p.spendCap, p.teamID = pool.SpendCap, pool.TeamID
 	}
 	claimed, err := startPendingRun(ctx, tx, p, ttl, cap, "team:"+team, nil)
 	if err != nil {
@@ -406,6 +406,9 @@ type pendingRun struct {
 	writes                     bool
 	spendCap                   spendcap.Cap
 	now                        time.Time
+	// teamID counts a runtime Team's spend by its id, so a rename or an
+	// alias never starts a fresh cap (ADR-0198).
+	teamID string
 }
 
 // startPendingRun moves a locked pending Run to running inside tx: it

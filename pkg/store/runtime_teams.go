@@ -200,7 +200,7 @@ func keyHolder(ctx context.Context, tx pgx.Tx, tenant, key string, limits TeamLi
 	var released time.Time
 	err = tx.QueryRow(ctx, `
 		SELECT k.team_id, k.released_at FROM team_keys k
-		WHERE k.tenant = $1 AND lower(k.key) = lower($2) AND k.released_at IS NOT NULL AND k.released_at > $3
+		WHERE (k.tenant = $1 OR k.tenant IS NULL) AND lower(k.key) = lower($2) AND k.released_at IS NOT NULL AND k.released_at > $3
 		ORDER BY k.released_at DESC LIMIT 1`, tenant, key, limits.Now.Add(-limits.Reservation)).Scan(&reservedBy, &released)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", "", "", nil, nil
@@ -235,25 +235,8 @@ func checkSpend(ctx context.Context, tx pgx.Tx, tenant, self string, cap spendca
 		return &TeamError{Code: TeamSpendExceeds, Headroom: &zero,
 			Message: "This Tenant has no allowance for runtime Teams in that period (teamCreation.tenants.<tenant>.spend)."}
 	}
-	rows, err := tx.Query(ctx, `SELECT id, manifest FROM teams WHERE source = 'runtime' AND tenant = $1 AND removed_at IS NULL`, tenant)
+	used, err := tenantCommitted(ctx, tx, tenant, self, limits)
 	if err != nil {
-		return err
-	}
-	used := 0.0
-	for rows.Next() {
-		var id string
-		var raw []byte
-		if err := rows.Scan(&id, &raw); err != nil {
-			rows.Close()
-			return err
-		}
-		var m team.Manifest
-		if json.Unmarshal(raw, &m) == nil && id != self && m.Spend.Cap != nil {
-			used += m.Spend.Cap.USD
-		}
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
 		return err
 	}
 	headroom := limits.Allowance.USD - used
@@ -264,12 +247,61 @@ func checkSpend(ctx context.Context, tx pgx.Tx, tenant, self string, cap spendca
 	return nil
 }
 
+// tenantCommitted is what a Tenant's runtime Teams other than self hold of
+// its allowance in the current period: a live Team its cap or, when more,
+// what it spent; a Team removed in the period what it spent. Removing a Team
+// and creating another therefore never frees money already spent.
+func tenantCommitted(ctx context.Context, tx pgx.Tx, tenant, self string, limits TeamLimits) (float64, error) {
+	now := limits.Now
+	if now.IsZero() {
+		now = time.Now()
+	}
+	start := limits.Allowance.Period.Start(now)
+	rows, err := tx.Query(ctx, `SELECT id, manifest, removed_at IS NOT NULL FROM teams
+		WHERE source = 'runtime' AND tenant = $1 AND id <> $2 AND (removed_at IS NULL OR removed_at >= $3)`, tenant, self, start)
+	if err != nil {
+		return 0, err
+	}
+	type entry struct {
+		id      string
+		cap     float64
+		removed bool
+	}
+	var teams []entry
+	for rows.Next() {
+		var e entry
+		var raw []byte
+		if err := rows.Scan(&e.id, &raw, &e.removed); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		var m team.Manifest
+		if json.Unmarshal(raw, &m) == nil && m.Spend.Cap != nil && !e.removed {
+			e.cap = m.Spend.Cap.USD
+		}
+		teams = append(teams, e)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	used := 0.0
+	for _, e := range teams {
+		settled, held, err := teamPeriodSpend(ctx, tx, "", e.id, start)
+		if err != nil {
+			return 0, err
+		}
+		used += max(e.cap, settled+held)
+	}
+	return used, nil
+}
+
 // SpendHeadroom is what a Tenant's allowance has left for runtime Team
 // caps, not counting the Team self.
 func (s *Store) SpendHeadroom(ctx context.Context, tenant, self string, allowance spendcap.Cap) (float64, error) {
 	var headroom float64
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
-		err := checkSpend(ctx, tx, tenant, self, spendcap.Cap{USD: 1e18, Period: allowance.Period}, TeamLimits{Allowance: allowance})
+		err := checkSpend(ctx, tx, tenant, self, spendcap.Cap{USD: 1e18, Period: allowance.Period}, TeamLimits{Allowance: allowance, Now: time.Now()})
 		var te *TeamError
 		if errors.As(err, &te) && te.Headroom != nil {
 			headroom = *te.Headroom
@@ -565,12 +597,24 @@ func (s *Store) UndrainRuntimeTeam(ctx context.Context, id string, audit TeamAud
 	return out, err
 }
 
+// DrainResult is what a pass over draining Teams did: the Teams it
+// removed and the credentials of the Runs it stopped, which the caller
+// blocks and revokes.
+type DrainResult struct {
+	Removed          []string
+	StoppedRunTokens []string
+	ForgeTokenIDs    []string
+}
+
 // FinishDrains removes every draining Team whose open Work Items ended, and
-// at a drain's deadline moves its open Work Items to needs_human with
-// team_drain_expired and removes it (ADR-0198 section 5).
-func (s *Store) FinishDrains(ctx context.Context, now time.Time) (removed []string, err error) {
-	err = pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
-		removed = nil
+// at a drain's deadline closes its Shifts, stops its pending and running
+// Runs, moves its open Work Items to needs_human with team_drain_expired and
+// removes it (ADR-0198 section 5). Live bindings of a removed Team turn
+// invalid with team_removed first.
+func (s *Store) FinishDrains(ctx context.Context, now time.Time) (DrainResult, error) {
+	var out DrainResult
+	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		out = DrainResult{}
 		if err := lockTeams(ctx, tx); err != nil {
 			return err
 		}
@@ -593,7 +637,7 @@ func (s *Store) FinishDrains(ctx context.Context, now time.Time) (removed []stri
 				continue
 			}
 			if len(use.WorkItems) > 0 {
-				moved, err := expireDrain(ctx, tx, t)
+				moved, err := expireDrain(ctx, tx, t, &out)
 				if err != nil {
 					return err
 				}
@@ -601,17 +645,27 @@ func (s *Store) FinishDrains(ctx context.Context, now time.Time) (removed []stri
 					return err
 				}
 			}
+			if err := invalidateTeamBindings(ctx, tx, t.ID); err != nil {
+				return err
+			}
 			if err := removeRuntimeTeamTx(ctx, tx, t, sweep, map[string]any{"drained": true}); err != nil {
 				return err
 			}
-			removed = append(removed, t.ID)
+			out.Removed = append(out.Removed, t.ID)
 		}
 		return nil
 	})
-	return removed, err
+	return out, err
 }
 
-func expireDrain(ctx context.Context, tx pgx.Tx, t RuntimeTeam) ([]int64, error) {
+func invalidateTeamBindings(ctx context.Context, tx pgx.Tx, id string) error {
+	_, err := tx.Exec(ctx, `UPDATE tracker_bindings SET state = 'invalid', invalid_reason = 'team_removed', shadowed_by = NULL,
+		updated_at = now(), revision = nextval('tracker_binding_revisions')
+		WHERE team_id = $1 AND removed_at IS NULL AND (state <> 'invalid' OR invalid_reason IS DISTINCT FROM 'team_removed')`, id)
+	return err
+}
+
+func expireDrain(ctx context.Context, tx pgx.Tx, t RuntimeTeam, out *DrainResult) ([]int64, error) {
 	rows, err := tx.Query(ctx, `
 		UPDATE work_items SET state = 'needs_human', updated_at = now()
 		WHERE team_id = $1 AND state NOT IN ('done', 'withdrawn', 'needs_human') RETURNING id`, t.ID)
@@ -622,9 +676,42 @@ func expireDrain(ctx context.Context, tx pgx.Tx, t RuntimeTeam) ([]int64, error)
 	if err != nil {
 		return nil, err
 	}
-	if _, err := tx.Exec(ctx, `UPDATE agent_runs SET state = 'finished', finished_at = now(), summary = $2
-		WHERE team_id = $1 AND state = 'pending'`, t.ID, "cancelled: the Team's drain ran out ("+NeedsHumanTeamDrainExpired+")"); err != nil {
+	summary := "cancelled: the Team's drain ran out (" + NeedsHumanTeamDrainExpired + ")"
+	if _, err := tx.Exec(ctx, `UPDATE shifts SET closed_at = now(), close_reason = $2
+		WHERE team_id = $1 AND closed_at IS NULL`, t.ID, NeedsHumanTeamDrainExpired); err != nil {
 		return nil, err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE agent_runs SET state = 'finished', finished_at = now(), summary = $2
+		WHERE team_id = $1 AND state = 'pending'`, t.ID, summary); err != nil {
+		return nil, err
+	}
+	rows, err = tx.Query(ctx, `UPDATE agent_runs SET state = 'finished', finished_at = now(), summary = $2
+		WHERE team_id = $1 AND state = 'running' RETURNING run_token, coalesce(forge_token_id, '')`, t.ID, summary)
+	if err != nil {
+		return nil, err
+	}
+	stopped, err := pgx.CollectRows(rows, pgx.RowToStructByPos[stoppedRun])
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range stopped {
+		out.StoppedRunTokens = append(out.StoppedRunTokens, r.RunToken)
+		if r.ForgeTokenID != "" {
+			out.ForgeTokenIDs = append(out.ForgeTokenIDs, r.ForgeTokenID)
+		}
+	}
+	rows, err = tx.Query(ctx, `DELETE FROM leases WHERE team_id = $1 RETURNING coalesce(forge_token_id, '')`, t.ID)
+	if err != nil {
+		return nil, err
+	}
+	leaseTokens, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range leaseTokens {
+		if id != "" {
+			out.ForgeTokenIDs = append(out.ForgeTokenIDs, id)
+		}
 	}
 	for _, id := range moved {
 		if err := audit(ctx, tx, "team:"+t.Key, "work_item.needs_human", &id, map[string]any{

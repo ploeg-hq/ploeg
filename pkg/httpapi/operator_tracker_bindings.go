@@ -237,6 +237,10 @@ func (f bindingFieldsRequest) fields() (store.TrackerBindingFields, string) {
 
 func (s *Server) bindingConnection(ctx context.Context, w http.ResponseWriter, team, id string) (trackerbinding.Connection, bool) {
 	reg := s.TrackerBindings.Registry
+	if s.runtimeTeamDraining(team) {
+		operatorError(w, 409, "team_draining", "Runtime Team "+team+" is draining and takes no new binding.")
+		return trackerbinding.Connection{}, false
+	}
 	policy, accepts := reg.TeamPolicy(team)
 	if !accepts {
 		operatorError(w, 422, "bindings_not_accepted", "Team "+team+" accepts no runtime tracker bindings: its manifest names no trackerBindings.")
@@ -705,4 +709,11 @@ func (s *Server) allowsTeamKey(p OperatorPrincipal, key string) bool {
 	}
 	t, how, ok := s.Teams.Resolve(key)
 	return ok && how == team.ByKey && p.allowsResolvedTeam(t)
+}
+
+// runtimeTeamDraining reports whether key names a runtime Team whose drain
+// started.
+func (s *Server) runtimeTeamDraining(key string) bool {
+	t, how, ok := s.Teams.Resolve(key)
+	return ok && how == team.ByKey && t.Source == team.SourceRuntime && t.Draining
 }

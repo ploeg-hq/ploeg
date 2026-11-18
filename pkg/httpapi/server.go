@@ -302,15 +302,13 @@ func (s *Server) runtimeTeam(key string) (store.RuntimeTeam, bool) {
 }
 
 // teamSponsor is the person a Team's Runs act for when nobody handed the
-// work over: teams.<key>.sponsor, or a runtime Team's sponsor.
+// work over: a runtime Team's sponsor for a key a runtime Team holds, so a
+// static sponsor left for that key never applies, else teams.<key>.sponsor.
 func (s *Server) teamSponsor(team string) string {
-	if sponsor := s.TeamSponsors[team]; sponsor != "" {
-		return sponsor
-	}
 	if rt, ok := s.runtimeTeam(team); ok {
 		return rt.Manifest.Sponsor
 	}
-	return ""
+	return s.TeamSponsors[team]
 }
 
 // roleCap is a Role's per-Run cap, from the plan or a runtime manifest.

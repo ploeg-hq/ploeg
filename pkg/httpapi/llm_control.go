@@ -52,7 +52,8 @@ type LLMControl struct {
 	// the first settlement final.
 	CorrectionWindow time.Duration
 	// Runtime is the policy of a runtime Team's Role (ADR-0198), built from
-	// its manifest. A static policy of the same team and Role wins.
+	// its manifest. It answers only for a key a runtime Team holds, and then
+	// a static policy left for that key never applies.
 	Runtime func(team, role string) (LLMPolicy, bool)
 }
 
@@ -129,13 +130,15 @@ func policyRole(role string) string {
 
 // Policy returns the managed inference policy of a team and Role.
 func (c *LLMControl) Policy(team, role string) (LLMPolicy, bool) {
+	if c.Runtime != nil {
+		if p, ok := c.Runtime(team, role); ok {
+			return p, true
+		}
+	}
 	for _, p := range c.Policies {
 		if p.Team == team && p.Role == role {
 			return p, true
 		}
-	}
-	if c.Runtime != nil {
-		return c.Runtime(team, role)
 	}
 	return LLMPolicy{}, false
 }
