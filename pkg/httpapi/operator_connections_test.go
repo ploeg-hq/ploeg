@@ -137,7 +137,7 @@ func newConnRig(t *testing.T) *connRig {
 	cfg := &connection.Config{Enabled: true, Allow: []connection.Allow{
 		{Port: "tracker", Kind: "clickup", Instance: "clickup-cloud", Methods: []string{"oauth", "token"}},
 	}, Instances: map[string]connection.Instance{
-		"clickup-cloud": {Kind: "clickup", URL: cu.srv.URL, APIURL: cu.srv.URL + "/api", OAuth: &connection.OAuth{ClientID: "cu-client", ClientSecretEnv: "CU_SECRET", RedirectURIs: []string{connRedirect}}},
+		"clickup-cloud": {Kind: "clickup", URL: cu.srv.URL, APIURL: cu.srv.URL + "/api", OAuth: &connection.OAuth{ClientID: "cu-client", ClientSecretEnv: "CU_SECRET", RedirectURIs: []string{connRedirect}}, AllowInsecureHTTP: true},
 	}}
 	instances, err := cfg.Resolve(func(k string) (string, bool) { return clickUpSecret, k == "CU_SECRET" })
 	if err != nil {

@@ -32,3 +32,25 @@ func TestConfigResolveRefusesWhatCannotBeServed(t *testing.T) {
 		t.Fatal("unexpected query")
 	}
 }
+
+func TestConfigResolveHTTPInstanceURL(t *testing.T) {
+	lookup := func(k string) (string, bool) { return "s3cret", k == "SECRET" }
+	oauth := &OAuth{ClientID: "c", ClientSecretEnv: "SECRET", RedirectURIs: []string{"https://consumer.example/cb"}}
+	cases := map[string]struct {
+		inst   Instance
+		accept bool
+	}{
+		"oauth refuses an http url":          {Instance{Kind: "gitlab", URL: "http://gitlab.internal", OAuth: oauth}, false},
+		"oauth accepts an explicit insecure": {Instance{Kind: "gitlab", URL: "http://gitlab.internal", OAuth: oauth, AllowInsecureHTTP: true}, true},
+		"oauth accepts an https url":         {Instance{Kind: "gitlab", URL: "https://gitlab.example", OAuth: oauth}, true},
+		"no oauth keeps an http url":         {Instance{Kind: "gitlab", URL: "http://gitlab.internal"}, true},
+		"insecure still needs a url scheme":  {Instance{Kind: "gitlab", URL: "ftp://gitlab.internal", OAuth: oauth, AllowInsecureHTTP: true}, false},
+	}
+	for name, c := range cases {
+		cfg := Config{Instances: map[string]Instance{"gl": c.inst}}
+		_, err := cfg.Resolve(lookup)
+		if (err == nil) != c.accept {
+			t.Errorf("%s: err = %v", name, err)
+		}
+	}
+}

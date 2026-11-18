@@ -69,12 +69,15 @@ type StepUp struct {
 
 // Instance is one tracker or forge instance: its kind, its URLs and, for
 // OAuth, its statically configured OAuth application. Its id is a forge
-// registry id or a configured tracker instance.
+// registry id or a configured tracker instance. With OAuth, URL must be
+// https unless AllowInsecureHTTP is set, because the token and revoke URLs
+// derived from it carry the client secret.
 type Instance struct {
-	Kind   string `yaml:"kind"`
-	URL    string `yaml:"url"`
-	APIURL string `yaml:"apiUrl"`
-	OAuth  *OAuth `yaml:"oauth"`
+	Kind              string `yaml:"kind"`
+	URL               string `yaml:"url"`
+	APIURL            string `yaml:"apiUrl"`
+	OAuth             *OAuth `yaml:"oauth"`
+	AllowInsecureHTTP bool   `yaml:"allowInsecureHttp"`
 }
 
 // OAuth is an instance's OAuth application. The client secret is read from
@@ -126,6 +129,9 @@ func (c *Config) Resolve(lookup func(string) (string, bool)) (map[string]provide
 		if o := inst.OAuth; o != nil {
 			if o.ClientID == "" || !envPattern.MatchString(o.ClientSecretEnv) || len(o.RedirectURIs) == 0 || len(o.RedirectURIs) > 10 {
 				return nil, fmt.Errorf("connections.instances.%s.oauth needs clientId, clientSecretEnv and 1 to 10 redirectUris", id)
+			}
+			if inst.URL != "" && !httpsURL(inst.URL, inst.AllowInsecureHTTP) {
+				return nil, fmt.Errorf("connections.instances.%s: url must be https when oauth is configured, because the token URL derived from it carries the client secret; an http url needs allowInsecureHttp: true", id)
 			}
 			for _, u := range o.RedirectURIs {
 				if !httpsURL(u, false) {
