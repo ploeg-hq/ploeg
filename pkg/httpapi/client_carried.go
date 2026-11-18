@@ -82,7 +82,7 @@ func (s *Server) handleClientClaim(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	item, sessionForge, ok := s.clientClaimable(w, r, p, id, s.clientCarriesTeam)
+	item, sessionForge, ok := s.clientClaimable(w, r, p, id, s.clientCarriesTeam, false)
 	if !ok {
 		return
 	}
@@ -104,7 +104,7 @@ func (s *Server) handleClientClaim(w http.ResponseWriter, r *http.Request) {
 // clientClaimable answers the request itself and returns false unless the
 // Work Item has a Run its person may start: in the consumer's scope, on a
 // Team carries says has such Roles, with a resolved repository.
-func (s *Server) clientClaimable(w http.ResponseWriter, r *http.Request, p OperatorPrincipal, id int64, carries func(team string) bool) (work.WorkItem, ClaimForge, bool) {
+func (s *Server) clientClaimable(w http.ResponseWriter, r *http.Request, p OperatorPrincipal, id int64, carries func(team string) bool, throughGateway bool) (work.WorkItem, ClaimForge, bool) {
 	item, err := s.Store.WorkItem(r.Context(), id)
 	switch {
 	case errors.Is(err, store.ErrWorkItemNotFound) || (err == nil && !p.AllowsTeam(item.Team)):
@@ -122,7 +122,12 @@ func (s *Server) clientClaimable(w http.ResponseWriter, r *http.Request, p Opera
 		operatorError(w, 409, "no_client_run", "No Run of this Work Item waits for a client: its Team carries no Run from a client.")
 		return item, ClaimForge{}, false
 	}
-	if _, gated := s.CredentialGateways.bindingForTeam(item.Team); gated {
+	_, gated := s.CredentialGateways.bindingForTeam(item.Team)
+	if throughGateway && !gated {
+		operatorError(w, 409, "credential_gateway_required", "Routine Runs execute in the claude-runner, which may hold no credential: this Work Item's Team is bound to no credential gateway, so its Run keeps waiting (ADR-0197).")
+		return item, ClaimForge{}, false
+	}
+	if gated && !throughGateway {
 		operatorError(w, 409, "credential_gateway_team", "This Work Item's Team runs behind a credential gateway, so its Runs are claimed only through the gateway and never by a client, which would carry the Run's credentials outside it (ADR-0197).")
 		return item, ClaimForge{}, false
 	}
