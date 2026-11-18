@@ -2,7 +2,16 @@
 set -euo pipefail
 : "${PLOEG_CLAUDE_RUNNER_WORK_ORDER:?no work order: an on-demand runner starts only from the spawn-runner hook of its orchestrator}"
 dir="${PLOEG_CLAUDE_RUNNER_WORK_ORDER_DIR:-/var/run/ploeg/work-order}"
+health="${PLOEG_CLAUDE_RUNNER_HEALTH_URL:-http://127.0.0.1:8080/healthz}"
+wait_seconds="${PLOEG_CLAUDE_RUNNER_REGISTRATION_SECONDS:-900}"
 umask 077
 printf '%s' "$PLOEG_CLAUDE_RUNNER_WORK_ORDER" >"$dir/work-order"
 unset PLOEG_CLAUDE_RUNNER_WORK_ORDER
+(
+  deadline=$((SECONDS + wait_seconds))
+  until curl -fsS --max-time 2 -o /dev/null "$health" 2>/dev/null || [ "$SECONDS" -ge "$deadline" ]; do
+    sleep 1
+  done
+  rm -f "$dir/work-order"
+) </dev/null >/dev/null 2>&1 &
 exec claude self-hosted-runner --environment-secret-file "$dir/work-order" "$@"

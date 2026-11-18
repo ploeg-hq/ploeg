@@ -24,7 +24,8 @@ Sources, read on 2026-11-18: [Customize sessions, On-demand runners](https://cod
 ## What is accepted, and what stays open
 
 * The work order is a literal value in the runner Job's spec, readable by whoever may read Jobs in the executor namespace until the runner registers. It cannot be put into a Secret, because a runner pod mounts none (ADR-0197 section 4). Anthropic documents it as single-use and session-bound; section 7 accepts it in the runner pod as "spent at registration".
-* The file stays readable to the session after registration, since the runner and its sessions share a user. Whether Anthropic refuses a second registration with a spent order is documented ("its work order is single-use"), not tested.
+* The wrapper deletes the file once the runner answers `/healthz`, which the reference says it does only after it registered; until then the runner and any session share a user and can read it. Whether Anthropic refuses a second registration with a spent order is documented ("its work order is single-use"), not tested, and the runner pod's safety relies on it (ADR-0197 section 7, item 1).
+* A ValidatingAdmissionPolicy scoped to the orchestrator's ServiceAccount admits only the chart's runner Job, because RBAC cannot restrict the pod spec of a Job the hook creates.
 * `--expected-spawn-seconds` defaults to 300 in the chart, not 120, because a runner Job installs Claude Code at start (ADR-0141) before it registers.
 * `--shutdown-drain-sec` needs Claude Code 2.1.299; the chart pins 2.1.296 and leaves it to `claudeRunner.orchestrator.extraArgs`.
 * Not verified: that a session started by a routine with an API trigger is offered to the orchestrator of its self-hosted environment (section 7, item 1), and what `CLAUDE_RUNNER_CLIENT_PLATFORM` and `CLAUDE_RUNNER_ACCOUNT_ID` carry for one.
