@@ -10,6 +10,9 @@ import (
 type RunSelections struct {
 	Harnesses TeamHarnesses
 	LLM       *LLMControl
+	// Runtime is the Harness a runtime Team's Role runs on (ADR-0198);
+	// its Runs store it, so only that Harness's pool claims them.
+	Runtime func(team, role string) (string, bool)
 }
 
 // RoleSelection is the Harness keys an admission may give the Role, the
@@ -25,6 +28,10 @@ func (r RunSelections) RoleSelection(team, role string) store.RoleSelection {
 			if key := harnessKeyOf(a.OperatorRoleHarness); h.Admits(key) {
 				sel.Harnesses = append(sel.Harnesses, key)
 			}
+		}
+	} else if r.Runtime != nil {
+		if key, ok := r.Runtime(team, role); ok {
+			sel.DefaultHarness, sel.Harnesses = key, []string{key}
 		}
 	}
 	if r.LLM != nil {

@@ -1007,6 +1007,18 @@ executor:
   spendCap:
     usd: 20
     period: day
+  # Generic worker pools for Teams people create at runtime (ADR-0198):
+  # one ScaledJob per tenant and isolation-qualified harness. enabled must
+  # agree with config.teamCreation.enabled. A pool's worker reads the
+  # bootstrap Secret key pool--<tenant>--<harness>, and the registry entry
+  # {"token": ..., "pool": {"tenant": ..., "harness": ...}}.
+  runtimeTeams:
+    enabled: false
+    pools: []
+    # - tenant: default
+    #   harness: openhands
+    #   maxReplicaCount: 4
+    #   isolation: proxy
   teams: []
   # - name: bronze
   #   model: litellm_proxy/deepseek-chat

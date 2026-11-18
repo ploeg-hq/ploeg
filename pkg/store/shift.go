@@ -372,7 +372,7 @@ func (s *Store) ClaimRoleFor(ctx context.Context, team, role, harness string, tt
 	var p pendingRun
 	err = tx.QueryRow(ctx, `
 		SELECT id, shift_id, work_item_id, run_token, round, writes, COALESCE(model_selected, '') FROM agent_runs
-		WHERE team = $1 AND role = $2 AND state = 'pending' AND `+harnessPredicate+`
+		WHERE team = $1 AND role = $2 AND state = 'pending' AND `+harnessPredicate+` AND `+teamSourcePredicate(ctx)+`
 		ORDER BY id
 		FOR UPDATE SKIP LOCKED
 		LIMIT 1`, team, role, harness).Scan(&p.runID, &p.shiftID, &p.workItemID, &p.token, &p.round, &p.writes, &p.model)
@@ -384,6 +384,9 @@ func (s *Store) ClaimRoleFor(ctx context.Context, team, role, harness string, tt
 	}
 	p.team, p.role = team, role
 	p.spendCap, p.now = s.TeamSpendCap(team), s.spendNow()
+	if pool, ok := poolClaimFrom(ctx); ok {
+		p.spendCap = pool.SpendCap
+	}
 	claimed, err := startPendingRun(ctx, tx, p, ttl, cap, "team:"+team, nil)
 	if err != nil {
 		_ = tx.Rollback(ctx)

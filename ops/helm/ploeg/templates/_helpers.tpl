@@ -789,8 +789,13 @@ spec:
       env:
         - name: PLOEG_API_URL
           value: {{ include "ploeg.workerApiUrl" $root | quote }}
+        {{- with .pool }}
+        - name: PLOEG_POOL
+          value: {{ printf "%s/%s" .tenant .harness | quote }}
+        {{- else }}
         - name: PLOEG_TEAM
           value: {{ $team.name | quote }}
+        {{- end }}
         {{- if $role.name }}
         - name: PLOEG_ROLE
           value: {{ $role.name | quote }}
@@ -932,7 +937,11 @@ spec:
           valueFrom:
             secretKeyRef:
               name: {{ $root.Values.executor.workerAuth.bootstrapSecret.name }}
+              {{- if .pool }}
+              key: {{ include "ploeg.poolBootstrapKey" .pool | quote }}
+              {{- else }}
               key: {{ printf "%s--%s" $team.name ($role.name | default "default") | quote }}
+              {{- end }}
         {{- else if $root.Values.executor.workerAuth.staticInferenceSecret }}
         - name: LLM_API_KEY
           valueFrom:
@@ -1197,4 +1206,59 @@ Ploeg created, so the chart refuses it and an empty value.
 {{- fail (printf "secretStore.kubernetes.namespace must not be the release namespace %s: the Role it grants could read every Secret there, including the database URL and the forge credentials" .Release.Namespace) -}}
 {{- end -}}
 {{- $namespace -}}
+{{- end -}}
+
+{{/*
+ploeg.runtimePools validates executor.runtimeTeams (ADR-0198 section 7) and
+returns its pools as JSON [{tenant, harness, maxReplicaCount, isolation}]:
+the generic worker pools that run runtime Teams' Runs, one per Tenant and
+Harness. A pool runs only an isolation-qualified Harness with both
+credential proxies on and no DinD; isolation is "proxy" today and
+"gateway" once the credential gateway serves the pool.
+*/}}
+{{- define "ploeg.runtimePools" -}}
+{{- $rt := .Values.executor.runtimeTeams | default dict }}
+{{- $creation := ((.Values.config | default dict).teamCreation | default dict).enabled | default false }}
+{{- if ne ($rt.enabled | default false) $creation }}
+{{- fail "executor.runtimeTeams.enabled and config.teamCreation.enabled must agree: runtime Teams need both the pools that run them and the opt-in that lets a person create them (ADR-0198)" }}
+{{- end }}
+{{- $out := list }}
+{{- if $rt.enabled }}
+{{- $qualified := include "ploeg.isolationQualifiedHarnesses" . | fromJsonArray }}
+{{- $seen := list }}
+{{- range $p := ($rt.pools | default list) }}
+{{- $id := printf "%s/%s" $p.tenant $p.harness }}
+{{- if has $id $seen }}
+{{- fail (printf "executor.runtimeTeams.pools: a second pool for tenant %s and harness %s" $p.tenant $p.harness) }}
+{{- end }}
+{{- $seen = append $seen $id }}
+{{- if not (has $p.harness $qualified) }}
+{{- fail (printf "executor.runtimeTeams.pools: harness %s is not qualified for credential isolation, so no runtime Team may run on it (ADR-0034, ADR-0198)" $p.harness) }}
+{{- end }}
+{{- $isolation := $p.isolation | default "proxy" }}
+{{- if not (has $isolation (list "proxy" "gateway")) }}
+{{- fail (printf "executor.runtimeTeams.pools: isolation is proxy or gateway, not %q" $isolation) }}
+{{- end }}
+{{- if or (not $.Values.executor.litellm.keyIsolation) (not $.Values.executor.forgeTokenIsolation) }}
+{{- fail "executor.runtimeTeams.pools: a pool needs executor.litellm.keyIsolation and executor.forgeTokenIsolation on; a gateway pool keeps them until the credential gateway's chart serves it" }}
+{{- end }}
+{{- if (($.Values.executor.harness | default dict).dind) }}
+{{- fail "executor.runtimeTeams.pools: a pool never runs DinD, and executor.harness.dind is on" }}
+{{- end }}
+{{- $out = append $out (dict "tenant" $p.tenant "harness" $p.harness "maxReplicaCount" ($p.maxReplicaCount | default 1 | int) "isolation" $isolation) }}
+{{- end }}
+{{- end }}
+{{- toJson $out }}
+{{- end -}}
+
+{{- define "ploeg.poolBootstrapKey" -}}
+{{- printf "pool--%s--%s" .tenant (replace "/" "-" .harness) -}}
+{{- end -}}
+
+{{- define "ploeg.poolTeam" -}}
+{{- $harness := dict "name" .harness }}
+{{- if hasPrefix "acp/" .harness }}
+{{- $harness = dict "name" "acp" "acp" (dict "profile" (trimPrefix "acp/" .harness)) }}
+{{- end }}
+{{- dict "name" (printf "pool-%s-%s" .tenant (replace "/" "-" .harness)) "harness" $harness | toJson }}
 {{- end -}}

@@ -5,11 +5,15 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"time"
 
 	"github.com/ploeg-hq/ploeg/pkg/config"
+	"github.com/ploeg-hq/ploeg/pkg/httpapi"
 	"github.com/ploeg-hq/ploeg/pkg/store"
 	"github.com/ploeg-hq/ploeg/pkg/team"
+	"github.com/ploeg-hq/ploeg/pkg/teamruntime"
+	"github.com/ploeg-hq/ploeg/pkg/trackerbinding"
 )
 
 type teamStore interface {
@@ -63,4 +67,78 @@ func backfillTeamIDs(ctx context.Context, log *slog.Logger, st teamStore) {
 		return
 	}
 	log.Info("Team id backfill finished", "rows", set, "took", time.Since(started).Round(time.Millisecond))
+}
+
+// runtimeTeamService builds the runtime Team service of ADR-0198 on the
+// shared Team directory, decides every runtime Team's state once, and lets
+// bindings follow their Team. Without teamCreation it still serves reads
+// and refuses every change with creation_not_accepted, so runtime Teams a
+// disabled installation holds turn invalid with creation_disabled.
+func runtimeTeamService(ctx context.Context, log *slog.Logger, cfg *config.File, st *store.Store, directory *team.Directory,
+	targetExists func(string) bool, bindings *trackerbinding.Registry) (*teamruntime.Service, error) {
+	pools, err := team.ParsePools(os.Getenv("PLOEG_RUNTIME_POOLS"))
+	if err != nil {
+		return nil, err
+	}
+	refinement := map[string]string{}
+	for key, t := range cfg.Teams {
+		if t.CreatedWork != nil && t.CreatedWork.RefinementTeam != "" {
+			refinement[key] = t.CreatedWork.RefinementTeam
+		}
+	}
+	svc := &teamruntime.Service{Store: st, Config: cfg.TeamCreation, Pools: pools, Directory: directory,
+		Refinement: refinement, TargetExists: targetExists, Log: log}
+	if bindings != nil {
+		bindings.Teams = func(id string) (team.Team, bool) {
+			t, how, ok := directory.Resolve(id)
+			return t, ok && how == team.ByID
+		}
+		bindings.TeamByKey = func(key string) (team.Team, bool) {
+			t, how, ok := directory.Resolve(key)
+			return t, ok && how == team.ByKey
+		}
+		svc.OnChange = func(ctx context.Context) {
+			if err := bindings.Rebuild(ctx); err != nil {
+				log.Warn("bindings not rebuilt after a Team change", "err", err)
+			}
+		}
+	}
+	if err := svc.Reconcile(ctx); err != nil {
+		log.Error("runtime Teams not reconciled; their states stay as stored until the next sweep", "err", err)
+	}
+	log.Info("runtime Teams configured", "accepting", cfg.TeamCreation.Accepting(), "pools", len(pools))
+	return svc, nil
+}
+
+// runtimeTeamLoop finishes drains and re-decides runtime Team states every
+// interval.
+func runtimeTeamLoop(ctx context.Context, log *slog.Logger, svc *teamruntime.Service, every time.Duration) {
+	ticker := time.NewTicker(every)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := svc.Reconcile(ctx); err != nil {
+				log.Warn("runtime Team sweep failed", "err", err)
+			}
+		}
+	}
+}
+
+// runtimeLLMPolicy gives a runtime Team's Role the managed inference
+// policy its manifest names, with the key lifetime of the static policies.
+func runtimeLLMPolicy(svc *teamruntime.Service, static []httpapi.LLMPolicy) func(team, role string) (httpapi.LLMPolicy, bool) {
+	ttl := "1h"
+	if len(static) > 0 && static[0].TTL != "" {
+		ttl = static[0].TTL
+	}
+	return func(teamKey, role string) (httpapi.LLMPolicy, bool) {
+		models, budget, ok := svc.LLMPolicy(teamKey, role)
+		if !ok {
+			return httpapi.LLMPolicy{}, false
+		}
+		return httpapi.LLMPolicy{Team: teamKey, Role: role, Models: models, DefaultModel: models[0], BudgetUSD: budget, TTL: ttl}, true
+	}
 }
