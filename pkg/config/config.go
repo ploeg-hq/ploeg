@@ -25,6 +25,8 @@
 package config
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"github.com/ploeg-hq/ploeg/pkg/connection"
@@ -42,6 +44,7 @@ import (
 	"github.com/ploeg-hq/ploeg/pkg/gate"
 	"github.com/ploeg-hq/ploeg/pkg/plan"
 	"github.com/ploeg-hq/ploeg/pkg/spendcap"
+	"github.com/ploeg-hq/ploeg/pkg/team"
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
@@ -61,6 +64,12 @@ type File struct {
 	// runtime for repositories a store-backed forge connection was granted
 	// (ADR-0193). Omitted = none is accepted.
 	TargetRegistration *TargetRegistration `yaml:"targetRegistration"`
+	// ToolRegistry registers MCP servers and skill sources and lets a
+	// proven operator change them at runtime (ADR-0199). Omitted = none.
+	ToolRegistry *ToolRegistry `yaml:"toolRegistry"`
+	// TeamCreation lets a proven person create Teams at runtime
+	// (ADR-0198). Omitted = runtime Teams are refused.
+	TeamCreation *TeamCreation `yaml:"teamCreation"`
 }
 
 type Trackers struct {
@@ -151,6 +160,13 @@ type Project struct {
 
 // Team is a roster entry: who works, at what cost, in what order.
 type Team struct {
+	// Name is the Team's display name (ADR-0198). Omitted = a hint built
+	// from its plan. The file is its only source: the operator API refuses
+	// to change a static Team's name.
+	Name string `yaml:"name"`
+	// Aliases are earlier keys of this Team. A key renamed in the file
+	// keeps its Team id when the old key is listed here (ADR-0198).
+	Aliases []string `yaml:"aliases"`
 	// Assignees are the tracker usernames that dispatch to this team, so a
 	// human assigns a colleague rather than an infrastructure tier.
 	Assignees []string `yaml:"assignees"`
@@ -183,6 +199,10 @@ type Team struct {
 	// TrackerBindings lets an Operator Consumer bind tracker Scopes to this
 	// Team while ploegd runs (ADR-0186). Omitted = the Team accepts none.
 	TrackerBindings *TrackerBindings `yaml:"trackerBindings"`
+	// Tools gives this Team's Roles registered MCP servers and skill
+	// sources by Role or "*" (ADR-0199). Set here, the file is the
+	// authority and the operator API refuses to change it.
+	Tools TeamTools `yaml:"tools"`
 }
 
 // PremiseCheck names the gateway model a Team's premise check calls. ploegd
@@ -370,6 +390,9 @@ func (f *File) Validate() error {
 			return fmt.Errorf("teams.%s.createdWork: %w", name, err)
 		}
 	}
+	if err := f.validateTeamIdentity(); err != nil {
+		return err
+	}
 	for _, name := range sortedTeamNames(f.Teams) {
 		if sponsor := f.Teams[name].Sponsor; sponsor != "" && !personID.MatchString(sponsor) {
 			return fmt.Errorf("teams.%s.sponsor: %q is not a person id", name, sponsor)
@@ -384,6 +407,12 @@ func (f *File) Validate() error {
 	if err := f.validateTargetRegistration(); err != nil {
 		return err
 	}
+	if err := f.validateToolRegistry(); err != nil {
+		return err
+	}
+	if err := f.validateTeamCreation(); err != nil {
+		return err
+	}
 	if err := f.validateFastChecks(); err != nil {
 		return err
 	}
@@ -391,6 +420,37 @@ func (f *File) Validate() error {
 		return err
 	}
 	return f.validateGates()
+}
+
+func (f *File) validateTeamIdentity() error {
+	holder := map[string]string{}
+	for _, key := range sortedTeamNames(f.Teams) {
+		if prev, taken := holder[strings.ToLower(key)]; taken {
+			return fmt.Errorf("teams.%s: differs from team %q only in case, and Team keys ignore case", key, prev)
+		}
+		holder[strings.ToLower(key)] = key
+	}
+	for _, key := range sortedTeamNames(f.Teams) {
+		t := f.Teams[key]
+		if t.Name != "" {
+			if err := team.ValidateName(t.Name); err != nil {
+				return fmt.Errorf("teams.%s.name: %w", key, err)
+			}
+		}
+		if len(t.Aliases) > team.MaxAliases {
+			return fmt.Errorf("teams.%s.aliases: at most %d", key, team.MaxAliases)
+		}
+		for i, alias := range t.Aliases {
+			if strings.TrimSpace(alias) == "" || alias != strings.TrimSpace(alias) {
+				return fmt.Errorf("teams.%s.aliases[%d]: must be a key without spaces", key, i)
+			}
+			if prev, taken := holder[strings.ToLower(alias)]; taken {
+				return fmt.Errorf("teams.%s.aliases[%d]: %q is already a key or alias of team %q", key, i, alias, prev)
+			}
+			holder[strings.ToLower(alias)] = key
+		}
+	}
+	return nil
 }
 
 var personID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:@-]{0,127}$`)
@@ -810,4 +870,36 @@ func sortedTeamNames(teams map[string]Team) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// StaticTeamIdentity is a static Team's key, aliases and configured name,
+// sorted by key, as the boot reconciler of ADR-0198 reads them.
+type StaticTeamIdentity struct {
+	Key     string
+	Aliases []string
+	Name    string
+	// Digest fingerprints everything the Team is made of except its name
+	// and aliases, so a key that left the file and a new key with the same
+	// Digest read as a rename that forgot its alias.
+	Digest string
+}
+
+// StaticTeams returns the identity of every Team in the file.
+func (f *File) StaticTeams() []StaticTeamIdentity {
+	out := make([]StaticTeamIdentity, 0, len(f.Teams))
+	for _, key := range sortedTeamNames(f.Teams) {
+		t := f.Teams[key]
+		out = append(out, StaticTeamIdentity{Key: key, Aliases: append([]string(nil), t.Aliases...), Name: t.Name, Digest: teamDigest(t)})
+	}
+	return out
+}
+
+func teamDigest(t Team) string {
+	t.Name, t.Aliases = "", nil
+	raw, err := yaml.Marshal(t)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:])
 }

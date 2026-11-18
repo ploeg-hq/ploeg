@@ -7,6 +7,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -22,6 +23,16 @@ type WorkerBootstrap struct {
 	Token string `json:"token"`
 	Team  string `json:"team"`
 	Role  string `json:"role"`
+	// Pool makes the token a runtime Team pool's (ADR-0198 section 7): its
+	// claim selects a Run of any active runtime Team of the Tenant on the
+	// Harness, and never a static Team's.
+	Pool *BootstrapPool `json:"pool,omitempty"`
+}
+
+// BootstrapPool is the Tenant and Harness a pool bootstrap claims for.
+type BootstrapPool struct {
+	Tenant  string `json:"tenant"`
+	Harness string `json:"harness"`
 }
 
 type WorkerSecurity struct {
@@ -77,7 +88,8 @@ func (a *WorkerSecurity) readBootstraps(bootstrapJSON string) error {
 		return fmt.Errorf("invalid worker bootstrap registry")
 	}
 	for i, b := range a.bootstraps {
-		if b.Team == "" || len(b.Token) < 32 {
+		pool := b.Pool != nil && b.Pool.Tenant != "" && b.Pool.Harness != "" && b.Team == "" && b.Role == ""
+		if (b.Team == "" && !pool) || (b.Pool != nil && !pool) || len(b.Token) < 32 {
 			return fmt.Errorf("invalid worker bootstrap scope")
 		}
 		for j := 0; j < i; j++ {
@@ -166,6 +178,12 @@ func (s *Server) WorkerHandler(next http.Handler) http.Handler {
 			if err != nil || json.Unmarshal(body, &req) != nil || req.Team != b.Team || req.Role != b.Role {
 				s.rejectWorker(w, r)
 				return
+			}
+			if b.Pool != nil {
+				var ok bool
+				if r, body, b, ok = s.poolClaim(w, r, body, b); !ok {
+					return
+				}
 			}
 			r.Body = io.NopCloser(bytes.NewReader(body))
 			capture := &workerResponse{header: make(http.Header)}
@@ -303,4 +321,48 @@ func (w *workerResponse) copyTo(dst http.ResponseWriter) {
 	}
 	dst.WriteHeader(status)
 	_, _ = dst.Write(w.body.Bytes())
+}
+
+// poolClaim turns a pool bootstrap's claim into the claim of the Run it
+// selects: the request names that Run's Team and Role, the store claims
+// only a runtime Team's Run under its spend cap, and the capability is
+// bound to that Team and Role as for any claim. No claimable Run answers
+// 204.
+func poolHarnessFields(key string) (string, string) {
+	if profile, ok := strings.CutPrefix(key, "acp/"); ok {
+		return "acp", profile
+	}
+	return key, ""
+}
+
+func (s *Server) poolClaim(w http.ResponseWriter, r *http.Request, body []byte, b WorkerBootstrap) (*http.Request, []byte, WorkerBootstrap, bool) {
+	if s.RuntimeTeams == nil {
+		w.WriteHeader(http.StatusNoContent)
+		return r, body, b, false
+	}
+	next, claim, err := s.RuntimeTeams.PoolRun(r.Context(), b.Pool.Tenant, b.Pool.Harness)
+	if errors.Is(err, store.ErrNoWork) {
+		w.WriteHeader(http.StatusNoContent)
+		return r, body, b, false
+	}
+	if err != nil {
+		s.Log.Error("pool claim failed", "tenant", b.Pool.Tenant, "harness", b.Pool.Harness, "err", err)
+		http.Error(w, "claim failed", http.StatusInternalServerError)
+		return r, body, b, false
+	}
+	var fields map[string]any
+	var req claimRequest
+	if json.Unmarshal(body, &fields) != nil || json.Unmarshal(body, &req) != nil || req.harnessKey() != b.Pool.Harness {
+		s.rejectWorker(w, r)
+		return r, body, b, false
+	}
+	fields["team"], fields["role"] = next.Team, next.Role
+	fields["harness"], fields["harnessProfile"] = poolHarnessFields(b.Pool.Harness)
+	rewritten, err := json.Marshal(fields)
+	if err != nil {
+		http.Error(w, "claim failed", http.StatusInternalServerError)
+		return r, body, b, false
+	}
+	b.Team, b.Role = next.Team, next.Role
+	return r.WithContext(store.WithPoolClaim(r.Context(), claim)), rewritten, b, true
 }

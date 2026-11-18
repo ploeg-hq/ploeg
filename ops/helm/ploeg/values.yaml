@@ -637,7 +637,9 @@ executor:
   harness:
     name: openhands # openhands | exec | claude-code | acp | claude-environment (PLOEG_HARNESS)
     # Agent image. REQUIRED with the executor enabled, here, in runnerImage or
-    # per team: Ploeg publishes no agent image, so the render fails without one.
+    # per team: the chart names no default agent image yet, so the render fails
+    # without one. Each release publishes ghcr.io/ploeg-hq/agent-runner (ADR-0200);
+    # name it with the digest from the release's signed-artifacts.txt.
     # A claude-environment harness that sets none uses claudeRunner.image.
     image: ""
     entrypoint: ""  # binary override (PLOEG_HARNESS_ENTRYPOINT); "" = adapter default
@@ -1009,6 +1011,18 @@ executor:
   spendCap:
     usd: 20
     period: day
+  # Generic worker pools for Teams people create at runtime (ADR-0198):
+  # one ScaledJob per tenant and isolation-qualified harness. enabled must
+  # agree with config.teamCreation.enabled. A pool's worker reads the
+  # bootstrap Secret key pool--<tenant>--<harness>, and the registry entry
+  # {"token": ..., "pool": {"tenant": ..., "harness": ...}}.
+  runtimeTeams:
+    enabled: false
+    pools: []
+    # - tenant: default
+    #   harness: openhands
+    #   maxReplicaCount: 4
+    #   isolation: proxy   # gateway is refused until ADR-0197's gateway ships
   teams: []
   # - name: bronze
   #   model: litellm_proxy/deepseek-chat

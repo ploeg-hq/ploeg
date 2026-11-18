@@ -114,7 +114,7 @@ func (s *Server) clientClaimable(w http.ResponseWriter, r *http.Request, p Opera
 		operatorError(w, 503, "unavailable", "Ploeg could not read the Work Item.")
 		return item, ClaimForge{}, false
 	}
-	if s.TransactionTokens != nil && s.TeamSponsors[item.Team] == "" {
+	if s.TransactionTokens != nil && s.teamSponsor(item.Team) == "" {
 		operatorError(w, 409, "team_without_sponsor", unsponsoredTeam(item.Team))
 		return item, ClaimForge{}, false
 	}

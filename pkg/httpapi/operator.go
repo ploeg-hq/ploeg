@@ -12,7 +12,6 @@ import (
 	"net/url"
 	"regexp"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -37,7 +36,10 @@ type OperatorPrincipal struct {
 	// CanRegisterTargets lets the consumer register, change and remove
 	// runtime Work Targets (ADR-0193); not narrowed by Team scope.
 	CanRegisterTargets bool
-	BudgetLimitUSD     float64
+	// CanManageTeams lets the consumer create, change and remove runtime
+	// Teams of its Tenant (ADR-0198).
+	CanManageTeams bool
+	BudgetLimitUSD float64
 	// ReadTrackers names the tracker connections whose Scopes and items the
 	// consumer may read (ADR-0196). Nil reads none; AllTrackers reads every
 	// one.
@@ -49,6 +51,10 @@ type OperatorPrincipal struct {
 	// ConnectionRedirectURIs are the exact HTTPS callbacks a connection
 	// flow may send the person back to.
 	ConnectionRedirectURIs []string
+	// CanManageTools lets the consumer register MCP servers and skill
+	// sources and attach them to Teams for a proven person (ADR-0199); not
+	// narrowed by Team scope.
+	CanManageTools bool
 }
 
 // AllTrackers is the readTrackers grant for every tracker connection.
@@ -134,11 +140,13 @@ func ParseOperatorConsumers(raw string, lookup func(string) (string, bool)) ([]O
 		RedirectURIs    []string            `json:"connectionRedirectUris"`
 		BindScopes      bool                `json:"bindScopes"`
 		RegisterTargets bool                `json:"registerTargets"`
+		ManageTools     bool                `json:"manageTools"`
+		ManageTeams     bool                `json:"manageTeams"`
 	}
 	decoder := json.NewDecoder(strings.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&configs); err != nil {
-		return nil, errors.New("operator consumers must be a JSON array of name, tokenEnv, teams, execute, verify, readContent, maxBudgetUsd, clientIds, audiences, requireClaims, readTrackers, manageConnections, connectionRedirectUris, bindScopes and registerTargets")
+		return nil, errors.New("operator consumers must be a JSON array of name, tokenEnv, teams, execute, verify, readContent, maxBudgetUsd, clientIds, audiences, requireClaims, readTrackers, manageConnections, connectionRedirectUris, bindScopes, registerTargets, manageTools and manageTeams")
 	}
 	if err := decoder.Decode(new(any)); err != io.EOF {
 		return nil, errors.New("operator consumers must contain one JSON value")
@@ -202,8 +210,8 @@ func ParseOperatorConsumers(raw string, lookup func(string) (string, bool)) ([]O
 		if err != nil {
 			return nil, err
 		}
-		consumers = append(consumers, OperatorConsumer{Principal: OperatorPrincipal{Name: cfg.Name, Teams: teams, CanExecute: cfg.Execute, CanVerify: cfg.Verify, CanReadContent: readContent, CanBindScopes: cfg.BindScopes, CanRegisterTargets: cfg.RegisterTargets, BudgetLimitUSD: budgetLimit, ReadTrackers: readTrackers,
-			CanManageConnections: cfg.ManageConns, ConnectionRedirectURIs: slices.Clone(cfg.RedirectURIs)}, tokenHash: hash, clientIDs: cfg.ClientIDs, audiences: cfg.Audiences, requiredClaims: required})
+		consumers = append(consumers, OperatorConsumer{Principal: OperatorPrincipal{Name: cfg.Name, Teams: teams, CanExecute: cfg.Execute, CanVerify: cfg.Verify, CanReadContent: readContent, CanBindScopes: cfg.BindScopes, CanRegisterTargets: cfg.RegisterTargets, CanManageTeams: cfg.ManageTeams, BudgetLimitUSD: budgetLimit, ReadTrackers: readTrackers,
+			CanManageConnections: cfg.ManageConns, ConnectionRedirectURIs: slices.Clone(cfg.RedirectURIs), CanManageTools: cfg.ManageTools}, tokenHash: hash, clientIDs: cfg.ClientIDs, audiences: cfg.Audiences, requiredClaims: required})
 		names[cfg.Name], hashes[hash] = true, true
 	}
 	return consumers, nil
@@ -305,6 +313,9 @@ func (s *Server) operatorAuth(next http.Handler) http.Handler {
 		}
 		if isTargetProbeCall(r) {
 			timeout = targetRequestTimeout
+		}
+		if isToolProbeCall(r) {
+			timeout = toolRequestTimeout
 		}
 		if (r.Method == http.MethodPost || r.Method == http.MethodPut) && strings.HasPrefix(r.URL.Path, "/api/v1/operator/teams/") && strings.Contains(r.URL.Path, "/tracker-bindings") {
 			timeout = bindingTimeout
@@ -506,6 +517,8 @@ func (s *Server) operatorRoutes() *http.ServeMux {
 	s.registerOperatorConnections(mux)
 	s.registerOperatorTrackerBindings(mux)
 	s.registerOperatorTargets(mux)
+	s.registerOperatorTeams(mux)
+	s.registerOperatorTools(mux)
 	s.registerClaudeRoutines(mux)
 	return mux
 }
@@ -524,22 +537,13 @@ func (s *Server) handleOperatorTeams(w http.ResponseWriter, r *http.Request) {
 		operatorReadError(w, err)
 		return
 	}
-	for i := range teams {
-		if assignees := s.OperatorConfig.TeamAssignees[teams[i].ID]; len(assignees) > 0 {
-			teams[i].Assignees = append([]string{}, assignees...)
-			sort.Strings(teams[i].Assignees)
-		}
-		if scopes := s.OperatorConfig.TeamScopes[teams[i].ID]; len(scopes) > 0 {
-			teams[i].PinnedScopes = append([]string{}, scopes...)
-			sort.Strings(teams[i].PinnedScopes)
-		}
-		teams[i].PrepareRepository = &store.OperatorPrepareRepository{MaxBudgetUSD: s.prepareCap(teams[i].ID)}
-	}
+	s.decorateTeams(teams)
 	if err := s.describeRoles(r.Context(), teams); err != nil {
 		operatorReadError(w, err)
 		return
 	}
-	operatorJSON(w, 200, map[string]any{"schemaVersion": "1.0", "teams": teams})
+	s.identifyTeams(teams)
+	operatorJSON(w, 200, map[string]any{"schemaVersion": "1.0", "teams": s.withRuntimeTeams(r, principal, teams)})
 }
 
 func (s *Server) handleOperatorItems(w http.ResponseWriter, r *http.Request) {

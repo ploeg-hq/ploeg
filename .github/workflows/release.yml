@@ -23,7 +23,7 @@ jobs:
     concurrency:
       group: ploeg-publish-${{ inputs.tag || github.ref_name }}
       cancel-in-progress: false
-    timeout-minutes: 45
+    timeout-minutes: 120
     permissions:
       contents: write
       packages: write
@@ -53,6 +53,10 @@ jobs:
         env:
           PLOEG_REQUIRE_PID_NAMESPACE: "1"
       - run: mise run docs-check
+      - name: Register QEMU so the release can build the arm64 images the catalogue lists
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+        with:
+          platforms: arm64
       - name: Publish versioned artifacts
         env:
           GH_TOKEN: ${{ github.token }}

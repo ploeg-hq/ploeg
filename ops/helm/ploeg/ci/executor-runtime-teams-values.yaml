@@ -1,0 +1,26 @@
+# CI-only values: the generic worker pools of ADR-0198 for runtime Teams.
+executor:
+  enabled: true
+  harness:
+    image: harbor.webgrip.dev/webgrip/openhands-agent:0.1.0
+  teams:
+    - name: bronze
+      model: litellm_proxy/deepseek-chat
+      budget: "2"
+  runtimeTeams:
+    enabled: true
+    pools:
+      - tenant: default
+        harness: openhands
+        maxReplicaCount: 4
+      - tenant: default
+        harness: acp/openhands
+        maxReplicaCount: 2
+config:
+  teamCreation:
+    enabled: true
+    models: [deepseek-chat]
+    tenants:
+      default:
+        spend: {usd: 100, period: month}
+supportProfile: unsupported
