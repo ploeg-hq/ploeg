@@ -10,6 +10,7 @@ import (
 	"github.com/ploeg-hq/ploeg/pkg/connection"
 	"github.com/ploeg-hq/ploeg/pkg/forgebroker"
 	"github.com/ploeg-hq/ploeg/pkg/githubapp"
+	"github.com/ploeg-hq/ploeg/pkg/httpapi"
 	"github.com/ploeg-hq/ploeg/pkg/provider"
 	"github.com/ploeg-hq/ploeg/pkg/provider/github"
 	"github.com/ploeg-hq/ploeg/pkg/store"
@@ -39,7 +40,7 @@ func (c targetConnections) ConnectionsOfInstallation(ctx context.Context, appID,
 // the readiness gate and the binding registry, and loads it once. Nil
 // registers no runtime target.
 func runtimeTargets(ctx context.Context, log *slog.Logger, cfg *config.File, st *store.Store, conns *connection.Service,
-	static target.Table, gate *target.Gate, bindings *trackerbinding.Registry, forgeID string) *worktarget.Service {
+	static target.Table, gate *target.Gate, bindings *trackerbinding.Registry, forgeID string, directory *httpapi.ForgeDirectory) *worktarget.Service {
 	if cfg.TargetRegistration == nil {
 		return nil
 	}
@@ -49,7 +50,7 @@ func runtimeTargets(ctx context.Context, log *slog.Logger, cfg *config.File, st 
 	}
 	svc := &worktarget.Service{Store: st, Config: cfg.TargetRegistration, Connections: targetConnections{svc: conns},
 		Connectors: conns.Connectors, Instances: conns.Instances, Static: static.Targets, DefaultForge: forgeID,
-		Gate: gate, Bindings: bindings, Log: log}
+		Gate: gate, Bindings: bindings, Log: log, ForgeHosts: forgeHosts(directory), Minting: map[string]bool{"github": true}}
 	bindings.Runtime = svc
 	bindingUsers := conns.Users
 	conns.Users = func(ctx context.Context, id string) ([]connection.Use, error) {
@@ -126,4 +127,23 @@ func ensureGate(gate *target.Gate, cfg *config.File, forges map[string]provider.
 		return gate
 	}
 	return target.NewGate(map[string]work.Target{}, repositoryInspectors(forges))
+}
+
+// forgeHosts maps each forge id of the release to its host, so a runtime
+// target on another id of the same forge meets its static targets.
+func forgeHosts(directory *httpapi.ForgeDirectory) map[string]string {
+	out := map[string]string{}
+	if directory == nil {
+		return out
+	}
+	for id, f := range directory.Forges {
+		raw := f.PloegdURL
+		if raw == "" {
+			raw = f.URL
+		}
+		if host := worktarget.HostOf(raw); host != "" {
+			out[id] = host
+		}
+	}
+	return out
 }

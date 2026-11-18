@@ -448,10 +448,11 @@ func run(ctx context.Context, log *slog.Logger) error {
 	}
 	readiness = ensureGate(readiness, cfg, forges)
 	bindings := trackerBindings(ctx, log, st, cfg, staticTable, targets, readiness, trackers, forgeID, secrets, runtimeConns)
-	workTargets := runtimeTargets(ctx, log, cfg, st, runtimeConns, staticTable, readiness, bindings, forgeID)
+	workTargets := runtimeTargets(ctx, log, cfg, st, runtimeConns, staticTable, readiness, bindings, forgeID, release.directory())
 	if workTargets != nil {
 		withConnections := &forgebroker.WithConnections{Base: forgeCreds, BaseSweeper: forgeSweeper, Resolve: connectionBroker(runtimeConns)}
 		forgeCreds, forgeSweeper = withConnections, withConnections
+		runtimeConns.OnChange = withConnections.Forget
 	}
 	srv := &httpapi.Server{
 		OperatorConfig: operator,

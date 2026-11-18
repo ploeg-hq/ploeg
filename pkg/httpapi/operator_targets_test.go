@@ -20,6 +20,7 @@ import (
 
 	"github.com/ploeg-hq/ploeg/pkg/config"
 	"github.com/ploeg-hq/ploeg/pkg/forgebroker"
+	"github.com/ploeg-hq/ploeg/pkg/githubapp"
 	"github.com/ploeg-hq/ploeg/pkg/provider"
 	"github.com/ploeg-hq/ploeg/pkg/provider/forgejo"
 	"github.com/ploeg-hq/ploeg/pkg/provider/github"
@@ -30,6 +31,7 @@ import (
 )
 
 type grantRepo struct {
+	Public   bool
 	ID       int64
 	FullName string
 	Archived bool
@@ -72,6 +74,15 @@ func (f *grantForge) grant(installation, repo string, on bool) {
 	f.granted[installation][strings.ToLower(repo)] = on
 }
 
+func (f *grantForge) byID(id int64) *grantRepo {
+	for _, r := range f.repos {
+		if r.ID == id {
+			return r
+		}
+	}
+	return nil
+}
+
 func (f *grantForge) lookup(path string) (*grantRepo, bool) {
 	if to, ok := f.moved[strings.ToLower(path)]; ok {
 		path = to
@@ -94,25 +105,48 @@ func (f *grantForge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		answer(map[string]any{"id": parts[2], "permissions": f.perms[parts[2]]})
 	case r.Method == http.MethodPost && len(parts) == 4 && parts[0] == "app" && parts[3] == "access_tokens":
 		var body struct {
-			Repositories []string          `json:"repositories"`
-			Permissions  map[string]string `json:"permissions"`
+			Repositories  []string          `json:"repositories"`
+			RepositoryIDs []int64           `json:"repository_ids"`
+			Permissions   map[string]string `json:"permissions"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&body)
-		for _, name := range body.Repositories {
-			found := false
-			for full, on := range f.granted[parts[2]] {
-				if on && strings.HasSuffix(full, "/"+strings.ToLower(name)) {
-					found = true
-				}
-			}
-			if !found {
+		if len(body.Repositories) > 0 {
+			full := "acme/" + strings.ToLower(body.Repositories[0])
+			if !f.granted[parts[2]][full] {
 				w.WriteHeader(http.StatusUnprocessableEntity)
 				return
 			}
+			f.mints = append(f.mints, parts[2]+":"+full)
+			w.WriteHeader(http.StatusCreated)
+			answer(map[string]any{"token": "ghs_installation_" + parts[2], "expires_at": "2099-01-01T00:00:00Z", "permissions": body.Permissions})
+			return
 		}
-		f.mints = append(f.mints, parts[2]+":"+strings.Join(body.Repositories, ","))
+		var minted []map[string]any
+		for _, id := range body.RepositoryIDs {
+			repo := f.byID(id)
+			if repo == nil || !f.granted[parts[2]][strings.ToLower(repo.FullName)] {
+				w.WriteHeader(http.StatusUnprocessableEntity)
+				return
+			}
+			minted = append(minted, map[string]any{"id": repo.ID, "full_name": repo.FullName})
+		}
+		if len(body.RepositoryIDs) > 0 {
+			f.mints = append(f.mints, parts[2]+":"+minted[0]["full_name"].(string))
+		}
 		w.WriteHeader(http.StatusCreated)
-		answer(map[string]any{"token": "ghs_installation_" + parts[2], "expires_at": "2099-01-01T00:00:00Z", "permissions": body.Permissions})
+		answer(map[string]any{"token": "ghs_installation_" + parts[2], "expires_at": "2099-01-01T00:00:00Z", "permissions": body.Permissions, "repositories": minted})
+	case r.Method == http.MethodGet && r.URL.Path == "/installation/repositories":
+		installation, _ := strings.CutPrefix(auth, "ghs_installation_")
+		var held []map[string]any
+		for full, on := range f.granted[installation] {
+			if repo, ok := f.repos[full]; ok && on {
+				held = append(held, map[string]any{"id": repo.ID, "full_name": repo.FullName})
+			}
+		}
+		if r.URL.Query().Get("page") != "1" {
+			held = nil
+		}
+		answer(map[string]any{"total_count": len(held), "repositories": held})
 	case r.Method == http.MethodDelete && r.URL.Path == "/installation/token":
 		w.WriteHeader(http.StatusNoContent)
 	case r.Method == http.MethodGet && len(parts) >= 3 && parts[0] == "repos":
@@ -128,7 +162,7 @@ func (f *grantForge) github(w http.ResponseWriter, parts []string, auth string, 
 	installation, ok := strings.CutPrefix(auth, "ghs_installation_")
 	path := strings.ToLower(parts[1] + "/" + parts[2])
 	repo, exists := f.lookup(path)
-	if !ok || !exists || !f.granted[installation][strings.ToLower(repo.FullName)] {
+	if !ok || !exists || !(repo.Public || f.granted[installation][strings.ToLower(repo.FullName)]) {
 		http.NotFound(w, nil)
 		return
 	}
@@ -190,6 +224,7 @@ func (c *fakeTargetConnections) ConnectionsOfInstallation(_ context.Context, app
 
 type targetRig struct {
 	t        *testing.T
+	url      string
 	forge    *grantForge
 	conns    *fakeTargetConnections
 	svc      *worktarget.Service
@@ -232,6 +267,9 @@ func newTargetRig(t *testing.T, registration *config.TargetRegistration, mode At
 	forge.add([]string{"77"}, grantRepo{ID: 103, FullName: "acme/mirror", Mirror: true, Agents: true})
 	forge.add([]string{"77"}, grantRepo{ID: 104, FullName: "acme/bare"})
 	forge.add(nil, grantRepo{ID: 105, FullName: "acme/elsewhere", Agents: true})
+	forge.add(nil, grantRepo{ID: 107, FullName: "public/library", Agents: true, Public: true})
+	forge.add([]string{"77"}, grantRepo{ID: 108, FullName: "acme/dupe", Agents: true})
+	forge.add([]string{"77"}, grantRepo{ID: 109, FullName: "other/app", Agents: true})
 	forge.add([]string{"77"}, grantRepo{ID: 106, FullName: "acme/static", Agents: true})
 	forge.add(nil, grantRepo{ID: 201, FullName: "team/service", Agents: true, Push: true})
 	forge.add(nil, grantRepo{ID: 202, FullName: "team/readonly", Agents: true})
@@ -256,7 +294,7 @@ func newTargetRig(t *testing.T, registration *config.TargetRegistration, mode At
 	if registration == nil {
 		registration = &config.TargetRegistration{Enabled: true, Connections: []string{"*"}}
 	}
-	static := map[string]work.Target{"app-static": {Owner: "acme", Repo: "static"}}
+	static := map[string]work.Target{"app-static": {Owner: "acme", Repo: "static"}, "dupe-elsewhere": {Forge: "ghe", Owner: "acme", Repo: "dupe"}}
 	gate := target.NewGate(map[string]work.Target{}, nil)
 	svc := &worktarget.Service{Store: testStore, Config: registration, Connections: conns,
 		Connectors: map[string]provider.Connector{"github": {Grants: github.Connector{}}, "forgejo": {Grants: forgejo.Connector{}}, "plain": {}},
@@ -264,7 +302,8 @@ func newTargetRig(t *testing.T, registration *config.TargetRegistration, mode At
 			"github":        {ID: "github", Kind: "github", URL: srv.URL, APIURL: srv.URL},
 			"forgejo-local": {ID: "forgejo-local", Kind: "forgejo", URL: srv.URL, APIURL: srv.URL + "/api/v1"},
 		},
-		Static: static, DefaultForge: "github", Gate: gate, Log: slog.New(slog.DiscardHandler)}
+		Static: static, DefaultForge: "github", Gate: gate, Log: slog.New(slog.DiscardHandler),
+		Minting: map[string]bool{"github": true}, ForgeHosts: map[string]string{"ghe": worktarget.HostOf(srv.URL)}}
 	if err := svc.Rebuild(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -285,7 +324,7 @@ func newTargetRig(t *testing.T, registration *config.TargetRegistration, mode At
 	server := &Server{Store: testStore, Log: slog.New(slog.DiscardHandler), Readiness: gate,
 		OperatorConfig: OperatorConfig{Consumers: consumers, PersonTokens: personTokens, Attribution: mode},
 		WorkTargets:    &WorkTargets{Service: svc}}
-	return &targetRig{t: t, forge: forge, conns: conns, svc: svc, server: server, handler: server.operatorHandler(), issuer: is,
+	return &targetRig{t: t, url: srv.URL, forge: forge, conns: conns, svc: svc, server: server, handler: server.operatorHandler(), issuer: is,
 		consumer: tokens["T_ONE"], reader: tokens["T_TWO"], key: key}
 }
 
@@ -392,7 +431,7 @@ func TestRuntimeTargetRegisterRepeatConflictReplaceAndRemove(t *testing.T) {
 	}
 
 	code, out = rig.call("GET", targetsPath, rig.consumer, "")
-	if code != 200 || len(out["targets"].([]any)) != 2 {
+	if code != 200 || len(out["targets"].([]any)) != 3 {
 		t.Fatalf("list = %d %v", code, out)
 	}
 
@@ -426,8 +465,9 @@ func TestRuntimeTargetRefusals(t *testing.T) {
 		{"read-only grant", `{"connection":"gh-ro","repository":"acme/app"}`, 422, "grant_insufficient"},
 		{"archived", `{"connection":"gh-acme","repository":"acme/archived"}`, 422, "target_not_ready"},
 		{"mirror", `{"connection":"gh-acme","repository":"acme/mirror"}`, 422, "target_not_ready"},
-		{"forgejo read-only", `{"connection":"fj-team","repository":"team/readonly"}`, 422, "grant_insufficient"},
-		{"forgejo unknown repository", `{"connection":"fj-team","repository":"team/nothing"}`, 422, "repository_not_found"},
+		{"public repository readable but outside the installation", `{"connection":"gh-acme","repository":"public/library"}`, 422, "not_granted"},
+		{"connection that mints no per-Run credential", `{"connection":"fj-team","repository":"team/service"}`, 422, "capability_missing"},
+		{"same repository statically on another id of the same forge", `{"connection":"gh-acme","repository":"acme/dupe"}`, 409, "conflicts_with_static"},
 		{"adapter without RepositoryGrantProber", `{"connection":"plain","repository":"acme/app"}`, 422, "capability_missing"},
 		{"static connection", `{"connection":"github","repository":"acme/app"}`, 422, "registration_not_accepted"},
 		{"unusable connection", `{"connection":"gh-ended","repository":"acme/app"}`, 422, "connection_unusable"},
@@ -463,7 +503,7 @@ func TestRuntimeTargetRefusals(t *testing.T) {
 		t.Fatalf("readiness = %v, want not_ready with prepareAvailable", readiness)
 	}
 	code, out = rig.call("POST", targetsPath+"?dryRun=true", rig.me(), `{"connection":"fj-team","repository":"team/service","key":"forgejo:team:service"}`)
-	if code != 200 || out["wouldRegister"] != true {
+	if code != 200 || out["wouldRegister"] != false || out["refusal"].(map[string]any)["code"] != "capability_missing" {
 		t.Fatalf("forgejo dry run = %d %v", code, out)
 	}
 	code, out = rig.call("POST", targetsPath, rig.me(), `{"connection":"gh-acme","repository":"acme/app","key":"github:acme:bare"}`)
@@ -551,8 +591,8 @@ func TestAGrantRemovalInvalidatesTheTargetAndItsClaimMintsNothing(t *testing.T) 
 		}
 		return forgebroker.Static{Token: "x"}, nil
 	}}
-	if conn, err := rig.server.mintConnection(ctx, pinned); err != nil || conn != "gh-acme" {
-		t.Fatalf("an active target mints through %q, %v", conn, err)
+	if claim, err := rig.server.mintConnection(ctx, pinned); err != nil || claim.Connection != "gh-acme" || claim.RepositoryID != "101" {
+		t.Fatalf("an active target mints through %+v, %v", claim, err)
 	}
 
 	rig.forge.grant("77", "acme/app", false)
@@ -605,6 +645,7 @@ func TestAGrantRemovalInvalidatesTheTargetAndItsClaimMintsNothing(t *testing.T) 
 func TestTheReconcilerCatchesAWithdrawnGrantAndNeverFollowsARename(t *testing.T) {
 	rig := newTargetRig(t, nil, AttributionProven)
 	ctx := context.Background()
+	rig.svc.Minting["forgejo"] = true
 	rig.forge.repos["team/service"].Push = true
 	if code, out := rig.call("POST", targetsPath, rig.me(), `{"connection":"fj-team","repository":"team/service","key":"service"}`); code != 201 {
 		t.Fatalf("register forgejo = %d %v", code, out)
@@ -679,5 +720,139 @@ func TestRuntimeTargetRowsAnswersAndEventsCarryNoSecret(t *testing.T) {
 				t.Errorf("an answer carries a secret: %s", b)
 			}
 		}
+	}
+}
+
+func (rig *targetRig) register(t *testing.T, body string) map[string]any {
+	t.Helper()
+	code, out := rig.call("POST", targetsPath, rig.me(), body)
+	if code != 201 {
+		t.Fatalf("register %s = %d %v", body, code, out)
+	}
+	return out["target"].(map[string]any)
+}
+
+func (rig *targetRig) live(t *testing.T, key string) store.WorkTarget {
+	t.Helper()
+	for _, tg := range rig.svc.Live() {
+		if tg.Key == key {
+			return tg
+		}
+	}
+	t.Fatalf("no live target %s", key)
+	return store.WorkTarget{}
+}
+
+func TestARuntimeTargetsTokenIsMintedByItsRepositoryIDThroughItsOwnInstallation(t *testing.T) {
+	rig := newTargetRig(t, nil, AttributionProven)
+	rig.register(t, `{"connection":"gh-acme","repository":"other/app","key":"other-app"}`)
+	key, err := githubapp.ParsePrivateKey([]byte(rig.key))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rig.server.ForgeCreds = &forgebroker.WithConnections{Resolve: func(_ context.Context, connection string) (forgebroker.Broker, error) {
+		return &forgebroker.GitHubApp{App: &githubapp.Minter{AppID: "1001", Key: key, APIURL: rig.url, Installation: 77}}, nil
+	}}
+	pinned := &work.Target{Forge: "github", Owner: "other", Repo: "app", BaseBranch: "main"}
+	rig.server.mintForgeCredential(context.Background(), "silver", &store.ClaimedRun{Item: work.WorkItem{Target: pinned}, RunToken: "run-other-app", Writes: true})
+	rig.forge.mu.Lock()
+	mints := append([]string{}, rig.forge.mints...)
+	rig.forge.mu.Unlock()
+	if len(mints) != 1 || mints[0] != "77:other/app" {
+		t.Fatalf("minted for %v, want the target's own repository other/app; a bare name lands on the installation account's acme/app", mints)
+	}
+}
+
+func TestAnInvalidReasonSurvivesAShadowAndComesBackWhenTheStaticEntryGoes(t *testing.T) {
+	rig := newTargetRig(t, nil, AttributionProven)
+	rig.register(t, `{"connection":"gh-acme","repository":"acme/app","key":"acme-app"}`)
+	ctx := context.Background()
+	rig.forge.grant("77", "acme/app", false)
+	if err := rig.svc.HandleGrant(ctx, provider.GrantEvent{AppID: "1001", InstallationID: "77", Event: "installation_repositories", Action: "removed", RemovedIDs: []string{"101"}}); err != nil {
+		t.Fatal(err)
+	}
+	static := rig.svc.Static
+	rig.svc.Static = map[string]work.Target{"app": {Owner: "acme", Repo: "app"}}
+	if err := rig.svc.Rebuild(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if tg := rig.live(t, "acme-app"); tg.State != store.WorkTargetShadowed || tg.InvalidReason != store.WorkTargetGrantRevoked {
+		t.Fatalf("shadowed = %s/%s, want shadowed keeping grant_revoked", tg.State, tg.InvalidReason)
+	}
+	if err := rig.svc.HandleGrant(ctx, provider.GrantEvent{AppID: "1001", InstallationID: "77", Event: "installation", Action: "suspend"}); err != nil {
+		t.Fatal(err)
+	}
+	if tg := rig.live(t, "acme-app"); tg.State != store.WorkTargetShadowed || tg.InvalidReason != store.WorkTargetInstallationSuspended {
+		t.Fatalf("a suspension while shadowed = %s/%s, want it recorded", tg.State, tg.InvalidReason)
+	}
+	rig.svc.Static = static
+	if err := rig.svc.Rebuild(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if tg := rig.live(t, "acme-app"); tg.State != store.WorkTargetInvalid || tg.InvalidReason != store.WorkTargetInstallationSuspended {
+		t.Fatalf("unshadowed = %s/%s, want invalid until a probe passes", tg.State, tg.InvalidReason)
+	}
+	if _, ok := rig.svc.ActiveRuntimeTargets()["acme-app"]; ok {
+		t.Fatal("an invalid target came back into the registry when its static entry went away")
+	}
+}
+
+func TestTheClaimRefusesARuntimeTargetWhoseConnectionIsNotUsable(t *testing.T) {
+	rig := newTargetRig(t, nil, AttributionProven)
+	rig.register(t, `{"connection":"gh-acme","repository":"acme/app","key":"acme-app"}`)
+	info := rig.conns.infos["gh-acme"]
+	info.State = "invalid"
+	rig.conns.infos["gh-acme"] = info
+	claim, err := rig.svc.ClaimTarget(context.Background(), work.Target{Forge: "github", Owner: "acme", Repo: "app"})
+	if err != nil || claim.Refusal != "target_invalid" {
+		t.Fatalf("claim = %+v, %v; a disconnected connection must refuse before the rebuild notices", claim, err)
+	}
+}
+
+func TestReplacingATargetProbesItsGrantAgainAndRefusesAnInactiveOne(t *testing.T) {
+	rig := newTargetRig(t, nil, AttributionProven)
+	created := rig.register(t, `{"connection":"gh-acme","repository":"acme/app","key":"acme-app"}`)
+	revision := `"` + strconv.FormatFloat(created["revision"].(float64), 'f', 0, 64) + `"`
+	rig.forge.grant("77", "acme/app", false)
+	if code, out := rig.call("PUT", targetsPath+"/acme-app", rig.me(), `{"label":"x"}`, "If-Match", revision); code != 422 || errCode(out) != "not_granted" {
+		t.Fatalf("replace after the grant went = %d %v", code, out)
+	}
+	if err := rig.svc.HandleGrant(context.Background(), provider.GrantEvent{AppID: "1001", InstallationID: "77", Event: "installation_repositories", Action: "removed", RemovedIDs: []string{"101"}}); err != nil {
+		t.Fatal(err)
+	}
+	tg := rig.live(t, "acme-app")
+	if code, out := rig.call("PUT", targetsPath+"/acme-app", rig.me(), `{"label":"x"}`, "If-Match", `"`+strconv.FormatInt(tg.Revision, 10)+`"`); code != 409 || errCode(out) != "target_not_active" {
+		t.Fatalf("replace of an invalid target = %d %v", code, out)
+	}
+}
+
+func TestRemovalReadsTheBindingsThatNameTheKeyFromTheStore(t *testing.T) {
+	rig := newTargetRig(t, nil, AttributionProven)
+	rig.register(t, `{"connection":"gh-acme","repository":"acme/app","key":"acme-app"}`)
+	if _, err := testPool.Exec(context.Background(), `INSERT INTO tracker_bindings (team, connection, scope_id, default_target, state,
+		webhook_state, webhook_source, created_by, updated_by) VALUES ('silver', 'clickup', '901', 'acme-app', 'active', 'present', 'existing', 't', 't')`); err != nil {
+		t.Fatal(err)
+	}
+	code, out := rig.call("DELETE", targetsPath+"/acme-app", rig.me(), "")
+	if code != 409 || errCode(out) != "target_in_use" {
+		t.Fatalf("removal while a binding names the key = %d %v", code, out)
+	}
+}
+
+func TestReplaceAndRemoveRefuseAssertedAttributionAndAConsumerWithoutRegisterTargets(t *testing.T) {
+	rig := newTargetRig(t, nil, AttributionAsserted)
+	rig.register(t, `{"connection":"gh-acme","repository":"acme/app","key":"acme-app"}`)
+	for _, c := range []struct{ method, body string }{{"PUT", `{"label":"x"}`}, {"DELETE", ""}} {
+		code, out := rig.call(c.method, targetsPath+"/acme-app", rig.consumer, c.body, "X-Ploeg-Actor", "person-1", "If-Match", `"1"`)
+		if code != 403 || errCode(out) != reasonPersonTokenRequired {
+			t.Errorf("%s with asserted attribution = %d %v", c.method, code, out)
+		}
+		code, out = rig.call(c.method, targetsPath+"/acme-app", rig.person("other-app"), c.body, "If-Match", `"1"`)
+		if code != 403 || errCode(out) != "permission_required" {
+			t.Errorf("%s without registerTargets = %d %v", c.method, code, out)
+		}
+	}
+	if tg := rig.live(t, "acme-app"); tg.Label != "" {
+		t.Fatalf("a refused caller changed the target: %+v", tg)
 	}
 }

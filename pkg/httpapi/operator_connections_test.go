@@ -16,6 +16,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -402,6 +403,8 @@ func TestTwoConcurrentCompletionsExchangeOnce(t *testing.T) {
 
 func TestReconnectKeepsTheIdAndRemovalNeverReusesIt(t *testing.T) {
 	rig := newConnRig(t)
+	var changed []string
+	rig.svc.OnChange = func(id string) { changed = append(changed, id) }
 	state, _ := rig.startClickUp(map[string]any{"id": "team-board", "label": "Team board"})
 	if code, out := rig.call("POST", "/api/v1/operator/connection-flows/complete", rig.me(), map[string]any{"state": state, "code": "c1"}); code != 201 {
 		t.Fatalf("complete = %d %v", code, out)
@@ -412,6 +415,10 @@ func TestReconnectKeepsTheIdAndRemovalNeverReusesIt(t *testing.T) {
 	if code != 200 || conn["id"] != "team-board" || conn["secrets"].(map[string]any)["credential"].(map[string]any)["version"] != float64(2) {
 		t.Fatalf("reconnect = %d %v", code, out)
 	}
+	if !slices.Contains(changed, "team-board") {
+		t.Fatalf("a reconnect told OnChange %v; a broker holding the old credential would keep minting with it", changed)
+	}
+	changed = nil
 	rig.clickup.userID.Store(99)
 	state, _ = rig.startClickUp(map[string]any{"connection": "team-board"})
 	if code, out := rig.call("POST", "/api/v1/operator/connection-flows/complete", rig.me(), map[string]any{"state": state, "code": "c3"}); code != 409 || errCode(out) != "account_mismatch" {
@@ -437,6 +444,9 @@ func TestReconnectKeepsTheIdAndRemovalNeverReusesIt(t *testing.T) {
 		if code, out := rig.call("DELETE", "/api/v1/operator/tracker-connections/team-board", rig.me(), nil); code != 204 {
 			t.Fatalf("remove = %d %v", code, out)
 		}
+	}
+	if !slices.Contains(changed, "team-board") {
+		t.Fatalf("a removal told OnChange %v", changed)
 	}
 	if rig.secrets.Has("connections/team-board") {
 		t.Fatal("the store still holds the removed connection's secret")

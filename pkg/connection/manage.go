@@ -224,6 +224,7 @@ func (s *Service) Remove(ctx context.Context, caller Caller, port, id string) ([
 	if e := s.Accepting(); e != nil {
 		return nil, e
 	}
+	defer s.changed(id)
 	if e := s.refuseStatic(port, id); e != nil {
 		return nil, e
 	}

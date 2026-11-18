@@ -57,17 +57,18 @@ func (s *Server) stopInactiveRuntimeTarget(ctx context.Context, team, runToken s
 	return true
 }
 
-// mintConnection is the runtime forge connection a mint for t must go
-// through, read afresh; an inactive runtime target refuses the mint.
-func (s *Server) mintConnection(ctx context.Context, t *work.Target) (string, error) {
+// mintConnection is the runtime target a mint for t must go through, read
+// afresh: its connection and the repository id it was registered for. An
+// inactive runtime target refuses the mint.
+func (s *Server) mintConnection(ctx context.Context, t *work.Target) (worktarget.Claim, error) {
 	claim, err := s.runtimeTargetClaim(ctx, t)
 	if err != nil {
-		return "", err
+		return worktarget.Claim{}, err
 	}
 	if claim.Refusal != "" {
-		return "", fmt.Errorf("%w: %s", errRuntimeTargetInactive, claim.Reason)
+		return worktarget.Claim{}, fmt.Errorf("%w: %s", errRuntimeTargetInactive, claim.Reason)
 	}
-	return claim.Connection, nil
+	return claim, nil
 }
 
 // mintRefusedByGrant marks a runtime target invalid with grant_revoked when

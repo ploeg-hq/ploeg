@@ -157,11 +157,11 @@ func (s *Server) handleClaudeForgeCredential(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	sessionTarget := work.Target{Forge: run.Forge, Owner: run.Owner, Repo: run.Repo}
-	connection, err := s.mintConnection(r.Context(), &sessionTarget)
+	claim, err := s.mintConnection(r.Context(), &sessionTarget)
 	var cred forgebroker.Credential
 	if err == nil {
-		cred, err = s.ForgeCreds.Mint(r.Context(), forgebroker.MintRequest{RunToken: run.RunToken, Owner: run.Owner, Repo: run.Repo, Forge: mintForge, Connection: connection})
-		s.mintRefusedByGrant(r.Context(), &sessionTarget, connection, err)
+		cred, err = s.ForgeCreds.Mint(r.Context(), forgebroker.MintRequest{RunToken: run.RunToken, Owner: run.Owner, Repo: run.Repo, Forge: mintForge, Connection: claim.Connection, RepositoryID: claim.RepositoryID})
+		s.mintRefusedByGrant(r.Context(), &sessionTarget, claim.Connection, err)
 	}
 	if err != nil {
 		s.Log.Error("forge credential mint for a claude session failed",

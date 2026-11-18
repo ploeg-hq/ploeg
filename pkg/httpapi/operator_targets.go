@@ -318,12 +318,16 @@ func (s *Server) handleReplaceTarget(w http.ResponseWriter, r *http.Request) {
 	if !noQuery(w, r) {
 		return
 	}
-	_, audit, ok := s.targetCaller(w, r)
+	p, audit, ok := s.targetCaller(w, r)
 	if !ok {
 		return
 	}
 	key, ok := pathName(w, r, "key")
 	if !ok {
+		return
+	}
+	if !s.WorkTargets.allowProbe(p.Name, time.Now()) {
+		operatorError(w, 429, "probe_rate_limited", "This consumer probed too many repositories in the last minute.")
 		return
 	}
 	match := r.Header.Get("If-Match")

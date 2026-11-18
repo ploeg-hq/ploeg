@@ -10237,7 +10237,7 @@
       }
     },
     "workTarget": {
-      "description": "A static or runtime Work Target (ADR-0193 section 2). A static target comes from the configuration file and carries null for connection, repositoryId, revision and its attribution fields. A runtime target is active, shadowed by a static entry (shadowedBy), or invalid with invalidReason; it is never deleted, and removedAt is set only on an answer about a removed target. Never a credential.",
+      "description": "A static or runtime Work Target (ADR-0193 section 2). A static target comes from the configuration file and carries null for connection, repositoryId, revision and its attribution fields. A runtime target is active, shadowed by a static entry (shadowedBy, keeping any invalidReason it had), or invalid with invalidReason; it is never deleted, and removedAt is set only on an answer about a removed target. Never a credential.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -10562,7 +10562,7 @@
       }
     },
     "workTargetErrorResponse": {
-      "description": "An error from a runtime Work Target route that names a static entry (409 key_taken, 409 conflicts_with_static), the live bindings that use the key (409 target_in_use) or the current target (409 target_exists, 412 revision_stale). An error that carries only its checks is answered as connectionErrorResponse; the other codes of ADR-0193 section 3 as errorResponse: 403 permission_required, person_token_required, person_claim_required; 401 insufficient_user_authentication with an RFC 9470 challenge; 404 unknown_connection, unknown_target; 422 registration_not_accepted, connection_unusable, capability_missing, not_granted, grant_insufficient, repository_not_found, probe_failed, target_not_ready; 428 if_match_required; 429 target_limit, probe_rate_limited (30 probing calls per consumer per minute).",
+      "description": "An error from a runtime Work Target route that names a static entry (409 key_taken, 409 conflicts_with_static), the live bindings that use the key (409 target_in_use) or the current target (409 target_exists, 409 target_not_active, 412 revision_stale). An error that carries only its checks is answered as connectionErrorResponse; the other codes of ADR-0193 section 3 as errorResponse: 403 permission_required, person_token_required, person_claim_required; 401 insufficient_user_authentication with an RFC 9470 challenge; 404 unknown_connection, unknown_target; 422 registration_not_accepted, repository_moved, connection_unusable, capability_missing (also for a connection kind that mints no per-Run credential yet), not_granted, grant_insufficient, repository_not_found, probe_failed, target_not_ready; 428 if_match_required; 429 target_limit, probe_rate_limited (30 probing calls per consumer per minute).",
       "type": "object",
       "additionalProperties": false,
       "required": [
