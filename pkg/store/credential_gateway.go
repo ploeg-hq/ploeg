@@ -71,9 +71,11 @@ func (s *Store) DropSettledGatewayGrants(ctx context.Context) (int64, error) {
 	return tag.RowsAffected(), nil
 }
 
-// RecordGatewayAudit adds a gateway's per-Run totals and writes each refusal
-// as a credential_gateway.refused audit row for the Run's Work Item.
-func (s *Store) RecordGatewayAudit(ctx context.Context, namespace string, uses []gatewaycontract.Use, refusals []gatewaycontract.Refusal) error {
+// RecordGatewayAudit adds a gateway's per-Run totals, writes each refusal as
+// a credential_gateway.refused audit row and each MCP call as an mcp.call
+// audit row for the Run's Work Item.
+func (s *Store) RecordGatewayAudit(ctx context.Context, namespace string, batch gatewaycontract.AuditBatch) error {
+	uses, refusals := batch.Uses, batch.Refusals
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -102,6 +104,20 @@ func (s *Store) RecordGatewayAudit(ctx context.Context, namespace string, uses [
 				$3::jsonb || jsonb_build_object('run', r.id)
 			FROM agent_runs r JOIN credential_gateway_grants g USING (run_token)
 			WHERE r.run_token = $1 AND g.namespace = $2`, r.RunToken, namespace, detail); err != nil {
+			return err
+		}
+	}
+	for _, c := range batch.MCPCalls {
+		detail, err := json.Marshal(map[string]any{"namespace": namespace, "server_id": c.ServerID, "server": c.Server, "method": c.Method,
+			"tool": c.Tool, "access": c.Access, "outcome": c.Outcome, "status": c.Status, "bytes_in": c.BytesIn, "bytes_out": c.BytesOut,
+			"duration_ms": c.DurationMS})
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO audit_log (actor, action, work_item_id, detail)
+			SELECT 'credential-gateway:' || $2, 'mcp.call', r.work_item_id, $3::jsonb || jsonb_build_object('run', r.id)
+			FROM agent_runs r JOIN credential_gateway_grants g USING (run_token)
+			WHERE r.run_token = $1 AND g.namespace = $2`, c.RunToken, namespace, detail); err != nil {
 			return err
 		}
 	}

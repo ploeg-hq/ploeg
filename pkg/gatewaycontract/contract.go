@@ -135,4 +135,22 @@ type Refusal struct {
 type AuditBatch struct {
 	Uses     []Use     `json:"uses"`
 	Refusals []Refusal `json:"refusals"`
+	MCPCalls []MCPCall `json:"mcpCalls,omitempty"`
+}
+
+// MCPCall is one MCP request the gateway's mcp route family answered for a
+// Run: the server, method, tool and access, and "allowed" or the reason the
+// gateway refused it (ADR-0199 section 4).
+type MCPCall struct {
+	RunToken   string `json:"run"`
+	ServerID   string `json:"serverId"`
+	Server     string `json:"server"`
+	Method     string `json:"method"`
+	Tool       string `json:"tool,omitempty"`
+	Access     string `json:"access,omitempty"`
+	Outcome    string `json:"outcome"`
+	Status     int    `json:"status"`
+	BytesIn    int    `json:"bytesIn"`
+	BytesOut   int    `json:"bytesOut"`
+	DurationMS int64  `json:"durationMs"`
 }

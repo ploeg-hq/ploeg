@@ -454,11 +454,11 @@ func (s *Server) handleGatewayAudit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req gatewaycontract.AuditBatch
-	if err := decodeBounded(w, r, gatewayBodyLimit, &req); err != nil || len(req.Uses)+len(req.Refusals) > maxGatewayAuditRows {
+	if err := decodeBounded(w, r, gatewayBodyLimit, &req); err != nil || len(req.Uses)+len(req.Refusals)+len(req.MCPCalls) > maxGatewayAuditRows {
 		http.Error(w, "audit batch malformed or too large", http.StatusBadRequest)
 		return
 	}
-	if err := s.Store.RecordGatewayAudit(r.Context(), binding.Namespace, req.Uses, req.Refusals); err != nil {
+	if err := s.Store.RecordGatewayAudit(r.Context(), binding.Namespace, req); err != nil {
 		s.Log.Error("credential gateway audit not recorded", "namespace", binding.Namespace, "err", err)
 		http.Error(w, "audit not recorded", http.StatusServiceUnavailable)
 		return

@@ -20,8 +20,8 @@ type mcpUpstream struct {
 	handler *mcpgateway.Handler
 }
 
-func newMCPUpstream(client *http.Client, log *slog.Logger) mcpUpstream {
-	h := &mcpgateway.Handler{Grants: runGrants{}, Audit: mcpAudit{log: log}, Client: client}
+func newMCPUpstream(client *http.Client, log *slog.Logger, audit *auditor) mcpUpstream {
+	h := &mcpgateway.Handler{Grants: runGrants{}, Audit: mcpAudit{log: log, ploegd: audit}, Client: client}
 	return mcpUpstream{handler: h}
 }
 
@@ -60,9 +60,14 @@ func MCPGrant(g gatewaycontract.Grant) mcpgateway.Grant {
 	return out
 }
 
-type mcpAudit struct{ log *slog.Logger }
+type mcpAudit struct {
+	log    *slog.Logger
+	ploegd *auditor
+}
 
 func (a mcpAudit) Record(_ context.Context, c mcpgateway.Call) {
+	a.ploegd.mcpCall(gatewaycontract.MCPCall{RunToken: c.Run, ServerID: c.ServerID, Server: c.Server, Method: c.Method, Tool: c.Tool,
+		Access: string(c.Access), Outcome: c.Outcome, Status: c.Status, BytesIn: c.BytesIn, BytesOut: c.BytesOut, DurationMS: c.Duration.Milliseconds()})
 	a.log.Info("mcp call", "run", prefix(c.Run, 12), "work_item", c.WorkItem, "server", c.ServerID, "method", c.Method,
 		"tool", c.Tool, "access", string(c.Access), "outcome", c.Outcome, "status", c.Status, "bytes_in", c.BytesIn,
 		"bytes_out", c.BytesOut, "duration", c.Duration)

@@ -1,6 +1,7 @@
 package credentialgateway
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -116,6 +117,25 @@ func TestTheMCPFamilyAttachesTheServerCredentialAndEnforcesTheRolesTools(t *test
 		if a != "Bearer "+realMCPCredential || strings.Contains(a, runCapability) {
 			t.Fatalf("the server saw %q, want only its own credential", a)
 		}
+	}
+	if err := f.gateway.FlushAudit(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	outcomes := map[string]string{}
+	f.mu.Lock()
+	for _, b := range f.audits {
+		for _, c := range b.MCPCalls {
+			if c.RunToken != "run-1" || c.ServerID != "mcp_01" {
+				t.Errorf("an MCP call record names run %q server %q", c.RunToken, c.ServerID)
+			}
+			if c.Method == "tools/call" {
+				outcomes[c.Tool] = c.Outcome
+			}
+		}
+	}
+	f.mu.Unlock()
+	if outcomes["search_logs"] != "allowed" || outcomes["delete_everything"] == "" || outcomes["delete_everything"] == "allowed" {
+		t.Fatalf("ploegd got the MCP calls %v, want search_logs allowed and delete_everything refused", outcomes)
 	}
 }
 

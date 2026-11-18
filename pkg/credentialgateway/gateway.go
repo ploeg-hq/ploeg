@@ -104,7 +104,7 @@ func New(cfg Config) (*Gateway, error) {
 		settled:   map[string]time.Time{},
 	}
 	g.Register(forgeUpstream{g: g})
-	g.Register(newMCPUpstream(cfg.MCPClient, cfg.Log))
+	g.Register(newMCPUpstream(cfg.MCPClient, cfg.Log, g.audit))
 	if cfg.ModelURL != "" {
 		model, err := newModelUpstream(cfg.ModelURL)
 		if err != nil {
