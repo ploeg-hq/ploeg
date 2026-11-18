@@ -113,8 +113,8 @@ func (a *Adapter) Prepare(spec harness.TaskSpec, env harness.RunEnv) (harness.In
 	argv = append(argv, "--strict-mcp-config")
 	// --strict-mcp-config stays: the gateway's server is the only one the Run
 	// loads, never the target repository's .mcp.json (ADR-0030, ADR-0078).
-	if env.LLM.MCPURL != "" && env.LLM.APIKey != "" {
-		path, err := writeMCPConfig(env.ScratchDir, env.LLM.MCPURL, env.LLM.APIKey)
+	if (env.LLM.MCPURL != "" || len(env.LLM.MCPServers) > 0) && env.LLM.APIKey != "" {
+		path, err := writeMCPConfig(env.ScratchDir, env.LLM, env.LLM.APIKey)
 		if err != nil {
 			return harness.Invocation{}, err
 		}
@@ -129,7 +129,8 @@ func (a *Adapter) Prepare(spec harness.TaskSpec, env harness.RunEnv) (harness.In
 	}, nil
 }
 
-// MCPServerName is the one MCP server a Run may load: the model gateway's.
+// MCPServerName is the model gateway's MCP server (ADR-0078); a registered
+// server reached through the credential gateway never takes this name.
 const MCPServerName = "litellm"
 
 // mcpConfig is Claude Code's --mcp-config file shape.
@@ -147,12 +148,17 @@ type mcpServer struct {
 // directory, outside the clone, readable only by the Run's user. The key is
 // the one the harness already holds (a placeholder under key isolation), so
 // the file grants nothing the Run's environment does not.
-func writeMCPConfig(scratchDir, url, key string) (string, error) {
-	cfg := mcpConfig{MCPServers: map[string]mcpServer{MCPServerName: {
-		Type:    "http",
-		URL:     url,
-		Headers: map[string]string{"x-litellm-api-key": "Bearer " + key},
-	}}}
+func writeMCPConfig(scratchDir string, llm harness.LLMEnv, key string) (string, error) {
+	cfg := mcpConfig{MCPServers: map[string]mcpServer{}}
+	if llm.MCPURL != "" {
+		cfg.MCPServers[MCPServerName] = mcpServer{Type: "http", URL: llm.MCPURL, Headers: map[string]string{"x-litellm-api-key": "Bearer " + key}}
+	}
+	for _, s := range llm.MCPServers {
+		if s.Name == MCPServerName {
+			return "", fmt.Errorf("claude-code: MCP server name %q is reserved for the model gateway", s.Name)
+		}
+		cfg.MCPServers[s.Name] = mcpServer{Type: "http", URL: s.URL, Headers: map[string]string{"Authorization": "Bearer " + key}}
+	}
 	body, err := json.Marshal(cfg)
 	if err != nil {
 		return "", fmt.Errorf("claude-code: encode MCP config: %w", err)
