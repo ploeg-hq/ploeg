@@ -3,7 +3,6 @@ package credentialgateway
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -82,11 +81,11 @@ type grantCache struct {
 	now    func() time.Time
 
 	mu      sync.Mutex
-	entries map[[32]byte]cachedGrant
+	entries map[string]cachedGrant
 }
 
-func grantKey(capability, sourceIP string) [32]byte {
-	return sha256.Sum256([]byte(capability + "\x00" + sourceIP))
+func grantKey(capability, sourceIP string) string {
+	return capability + "\x00" + sourceIP
 }
 
 func (c *grantCache) get(ctx context.Context, capability, sourceIP string) (gatewaycontract.Grant, error) {
@@ -132,7 +131,7 @@ func (c *grantCache) get(ctx context.Context, capability, sourceIP string) (gate
 	return grant, nil
 }
 
-func (c *grantCache) forget(key [32]byte) {
+func (c *grantCache) forget(key string) {
 	c.mu.Lock()
 	delete(c.entries, key)
 	c.mu.Unlock()
