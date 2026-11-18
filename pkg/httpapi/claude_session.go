@@ -130,7 +130,7 @@ func (s *Server) handleClaudeForgeCredential(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	claims, ok := s.verifyClaudeSession(w, r)
-	if !ok {
+	if !ok || !s.routineSessionCreator(w, r, claims) {
 		return
 	}
 	run, err := s.Store.WriterForClaudeSession(r.Context(), claims.EnvironmentID, claims.SessionID)
@@ -243,7 +243,7 @@ func (s *Server) handleClaudeSessionReport(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	claims, ok := s.verifyClaudeSession(w, r)
-	if !ok {
+	if !ok || !s.routineSessionCreator(w, r, claims) {
 		return
 	}
 	var req claudeSessionReportRequest

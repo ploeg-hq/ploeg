@@ -142,7 +142,7 @@
 {{- range $role := (include "ploeg.teamRoles" $team | fromJsonArray) }}
 {{- $identity := include "ploeg.roleHarness" (dict "root" $root "team" $team "role" $role) | fromJson }}
 {{- $ce := include "ploeg.claudeEnvironment" (dict "root" $root "team" $team "role" $role) | fromJson }}
-{{- if and (eq $identity.name "claude-environment") (ne $ce.carrier "client") }}{{- $found = true }}{{- end }}
+{{- if and (eq $identity.name "claude-environment") (not (has $ce.carrier (list "client" "routine"))) }}{{- $found = true }}{{- end }}
 {{- end }}
 {{- if $found }}{{- $teams = append $teams $team.name }}{{- end }}
 {{- end }}

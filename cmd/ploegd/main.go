@@ -478,6 +478,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 		RegisteredRepository: registeredRepositories(registeredRepository(cfg, forgeID), workTargets),
 		ClaimForges:          release.directory(),
 		ClaudeSessions:       claudeSessions(log),
+		ClaudeRoutines:       claudeRoutines(log),
 		CreatedWork:          createdWork,
 
 		MetricsCacheTTL:  durationOr("PLOEG_METRICS_CACHE_TTL", httpapi.DefaultMetricsCacheTTL),

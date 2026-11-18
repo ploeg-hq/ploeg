@@ -183,6 +183,15 @@
     },
     {
       "$ref": "#/$defs/workTargetErrorResponse"
+    },
+    {
+      "$ref": "#/$defs/claudeRoutineResponse"
+    },
+    {
+      "$ref": "#/$defs/claudeRoutinesResponse"
+    },
+    {
+      "$ref": "#/$defs/routineFireResponse"
     }
   ],
   "$defs": {
@@ -10646,6 +10655,176 @@
           }
         }
       ]
+    },
+    "claudeRoutine": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "A person's own claude.ai routine for one Team (ADR-0197 section 7). The trigger token is write-only: no response carries it.",
+      "required": [
+        "team",
+        "fireUrl",
+        "creatorPinned",
+        "registeredAt",
+        "updatedAt"
+      ],
+      "properties": {
+        "team": {
+          "type": "string"
+        },
+        "fireUrl": {
+          "type": "string",
+          "description": "The routine's API trigger, https://api.anthropic.com/v1/claude_code/routines/trig_…/fire."
+        },
+        "creatorPinned": {
+          "type": "boolean",
+          "description": "True once a session the routine started reached ploegd and pinned the Anthropic account that created it."
+        },
+        "registeredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "claudeRoutineRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Body of PUT /api/v1/operator/claude-routines/{team}, sent by a proven person: the fire URL and token of their own routine's API trigger. The token is stored in the secret store (ADR-0184) and never returned.",
+      "required": [
+        "fireUrl",
+        "token"
+      ],
+      "properties": {
+        "fireUrl": {
+          "type": "string"
+        },
+        "token": {
+          "type": "string",
+          "minLength": 16,
+          "maxLength": 512
+        }
+      }
+    },
+    "claudeRoutineResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "200 from PUT or DELETE /api/v1/operator/claude-routines/{team}: the routine registered, replaced or removed. Sent with Cache-Control: no-store.",
+      "required": [
+        "schemaVersion",
+        "routine"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "1.0"
+        },
+        "routine": {
+          "$ref": "#/$defs/claudeRoutine"
+        }
+      }
+    },
+    "claudeRoutinesResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "200 from GET /api/v1/operator/claude-routines: the proven person's own routines on Teams in the consumer's scope.",
+      "required": [
+        "schemaVersion",
+        "routines"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "1.0"
+        },
+        "routines": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/claudeRoutine"
+          }
+        }
+      }
+    },
+    "routineFireResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "200 from POST /api/v1/operator/work-items/{id}/fire-routine (ADR-0197 section 7): the Run the proven person's routine was fired for and the session Anthropic started in the Team's self-hosted environment. No Run credential is returned: the runner's hooks report the session. Sent with Cache-Control: no-store.",
+      "required": [
+        "schemaVersion",
+        "run",
+        "environmentId",
+        "session"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "1.0"
+        },
+        "run": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "workItemId",
+            "shiftId",
+            "team",
+            "role",
+            "round",
+            "writes",
+            "actsFor"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,18}$"
+            },
+            "workItemId": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,18}$"
+            },
+            "shiftId": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,18}$"
+            },
+            "team": {
+              "type": "string"
+            },
+            "role": {
+              "type": "string"
+            },
+            "round": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "writes": {
+              "type": "boolean"
+            },
+            "actsFor": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The person the Run acts for, who claimed it."
+            }
+          }
+        },
+        "environmentId": {
+          "type": "string"
+        },
+        "session": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "pattern": "^session_[A-Za-z0-9]+$"
+            },
+            "url": {
+              "type": "string"
+            }
+          }
+        }
+      }
     }
   }
 }

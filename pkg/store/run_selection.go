@@ -26,6 +26,11 @@ type RoleSelection struct {
 // CarrierClient is the carrier of a Run the person's own client carries.
 const CarrierClient = "client"
 
+// CarrierRoutine is a Role's carrier when ploegd fires the person's own
+// routine for the Run (ADR-0197 section 7). Its Runs are stored with carrier
+// CarrierClient: no worker claims them and they wait for their person.
+const CarrierRoutine = "routine"
+
 // NeedsHumanStartFromClient is the needs_human reason code of a Work Item
 // whose client-carried Run waits for its person to start it (ADR-0112).
 const NeedsHumanStartFromClient = "start_from_claude_code"

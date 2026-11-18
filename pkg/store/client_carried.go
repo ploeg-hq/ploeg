@@ -38,6 +38,15 @@ type ClaimLimits func(team, role string) (cap float64, maxRunning int)
 // audited as actor. A Run that is already running is ErrClientRunClaimed,
 // another person is ErrNotRunPerson and a full team is ErrNoWork.
 func (s *Store) ClaimClientCarriedRun(ctx context.Context, workItemID int64, person, actor string, ttl time.Duration, limits ClaimLimits) (ClientClaim, error) {
+	return s.ClaimClientCarriedRunVia(ctx, workItemID, person, actor, "", ttl, limits)
+}
+
+// ClaimClientCarriedRunVia is ClaimClientCarriedRun for a Run a carrier
+// other than the person's own client starts on their behalf, such as their
+// routine (ADR-0197 section 7). Its audit row names the person as subject
+// and the Team and Role as the actor on their behalf, as an RFC 8693 act
+// chain does.
+func (s *Store) ClaimClientCarriedRunVia(ctx context.Context, workItemID int64, person, actor, via string, ttl time.Duration, limits ClaimLimits) (ClientClaim, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return ClientClaim{}, err
@@ -88,7 +97,13 @@ func (s *Store) ClaimClientCarriedRun(ctx context.Context, workItemID int64, per
 		return ClientClaim{}, ErrNoWork
 	}
 	p.spendCap, p.now = s.TeamSpendCap(team), s.spendNow()
-	claimed, err := startPendingRun(ctx, tx, p, ttl, cap, actor, map[string]any{"carrier": CarrierClient, "actsFor": person})
+	detail := map[string]any{"carrier": CarrierClient, "actsFor": person}
+	if via != "" {
+		detail["via"] = via
+		detail["sub"] = person
+		detail["act"] = map[string]any{"sub": "team:" + team + "/role:" + p.role}
+	}
+	claimed, err := startPendingRun(ctx, tx, p, ttl, cap, actor, detail)
 	if err != nil {
 		_ = tx.Rollback(ctx)
 		return ClientClaim{}, s.refuseOverCap(ctx, actor, err)

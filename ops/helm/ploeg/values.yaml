@@ -730,6 +730,10 @@ executor:
       # worker is rendered or claims them, and no login is needed: each Work
       # Item waits as needs_human until the person it acts for claims its Run
       # through the operator API and dispatches it with their own login.
+      # routine: ploegd fires the person's own claude.ai routine, whose API
+      # trigger the person registered once, for a Work Item they start
+      # (ADR-0197 section 7). Ploeg stores only the routine's trigger token,
+      # never a Claude login. Needs PLOEG_CLAUDE_ROUTINES and a secret store.
       # ploegd reads the carrier and environmentId from PLOEG_TEAM_HARNESSES.
       # "" = a worker dispatches with loginVolume or loginSecret.
       carrier: ""

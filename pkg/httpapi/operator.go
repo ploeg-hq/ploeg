@@ -506,6 +506,7 @@ func (s *Server) operatorRoutes() *http.ServeMux {
 	s.registerOperatorConnections(mux)
 	s.registerOperatorTrackerBindings(mux)
 	s.registerOperatorTargets(mux)
+	s.registerClaudeRoutines(mux)
 	return mux
 }
 

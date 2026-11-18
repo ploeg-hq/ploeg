@@ -108,6 +108,10 @@ type Server struct {
 	// operator API (ADR-0184). secretstore.Unconfigured makes every
 	// store-backed call fail closed; static connections never use it.
 	SecretStore secretstore.Store
+	// ClaudeRoutines fires a person's own routine to start a
+	// claude-environment Run (ADR-0197 section 7). Nil answers
+	// routines_not_accepted.
+	ClaudeRoutines *ClaudeRoutines
 	// Connections makes and manages runtime tracker and forge connections
 	// (ADR-0195). Nil answers connections_not_accepted on every
 	// connection route.

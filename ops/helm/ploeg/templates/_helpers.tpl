@@ -261,7 +261,7 @@ Context: (dict "root" $ "team" <team> "role" <Role entry or empty dict>).
 {{- $carrier := "" }}
 {{- if eq $id.name "claude-environment" }}{{- $carrier = $ce.carrier }}{{- end }}
 {{- if and $carrier (not $ce.environmentId) }}
-{{- fail (printf "team %s: harness.claudeEnvironment.carrier client requires harness.claudeEnvironment.environmentId" ($role.name | default $team.name)) }}
+{{- fail (printf "team %s: harness.claudeEnvironment.carrier %s requires harness.claudeEnvironment.environmentId" ($role.name | default $team.name) $carrier) }}
 {{- end }}
 {{- $out = append $out (dict "role" $role "key" $key "suffix" "" "default" true "qualified" (has $key $qualified) "carrier" $carrier "environmentId" $ce.environmentId) }}
 {{- else }}
@@ -326,7 +326,7 @@ context as ploeg.roleWorkloads.
 {{- define "ploeg.workerWorkloads" -}}
 {{- $out := list }}
 {{- range $w := (include "ploeg.roleWorkloads" . | fromJsonArray) }}
-{{- if ne ($w.carrier | default "") "client" }}
+{{- if not (has ($w.carrier | default "") (list "client" "routine")) }}
 {{- $out = append $out $w }}
 {{- end }}
 {{- end }}
