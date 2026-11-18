@@ -341,3 +341,27 @@ func TestAWritersMintedForgeCredentialGoesIntoTheGrantAndNotTheClaim(t *testing.
 		t.Fatalf("grant %+v", grant)
 	}
 }
+
+func TestAGatewayClaimsOnlyForItsOwnServiceAccountsTeams(t *testing.T) {
+	s, bootstrap, _ := gatewayFixture(t)
+	g, err := NewCredentialGateways(`[{"namespace":"runs","serviceAccount":"gw","teams":["bronze"]},{"namespace":"runs","serviceAccount":"gw-copper","teams":["copper"]}]`,
+		fakeReviewer{runsGatewayToken: "system:serviceaccount:runs:gw", "copper-gateway-token": "system:serviceaccount:runs:gw-copper"}, []byte(strings.Repeat("s", 32)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.CredentialGateways = g
+	r := httptest.NewRequest(http.MethodPost, "/api/v1/claim", strings.NewReader(`{"team":"bronze","role":"reviewer"}`))
+	r.Header.Set("Authorization", "Bearer "+bootstrap)
+	r.Header.Set("X-Ploeg-Worker-ID", "pod")
+	for k, v := range gatewayHeaders("copper-gateway-token") {
+		r.Header.Set(k, v)
+	}
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, r)
+	if w.Code != http.StatusForbidden || w.Header().Get(gatewaycontract.RefusalHeader) != gatewaycontract.RefusedClaim {
+		t.Fatalf("another ServiceAccount's gateway in the same namespace claimed a bronze Run: %d %s", w.Code, w.Body.String())
+	}
+	if claim, _ := claimThroughGateway(t, s, bootstrap, gatewayHeaders(runsGatewayToken)); !claim.CredentialGateway {
+		t.Fatal("bronze's own gateway could not claim")
+	}
+}
