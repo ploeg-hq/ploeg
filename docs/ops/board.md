@@ -36,6 +36,14 @@ A ClickUp Work Item's branch is `agent/CU-<task id>` and its commit trailer and 
 
 The [July board snapshot](https://forgejo.webgrip.dev/webgrip/ploeg/src/commit/94c7c8e2dc07037ee2fd38a69343426e40bd680d/docs/ops/board.md) records IDs and MCP failures observed then. Do not treat those IDs, counts, API errors or the old console default as current configuration.
 
+## Team identity
+
+A Team has three identifiers ([ADR-0198](../adrs/0198-a-team-has-an-immutable-id-a-renameable-key-and-a-free-name-and-a-proven-person-creates-one-at-runtime.md)). Its **key** is its name under `teams.<key>` in the configuration file. Its **id**, `team_` and a lowercase ULID, is what ploegd stores: on the first boot of a release that has it, ploegd gives every static Team an id, records `team.created` attributed to `configuration`, and backfills `team_id` on Work Items, Shifts, Runs, leases, chats, premise checks and tracker bindings in batches of 10,000 rows, after boot, without holding up readiness. A row written after that takes its `team_id` from its Team's key; audit rows that name a Team gain `detail.team_id`. Its **name** is display text: `teams.<key>.name`, or `<role> · <harness>` for a one-Role Team that sets none, and the key otherwise.
+
+To rename a static Team without losing its id, change its key and list the old one under `teams.<new-key>.aliases` (at most 10); ploegd keeps the id and writes `team.renamed`. A Team whose key changes without that alias is a new Team with a new id, and the old one is removed with `team.removed`; if its key comes back, the old id returns.
+
+`GET /api/v1/operator/teams` and `GET /api/v1/operator/teams/{team}` carry `teamId`, `key`, `aliases`, `name`, `source`, `state` and `nameSource`; `{team}` may be an id, a key or an alias, and a request by alias answers with `Content-Location` naming the key. `id` stays the key in this schema version. The configuration file is the only source of a static Team's name, and `nameSource` says so with the file key, so `PATCH /api/v1/operator/teams/{team}` with a `name` answers `409 name_set_by_configuration` naming `teams.<key>.name` and records `team.refused`. Every Team metric carries `team_id` beside `team`; `ploeg_team_info{team_id,key,source,state}` joins a key onto an id, and `ploeg_teams{source,state}` counts Teams.
+
 ## Runtime Scope bindings
 
 Routing has two sources ([ADR-0186](../adrs/0186-an-operator-consumer-binds-a-tracker-scope-to-a-team-at-runtime-and-static-routing-wins-on-conflict.md)): the static `trackers.<tracker>.projects` in the configuration file, and Scope bindings an operator consumer adds while ploegd runs. `GET /api/v1/operator/tracker-bindings` lists both, so read it, not the file alone, to know what feeds a Team.
