@@ -60,6 +60,28 @@ func (f *repositoryHooksFence) admit(u refUpdate) (refusalReason, error) {
 		openhands.RepositoryHooksPath, strings.Join(touched, ", "))
 }
 
+func (f *repositoryHooksFence) admitPacked(u refUpdate, pack []byte) (refusalReason, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), deliverableCheckTimeout)
+	defer cancel()
+	repo, err := openPushedRepository(ctx, f.dir, f.cloneURL, f.base, f.token(ctx), u, pack)
+	if err != nil {
+		return refusalUninspectablePush, fmt.Errorf("%s: %v", repositoryHooksCheckRefusal, err)
+	}
+	defer repo.remove()
+	touched, err := f.touchedIn(ctx, repo, u.newID)
+	if err != nil {
+		return refusalUninspectablePush, fmt.Errorf("%s: %v", repositoryHooksCheckRefusal, err)
+	}
+	if len(touched) == 0 {
+		return "", nil
+	}
+	f.mu.Lock()
+	f.refused = appendNew(f.refused, touched...)
+	f.mu.Unlock()
+	return refusalRepositoryHooks, fmt.Errorf("an OpenHands Run may not change the repository's %s; the push changes: %s",
+		openhands.RepositoryHooksPath, strings.Join(touched, ", "))
+}
+
 func (f *repositoryHooksFence) touched(commit string) ([]string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), deliverableCheckTimeout)
 	defer cancel()

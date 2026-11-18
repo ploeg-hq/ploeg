@@ -22,11 +22,15 @@ The generator follows each binary's imports inside the module and records every 
 | `CLAUDE_CODE_OAUTH_SCOPES` | ploeg-worker |  | The scopes the refresh token was issued with, space separated; they must include `user:sessions:claude_code` (chart `harness.claudeEnvironment.loginSecret`, key `scopes`). | [main.go](../../cmd/ploeg-worker/main.go) |
 | `FORGE_URL` | ploeg-worker |  | The forge the worker clones from and pushes to in a release with one forge (chart `executor.<forge>.url`). The claim's `forgeUrl` wins over it. Unset in a multi-forge release, together with `AGENT_BUILDER_TOKEN` (ADR-0192). | [main.go](../../cmd/ploeg-worker/main.go) |
 | `KUBECONFIG` | ploeg-worker |  | Administrative configuration. The worker refuses to start when it is set. | [main.go](../../cmd/ploeg-worker/main.go) |
+| `KUBERNETES_SERVICE_HOST` | ploeg-credential-gateway |  |  | [kubeauth.go](../../pkg/kubeauth/kubeauth.go) |
 | `KUBERNETES_SERVICE_HOST` | ploeg-worker |  |  | [launcher.go](../../pkg/sandboxlaunch/launcher.go) |
-| `KUBERNETES_SERVICE_HOST` | ploegd |  |  | [kubernetes.go](../../pkg/secretstore/kubernetes/kubernetes.go) |
+| `KUBERNETES_SERVICE_HOST` | ploegd |  |  | [kubeauth.go](../../pkg/kubeauth/kubeauth.go), [kubernetes.go](../../pkg/secretstore/kubernetes/kubernetes.go) |
+| `KUBERNETES_SERVICE_PORT` | ploeg-credential-gateway |  |  | [kubeauth.go](../../pkg/kubeauth/kubeauth.go) |
 | `KUBERNETES_SERVICE_PORT` | ploeg-worker |  |  | [launcher.go](../../pkg/sandboxlaunch/launcher.go) |
-| `KUBERNETES_SERVICE_PORT` | ploegd |  |  | [kubernetes.go](../../pkg/secretstore/kubernetes/kubernetes.go) |
+| `KUBERNETES_SERVICE_PORT` | ploegd |  |  | [kubeauth.go](../../pkg/kubeauth/kubeauth.go), [kubernetes.go](../../pkg/secretstore/kubernetes/kubernetes.go) |
+| `LANG` | ploeg-credential-gateway |  |  | [git.go](../../pkg/worker/git.go), [fetch.go](../../pkg/harness/claudeplugins/fetch.go) |
 | `LANG` | ploeg-worker |  |  | [git.go](../../pkg/worker/git.go), [fetch.go](../../pkg/harness/claudeplugins/fetch.go) |
+| `LC_ALL` | ploeg-credential-gateway |  |  | [git.go](../../pkg/worker/git.go) |
 | `LC_ALL` | ploeg-worker |  |  | [git.go](../../pkg/worker/git.go) |
 | `LITELLM_ADMIN_URL` | ploeg-worker |  | Controller-only. The worker refuses to start when it is set. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `LITELLM_ADMIN_URL` | ploegd |  | LiteLLM management URL (chart `executor.litellm.adminUrl`). Unset disables key revocation, and managed worker mode then refuses to start. | [main.go](../../cmd/ploegd/main.go) |
@@ -37,7 +41,9 @@ The generator follows each binary's imports inside the module and records every 
 | `LLM_API_KEY` | ploeg-worker |  | Static inference key for legacy mode (chart `executor.workerAuth.staticInferenceSecret`). | [main.go](../../cmd/ploeg-worker/main.go) |
 | `LLM_BASE_URL` | ploeg-worker |  | Model gateway URL (chart `executor.litellm.baseUrl`). | [main.go](../../cmd/ploeg-worker/main.go) |
 | `LLM_MODEL` | ploeg-worker |  |  | [main.go](../../cmd/ploeg-worker/main.go) |
+| `NODE_NAME` | ploeg-credential-gateway |  |  | [worker.go](../../pkg/worker/worker.go) |
 | `NODE_NAME` | ploeg-worker |  |  | [main.go](../../cmd/ploeg-worker/main.go), [worker.go](../../pkg/worker/worker.go) |
+| `PATH` | ploeg-credential-gateway |  | Passed to the worker's `git` subprocesses. The harness, its verification commands and the `openspec` CLI take `PATH` from the container the harness runs in (ADR-0138). | [git.go](../../pkg/worker/git.go), [fetch.go](../../pkg/harness/claudeplugins/fetch.go) |
 | `PATH` | ploeg-worker |  | Passed to the worker's `git` subprocesses. The harness, its verification commands and the `openspec` CLI take `PATH` from the container the harness runs in (ADR-0138). | [git.go](../../pkg/worker/git.go), [fetch.go](../../pkg/harness/claudeplugins/fetch.go) |
 | `PLOEG_ACP_ARGV` | ploeg-worker |  | `acp` harness only: the whole launch command as a JSON array; required when the profile is `custom`. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_ACP_CONFIG_JSON` | ploeg-worker |  | `acp` harness only: replaces the generated agent configuration of the `opencode` or `qwen-code` profile wholesale. The `goose` and `openhands` profiles refuse it at startup. | [main.go](../../cmd/ploeg-worker/main.go) |
@@ -45,6 +51,7 @@ The generator follows each binary's imports inside the module and records every 
 | `PLOEG_ACP_PERMISSION_MODE` | ploeg-worker |  | `acp` harness only: `allow_always` (default), `allow_read_only` or `deny_all`. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_ACP_PROFILE` | ploeg-worker |  | `acp` harness only: `opencode`, `qwen-code`, `goose`, `openhands` or `custom` (chart `executor.harness.acp.profile`). See [ACP profiles](../contracts/acp-profiles.md). | [main.go](../../cmd/ploeg-worker/main.go), [sandbox.go](../../cmd/ploeg-worker/sandbox.go) |
 | `PLOEG_ACP_PROMPT_TIMEOUT` | ploeg-worker |  | `acp` harness only: prompt timeout as a Go duration. Empty means the adapter default (45m). The Run's prompt states the earlier of it and `PLOEG_HARNESS_TIMEOUT` (ADR-0133). | [main.go](../../cmd/ploeg-worker/main.go) |
+| `PLOEG_API_URL` | ploeg-credential-gateway |  | ploegd's run API (chart `executor.apiUrl`, default `http://<fullname>:<service.port>`). | [main.go](../../cmd/ploeg-credential-gateway/main.go) |
 | `PLOEG_API_URL` | ploeg-worker | required | ploegd's run API (chart `executor.apiUrl`, default `http://<fullname>:<service.port>`). | [main.go](../../cmd/ploeg-worker/main.go), [sandbox.go](../../cmd/ploeg-worker/sandbox.go) |
 | `PLOEG_ASK_ALLOWANCE_USD` | ploegd | `2.00` | Monthly Ask Allowance, in US dollars, that a Team's period opens with (ADR-0082). A period keeps the limit its first Ask opened it with. At most 10000 with four decimals; anything else refuses to start. | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_ASK_BUDGET_USD` | ploegd | `0.02` | Per-Ask Budget in US dollars, the cap on the key an Ask is given (ADR-0082). A `(team, ask)` policy in `PLOEG_WORKER_LLM_POLICIES` with a smaller `budgetUsd` lowers it. A Team with no such policy has no Asks. | [main.go](../../cmd/ploegd/main.go) |
@@ -70,6 +77,7 @@ The generator follows each binary's imports inside the module and records every 
 | `PLOEG_CONFIG` | ploegd |  | Path of the routing and roster file (the chart's `config:` value, mounted at `/etc/ploeg/ploeg.yaml`). Unset means the legacy `PLOEG_TARGET_MAP`, `PLOEG_TEAM_MAP` and `PLOEG_TEAM_PLANS` variables still apply. | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_CONTEXT_MAX_BYTES` | ploegd | `20 << 20` |  | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_CONTEXT_MAX_TOTAL_BYTES` | ploegd | `50 << 20` |  | [main.go](../../cmd/ploegd/main.go) |
+| `PLOEG_CREDENTIAL_GATEWAYS` | ploegd |  | JSON list of credential gateways (ADR-0197, proposed): `namespace` and `serviceAccount` as TokenReview reports them and the `teams` each serves. A Team listed here gets no credential in a claim; only its gateway fetches the Run's grant. Needs the HMAC capability and TokenReview permission (chart `executor.credentialGateway`). | [credential_gateway.go](../../cmd/ploegd/credential_gateway.go) |
 | `PLOEG_CREDENTIAL_ISOLATION_OFF_REASON` | ploeg-worker | `disabled` | Why the chart left a credential proxy off for this workload: `unqualified`, `dind` or `disabled`. ploeg-worker logs it in one boot WARN with the harness name. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_DATABASE_URL` | ploeg-worker |  | Controller-only. The worker refuses to start when it is set. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_DATABASE_URL` | ploegd | required | PostgreSQL connection URI. The chart reads the whole `uri` key of the CNPG app Secret named by `database.existingSecret`. | [main.go](../../cmd/ploegd/main.go) |
@@ -98,6 +106,15 @@ The generator follows each binary's imports inside the module and records every 
 | `PLOEG_FORGEJO_WORKER_URL` | ploegd |  | The Forgejo URL a claim hands workers for a Run on Forgejo (chart `executor.forgejo.url`, rendered in a multi-forge release). Unset in a multi-forge release = `PLOEG_FORGEJO_URL`; unset with one forge = the worker keeps its `FORGE_URL` (ADR-0192). | [forges.go](../../cmd/ploegd/forges.go) |
 | `PLOEG_FORGE_TOKEN_ACCESS` | ploeg-worker |  |  | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_FORGE_TOKEN_ISOLATION` | ploeg-worker |  | `proxy` keeps a writer's forge token in ploeg-worker behind a loopback proxy limited to the Run's repository (ADR-0034). The chart sets it only for a qualified harness without DinD. | [main.go](../../cmd/ploeg-worker/main.go) |
+| `PLOEG_GATEWAY_BOOTSTRAP_DIR` | ploeg-credential-gateway | `/var/run/secrets/ploeg/bootstraps` | Directory of `<team>--<role or default>` files holding the bootstrap capabilities the credential gateway attaches to a claim it has tied to a Run pod. | [main.go](../../cmd/ploeg-credential-gateway/main.go) |
+| `PLOEG_GATEWAY_CONTROL_ADDR` | ploeg-credential-gateway | `:8080` | Listener of the credential gateway's ploegd route family (default `:8080`). | [main.go](../../cmd/ploeg-credential-gateway/main.go) |
+| `PLOEG_GATEWAY_FORGE_ADDR` | ploeg-credential-gateway | `:8081` | Listener of the credential gateway's forge route family (default `:8081`). | [main.go](../../cmd/ploeg-credential-gateway/main.go) |
+| `PLOEG_GATEWAY_HEALTH_ADDR` | ploeg-credential-gateway | `:8090` | Listener of the credential gateway's `/healthz` (default `:8090`). | [main.go](../../cmd/ploeg-credential-gateway/main.go) |
+| `PLOEG_GATEWAY_LIMITS` | ploeg-credential-gateway |  | Per-Run token buckets per route family (`forge`, `model`, `ploegd`: `requestsPerSecond`, `burst`, `bytesPerSecond`) and `maxUpstreamConnections` for the namespace, as JSON (chart `executor.credentialGateway.limits`). | [main.go](../../cmd/ploeg-credential-gateway/main.go) |
+| `PLOEG_GATEWAY_MODEL_ADDR` | ploeg-credential-gateway | `:8082` | Listener of the credential gateway's model route family (default `:8082`). | [main.go](../../cmd/ploeg-credential-gateway/main.go) |
+| `PLOEG_GATEWAY_MODEL_URL` | ploeg-credential-gateway |  | The model gateway the credential gateway forwards model calls to, with the Run's key attached. | [main.go](../../cmd/ploeg-credential-gateway/main.go) |
+| `PLOEG_GATEWAY_RUN_POD_SELECTOR` | ploeg-credential-gateway | `app.kubernetes.io/name=ploeg-worker` | Label selector of the Run pods the credential gateway serves (default `app.kubernetes.io/name=ploeg-worker`). | [main.go](../../cmd/ploeg-credential-gateway/main.go) |
+| `PLOEG_GATEWAY_TOKEN_FILE` | ploeg-credential-gateway | `/var/run/secrets/ploeg/gateway/token` | The projected ServiceAccount token, audience `ploegd`, the credential gateway proves itself to ploegd with. | [main.go](../../cmd/ploeg-credential-gateway/main.go) |
 | `PLOEG_GITHUB_API_URL` | ploegd |  | GitHub REST API root (chart `tracker.github.apiUrl`). Empty means `https://api.github.com`; GitHub Enterprise Server uses `https://<host>/api/v3`. | [github.go](../../cmd/ploegd/github.go), [github_forge.go](../../cmd/ploegd/github_forge.go) |
 | `PLOEG_GITHUB_APP_ID` | ploegd |  | GitHub App id whose installation tokens read issues and write comments back (chart `tracker.github.appId`). Each token is scoped to one repository with `issues:write` and `metadata:read` (ADR-0085). With `PLOEG_GITHUB_URL` set the same App is the GitHub forge's identity, and ploegd mints a revocable installation token per writing Run (ADR-0086). Unset keeps reads and write-backs off. | [github.go](../../cmd/ploegd/github.go), [github_forge.go](../../cmd/ploegd/github_forge.go) |
 | `PLOEG_GITHUB_APP_PRIVATE_KEY` | ploegd |  | The GitHub App's PEM private key (chart `tracker.github.appPrivateKeySecret`). Required with `PLOEG_GITHUB_APP_ID`; ploegd refuses to start with only one of them or an unreadable key. | [github.go](../../cmd/ploegd/github.go), [github_forge.go](../../cmd/ploegd/github_forge.go) |
@@ -216,14 +233,20 @@ The generator follows each binary's imports inside the module and records every 
 | `PLOEG_WORKER_ID` | ploeg-worker | `$POD_UID` | Worker identity for managed mode. | [main.go](../../cmd/ploeg-worker/main.go), [sandbox.go](../../cmd/ploeg-worker/sandbox.go) |
 | `PLOEG_WORKER_LLM_POLICIES` | ploegd |  | Trusted team and role inference policies. Each lists the `models` a Run of the Role may call and its `defaultModel`, which must be one of them (ADR-0103). The chart builds them from each team and role model, models and budget plus `executor.workerAuth.additionalLLMPolicies`. | [main.go](../../cmd/ploegd/main.go) |
 | `PLOEG_WORKER_SIGNING_KEY` | ploeg-worker |  | Controller-only. The worker refuses to start when it is set. | [main.go](../../cmd/ploeg-worker/main.go) |
-| `PLOEG_WORKER_SIGNING_KEY` | ploegd |  | Controller-only signing material for the HMAC worker control capability, at least 32 bytes (chart `executor.workerAuth.signingKeySecret`). Deprecated by ADR-0156 with that capability; must be unset with `PLOEG_WORKER_HMAC_CAPABILITY=off`. | [transaction_token.go](../../cmd/ploegd/transaction_token.go) |
+| `PLOEG_WORKER_SIGNING_KEY` | ploegd |  | Controller-only signing material for the HMAC worker control capability, at least 32 bytes (chart `executor.workerAuth.signingKeySecret`). Deprecated by ADR-0156 with that capability; must be unset with `PLOEG_WORKER_HMAC_CAPABILITY=off`. | [credential_gateway.go](../../cmd/ploegd/credential_gateway.go), [transaction_token.go](../../cmd/ploegd/transaction_token.go) |
 | `POD_NAME` | ploeg-worker |  |  | [sandbox.go](../../cmd/ploeg-worker/sandbox.go) |
+| `POD_NAMESPACE` | ploeg-credential-gateway |  |  | [main.go](../../cmd/ploeg-credential-gateway/main.go) |
 | `POD_NAMESPACE` | ploeg-worker |  |  | [sandbox.go](../../cmd/ploeg-worker/sandbox.go) |
+| `POD_UID` | ploeg-credential-gateway |  | Downward-API pod UID; the worker identity when `PLOEG_WORKER_ID` is unset. | [worker.go](../../pkg/worker/worker.go) |
 | `POD_UID` | ploeg-worker |  | Downward-API pod UID; the worker identity when `PLOEG_WORKER_ID` is unset. | [main.go](../../cmd/ploeg-worker/main.go), [sandbox.go](../../cmd/ploeg-worker/sandbox.go), [worker.go](../../pkg/worker/worker.go) |
 | `REPO_NAME` | ploeg-worker |  | Fallback repository name for a team that pins one. The repository normally comes from the claimed Work Item. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `REPO_OWNER` | ploeg-worker |  | Fallback repository owner for a team that pins one. The repository normally comes from the claimed Work Item. | [main.go](../../cmd/ploeg-worker/main.go) |
+| `SSL_CERT_DIR` | ploeg-credential-gateway |  | Passed to `git` when the worker fetches a Claude Code plugin marketplace. | [fetch.go](../../pkg/harness/claudeplugins/fetch.go) |
 | `SSL_CERT_DIR` | ploeg-worker |  | Passed to `git` when the worker fetches a Claude Code plugin marketplace. | [fetch.go](../../pkg/harness/claudeplugins/fetch.go) |
+| `SSL_CERT_FILE` | ploeg-credential-gateway |  | Passed to `git` when the worker fetches a Claude Code plugin marketplace. | [fetch.go](../../pkg/harness/claudeplugins/fetch.go) |
 | `SSL_CERT_FILE` | ploeg-worker |  | Passed to `git` when the worker fetches a Claude Code plugin marketplace. | [fetch.go](../../pkg/harness/claudeplugins/fetch.go) |
+| `TMPDIR` | ploeg-credential-gateway | `os.TempDir()` |  | [main.go](../../cmd/ploeg-credential-gateway/main.go) |
+| `TZ` | ploeg-credential-gateway |  |  | [git.go](../../pkg/worker/git.go), [fetch.go](../../pkg/harness/claudeplugins/fetch.go) |
 | `TZ` | ploeg-worker |  |  | [git.go](../../pkg/worker/git.go), [fetch.go](../../pkg/harness/claudeplugins/fetch.go) |
 | `WORK_DIR` | ploeg-worker | `/mnt/ci-shared` |  | [main.go](../../cmd/ploeg-worker/main.go) |
 

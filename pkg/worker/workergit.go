@@ -58,6 +58,28 @@ func openWorkerRepository(ctx context.Context, checkoutDir, remote, token string
 	return repo, nil
 }
 
+func openBareRepository(ctx context.Context, parent, remote, token string) (*workerRepository, error) {
+	gitDir, err := os.MkdirTemp(parent, workerGitDirPattern)
+	if err != nil {
+		return nil, err
+	}
+	repo := &workerRepository{gitDir: gitDir, remote: remote, token: token}
+	if out, err := repo.local(ctx, "", "init", "--quiet", "--bare", "--template=").CombinedOutput(); err != nil {
+		repo.remove()
+		return nil, fmt.Errorf("git init: %v: %s", err, tail(out, 400))
+	}
+	return repo, nil
+}
+
+func (r *workerRepository) indexPack(ctx context.Context, pack []byte) error {
+	cmd := r.local(ctx, "", "index-pack", "--stdin", "--fix-thin")
+	cmd.Stdin = bytes.NewReader(pack)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git index-pack: %v: %s", err, tail(out, 400))
+	}
+	return nil
+}
+
 func (r *workerRepository) remove() {
 	_ = os.RemoveAll(r.gitDir)
 }

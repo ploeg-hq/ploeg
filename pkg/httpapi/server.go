@@ -43,8 +43,11 @@ type Server struct {
 	RuntimeTeams   *teamruntime.Service
 	WorkerSecurity *WorkerSecurity
 	LLMControl     *LLMControl
-	Store          *store.Store
-	Trackers       map[string]provider.TrackerProvider
+	// CredentialGateways is set when Teams run behind a credential gateway
+	// (ADR-0197).
+	CredentialGateways *CredentialGateways
+	Store              *store.Store
+	Trackers           map[string]provider.TrackerProvider
 	// Targets resolves a tracker scope to the repository the work lands in.
 	// Nil = no mapping configured; every item stays unresolved and workers use
 	// their env-configured repo (the pre-decoupling behavior).
@@ -375,6 +378,7 @@ func (s *Server) routes() *http.ServeMux {
 	s.RegisterLLMControl(mux)
 	s.registerRunIdentity(mux)
 	s.registerTransactionTokens(mux)
+	s.registerCredentialGateway(mux)
 	return mux
 }
 
@@ -1120,7 +1124,7 @@ func (s *Server) handleRenew(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	body := map[string]any{"deadline": deadline, "expiresInMs": leaseExpiresInMs(deadline)}
-	if worker := runWorkerFrom(r.Context()); s.TransactionTokens != nil && worker != "" {
+	if worker := runWorkerFrom(r.Context()); s.TransactionTokens != nil && worker != "" && !gatewayRunFrom(r.Context()) {
 		renewed, _, err := s.issueTransactionToken(r.Context(), token, worker)
 		if err != nil {
 			s.Log.Error("renewed run got no transaction token", "err", err)
