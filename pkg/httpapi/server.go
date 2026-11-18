@@ -67,8 +67,11 @@ type Server struct {
 	// Nil registers none, and the claim and mint treat every target as
 	// static.
 	WorkTargets *WorkTargets
-	LeaseTTL    time.Duration
-	Log         *slog.Logger
+	// ToolRegistry serves and guards the MCP server and skill source
+	// registry of ADR-0199.
+	ToolRegistry *ToolRegistry
+	LeaseTTL     time.Duration
+	Log          *slog.Logger
 	// RunIdentity signs the Run identities a Team's declared plugins receive
 	// and publishes its key set (ADR-0149). Nil = both routes answer 404.
 	RunIdentity *runidentity.Signer
