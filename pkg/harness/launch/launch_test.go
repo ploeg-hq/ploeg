@@ -9,6 +9,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -38,26 +39,21 @@ func (b *lockedBuffer) String() string {
 	return b.buf.String()
 }
 
-func shortSocket(t *testing.T) string {
+func rendezvousPath(t *testing.T) string {
 	t.Helper()
-	dir, err := os.MkdirTemp("", "pl")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { os.RemoveAll(dir) })
-	return filepath.Join(dir, "launcher.sock")
+	return filepath.Join(t.TempDir(), "launcher.json")
 }
 
 func connectedPair(t *testing.T) (*Client, string, func() error) {
 	t.Helper()
-	socket := shortSocket(t)
+	rendezvous := rendezvousPath(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	result := make(chan error, 1)
-	go func() { result <- Serve(ctx, socket) }()
+	go func() { result <- Serve(ctx, rendezvous) }()
 	served := sync.OnceValue(func() error { return <-result })
 	acceptCtx, stop := context.WithTimeout(context.Background(), 10*time.Second)
 	defer stop()
-	client, err := Accept(acceptCtx, socket)
+	client, err := Accept(acceptCtx, rendezvous)
 	if err != nil {
 		cancel()
 		t.Fatal(err)
@@ -67,7 +63,7 @@ func connectedPair(t *testing.T) (*Client, string, func() error) {
 		cancel()
 		_ = served()
 	})
-	return client, socket, served
+	return client, rendezvous, served
 }
 
 func running(pid int) bool {
@@ -263,15 +259,162 @@ func TestLauncherAnswersFromItsOwnContainer(t *testing.T) {
 	}
 }
 
-func TestLauncherSocketTakesOneConnectionOnly(t *testing.T) {
-	_, socket, _ := connectedPair(t)
-	if _, err := os.Stat(socket); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("the socket is still on disk after the launcher connected: %v", err)
+func acceptInBackground(t *testing.T, rendezvous string) (<-chan *Client, <-chan error, Rendezvous) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	t.Cleanup(cancel)
+	accepted := make(chan *Client, 1)
+	failed := make(chan error, 1)
+	go func() {
+		client, err := Accept(ctx, rendezvous)
+		if err != nil {
+			failed <- err
+			return
+		}
+		t.Cleanup(func() { client.Close() })
+		accepted <- client
+	}()
+	var r Rendezvous
+	if !eventually(t, 5*time.Second, func() bool {
+		var err error
+		r, err = readRendezvous(rendezvous)
+		return err == nil
+	}) {
+		t.Fatalf("the worker never published its rendezvous at %s", rendezvous)
 	}
-	if conn, err := net.Dial("unix", socket); err == nil {
+	return accepted, failed, r
+}
+
+func helloWith(t *testing.T, address string, h hello) net.Conn {
+	t.Helper()
+	conn, err := net.Dial("tcp", address)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { conn.Close() })
+	payload, _ := json.Marshal(h)
+	if err := writeFrame(conn, frame{kind: frameHello, payload: payload}); err != nil {
+		t.Fatal(err)
+	}
+	return conn
+}
+
+func closedByPeer(conn net.Conn) bool {
+	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	_, err := conn.Read(make([]byte, 1))
+	return errors.Is(err, io.EOF) || errors.Is(err, syscall.ECONNRESET)
+}
+
+func TestWorkerListensOnTheLoopbackOnly(t *testing.T) {
+	_, _, r := acceptInBackground(t, rendezvousPath(t))
+	address, err := netip.ParseAddrPort(r.Address)
+	if err != nil || address.Addr() != netip.MustParseAddr("127.0.0.1") || address.Port() == 0 {
+		t.Fatalf("rendezvous address = %q (%v), want 127.0.0.1 and a port", r.Address, err)
+	}
+	if len(r.Token) != 2*tokenBytes {
+		t.Fatalf("token has %d characters, want %d", len(r.Token), 2*tokenBytes)
+	}
+}
+
+func TestEveryAcceptDrawsItsOwnToken(t *testing.T) {
+	_, _, first := acceptInBackground(t, rendezvousPath(t))
+	_, _, second := acceptInBackground(t, rendezvousPath(t))
+	if first.Token == second.Token {
+		t.Fatal("two listeners published the same token")
+	}
+}
+
+func TestAConnectionWithoutTheTokenIsRefusedAndTheLauncherStillConnects(t *testing.T) {
+	rendezvous := rendezvousPath(t)
+	accepted, failed, r := acceptInBackground(t, rendezvous)
+	for _, intruder := range []hello{
+		{Protocol: ProtocolVersion, PID: 1},
+		{Protocol: ProtocolVersion, PID: 1, Token: strings.Repeat("0", len(r.Token))},
+	} {
+		if conn := helloWith(t, r.Address, intruder); !closedByPeer(conn) {
+			t.Fatalf("the worker kept a connection whose hello carried token %q", intruder.Token)
+		}
+	}
+	silent, err := net.Dial("tcp", r.Address)
+	if err != nil {
+		t.Fatal(err)
+	}
+	silent.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	served := make(chan error, 1)
+	go func() { served <- Serve(ctx, rendezvous) }()
+	t.Cleanup(func() {
+		cancel()
+		<-served
+	})
+	select {
+	case client := <-accepted:
+		if client.PID() != os.Getpid() {
+			t.Fatalf("the accepted launcher reports pid %d, want %d", client.PID(), os.Getpid())
+		}
+	case err := <-failed:
+		t.Fatalf("Accept = %v after refusing intruders", err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("the launcher never connected after the intruders were refused")
+	}
+}
+
+func TestLauncherRendezvousTakesOneConnectionOnly(t *testing.T) {
+	rendezvous := rendezvousPath(t)
+	accepted, failed, r := acceptInBackground(t, rendezvous)
+	ctx, cancel := context.WithCancel(context.Background())
+	served := make(chan error, 1)
+	go func() { served <- Serve(ctx, rendezvous) }()
+	t.Cleanup(func() {
+		cancel()
+		<-served
+	})
+	select {
+	case <-accepted:
+	case err := <-failed:
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(rendezvous); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("the rendezvous is still on disk after the launcher connected: %v", err)
+	}
+	if conn, err := net.Dial("tcp", r.Address); err == nil {
 		conn.Close()
-		t.Fatal("a second process connected to the worker's launcher socket")
+		t.Fatal("a second process connected to the worker's launcher address")
 	}
+}
+
+func TestLauncherRefusesARendezvousOffTheLoopback(t *testing.T) {
+	for _, address := range []string{"10.0.0.7:7781", "[2001:db8::1]:7781", "launcher.example:7781", ""} {
+		rendezvous := rendezvousPath(t)
+		if err := publishRendezvous(rendezvous, Rendezvous{Address: address, Token: "t"}); err != nil {
+			t.Fatal(err)
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		err := Serve(ctx, rendezvous)
+		cancel()
+		if !errors.Is(err, errNotLoopback) {
+			t.Errorf("Serve with address %q = %v, want a loopback refusal", address, err)
+		}
+	}
+}
+
+func TestLauncherWaitsForTheWorkersRendezvous(t *testing.T) {
+	rendezvous := rendezvousPath(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	served := make(chan error, 1)
+	go func() { served <- Serve(ctx, rendezvous) }()
+	t.Cleanup(func() {
+		cancel()
+		<-served
+	})
+	time.Sleep(3 * dialRetry)
+	acceptCtx, stop := context.WithTimeout(context.Background(), 10*time.Second)
+	defer stop()
+	client, err := Accept(acceptCtx, rendezvous)
+	if err != nil {
+		t.Fatalf("Accept = %v for a launcher that started first", err)
+	}
+	client.Close()
 }
 
 func TestLauncherKillsItsProcessesWhenTheWorkerGoes(t *testing.T) {
@@ -304,23 +447,27 @@ func TestLauncherKillsItsProcessesWhenTheWorkerGoes(t *testing.T) {
 }
 
 func TestLauncherWithAnotherProtocolIsRefused(t *testing.T) {
-	worker, launcher := net.Pipe()
-	defer worker.Close()
-	go func() {
-		payload, _ := json.Marshal(hello{Protocol: ProtocolVersion + 1, PID: 1})
-		_ = writeFrame(launcher, frame{kind: frameHello, payload: payload})
-		launcher.Close()
-	}()
-	if _, err := NewClient(worker); err == nil || !strings.Contains(err.Error(), "protocol") {
-		t.Fatalf("NewClient = %v, want a protocol refusal", err)
+	_, failed, r := acceptInBackground(t, rendezvousPath(t))
+	helloWith(t, r.Address, hello{Protocol: ProtocolVersion + 1, PID: 1, Token: r.Token})
+	select {
+	case err := <-failed:
+		if !errors.Is(err, errProtocolMismatch) || !strings.Contains(err.Error(), "protocol") {
+			t.Fatalf("Accept = %v, want a protocol refusal", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Accept kept waiting after the token-bearing launcher spoke another protocol")
 	}
 }
 
 func TestAcceptGivesUpWhenNoLauncherConnects(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
-	if _, err := Accept(ctx, shortSocket(t)); err == nil || !strings.Contains(err.Error(), "no harness launcher connected") {
+	rendezvous := rendezvousPath(t)
+	if _, err := Accept(ctx, rendezvous); err == nil || !strings.Contains(err.Error(), "no harness launcher connected") {
 		t.Fatalf("Accept = %v", err)
+	}
+	if _, err := os.Stat(rendezvous); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("the rendezvous outlived a worker that gave up: %v", err)
 	}
 }
 

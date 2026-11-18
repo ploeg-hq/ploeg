@@ -17,7 +17,7 @@ It describes profile P1 of the threat model: managed worker authentication, both
 | Place | What it is | What reaches it |
 | --- | --- | --- |
 | ploegd | The controller process. Holds every management credential. | Nothing a worker or harness runs |
-| worker container | `ploeg-worker`, the Run pod's main container. Holds the Run's capabilities and both loopback proxies. | The harness only through the launcher socket it accepts once, and through the loopback proxies, which forward only requests carrying the Run's placeholder |
+| worker container | `ploeg-worker`, the Run pod's main container. Holds the Run's capabilities and both loopback proxies. | The harness only through the launcher connection it accepts once on the pod's loopback, from the launcher that presents the per-pod token, and through the loopback proxies, which forward only requests carrying the Run's placeholder |
 | harness container | `ploeg-worker harness-serve` and the agent it starts. Mounts no Secret and has no environment of its own. | Placeholders, the canary and the work directory |
 
 ## Inventory

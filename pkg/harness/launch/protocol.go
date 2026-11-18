@@ -1,10 +1,12 @@
 // Package launch carries a Run's processes from ploeg-worker to the harness's
-// own container (ADR-0138). The worker listens on a Unix socket in a volume
-// both containers mount, accepts exactly one connection from
-// ploeg-worker harness-serve, removes the socket and multiplexes every
-// process of the Run over that connection. No credential crosses it: the
-// worker sends the environment it prepared for the harness, which carries
-// placeholders and proxy endpoints only.
+// own container (ADR-0138). The worker listens on the pod's loopback and
+// publishes the address and a per-pod token in a volume only the two
+// containers mount (ADR-0201). It accepts exactly one connection from
+// ploeg-worker harness-serve that presents the token, stops listening,
+// removes the rendezvous and multiplexes every process of the Run over that
+// connection. No credential crosses it: the worker sends the environment it
+// prepared for the harness, which carries placeholders and proxy endpoints
+// only.
 package launch
 
 import (
@@ -16,7 +18,7 @@ import (
 )
 
 // ProtocolVersion is the version of the frames both sides speak.
-const ProtocolVersion = 1
+const ProtocolVersion = 2
 
 type frameKind byte
 
@@ -91,6 +93,7 @@ type hello struct {
 	Protocol   int    `json:"protocol"`
 	PID        int    `json:"pid"`
 	Executable string `json:"executable,omitempty"`
+	Token      string `json:"token"`
 }
 
 type startRequest struct {
