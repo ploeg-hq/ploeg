@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
-ARG REGISTRY_DOCKERHUB=docker.io
+ARG REGISTRY_CHAINGUARD=cgr.dev
 ARG REGISTRY_GHCR=ghcr.io
 ARG GOOSE_VERSION=1.57.0
 ARG GOOSE_SHA256_AMD64=6c3a05e30e1a425dc06a410dbe24b3f3697c9721b1ea2340434ddda6b64267ae
@@ -7,7 +7,9 @@ ARG GOOSE_SHA256_ARM64=00a32522f0421ed72fc06f36bfc44c8e51cffefb4daf22a81bb84ccd2
 
 FROM ${REGISTRY_GHCR}/astral-sh/uv:0.13.7@sha256:96f40d3904aad8d0bd010539001d36c8e2188b981e1334471a90c4a1d93bb490 AS uv
 
-FROM ${REGISTRY_DOCKERHUB}/node:24.22.3-alpine3.24@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5 AS node
+FROM ${REGISTRY_CHAINGUARD}/chainguard/wolfi-base:latest@sha256:2c12da5496e21e99003b3db3b9246f025e53d533c4df334205391260f1e8f85b AS node
+RUN printf 'https://packages.wolfi.dev/os\n' > /etc/apk/repositories \
+ && apk add --no-cache nodejs-24 npm
 COPY ops/docker/agent-runner/tools/moon/package.json ops/docker/agent-runner/tools/moon/package-lock.json /opt/moon/
 COPY ops/docker/agent-runner/tools/openspec/package.json ops/docker/agent-runner/tools/openspec/package-lock.json /opt/openspec/
 COPY ops/docker/agent-runner/tools/qwen-code/package.json ops/docker/agent-runner/tools/qwen-code/package-lock.json /opt/qwen-code/
@@ -24,7 +26,7 @@ ARG GOOSE_SHA256_ARM64
 ADD --checksum=sha256:${GOOSE_SHA256_AMD64} https://github.com/aaif-goose/goose/releases/download/v${GOOSE_VERSION}/goose-x86_64-unknown-linux-musl.tar.gz /amd64.tar.gz
 ADD --checksum=sha256:${GOOSE_SHA256_ARM64} https://github.com/aaif-goose/goose/releases/download/v${GOOSE_VERSION}/goose-aarch64-unknown-linux-musl.tar.gz /arm64.tar.gz
 
-FROM ${REGISTRY_DOCKERHUB}/python:3.12.16-alpine3.24@sha256:c5ba3deef00c7758561a0f03c26f44f10589263d40e732b8748e0d1f38f6dd89
+FROM ${REGISTRY_CHAINGUARD}/chainguard/wolfi-base:latest@sha256:2c12da5496e21e99003b3db3b9246f025e53d533c4df334205391260f1e8f85b
 
 ARG TARGETARCH
 ARG IMAGE_CREATED=1970-01-01T00:00:00Z
@@ -40,15 +42,22 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONWARNINGS=ignore::DeprecationWarning \
     UV_TOOL_BIN_DIR=/usr/local/bin \
     UV_TOOL_DIR=/opt/uv/tools \
+    UV_PYTHON=python3.12 \
     UV_PYTHON_DOWNLOADS=never \
     UV_NO_CACHE=1
 
-RUN apk add --no-cache bash ca-certificates git libstdc++
+RUN printf 'https://packages.wolfi.dev/os\n' > /etc/apk/repositories \
+ && apk upgrade --no-cache \
+ && apk add --no-cache bash ca-certificates-bundle git nodejs-24 python-3.12 \
+ && install -d /usr/local/bin \
+ && ln -sf /usr/bin/python3.12 /usr/local/bin/python3 \
+ && python3 --version && node --version
 
 COPY --from=uv /uv /uvx /usr/local/bin/
 COPY ops/docker/agent-runner/openhands-${OPENHANDS_VERSION}.constraints.txt /tmp/openhands.constraints.txt
-RUN uv tool install "openhands==${OPENHANDS_VERSION}" --constraints /tmp/openhands.constraints.txt \
- && rm /tmp/openhands.constraints.txt \
+COPY ops/docker/agent-runner/openhands-overrides.txt /tmp/openhands.overrides.txt
+RUN uv tool install "openhands==${OPENHANDS_VERSION}" --constraints /tmp/openhands.constraints.txt --overrides /tmp/openhands.overrides.txt \
+ && rm /tmp/openhands.constraints.txt /tmp/openhands.overrides.txt \
  && openhands --version \
  && /opt/uv/tools/openhands/bin/python -c "import os, shutil; os.setgid(1000); os.setuid(1000); assert shutil.which('openhands'), 'openhands is not executable as uid 1000, the restricted Pod Security Standard user Ploeg runs harnesses as'" \
  && /opt/uv/tools/openhands/bin/python -c "import inspect, lmnr; assert 'rollout_entrypoint' in str(inspect.signature(lmnr.observe)), 'lmnr.observe lacks rollout_entrypoint, which openhands-sdk tracing passes'"
@@ -63,12 +72,6 @@ RUN AGENT_STORE="$(find /opt/uv/tools/openhands -name agent_store.py -path '*/op
  && test -s /etc/openhands-version
 
 ENV LITELLM_LOCAL_MODEL_COST_MAP=True
-
-COPY --from=node /usr/local/bin/node /usr/local/bin/node
-COPY --from=node /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/npm
-RUN ln -sf /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
- && ln -sf /usr/local/lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx \
- && node --version && npm --version
 
 COPY --from=node /opt/moon /opt/moon
 COPY --from=node /opt/openspec /opt/openspec
@@ -85,7 +88,7 @@ ENV OPENSPEC_TELEMETRY=0 \
 COPY --from=node /opt/qwen-code /opt/qwen-code
 RUN ln -s /opt/qwen-code/node_modules/.bin/qwen /usr/local/bin/qwen \
  && cd /opt/qwen-code/node_modules/@qwen-code/qwen-code \
- && node --input-type=module -e 'for (const m of ["@lydell/node-pty", "node-pty"]) { if (await import(m).then(() => true, () => false)) { console.error(`${m} still resolves: its glibc prebuild segfaults on musl`); process.exit(1); } }' \
+ && node --input-type=module -e 'for (const m of ["@lydell/node-pty", "node-pty"]) { if (await import(m).then(() => true, () => false)) { console.error(`${m} still resolves; Qwen Code runs its shell without a PTY in this image`); process.exit(1); } }' \
  && test "$(qwen --version)" = "$(node -p 'require("/opt/qwen-code/package.json").dependencies["@qwen-code/qwen-code"]')"
 
 COPY --from=node /opt/opencode /opt/opencode
@@ -99,7 +102,7 @@ RUN --mount=type=bind,from=goose-archives,target=/tmp/goose \
  && chmod 0755 /usr/local/bin/goose \
  && goose --version | grep -F "${GOOSE_VERSION}"
 
-RUN pip install --no-cache-dir --no-deps "pyyaml==${PYYAML_VERSION}" \
+RUN uv pip install --system --break-system-packages --no-deps "pyyaml==${PYYAML_VERSION}" \
  && python3 -c "import yaml; print('pyyaml', yaml.__version__)"
 
 COPY LICENSE NOTICE /usr/share/doc/ploeg/

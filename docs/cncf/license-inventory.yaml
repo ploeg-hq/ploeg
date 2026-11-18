@@ -231,12 +231,13 @@ components:
     license: GPL-2.0-or-later AND GPL-2.0-only AND MPL-2.0 AND LicenseRef-Public-Domain AND LicenseRef-media-types
     disposition: container-guidance
     note: Six Debian 13 packages, read from the pinned digest on 2026-10-23 - base-files 13.8+deb13u7 (GPL-2+), ca-certificates 20250419 (GPL-2+ scripts, MPL-2.0 Mozilla certificate data), media-types 13.0.0 (ad-hoc permissive), netbase 6.5 (GPL-2), tzdata and tzdata-legacy 2026c (public domain). Each keeps its copyright file under /usr/share/doc and its dpkg record, which the container image guidance (A)(2) asks for, and the image's Dockerfile is public (GoogleContainerTools/distroless, Apache-2.0). This is the minimal base the guidance prefers. Base-image content is reviewed under the container image guidance, not the allowlist; confirm with CNCF staff that no exception is expected.
-  - name: wolfi-base base image (claude-runner, and the ploeg-worker build stage)
+  - name: wolfi-base base image (claude-runner, agent-runner, and the ploeg-worker build stage)
     kind: base image
     refs:
       - chainguard/wolfi-base
     shipped_in:
       - claude-runner image
+      - agent-runner image
     license: MIT AND GPL-2.0-only AND LGPL-2.1-or-later AND GPL-3.0-or-later WITH GCC-exception-3.1 AND Apache-2.0 AND MPL-2.0
     disposition: container-guidance
     note: cgr.dev/chainguard/wolfi-base, pinned by digest sha256:360896efb0753a5701c48f860e17130c205eae5a264797aa3e7ea126ee2923a7 (built 2026-10-23, read 2026-10-24) and moved by Renovate. Its 21 Wolfi packages are wolfi-base, wolfi-baselayout and wolfi-keys (MIT), apk-tools and busybox (GPL-2.0-only), glibc 2.44 with ld-linux and libcrypt (LGPL-2.1-or-later), libxcrypt, libgcc (GPL-3.0-or-later WITH GCC-exception-3.1), OpenSSL 4.0 and its legacy provider (Apache-2.0), ca-certificates-bundle and zlib (MPL-2.0 AND MIT) and brotli (MIT). It is pulled without credentials, its apko definition is public (github.com/chainguard-images/images, images/wolfi-base, Apache-2.0) as the container image guidance (A)(1) asks, and every package keeps its SPDX SBOM, with licence and source, under /var/lib/db/sbom and its record in /usr/lib/apk/db/installed, as (A)(2) asks. ploeg-worker uses it only as a build stage, to run apk; none of its own files reach that image (ADR-0144).
@@ -278,25 +279,22 @@ components:
     license: NOASSERTION
     disposition: user-fetched
     note: An agent image other than ghcr.io/ploeg-hq/agent-runner, such as one with Claude Code or another agent in it, is the operator's to build and to review. The chart still names no agent image by default (values.yaml harness.image is empty and required), so an operator who points it at their own image supplies its licences (ADR-0199).
-  - name: Alpine CPython base image (agent-runner)
-    kind: base image
-    refs:
-      - python
+  - name: Wolfi packages installed into agent-runner
+    kind: os packages
     shipped_in:
       - agent-runner image
-    license: PSF-2.0 AND LicenseRef-Alpine-mixed
+    license: PSF-2.0 AND MIT AND GPL-2.0-or-later AND GPL-3.0-or-later AND LGPL-2.1-or-later AND BSD-3-Clause AND Apache-2.0 AND Unicode-3.0 AND NOASSERTION
     disposition: container-guidance
-    note: docker.io/library/python 3.12.16-alpine3.24, pinned by digest in ops/docker/agent-runner/Dockerfile and moved by Renovate. CPython (PSF-2.0) built on Alpine 3.24, whose apk packages carry GPL-2.0, MIT, BSD and other licences, plus bash, ca-certificates, git and libstdc++ that the Dockerfile adds with apk. The Docker official image's build definition is public (github.com/docker-library/python, MIT), and each apk package keeps its record in /lib/apk/db/installed. The BuildKit SBOM attached to each release is the authoritative package list. Not read package by package yet; confirm with CNCF staff that the container image guidance covers it.
+    note: ops/docker/agent-runner/Dockerfile installs bash, ca-certificates-bundle, git, nodejs-24 and python-3.12 with apk from the repository the pinned wolfi-base configures, a standard package manager as guidance (B)(1)(B) asks, among them CPython 3.12 (PSF-2.0), Node.js 24 (MIT, with ICU under Unicode-3.0 and OpenSSL under Apache-2.0), git (GPL-2.0-or-later) and bash (GPL-3.0-or-later). Each package keeps its SPDX SBOM under /var/lib/db/sbom and its record in /usr/lib/apk/db/installed; the BuildKit SBOM attached to each release is the authoritative package list. Not read package by package yet.
   - name: Agent harnesses and tools in agent-runner
     kind: bundled applications
     refs:
-      - node
       - astral-sh/uv
     shipped_in:
       - agent-runner image
     license: MIT AND Apache-2.0 AND NOASSERTION
     disposition: exception-needed
-    note: ghcr.io/ploeg-hq/agent-runner (ADR-0199) carries the OpenHands CLI 1.16.0 (MIT) with the 361 Python packages pinned in ops/docker/agent-runner/openhands-1.16.0.constraints.txt, installed with uv 0.13.7 (Apache-2.0 OR MIT, copied from ghcr.io/astral-sh/uv); OpenCode 1.19.5 (MIT), Qwen Code 0.26.5 (Apache-2.0), moon 2.6.5 (MIT) and openspec 1.16.0 (MIT) with the npm trees their lockfiles under ops/docker/agent-runner/tools pin; Node.js 24.22.3 and npm (MIT, with bundled third-party code), copied from docker.io/library/node; goose 1.57.0 (Apache-2.0), downloaded from its GitHub release archive and checked against a pinned sha256 rather than installed with a package manager; and PyYAML 6.0.3 (MIT). The top-level licences are on the allowlist or Apache-2.0, but nobody has reviewed the Python and npm dependency trees package by package, and the goose archive is not standard package manager content under the container image guidance (B)(1). The disposition stays exception-needed until that review records each licence or the image drops what fails it.
+    note: ghcr.io/ploeg-hq/agent-runner (ADR-0199) carries the OpenHands CLI 1.16.0 (MIT) with the Python packages pinned in ops/docker/agent-runner/openhands-1.16.0.constraints.txt and openhands-overrides.txt (about 200 for Linux), installed with uv 0.13.7 (Apache-2.0 OR MIT, copied from ghcr.io/astral-sh/uv); OpenCode 1.19.5 (MIT), Qwen Code 0.26.5 (Apache-2.0), moon 2.6.5 (MIT) and openspec 1.16.0 (MIT) with the npm trees their lockfiles under ops/docker/agent-runner/tools pin; goose 1.57.0 (Apache-2.0), downloaded from its GitHub release archive and checked against a pinned sha256 rather than installed with a package manager; and PyYAML 6.0.3 (MIT). The top-level licences are on the allowlist or Apache-2.0, but nobody has reviewed the Python and npm dependency trees package by package, and the goose archive is not standard package manager content under the container image guidance (B)(1). The disposition stays exception-needed until that review records each licence or the image drops what fails it.
   - name: Build, test and release tooling
     kind: tooling
     license: Apache-2.0 AND MIT
