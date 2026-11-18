@@ -1006,6 +1006,38 @@
         }
       }
     },
+    "connectionOAuthSecrets": {
+      "type": "array",
+      "maxItems": 20,
+      "description": "Environment variables that hold the OAuth client secrets connections.instances.<id>.oauth.clientSecretEnv names (ADR-0195), each read from a Secret.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "env",
+          "name",
+          "key"
+        ],
+        "properties": {
+          "env": {
+            "type": "string",
+            "pattern": "^PLOEG_[A-Z0-9_]{1,120}$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 253,
+            "pattern": "^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$"
+          },
+          "key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 253,
+            "pattern": "^[A-Za-z0-9._-]+$"
+          }
+        }
+      }
+    },
     "secretStore": {
       "type": "object",
       "additionalProperties": false,
@@ -1159,6 +1191,21 @@
                   "minLength": 1,
                   "maxLength": 256,
                   "pattern": "^[!-~]+$"
+                }
+              },
+              "manageConnections": {
+                "type": "boolean",
+                "description": "Lets this consumer make, probe, change and remove tracker and forge connections for a proven person (ADR-0195); not narrowed by teams."
+              },
+              "connectionRedirectUris": {
+                "type": "array",
+                "maxItems": 10,
+                "uniqueItems": true,
+                "description": "Exact HTTPS callbacks a connection flow may return the person to (ADR-0195).",
+                "items": {
+                  "type": "string",
+                  "maxLength": 2048,
+                  "pattern": "^https://[^\\s#]+$"
                 }
               },
               "requireClaims": {

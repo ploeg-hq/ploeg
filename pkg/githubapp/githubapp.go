@@ -258,3 +258,6 @@ func (m *Minter) now() time.Time {
 	}
 	return time.Now()
 }
+
+// JWT signs a fresh App JWT, for the App-level calls a caller makes itself.
+func (m *Minter) JWT() (string, error) { return m.jwt() }

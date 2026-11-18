@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ploeg-hq/ploeg/pkg/connection"
 	"github.com/ploeg-hq/ploeg/pkg/followup"
 	"github.com/ploeg-hq/ploeg/pkg/forgebroker"
 	"github.com/ploeg-hq/ploeg/pkg/gate"
@@ -92,6 +93,13 @@ type Server struct {
 	// operator API (ADR-0184). secretstore.Unconfigured makes every
 	// store-backed call fail closed; static connections never use it.
 	SecretStore secretstore.Store
+	// Connections makes and manages runtime tracker and forge connections
+	// (ADR-0195). Nil answers connections_not_accepted on every
+	// connection route.
+	ConnectionService *connection.Service
+	// RegisteredRepository names the Work Target key a repository of a
+	// forge instance is registered under, for the grant picker.
+	RegisteredRepository func(forge, repo string) (string, bool)
 	// ClaimForges resolves the forge a claimed Run acts on from its Work
 	// Target (ADR-0192). Nil = the claim carries no forge and the worker
 	// keeps its env forge.
@@ -443,6 +451,10 @@ func (s *Server) handleForgeWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for _, ev := range events {
+		if ev.Kind == provider.ForgeGrantChanged && ev.Grant != nil {
+			s.handleGrant(r, name, *ev.Grant)
+			continue
+		}
 		if err := s.Store.AuditForgeEvent(r.Context(), name, store.ForgeEventAudit{
 			Kind: string(ev.Kind), Repo: ev.Repo, Branch: ev.Branch, PR: ev.PR,
 			Actor: ev.Actor, Review: string(ev.Review), HeadSHA: ev.PullRequest.HeadSHA,

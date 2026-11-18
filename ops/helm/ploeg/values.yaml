@@ -442,6 +442,15 @@ secretStore:
   kubernetes:
     namespace: ""
 
+# ADR-0195: the OAuth client secret of each instance in the configuration
+# file's connections.instances, read from a Secret into the variable its
+# oauth.clientSecretEnv names. Set PLOEG_PUBLIC_WEBHOOK_BASE under env for
+# GitHub Apps Ploeg creates from a manifest.
+#   - env: PLOEG_CLICKUP_OAUTH_CLIENT_SECRET
+#     name: ploeg-clickup-oauth
+#     key: client-secret
+connectionOAuthSecrets: []
+
 # Plain PLOEG_* env rendered onto the deployment.
 env:
   PLOEG_DEFAULT_TEAM: default

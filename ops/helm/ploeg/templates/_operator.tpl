@@ -42,6 +42,8 @@ asserted
 {{- if .audiences -}}{{- $_ := set $consumer "audiences" .audiences -}}{{- end -}}
 {{- if .requireClaims -}}{{- $_ := set $consumer "requireClaims" .requireClaims -}}{{- end -}}
 {{- if .readTrackers -}}{{- $_ := set $consumer "readTrackers" .readTrackers -}}{{- end -}}
+{{- if .manageConnections -}}{{- $_ := set $consumer "manageConnections" true -}}{{- end -}}
+{{- if .connectionRedirectUris -}}{{- $_ := set $consumer "connectionRedirectUris" .connectionRedirectUris -}}{{- end -}}
 {{- $consumers = append $consumers $consumer }}
 - name: {{ $tokenEnv }}
   valueFrom:

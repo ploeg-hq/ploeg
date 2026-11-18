@@ -84,6 +84,13 @@ spec:
               value: {{ .kubernetes.namespace | default $.Release.Namespace | quote }}
             {{- end }}
             {{- end }}
+            {{- range .Values.connectionOAuthSecrets }}
+            - name: {{ .env }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .name }}
+                  key: {{ .key }}
+            {{- end }}
             - name: PLOEG_DATABASE_URL
               valueFrom:
                 secretKeyRef:

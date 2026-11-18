@@ -19,6 +19,55 @@ import (
 // repeats it, so ploegd deduplicates on it.
 const DeliveryHeader = "X-GitHub-Delivery"
 
+// HookTargetHeader names the App a delivery is for when its target type is
+// an integration: the App id, by which its webhook secret is chosen.
+const HookTargetHeader = "X-GitHub-Hook-Installation-Target-ID"
+
+const hookTargetTypeHeader = "X-GitHub-Hook-Installation-Target-Type"
+
+type installationHook struct {
+	Action       string `json:"action"`
+	Installation struct {
+		ID      int64 `json:"id"`
+		AppID   int64 `json:"app_id"`
+		Account struct {
+			ID int64 `json:"id"`
+		} `json:"account"`
+	} `json:"installation"`
+	RepositoriesAdded   []grantRepository `json:"repositories_added"`
+	RepositoriesRemoved []grantRepository `json:"repositories_removed"`
+}
+
+type grantRepository struct {
+	FullName string `json:"full_name"`
+}
+
+// grantEvent normalises an installation or installation_repositories
+// delivery into a grant event (ADR-0193 section 7). It runs only after the
+// signature verified.
+func grantEvent(event, target string, body []byte) ([]provider.ForgeEvent, error) {
+	var h installationHook
+	if err := json.Unmarshal(body, &h); err != nil {
+		return nil, fmt.Errorf("parse payload: %w", err)
+	}
+	if h.Installation.ID == 0 {
+		return nil, nil
+	}
+	appID := target
+	if appID == "" && h.Installation.AppID != 0 {
+		appID = strconv.FormatInt(h.Installation.AppID, 10)
+	}
+	grant := &provider.GrantEvent{AppID: appID, InstallationID: strconv.FormatInt(h.Installation.ID, 10), Event: event, Action: h.Action,
+		AccountID: strconv.FormatInt(h.Installation.Account.ID, 10)}
+	for _, r := range h.RepositoriesAdded {
+		grant.Added = append(grant.Added, r.FullName)
+	}
+	for _, r := range h.RepositoriesRemoved {
+		grant.Removed = append(grant.Removed, r.FullName)
+	}
+	return []provider.ForgeEvent{{Kind: provider.ForgeGrantChanged, Grant: grant}}, nil
+}
+
 // DeliveryID returns the delivery id GitHub repeats on a redelivery.
 func (p *Provider) DeliveryID(r *http.Request) string {
 	return strings.TrimSpace(r.Header.Get(DeliveryHeader))
@@ -69,14 +118,25 @@ func (p *Provider) ParseWebhook(r *http.Request) ([]provider.ForgeEvent, error) 
 	if err != nil {
 		return nil, err
 	}
-	if p.Secret == "" {
+	secret := p.Secret
+	if target := strings.TrimSpace(r.Header.Get(HookTargetHeader)); target != "" && p.AppSecret != nil &&
+		strings.EqualFold(strings.TrimSpace(r.Header.Get(hookTargetTypeHeader)), "integration") {
+		if appSecret, ok := p.AppSecret(r.Context(), target); ok {
+			secret = appSecret
+		}
+	}
+	if secret == "" {
 		return nil, errors.New("no webhook secret configured; set PLOEG_GITHUB_FORGE_SECRET")
 	}
-	if !verify(p.Secret, body, r.Header.Get("X-Hub-Signature-256")) {
+	if !verify(secret, body, r.Header.Get("X-Hub-Signature-256")) {
 		return nil, errors.New("invalid webhook signature")
 	}
 	if strings.TrimSpace(r.Header.Get(DeliveryHeader)) == "" {
 		return nil, errors.New("webhook names no " + DeliveryHeader)
+	}
+	switch event := r.Header.Get("X-GitHub-Event"); event {
+	case "installation", "installation_repositories":
+		return grantEvent(event, strings.TrimSpace(r.Header.Get(HookTargetHeader)), body)
 	}
 	var h hook
 	if err := json.Unmarshal(body, &h); err != nil {
