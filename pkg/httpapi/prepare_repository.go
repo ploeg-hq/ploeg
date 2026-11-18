@@ -62,7 +62,7 @@ func (s *Server) prepareUnsupported(team, requestedHarness string) string {
 	for _, role := range roles {
 		h, configured := s.OperatorConfig.TeamHarnesses[team][role]
 		switch {
-		case configured && h.ClientCarried():
+		case configured && h.PersonCarried():
 			return fmt.Sprintf("its writing Role %q is carried by a person's own client, which pushes without the worker's forge proxy", role)
 		case configured && h.Name == claudeEnvironmentHarness:
 			return fmt.Sprintf("its writing Role %q runs in a Claude environment, whose runner pushes without the worker's forge proxy", role)

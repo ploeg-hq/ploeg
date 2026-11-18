@@ -447,7 +447,7 @@ func (s *Store) Renew(ctx context.Context, runToken string, ttl time.Duration) (
 	// longer deadline (ADR-0112): a client that still renews never shortens it.
 	runRenewed := true
 	err = tx.QueryRow(ctx,
-		`UPDATE agent_runs SET expires_at = CASE WHEN carrier = 'client' THEN GREATEST(expires_at, $1) ELSE $1 END
+		`UPDATE agent_runs SET expires_at = CASE WHEN carrier IN ('client', 'routine') THEN GREATEST(expires_at, $1) ELSE $1 END
 		 WHERE run_token = $2 AND state = 'running' AND expires_at IS NOT NULL RETURNING expires_at`,
 		deadline, runToken).Scan(&deadline)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -457,7 +457,7 @@ func (s *Store) Renew(ctx context.Context, runToken string, ttl time.Duration) (
 		return time.Time{}, err
 	}
 	leaseTag, err := tx.Exec(ctx,
-		`UPDATE leases SET expires_at = CASE WHEN EXISTS (SELECT 1 FROM agent_runs r WHERE r.run_token = $2 AND r.carrier = 'client')
+		`UPDATE leases SET expires_at = CASE WHEN EXISTS (SELECT 1 FROM agent_runs r WHERE r.run_token = $2 AND r.carrier IN ('client', 'routine'))
 			THEN GREATEST(expires_at, $1) ELSE $1 END, renewed_at = now() WHERE run_token = $2`,
 		deadline, runToken)
 	if err != nil {

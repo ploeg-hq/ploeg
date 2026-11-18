@@ -129,6 +129,8 @@ for case in "ops/helm/ploeg/ci/reject-reader-without-read-token-values.yaml:read
 	"ops/helm/ploeg/ci/reject-models-without-default-values.yaml:lists models without its default model" \
 	"ops/helm/ploeg/ci/reject-claude-environment-without-login-values.yaml:requires harness.claudeEnvironment.environmentId and loginSecret or loginVolume" \
 	"ops/helm/ploeg/ci/reject-client-carrier-without-environment-values.yaml:carrier client requires harness.claudeEnvironment.environmentId" \
+	"ops/helm/ploeg/ci/reject-routines-without-gateway-values.yaml:env.PLOEG_CLAUDE_ROUTINES needs executor.credentialGateway.enabled" \
+	"ops/helm/ploeg/ci/reject-routine-carrier-without-routines-values.yaml:team brass: harness.claudeEnvironment.carrier routine needs env.PLOEG_CLAUDE_ROUTINES" \
 	"ops/helm/ploeg/ci/reject-claude-runner-without-environment-secret-values.yaml:claudeRunner.environmentSecret.name is required" \
 	"ops/helm/ploeg/ci/reject-dind-without-acknowledgement-values.yaml:harness.dind is true without harness.acknowledgePrivilegedDind: true" \
 	"ops/helm/ploeg/ci/reject-worker-admission-with-dind-values.yaml:security.workerAdmission forbids privileged DinD" \

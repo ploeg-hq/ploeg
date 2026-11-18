@@ -1,0 +1,16 @@
+# CI-only values that MUST fail to render (scripts/helm-golden.sh): a Role with
+# carrier routine needs PLOEG_CLAUDE_ROUTINES, which ploegd refuses it without
+# (ADR-0197 section 7).
+executor:
+  enabled: true
+  teams:
+    - name: brass
+      model: litellm_proxy/claude-sonnet-5
+      budget: "1"
+      harness:
+        name: claude-environment
+        image: harbor.webgrip.dev/webgrip/claude-dispatch:0.1.0
+        dind: false
+        claudeEnvironment:
+          environmentId: ccpool_brass
+          carrier: routine

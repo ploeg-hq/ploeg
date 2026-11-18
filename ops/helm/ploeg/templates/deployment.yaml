@@ -1,3 +1,4 @@
+{{- include "ploeg.requireRoutineGateway" . }}
 {{- include "ploeg.requireIntegrations" . }}
 {{- include "ploeg.requireSupportProfile" . }}
 {{- $kubeApiAccess := and (include "ploeg.credentialGatewayEnabled" .) (not .Values.secretStore.type) }}
@@ -170,8 +171,8 @@ spec:
             {{- $allowed = append $allowed $a }}
             {{- if $w.default }}
             {{- $entry = omit $a "qualification" }}
-            {{- if eq ($w.carrier | default "") "client" }}
-            {{- $_ := set $entry "carrier" "client" }}
+            {{- if has ($w.carrier | default "") (list "client" "routine") }}
+            {{- $_ := set $entry "carrier" $w.carrier }}
             {{- $_ := set $entry "environmentId" $w.environmentId }}
             {{- end }}
             {{- end }}

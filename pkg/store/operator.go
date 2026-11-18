@@ -520,7 +520,7 @@ const operatorClientWaitJSON = `(SELECT jsonb_build_object('reason', 'start_from
 			ELSE '` + clientWaitForNobody + `' END,
 		'actsFor', NULLIF(left(i.acts_for, 256), ''), 'handedBy', NULLIF(left(i.handed_by, 256), ''),
 		'runId', r.id::text, 'role', r.role, 'round', r.round, 'writes', r.writes)
-	FROM agent_runs r WHERE r.work_item_id = i.id AND r.carrier = 'client' AND r.state = 'pending'
+	FROM agent_runs r WHERE r.work_item_id = i.id AND r.carrier IN ('client', 'routine') AND r.state = 'pending'
 	ORDER BY r.id LIMIT 1)`
 
 const operatorPullRequestMergeJSON = `(SELECT jsonb_build_object(

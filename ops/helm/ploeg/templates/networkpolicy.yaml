@@ -31,7 +31,7 @@
 {{- if $gateway }}
 {{- $ploegdEgress = append $ploegdEgress ($kubeApiRule | toJson) }}
 {{- end }}
-{{- if $claudeTeams }}
+{{- if or $claudeTeams (eq (toString (.Values.env.PLOEG_CLAUDE_ROUTINES | default "")) "true") }}
 {{- $ploegdEgress = append $ploegdEgress (include "ploeg.netpol.endpointRule" (dict "root" $root "url" (.Values.env.PLOEG_CLAUDE_SESSION_JWKS_URL | default "https://api.anthropic.com") "endpoint" dict)) }}
 {{- end }}
 {{- $ploegdIngress := list }}

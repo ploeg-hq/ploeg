@@ -1,0 +1,5 @@
+# CI-only values that MUST fail to render (scripts/helm-golden.sh): routine
+# Runs execute in the claude-runner, which may hold no credential, so they need
+# the credential gateway (ADR-0197 section 7).
+env:
+  PLOEG_CLAUDE_ROUTINES: "true"

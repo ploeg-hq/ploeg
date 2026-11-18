@@ -133,6 +133,15 @@ func (s *Server) handleClaudeForgeCredential(w http.ResponseWriter, r *http.Requ
 	if !ok {
 		return
 	}
+	routine, ok := s.routineSessionCreator(w, r, claims)
+	if !ok {
+		return
+	}
+	if routine {
+		s.Log.Warn("push credential refused for a routine session: only the credential gateway attaches it", "environment", claims.EnvironmentID)
+		http.Error(w, "credential_gateway_mode: a routine Run's push credential is attached by the credential gateway and never handed to the runner", http.StatusForbidden)
+		return
+	}
 	run, err := s.Store.WriterForClaudeSession(r.Context(), claims.EnvironmentID, claims.SessionID)
 	switch {
 	case errors.Is(err, store.ErrNotAWriter):
@@ -244,6 +253,9 @@ func (s *Server) handleClaudeSessionReport(w http.ResponseWriter, r *http.Reques
 	}
 	claims, ok := s.verifyClaudeSession(w, r)
 	if !ok {
+		return
+	}
+	if _, ok := s.routineSessionCreator(w, r, claims); !ok {
 		return
 	}
 	var req claudeSessionReportRequest

@@ -519,6 +519,7 @@ func (s *Server) operatorRoutes() *http.ServeMux {
 	s.registerOperatorTargets(mux)
 	s.registerOperatorTeams(mux)
 	s.registerOperatorTools(mux)
+	s.registerClaudeRoutines(mux)
 	return mux
 }
 

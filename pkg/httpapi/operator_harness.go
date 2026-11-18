@@ -31,7 +31,8 @@ type RoleHarnesses struct {
 	Allowed          []AllowedHarness
 	AllowUnqualified bool
 	// Carrier is CarrierClient when the person's own client carries the
-	// Role's claude-environment Runs (ADR-0112), and EnvironmentID the
+	// Role's claude-environment Runs (ADR-0112), CarrierRoutine when ploegd
+	// fires the person's own routine for them (ADR-0197), and EnvironmentID the
 	// Team's self-hosted environment those Runs dispatch to.
 	Carrier       string
 	EnvironmentID string
@@ -40,6 +41,15 @@ type RoleHarnesses struct {
 // ClientCarried reports whether the person's own client carries this Role's
 // Runs of its default Harness (ADR-0112).
 func (r RoleHarnesses) ClientCarried() bool { return r.Carrier == store.CarrierClient }
+
+// PersonCarried reports whether this Role's Runs wait for their person,
+// started from the person's own client or by firing their routine: no
+// worker claims them.
+func (r RoleHarnesses) PersonCarried() bool { return r.ClientCarried() || r.RoutineCarried() }
+
+// RoutineCarried reports whether ploegd starts this Role's Runs by firing the
+// person's own routine (ADR-0197 section 7).
+func (r RoleHarnesses) RoutineCarried() bool { return r.Carrier == store.CarrierRoutine }
 
 // AllowedHarness is one allowlist entry. Qualification is HarnessQualified,
 // HarnessUnqualified or empty when the chart did not say.
@@ -141,8 +151,8 @@ func ParseTeamHarnesses(raw string) (TeamHarnesses, error) {
 			}
 			entry := RoleHarnesses{OperatorRoleHarness: def, AllowUnqualified: h.AllowUnqualified, Carrier: h.Carrier, EnvironmentID: h.EnvironmentID}
 			switch {
-			case h.Carrier != "" && h.Carrier != store.CarrierClient:
-				return nil, fmt.Errorf("team %q Role %q: carrier %q is not client", team, role, h.Carrier)
+			case h.Carrier != "" && h.Carrier != store.CarrierClient && h.Carrier != store.CarrierRoutine:
+				return nil, fmt.Errorf("team %q Role %q: carrier %q is neither client nor routine", team, role, h.Carrier)
 			case h.Carrier != "" && h.Name != "claude-environment":
 				return nil, fmt.Errorf("team %q Role %q: only a claude-environment Harness is carried by a client, not %q", team, role, h.Name)
 			case h.Carrier != "" && !strings.HasPrefix(h.EnvironmentID, "ccpool_"):

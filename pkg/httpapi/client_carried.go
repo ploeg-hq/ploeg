@@ -82,76 +82,105 @@ func (s *Server) handleClientClaim(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	item, sessionForge, ok := s.clientClaimable(w, r, p, id, s.clientCarriesTeam)
+	if !ok {
+		return
+	}
+	person := store.ActingPerson(r.Context(), actor)
+	claim, ok := s.claimClientRun(w, r, p, actor, id, person, "")
+	if !ok {
+		return
+	}
+	resp, ok := s.clientClaimBody(w, r, claim, person, sessionForge, true)
+	if !ok {
+		return
+	}
+	s.Log.Info("client-carried run claimed", "team", claim.Team, "role", claim.Role, "work_item", item.ID,
+		"shift", claim.ShiftID, "round", claim.Round, "consumer", p.Name)
+	w.Header().Set("Cache-Control", "no-store")
+	operatorJSON(w, http.StatusOK, resp)
+}
+
+// clientClaimable answers the request itself and returns false unless the
+// Work Item has a Run its person may start: in the consumer's scope, on a
+// Team carries says has such Roles, with a resolved repository.
+func (s *Server) clientClaimable(w http.ResponseWriter, r *http.Request, p OperatorPrincipal, id int64, carries func(team string) bool) (work.WorkItem, ClaimForge, bool) {
 	item, err := s.Store.WorkItem(r.Context(), id)
 	switch {
 	case errors.Is(err, store.ErrWorkItemNotFound) || (err == nil && !p.AllowsTeam(item.Team)):
 		operatorError(w, 404, "not_found", "The resource was not found in the consumer's scope.")
-		return
+		return item, ClaimForge{}, false
 	case err != nil:
 		operatorError(w, 503, "unavailable", "Ploeg could not read the Work Item.")
-		return
+		return item, ClaimForge{}, false
 	}
 	if s.TransactionTokens != nil && s.teamSponsor(item.Team) == "" {
 		operatorError(w, 409, "team_without_sponsor", unsponsoredTeam(item.Team))
-		return
+		return item, ClaimForge{}, false
 	}
-	if !s.clientCarriesTeam(item.Team) {
+	if !carries(item.Team) {
 		operatorError(w, 409, "no_client_run", "No Run of this Work Item waits for a client: its Team carries no Run from a client.")
-		return
+		return item, ClaimForge{}, false
 	}
 	if _, gated := s.CredentialGateways.bindingForTeam(item.Team); gated {
 		operatorError(w, 409, "credential_gateway_team", "This Work Item's Team runs behind a credential gateway, so its Runs are claimed only through the gateway and never by a client, which would carry the Run's credentials outside it (ADR-0197).")
-		return
+		return item, ClaimForge{}, false
 	}
 	if item.PreparesRepository() {
 		refusePrepareUnsupported(w, item.Team, "a person's own client pushes without the worker's forge proxy, where a prepare Run's one deliverable is enforced")
-		return
+		return item, ClaimForge{}, false
 	}
 	if item.Target == nil || !item.Target.Resolved() {
 		operatorError(w, 409, "no_target", "The Work Item has no resolved repository, so a client cannot dispatch it.")
-		return
+		return item, ClaimForge{}, false
 	}
 	var sessionForge ClaimForge
 	if s.ClaudeSessions != nil {
 		forge, _, refused := s.sessionForge(item.Target.Forge)
 		if refused != "" {
 			operatorError(w, 409, "forge_unavailable", "A client cannot carry this Run: "+refused+".")
-			return
+			return item, ClaimForge{}, false
 		}
 		sessionForge = forge
 	}
-	person := store.ActingPerson(r.Context(), actor)
-	claim, err := s.Store.ClaimClientCarriedRun(r.Context(), id, person, operatorAuditActor(r, p, actor), s.LeaseTTL, s.claimLimits)
+	return item, sessionForge, true
+}
+
+// claimClientRun starts the Work Item's client-carried Run for person, or
+// answers the request itself with the reason it could not.
+func (s *Server) claimClientRun(w http.ResponseWriter, r *http.Request, p OperatorPrincipal, actor string, id int64, person, via string) (store.ClientClaim, bool) {
+	claim, err := s.Store.ClaimClientCarriedRunVia(r.Context(), id, person, operatorAuditActor(r, p, actor), via, s.LeaseTTL, s.claimLimits)
 	switch {
+	case err == nil:
+		return claim, true
 	case errors.Is(err, store.ErrWorkItemNotFound):
 		operatorError(w, 404, "not_found", "The resource was not found in the consumer's scope.")
-		return
 	case errors.Is(err, store.ErrNoClientRun):
 		operatorError(w, 409, "no_client_run", "No Run of this Work Item waits for a client.")
-		return
 	case errors.Is(err, store.ErrClientRunClaimed):
 		operatorError(w, 409, "already_claimed", "The Run waiting for a client was already claimed.")
-		return
 	case errors.Is(err, store.ErrRunPersonUnknown):
 		operatorError(w, 409, "person_unknown", "Ploeg does not know which person this Run acts for, so nobody can claim it.")
-		return
 	case errors.Is(err, store.ErrNotRunPerson):
 		operatorError(w, 403, "not_your_run", "Only the person this Run acts for can claim it.")
-		return
 	case errors.Is(err, store.ErrNoWork):
 		operatorError(w, 409, "team_at_capacity", "The Team already runs as many Runs as its maxRunning allows.")
-		return
 	case errors.Is(err, store.ErrBudgetExhausted):
 		operatorError(w, 409, "budget_exhausted", "The Shift's pool cannot fund another Run.")
-		return
 	case errors.Is(err, store.ErrTeamSpendCapReached):
 		operatorError(w, 409, "spend_cap_reached", "The claim would take the Team over its spend cap: "+err.Error()+".")
-		return
-	case err != nil:
+	default:
 		s.Log.Error("client claim failed", "work_item", id, "err", err)
 		operatorError(w, 503, "unavailable", "Ploeg could not claim the Run.")
-		return
 	}
+	return claim, false
+}
+
+// clientClaimBody is what a claimed client-carried Run is dispatched with:
+// its prompt, environment and ref, and, with credential, the Run credential
+// of the worker run API. A Run ploegd dispatches itself gets no credential.
+// It answers the request itself when it returns false.
+func (s *Server) clientClaimBody(w http.ResponseWriter, r *http.Request, claim store.ClientClaim, person string, sessionForge ClaimForge, credential bool) (clientClaimResponse, bool) {
 	s.recordRunConfig(r.Context(), claim.RunToken, claim.Team, claim.Role, true, runHarness{Name: claudeenv.Name, Model: claim.Model})
 	s.recordBoardClaim(r.Context(), claim.RunToken)
 	briefing, findings, questions := s.runBriefing(r.Context(), &claim.ClaimedRun)
@@ -195,8 +224,11 @@ func (s *Server) handleClientClaim(w http.ResponseWriter, r *http.Request) {
 			Prompt: taskprompt.ForRun(spec, planner, claim.Writes, "", !claim.Writes && branchExists) +
 				claudeenv.SessionContract(spec, base),
 		},
-		Credential: clientClaimCredential{RunToken: claim.RunToken, Deadline: claim.Deadline},
 	}
+	if !credential {
+		return resp, true
+	}
+	resp.Credential = clientClaimCredential{RunToken: claim.RunToken, Deadline: claim.Deadline}
 	if a := s.WorkerSecurity; a != nil && !(a.AllowLegacy && s.LLMControl == nil) {
 		resp.Credential.WorkerID = clientWorkerPrefix + person
 		if !a.RetireHMAC {
@@ -206,17 +238,14 @@ func (s *Server) handleClientClaim(w http.ResponseWriter, r *http.Request) {
 		if s.TransactionTokens != nil {
 			token, _, err := s.issueTransactionToken(r.Context(), claim.RunToken, resp.Credential.WorkerID)
 			if err != nil {
-				s.Log.Error("client-carried run got no transaction token", "work_item", id, "err", err)
+				s.Log.Error("client-carried run got no transaction token", "work_item", claim.Item.ID, "err", err)
 				operatorError(w, 503, "unavailable", "Ploeg could not sign the Run's transaction token.")
-				return
+				return resp, false
 			}
 			resp.Credential.TransactionToken = token
 		}
 	}
-	s.Log.Info("client-carried run claimed", "team", claim.Team, "role", claim.Role, "work_item", claim.Item.ID,
-		"shift", claim.ShiftID, "round", claim.Round, "consumer", p.Name, "briefing", len(briefing))
-	w.Header().Set("Cache-Control", "no-store")
-	operatorJSON(w, http.StatusOK, resp)
+	return resp, true
 }
 
 // clientCarriesTeam reports whether any Role of the team has its Runs carried
