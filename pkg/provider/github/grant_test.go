@@ -101,3 +101,49 @@ func TestADeliveryForAnAppIsRefusedWhenItsSecretCannotBeRead(t *testing.T) {
 		t.Fatalf("a delivery verified with the static secret while the store was unreachable = %v", events)
 	}
 }
+
+func TestEveryInstallationActionWithoutARepositoryIsAGrantEvent(t *testing.T) {
+	p := &Provider{Secret: "static", AppSecret: heldApp1001}
+	cases := []struct {
+		event, action, body string
+	}{
+		{"installation", "deleted", `{"action":"deleted","installation":{"id":77,"app_id":1001,"account":{"id":5}}}`},
+		{"installation", "suspend", `{"action":"suspend","installation":{"id":77,"app_id":1001,"account":{"id":5}}}`},
+		{"installation", "unsuspend", `{"action":"unsuspend","installation":{"id":77,"app_id":1001,"account":{"id":5}}}`},
+		{"installation_repositories", "added", `{"action":"added","installation":{"id":77,"app_id":1001,"account":{"id":5}},"repositories_added":[{"id":42,"full_name":"acme/app"}]}`},
+		{"installation_repositories", "removed", `{"action":"removed","installation":{"id":77,"app_id":1001,"account":{"id":5}},"repositories_removed":[{"id":42,"full_name":"acme/app"}]}`},
+	}
+	for _, c := range cases {
+		body := []byte(c.body)
+		r := httptest.NewRequest("POST", "/webhooks/forge/github", bytes.NewReader(body))
+		r.Header.Set("X-GitHub-Event", c.event)
+		r.Header.Set("X-GitHub-Delivery", "d-"+c.action)
+		r.Header.Set(HookTargetHeader, "1001")
+		r.Header.Set("X-GitHub-Hook-Installation-Target-Type", "integration")
+		r.Header.Set("X-Hub-Signature-256", grantSigned("app-secret", body))
+		events, err := p.ParseWebhook(r)
+		if err != nil || len(events) != 1 || events[0].Kind != provider.ForgeGrantChanged || events[0].Grant == nil {
+			t.Fatalf("%s %s: events = %+v, %v; a delivery without repository must not be dropped", c.event, c.action, events, err)
+		}
+		g := events[0].Grant
+		if g.Event != c.event || g.Action != c.action || g.InstallationID != "77" {
+			t.Fatalf("%s %s: grant = %+v", c.event, c.action, g)
+		}
+		if c.action == "removed" && (len(g.RemovedIDs) != 1 || g.RemovedIDs[0] != "42") {
+			t.Fatalf("removed ids = %v", g.RemovedIDs)
+		}
+	}
+}
+
+func TestADeliveryWhoseSignatureDoesNotMatchItsNamedAppIsRefusedBeforeItsPayloadIsRead(t *testing.T) {
+	p := &Provider{Secret: "static", AppSecret: heldApp1001}
+	r := httptest.NewRequest("POST", "/webhooks/forge/github", bytes.NewReader([]byte(`not json at all`)))
+	r.Header.Set("X-GitHub-Event", "installation")
+	r.Header.Set("X-GitHub-Delivery", "d1")
+	r.Header.Set(HookTargetHeader, "1001")
+	r.Header.Set("X-GitHub-Hook-Installation-Target-Type", "integration")
+	r.Header.Set("X-Hub-Signature-256", grantSigned("wrong", []byte(`not json at all`)))
+	if _, err := p.ParseWebhook(r); err == nil || err.Error() != "invalid webhook signature" {
+		t.Fatalf("err = %v, want the signature refusal before any parse", err)
+	}
+}

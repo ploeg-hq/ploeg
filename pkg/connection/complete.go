@@ -258,6 +258,7 @@ func (s *Service) writeConnection(ctx context.Context, caller Caller, flow store
 	var old store.ConnectionRow
 	reconnect := start.Connection != ""
 	if reconnect {
+		defer s.changed(start.Connection)
 		var err error
 		old, err = s.Store.Connection(ctx, s.tenant(), start.Connection)
 		if err != nil || old.RemovedAt != nil {

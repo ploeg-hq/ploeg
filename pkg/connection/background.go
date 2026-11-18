@@ -245,3 +245,51 @@ func (s *Service) sweep(ctx context.Context) {
 func (s *Service) StateCounts(ctx context.Context) (map[[2]string]int, error) {
 	return s.Store.ConnectionStateCounts(ctx)
 }
+
+// ForgeConnectionInfo is a forge connection's kind, instance and state,
+// without its probe or users.
+type ForgeConnectionInfo struct {
+	ID       string
+	Kind     string
+	Instance string
+	State    string
+	Runtime  bool
+}
+
+// ForgeConnection returns the live forge connection id, static or runtime;
+// found is false when none has it. Runtime target registration reads it
+// (ADR-0193).
+func (s *Service) ForgeConnection(ctx context.Context, id string) (ForgeConnectionInfo, bool, error) {
+	for _, st := range s.Static {
+		if st.ID == id && st.Port == PortForge {
+			return ForgeConnectionInfo{ID: st.ID, Kind: st.Kind, Instance: st.Instance, State: StateActive}, true, nil
+		}
+	}
+	row, e := s.live(ctx, PortForge, id)
+	if e != nil {
+		if e.Status == 404 {
+			return ForgeConnectionInfo{}, false, nil
+		}
+		return ForgeConnectionInfo{}, false, e
+	}
+	return ForgeConnectionInfo{ID: row.ID, Kind: row.Kind, Instance: row.Instance, State: row.State, Runtime: true}, true, nil
+}
+
+// ConnectionsOfInstallation returns the live runtime connections of one App
+// installation, matched on the App GitHub names as well as the installation
+// id, so a delivery of one App never reaches another App's connections.
+func (s *Service) ConnectionsOfInstallation(ctx context.Context, appID, installationID string) ([]string, error) {
+	rows, err := s.Store.LiveConnectionsByInstallation(ctx, installationID)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, row := range rows {
+		app, err := s.Store.ConnectionApp(ctx, row.Tenant, row.App)
+		if err != nil || app.AppID != appID {
+			continue
+		}
+		out = append(out, row.ID)
+	}
+	return out, nil
+}

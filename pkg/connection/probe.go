@@ -161,6 +161,9 @@ func (s *Service) applyProbe(ctx context.Context, row store.ConnectionRow, repor
 		}
 		audits = append(audits, s.audit(actor, action, caller, detail))
 	}
+	if state != row.State || reason != row.InvalidReason {
+		defer s.changed(row.ID)
+	}
 	return s.Store.SetConnectionState(ctx, row.Tenant, row.ID, state, reason, raw, audits)
 }
 

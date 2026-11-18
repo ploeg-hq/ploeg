@@ -63,6 +63,14 @@ type MintRequest struct {
 	// Forge is the forge id of the Run's Work Target; empty is the default
 	// forge. A Router sends the mint to that forge's broker.
 	Forge string
+	// Connection is the runtime forge connection of the Run's Work Target
+	// (ADR-0193); empty for a static target. A mint that names one is asked
+	// of that connection alone.
+	Connection string
+	// RepositoryID is the forge's own id of Owner/Repo, stored when a runtime
+	// target was registered; a connection's broker mints by it, so a token
+	// can never land on a same-named repository of another account.
+	RepositoryID string
 	// Read asks for a credential that can only read the repository, for a
 	// reading Run (ADR-0192). False asks for push rights.
 	Read bool

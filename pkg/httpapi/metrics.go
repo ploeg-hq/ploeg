@@ -52,6 +52,7 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(s.Loops.render())
 	_, _ = w.Write(s.renderConnectionMetrics(r))
 	_, _ = w.Write(s.renderBindingMetrics())
+	_, _ = w.Write(s.renderWorkTargetMetrics())
 }
 
 func (s *Server) renderConnectionMetrics(r *http.Request) []byte {
