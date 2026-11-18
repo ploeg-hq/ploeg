@@ -113,7 +113,22 @@ func newClient(api, workerVersion string) *worker.APIClient {
 	if field := reflect.ValueOf(client).Elem().FieldByName("WorkerVersion"); field.IsValid() && field.Kind() == reflect.String {
 		field.SetString(workerVersion)
 	}
+	claimIsolated(client)
 	return client
+}
+
+func claimIsolated(client *worker.APIClient) {
+	fields := reflect.ValueOf(client).Elem()
+	llm := fields.FieldByName("LLMKeyIsolation")
+	if !llm.IsValid() || llm.Kind() != reflect.String {
+		return
+	}
+	llm.SetString("proxy")
+	for name, value := range map[string]string{"ForgeTokenIsolation": "proxy", "Harness": "exec"} {
+		if field := fields.FieldByName(name); field.IsValid() && field.Kind() == reflect.String {
+			field.SetString(value)
+		}
+	}
 }
 
 func renew(ctx context.Context, client *worker.APIClient, token string) (bool, error) {
