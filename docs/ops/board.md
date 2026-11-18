@@ -35,3 +35,23 @@ trackers:
 A ClickUp Work Item's branch is `agent/CU-<task id>` and its commit trailer and pull request reference are `CU-<task id>`, the form ClickUp's GitHub and GitLab integrations recognise, so they attach the pull request to the task. The ClickUp adapter supplies the format through its `ReferenceNamer` capability, which ploegd and ploeg-worker both register at start. A Shift keeps the branch it recorded when it opened, and a requeued Work Item keeps its previous Shift's branch; a new Shift on an item that last ran under the earlier `agent/clickup-<id>` form gets the new name. Vikunja items keep `agent/vik-<id>` and `VIK-<id>`.
 
 The [July board snapshot](https://forgejo.webgrip.dev/webgrip/ploeg/src/commit/94c7c8e2dc07037ee2fd38a69343426e40bd680d/docs/ops/board.md) records IDs and MCP failures observed then. Do not treat those IDs, counts, API errors or the old console default as current configuration.
+
+## Runtime Scope bindings
+
+Routing has two sources ([ADR-0186](../adrs/0186-an-operator-consumer-binds-a-tracker-scope-to-a-team-at-runtime-and-static-routing-wins-on-conflict.md)): the static `trackers.<tracker>.projects` in the configuration file, and Scope bindings an operator consumer adds while ploegd runs. `GET /api/v1/operator/tracker-bindings` lists both, so read it, not the file alone, to know what feeds a Team.
+
+A Team accepts bindings only when its manifest opts in:
+
+```yaml
+teams:
+  silver:
+    trackerBindings:
+      connections: [clickup]   # a configured tracker by kind; "*" or "*:<kind>" match store-backed connections only
+      max: 20                  # live bindings, default 20
+```
+
+The consumer needs `bindScopes: true` in `PLOEG_OPERATOR_CONSUMERS` (chart `operator.consumers[].bindScopes`) and the Team in its scope, and every change needs an actor, a proven person under `PLOEG_OPERATOR_ATTRIBUTION=proven`. `POST /api/v1/operator/teams/{team}/tracker-bindings` probes the Scope through the adapter's `ScopeProber` (and `ScopeNamer` for a name) before it stores anything; `?dryRun=true` probes only. Today only the ClickUp adapter declares them, so a Vikunja or GitHub binding answers `422 capability_missing`. A binding selects registered targets with `default` and `allow` and never names a repository.
+
+Static routes win. A binding for a Scope a static route already decides is refused with `409 conflicts_with_static`; a static route added later marks the binding `shadowed`, takes it out of routing and writes `tracker_binding.shadowed`, and removing the static route brings it back. A binding whose Team leaves the file, or whose target key leaves the effective registry, turns `invalid`. A binding without a confirmed webhook is `awaiting_webhook`: it routes, and ploegd checks its Scope's webhook again every hour. With a connection secret store configured and `PLOEG_CLICKUP_WEBHOOK_URL` or `PLOEG_PUBLIC_WEBHOOK_BASE` set, ploegd instead registers a webhook for the bound List, keeps its signing secret under `webhooks/clickup/<id>`, verifies that webhook's deliveries with it, and the binding starts `active`. Bindings on one List share that webhook, and it is deleted with the last of them. `"*"` and `"*:<kind>"` admit store-backed connections in state `active`; ingest through a store-backed connection's own credential is not built yet. `ploeg_tracker_bindings{state}` counts them for alerts.
+
+Each ploegd rebuilds its routing table after every change it makes and reads the highest binding revision every 30 seconds, so a second replica follows within 30 seconds. If the bindings cannot be read at boot, the static routes alone load and the poll retries.

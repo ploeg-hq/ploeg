@@ -285,7 +285,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 	// Routing rules come from the config file when it names projects — which
 	// is where the project IDs get resolved from names, so nothing in cluster
 	// config is a bare number. The env var remains as the fallback.
-	targets, readiness, err := routing(ctx, log, cfg, vik, forges, forgeID)
+	staticTable, targets, readiness, err := staticRouting(ctx, log, cfg, vik, forges, forgeID)
 	if err != nil {
 		return err
 	}
@@ -445,13 +445,14 @@ func run(ctx context.Context, log *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("connections: %w", err)
 	}
+	bindings := trackerBindings(ctx, log, st, cfg, staticTable, targets, readiness, trackers, forgeID, secrets, runtimeConns)
 	srv := &httpapi.Server{
 		OperatorConfig: operator,
 		WorkerSecurity: workerSecurity,
 		LLMControl:     llmControl,
 		Store:          st,
 		Trackers:       trackers,
-		Targets:        targets,
+		Targets:        bindings.Live,
 		Readiness:      readiness,
 		ScopeTeams:     cfg.ScopeTeams(),
 		TrackerPeople:  cfg.TrackerPeople(),
@@ -491,6 +492,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 		TeamSponsors:          cfg.Sponsors(),
 		PrepareRepositoryCaps: cfg.PrepareRepositoryCaps(),
 		ForgeTokenIsolation:   os.Getenv("PLOEG_WORKER_FORGE_TOKEN_ISOLATION"),
+		TrackerBindings:       &httpapi.TrackerBindings{Registry: bindings},
 	}
 	if notes != nil {
 		srv.Notes = notes
@@ -584,6 +586,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 	}
 	loops.Go(func() { deployCheckLoop(ctx, srv, deployCheckEvery) })
 	loops.Go(func() { connectionReconcileLoop(ctx, runtimeConns, time.Hour) })
+	loops.Go(func() { bindings.Poll(ctx) })
 	if srv.Notes != nil {
 		notesEvery := durationOr("PLOEG_NOTES_WRITE_INTERVAL", 15*time.Second)
 		loops.Go(func() { noteWriteLoop(ctx, srv, notesEvery) })

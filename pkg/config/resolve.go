@@ -27,41 +27,24 @@ type ScopeResolver interface {
 // The operator writes names; this looks up the ids.
 func (f *File) RoutingTable(ctx context.Context, r ScopeResolver, log *slog.Logger) (target.Table, error) {
 	table := target.Table{Targets: f.registry()}
-	projects := f.allProjects()
-	if len(projects) == 0 {
+	if len(f.allProjects()) == 0 {
 		return table, nil
 	}
-
-	var byName map[string]string
-	needsLookup := false
-	for _, p := range projects {
-		if p.ID == "" {
-			needsLookup = true
-		}
-	}
-	if needsLookup {
-		if r == nil {
-			return target.Table{}, fmt.Errorf("routing config names projects but no tracker client is configured to resolve them; set the tracker URL and token, or pin ids")
-		}
-		var err error
-		byName, err = r.ProjectsByName(ctx)
-		if err != nil {
-			return target.Table{}, fmt.Errorf("resolving project names: %w", err)
-		}
-	}
-
-	for _, p := range projects {
-		id := p.ID
-		if id == "" {
-			var ok bool
-			id, ok = byName[p.Name]
-			if !ok {
-				return target.Table{}, fmt.Errorf("no tracker project named %q; available: %s",
-					p.Name, strings.Join(sortedKeys(byName), ", "))
+	pr := &projectResolver{r: r}
+	for _, tr := range f.trackerProjects() {
+		for i, p := range tr.projects {
+			id := p.ID
+			if id == "" {
+				var err error
+				if id, err = pr.id(ctx, p, "routing config"); err != nil {
+					return target.Table{}, err
+				}
+				log.Info("resolved tracker project", "name", p.Name, "id", id, "routes_to", p.destination())
 			}
-			log.Info("resolved tracker project", "name", p.Name, "id", id, "routes_to", p.destination())
+			rule := p.rule(id)
+			rule.Tracker, rule.Origin = tr.provider, fmt.Sprintf("trackers.%s.projects[%d]", tr.provider, i)
+			table.Rules = append(table.Rules, rule)
 		}
-		table.Rules = append(table.Rules, p.rule(id))
 	}
 	return table, nil
 }

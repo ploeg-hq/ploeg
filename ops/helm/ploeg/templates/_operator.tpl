@@ -44,6 +44,7 @@ asserted
 {{- if .readTrackers -}}{{- $_ := set $consumer "readTrackers" .readTrackers -}}{{- end -}}
 {{- if .manageConnections -}}{{- $_ := set $consumer "manageConnections" true -}}{{- end -}}
 {{- if .connectionRedirectUris -}}{{- $_ := set $consumer "connectionRedirectUris" .connectionRedirectUris -}}{{- end -}}
+{{- if .bindScopes -}}{{- $_ := set $consumer "bindScopes" true -}}{{- end -}}
 {{- $consumers = append $consumers $consumer }}
 - name: {{ $tokenEnv }}
   valueFrom:

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/ploeg-hq/ploeg/pkg/provider"
@@ -99,17 +100,8 @@ func (p *Provider) List(ctx context.Context, listID string) (ListLocation, error
 	if !p.configured() {
 		return ListLocation{}, errors.New("clickup: no API credentials configured; cannot read lists")
 	}
-	var body struct {
-		ID     flexID `json:"id"`
-		Name   string `json:"name"`
-		Folder struct {
-			ID flexID `json:"id"`
-		} `json:"folder"`
-		Space struct {
-			ID flexID `json:"id"`
-		} `json:"space"`
-	}
-	if err := p.do(ctx, http.MethodGet, "/list/"+url.PathEscape(listID), nil, &body); err != nil {
+	body, err := p.readList(ctx, listID)
+	if err != nil {
 		return ListLocation{}, err
 	}
 	if body.ID == "" {
@@ -124,17 +116,12 @@ func (p *Provider) ListMembers(ctx context.Context, listID string) ([]string, er
 	if !p.configured() {
 		return nil, errors.New("clickup: no API credentials configured; cannot list members")
 	}
-	var body struct {
-		Members []struct {
-			Username string `json:"username"`
-			Email    string `json:"email"`
-		} `json:"members"`
-	}
-	if err := p.do(ctx, http.MethodGet, "/list/"+url.PathEscape(listID)+"/member", nil, &body); err != nil {
+	members, err := p.readMembers(ctx, listID)
+	if err != nil {
 		return nil, err
 	}
-	out := make([]string, 0, len(body.Members))
-	for _, m := range body.Members {
+	out := make([]string, 0, len(members))
+	for _, m := range members {
 		if name := firstNonEmpty(m.Username, m.Email); name != "" {
 			out = append(out, name)
 		}
@@ -224,6 +211,27 @@ func covered(hooks []Webhook, loc ListLocation, endpoint string) bool {
 // returns the secret only in the create response. When the sink refuses the
 // secret, the new webhook is deleted again.
 func (p *Provider) RegisterWebhook(ctx context.Context, targetURL string, sink provider.WebhookSecretSink) (string, error) {
+	return p.registerWebhook(ctx, targetURL, sink, "")
+}
+
+// RegisterScopeWebhook creates a webhook for one List, as RegisterWebhook
+// does for the Workspace (ADR-0186 section 7).
+func (p *Provider) RegisterScopeWebhook(ctx context.Context, listID, targetURL string, sink provider.WebhookSecretSink) (string, error) {
+	if listID == "" {
+		return "", errors.New("clickup: a List id is required to register a List webhook")
+	}
+	return p.registerWebhook(ctx, targetURL, sink, listID)
+}
+
+// RemoveWebhook deletes a webhook through DELETE /webhook/{id}.
+func (p *Provider) RemoveWebhook(ctx context.Context, webhookID string) error {
+	if !p.configured() {
+		return errors.New("clickup: no API credentials configured; cannot remove webhooks")
+	}
+	return p.do(ctx, http.MethodDelete, "/webhook/"+url.PathEscape(webhookID), nil, nil)
+}
+
+func (p *Provider) registerWebhook(ctx context.Context, targetURL string, sink provider.WebhookSecretSink, listID string) (string, error) {
 	workspaceID := p.Workspace
 	if !p.configured() {
 		return "", errors.New("clickup: no API credentials configured; cannot register webhooks")
@@ -242,6 +250,9 @@ func (p *Provider) RegisterWebhook(ctx context.Context, targetURL string, sink p
 		} `json:"webhook"`
 	}
 	body := map[string]any{"endpoint": targetURL, "events": registeredEvents}
+	if listID != "" {
+		body["list_id"] = locationID(listID)
+	}
 	if err := p.do(ctx, http.MethodPost, "/team/"+url.PathEscape(workspaceID)+"/webhook", body, &created); err != nil {
 		return "", fmt.Errorf("clickup: register webhook for workspace %s: %w", workspaceID, err)
 	}
@@ -262,4 +273,13 @@ func (p *Provider) RegisterWebhook(ctx context.Context, targetURL string, sink p
 		return "", fmt.Errorf("clickup: webhook %s not kept and deleted again: %w", id, keepErr)
 	}
 	return id, nil
+}
+
+// locationID sends a numeric location id as a JSON number, as ClickUp
+// documents it, and any other id as given.
+func locationID(id string) any {
+	if _, err := strconv.ParseInt(id, 10, 64); err == nil {
+		return json.Number(id)
+	}
+	return id
 }
