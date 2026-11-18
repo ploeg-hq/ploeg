@@ -229,7 +229,11 @@ func (p *Provider) do(ctx context.Context, method, path string, body, out any) e
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return fmt.Errorf("vikunja: %s %s: HTTP %d: %s", method, path, resp.StatusCode, bytes.TrimSpace(snippet))
+		err := fmt.Errorf("vikunja: %s %s: HTTP %d: %s", method, path, resp.StatusCode, bytes.TrimSpace(snippet))
+		if resp.StatusCode == http.StatusNotFound {
+			return provider.NotFound(err)
+		}
+		return err
 	}
 	if out == nil {
 		return nil
@@ -293,7 +297,7 @@ func (p *Provider) FetchExecutionItem(ctx context.Context, externalID string) (p
 		return provider.ExecutionItem{}, err
 	}
 	if task.ID == 0 {
-		return provider.ExecutionItem{}, fmt.Errorf("vikunja: task %s not found", externalID)
+		return provider.ExecutionItem{}, provider.NotFound(fmt.Errorf("vikunja: task %s not found", externalID))
 	}
 	scope := ""
 	if task.ProjectID > 0 {

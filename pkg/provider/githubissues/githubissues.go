@@ -474,7 +474,11 @@ func (p *Provider) do(ctx context.Context, ref issueRef, method, target string, 
 		defer resp.Body.Close()
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 			snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-			return resp.Header, fmt.Errorf("githubissues: %s %s: HTTP %d: %s", method, target, resp.StatusCode, bytes.TrimSpace(snippet))
+			err := fmt.Errorf("githubissues: %s %s: HTTP %d: %s", method, target, resp.StatusCode, bytes.TrimSpace(snippet))
+			if resp.StatusCode == http.StatusNotFound {
+				return resp.Header, provider.NotFound(err)
+			}
+			return resp.Header, err
 		}
 		if out == nil {
 			return resp.Header, nil
@@ -525,10 +529,10 @@ func (p *Provider) readIssue(ctx context.Context, externalID string) (issueRef, 
 		return ref, issue{}, err
 	}
 	if i.Number != ref.number {
-		return ref, issue{}, fmt.Errorf("githubissues: issue %s not found", externalID)
+		return ref, issue{}, provider.NotFound(fmt.Errorf("githubissues: issue %s not found", externalID))
 	}
 	if len(i.PullRequest) > 0 && string(i.PullRequest) != "null" {
-		return ref, issue{}, fmt.Errorf("githubissues: %s is a pull request, not an issue", externalID)
+		return ref, issue{}, provider.NotFound(fmt.Errorf("githubissues: %s is a pull request, not an issue", externalID))
 	}
 	return ref, i, nil
 }
