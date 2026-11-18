@@ -688,7 +688,7 @@ metadata:
     # readers are not waived for a privilege they do not take.
     ploeg.webgrip.dev/privileged-dind: "true"
     {{- end }}
-    {{- if and $gateway $root.Values.executor.credentialGateway.acknowledgeSharedNode }}
+    {{- if and $gateway $root.Values.executor.credentialGateway.acknowledgeSingleNode }}
     ploeg.webgrip.dev/credential-gateway-shared-node: "true"
     {{- end }}
 spec:

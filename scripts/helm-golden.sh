@@ -576,15 +576,15 @@ if ! grep -qF 'kind: CronJob' "$gateway_render"; then
 	status=1
 fi
 check_gateway "$gateway_render" silver--builder,silver--reviewer,zinc--default
-shared_node=$(helm template ploeg ops/helm/ploeg -f "$REQUIRED" -f "$GATEWAY_VALUES" --set executor.credentialGateway.acknowledgeSharedNode=true 2>&1)
+shared_node=$(helm template ploeg ops/helm/ploeg -f "$REQUIRED" -f "$GATEWAY_VALUES" --set executor.credentialGateway.acknowledgeSingleNode=true 2>&1)
 run_pods=$(printf '%s\n' "$shared_node" | grep -cE -- '- name: PLOEG_CREDENTIAL_GATEWAY$' || true)
 labelled=$(printf '%s\n' "$shared_node" | grep -cF -- 'ploeg.webgrip.dev/credential-gateway-shared-node: "true"' || true)
 if [ "$run_pods" -eq 0 ] || [ "$labelled" -ne "$((run_pods + 1))" ] || printf '%s' "$shared_node" | grep -qF 'requiredDuringScheduling'; then
-	echo "executor.credentialGateway.acknowledgeSharedNode labels $labelled pods for $run_pods Run pods and the gateway, or leaves the gateway's placement required"
+	echo "executor.credentialGateway.acknowledgeSingleNode labels $labelled pods for $run_pods Run pods and the gateway, or leaves the gateway's placement required"
 	status=1
 fi
 if printf '%s' "$(render "$GATEWAY_VALUES")" | grep -qF 'credential-gateway-shared-node'; then
-	echo "a Run pod carries the shared-node label without executor.credentialGateway.acknowledgeSharedNode"
+	echo "a Run pod carries the shared-node label without executor.credentialGateway.acknowledgeSingleNode"
 	status=1
 fi
 if ! helm template ploeg ops/helm/ploeg -f "$REQUIRED" -f ops/helm/ploeg/ci/reject-credential-gateway-plugin-secret-values.yaml --set executor.credentialGateway.enabled=false >/dev/null 2>&1; then

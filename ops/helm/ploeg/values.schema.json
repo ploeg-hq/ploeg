@@ -1418,7 +1418,7 @@
           "properties": {
             "enabled": {"type": "boolean", "description": "true renders the gateway's Deployment, Service, PodDisruptionBudget, ServiceAccount, Role and NetworkPolicy, ploegd's TokenReview ClusterRole and PLOEG_CREDENTIAL_GATEWAYS, and renders every Run pod with PLOEG_CREDENTIAL_GATEWAY=on and no secret."},
             "replicas": {"type": "integer", "minimum": 1, "description": "Gateway replicas, spread over nodes; the PodDisruptionBudget allows one unavailable."},
-            "acknowledgeSharedNode": {
+            "acknowledgeSingleNode": {
               "type": "boolean",
               "description": "true relaxes the gateway's anti-affinity against Run pods and its exclusion of executor.nodeSelector's pool to preferred, and labels every Run pod and the gateway ploeg.webgrip.dev/credential-gateway-shared-node. The chart cannot count nodes; set it only where no node is free of Run pods."
             },

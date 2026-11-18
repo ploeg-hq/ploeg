@@ -785,7 +785,7 @@ executor:
     # pool. The chart cannot count nodes: where that leaves no node, true
     # relaxes both to preferred and labels every Run pod and the gateway
     # ploeg.webgrip.dev/credential-gateway-shared-node: "true".
-    acknowledgeSharedNode: false
+    acknowledgeSingleNode: false
     # Per Run and route family, a token bucket on requests and on request
     # bytes; maxUpstreamConnections caps the gateway's concurrent upstream
     # connections (PLOEG_GATEWAY_LIMITS).

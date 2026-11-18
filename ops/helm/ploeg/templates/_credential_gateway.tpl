@@ -128,7 +128,7 @@ it. Same context as ploeg.workerPodTemplate.
 {{/*
 ploeg.credentialGatewayAffinity keeps the gateway off every node that runs a
 Run pod and out of executor.nodeSelector's pool, and spreads its replicas.
-acknowledgeSharedNode relaxes the first two to preferred. One node selector
+acknowledgeSingleNode relaxes the first two to preferred. One node selector
 term per executor.nodeSelector entry: a node is excluded only when it carries
 every entry, as a Run pod's node does.
 */}}
@@ -138,7 +138,7 @@ every entry, as a Run pod's node does.
 {{- $replicas := dict "labelSelector" (dict "matchLabels" (include "ploeg.credentialGatewaySelectorLabels" . | fromYaml)) "topologyKey" "kubernetes.io/hostname" -}}
 {{- $antiAffinity := dict -}}
 {{- $preferred := list (dict "weight" 100 "podAffinityTerm" $replicas) -}}
-{{- if $gw.acknowledgeSharedNode -}}
+{{- if $gw.acknowledgeSingleNode -}}
 {{- $preferred = prepend $preferred (dict "weight" 100 "podAffinityTerm" $runPods) -}}
 {{- else -}}
 {{- $_ := set $antiAffinity "requiredDuringSchedulingIgnoredDuringExecution" (list $runPods) -}}
@@ -150,7 +150,7 @@ every entry, as a Run pod's node does.
 {{- range $key, $value := . -}}
 {{- $terms = append $terms (dict "matchExpressions" (list (dict "key" $key "operator" "NotIn" "values" (list $value)))) -}}
 {{- end -}}
-{{- if $gw.acknowledgeSharedNode -}}
+{{- if $gw.acknowledgeSingleNode -}}
 {{- $weighted := list -}}
 {{- range $term := $terms -}}
 {{- $weighted = append $weighted (dict "weight" 100 "preference" $term) -}}
