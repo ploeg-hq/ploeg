@@ -86,6 +86,14 @@
         '# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)(?: registryUrl=(?<registryUrl>\\S+))?\\s*\\n\\s*[A-Z0-9_]+:\\s*["\']?(?<currentValue>[^"\'\\s]+)',
       ],
     },
+    {
+      description: 'Versions pinned as a Dockerfile ARG with a `# renovate:` line above them, such as PYYAML_VERSION in the agent image. OPENHANDS_VERSION and GOOSE_VERSION carry no such line on purpose: the first is paired with its constraints file and the second with its checksums, and Renovate can regenerate neither (ops/docker/agent-runner/README.md).',
+      customType: 'regex',
+      managerFilePatterns: ['/(^|/)Dockerfile$/'],
+      matchStrings: [
+        '# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\s*\\nARG [A-Z0-9_]+=(?<currentValue>\\S+)',
+      ],
+    },
   ],
   packageRules: [
     {

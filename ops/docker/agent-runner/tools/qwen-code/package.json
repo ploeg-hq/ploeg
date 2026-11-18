@@ -1,0 +1,7 @@
+{
+  "name": "agent-runner-qwen-code",
+  "private": true,
+  "dependencies": {
+    "@qwen-code/qwen-code": "0.26.5"
+  }
+}

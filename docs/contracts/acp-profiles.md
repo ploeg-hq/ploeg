@@ -64,7 +64,7 @@ Why this profile exists alongside the native adapter: ACP gives structured tool 
 
 ## What an image needs
 
-Ploeg does not install agents. Every profile's binary must be on `PATH` in the image that the team's `executor.harness.image` names (by default `executor.runnerImage`, `agent-runner`, which is built outside this repository). The worker checks this before it claims ([adapters.go](../../pkg/worker/adapters.go)). `executor.harness.entrypoint` replaces the binary path and keeps the profile's arguments.
+Ploeg does not install agents. Every profile's binary must be on `PATH` in the image that the team's `executor.harness.image` names (by default `executor.runnerImage`). [`ghcr.io/ploeg-hq/agent-runner`](../../ops/docker/agent-runner/README.md), which each release publishes, carries `opencode`, `qwen`, `goose` and `openhands` at the versions its README lists. The worker checks this before it claims ([adapters.go](../../pkg/worker/adapters.go)). `executor.harness.entrypoint` replaces the binary path and keeps the profile's arguments.
 
 - `qwen-code`: Node.js 22 or later and `npm install -g @qwen-code/qwen-code@0.24.6`, which provides `qwen`. Upstream releases every few days, so pin the version.
 - `goose`: the `goose-x86_64-unknown-linux-musl` (or `aarch64`) release archive for v1.52.0, which is a static `goose` binary.

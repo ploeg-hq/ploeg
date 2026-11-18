@@ -1,5 +1,5 @@
-# CI-only values that MUST fail to render (scripts/helm-golden.sh). Ploeg
-# publishes no agent image, so a worker without one cannot start.
+# CI-only values that MUST fail to render (scripts/helm-golden.sh). The chart
+# names no default agent image, so a worker without one cannot start.
 executor:
   enabled: true
   harness:

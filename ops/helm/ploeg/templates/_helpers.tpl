@@ -563,7 +563,7 @@ global executor.harness defaults field-by-field (explicit hasKey checks, so
 {{- $hName := $identity.name }}
 {{- $hImage := (include "ploeg.roleHarnessImage" (dict "root" $root "team" $team "role" $role) | fromJson).image }}
 {{- if not $hImage }}
-{{- fail (printf "team %s: no agent image; set executor.harness.image, or harness.image on the team or Role. Ploeg publishes no agent image" $team.name) }}
+{{- fail (printf "team %s: no agent image; set executor.harness.image, or harness.image on the team or Role, for example to ghcr.io/ploeg-hq/agent-runner by digest. The chart names no default agent image" $team.name) }}
 {{- end }}
 {{- $hEntrypoint := $rh.entrypoint | default ($th.entrypoint | default $gh.entrypoint) }}
 {{- $hArgs := $rh.args | default ($th.args | default $gh.args) }}

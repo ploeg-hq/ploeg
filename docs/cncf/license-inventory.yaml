@@ -277,7 +277,26 @@ components:
     kind: system component
     license: NOASSERTION
     disposition: user-fetched
-    note: Ploeg publishes no agent image (values.yaml harness.image is required and empty). Operators supply the agent image for each harness (Claude Code, OpenHands, or an ACP agent such as OpenCode or goose) themselves, so their licences are the operator's to review.
+    note: An agent image other than ghcr.io/ploeg-hq/agent-runner, such as one with Claude Code or another agent in it, is the operator's to build and to review. The chart still names no agent image by default (values.yaml harness.image is empty and required), so an operator who points it at their own image supplies its licences (ADR-0199).
+  - name: Alpine CPython base image (agent-runner)
+    kind: base image
+    refs:
+      - python
+    shipped_in:
+      - agent-runner image
+    license: PSF-2.0 AND LicenseRef-Alpine-mixed
+    disposition: container-guidance
+    note: docker.io/library/python 3.12.16-alpine3.24, pinned by digest in ops/docker/agent-runner/Dockerfile and moved by Renovate. CPython (PSF-2.0) built on Alpine 3.24, whose apk packages carry GPL-2.0, MIT, BSD and other licences, plus bash, ca-certificates, git and libstdc++ that the Dockerfile adds with apk. The Docker official image's build definition is public (github.com/docker-library/python, MIT), and each apk package keeps its record in /lib/apk/db/installed. The BuildKit SBOM attached to each release is the authoritative package list. Not read package by package yet; confirm with CNCF staff that the container image guidance covers it.
+  - name: Agent harnesses and tools in agent-runner
+    kind: bundled applications
+    refs:
+      - node
+      - astral-sh/uv
+    shipped_in:
+      - agent-runner image
+    license: MIT AND Apache-2.0 AND NOASSERTION
+    disposition: exception-needed
+    note: ghcr.io/ploeg-hq/agent-runner (ADR-0199) carries the OpenHands CLI 1.16.0 (MIT) with the 361 Python packages pinned in ops/docker/agent-runner/openhands-1.16.0.constraints.txt, installed with uv 0.13.7 (Apache-2.0 OR MIT, copied from ghcr.io/astral-sh/uv); OpenCode 1.19.5 (MIT), Qwen Code 0.26.5 (Apache-2.0), moon 2.6.5 (MIT) and openspec 1.16.0 (MIT) with the npm trees their lockfiles under ops/docker/agent-runner/tools pin; Node.js 24.22.3 and npm (MIT, with bundled third-party code), copied from docker.io/library/node; goose 1.57.0 (Apache-2.0), downloaded from its GitHub release archive and checked against a pinned sha256 rather than installed with a package manager; and PyYAML 6.0.3 (MIT). The top-level licences are on the allowlist or Apache-2.0, but nobody has reviewed the Python and npm dependency trees package by package, and the goose archive is not standard package manager content under the container image guidance (B)(1). The disposition stays exception-needed until that review records each licence or the image drops what fails it.
   - name: Build, test and release tooling
     kind: tooling
     license: Apache-2.0 AND MIT

@@ -637,7 +637,9 @@ executor:
   harness:
     name: openhands # openhands | exec | claude-code | acp | claude-environment (PLOEG_HARNESS)
     # Agent image. REQUIRED with the executor enabled, here, in runnerImage or
-    # per team: Ploeg publishes no agent image, so the render fails without one.
+    # per team: the chart names no default agent image yet, so the render fails
+    # without one. Each release publishes ghcr.io/ploeg-hq/agent-runner (ADR-0199);
+    # name it with the digest from the release's signed-artifacts.txt.
     # A claude-environment harness that sets none uses claudeRunner.image.
     image: ""
     entrypoint: ""  # binary override (PLOEG_HARNESS_ENTRYPOINT); "" = adapter default
