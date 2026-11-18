@@ -6,10 +6,12 @@ import (
 	"math"
 	"net/http"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/ploeg-hq/ploeg/pkg/store"
+	"github.com/ploeg-hq/ploeg/pkg/team"
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
@@ -53,8 +55,7 @@ func (s *Server) handleAdmitWorkItem(w http.ResponseWriter, r *http.Request) {
 		}
 		budget = *input.BudgetUSD
 	}
-	if !p.AllowsTeam(input.Team) {
-		operatorError(w, 403, "team_forbidden", "This team is outside the consumer scope.")
+	if !s.admissionTeam(w, p, &input) {
 		return
 	}
 	if prepare {
@@ -199,4 +200,48 @@ func optionalShift(id *int64) *string {
 		return nil
 	}
 	return optionalID(*id)
+}
+
+// admissionTeam resolves the Team an Admission names, an id, key or alias,
+// to its key, and applies a runtime Team's intake (ADR-0198): it must be
+// active, not draining, accept admissions and, when it lists targets,
+// name one of them. A consumer reads a runtime Team through manageTeams or
+// its Team scope.
+func (s *Server) admissionTeam(w http.ResponseWriter, p OperatorPrincipal, input *store.AdmitOperatorWorkItem) bool {
+	t, _, resolved := s.Teams.Resolve(input.Team)
+	if !resolved || t.Source != team.SourceRuntime {
+		if resolved {
+			input.Team = t.Key
+		}
+		if !p.AllowsTeam(input.Team) {
+			operatorError(w, 403, "team_forbidden", "This team is outside the consumer scope.")
+			return false
+		}
+		return true
+	}
+	if !p.allowsResolvedTeam(t) {
+		operatorError(w, 403, "team_forbidden", "This team is outside the consumer scope.")
+		return false
+	}
+	rt, ok := s.runtimeTeam(t.ID)
+	if !ok {
+		operatorError(w, 404, "unknown_team", "No live Team "+input.Team+".")
+		return false
+	}
+	input.Team = rt.Key
+	switch {
+	case rt.State != team.StateActive:
+		operatorError(w, 409, "team_unavailable", "Runtime Team "+rt.Key+" is "+rt.State+", so it takes no new work.")
+		return false
+	case rt.DrainingSince != nil:
+		operatorError(w, 409, "team_draining", "Runtime Team "+rt.Key+" is draining and takes no new work.")
+		return false
+	case !rt.Manifest.Intake.Admissions:
+		operatorError(w, 422, "admissions_not_accepted", "Runtime Team "+rt.Key+" takes no operator admissions: its intake.admissions is false.")
+		return false
+	case len(rt.Manifest.Intake.Targets) > 0 && !slices.Contains(rt.Manifest.Intake.Targets, input.Target):
+		operatorError(w, 422, "target_not_allowed", "Runtime Team "+rt.Key+" works only on the targets its intake.targets lists.")
+		return false
+	}
+	return true
 }

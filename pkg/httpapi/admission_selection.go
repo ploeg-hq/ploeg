@@ -16,15 +16,51 @@ func normalHarnessKey(key string) string {
 }
 
 func (s *Server) selections() RunSelections {
-	return RunSelections{Harnesses: s.OperatorConfig.TeamHarnesses, LLM: s.LLMControl}
+	return RunSelections{Harnesses: s.OperatorConfig.TeamHarnesses, LLM: s.LLMControl, Runtime: s.runtimeHarness}
+}
+
+// runtimeHarness is the Harness a runtime Team's Role runs on.
+func (s *Server) runtimeHarness(teamKey, role string) (string, bool) {
+	rt, ok := s.runtimeTeam(teamKey)
+	if !ok {
+		return "", false
+	}
+	for _, r := range rt.Manifest.Roles() {
+		if r.Name == role {
+			return r.Harness, true
+		}
+	}
+	return "", false
 }
 
 func (s *Server) admissionSelection(w http.ResponseWriter, in store.AdmitOperatorWorkItem) bool {
 	roles, _ := s.Engine.PlanRoles(in.Team)
+	if in.Harness != "" {
+		if harness, runtime := s.runtimeHarnesses(in.Team, roles); runtime {
+			if !slices.Contains(harness, in.Harness) {
+				operatorError(w, 422, "harness_not_allowed", "Harness "+in.Harness+" is not the Harness of any Role of runtime Team "+in.Team+". Allowed: "+strings.Join(harness, ", ")+".")
+				return false
+			}
+			return in.Model == "" || s.admitsModel(w, in.Team, roles, in.Model)
+		}
+	}
 	if in.Harness != "" && !s.admitsHarness(w, in.Team, roles, in.Harness) {
 		return false
 	}
 	return in.Model == "" || s.admitsModel(w, in.Team, roles, in.Model)
+}
+
+func (s *Server) runtimeHarnesses(team string, roles []string) ([]string, bool) {
+	if _, ok := s.runtimeTeam(team); !ok {
+		return nil, false
+	}
+	var out []string
+	for _, role := range roles {
+		if h, ok := s.runtimeHarness(team, role); ok && !slices.Contains(out, h) {
+			out = append(out, h)
+		}
+	}
+	return out, true
 }
 
 func (s *Server) admitsHarness(w http.ResponseWriter, team string, roles []string, key string) bool {

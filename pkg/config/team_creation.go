@@ -33,6 +33,10 @@ type TeamCreation struct {
 	// Tenants holds each Tenant's spend allowance; a Tenant without one
 	// creates no Team.
 	Tenants map[string]TeamCreationTenant `yaml:"tenants"`
+	// TrackerBindings is what every runtime Team accepts as ADR-0186
+	// bindings: the connections a binding may use and how many it may
+	// hold. Omitted = runtime Teams accept no binding.
+	TrackerBindings *TrackerBindings `yaml:"trackerBindings"`
 	// RequireClaims are the person token claims operator authority needs.
 	RequireClaims map[string][]string `yaml:"requireClaims"`
 	// StepUp is the authentication the person's token must show.

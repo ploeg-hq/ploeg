@@ -30,7 +30,10 @@ import (
 type Engine struct {
 	Store *store.Store
 	Plans plan.Plans
-	Log   *slog.Logger
+	// Runtime returns the plan of a runtime Team by key (ADR-0198). A static
+	// plan of the same key wins. Nil = only static plans.
+	Runtime func(team string) (plan.TeamPlan, bool)
+	Log     *slog.Logger
 	// Forges publishes findings to the pull request (ADR-0011). Keyed by
 	// forge id, matching the Work Target's Forge. Nil or missing = findings
 	// stay in the database and the run is otherwise unaffected.
@@ -222,6 +225,11 @@ func (e *Engine) Dispatches(team string) bool {
 func (e *Engine) planFor(team string) (tp plan.TeamPlan, ok, synthesized bool) {
 	if tp, ok := e.Plans[team]; ok {
 		return tp, true, false
+	}
+	if e.Runtime != nil {
+		if tp, ok := e.Runtime(team); ok {
+			return tp, true, false
+		}
 	}
 	if !e.Uniform {
 		return plan.TeamPlan{}, false, false
