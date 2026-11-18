@@ -117,6 +117,9 @@ func ReadBundle(data []byte) (Bundle, *Error) {
 		if entries > MaxBundleEntries {
 			return Bundle{}, bundleRefusal("The bundle has more than 2000 entries.")
 		}
+		if strings.Contains(h.Name, "..") {
+			return Bundle{}, bundleRefusal(fmt.Sprintf("%q may leave the bundle; a path never contains \"..\".", h.Name))
+		}
 		name, e := bundlePath(h.Name)
 		if e != nil {
 			return Bundle{}, e

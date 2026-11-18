@@ -136,6 +136,9 @@ func installReadOnly(home string, dirs []string, b toolregistry.Bundle) ([]strin
 			}
 		}
 		for _, n := range names {
+			if strings.Contains(n, "..") || filepath.IsAbs(n) {
+				return nil, fmt.Errorf("%s leaves the skill directory", n)
+			}
 			path := filepath.Join(root, n)
 			if !strings.HasPrefix(path, root+string(filepath.Separator)) {
 				return nil, fmt.Errorf("%s leaves the skill directory", n)
