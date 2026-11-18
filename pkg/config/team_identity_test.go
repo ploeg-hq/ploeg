@@ -33,10 +33,38 @@ func TestTeamIdentityIsRefusedWhenItCannotResolveToOneTeam(t *testing.T) {
 		"empty alias":                   {"teams:\n  bronze:\n    aliases: [\"\"]\n", "teams.bronze.aliases[0]"},
 		"name with a control character": {"teams:\n  bronze:\n    name: \"a\\nb\"\n", "teams.bronze.name"},
 		"name too long":                 {"teams:\n  bronze:\n    name: \"" + strings.Repeat("a", 81) + "\"\n", "teams.bronze.name"},
+		"keys differing only in case":   {"teams:\n  Builders: {}\n  builders: {}\n", "teams.builders"},
 		"eleven aliases":                {"teams:\n  bronze:\n    aliases: [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11]\n", "teams.bronze.aliases"},
 	} {
 		if _, err := Load(write(t, tc.body)); err == nil || !strings.Contains(err.Error(), tc.want) {
 			t.Errorf("%s: Load = %v, want an error naming %s", name, err, tc.want)
 		}
+	}
+}
+
+func TestATeamsDigestIgnoresItsNameAndAliasesAndFollowsWhatItIsMadeOf(t *testing.T) {
+	f, err := Load(write(t, `
+teams:
+  bronze:
+    maxRunning: 2
+  copper:
+    name: Copper
+    aliases: [old]
+    maxRunning: 2
+  tin:
+    maxRunning: 3
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, s := range f.StaticTeams() {
+		got[s.Key] = s.Digest
+	}
+	if got["bronze"] == "" || got["bronze"] != got["copper"] {
+		t.Fatalf("a Team that differs only in name and aliases has another digest: %v", got)
+	}
+	if got["tin"] == got["bronze"] {
+		t.Fatalf("Teams made differently share a digest: %v", got)
 	}
 }
