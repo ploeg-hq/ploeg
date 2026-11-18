@@ -176,6 +176,9 @@ type Team struct {
 	// never a bot. While ploegd signs transaction tokens, a Team without one
 	// runs nothing.
 	Sponsor string `yaml:"sponsor"`
+	// TrackerBindings lets an Operator Consumer bind tracker Scopes to this
+	// Team while ploegd runs (ADR-0186). Omitted = the Team accepts none.
+	TrackerBindings *TrackerBindings `yaml:"trackerBindings"`
 }
 
 // PremiseCheck names the gateway model a Team's premise check calls. ploegd
@@ -371,6 +374,9 @@ func (f *File) Validate() error {
 	if err := f.validatePeople(); err != nil {
 		return err
 	}
+	if err := f.validateTrackerBindings(); err != nil {
+		return err
+	}
 	if err := f.validateFastChecks(); err != nil {
 		return err
 	}
@@ -508,15 +514,32 @@ func (f *File) validateRoute(p Project) error {
 	if p.Repo != "" && !ownerName(p.Repo) {
 		return fmt.Errorf("repo %q must be owner/name", p.Repo)
 	}
-	for _, key := range append([]string{p.Default}, p.Allow...) {
+	return CheckTargetKeys(p.Default, p.Allow, func(key string) bool {
+		_, ok := f.Targets[key]
+		return ok
+	})
+}
+
+// CheckTargetKeys applies the rule a route's destination keys follow, at boot
+// for a static route and at the call for a runtime binding (ADR-0186): every
+// key names a target the registry knows.
+func CheckTargetKeys(def string, allow []string, known func(string) bool) error {
+	for _, key := range append([]string{def}, allow...) {
 		if key == "" {
 			continue
 		}
-		if _, ok := f.Targets[key]; !ok {
-			return fmt.Errorf("target %q is not in targets", key)
+		if !known(key) {
+			return &UnknownTargetError{Key: key}
 		}
 	}
 	return nil
+}
+
+// UnknownTargetError names a destination key the registry does not know.
+type UnknownTargetError struct{ Key string }
+
+func (e *UnknownTargetError) Error() string {
+	return fmt.Sprintf("target %q is not in targets", e.Key)
 }
 
 func ownerName(repo string) bool {

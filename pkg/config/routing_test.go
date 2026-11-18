@@ -73,9 +73,9 @@ func TestRoutingTable_CarriesTheRegistryAndBoardPolicies(t *testing.T) {
 		t.Errorf("targets = %+v", table.Targets)
 	}
 	wantRules := []target.Rule{
-		{Scope: "10", Default: "app", Allow: []string{"homelab-cluster"}},
-		{Scope: "7", Allow: []string{"homelab-cluster", "app"}},
-		{Scope: "4", Target: work.Target{Owner: "webgrip", Repo: "erfbeeld", BaseBranch: "main"}},
+		{Scope: "10", Default: "app", Allow: []string{"homelab-cluster"}, Tracker: "vikunja", Origin: "trackers.vikunja.projects[0]"},
+		{Scope: "7", Allow: []string{"homelab-cluster", "app"}, Tracker: "vikunja", Origin: "trackers.vikunja.projects[1]"},
+		{Scope: "4", Target: work.Target{Owner: "webgrip", Repo: "erfbeeld", BaseBranch: "main"}, Tracker: "vikunja", Origin: "trackers.vikunja.projects[2]"},
 	}
 	if !reflect.DeepEqual(table.Rules, wantRules) {
 		t.Errorf("rules = %+v", table.Rules)

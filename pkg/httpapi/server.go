@@ -52,8 +52,12 @@ type Server struct {
 	// whole implementation. Nil or missing scope = the assignee decides,
 	// unchanged.
 	ScopeTeams map[string]string
-	LeaseTTL   time.Duration
-	Log        *slog.Logger
+	// TrackerBindings serves the runtime Scope bindings (ADR-0186); its
+	// registry also pins a Scope one binding routes to that binding's Team,
+	// after ScopeTeams. Nil = no runtime bindings.
+	TrackerBindings *TrackerBindings
+	LeaseTTL        time.Duration
+	Log             *slog.Logger
 	// RunIdentity signs the Run identities a Team's declared plugins receive
 	// and publishes its key set (ADR-0149). Nil = both routes answer 404.
 	RunIdentity *runidentity.Signer
@@ -513,6 +517,9 @@ func (s *Server) pinTeam(item *work.WorkItem) {
 		return
 	}
 	pinned, ok := s.ScopeTeams[item.ExternalScope]
+	if !ok && s.TrackerBindings != nil && s.TrackerBindings.Registry != nil {
+		pinned, ok = s.TrackerBindings.Registry.ScopeTeam(item.ExternalScope)
+	}
 	if !ok || pinned == "" || pinned == item.Team {
 		return
 	}
