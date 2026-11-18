@@ -3,7 +3,7 @@ type: how-to
 audience: [operator]
 owner: ploeg
 last_verified: 2026-11-18
-verified_by: "Read pkg/connection, pkg/httpapi/operator_connections.go and cmd/ploegd/runtime_connections.go; go test ./pkg/httpapi/ -run 'Connection|ClickUp|GitLab|GitHubApp|Reconnect'"
+verified_by: "Read pkg/connection, pkg/httpapi/operator_connections.go and cmd/ploegd/runtime_connections.go; go test ./pkg/connection/; go test ./pkg/httpapi/ -run 'Connection|ClickUp|GitLab|GitHubApp|Reconnect'"
 ---
 
 # Let operators connect trackers and forges
@@ -52,7 +52,7 @@ connections:
         scopes: [api]
 ```
 
-Every vendor URL comes from this file, never from a request. The client secret is read from the environment variable `clientSecretEnv` names; seed it once per vendor. For GitHub, set `PLOEG_PUBLIC_WEBHOOK_BASE` to the HTTPS base vendors reach ploegd at: a manifest App's webhook goes to `<base>/webhooks/forge/github`, and its deliveries are verified with that App's own secret from the store.
+Every vendor URL comes from this file, never from a request. An instance with `oauth` needs an `https://` `url`, because the token and revoke URLs derived from it carry the client secret; `authorizeUrl` and `tokenUrl` must be https too. For an in-cluster instance reached deliberately over plain HTTP, set `allowInsecureHttp: true` on that instance to accept an `http://` `url`. An instance without `oauth` keeps accepting either scheme. The client secret is read from the environment variable `clientSecretEnv` names; seed it once per vendor. For GitHub, set `PLOEG_PUBLIC_WEBHOOK_BASE` to the HTTPS base vendors reach ploegd at: a manifest App's webhook goes to `<base>/webhooks/forge/github`, and its deliveries are verified with that App's own secret from the store.
 
 ## 2. Grant the consumer
 

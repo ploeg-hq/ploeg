@@ -47,15 +47,24 @@ type Service struct {
 	PublicWebhookBase string
 	// Users lists the bindings and runtime targets that name a connection.
 	// Nil means nothing can use one yet.
-	Users  func(ctx context.Context, id string) ([]Use, error)
-	Tenant string
-	Log    *slog.Logger
-	Now    func() time.Time
+	Users func(ctx context.Context, id string) ([]Use, error)
+	// OnChange is told the id of a connection that was reconnected,
+	// removed or changed state, so what holds its credential lets it go.
+	OnChange func(id string)
+	Tenant   string
+	Log      *slog.Logger
+	Now      func() time.Time
 
 	mu         sync.Mutex
 	appSecrets map[string]string
 	heldApps   map[string]bool
 	heldAt     time.Time
+}
+
+func (s *Service) changed(id string) {
+	if s.OnChange != nil {
+		s.OnChange(id)
+	}
 }
 
 func (s *Service) tenant() string {

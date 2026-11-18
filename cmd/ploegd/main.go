@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/ploeg-hq/ploeg/pkg/config"
+	"github.com/ploeg-hq/ploeg/pkg/forgebroker"
 	"github.com/ploeg-hq/ploeg/pkg/httpapi"
 	"github.com/ploeg-hq/ploeg/pkg/litellm"
 	"github.com/ploeg-hq/ploeg/pkg/llmbroker"
@@ -109,6 +110,10 @@ func run(ctx context.Context, log *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("PLOEG_CONFIG: %w", err)
 	}
+	gate.enter("reconciling Teams")
+	teams := teamDirectory(ctx, log, cfg, st)
+	go backfillTeamIDs(ctx, log, st)
+	gate.enter("resolving configuration")
 
 	// Tracker write-backs are opt-in by credential: without a URL and token
 	// the provider keeps its logging no-op, so a deployment that has not been
@@ -445,9 +450,17 @@ func run(ctx context.Context, log *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("connections: %w", err)
 	}
+	readiness = ensureGate(readiness, cfg, forges)
 	bindings := trackerBindings(ctx, log, st, cfg, staticTable, targets, readiness, trackers, forgeID, secrets, runtimeConns)
+	workTargets := runtimeTargets(ctx, log, cfg, st, runtimeConns, staticTable, readiness, bindings, forgeID, release.directory())
+	if workTargets != nil {
+		withConnections := &forgebroker.WithConnections{Base: forgeCreds, BaseSweeper: forgeSweeper, Resolve: connectionBroker(runtimeConns)}
+		forgeCreds, forgeSweeper = withConnections, withConnections
+		runtimeConns.OnChange = withConnections.Forget
+	}
 	srv := &httpapi.Server{
 		OperatorConfig: operator,
+		Teams:          teams,
 		WorkerSecurity: workerSecurity,
 		LLMControl:     llmControl,
 		Store:          st,
@@ -467,7 +480,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 
 		ConnectionService:    runtimeConns,
 		AppWebhooks:          appWebhooks(log, runtimeConns, forges),
-		RegisteredRepository: registeredRepository(cfg, forgeID),
+		RegisteredRepository: registeredRepositories(registeredRepository(cfg, forgeID), workTargets),
 		ClaimForges:          release.directory(),
 		ClaudeSessions:       claudeSessions(log),
 		CreatedWork:          createdWork,
@@ -494,6 +507,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 		PrepareRepositoryCaps: cfg.PrepareRepositoryCaps(),
 		ForgeTokenIsolation:   os.Getenv("PLOEG_WORKER_FORGE_TOKEN_ISOLATION"),
 		TrackerBindings:       &httpapi.TrackerBindings{Registry: bindings},
+		WorkTargets:           &httpapi.WorkTargets{Service: workTargets},
 	}
 	if notes != nil {
 		srv.Notes = notes
@@ -588,6 +602,9 @@ func run(ctx context.Context, log *slog.Logger) error {
 	loops.Go(func() { deployCheckLoop(ctx, srv, deployCheckEvery) })
 	loops.Go(func() { connectionReconcileLoop(ctx, runtimeConns, time.Hour) })
 	loops.Go(func() { bindings.Poll(ctx) })
+	if workTargets != nil {
+		loops.Go(func() { workTargets.Poll(ctx) })
+	}
 	if srv.Notes != nil {
 		notesEvery := durationOr("PLOEG_NOTES_WRITE_INTERVAL", 15*time.Second)
 		loops.Go(func() { noteWriteLoop(ctx, srv, notesEvery) })

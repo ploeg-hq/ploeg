@@ -485,6 +485,11 @@ func checkConnectionRedirectURIs(consumer string, uris []string) error {
 
 func (s *Server) handleGrant(r *http.Request, forge string, grant provider.GrantEvent) {
 	s.Log.Info("forge grant changed", "provider", forge, "event", grant.Event, "action", grant.Action, "installation", grant.InstallationID)
+	if svc := s.targetService(); svc != nil {
+		if err := svc.HandleGrant(r.Context(), grant); err != nil {
+			s.Log.Error("forge grant not applied to runtime targets; the hourly reconcile catches it", "provider", forge, "installation", grant.InstallationID, "err", err)
+		}
+	}
 	if s.ConnectionService == nil {
 		return
 	}

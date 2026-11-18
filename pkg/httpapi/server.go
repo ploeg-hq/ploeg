@@ -27,12 +27,16 @@ import (
 	"github.com/ploeg-hq/ploeg/pkg/secretstore"
 	"github.com/ploeg-hq/ploeg/pkg/store"
 	"github.com/ploeg-hq/ploeg/pkg/target"
+	"github.com/ploeg-hq/ploeg/pkg/team"
 	"github.com/ploeg-hq/ploeg/pkg/txntoken"
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
 type Server struct {
 	OperatorConfig OperatorConfig
+	// Teams resolves a Team's id, key or alias (ADR-0198). Nil = ploegd
+	// knows no Team identity, and reads show none.
+	Teams          *team.Directory
 	WorkerSecurity *WorkerSecurity
 	LLMControl     *LLMControl
 	Store          *store.Store
@@ -56,8 +60,12 @@ type Server struct {
 	// registry also pins a Scope one binding routes to that binding's Team,
 	// after ScopeTeams. Nil = no runtime bindings.
 	TrackerBindings *TrackerBindings
-	LeaseTTL        time.Duration
-	Log             *slog.Logger
+	// WorkTargets serves and guards the runtime Work Targets of ADR-0193.
+	// Nil registers none, and the claim and mint treat every target as
+	// static.
+	WorkTargets *WorkTargets
+	LeaseTTL    time.Duration
+	Log         *slog.Logger
 	// RunIdentity signs the Run identities a Team's declared plugins receive
 	// and publishes its key set (ADR-0149). Nil = both routes answer 404.
 	RunIdentity *runidentity.Signer
@@ -791,7 +799,8 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "claim failed", http.StatusInternalServerError)
 		return
 	}
-	if s.stopUnreadyTarget(r.Context(), req.Team, claimed.RunToken, claimed.Item, true) || s.stopUnfencedPrepare(r.Context(), req, claimed.RunToken, claimed.Item, true) {
+	if s.stopInactiveRuntimeTarget(r.Context(), req.Team, claimed.RunToken, claimed.Item) ||
+		s.stopUnreadyTarget(r.Context(), req.Team, claimed.RunToken, claimed.Item, true) || s.stopUnfencedPrepare(r.Context(), req, claimed.RunToken, claimed.Item, true) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
@@ -869,7 +878,8 @@ func (s *Server) claimRole(w http.ResponseWriter, r *http.Request, req claimRequ
 
 // respondClaimedRun builds the Shift-shaped claim response, briefing and all.
 func (s *Server) respondClaimedRun(w http.ResponseWriter, r *http.Request, req claimRequest, run *store.ClaimedRun) {
-	if s.stopUnreadyTarget(r.Context(), req.Team, run.RunToken, run.Item, run.Writes) || s.stopUnfencedPrepare(r.Context(), req, run.RunToken, run.Item, run.Writes) {
+	if s.stopInactiveRuntimeTarget(r.Context(), req.Team, run.RunToken, run.Item) ||
+		s.stopUnreadyTarget(r.Context(), req.Team, run.RunToken, run.Item, run.Writes) || s.stopUnfencedPrepare(r.Context(), req, run.RunToken, run.Item, run.Writes) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}

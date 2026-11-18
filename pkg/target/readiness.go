@@ -51,6 +51,37 @@ type Gate struct {
 
 	mu       sync.Mutex
 	verdicts map[string]Readiness
+	runtime  map[string]RuntimeEntry
+}
+
+// RuntimeEntry is a Work Target registered at runtime (ADR-0193) and the
+// inspector that reads it through its own forge connection.
+type RuntimeEntry struct {
+	Target    work.Target
+	Inspector provider.RepositoryInspector
+}
+
+// SetRuntime replaces the runtime targets the gate holds beside the static
+// ones. A key the configuration registers keeps its static target.
+func (g *Gate) SetRuntime(entries map[string]RuntimeEntry) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	for key := range g.runtime {
+		if _, ok := entries[key]; !ok {
+			delete(g.verdicts, key)
+		}
+	}
+	g.runtime = entries
+}
+
+func (g *Gate) lookup(key string) (work.Target, provider.RepositoryInspector, bool) {
+	if t, ok := g.targets[key]; ok {
+		return t, g.inspectors[t.Forge], true
+	}
+	g.mu.Lock()
+	e, ok := g.runtime[key]
+	g.mu.Unlock()
+	return e.Target, e.Inspector, ok
 }
 
 // NewGate gates targets by asking the inspector registered under each
@@ -84,11 +115,11 @@ func (g *Gate) Admit(ctx context.Context, key string) Readiness {
 
 // Check inspects the target now and records the verdict.
 func (g *Gate) Check(ctx context.Context, key string) Readiness {
-	t, ok := g.targets[key]
+	t, inspector, ok := g.lookup(key)
 	if !ok {
 		return Readiness{Reason: fmt.Sprintf("target %q is not registered", key)}
 	}
-	v := g.inspect(ctx, t)
+	v := inspectWith(ctx, inspector, t)
 	g.mu.Lock()
 	g.verdicts[key] = v
 	g.mu.Unlock()
@@ -100,7 +131,7 @@ func (g *Gate) Target(key string) (work.Target, bool) {
 	if g == nil {
 		return work.Target{}, false
 	}
-	t, ok := g.targets[key]
+	t, _, ok := g.lookup(key)
 	return t, ok
 }
 
@@ -108,7 +139,7 @@ func (g *Gate) Target(key string) (work.Target, bool) {
 // share its verdict, so any of them will do.
 func (g *Gate) KeyOf(t work.Target) (string, bool) {
 	for _, key := range g.keys() {
-		if g.targets[key] == t {
+		if candidate, _, ok := g.lookup(key); ok && candidate == t {
 			return key, true
 		}
 	}
@@ -132,9 +163,14 @@ func (g *Gate) Recheck(ctx context.Context, t work.Target) (before, after Readin
 	return before, g.Check(ctx, key), seen, true
 }
 
-func (g *Gate) inspect(ctx context.Context, t work.Target) Readiness {
-	inspector, ok := g.inspectors[t.Forge]
-	if !ok {
+// Inspect reads t's readiness through inspector without recording it, as a
+// probe before a target is registered does.
+func Inspect(ctx context.Context, inspector provider.RepositoryInspector, t work.Target) Readiness {
+	return inspectWith(ctx, inspector, t)
+}
+
+func inspectWith(ctx context.Context, inspector provider.RepositoryInspector, t work.Target) Readiness {
+	if inspector == nil {
 		return Readiness{Reason: fmt.Sprintf("forge %q cannot report whether %s/%s is ready", t.Forge, t.Owner, t.Repo)}
 	}
 	state, err := inspector.InspectRepository(ctx, t.Owner, t.Repo, t.BaseBranch)
@@ -163,6 +199,25 @@ func (g *Gate) keys() []string {
 	for key := range g.targets {
 		keys = append(keys, key)
 	}
+	g.mu.Lock()
+	for key := range g.runtime {
+		if _, static := g.targets[key]; !static {
+			keys = append(keys, key)
+		}
+	}
+	g.mu.Unlock()
 	sort.Strings(keys)
 	return keys
+}
+
+// Verdict returns the verdict last recorded for key without asking the
+// forge; seen is false when none was recorded yet.
+func (g *Gate) Verdict(key string) (Readiness, bool) {
+	if g == nil {
+		return Readiness{}, false
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	v, seen := g.verdicts[key]
+	return v, seen
 }

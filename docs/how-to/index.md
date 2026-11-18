@@ -25,6 +25,7 @@ These runbooks cover the recurring operator tasks for a cluster deployment of Pl
 | [Connect GitHub Issues as a work source](connect-github-issues.md) | Issues in GitHub repositories should become Work Items, or a labelled issue did not dispatch |
 | [Connect GitHub as a forge](connect-github-as-a-forge.md) | Runs should open pull requests on GitHub, or a GitHub push, webhook or token mint fails |
 | [Let operators connect trackers and forges](let-operators-connect-trackers-and-forges.md) | A consumer should connect ClickUp, GitLab, Forgejo or a GitHub App for a person, with no secret on anyone's clipboard |
+| [Register Work Targets at runtime](register-work-targets-at-runtime.md) | A consumer should make a repository a Work Target for a person, after its forge connection was granted it, without a configuration change |
 | [Configure a connection secret store](configure-a-connection-secret-store.md) | Operator consumers should make tracker or forge connections, so Ploeg needs an OpenBao, Vault or Kubernetes Secret store for their secrets |
 | [Ask Ploeg from an AI client over MCP](ask-ploeg-from-an-ai-client.md) | A person wants to ask Claude Code, Codex or Cursor what waits for them, why, and what it cost |
 | [Serve Ploeg's MCP tools over HTTPS with a browser sign-in](serve-ploeg-mcp-over-https.md) | People should reach Ploeg's MCP tools from Claude Code, VS Code or Cursor through one URL and their identity provider, without a local binary or token |
