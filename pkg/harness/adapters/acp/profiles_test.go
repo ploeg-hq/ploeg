@@ -1,13 +1,14 @@
 package acp
 
 import (
+	"context"
 	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ploeg-hq/ploeg/pkg/harness"
 	"github.com/ploeg-hq/ploeg/pkg/harness/adapters/openhands"
@@ -631,18 +632,51 @@ func TestProfile_OpenCodeConfigOverrideCannotWidenTheRunsPermissions(t *testing.
 	}
 }
 
-func TestProfile_OpenHandsRefusesARepositoryThatShipsHooks(t *testing.T) {
-	p, _ := Lookup("openhands", ProfileOverrides{})
-	env := profileEnv(t)
-	if err := os.MkdirAll(filepath.Join(env.RepoDir, ".openhands"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(env.RepoDir, ".openhands", "hooks.json"), []byte(`{"SessionStart":[]}`), 0o644); err != nil {
-		t.Fatal(err)
-	}
+func TestRun_OpenHandsStartsItsSessionWithoutAnyRepositoryHooksAndPutsTheShippedFileBack(t *testing.T) {
+	const shipped = `{"SessionStart":[{"matcher":"*","hooks":[{"type":"command","command":"touch ran"}]}]}` + "\n"
 	for _, mode := range []PermissionMode{PermissionAllowAll, PermissionReadOnly, PermissionDenyAll} {
-		if _, _, err := p.Prepare(testSpec(), env, mode); !errors.Is(err, openhands.ErrRepositoryHooks) {
-			t.Errorf("under %s the openhands profile prepared a Run on a repository with %s: %v", mode, openhands.RepositoryHooksPath, err)
-		}
+		t.Run(string(mode), func(t *testing.T) {
+			env := testEnv(t)
+			hooksPath := filepath.Join(env.RepoDir, filepath.FromSlash(openhands.RepositoryHooksPath))
+			if err := os.MkdirAll(filepath.Dir(hooksPath), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(hooksPath, []byte(shipped), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			seen := filepath.Join(t.TempDir(), "seen")
+			bin := writeScript(t, `
+emit() { printf '%s\n' "$1"; }
+while IFS= read -r line; do
+  id=$(printf '%s' "$line" | sed -n 's/.*"id":\([0-9]*\).*/\1/p')
+  case "$line" in
+    *'"method":"initialize"'*)
+      echo "initialize $(test -e `+openhands.RepositoryHooksPath+` && echo present || echo absent)" >> `+seen+`
+      mkdir -p `+openhands.RepositoryHooksDir+` && printf '{"Stop":[]}' > `+openhands.RepositoryHooksPath+`
+      emit '{"jsonrpc":"2.0","id":'"$id"',"result":{"protocolVersion":1,"agentCapabilities":{},"authMethods":[]}}' ;;
+    *'"method":"session/new"'*)
+      echo "session $(test -e `+openhands.RepositoryHooksPath+` && echo present || echo absent)" >> `+seen+`
+      emit '{"jsonrpc":"2.0","id":'"$id"',"result":{"sessionId":"s1"}}' ;;
+    *'"method":"session/prompt"'*)
+      printf '{"PreToolUse":[]}' > `+openhands.RepositoryHooksPath+`
+      emit '{"jsonrpc":"2.0","id":'"$id"',"result":{"stopReason":"end_turn"}}' ;;
+  esac
+done`)
+			a, err := New("openhands", ProfileOverrides{Entrypoint: bin}, Options{PermissionMode: mode,
+				PromptTimeout: 10 * time.Second, IdleTimeout: 10 * time.Second, CancelGrace: time.Second, TermGrace: time.Second})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := a.Run(context.Background(), testSpec(), env); err != nil {
+				t.Fatalf("the openhands profile did not run a repository that ships hooks: %v", err)
+			}
+			got, _ := os.ReadFile(seen)
+			if string(got) != "initialize absent\nsession absent\n" {
+				t.Errorf("what the agent saw of %s:\n%s\nwant it absent at launch and at session/new", openhands.RepositoryHooksPath, got)
+			}
+			if after, err := os.ReadFile(hooksPath); err != nil || string(after) != shipped {
+				t.Errorf("after the Run %s = %q (%v), want the shipped bytes", openhands.RepositoryHooksPath, after, err)
+			}
+		})
 	}
 }

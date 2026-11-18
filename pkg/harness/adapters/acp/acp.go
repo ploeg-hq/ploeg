@@ -28,6 +28,7 @@ import (
 	sdk "github.com/coder/acp-go-sdk"
 
 	"github.com/ploeg-hq/ploeg/pkg/harness"
+	"github.com/ploeg-hq/ploeg/pkg/harness/adapters/openhands"
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
@@ -157,8 +158,12 @@ func (a *Adapter) Run(ctx context.Context, spec harness.TaskSpec, env harness.Ru
 	outcomePath := harness.DropBoxPath(env.ScratchDir, spec.TraceID)
 	_ = os.Remove(outcomePath) // never inherit a previous run's report
 
+	var setAside RepositorySetAside
 	finish := func() (harness.OutcomeReport, error) {
 		stopProcess()
+		if setAside != nil {
+			openhands.ReportRestore(env, setAside)
+		}
 		res.stderrTail = tailString(&tail)
 		res.ctxErr = ctx.Err()
 		rep := Build(state, res)
@@ -172,6 +177,17 @@ func (a *Adapter) Run(ctx context.Context, spec harness.TaskSpec, env harness.Ru
 		return harness.MergeDropBox(rep, box), res.err
 	}
 
+	if a.profile.SetAside != nil {
+		aside, err := a.profile.SetAside(env.RepoDir)
+		if err != nil {
+			res.err = fmt.Errorf("acp profile %q: %w", a.profile.Name, err)
+			return finish()
+		}
+		setAside = aside
+		if shipped := aside.Shipped(); shipped != "" {
+			log.Info("set repository files the agent would run aside for the Run", "profile", a.profile.Name, "path", shipped)
+		}
+	}
 	argv, extraEnv, err := a.profile.Prepare(spec, env, a.opts.PermissionMode)
 	if err != nil {
 		res.err = fmt.Errorf("acp profile %q: %w", a.profile.Name, err)
@@ -250,6 +266,16 @@ func (a *Adapter) Run(ctx context.Context, spec harness.TaskSpec, env harness.Ru
 
 	// --- session/new ---
 	res.phase = phaseNewSess
+	if setAside != nil {
+		removed, err := setAside.BeforeSession()
+		if err != nil {
+			res.err = fmt.Errorf("set repository files aside before session/new: %w", err)
+			return finish()
+		}
+		if len(removed) > 0 {
+			log.Warn("removed repository files the agent would run that appeared before session/new", "paths", strings.Join(removed, ", "))
+		}
+	}
 	sessCtx, cancelSess := context.WithTimeout(ctx, defaultSessionTimeout)
 	sess, err := conn.NewSession(sessCtx, sdk.NewSessionRequest{
 		Cwd:        env.RepoDir,

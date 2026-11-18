@@ -110,6 +110,10 @@ func run(ctx context.Context, log *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("PLOEG_CONFIG: %w", err)
 	}
+	gate.enter("reconciling Teams")
+	teams := teamDirectory(ctx, log, cfg, st)
+	go backfillTeamIDs(ctx, log, st)
+	gate.enter("resolving configuration")
 
 	// Tracker write-backs are opt-in by credential: without a URL and token
 	// the provider keeps its logging no-op, so a deployment that has not been
@@ -449,7 +453,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 	readiness = ensureGate(readiness, cfg, forges)
 	bindings := trackerBindings(ctx, log, st, cfg, staticTable, targets, readiness, trackers, forgeID, secrets, runtimeConns)
 	workTargets := runtimeTargets(ctx, log, cfg, st, runtimeConns, staticTable, readiness, bindings, forgeID, release.directory())
-	tools := toolRegistry(ctx, log, cfg, st, secrets)
+	tools := toolRegistry(ctx, log, cfg, st, secrets, teams)
 	if workTargets != nil {
 		withConnections := &forgebroker.WithConnections{Base: forgeCreds, BaseSweeper: forgeSweeper, Resolve: connectionBroker(runtimeConns)}
 		forgeCreds, forgeSweeper = withConnections, withConnections
@@ -457,6 +461,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 	}
 	srv := &httpapi.Server{
 		OperatorConfig: operator,
+		Teams:          teams,
 		WorkerSecurity: workerSecurity,
 		LLMControl:     llmControl,
 		Store:          st,
