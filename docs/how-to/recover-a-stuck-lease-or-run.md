@@ -126,6 +126,7 @@ A harness that loops on requests its credential proxies refuse shows it in the w
 | `unsafe_path` | Dot segments, encoded separators or control characters in the path |
 | `push_to_other_branch` | A push to any ref other than the Run's branch |
 | `branch_deletion` | A push that deletes the Run's branch |
+| `repository_hooks` | A push from an OpenHands Run whose diff against the base branch changes `.openhands/hooks.json` or `.openhands` ([ADR-0148](../adrs/0148-every-acp-profile-asks-before-a-mutation-outside-allow-always-and-openhands-refuses-a-repository-that-ships-hooks.md)); the Run ends `stuck` with `repository_hooks` |
 | `uninspectable_push` | A push whose ref update list cannot be read |
 | `uninspectable_body` | A forge API body that is compressed or larger than the proxy inspects |
 | `credential_in_request` | A forge API request that carries one of the Run's credentials |

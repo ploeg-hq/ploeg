@@ -78,12 +78,20 @@ func (f *deliverableFence) outsideIn(ctx context.Context, repo *workerRepository
 }
 
 func (f *deliverableFence) changes(ctx context.Context, repo *workerRepository, commit string) ([]work.ChangedPath, error) {
-	base := f.start
-	if f.base != "" {
-		if err := repo.fetchBranch(ctx, f.base, deliverableBaseRef); err != nil {
+	return changesSinceFork(ctx, repo, f.base, f.start, deliverableBaseRef, commit)
+}
+
+// changesSinceFork is what commit changes against its fork point from the
+// forge's base branch, fetched into baseRef of a repository the agent cannot
+// write, or against start when there is no base branch: the pull request's
+// diff.
+func changesSinceFork(ctx context.Context, repo *workerRepository, baseBranch, start, baseRef, commit string) ([]work.ChangedPath, error) {
+	base := start
+	if baseBranch != "" {
+		if err := repo.fetchBranch(ctx, baseBranch, baseRef); err != nil {
 			return nil, err
 		}
-		base = deliverableBaseRef
+		base = baseRef
 	}
 	out, err := repo.local(ctx, "", "merge-base", commit, base).CombinedOutput()
 	if err != nil {
