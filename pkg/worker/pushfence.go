@@ -24,7 +24,13 @@ var errUnparseablePush = errors.New("the push's ref update list is not a well-fo
 
 type pushFence struct {
 	runBranchRef string
-	deliverable  *deliverableFence
+	content      []contentFence
+}
+
+// contentFence checks what a push to the Run's own branch carries, such as
+// a prepare Run's one deliverable or a repository's OpenHands hooks file.
+type contentFence interface {
+	admit(u refUpdate) (refusalReason, error)
 }
 
 func newPushFence(runBranch string) pushFence {
@@ -91,8 +97,10 @@ func (f pushFence) permits(u refUpdate) (refusalReason, error) {
 	if u.deletes() {
 		return refusalBranchDeletion, fmt.Errorf("this Run may not delete its own branch %s", u.ref)
 	}
-	if f.deliverable != nil {
-		return f.deliverable.admit(u)
+	for _, content := range f.content {
+		if reason, err := content.admit(u); err != nil {
+			return reason, err
+		}
 	}
 	return "", nil
 }

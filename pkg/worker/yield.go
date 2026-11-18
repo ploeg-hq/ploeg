@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/ploeg-hq/ploeg/pkg/harness"
+	"github.com/ploeg-hq/ploeg/pkg/harness/adapters/openhands"
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
@@ -38,6 +39,10 @@ type yieldCheck struct {
 	// deliverable fences a prepare_repository Run's yield push as its own
 	// pushes are fenced (ADR-0194); nil for every other Run.
 	deliverable *deliverableFence
+	// hooks keeps an OpenHands Run's yield push from changing the
+	// repository's hooks file, as its own pushes are kept (ADR-0148); nil
+	// for every other harness.
+	hooks *repositoryHooksFence
 }
 
 // yieldedReport turns the adapter's report of a Run that yielded to a person
@@ -128,6 +133,16 @@ func yieldWork(ctx context.Context, c yieldCheck) harness.YieldReport {
 		if len(outside) > 0 {
 			return fail("outside_deliverable: the work in progress changes more than an added root %s (%s), so the worker pushed nothing",
 				work.PrepareRepositoryDeliverable, strings.Join(capList(outside), ", "))
+		}
+	}
+	if c.hooks != nil {
+		touched, err := c.hooks.touchedIn(ctx, repo, tip)
+		if err != nil {
+			return fail("the worker could not check the work in progress against the repository's OpenHands hooks file, so it pushed nothing: %v", err)
+		}
+		if len(touched) > 0 {
+			return fail("repository_hooks: the work in progress changes the repository's %s (%s), so the worker pushed nothing",
+				openhands.RepositoryHooksPath, strings.Join(touched, ", "))
 		}
 	}
 	if tip != c.baseline.branch.commit {
