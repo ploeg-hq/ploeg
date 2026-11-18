@@ -16,6 +16,7 @@ import (
 
 	"github.com/ploeg-hq/ploeg/pkg/credentialgateway"
 	"github.com/ploeg-hq/ploeg/pkg/kubeauth"
+	"github.com/ploeg-hq/ploeg/pkg/mcpstdio"
 )
 
 var version = "0.0.0-dev"
@@ -34,6 +35,9 @@ type listener struct {
 }
 
 func run(log *slog.Logger) error {
+	if err := mcpstdio.Undumpable(); err != nil {
+		return fmt.Errorf("keep the gateway's memory and environment from other processes: %w", err)
+	}
 	cfg, err := configFromEnv(log)
 	if err != nil {
 		return err
