@@ -22,6 +22,7 @@ const (
 )
 
 var (
+	errSessionUnknown     = errors.New("ploegd knows no routine fire for the session")
 	errRunSettled         = errors.New("the Run has settled")
 	errCapabilityRefused  = errors.New("ploegd refused the capability")
 	errGatewayUnavailable = errors.New("credential_gateway_unavailable")
@@ -89,7 +90,16 @@ func grantKey(capability, sourceIP, sourceUID string) string {
 }
 
 func (c *grantCache) get(ctx context.Context, capability, sourceIP, sourceUID string) (gatewaycontract.Grant, error) {
-	key := grantKey(capability, sourceIP, sourceUID)
+	return c.fetch(ctx, grantKey(capability, sourceIP, sourceUID), gatewaycontract.GrantsPath,
+		gatewaycontract.GrantRequest{Capability: capability, SourceIP: sourceIP, SourceUID: sourceUID})
+}
+
+func (c *grantCache) session(ctx context.Context, token, sourceIP, sourceUID, podName, annotation string) (gatewaycontract.Grant, error) {
+	return c.fetch(ctx, grantKey(token, sourceIP, sourceUID)+"\x00session\x00"+annotation, gatewaycontract.SessionGrantsPath,
+		gatewaycontract.SessionGrantRequest{SessionToken: token, SourceIP: sourceIP, SourceUID: sourceUID, PodName: podName, SessionAnnotation: annotation})
+}
+
+func (c *grantCache) fetch(ctx context.Context, key, path string, body any) (gatewaycontract.Grant, error) {
 	now := c.now()
 	c.mu.Lock()
 	entry, hit := c.entries[key]
@@ -98,13 +108,16 @@ func (c *grantCache) get(ctx context.Context, capability, sourceIP, sourceUID st
 		return entry.grant, nil
 	}
 	var grant gatewaycontract.Grant
-	status, err := c.ploegd.post(ctx, gatewaycontract.GrantsPath, gatewaycontract.GrantRequest{Capability: capability, SourceIP: sourceIP, SourceUID: sourceUID}, &grant)
+	status, err := c.ploegd.post(ctx, path, body, &grant)
 	switch {
 	case err != nil:
 		return grant, fmt.Errorf("%w: %v", errGatewayUnavailable, err)
 	case status == http.StatusGone:
 		c.forget(key)
 		return grant, errRunSettled
+	case status == http.StatusNotFound && path == gatewaycontract.SessionGrantsPath:
+		c.forget(key)
+		return grant, errSessionUnknown
 	case status == http.StatusUnauthorized || status >= 500:
 		return grant, fmt.Errorf("%w: ploegd answered %d", errGatewayUnavailable, status)
 	case status != http.StatusOK:

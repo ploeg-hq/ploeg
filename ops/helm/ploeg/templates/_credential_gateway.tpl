@@ -76,8 +76,11 @@ value that would put a secret into a Run pod or that the gateway cannot serve.
 {{- if eq (include "ploeg.roleUsesDind" (dict "root" $root "team" $team "role" $w.role)) "true" -}}
 {{- fail (printf "team %s: harness.dind cannot run with executor.credentialGateway.enabled: DinD runs a privileged Docker daemon in the Run pod and hands the harness its client certificates (DOCKER_HOST, DOCKER_CERT_PATH, /certs), which is root on the node, and no secret enters a Run pod (ADR-0197). Set harness.dind: false at every applicable override" $who) -}}
 {{- end -}}
-{{- if eq $harness "claude-environment" -}}
-{{- fail (printf "team %s: harness claude-environment cannot run with executor.credentialGateway.enabled: claude-environment's Anthropic traffic and pushes go through the gateway's anthropic upstream, which is not built yet, and its pod holds a person's login (ADR-0197)" $who) -}}
+{{- if and (eq $harness "claude-environment") (eq ($w.carrier | default "") "routine") (not (include "ploeg.claudeRunnerOrchestrator" $root)) -}}
+{{- fail (printf "team %s: harness.claudeEnvironment.carrier routine with executor.credentialGateway.enabled needs claudeRunner.enabled with claudeRunner.mode orchestrator: a routine session clones and pushes only through this gateway, from a runner pod its orchestrator started (ADR-0197 section 7)" $who) -}}
+{{- end -}}
+{{- if and (eq $harness "claude-environment") (ne ($w.carrier | default "") "routine") -}}
+{{- fail (printf "team %s: harness claude-environment cannot run with executor.credentialGateway.enabled unless harness.claudeEnvironment.carrier is routine: a worker or a person's client that dispatches the session holds a Claude login, and in a gateway namespace a session starts only through the person's own routine (ADR-0197 section 7)" $who) -}}
 {{- end -}}
 {{- if eq $harness "claude-code" -}}
 {{- range $p := (include "ploeg.roleClaudePlugins" (dict "root" $root "team" $team "role" $w.role) | fromJson).plugins -}}

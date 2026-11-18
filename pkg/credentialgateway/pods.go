@@ -69,3 +69,12 @@ func (c *podCache) claimant(ctx context.Context, ip string) (kubeauth.Pod, bool)
 	p := pods[0]
 	return p, p.IP == ip && p.Phase == "Running" && !p.Deleting && runPodOwners[p.OwnerKind]
 }
+
+func (c *podCache) runner(ctx context.Context, ip string) (kubeauth.Pod, bool) {
+	pods, err := c.at(ctx, ip, false)
+	if err != nil || len(pods) != 1 {
+		return kubeauth.Pod{}, false
+	}
+	p := pods[0]
+	return p, p.UID != "" && p.IP == ip && p.Phase == "Running" && !p.Deleting && p.OwnerKind == "Job"
+}

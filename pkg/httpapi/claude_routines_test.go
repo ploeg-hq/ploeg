@@ -115,6 +115,12 @@ func newRoutineRig(t *testing.T) *routineRig {
 		ClaudeRoutines: &ClaudeRoutines{Client: &clauderoutine.Client{BaseURL: srv.URL}, GatewayMode: true},
 		SecretStore:    secrets,
 	}
+	gateways, err := NewCredentialGateways(`[{"namespace":"runs","serviceAccount":"gw","teams":["bronze","brass"]},{"namespace":"other","serviceAccount":"gw","teams":["silver"]}]`,
+		fakeReviewer{runsGatewayToken: "system:serviceaccount:runs:gw", otherGatewayToken: "system:serviceaccount:other:gw"}, []byte(strings.Repeat("s", 32)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.CredentialGateways = gateways
 	return &routineRig{t: t, server: s, handler: s.Handler(), issuer: is, secrets: secrets, api: api, apiURL: srv.URL, logs: logs}
 }
 
@@ -364,7 +370,7 @@ func TestASessionCreatedByAnotherAccountThanTheRoutinesIsRefused(t *testing.T) {
 	}
 }
 
-func TestClaudeRunnerPodHoldsNoClaudeCredential(t *testing.T) {
+func TestARoutineRunsResponsesCarryNoClaudeCredential(t *testing.T) {
 	rig := newRoutineRig(t)
 	rig.register()
 	id := rig.work("2130")
@@ -457,6 +463,45 @@ func TestARoutineRunIsStoredWithItsOwnCarrierAndItsSessionIsNeverHandedAPushCred
 	w := rig.sessionCall("/api/v1/claude-sessions/forge-credential", routineSession(1, "user:owner"), "")
 	if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "credential_gateway_mode") {
 		t.Fatalf("push credential for a routine session = %d %s, want 403 credential_gateway_mode", w.Code, w.Body)
+	}
+}
+
+func TestARoutineFiresForATeamBoundToACredentialGatewayAndTheClientClaimStillDoesNot(t *testing.T) {
+	rig := newRoutineRig(t)
+	rig.register()
+	if _, gated := rig.server.CredentialGateways.bindingForTeam("bronze"); !gated {
+		t.Fatal("the rig binds bronze to no gateway, so this proves nothing")
+	}
+	id := rig.work("2151")
+	if code, out := rig.fire(id); code != 200 {
+		t.Fatalf("fire for a Team a gateway binds = %d %v, want the routine fired", code, out)
+	}
+	rig.server.OperatorConfig.TeamHarnesses = clientCarriedHarnesses()
+	client := clientCarriedWork(t, rig.server, "2152", "ryan", rig.issuer.personID())
+	r := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/operator/work-items/%d/claim", client), nil)
+	r.Header.Set("Authorization", "Bearer "+rig.person())
+	w := httptest.NewRecorder()
+	rig.handler.ServeHTTP(w, r)
+	if w.Code != 409 || !strings.Contains(w.Body.String(), "credential_gateway_team") {
+		t.Fatalf("client claim for a gated Team = %d %s, want 409 credential_gateway_team", w.Code, w.Body)
+	}
+}
+
+func TestFireRoutineRefusesATeamBoundToNoCredentialGateway(t *testing.T) {
+	rig := newRoutineRig(t)
+	rig.register()
+	gateways, err := NewCredentialGateways(`[{"namespace":"other","serviceAccount":"gw","teams":["silver"]}]`,
+		fakeReviewer{otherGatewayToken: "system:serviceaccount:other:gw"}, []byte(strings.Repeat("s", 32)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rig.server.CredentialGateways = gateways
+	id := rig.work("2150")
+	if code, out := rig.fire(id); code != 409 || routineErrorCode(out) != "credential_gateway_required" {
+		t.Fatalf("fire for a Team no gateway serves = %d %v", code, out)
+	}
+	if rig.api.fires() != 0 || runStates(t, id) != "pending" {
+		t.Fatalf("fires %d, run %s: want nothing fired and the Run waiting", rig.api.fires(), runStates(t, id))
 	}
 }
 

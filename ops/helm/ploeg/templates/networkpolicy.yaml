@@ -116,7 +116,11 @@ spec:
   podSelector:
     matchLabels: {{- include "ploeg.credentialGatewaySelectorLabels" . | nindent 6 }}
   policyTypes: [Ingress, Egress]
-  ingress: {{- list (dict "from" (list (dict "podSelector" (dict "matchLabels" (dict "app.kubernetes.io/name" "ploeg-worker")))) "ports" $gatewayPorts) | toYaml | nindent 4 }}
+{{- $gatewayIngress := list (dict "from" (list (dict "podSelector" (dict "matchLabels" (dict "app.kubernetes.io/name" "ploeg-worker")))) "ports" $gatewayPorts) }}
+{{- if include "ploeg.claudeRunnerOrchestrator" . }}
+{{- $gatewayIngress = append $gatewayIngress (dict "from" (list (dict "podSelector" (dict "matchLabels" (include "ploeg.claudeRunnerSessionSelectorLabels" . | fromYaml)))) "ports" (list (dict "protocol" "TCP" "port" 8084))) }}
+{{- end }}
+  ingress: {{- toYaml $gatewayIngress | nindent 4 }}
 {{- $gwMCP := ($ex.credentialGateway.mcp | default dict) }}
 {{- $gatewayExtra := $gwMCP.egress | default list }}
 {{- if $gwMCP.adapters }}

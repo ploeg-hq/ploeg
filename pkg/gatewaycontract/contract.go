@@ -14,6 +14,7 @@ const (
 	RefusalHeader       = "X-Ploeg-Refusal"
 	Audience            = "ploegd"
 	GrantsPath          = "/api/v1/credential-gateway/grants"
+	SessionGrantsPath   = "/api/v1/credential-gateway/session-grants"
 	AuditPath           = "/api/v1/credential-gateway/audit"
 )
 
@@ -29,6 +30,10 @@ const (
 	RefusedRoute        = "forbidden_route"
 	RefusedClaim        = "claim_refused"
 	RefusedNoForge      = "no_forge_credential"
+	RefusedNoSession    = "missing_session_token"
+	RefusedSession      = "session_refused"
+	RefusedSessionNone  = "session_unknown"
+	RefusedPullRequest  = "not_the_runs_pull_request"
 )
 
 // Pin is the pod that claimed a Run through a credential gateway: its
@@ -45,6 +50,21 @@ type GrantRequest struct {
 	Capability string `json:"capability"`
 	SourceIP   string `json:"sourceIp"`
 	SourceUID  string `json:"sourceUid"`
+}
+
+// SessionGrantRequest asks ploegd for the grant of the routine Run a Claude
+// session token belongs to, from the runner pod the gateway saw it come from
+// (ADR-0197 section 7). ploegd verifies the token and pins the grant to that
+// pod on first use.
+type SessionGrantRequest struct {
+	SessionToken string `json:"sessionToken"`
+	SourceIP     string `json:"sourceIp"`
+	SourceUID    string `json:"sourceUid"`
+	PodName      string `json:"podName"`
+	// SessionAnnotation is the pod's ploeg.webgrip.dev/claude-session
+	// annotation, which the orchestrator's spawn-runner hook set: ploegd
+	// refuses a token of another session before it pins anything.
+	SessionAnnotation string `json:"sessionAnnotation"`
 }
 
 // Grant is what a credential gateway attaches for one Run. It never leaves
@@ -73,6 +93,11 @@ type Grant struct {
 	MCP      []MCPServer `json:"mcp,omitempty"`
 	Pin      Pin         `json:"pin"`
 	Deadline time.Time   `json:"deadline"`
+	// ClaudeSession is the session id, without its prefix, of a routine
+	// Run's grant; Title and Reference let its runner open the pull request.
+	ClaudeSession string `json:"claudeSession,omitempty"`
+	Title         string `json:"title,omitempty"`
+	Reference     string `json:"reference,omitempty"`
 	// TransactionToken is the Run's transaction token, signed for this
 	// answer only. The gateway attaches it to the Run's worker-control
 	// calls in place of the capability, so it never enters the Run pod.

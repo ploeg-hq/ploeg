@@ -34,10 +34,13 @@ type Config struct {
 	Bootstraps     map[string]string
 	ModelURL       string
 	RunPodSelector string
-	Pods           PodLookup
-	Limits         Limits
-	ScratchDir     string
-	HTTP           *http.Client
+	// SessionPodSelector selects the claude-runner's session pods, whose
+	// routine sessions reach the forge through SessionHandler.
+	SessionPodSelector string
+	Pods               PodLookup
+	Limits             Limits
+	ScratchDir         string
+	HTTP               *http.Client
 	// MCPClient reaches registered MCP servers. Nil is a client that never
 	// follows a redirect.
 	MCPClient  *http.Client
@@ -52,6 +55,7 @@ type Gateway struct {
 	ploegd    ploegdClient
 	grants    *grantCache
 	pods      *podCache
+	sessions  *podCache
 	limits    *limiter
 	audit     *auditor
 	upstreams map[string]Upstream
@@ -97,6 +101,7 @@ func New(cfg Config) (*Gateway, error) {
 		ploegd:    ploegd,
 		grants:    &grantCache{ploegd: ploegd, now: cfg.Now, entries: map[string]cachedGrant{}},
 		pods:      &podCache{lookup: cfg.Pods, namespace: cfg.Namespace, selector: cfg.RunPodSelector, now: cfg.Now, entries: map[string]cachedPods{}},
+		sessions:  &podCache{lookup: cfg.Pods, namespace: cfg.Namespace, selector: cfg.SessionPodSelector, now: cfg.Now, entries: map[string]cachedPods{}},
 		limits:    newLimiter(cfg.Limits, cfg.Now),
 		audit:     newAuditor(ploegd, cfg.Log),
 		upstreams: map[string]Upstream{},
@@ -242,6 +247,8 @@ func grantRefusal(err error) (int, string) {
 		return http.StatusForbidden, gatewaycontract.RefusedRunSettled
 	case errors.Is(err, errCapabilityRefused):
 		return http.StatusForbidden, gatewaycontract.RefusedCapability
+	case errors.Is(err, errSessionUnknown):
+		return http.StatusNotFound, gatewaycontract.RefusedSessionNone
 	default:
 		return http.StatusServiceUnavailable, gatewaycontract.RefusedUnavailable
 	}

@@ -260,7 +260,7 @@ func (s *Server) handleFireRoutine(w http.ResponseWriter, r *http.Request) {
 	if !s.routineTeamReady(w) {
 		return
 	}
-	item, sessionForge, ok := s.clientClaimable(w, r, p, id, s.routineCarriesTeam)
+	item, sessionForge, ok := s.clientClaimable(w, r, p, id, s.routineCarriesTeam, true)
 	if !ok {
 		return
 	}

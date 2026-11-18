@@ -189,6 +189,8 @@ env:
   PLOEG_GATEWAY_TOKEN_FILE: The projected ServiceAccount token, audience `ploegd`, the credential gateway proves itself to ploegd with.
   PLOEG_GATEWAY_BOOTSTRAP_DIR: Directory of `<team>--<role or default>` files holding the bootstrap capabilities the credential gateway attaches to a claim it has tied to a Run pod.
   PLOEG_GATEWAY_RUN_POD_SELECTOR: Label selector of the Run pods the credential gateway serves (default `app.kubernetes.io/name=ploeg-worker`).
+  PLOEG_GATEWAY_SESSION_POD_SELECTOR: "Label selector of the claude-runner session pods whose routine sessions clone and push through the gateway's session port (chart: `app.kubernetes.io/name=ploeg-claude-runner-session` with `claudeRunner.mode: orchestrator`). Empty serves no session port (ADR-0197 section 7)."
+  PLOEG_GATEWAY_SESSION_ADDR: Listener of the credential gateway's session port for claude-runner session pods (default `:8084`).
   PLOEG_GATEWAY_CONTROL_ADDR: Listener of the credential gateway's ploegd route family (default `:8080`).
   PLOEG_GATEWAY_FORGE_ADDR: Listener of the credential gateway's forge route family (default `:8081`).
   PLOEG_GATEWAY_MODEL_ADDR: Listener of the credential gateway's model route family (default `:8082`).

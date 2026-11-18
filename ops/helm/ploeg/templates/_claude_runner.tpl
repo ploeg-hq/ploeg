@@ -141,6 +141,10 @@ spec:
           env:
             - name: PLOEG_URL
               value: {{ include "ploeg.claudeRunnerSessionUrl" . | quote }}
+            {{- if $gateway }}
+            - name: PLOEG_CREDENTIAL_GATEWAY
+              value: "on"
+            {{- end }}
             {{- with (include "ploeg.claudeCodeEnv" . | fromJsonArray) }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
