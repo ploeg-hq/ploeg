@@ -1,5 +1,6 @@
 {{- include "ploeg.requireIntegrations" . }}
 {{- include "ploeg.requireSupportProfile" . }}
+{{- $kubeApiAccess := and (include "ploeg.credentialGatewayEnabled" .) (not .Values.secretStore.type) }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -50,11 +51,18 @@ spec:
           ports:
             - name: http
               containerPort: 8080
-          {{- if .Values.config }}
+          {{- if or .Values.config $kubeApiAccess }}
           volumeMounts:
+            {{- if .Values.config }}
             - name: config
               mountPath: /etc/ploeg
               readOnly: true
+            {{- end }}
+            {{- if $kubeApiAccess }}
+            - name: kube-api-access
+              mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+              readOnly: true
+            {{- end }}
           {{- end }}
           env:
             {{- if .Values.config }}
@@ -485,6 +493,12 @@ spec:
             {{- end }}
             {{- end }}
             {{- end }}
+            {{- if include "ploeg.credentialGatewayEnabled" . }}
+            {{- $teams := list }}
+            {{- range .Values.executor.teams }}{{- $teams = append $teams .name }}{{- end }}
+            - name: PLOEG_CREDENTIAL_GATEWAYS
+              value: {{ list (dict "namespace" (include "ploeg.executorNamespace" .) "serviceAccount" (include "ploeg.credentialGatewayName" .) "teams" $teams) | toJson | quote }}
+            {{- end }}
             {{- include "ploeg.workerControlEnv" . | nindent 12 }}
             {{- if .Values.operator.consumers }}
             {{- include "ploeg.operatorControlEnv" . | nindent 12 }}
@@ -511,9 +525,29 @@ spec:
               sleep:
                 seconds: 5
           resources: {{- toYaml .Values.resources | nindent 12 }}
-      {{- if .Values.config }}
+      {{- if or .Values.config $kubeApiAccess }}
       volumes:
+        {{- if .Values.config }}
         - name: config
           configMap:
             name: {{ include "ploeg.fullname" . }}-config
+        {{- end }}
+        {{- if $kubeApiAccess }}
+        - name: kube-api-access
+          projected:
+            sources:
+              - serviceAccountToken:
+                  expirationSeconds: 3607
+                  path: token
+              - configMap:
+                  name: kube-root-ca.crt
+                  items:
+                    - key: ca.crt
+                      path: ca.crt
+              - downwardAPI:
+                  items:
+                    - path: namespace
+                      fieldRef:
+                        fieldPath: metadata.namespace
+        {{- end }}
       {{- end }}

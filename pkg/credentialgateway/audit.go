@@ -33,6 +33,19 @@ type auditor struct {
 	mu       sync.Mutex
 	uses     map[useKey]*gatewaycontract.Use
 	refusals []gatewaycontract.Refusal
+	mcpCalls []gatewaycontract.MCPCall
+}
+
+const maxPendingMCPCalls = 500
+
+func (a *auditor) mcpCall(c gatewaycontract.MCPCall) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if len(a.mcpCalls) < maxPendingMCPCalls {
+		a.mcpCalls = append(a.mcpCalls, c)
+		return
+	}
+	a.log.Warn("credential gateway dropped an MCP call record: too many wait for ploegd", "run", prefix(c.RunToken, 12), "server", c.ServerID, "tool", c.Tool)
 }
 
 func newAuditor(ploegd ploegdClient, log *slog.Logger) *auditor {
@@ -74,12 +87,13 @@ func (a *auditor) anonymous(family string, r *http.Request, status int, ip strin
 func (a *auditor) take() gatewaycontract.AuditBatch {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	batch := gatewaycontract.AuditBatch{Refusals: a.refusals}
+	batch := gatewaycontract.AuditBatch{Refusals: a.refusals, MCPCalls: a.mcpCalls}
 	for _, u := range a.uses {
 		batch.Uses = append(batch.Uses, *u)
 	}
 	a.uses = map[useKey]*gatewaycontract.Use{}
 	a.refusals = nil
+	a.mcpCalls = nil
 	return batch
 }
 
@@ -101,11 +115,15 @@ func (a *auditor) putBack(b gatewaycontract.AuditBatch) {
 	if len(a.refusals) > maxPendingRefusals {
 		a.refusals = a.refusals[:maxPendingRefusals]
 	}
+	a.mcpCalls = append(b.MCPCalls, a.mcpCalls...)
+	if len(a.mcpCalls) > maxPendingMCPCalls {
+		a.mcpCalls = a.mcpCalls[:maxPendingMCPCalls]
+	}
 }
 
 func (a *auditor) flush(ctx context.Context) error {
 	batch := a.take()
-	if len(batch.Uses) == 0 && len(batch.Refusals) == 0 {
+	if len(batch.Uses) == 0 && len(batch.Refusals) == 0 && len(batch.MCPCalls) == 0 {
 		return nil
 	}
 	status, err := a.ploegd.post(ctx, gatewaycontract.AuditPath, batch, nil)

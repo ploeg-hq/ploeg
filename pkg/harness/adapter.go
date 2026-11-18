@@ -184,6 +184,16 @@ type LLMEnv struct {
 	// was minted with MCP access groups. An adapter that supports it connects
 	// to this one server with APIKey and to no other (ADR-0078). "" = no MCP.
 	MCPURL string
+	// MCPServers are the registered MCP servers the Run reaches through its
+	// credential gateway (ADR-0199): each at the gateway's URL, with APIKey,
+	// the Run's capability, as its bearer. No server credential is here.
+	MCPServers []MCPServer
+}
+
+// MCPServer is one MCP server a harness connects to through the gateway.
+type MCPServer struct {
+	Name string
+	URL  string
 }
 
 // CommandAdapter is the spawn-and-wait sub-contract: prepare task input,

@@ -39,7 +39,7 @@ spec:
     ttlSecondsAfterFinished: {{ $root.Values.executor.finishedRunTtlSeconds }}
     activeDeadlineSeconds: {{ $root.Values.executor.activeDeadlineSeconds }}
     template:
-      {{- include "ploeg.workerPodTemplate" (dict "root" $root "team" $team "role" dict "pool" $pool) | nindent 6 }}
+      {{- include "ploeg.runPodTemplate" (dict "root" $root "team" $team "role" dict "pool" $pool) | nindent 6 }}
   triggers:
     - type: postgresql
       metadata:

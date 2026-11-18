@@ -52,7 +52,12 @@ type gatewayClaim struct {
 
 func claimThroughGateway(t *testing.T, s *Server, bootstrap string, headers map[string]string) (gatewayClaim, string) {
 	t.Helper()
-	r := httptest.NewRequest(http.MethodPost, "/api/v1/claim", strings.NewReader(`{"team":"bronze","role":"reviewer","harness":"openhands"}`))
+	return claimWithBody(t, s, bootstrap, headers, `{"team":"bronze","role":"reviewer","harness":"openhands"}`)
+}
+
+func claimWithBody(t *testing.T, s *Server, bootstrap string, headers map[string]string, body string) (gatewayClaim, string) {
+	t.Helper()
+	r := httptest.NewRequest(http.MethodPost, "/api/v1/claim", strings.NewReader(body))
 	r.Header.Set("Authorization", "Bearer "+bootstrap)
 	r.Header.Set("X-Ploeg-Worker-ID", "pod")
 	for k, v := range headers {
@@ -280,6 +285,7 @@ func TestGatewayAuditRecordsRefusalsUnderTheRun(t *testing.T) {
 	batch, _ := json.Marshal(gatewaycontract.AuditBatch{
 		Uses:     []gatewaycontract.Use{{RunToken: claim.RunToken, Family: "forge", Credential: "forge_token", Requests: 3, Refused: 1, Bytes: 10}},
 		Refusals: []gatewaycontract.Refusal{{RunToken: claim.RunToken, Family: "forge", Method: "POST", Route: "/x", Reason: "outside_repository", Status: 403}},
+		MCPCalls: []gatewaycontract.MCPCall{{RunToken: claim.RunToken, ServerID: "mcp_01", Server: "obs", Method: "tools/call", Tool: "search_logs", Access: "read", Outcome: "allowed", Status: 200}},
 	})
 	for _, token := range []string{otherGatewayToken, runsGatewayToken} {
 		r := httptest.NewRequest(http.MethodPost, gatewaycontract.AuditPath, bytes.NewReader(batch))
@@ -296,6 +302,13 @@ func TestGatewayAuditRecordsRefusalsUnderTheRun(t *testing.T) {
 	}
 	if err := testPool.QueryRow(context.Background(), `SELECT COALESCE(sum(requests), 0) FROM credential_gateway_use WHERE run_token = $1`, claim.RunToken).Scan(&requests); err != nil {
 		t.Fatal(err)
+	}
+	var calls int
+	if err := testPool.QueryRow(context.Background(), `SELECT count(*) FROM audit_log WHERE action = 'mcp.call' AND detail->>'tool' = 'search_logs' AND detail->>'outcome' = 'allowed'`).Scan(&calls); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Fatalf("mcp.call rows=%d: ploegd records each MCP call once, and only from the Run's gateway", calls)
 	}
 	if refusals != 1 || requests != 3 {
 		t.Fatalf("refusal rows=%d requests=%d: the gateway of another namespace must not write a Run's audit", refusals, requests)
@@ -397,6 +410,7 @@ func TestTheAuditOfASweptGrantsRunIsStillKeptForItsOwnGatewayOnly(t *testing.T) 
 	batch, _ := json.Marshal(gatewaycontract.AuditBatch{
 		Uses:     []gatewaycontract.Use{{RunToken: claim.RunToken, Family: "forge", Credential: "forge_token", Requests: 2}},
 		Refusals: []gatewaycontract.Refusal{{RunToken: claim.RunToken, Family: "forge", Method: "POST", Route: "/x", Reason: "run_settled", Status: 403}},
+		MCPCalls: []gatewaycontract.MCPCall{{RunToken: claim.RunToken, ServerID: "mcp_01", Server: "obs", Method: "tools/call", Tool: "after_settle", Outcome: "allowed", Status: 200}},
 	})
 	for _, token := range []string{otherGatewayToken, runsGatewayToken} {
 		r := httptest.NewRequest(http.MethodPost, gatewaycontract.AuditPath, bytes.NewReader(batch))
@@ -413,6 +427,13 @@ func TestTheAuditOfASweptGrantsRunIsStillKeptForItsOwnGatewayOnly(t *testing.T) 
 	}
 	if err := testPool.QueryRow(ctx, `SELECT COALESCE(sum(requests), 0) FROM credential_gateway_use WHERE run_token = $1`, claim.RunToken).Scan(&requests); err != nil {
 		t.Fatal(err)
+	}
+	var calls int
+	if err := testPool.QueryRow(ctx, `SELECT count(*) FROM audit_log WHERE action = 'mcp.call' AND detail->>'tool' = 'after_settle'`).Scan(&calls); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Fatalf("after the sweep: mcp.call rows=%d, want the Run's own gateway's 1", calls)
 	}
 	if refusals != 1 || requests != 2 {
 		t.Fatalf("after the sweep: refusal rows=%d requests=%d, want the Run's own gateway's 1 and 2", refusals, requests)

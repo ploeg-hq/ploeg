@@ -111,6 +111,11 @@ func (g *CredentialGateways) bindingForTeam(team string) (GatewayBinding, bool) 
 	return GatewayBinding{}, false
 }
 
+func (g *CredentialGateways) gates(team string) bool {
+	_, gated := g.bindingForTeam(team)
+	return gated
+}
+
 func (g *CredentialGateways) authenticate(r *http.Request) (GatewayBinding, bool) {
 	token, ok := strings.CutPrefix(r.Header.Get(gatewaycontract.AuthorizationHeader), "Bearer ")
 	if !ok || token == "" || len(token) > 16<<10 {
@@ -403,6 +408,7 @@ func (s *Server) handleGatewayGrant(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	grant.Deadline = run.Deadline
+	grant.MCP = s.gatewayMCP(r.Context(), c.RunToken, run.Team, run.Role)
 	if s.TransactionTokens != nil {
 		token, _, err := s.issueTransactionToken(r.Context(), c.RunToken, c.WorkerID)
 		if err != nil {
@@ -448,7 +454,7 @@ func (s *Server) handleGatewayAudit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req gatewaycontract.AuditBatch
-	if err := decodeBounded(w, r, gatewayBodyLimit, &req); err != nil || len(req.Uses)+len(req.Refusals) > maxGatewayAuditRows {
+	if err := decodeBounded(w, r, gatewayBodyLimit, &req); err != nil || len(req.Uses)+len(req.Refusals)+len(req.MCPCalls) > maxGatewayAuditRows {
 		http.Error(w, "audit batch malformed or too large", http.StatusBadRequest)
 		return
 	}

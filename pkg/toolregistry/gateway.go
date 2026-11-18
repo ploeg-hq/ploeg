@@ -9,7 +9,7 @@ import (
 
 // RunRef names the Run a gateway grant is for.
 type RunRef struct {
-	RunID    int64
+	RunID    string
 	WorkItem string
 	Tenant   string
 	Team     string

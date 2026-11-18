@@ -137,6 +137,16 @@ func run(log *slog.Logger) error {
 		KeyTTL:              durationOr("LITELLM_KEY_DURATION", 4*time.Hour),
 	}
 
+	if cfg.CredentialGateway, err = switchEnv("PLOEG_CREDENTIAL_GATEWAY", false); err != nil {
+		return err
+	}
+	if cfg.CredentialGateway {
+		if err := refuseCredentialsInGatewayMode(cfg); err != nil {
+			return err
+		}
+		cfg.GatewayForgeURL = trimSlash(os.Getenv("PLOEG_CREDENTIAL_GATEWAY_FORGE_URL"))
+		cfg.GatewayMCPURL = trimSlash(os.Getenv("PLOEG_CREDENTIAL_GATEWAY_MCP_URL"))
+	}
 	if cfg.LLMKeyIsolation != "" && cfg.LLMKeyIsolation != worker.KeyIsolationProxy {
 		return fmt.Errorf("PLOEG_LLM_KEY_ISOLATION must be empty or %q, got %q", worker.KeyIsolationProxy, cfg.LLMKeyIsolation)
 	}
@@ -153,6 +163,9 @@ func run(log *slog.Logger) error {
 	}
 	if cfg.ForgeURL, cfg.BuilderToken, err = envForge(); err != nil {
 		return err
+	}
+	if cfg.CredentialGateway {
+		cfg.ForgeURL = cfg.GatewayForgeURL
 	}
 
 	// The harness seam: fail fast on a misconfigured adapter BEFORE claiming.
@@ -197,6 +210,9 @@ func run(log *slog.Logger) error {
 	}
 	if cfg.HarnessIdleTimeout, err = boundEnv("PLOEG_HARNESS_IDLE_TIMEOUT", defaultHarnessIdleTimeout); err != nil {
 		return err
+	}
+	if cfg.CredentialGateway && hc.Name == "claude-environment" {
+		return errors.New("PLOEG_CREDENTIAL_GATEWAY: a claude-environment Run reaches Anthropic through the gateway's anthropic route family, which is not built yet; run this Role with a worker-run Harness (ADR-0197 section 7)")
 	}
 	adapter, err := worker.NewAdapter(hc)
 	if err != nil {
@@ -257,6 +273,9 @@ func run(log *slog.Logger) error {
 	var broker llmbroker.Broker
 	switch envOr("PLOEG_LLM_CREDENTIAL_MODE", "managed") {
 	case "managed":
+		if cfg.CredentialGateway && cfg.WorkerID != "" {
+			break
+		}
 		if cfg.BootstrapToken == "" || cfg.WorkerID == "" {
 			return fmt.Errorf("managed worker requires bootstrap capability and worker identity")
 		}
@@ -452,6 +471,35 @@ func durationEnv(key string) (time.Duration, error) {
 		return 0, fmt.Errorf("%s must be a Go duration such as 45m or 90s: %w", key, err)
 	}
 	return d, nil
+}
+
+var gatewayModeForbiddenEnvironment = []string{
+	"PLOEG_WORKER_BOOTSTRAP_TOKEN", "AGENT_BUILDER_TOKEN", "LLM_API_KEY", "CLAUDE_CODE_OAUTH_REFRESH_TOKEN",
+	"CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "SELF_HOSTED_RUNNER_ENVIRONMENT_SECRET",
+}
+
+// refuseCredentialsInGatewayMode stops a gateway-mode worker that finds any
+// credential in its pod, so a misrendered pod never runs a Run with one
+// (ADR-0197): no credential variable, no ServiceAccount token, no in-worker
+// proxy, and a gateway to reach.
+func refuseCredentialsInGatewayMode(cfg worker.Config) error {
+	for _, key := range gatewayModeForbiddenEnvironment {
+		if os.Getenv(key) != "" {
+			return fmt.Errorf("PLOEG_CREDENTIAL_GATEWAY: %s is set, but a Run pod behind the credential gateway holds no credential", key)
+		}
+	}
+	for _, kv := range os.Environ() {
+		if strings.HasPrefix(kv, "PLOEG_CLAUDE_PLUGIN_ENV_") {
+			return fmt.Errorf("PLOEG_CREDENTIAL_GATEWAY: %s is set, but a Run pod behind the credential gateway passes no variable to a plugin", strings.SplitN(kv, "=", 2)[0])
+		}
+	}
+	if cfg.LLMKeyIsolation != "" || cfg.ForgeTokenIsolation != "" {
+		return errors.New("PLOEG_CREDENTIAL_GATEWAY: the in-worker credential proxies are refused behind the credential gateway; unset PLOEG_LLM_KEY_ISOLATION and PLOEG_FORGE_TOKEN_ISOLATION")
+	}
+	if os.Getenv("PLOEG_CREDENTIAL_GATEWAY_FORGE_URL") == "" || os.Getenv("LLM_BASE_URL") == "" {
+		return errors.New("PLOEG_CREDENTIAL_GATEWAY: PLOEG_CREDENTIAL_GATEWAY_FORGE_URL and LLM_BASE_URL must name the gateway")
+	}
+	return worker.RefuseServiceAccountToken()
 }
 
 // workerTeam is the Team the worker claims for. A runtime Team pool's

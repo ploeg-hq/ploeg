@@ -1,0 +1,18 @@
+# CI-only values: a stdio MCP adapter whose image is not pinned by digest is
+# refused (ADR-0199 section 7).
+executor:
+  enabled: true
+  type: keda
+  credentialGateway:
+    enabled: true
+    mcp:
+      adapters:
+        - name: grafana
+          team: zinc
+          image: registry.example/grafana-mcp:latest
+          command: ["/usr/local/bin/mcp-grafana"]
+  teams:
+    - name: zinc
+      model: litellm_proxy/deepseek-chat
+      budget: "2"
+      harness: {dind: false}

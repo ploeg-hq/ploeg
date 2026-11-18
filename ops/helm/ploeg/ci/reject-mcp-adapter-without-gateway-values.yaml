@@ -1,0 +1,18 @@
+# CI-only values: a stdio MCP adapter without the credential gateway is
+# refused, because a Run reaches it only through the gateway (ADR-0199).
+executor:
+  enabled: true
+  type: keda
+  credentialGateway:
+    enabled: false
+    mcp:
+      adapters:
+        - name: grafana
+          team: zinc
+          image: registry.example/grafana-mcp@sha256:1111111111111111111111111111111111111111111111111111111111111111
+          command: ["/usr/local/bin/mcp-grafana"]
+  teams:
+    - name: zinc
+      model: litellm_proxy/deepseek-chat
+      budget: "2"
+      harness: {dind: false}

@@ -68,13 +68,47 @@ type Grant struct {
 	ModelKey            string     `json:"modelKey,omitempty"`
 	ModelAlias          string     `json:"modelAlias,omitempty"`
 	MCPAccessGroups     []string   `json:"mcpAccessGroups,omitempty"`
-	Pin                 Pin        `json:"pin"`
-	Deadline            time.Time  `json:"deadline"`
+	// MCP are the registered MCP servers the Run's Role was given, each
+	// with the credential the gateway attaches (ADR-0199 section 4).
+	MCP      []MCPServer `json:"mcp,omitempty"`
+	Pin      Pin         `json:"pin"`
+	Deadline time.Time   `json:"deadline"`
 	// TransactionToken is the Run's transaction token, signed for this
 	// answer only. The gateway attaches it to the Run's worker-control
 	// calls in place of the capability, so it never enters the Run pod.
 	TransactionToken string `json:"transactionToken,omitempty"`
 }
+
+// MCPServer is one MCP server a Run may reach through the gateway's mcp
+// route family, keyed by Key in the path /mcp/<key>.
+type MCPServer struct {
+	ID         string            `json:"id"`
+	Key        string            `json:"key"`
+	URL        string            `json:"url"`
+	AuthKind   string            `json:"authKind"`
+	Header     string            `json:"header,omitempty"`
+	Credential string            `json:"credential,omitempty"`
+	Tools      map[string]string `json:"tools"`
+}
+
+// RunTools is what a worker installs and configures for one Run: the MCP
+// server keys its harness reaches through the gateway and the skill
+// bundles it installs read-only, by digest (ADR-0199).
+type RunTools struct {
+	MCPServers []string    `json:"mcpServers"`
+	Withheld   string      `json:"withheld,omitempty"`
+	Skills     []RunSkills `json:"skills"`
+}
+
+// RunSkills is one skill bundle of a Run.
+type RunSkills struct {
+	Key    string   `json:"key"`
+	Digest string   `json:"digest"`
+	Skills []string `json:"skills,omitempty"`
+}
+
+// Withheld reasons of RunTools.
+const WithheldNoGateway = "mcp_requires_credential_gateway"
 
 // Use is one batch of a gateway's attached uses for one Run, route family and
 // credential kind.
@@ -101,4 +135,22 @@ type Refusal struct {
 type AuditBatch struct {
 	Uses     []Use     `json:"uses"`
 	Refusals []Refusal `json:"refusals"`
+	MCPCalls []MCPCall `json:"mcpCalls,omitempty"`
+}
+
+// MCPCall is one MCP request the gateway's mcp route family answered for a
+// Run: the server, method, tool and access, and "allowed" or the reason the
+// gateway refused it (ADR-0199 section 4).
+type MCPCall struct {
+	RunToken   string `json:"run"`
+	ServerID   string `json:"serverId"`
+	Server     string `json:"server"`
+	Method     string `json:"method"`
+	Tool       string `json:"tool,omitempty"`
+	Access     string `json:"access,omitempty"`
+	Outcome    string `json:"outcome"`
+	Status     int    `json:"status"`
+	BytesIn    int    `json:"bytesIn"`
+	BytesOut   int    `json:"bytesOut"`
+	DurationMS int64  `json:"durationMs"`
 }

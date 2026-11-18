@@ -16,6 +16,7 @@ import (
 
 	"github.com/ploeg-hq/ploeg/pkg/credentialgateway"
 	"github.com/ploeg-hq/ploeg/pkg/kubeauth"
+	"github.com/ploeg-hq/ploeg/pkg/mcpstdio"
 )
 
 var version = "0.0.0-dev"
@@ -34,6 +35,9 @@ type listener struct {
 }
 
 func run(log *slog.Logger) error {
+	if err := mcpstdio.Undumpable(); err != nil {
+		return fmt.Errorf("keep the gateway's memory and environment from other processes: %w", err)
+	}
 	cfg, err := configFromEnv(log)
 	if err != nil {
 		return err
@@ -52,6 +56,7 @@ func run(log *slog.Logger) error {
 		{envOr("PLOEG_GATEWAY_FORGE_ADDR", ":8081"), g.Handler(credentialgateway.FamilyForge)},
 		{envOr("PLOEG_GATEWAY_HEALTH_ADDR", ":8090"), health()},
 	}
+	listeners = append(listeners, listener{envOr("PLOEG_GATEWAY_MCP_ADDR", ":8083"), g.Handler(credentialgateway.FamilyMCP)})
 	if model := g.Handler(credentialgateway.FamilyModel); model != nil {
 		listeners = append(listeners, listener{envOr("PLOEG_GATEWAY_MODEL_ADDR", ":8082"), model})
 	}

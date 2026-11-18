@@ -768,6 +768,66 @@ executor:
   apiUrl: ""      # empty = http://<fullname>:<service.port>
   namespace: ""
   acknowledgeSharedNamespace: false
+  # PROPOSED (ADR-0197), opt-in: true renders ploeg-credential-gateway, a
+  # Deployment in the executor namespace that attaches every credential a Run
+  # uses, and makes each Run pod of this release credential-free: no
+  # secretKeyRef, no Secret or projected volume, no ServiceAccount token. A
+  # Run pod reaches ploegd, its forge and the model gateway only through the
+  # gateway's Service, with its per-Run capability as its one bearer value.
+  # The gateway mounts the bootstrap Secret's entries for this release's teams
+  # and Roles and authenticates to ploegd with a projected ServiceAccount
+  # token that ploegd checks through TokenReview. The render refuses it with
+  # workerAuth.mode legacy, workerAuth.hmacCapability off, claudeRunner, a
+  # claude-environment harness or a Claude Code plugin variable read from a
+  # Secret.
+  credentialGateway:
+    enabled: false
+    replicas: 2
+    # A required pod anti-affinity keeps the gateway off every node that runs
+    # a Run pod, and a node affinity keeps it out of executor.nodeSelector's
+    # pool. The chart cannot count nodes: where that leaves no node, true
+    # relaxes both to preferred and labels every Run pod and the gateway
+    # ploeg.webgrip.dev/credential-gateway-shared-node: "true".
+    acknowledgeSingleNode: false
+    # sizeLimit of the gateway's /tmp, where it checks a prepare or OpenHands
+    # Run's push from its pack: per push up to 64 MiB of pack, its indexed
+    # copy and a fetch of the forge's base branch. 2Gi holds four such pushes
+    # at once with a base branch of up to 384 MiB packed (4 x 512 MiB).
+    scratchSizeLimit: 2Gi
+    # Per Run and route family, a token bucket on requests and on request
+    # bytes; maxUpstreamConnections caps the gateway's concurrent upstream
+    # connections (PLOEG_GATEWAY_LIMITS).
+    limits:
+      forge: {requestsPerSecond: 20, burst: 40, bytesPerSecond: 52428800}
+      model: {requestsPerSecond: 10, burst: 20, bytesPerSecond: 20971520}
+      ploegd: {requestsPerSecond: 10, burst: 20, bytesPerSecond: 10485760}
+      mcp: {requestsPerSecond: 5, burst: 20, bytesPerSecond: 5242880}
+      maxUpstreamConnections: 256
+    # Registered MCP servers (ADR-0199) are reached only through the gateway.
+    # egress lists the NetworkPolicy egress rules the gateway gets for them;
+    # [] reaches only the stdio adapters below. Each adapter runs one stdio
+    # MCP server in its own pod outside every Run pod, behind
+    # ploeg-mcp-stdio-bridge (one process per MCP session, each in its own
+    # 0700 directory as HOME, TMPDIR and working directory, removed when the
+    # session ends, with only PATH, locale and its credential in its
+    # environment), reachable only from the gateway. An adapter serves one
+    # Team: register http://<release>-mcp-<name>.<namespace>.svc:8080/mcp
+    # only in that Team's tools and list that host in
+    # config.toolRegistry.plainHTTPHosts.
+    #   - name: grafana
+    #     team: silver
+    #     image: registry.example/grafana-mcp@sha256:<64 hex>
+    #     command: ["/usr/local/bin/mcp-grafana", "--transport", "stdio"]
+    #     credentialSecret: {name: grafana-mcp, key: token, env: GRAFANA_API_KEY}
+    #     egress: [{to: [{ipBlock: {cidr: 10.0.40.0/24}}], ports: [{protocol: TCP, port: 3000}]}]
+    mcp:
+      egress: []
+      adapters: []
+    resources:
+      requests: {cpu: 50m, memory: 64Mi}
+      limits: {cpu: "1", memory: 256Mi}
+    nodeSelector: {} # the gateway's own pool; never one executor.nodeSelector names
+    tolerations: []
   cronjob:
     # type=cronjob only: how often each team polls for work. Idle ticks are
     # free (empty-handed claim = exit 0).

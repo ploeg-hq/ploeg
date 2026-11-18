@@ -79,6 +79,7 @@ for case in ":default" \
 	"ops/helm/ploeg/ci/claude-runner-values.yaml:claude-runner" \
 	"ops/helm/ploeg/ci/name-overrides-values.yaml:name-overrides" \
 	"ops/helm/ploeg/ci/secret-store-kubernetes-values.yaml:secret-store-kubernetes" \
+	"ops/helm/ploeg/ci/executor-credential-gateway-values.yaml:executor-credential-gateway" \
 	"ops/helm/ploeg/ci/executor-runtime-teams-values.yaml:executor-runtime-teams"; do
 	values=${case%%:*}
 	name=${case##*:}
@@ -135,6 +136,18 @@ for case in "ops/helm/ploeg/ci/reject-reader-without-read-token-values.yaml:read
 	"ops/helm/ploeg/ci/reject-unknown-harness-container-values.yaml:value must be one of 'separate', 'shared'" \
 	"ops/helm/ploeg/ci/reject-secret-store-without-namespace-values.yaml:secretStore.kubernetes.namespace is required when secretStore.type is kubernetes" \
 	"ops/helm/ploeg/ci/reject-secret-store-in-release-namespace-values.yaml:secretStore.kubernetes.namespace must not be the release namespace default" \
+	"ops/helm/ploeg/ci/reject-credential-gateway-legacy-values.yaml:executor.credentialGateway.enabled needs executor.workerAuth.mode managed" \
+	"ops/helm/ploeg/ci/reject-credential-gateway-hmac-off-values.yaml:executor.credentialGateway.enabled needs executor.workerAuth.hmacCapability issue" \
+	"ops/helm/ploeg/ci/reject-credential-gateway-claude-environment-values.yaml:team pewter: harness claude-environment cannot run with executor.credentialGateway.enabled" \
+	"ops/helm/ploeg/ci/reject-credential-gateway-plugin-secret-values.yaml:reads LINK_TOKEN from Secret session-link-plugin, and with executor.credentialGateway.enabled no Secret enters a Run pod" \
+	"ops/helm/ploeg/ci/reject-credential-gateway-claude-runner-values.yaml:claudeRunner.enabled cannot run with executor.credentialGateway.enabled" \
+	"ops/helm/ploeg/ci/reject-credential-gateway-dind-values.yaml:team silver: harness.dind cannot run with executor.credentialGateway.enabled" \
+	"ops/helm/ploeg/ci/reject-credential-gateway-sandbox-network-policy-values.yaml:executor.sandbox.networkPolicy cannot be set with executor.credentialGateway.enabled" \
+	"ops/helm/ploeg/ci/reject-credential-gateway-without-network-policy-values.yaml:executor.credentialGateway.enabled needs networkPolicy.enabled" \
+	"ops/helm/ploeg/ci/reject-credential-gateway-runtime-pool-values.yaml:executor.runtimeTeams.pools cannot run with executor.credentialGateway.enabled" \
+	"ops/helm/ploeg/ci/reject-mcp-adapter-undigested-values.yaml:does not match pattern '@sha256:[0-9a-f]{64}\$'" \
+	"ops/helm/ploeg/ci/reject-mcp-adapter-without-gateway-values.yaml:executor.credentialGateway.mcp.adapters needs executor.credentialGateway.enabled" \
+	"ops/helm/ploeg/ci/reject-mcp-adapter-without-team-values.yaml:executor.credentialGateway.mcp.adapters[grafana].team names the one Team whose Runs use this adapter" \
 	"ops/helm/ploeg/ci/reject-forge-token-isolation-off-values.yaml:team qualified: credential_isolation_required: every Role runs with its forge token and model key isolated from its harness (ADR-0034), and forge token isolation is off" \
 	"ops/helm/ploeg/ci/reject-llm-key-isolation-off-values.yaml:team qualified: credential_isolation_required: every Role runs with its forge token and model key isolated from its harness (ADR-0034), and model key isolation is off" \
 	"ops/helm/ploeg/ci/reject-dind-values.yaml:team acknowledged: credential_isolation_required: every Role runs with its forge token and model key isolated from its harness (ADR-0034), and harness.dind is true" \
@@ -579,6 +592,87 @@ for version in 0.3.0-rc.1 0.3.0; do
 	fi
 done
 rm -rf "$executor_namespace_chart"
+
+GATEWAY_VALUES=ops/helm/ploeg/ci/executor-credential-gateway-values.yaml
+check_gateway() { # <rendered-file> <bootstrap keys, comma-separated>
+	if ! uv run -q --no-project --with pyyaml==6.0.3 python scripts/check-credential-gateway.py "$1" ploeg-workers "$2"; then
+		status=1
+	fi
+}
+gateway_render=$(mktemp)
+render "$GATEWAY_VALUES" >"$gateway_render"
+check_gateway "$gateway_render" silver--builder,silver--reviewer,zinc--default,tin--default,copper--default
+helm template ploeg ops/helm/ploeg -f "$REQUIRED" -f "$GATEWAY_VALUES" -f ops/helm/ploeg/ci/executor-credential-gateway-cronjob-values.yaml >"$gateway_render"
+if ! grep -qF 'kind: CronJob' "$gateway_render"; then
+	echo "the credential gateway CronJob case renders no CronJob"
+	status=1
+fi
+check_gateway "$gateway_render" silver--builder,silver--reviewer,zinc--default
+shared_node=$(helm template ploeg ops/helm/ploeg -f "$REQUIRED" -f "$GATEWAY_VALUES" --set executor.credentialGateway.acknowledgeSingleNode=true 2>&1)
+run_pods=$(printf '%s\n' "$shared_node" | grep -cE -- '- name: PLOEG_CREDENTIAL_GATEWAY$' || true)
+labelled=$(printf '%s\n' "$shared_node" | grep -cF -- 'ploeg.webgrip.dev/credential-gateway-shared-node: "true"' || true)
+if [ "$run_pods" -eq 0 ] || [ "$labelled" -ne "$((run_pods + 1))" ] || printf '%s' "$shared_node" | grep -qF 'requiredDuringScheduling'; then
+	echo "executor.credentialGateway.acknowledgeSingleNode labels $labelled pods for $run_pods Run pods and the gateway, or leaves the gateway's placement required"
+	status=1
+fi
+if printf '%s' "$(render "$GATEWAY_VALUES")" | grep -qF 'credential-gateway-shared-node'; then
+	echo "a Run pod carries the shared-node label without executor.credentialGateway.acknowledgeSingleNode"
+	status=1
+fi
+if out=$(helm template ploeg ops/helm/ploeg -f "$REQUIRED" -f ops/helm/ploeg/ci/reject-credential-gateway-plugin-secret-values.yaml --set executor.credentialGateway.enabled=false 2>&1) || printf '%s' "$out" | grep -qF "no Secret enters a Run pod" || ! printf '%s' "$out" | grep -qF "harness claude-code is not qualified"; then
+	echo "without the credential gateway, chart judged a Claude Code plugin reading an unrelated Secret by its Secret instead of refusing only the unqualified claude-code harness:"
+	echo "$out"
+	status=1
+fi
+rm -f "$gateway_render"
+injected_chart=$(mktemp -d)
+for injection in env volume host-path csi privileged docker-env docker-certs; do
+	rm -rf "$injected_chart/ploeg"
+	cp -R ops/helm/ploeg "$injected_chart/ploeg"
+	case "$injection" in
+	env)
+		awk '{ print } /^        - name: WORK_DIR$/ { print "          value: /mnt/ci-shared"; print "        - name: INJECTED"; print "          valueFrom:"; print "            secretKeyRef: {name: injected, key: token}"; getline }' ops/helm/ploeg/templates/_helpers.tpl >"$injected_chart/ploeg/templates/_helpers.tpl"
+		expected='renders INJECTED into container worker from a Secret'
+		;;
+	volume)
+		awk '{ print } /^  volumes:$/ { print "    - name: injected"; print "      secret:"; print "        secretName: injected" }' ops/helm/ploeg/templates/_helpers.tpl >"$injected_chart/ploeg/templates/_helpers.tpl"
+		expected='renders volume injected from a Secret or a projection'
+		;;
+	host-path)
+		awk '{ print } /^  volumes:$/ { print "    - name: injected"; print "      hostPath:"; print "        path: /var/lib/kubelet" }' ops/helm/ploeg/templates/_helpers.tpl >"$injected_chart/ploeg/templates/_helpers.tpl"
+		expected='renders volume injected of type hostPath'
+		;;
+	csi)
+		awk '{ print } /^  volumes:$/ { print "    - name: injected"; print "      csi:"; print "        driver: secrets-store.csi.k8s.io" }' ops/helm/ploeg/templates/_helpers.tpl >"$injected_chart/ploeg/templates/_helpers.tpl"
+		expected='renders volume injected of type csi'
+		;;
+	privileged)
+		awk '{ print } /^        runAsUser: 65532$/ { print "        privileged: true" }' ops/helm/ploeg/templates/_helpers.tpl >"$injected_chart/ploeg/templates/_helpers.tpl"
+		expected='renders container worker-bin privileged'
+		;;
+	docker-env)
+		awk '{ print } /^        - name: WORK_DIR$/ { print "          value: /mnt/ci-shared"; print "        - name: DOCKER_HOST"; print "          value: tcp://localhost:2376"; getline }' ops/helm/ploeg/templates/_helpers.tpl >"$injected_chart/ploeg/templates/_helpers.tpl"
+		expected='renders DOCKER_HOST into container worker'
+		;;
+	docker-certs)
+		awk '{ print } /^  volumes:$/ { print "    - name: docker-certs"; print "      emptyDir: {}" }' ops/helm/ploeg/templates/_helpers.tpl >"$injected_chart/ploeg/templates/_helpers.tpl"
+		expected='renders volume docker-certs, a Docker daemon'
+		;;
+	esac
+	if ! helm template ploeg "$injected_chart/ploeg" -f "$REQUIRED" -f "$GATEWAY_VALUES" --set executor.credentialGateway.enabled=false --set-json executor.credentialGateway.mcp.adapters=[] >/dev/null 2>&1; then
+		echo "the chart with an injected $injection does not render without the credential gateway, so its refusal proves nothing"
+		status=1
+	fi
+	if out=$(helm template ploeg "$injected_chart/ploeg" -f "$REQUIRED" -f "$GATEWAY_VALUES" 2>&1); then
+		echo "chart rendered a Run pod with an injected $injection under executor.credentialGateway, which it must refuse"
+		status=1
+	elif ! printf '%s' "$out" | grep -qF -- "$expected"; then
+		echo "chart refused an injected $injection for the wrong reason (want '$expected'):"
+		echo "$out"
+		status=1
+	fi
+done
+rm -rf "$injected_chart"
 
 if [ "$mode" = "check" ] && [ "$status" -ne 0 ]; then
 	echo

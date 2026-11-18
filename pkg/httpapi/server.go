@@ -370,6 +370,7 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("GET /api/v1/runs/{token}/claude-session", s.handleClaudeSessionState)
 	mux.HandleFunc("POST /api/v1/runs/{token}/transcript", s.handleRunTranscript)
 	mux.HandleFunc("POST /api/v1/runs/{token}/forge-credential", s.handleRefreshForgeCredential)
+	s.registerRunTools(mux)
 	mux.HandleFunc("POST /api/v1/claude-sessions/forge-credential", s.handleClaudeForgeCredential)
 	mux.HandleFunc("POST /api/v1/claude-sessions/report", s.handleClaudeSessionReport)
 	mux.HandleFunc("GET /api/v1/queue/{team}", s.handleQueue)
