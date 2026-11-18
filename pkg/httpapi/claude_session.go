@@ -10,6 +10,7 @@ import (
 	"github.com/ploeg-hq/ploeg/pkg/claudesession"
 	"github.com/ploeg-hq/ploeg/pkg/forgebroker"
 	"github.com/ploeg-hq/ploeg/pkg/store"
+	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
 // ClaudeSessions enables Runs that execute as Claude Code sessions in a
@@ -155,7 +156,13 @@ func (s *Server) handleClaudeForgeCredential(w http.ResponseWriter, r *http.Requ
 		http.Error(w, "per-run push credentials are not available for this run: "+refused, http.StatusConflict)
 		return
 	}
-	cred, err := s.ForgeCreds.Mint(r.Context(), forgebroker.MintRequest{RunToken: run.RunToken, Owner: run.Owner, Repo: run.Repo, Forge: mintForge})
+	sessionTarget := work.Target{Forge: run.Forge, Owner: run.Owner, Repo: run.Repo}
+	connection, err := s.mintConnection(r.Context(), &sessionTarget)
+	var cred forgebroker.Credential
+	if err == nil {
+		cred, err = s.ForgeCreds.Mint(r.Context(), forgebroker.MintRequest{RunToken: run.RunToken, Owner: run.Owner, Repo: run.Repo, Forge: mintForge, Connection: connection})
+		s.mintRefusedByGrant(r.Context(), &sessionTarget, connection, err)
+	}
 	if err != nil {
 		s.Log.Error("forge credential mint for a claude session failed",
 			"team", run.Team, "role", run.Role, "run", prefix12(run.RunToken), "err", err)

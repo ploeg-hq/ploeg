@@ -33,8 +33,11 @@ type OperatorPrincipal struct {
 	CanReadContent bool
 	// CanBindScopes lets the consumer bind tracker Scopes to its Teams at
 	// runtime (ADR-0186).
-	CanBindScopes  bool
-	BudgetLimitUSD float64
+	CanBindScopes bool
+	// CanRegisterTargets lets the consumer register, change and remove
+	// runtime Work Targets (ADR-0193); not narrowed by Team scope.
+	CanRegisterTargets bool
+	BudgetLimitUSD     float64
 	// ReadTrackers names the tracker connections whose Scopes and items the
 	// consumer may read (ADR-0196). Nil reads none; AllTrackers reads every
 	// one.
@@ -116,25 +119,26 @@ func ParseOperatorConsumers(raw string, lookup func(string) (string, bool)) ([]O
 		return nil, errors.New("operator consumer configuration exceeds 64 KiB")
 	}
 	var configs []struct {
-		Name          string              `json:"name"`
-		TokenEnv      string              `json:"tokenEnv"`
-		Teams         []string            `json:"teams"`
-		Execute       bool                `json:"execute"`
-		Verify        bool                `json:"verify"`
-		ReadContent   *bool               `json:"readContent"`
-		MaxBudgetUSD  *float64            `json:"maxBudgetUsd"`
-		ClientIDs     []string            `json:"clientIds"`
-		Audiences     []string            `json:"audiences"`
-		RequireClaims map[string][]string `json:"requireClaims"`
-		ReadTrackers  []string            `json:"readTrackers"`
-		ManageConns   bool                `json:"manageConnections"`
-		RedirectURIs  []string            `json:"connectionRedirectUris"`
-		BindScopes    bool                `json:"bindScopes"`
+		Name            string              `json:"name"`
+		TokenEnv        string              `json:"tokenEnv"`
+		Teams           []string            `json:"teams"`
+		Execute         bool                `json:"execute"`
+		Verify          bool                `json:"verify"`
+		ReadContent     *bool               `json:"readContent"`
+		MaxBudgetUSD    *float64            `json:"maxBudgetUsd"`
+		ClientIDs       []string            `json:"clientIds"`
+		Audiences       []string            `json:"audiences"`
+		RequireClaims   map[string][]string `json:"requireClaims"`
+		ReadTrackers    []string            `json:"readTrackers"`
+		ManageConns     bool                `json:"manageConnections"`
+		RedirectURIs    []string            `json:"connectionRedirectUris"`
+		BindScopes      bool                `json:"bindScopes"`
+		RegisterTargets bool                `json:"registerTargets"`
 	}
 	decoder := json.NewDecoder(strings.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&configs); err != nil {
-		return nil, errors.New("operator consumers must be a JSON array of name, tokenEnv, teams, execute, verify, readContent, maxBudgetUsd, clientIds, audiences, requireClaims, readTrackers, manageConnections, connectionRedirectUris and bindScopes")
+		return nil, errors.New("operator consumers must be a JSON array of name, tokenEnv, teams, execute, verify, readContent, maxBudgetUsd, clientIds, audiences, requireClaims, readTrackers, manageConnections, connectionRedirectUris, bindScopes and registerTargets")
 	}
 	if err := decoder.Decode(new(any)); err != io.EOF {
 		return nil, errors.New("operator consumers must contain one JSON value")
@@ -198,7 +202,7 @@ func ParseOperatorConsumers(raw string, lookup func(string) (string, bool)) ([]O
 		if err != nil {
 			return nil, err
 		}
-		consumers = append(consumers, OperatorConsumer{Principal: OperatorPrincipal{Name: cfg.Name, Teams: teams, CanExecute: cfg.Execute, CanVerify: cfg.Verify, CanReadContent: readContent, CanBindScopes: cfg.BindScopes, BudgetLimitUSD: budgetLimit, ReadTrackers: readTrackers,
+		consumers = append(consumers, OperatorConsumer{Principal: OperatorPrincipal{Name: cfg.Name, Teams: teams, CanExecute: cfg.Execute, CanVerify: cfg.Verify, CanReadContent: readContent, CanBindScopes: cfg.BindScopes, CanRegisterTargets: cfg.RegisterTargets, BudgetLimitUSD: budgetLimit, ReadTrackers: readTrackers,
 			CanManageConnections: cfg.ManageConns, ConnectionRedirectURIs: slices.Clone(cfg.RedirectURIs)}, tokenHash: hash, clientIDs: cfg.ClientIDs, audiences: cfg.Audiences, requiredClaims: required})
 		names[cfg.Name], hashes[hash] = true, true
 	}
@@ -298,6 +302,9 @@ func (s *Server) operatorAuth(next http.Handler) http.Handler {
 		}
 		if isConnectionVendorCall(r) {
 			timeout = 60 * time.Second
+		}
+		if isTargetProbeCall(r) {
+			timeout = targetRequestTimeout
 		}
 		if (r.Method == http.MethodPost || r.Method == http.MethodPut) && strings.HasPrefix(r.URL.Path, "/api/v1/operator/teams/") && strings.Contains(r.URL.Path, "/tracker-bindings") {
 			timeout = bindingTimeout
@@ -498,6 +505,7 @@ func (s *Server) operatorRoutes() *http.ServeMux {
 	s.registerOperatorKnowledge(mux)
 	s.registerOperatorConnections(mux)
 	s.registerOperatorTrackerBindings(mux)
+	s.registerOperatorTargets(mux)
 	return mux
 }
 

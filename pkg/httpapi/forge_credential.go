@@ -14,10 +14,15 @@ import (
 const forgeCleanupTimeout = 30 * time.Second
 
 func (s *Server) mintForgeCredential(ctx context.Context, team string, run *store.ClaimedRun) (forgebroker.Credential, bool) {
-	cred, err := s.ForgeCreds.Mint(ctx, forgebroker.MintRequest{
-		RunToken: run.RunToken, Owner: run.Item.Target.Owner, Repo: run.Item.Target.Repo, Forge: run.Item.Target.Forge,
-		Read: !run.Writes,
-	})
+	connection, err := s.mintConnection(ctx, run.Item.Target)
+	var cred forgebroker.Credential
+	if err == nil {
+		cred, err = s.ForgeCreds.Mint(ctx, forgebroker.MintRequest{
+			RunToken: run.RunToken, Owner: run.Item.Target.Owner, Repo: run.Item.Target.Repo, Forge: run.Item.Target.Forge,
+			Connection: connection, Read: !run.Writes,
+		})
+		s.mintRefusedByGrant(ctx, run.Item.Target, connection, err)
+	}
 	if err != nil {
 		s.Log.Error("forge credential mint failed; releasing the run",
 			"team", team, "role", run.Role, "writes", run.Writes, "err", err)
@@ -120,8 +125,13 @@ func (s *Server) handleRefreshForgeCredential(w http.ResponseWriter, r *http.Req
 		runError(w, err)
 		return
 	}
-	cred, err := s.ForgeCreds.Mint(r.Context(), forgebroker.MintRequest{RunToken: runToken, Owner: target.Owner, Repo: target.Repo, Forge: s.mintForgeID(target.Forge),
-		Read: !writes})
+	connection, err := s.mintConnection(r.Context(), &target)
+	var cred forgebroker.Credential
+	if err == nil {
+		cred, err = s.ForgeCreds.Mint(r.Context(), forgebroker.MintRequest{RunToken: runToken, Owner: target.Owner, Repo: target.Repo, Forge: s.mintForgeID(target.Forge),
+			Connection: connection, Read: !writes})
+		s.mintRefusedByGrant(r.Context(), &target, connection, err)
+	}
 	if err != nil {
 		s.Log.Error("forge credential refresh failed", "run", prefix12(runToken), "writes", writes, "err", err)
 		http.Error(w, "could not mint a "+credentialKind(writes), http.StatusServiceUnavailable)
