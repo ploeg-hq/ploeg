@@ -29,6 +29,7 @@ for variant in executor executor-cronjob executor-credential-gateway executor-gi
 done
 helm template ploeg ops/helm/ploeg -f "$required" >/dev/null
 sh scripts/helm-golden.sh check
+bash scripts/test-check-credential-gateway.sh
 bash scripts/test-chart-network-policies.sh
 bash scripts/test-worker-boundary-probe.sh
 bash scripts/test-alert-rules.sh

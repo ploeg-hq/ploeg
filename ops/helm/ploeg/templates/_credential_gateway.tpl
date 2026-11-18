@@ -63,6 +63,9 @@ value that would put a secret into a Run pod or that the gateway cannot serve.
 {{- range $w := (include "ploeg.roleWorkloads" (dict "root" $root "team" $team "role" $planRole) | fromJsonArray) -}}
 {{- $who := $team.name -}}{{- with $w.role.name -}}{{- $who = printf "%s/%s" $team.name . -}}{{- end -}}
 {{- $harness := (include "ploeg.roleHarness" (dict "root" $root "team" $team "role" $w.role) | fromJson).name -}}
+{{- if eq (include "ploeg.roleUsesDind" (dict "root" $root "team" $team "role" $w.role)) "true" -}}
+{{- fail (printf "team %s: harness.dind cannot run with executor.credentialGateway.enabled: DinD runs a privileged Docker daemon in the Run pod and hands the harness its client certificates (DOCKER_HOST, DOCKER_CERT_PATH, /certs), which is root on the node, and no secret enters a Run pod (ADR-0197). Set harness.dind: false at every applicable override" $who) -}}
+{{- end -}}
 {{- if eq $harness "claude-environment" -}}
 {{- fail (printf "team %s: harness claude-environment cannot run with executor.credentialGateway.enabled: claude-environment's Anthropic traffic and pushes go through the gateway's anthropic upstream, which is not built yet, and its pod holds a person's login (ADR-0197)" $who) -}}
 {{- end -}}
@@ -83,8 +86,10 @@ value that would put a secret into a Run pod or that the gateway cannot serve.
 {{/*
 ploeg.requireCredentialFreeRunPod fails the render of a gateway-mode Run pod
 that would still receive a secret by any means: a secretKeyRef, an envFrom
-Secret, a Secret or projected volume, or a ServiceAccount token. It reads the
-rendered pod, so a source the values checks above do not know is refused too.
+Secret, a ServiceAccount token, a volume of any type but emptyDir and image,
+a privileged container or a host namespace, or a Docker daemon's client
+certificates. It reads the rendered pod, so a source the values checks above
+do not know is refused too.
 Context: (dict "pod" <pod template as a dict> "who" <team or team/role>).
 */}}
 {{- define "ploeg.requireCredentialFreeRunPod" -}}
@@ -92,10 +97,26 @@ Context: (dict "pod" <pod template as a dict> "who" <team or team/role>).
 {{- if ne (toString $spec.automountServiceAccountToken) "false" -}}
 {{- fail (printf "team %s: executor.credentialGateway.enabled renders a Run pod without automountServiceAccountToken: false; no ServiceAccount token enters a Run pod (ADR-0197)" .who) -}}
 {{- end -}}
+{{- range $field := list "hostNetwork" "hostPID" "hostIPC" -}}
+{{- if index $spec $field -}}
+{{- fail (printf "team %s: executor.credentialGateway.enabled renders a Run pod with %s; a Run pod shares no namespace with its node (ADR-0197)" $.who $field) -}}
+{{- end -}}
+{{- end -}}
 {{- range $c := concat ($spec.initContainers | default list) ($spec.containers | default list) -}}
+{{- if ($c.securityContext | default dict).privileged -}}
+{{- fail (printf "team %s: executor.credentialGateway.enabled renders container %s privileged; a privileged container is root on the node, and no secret enters a Run pod (ADR-0197)" $.who $c.name) -}}
+{{- end -}}
 {{- range $e := ($c.env | default list) -}}
 {{- if ($e.valueFrom | default dict).secretKeyRef -}}
 {{- fail (printf "team %s: executor.credentialGateway.enabled renders %s into container %s from a Secret; no Secret enters a Run pod (ADR-0197)" $.who $e.name $c.name) -}}
+{{- end -}}
+{{- if has $e.name (list "DOCKER_HOST" "DOCKER_CERT_PATH" "DOCKER_TLS_VERIFY") -}}
+{{- fail (printf "team %s: executor.credentialGateway.enabled renders %s into container %s; a Docker daemon's client certificates are root on the node, and no secret enters a Run pod (ADR-0197)" $.who $e.name $c.name) -}}
+{{- end -}}
+{{- end -}}
+{{- range $m := ($c.volumeMounts | default list) -}}
+{{- if or (eq $m.mountPath "/certs") (hasPrefix "/certs/" $m.mountPath) -}}
+{{- fail (printf "team %s: executor.credentialGateway.enabled mounts %s into container %s at %s, where a Docker daemon keeps its client certificates; no secret enters a Run pod (ADR-0197)" $.who $m.name $c.name $m.mountPath) -}}
 {{- end -}}
 {{- end -}}
 {{- range $e := ($c.envFrom | default list) -}}
@@ -107,6 +128,9 @@ Context: (dict "pod" <pod template as a dict> "who" <team or team/role>).
 {{- range $v := ($spec.volumes | default list) -}}
 {{- if or (hasKey $v "secret") (hasKey $v "projected") -}}
 {{- fail (printf "team %s: executor.credentialGateway.enabled renders volume %s from a Secret or a projection; no Secret enters a Run pod (ADR-0197)" $.who $v.name) -}}
+{{- end -}}
+{{- if hasPrefix "docker-" $v.name -}}
+{{- fail (printf "team %s: executor.credentialGateway.enabled renders volume %s, a Docker daemon's; no secret enters a Run pod (ADR-0197)" $.who $v.name) -}}
 {{- end -}}
 {{- end -}}
 {{- end -}}

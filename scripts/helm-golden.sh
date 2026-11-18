@@ -142,6 +142,7 @@ for case in "ops/helm/ploeg/ci/reject-reader-without-read-token-values.yaml:read
 	"ops/helm/ploeg/ci/reject-credential-gateway-claude-environment-values.yaml:team pewter: harness claude-environment cannot run with executor.credentialGateway.enabled" \
 	"ops/helm/ploeg/ci/reject-credential-gateway-plugin-secret-values.yaml:reads LINK_TOKEN from Secret session-link-plugin, and with executor.credentialGateway.enabled no Secret enters a Run pod" \
 	"ops/helm/ploeg/ci/reject-credential-gateway-claude-runner-values.yaml:claudeRunner.enabled cannot run with executor.credentialGateway.enabled" \
+	"ops/helm/ploeg/ci/reject-credential-gateway-dind-values.yaml:team silver: harness.dind cannot run with executor.credentialGateway.enabled" \
 	"ops/helm/ploeg/ci/reject-mcp-adapter-undigested-values.yaml:does not match pattern '@sha256:[0-9a-f]{64}\$'" \
 	"ops/helm/ploeg/ci/reject-mcp-adapter-without-gateway-values.yaml:executor.credentialGateway.mcp.adapters needs executor.credentialGateway.enabled"; do
 	values=${case%%:*}
@@ -595,25 +596,40 @@ if ! helm template ploeg ops/helm/ploeg -f "$REQUIRED" -f ops/helm/ploeg/ci/reje
 fi
 rm -f "$gateway_render"
 injected_chart=$(mktemp -d)
-for injection in env volume; do
+for injection in env volume privileged docker-env docker-certs; do
 	rm -rf "$injected_chart/ploeg"
 	cp -R ops/helm/ploeg "$injected_chart/ploeg"
-	if [ "$injection" = env ]; then
+	case "$injection" in
+	env)
 		awk '{ print } /^        - name: WORK_DIR$/ { print "          value: /mnt/ci-shared"; print "        - name: INJECTED"; print "          valueFrom:"; print "            secretKeyRef: {name: injected, key: token}"; getline }' ops/helm/ploeg/templates/_helpers.tpl >"$injected_chart/ploeg/templates/_helpers.tpl"
 		expected='renders INJECTED into container worker from a Secret'
-	else
+		;;
+	volume)
 		awk '{ print } /^  volumes:$/ { print "    - name: injected"; print "      secret:"; print "        secretName: injected" }' ops/helm/ploeg/templates/_helpers.tpl >"$injected_chart/ploeg/templates/_helpers.tpl"
 		expected='renders volume injected from a Secret or a projection'
-	fi
+		;;
+	privileged)
+		awk '{ print } /^        runAsUser: 65532$/ { print "        privileged: true" }' ops/helm/ploeg/templates/_helpers.tpl >"$injected_chart/ploeg/templates/_helpers.tpl"
+		expected='renders container worker-bin privileged'
+		;;
+	docker-env)
+		awk '{ print } /^        - name: WORK_DIR$/ { print "          value: /mnt/ci-shared"; print "        - name: DOCKER_HOST"; print "          value: tcp://localhost:2376"; getline }' ops/helm/ploeg/templates/_helpers.tpl >"$injected_chart/ploeg/templates/_helpers.tpl"
+		expected='renders DOCKER_HOST into container worker'
+		;;
+	docker-certs)
+		awk '{ print } /^  volumes:$/ { print "    - name: docker-certs"; print "      emptyDir: {}" }' ops/helm/ploeg/templates/_helpers.tpl >"$injected_chart/ploeg/templates/_helpers.tpl"
+		expected='renders volume docker-certs, a Docker daemon'
+		;;
+	esac
 	if ! helm template ploeg "$injected_chart/ploeg" -f "$REQUIRED" -f "$GATEWAY_VALUES" --set executor.credentialGateway.enabled=false --set-json executor.credentialGateway.mcp.adapters=[] >/dev/null 2>&1; then
-		echo "the chart with an injected Secret $injection does not render without the credential gateway, so its refusal proves nothing"
+		echo "the chart with an injected $injection does not render without the credential gateway, so its refusal proves nothing"
 		status=1
 	fi
 	if out=$(helm template ploeg "$injected_chart/ploeg" -f "$REQUIRED" -f "$GATEWAY_VALUES" 2>&1); then
-		echo "chart rendered a Run pod with an injected Secret $injection under executor.credentialGateway, which it must refuse"
+		echo "chart rendered a Run pod with an injected $injection under executor.credentialGateway, which it must refuse"
 		status=1
 	elif ! printf '%s' "$out" | grep -qF -- "$expected"; then
-		echo "chart refused an injected Secret $injection for the wrong reason (want '$expected'):"
+		echo "chart refused an injected $injection for the wrong reason (want '$expected'):"
 		echo "$out"
 		status=1
 	fi

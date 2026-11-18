@@ -73,6 +73,10 @@ An upstream's own answer, `429` included, passes through unchanged.
 
 A route family is an `Upstream` (`Family`, `Credential`, `Serve`) that `Gateway.Register` adds. The gateway has tied the request to its Run, checked the pin and applied the Run's limits before `Serve` runs; `Serve` attaches the credential and must never forward the capability. The `anthropic` family of section 7 of ADR-0197 is not built.
 
+## The Run pod the chart renders
+
+With `executor.credentialGateway.enabled` the chart refuses to render a Run pod that could hold a usable secret; the per-Run capability is the only value in it. Besides a `secretKeyRef`, an `envFrom` Secret, a Secret or projected volume and a ServiceAccount token, it refuses DinD (`harness.dind: true`, whatever `acknowledgePrivilegedDind` says), any privileged container, `hostNetwork`, `hostPID` and `hostIPC`, `DOCKER_HOST`, `DOCKER_CERT_PATH` and `DOCKER_TLS_VERIFY`, a mount at `/certs` and a `docker-` volume: a Docker daemon's client certificates are root on the node. The check reads the rendered pod, and [check-credential-gateway.py](../../scripts/check-credential-gateway.py) checks the same properties of the CI render.
+
 ## Limits and audit
 
 `PLOEG_GATEWAY_LIMITS` sets, per route family, a token bucket of requests per second with a burst and of request bytes per second, per Run (per source pod for ploegd), and `maxUpstreamConnections` for the namespace.

@@ -12,6 +12,8 @@ FORBIDDEN_ENV = {
     'PLOEG_CREDENTIAL_ISOLATION_OFF_REASON',
 }
 FORBIDDEN_ENV_PREFIX = 'PLOEG_CLAUDE_PLUGIN_ENV_'
+DOCKER_ENV = {'DOCKER_HOST', 'DOCKER_CERT_PATH', 'DOCKER_TLS_VERIFY'}
+HOST_NAMESPACES = ('hostNetwork', 'hostPID', 'hostIPC')
 GATEWAY_NAME = 'ploeg-credential-gateway'
 GATEWAY_PORTS = {8080, 8081, 8082, 8083}
 RUN_POD_LABEL = {'app.kubernetes.io/name': 'ploeg-worker'}
@@ -36,16 +38,26 @@ def check_run_pod(where, pod, host):
     problems = []
     if pod.get('automountServiceAccountToken') is not False:
         problems.append(f"{where}: automountServiceAccountToken is not false")
+    for field in HOST_NAMESPACES:
+        if pod.get(field):
+            problems.append(f"{where}: the pod sets {field}")
     for volume in pod.get('volumes') or []:
         if 'secret' in volume or 'projected' in volume:
             problems.append(f"{where}: volume {volume['name']} is a Secret or a projection")
+        if volume['name'].startswith('docker-'):
+            problems.append(f"{where}: volume {volume['name']} is a Docker daemon's")
     containers = (pod.get('initContainers') or []) + (pod.get('containers') or [])
     for container in containers:
+        if (container.get('securityContext') or {}).get('privileged'):
+            problems.append(f"{where}: container {container['name']} is privileged")
+        for mount in container.get('volumeMounts') or []:
+            if mount['mountPath'] == '/certs' or mount['mountPath'].startswith('/certs/'):
+                problems.append(f"{where}: container {container['name']} mounts {mount['name']} at {mount['mountPath']}, a Docker daemon's client certificates")
         for entry in container.get('env') or []:
             name = entry['name']
             if 'secretKeyRef' in (entry.get('valueFrom') or {}):
                 problems.append(f"{where}: container {container['name']} reads {name} from a Secret")
-            if name in FORBIDDEN_ENV or name.startswith(FORBIDDEN_ENV_PREFIX):
+            if name in FORBIDDEN_ENV or name in DOCKER_ENV or name.startswith(FORBIDDEN_ENV_PREFIX):
                 problems.append(f"{where}: container {container['name']} renders {name}")
         for entry in container.get('envFrom') or []:
             if 'secretRef' in entry:
