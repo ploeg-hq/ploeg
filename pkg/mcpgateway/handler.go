@@ -3,6 +3,7 @@ package mcpgateway
 import (
 	"bufio"
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -179,14 +180,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	var tool string
 	if msg.Method == "tools/call" {
-		var p struct {
-			Name string `json:"name"`
-		}
-		if json.Unmarshal(msg.Params, &p) != nil || p.Name == "" {
+		name, ok := toolName(msg.Params)
+		if !ok {
 			h.refuseRPC(w, &call, msg.ID, &refusal{code: codeInvalidParams, reason: "invalid_params", message: "tools/call needs a tool name."})
 			return
 		}
-		tool = p.Name
+		tool = name
 		call.Tool = tool
 		access, granted := server.Tools[tool]
 		call.Access = access
@@ -209,7 +208,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	upstream, err := http.NewRequestWithContext(r.Context(), http.MethodPost, server.URL, bytes.NewReader(body))
+	forward, err := json.Marshal(msg)
+	if err != nil {
+		h.refuseRPC(w, &call, msg.ID, &refusal{status: http.StatusBadRequest, code: codeInvalidRequest, reason: "invalid_request", message: "The request is not a JSON-RPC 2.0 message."})
+		return
+	}
+	upstream, err := http.NewRequestWithContext(r.Context(), http.MethodPost, server.URL, bytes.NewReader(forward))
 	if err != nil {
 		h.refuseHTTP(w, &call, http.StatusBadGateway, "upstream_unreachable", "The MCP server's address is unusable.")
 		return
@@ -251,8 +255,9 @@ func (h *Handler) answer(w http.ResponseWriter, call *Call, resp *http.Response,
 		h.refuseHTTP(w, call, http.StatusBadGateway, "upstream_too_large", "The MCP server's answer exceeded 1 MiB.")
 		return
 	}
-	if leaks(raw, server.Credential, capability) {
-		h.refuseHTTP(w, call, http.StatusBadGateway, "upstream_leaked_credential", "The MCP server's answer carried a credential; it was withheld.")
+	secrets := leakForms(server.Credential, capability)
+	if leaks(secrets, raw) {
+		h.refuseLeak(w, call)
 		return
 	}
 	if len(req.ID) == 0 {
@@ -272,11 +277,15 @@ func (h *Handler) answer(w http.ResponseWriter, call *Call, resp *http.Response,
 	var reply *rpcMessage
 	for i := range messages {
 		m := messages[i]
+		if decoded, err := json.Marshal(m); err != nil || leaks(secrets, decoded) {
+			h.refuseLeak(w, call)
+			return
+		}
 		if m.Method != "" && len(m.ID) > 0 {
 			h.refuseRPC(w, call, req.ID, &refusal{status: http.StatusBadGateway, code: codeUpstream, reason: "upstream_requested", message: "The MCP server sent a request of its own, which the gateway never forwards."})
 			return
 		}
-		if m.Method == "" && bytes.Equal(bytes.TrimSpace(m.ID), bytes.TrimSpace(req.ID)) {
+		if m.Method == "" && bytes.Equal(m.ID, req.ID) {
 			reply = &messages[i]
 		}
 	}
@@ -296,9 +305,20 @@ func (h *Handler) answer(w http.ResponseWriter, call *Call, resp *http.Response,
 		}
 		w.Header().Set("Mcp-Session-Id", s)
 	}
-	out.ID = req.ID
-	writeRPC(w, http.StatusOK, out)
+	out.ID, out.JSONRPC = req.ID, "2.0"
+	encoded, err := json.Marshal(out)
+	if err != nil || leaks(secrets, encoded) {
+		h.refuseLeak(w, call)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(append(encoded, '\n'))
 	call.Status = http.StatusOK
+}
+
+func (h *Handler) refuseLeak(w http.ResponseWriter, call *Call) {
+	h.refuseHTTP(w, call, http.StatusBadGateway, "upstream_leaked_credential", "The MCP server's answer carried a credential; it was withheld.")
 }
 
 func (h *Handler) refuseHTTP(w http.ResponseWriter, call *Call, status int, reason, message string) {
@@ -350,12 +370,18 @@ func parseRequest(body []byte) (rpcMessage, *refusal) {
 	if len(trimmed) > 0 && trimmed[0] == '[' {
 		return rpcMessage{}, &refusal{status: http.StatusBadRequest, code: codeInvalidRequest, reason: "batch_refused", message: "The gateway accepts one JSON-RPC message per request, never a batch."}
 	}
-	var m rpcMessage
-	if err := json.Unmarshal(trimmed, &m); err != nil || m.JSONRPC != "2.0" {
-		return m, &refusal{status: http.StatusBadRequest, code: codeInvalidRequest, reason: "invalid_request", message: "The request is not a JSON-RPC 2.0 message."}
+	m, err := strictMessage(trimmed, messageFields)
+	if errors.Is(err, errAmbiguousJSON) {
+		return rpcMessage{}, &refusal{status: http.StatusBadRequest, code: codeInvalidRequest, reason: "ambiguous_request", message: "The request repeats a key, exactly or in another case; the gateway forwards only JSON it reads one way."}
+	}
+	if err != nil || m.JSONRPC != "2.0" {
+		return rpcMessage{}, &refusal{status: http.StatusBadRequest, code: codeInvalidRequest, reason: "invalid_request", message: "The request is not a JSON-RPC 2.0 message."}
 	}
 	if m.Method == "" {
 		return m, &refusal{status: http.StatusBadRequest, code: codeInvalidRequest, reason: "response_refused", message: "The gateway forwards requests and notifications only."}
+	}
+	if m.Result != nil || m.Error != nil {
+		return rpcMessage{}, &refusal{status: http.StatusBadRequest, code: codeInvalidRequest, reason: "invalid_request", message: "The request is not a JSON-RPC 2.0 message."}
 	}
 	return m, nil
 }
@@ -369,9 +395,38 @@ func attach(r *http.Request, s ServerGrant) {
 	}
 }
 
-func leaks(raw []byte, values ...string) bool {
+const leakWindow = 16
+
+func leakForms(values ...string) [][]byte {
+	var forms [][]byte
 	for _, v := range values {
-		if len(v) >= 8 && bytes.Contains(raw, []byte(v)) {
+		if len(v) < 8 {
+			continue
+		}
+		forms = append(forms, []byte(v))
+		if quoted, err := json.Marshal(v); err == nil {
+			forms = append(forms, quoted[1:len(quoted)-1])
+		}
+		for i := 0; len(v) >= leakWindow && i+leakWindow <= len(v); i++ {
+			forms = append(forms, []byte(v[i:i+leakWindow]))
+		}
+		for _, enc := range []*base64.Encoding{base64.RawStdEncoding, base64.RawURLEncoding} {
+			forms = append(forms, []byte(enc.EncodeToString([]byte(v))))
+			for shift := 0; shift < 3; shift++ {
+				encoded := enc.EncodeToString(append(make([]byte, shift), v...))
+				first, last := (shift+2)/3, (shift+len(v))/3
+				if 4*(last-first) >= leakWindow {
+					forms = append(forms, []byte(encoded[4*first:4*last]))
+				}
+			}
+		}
+	}
+	return forms
+}
+
+func leaks(forms [][]byte, text []byte) bool {
+	for _, f := range forms {
+		if bytes.Contains(text, f) {
 			return true
 		}
 	}
@@ -385,8 +440,11 @@ func (h *Handler) decodeResponse(contentType string, raw []byte) ([]rpcMessage, 
 	}
 	switch media {
 	case "application/json":
-		var m rpcMessage
-		if json.Unmarshal(raw, &m) != nil {
+		m, err := strictMessage(raw, messageFields)
+		if errors.Is(err, errAmbiguousJSON) {
+			return nil, upstreamFault("upstream_ambiguous", "The MCP server's answer repeats a key, exactly or in another case.")
+		}
+		if err != nil {
 			return nil, upstreamFault("upstream_invalid", "The MCP server's answer is not one JSON-RPC message.")
 		}
 		return []rpcMessage{m}, nil
@@ -402,8 +460,11 @@ func (h *Handler) decodeResponse(contentType string, raw []byte) ([]rpcMessage, 
 			if events > h.limits.MaxEvents {
 				return upstreamFault("upstream_too_many_events", "The MCP server's stream exceeded the event limit.")
 			}
-			var m rpcMessage
-			if json.Unmarshal([]byte(data.String()), &m) != nil {
+			m, err := strictMessage([]byte(data.String()), messageFields)
+			if errors.Is(err, errAmbiguousJSON) {
+				return upstreamFault("upstream_ambiguous", "The MCP server's stream carried an event that repeats a key, exactly or in another case.")
+			}
+			if err != nil {
 				return upstreamFault("upstream_invalid", "The MCP server's stream carried an event that is not JSON-RPC.")
 			}
 			out = append(out, m)

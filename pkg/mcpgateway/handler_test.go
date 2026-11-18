@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	runCapability   = "cap-run-7-0123456789abcdef"
+	runCapability   = "cap-run-7-9f8e7d6c5b4a3210"
 	otherCapability = "cap-run-8-fedcba9876543210"
 	serverToken     = "srv-token-5f1e2d3c4b5a6978"
 	secretArgument  = "argument-that-must-never-be-audited"
