@@ -57,6 +57,10 @@ type File struct {
 	// Connections lets a proven operator make tracker and forge connections
 	// at runtime (ADR-0195). Omitted = none is accepted.
 	Connections *connection.Config `yaml:"connections"`
+	// TargetRegistration lets a proven operator register Work Targets at
+	// runtime for repositories a store-backed forge connection was granted
+	// (ADR-0193). Omitted = none is accepted.
+	TargetRegistration *TargetRegistration `yaml:"targetRegistration"`
 }
 
 type Trackers struct {
@@ -375,6 +379,9 @@ func (f *File) Validate() error {
 		return err
 	}
 	if err := f.validateTrackerBindings(); err != nil {
+		return err
+	}
+	if err := f.validateTargetRegistration(); err != nil {
 		return err
 	}
 	if err := f.validateFastChecks(); err != nil {
