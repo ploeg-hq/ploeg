@@ -72,7 +72,8 @@ func (s *Store) DropSettledGatewayGrants(ctx context.Context) (int64, error) {
 }
 
 // RecordGatewayAudit adds a gateway's per-Run totals and writes each refusal
-// as a credential_gateway.refused audit row for the Run's Work Item. A row
+// as a credential_gateway.refused audit row and each MCP call as an mcp.call
+// audit row for the Run's Work Item. A row
 // counts only for a Run of one of the gateway's own Teams, read from the Run
 // itself, so the audit of a Run whose grant the sweep already dropped is
 // still kept.
@@ -116,8 +117,7 @@ func (s *Store) RecordGatewayAudit(ctx context.Context, namespace string, teams 
 		}
 		if _, err := tx.Exec(ctx, `INSERT INTO audit_log (actor, action, work_item_id, detail)
 			SELECT 'credential-gateway:' || $2, 'mcp.call', r.work_item_id, $3::jsonb || jsonb_build_object('run', r.id)
-			FROM agent_runs r JOIN credential_gateway_grants g USING (run_token)
-			WHERE r.run_token = $1 AND g.namespace = $2`, c.RunToken, namespace, detail); err != nil {
+			FROM agent_runs r WHERE r.run_token = $1 AND r.team = ANY($4)`, c.RunToken, namespace, detail, teams); err != nil {
 			return err
 		}
 	}

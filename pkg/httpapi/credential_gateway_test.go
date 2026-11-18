@@ -405,6 +405,7 @@ func TestTheAuditOfASweptGrantsRunIsStillKeptForItsOwnGatewayOnly(t *testing.T) 
 	batch, _ := json.Marshal(gatewaycontract.AuditBatch{
 		Uses:     []gatewaycontract.Use{{RunToken: claim.RunToken, Family: "forge", Credential: "forge_token", Requests: 2}},
 		Refusals: []gatewaycontract.Refusal{{RunToken: claim.RunToken, Family: "forge", Method: "POST", Route: "/x", Reason: "run_settled", Status: 403}},
+		MCPCalls: []gatewaycontract.MCPCall{{RunToken: claim.RunToken, ServerID: "mcp_01", Server: "obs", Method: "tools/call", Tool: "after_settle", Outcome: "allowed", Status: 200}},
 	})
 	for _, token := range []string{otherGatewayToken, runsGatewayToken} {
 		r := httptest.NewRequest(http.MethodPost, gatewaycontract.AuditPath, bytes.NewReader(batch))
@@ -421,6 +422,13 @@ func TestTheAuditOfASweptGrantsRunIsStillKeptForItsOwnGatewayOnly(t *testing.T) 
 	}
 	if err := testPool.QueryRow(ctx, `SELECT COALESCE(sum(requests), 0) FROM credential_gateway_use WHERE run_token = $1`, claim.RunToken).Scan(&requests); err != nil {
 		t.Fatal(err)
+	}
+	var calls int
+	if err := testPool.QueryRow(ctx, `SELECT count(*) FROM audit_log WHERE action = 'mcp.call' AND detail->>'tool' = 'after_settle'`).Scan(&calls); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Fatalf("after the sweep: mcp.call rows=%d, want the Run's own gateway's 1", calls)
 	}
 	if refusals != 1 || requests != 2 {
 		t.Fatalf("after the sweep: refusal rows=%d requests=%d, want the Run's own gateway's 1 and 2", refusals, requests)
