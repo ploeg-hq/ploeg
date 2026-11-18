@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+: "${PLOEG_CLAUDE_RUNNER_WORK_ORDER:?no work order: an on-demand runner starts only from the orchestrator's spawn-runner hook}"
+dir="${PLOEG_CLAUDE_RUNNER_WORK_ORDER_DIR:-/var/run/ploeg/work-order}"
+umask 077
+printf '%s' "$PLOEG_CLAUDE_RUNNER_WORK_ORDER" >"$dir/work-order"
+unset PLOEG_CLAUDE_RUNNER_WORK_ORDER
+exec claude self-hosted-runner --environment-secret-file "$dir/work-order" "$@"

@@ -271,7 +271,7 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `claudeRunner.claudeCode.version` | string | `""` | Claude Code version to install; empty uses the image's pin | values.yaml, values.schema.json |
 | `claudeRunner.enabled` | boolean | `false` |  | values.yaml, values.schema.json |
 | `claudeRunner.env` | object | `{}` | name: value, e.g. OTEL_EXPORTER_OTLP_ENDPOINT for the sessions' telemetry | values.yaml, values.schema.json |
-| `claudeRunner.environmentSecret` | object |  | REQUIRED when enabled: the Secret with SELF_HOSTED_RUNNER_ENVIRONMENT_SECRET, the environment key from the claude.ai admin page. Loaded with envFrom. | values.yaml, values.schema.json |
+| `claudeRunner.environmentSecret` | object |  | REQUIRED when enabled: the Secret with SELF_HOSTED_RUNNER_ENVIRONMENT_SECRET, the environment key from the claude.ai admin page. A fleet loads it with envFrom; the orchestrator mounts that key as a file, and no runner pod it starts sees it. | values.yaml, values.schema.json |
 | `claudeRunner.environmentSecret.name` | string | `""` |  | values.yaml, values.schema.json |
 | `claudeRunner.extraArgs` | array | `[]` | Appended to args, e.g. [--git-host-rewrite, "forgejo-http.forgejo.svc.cluster.local:3000=forgejo.example.com"] | values.yaml, values.schema.json |
 | `claudeRunner.extraEnv` | array | `[]` |  | values.yaml, values.schema.json |
@@ -283,8 +283,20 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `claudeRunner.loginVolumes[].name` | string |  |  | values.schema.json |
 | `claudeRunner.loginVolumes[].size` | string |  |  | values.schema.json |
 | `claudeRunner.loginVolumes[].storageClassName` | string |  |  | values.schema.json |
+| `claudeRunner.mode` | one of `"fleet"`, `"orchestrator"` | `fleet` | fleet: a Deployment of runners holding the environment secret. orchestrator: Anthropic's on-demand runners, one runner Job per session started by an orchestrator that alone holds the environment secret; the only mode with executor.credentialGateway.enabled (ADR-0197 section 7) | values.yaml, values.schema.json |
 | `claudeRunner.name` | string | `""` | empty = <fullname>-claude-runner; Deployment and the pods' app.kubernetes.io/name | values.yaml, values.schema.json |
 | `claudeRunner.nodeSelector` | object | `{}` | empty = nodeSelector | values.yaml, values.schema.json |
+| `claudeRunner.orchestrator.args` | array | `["--expected-spawn-seconds", "300", "--hook-timeout", "60"]` | Orchestrator flags after --environment-secret-file and --hooks-dir. --expected-spawn-seconds must cover a runner Job's p99 time from spawn request to registration, its Claude Code install included; the work order expires with it. Never --min-idle: a standby runner is unbound and the hook refuses it. | values.yaml, values.schema.json |
+| `claudeRunner.orchestrator.extraArgs` | array | `[]` | e.g. [--shutdown-drain-sec, "70"] from Claude Code 2.1.299 | values.yaml, values.schema.json |
+| `claudeRunner.orchestrator.nodeSelector` | object | `{}` | the orchestrator's own pool; never one executor.nodeSelector names | values.yaml, values.schema.json |
+| `claudeRunner.orchestrator.replicas` | integer | `1` |  | values.yaml, values.schema.json |
+| `claudeRunner.orchestrator.resources.limits.memory` |  | `1Gi` |  | values.yaml |
+| `claudeRunner.orchestrator.resources.requests.cpu` |  | `20m` |  | values.yaml |
+| `claudeRunner.orchestrator.resources.requests.memory` |  | `256Mi` |  | values.yaml |
+| `claudeRunner.orchestrator.runnerActiveDeadlineSeconds` | integer | `21600` | Seconds a runner Job may run in all, and how long a finished one is kept for its logs. | values.yaml, values.schema.json |
+| `claudeRunner.orchestrator.runnerTtlSecondsAfterFinished` | integer | `600` |  | values.yaml, values.schema.json |
+| `claudeRunner.orchestrator.terminationGracePeriodSeconds` | integer | `85` |  | values.yaml, values.schema.json |
+| `claudeRunner.orchestrator.tolerations` | array | `[]` |  | values.yaml, values.schema.json |
 | `claudeRunner.ploegUrl` | string | `""` | empty = this release's ploegd Service (executor.apiUrl when set) | values.yaml, values.schema.json |
 | `claudeRunner.podAnnotations` | object | `{}` |  | values.yaml, values.schema.json |
 | `claudeRunner.replicas` | integer | `1` |  | values.yaml, values.schema.json |
@@ -647,6 +659,8 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `monitoring.serviceMonitor.labels` | object | `{}` | e.g. {release: kube-prometheus-stack}, whatever your Prometheus selects on | values.yaml, values.schema.json |
 | `monitoring.serviceMonitor.scrapeTimeout` | string | `10s` |  | values.yaml, values.schema.json |
 | `networkPolicy` | object |  | Default-deny NetworkPolicies for every pod the chart renders (ploegd, workers, the sandbox launcher, claude-runner, ploeg-mcp), each with the allowlist that pod needs. Egress to an endpoint is derived from its URL unless `peers` names it: an IP is itself, a bare name is the release namespace, `name.ns.svc` is that namespace, anything else is the internet outside `privateCidrs`, on the URL's port or the scheme's default. The policies are plain `networking.k8s.io/v1` objects and are applied only by a CNI that enforces NetworkPolicy (Cilium, Calico, Antrea); kind's kindnet and Flannel ignore them. An installer's own policies add to these, never subtract (docs/ops/network.md). | values.yaml, values.schema.json |
+| `networkPolicy.anthropic` | object |  | Where the claude-runner's sessions and orchestrator reach api.anthropic.com. A NetworkPolicy cannot name a host, so [] is the internet on 443; a list of NetworkPolicyPeers (Anthropic's published ranges) narrows it. | values.yaml, values.schema.json |
+| `networkPolicy.anthropic.peers` | array | `[]` | NetworkPolicyPeers the claude-runner's sessions and orchestrator reach api.anthropic.com at on 443; empty is the internet | values.yaml, values.schema.json |
 | `networkPolicy.claudeRunner.extraEgress` | [networkPolicyEgressRules](#networkpolicyegressrules) | `[]` |  | values.yaml, values.schema.json |
 | `networkPolicy.database` | object |  | ploegd's PostgreSQL. The connection URI lives in a Secret the chart cannot read, so there is nothing to derive: empty `peers` allows every pod in the release namespace on `port`. | values.yaml, values.schema.json |
 | `networkPolicy.database.peers` | [networkPolicyPeers](#networkpolicypeers) | `[]` |  | values.yaml, values.schema.json |

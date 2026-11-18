@@ -80,6 +80,7 @@ for case in ":default" \
 	"ops/helm/ploeg/ci/name-overrides-values.yaml:name-overrides" \
 	"ops/helm/ploeg/ci/secret-store-kubernetes-values.yaml:secret-store-kubernetes" \
 	"ops/helm/ploeg/ci/executor-credential-gateway-values.yaml:executor-credential-gateway" \
+	"ops/helm/ploeg/ci/executor-credential-gateway-claude-environment-values.yaml:executor-credential-gateway-claude-environment" \
 	"ops/helm/ploeg/ci/executor-runtime-teams-values.yaml:executor-runtime-teams"; do
 	values=${case%%:*}
 	name=${case##*:}
@@ -140,9 +141,10 @@ for case in "ops/helm/ploeg/ci/reject-reader-without-read-token-values.yaml:read
 	"ops/helm/ploeg/ci/reject-secret-store-in-release-namespace-values.yaml:secretStore.kubernetes.namespace must not be the release namespace default" \
 	"ops/helm/ploeg/ci/reject-credential-gateway-legacy-values.yaml:executor.credentialGateway.enabled needs executor.workerAuth.mode managed" \
 	"ops/helm/ploeg/ci/reject-credential-gateway-hmac-off-values.yaml:executor.credentialGateway.enabled needs executor.workerAuth.hmacCapability issue" \
-	"ops/helm/ploeg/ci/reject-credential-gateway-claude-environment-values.yaml:team pewter: harness claude-environment cannot run with executor.credentialGateway.enabled" \
+	"ops/helm/ploeg/ci/reject-credential-gateway-claude-environment-values.yaml:team pewter: harness.claudeEnvironment.loginVolume cannot be set with executor.credentialGateway.enabled" \
+	"ops/helm/ploeg/ci/reject-credential-gateway-claude-login-secret-values.yaml:team pewter/builder: harness.claudeEnvironment.loginSecret cannot be set with executor.credentialGateway.enabled" \
 	"ops/helm/ploeg/ci/reject-credential-gateway-plugin-secret-values.yaml:reads LINK_TOKEN from Secret session-link-plugin, and with executor.credentialGateway.enabled no Secret enters a Run pod" \
-	"ops/helm/ploeg/ci/reject-credential-gateway-claude-runner-values.yaml:claudeRunner.enabled cannot run with executor.credentialGateway.enabled" \
+	"ops/helm/ploeg/ci/reject-credential-gateway-claude-runner-values.yaml:claudeRunner.mode fleet cannot run with executor.credentialGateway.enabled" \
 	"ops/helm/ploeg/ci/reject-credential-gateway-dind-values.yaml:team silver: harness.dind cannot run with executor.credentialGateway.enabled" \
 	"ops/helm/ploeg/ci/reject-credential-gateway-sandbox-network-policy-values.yaml:executor.sandbox.networkPolicy cannot be set with executor.credentialGateway.enabled" \
 	"ops/helm/ploeg/ci/reject-credential-gateway-without-network-policy-values.yaml:executor.credentialGateway.enabled needs networkPolicy.enabled" \
@@ -624,6 +626,13 @@ fi
 if out=$(helm template ploeg ops/helm/ploeg -f "$REQUIRED" -f ops/helm/ploeg/ci/reject-credential-gateway-plugin-secret-values.yaml --set executor.credentialGateway.enabled=false 2>&1) || printf '%s' "$out" | grep -qF "no Secret enters a Run pod" || ! printf '%s' "$out" | grep -qF "harness claude-code is not qualified"; then
 	echo "without the credential gateway, chart judged a Claude Code plugin reading an unrelated Secret by its Secret instead of refusing only the unqualified claude-code harness:"
 	echo "$out"
+	status=1
+fi
+if ! uv run -q --no-project --with pyyaml==6.0.3 python scripts/check-claude-runner-orchestrator.py "$GOLDEN/executor-credential-gateway-claude-environment.yaml" ploeg-workers; then
+	status=1
+fi
+helm template ploeg ops/helm/ploeg -f "$REQUIRED" -f ops/helm/ploeg/ci/executor-credential-gateway-claude-environment-values.yaml --set executor.credentialGateway.acknowledgeSingleNode=true >"$gateway_render"
+if ! uv run -q --no-project --with pyyaml==6.0.3 python scripts/check-claude-runner-orchestrator.py "$gateway_render" ploeg-workers single-node; then
 	status=1
 fi
 rm -f "$gateway_render"

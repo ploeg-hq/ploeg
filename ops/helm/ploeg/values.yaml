@@ -90,6 +90,11 @@ networkPolicy:
     extraEgress: []
   claudeRunner:
     extraEgress: []
+  # Where the claude-runner's sessions and orchestrator reach api.anthropic.com.
+  # A NetworkPolicy cannot name a host, so [] is the internet on 443; a list
+  # of NetworkPolicyPeers (Anthropic's published ranges) narrows it.
+  anthropic:
+    peers: []
   mcp:
     ingressFrom: []
     extraEgress: []
@@ -167,6 +172,40 @@ mcp:
 # internet on 443 because a NetworkPolicy cannot name a host.
 claudeRunner:
   enabled: false
+  # fleet: a Deployment of runners, each holding environmentSecret.
+  # orchestrator: Anthropic's on-demand runners (ADR-0197 section 7). One
+  # `claude self-hosted-runner orchestrator` holds environmentSecret, off every
+  # node that runs a session, and its spawn-runner hook starts one runner Job
+  # per session in the executor namespace with a single-use work order. The
+  # runner pod holds no Secret and no ServiceAccount token. With
+  # executor.credentialGateway.enabled only orchestrator renders, its runner
+  # pods reach only DNS, the gateway and Anthropic, and the orchestrator is
+  # placed like the gateway (executor.credentialGateway.acknowledgeSingleNode
+  # relaxes it the same way).
+  mode: fleet
+  orchestrator:
+    replicas: 1
+    # Orchestrator flags after --environment-secret-file and --hooks-dir.
+    # --expected-spawn-seconds must cover a runner Job's p99 time from spawn
+    # request to registration, its Claude Code install included; the work
+    # order expires with it. Never --min-idle: a standby runner is unbound
+    # and the hook refuses it.
+    args:
+      - --expected-spawn-seconds
+      - "300"
+      - --hook-timeout
+      - "60"
+    extraArgs: [] # e.g. [--shutdown-drain-sec, "70"] from Claude Code 2.1.299
+    terminationGracePeriodSeconds: 85
+    # Seconds a runner Job may run in all, and how long a finished one is
+    # kept for its logs.
+    runnerActiveDeadlineSeconds: 21600
+    runnerTtlSecondsAfterFinished: 600
+    resources:
+      requests: {cpu: 20m, memory: 256Mi}
+      limits: {memory: 1Gi}
+    nodeSelector: {} # the orchestrator's own pool; never one executor.nodeSelector names
+    tolerations: []
   name: "" # empty = <fullname>-claude-runner; Deployment and the pods' app.kubernetes.io/name
   # Also the default harness image of a claude-environment team or Role that
   # sets none. Digest and tag follow the same rules as image.
@@ -180,7 +219,9 @@ claudeRunner:
     sha256: ""
   replicas: 1
   # REQUIRED when enabled: the Secret with SELF_HOSTED_RUNNER_ENVIRONMENT_SECRET,
-  # the environment key from the claude.ai admin page. Loaded with envFrom.
+  # the environment key from the claude.ai admin page. A fleet loads it with
+  # envFrom; the orchestrator mounts that key as a file, and no runner pod
+  # it starts sees it.
   environmentSecret:
     name: ""
   ploegUrl: "" # empty = this release's ploegd Service (executor.apiUrl when set)

@@ -15,6 +15,7 @@ verified_by: "Built ops/claude-runner/Dockerfile and ran it as the runner (uid 1
 | Pod | Where Claude Code comes from | Download |
 | --- | --- | --- |
 | claude-runner Deployment (chart) | Init container `claude-code` installs into an emptyDir as uid 65532; the runner mounts it read-only at `/opt/claude-code` | Once per pod |
+| claude-runner orchestrator and its runner Jobs (`claudeRunner.mode: orchestrator`) | The same init container, in the orchestrator and in every runner Job's pod | Once per orchestrator pod and once per session, so `--expected-spawn-seconds` (300 in the chart) must cover it |
 | `claude-environment` worker | The image's `claude` wrapper installs into the Run's cache directory on first use | Once per Run, about 257 MB |
 | Sign-in pod (`claude auth login` on a login volume) | The same wrapper, into `/tmp` | Once per pod |
 
