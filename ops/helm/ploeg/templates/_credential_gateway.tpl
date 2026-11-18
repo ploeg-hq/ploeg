@@ -19,13 +19,13 @@ app.kubernetes.io/instance: {{ include "ploeg.instance" . }}
 
 {{/*
 ploeg.credentialGatewayUrls are the URLs a Run pod calls in gateway mode, as
-JSON {control, forge, model}. The model URL keeps the path of
+JSON {control, forge, model, mcp}. The model URL keeps the path of
 executor.litellm.baseUrl, so a harness's base URL ends where it did.
 */}}
 {{- define "ploeg.credentialGatewayUrls" -}}
 {{- $host := printf "%s.%s.svc" (include "ploeg.credentialGatewayName" .) (include "ploeg.executorNamespace" .) -}}
 {{- $path := (urlParse .Values.executor.litellm.baseUrl).path -}}
-{{- dict "control" (printf "http://%s:8080" $host) "forge" (printf "http://%s:8081" $host) "model" (printf "http://%s:8082%s" $host $path) | toJson -}}
+{{- dict "control" (printf "http://%s:8080" $host) "forge" (printf "http://%s:8081" $host) "model" (printf "http://%s:8082%s" $host $path) "mcp" (printf "http://%s:8083" $host) | toJson -}}
 {{- end -}}
 
 {{/*
@@ -161,4 +161,18 @@ every entry, as a Run pod's node does.
 {{- end -}}
 {{- end -}}
 {{- toYaml $affinity -}}
+{{- end -}}
+
+{{/*
+ploeg.mcpAdapterHosts are the cluster hosts of the stdio MCP adapters this
+release renders, which toolRegistry.plainHTTPHosts must list to register
+them (ADR-0199 section 7).
+*/}}
+{{- define "ploeg.mcpAdapterHosts" -}}
+{{- $root := . -}}
+{{- $hosts := list -}}
+{{- range (((.Values.executor.credentialGateway | default dict).mcp | default dict).adapters | default list) -}}
+{{- $hosts = append $hosts (printf "%s.%s.svc" (printf "%s-mcp-%s" (include "ploeg.fullname" $root) .name | trunc 63 | trimSuffix "-") (include "ploeg.executorNamespace" $root)) -}}
+{{- end -}}
+{{- $hosts | toJson -}}
 {{- end -}}

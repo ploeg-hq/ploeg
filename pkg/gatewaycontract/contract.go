@@ -67,9 +67,43 @@ type Grant struct {
 	ModelKey            string     `json:"modelKey,omitempty"`
 	ModelAlias          string     `json:"modelAlias,omitempty"`
 	MCPAccessGroups     []string   `json:"mcpAccessGroups,omitempty"`
-	Pin                 Pin        `json:"pin"`
-	Deadline            time.Time  `json:"deadline"`
+	// MCP are the registered MCP servers the Run's Role was given, each
+	// with the credential the gateway attaches (ADR-0199 section 4).
+	MCP      []MCPServer `json:"mcp,omitempty"`
+	Pin      Pin         `json:"pin"`
+	Deadline time.Time   `json:"deadline"`
 }
+
+// MCPServer is one MCP server a Run may reach through the gateway's mcp
+// route family, keyed by Key in the path /mcp/<key>.
+type MCPServer struct {
+	ID         string            `json:"id"`
+	Key        string            `json:"key"`
+	URL        string            `json:"url"`
+	AuthKind   string            `json:"authKind"`
+	Header     string            `json:"header,omitempty"`
+	Credential string            `json:"credential,omitempty"`
+	Tools      map[string]string `json:"tools"`
+}
+
+// RunTools is what a worker installs and configures for one Run: the MCP
+// server keys its harness reaches through the gateway and the skill
+// bundles it installs read-only, by digest (ADR-0199).
+type RunTools struct {
+	MCPServers []string    `json:"mcpServers"`
+	Withheld   string      `json:"withheld,omitempty"`
+	Skills     []RunSkills `json:"skills"`
+}
+
+// RunSkills is one skill bundle of a Run.
+type RunSkills struct {
+	Key    string   `json:"key"`
+	Digest string   `json:"digest"`
+	Skills []string `json:"skills,omitempty"`
+}
+
+// Withheld reasons of RunTools.
+const WithheldNoGateway = "mcp_requires_credential_gateway"
 
 // Use is one batch of a gateway's attached uses for one Run, route family and
 // credential kind.

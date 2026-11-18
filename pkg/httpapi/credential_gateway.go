@@ -358,6 +358,7 @@ func (s *Server) handleGatewayGrant(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	grant.Deadline = run.Deadline
+	grant.MCP = s.gatewayMCP(r.Context(), run.Team, run.Role)
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, grant)
 }

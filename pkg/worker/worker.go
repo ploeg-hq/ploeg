@@ -76,6 +76,9 @@ type Config struct {
 	// capability, which the gateway replaces with the Run's credentials.
 	CredentialGateway bool
 	GatewayForgeURL   string
+	// GatewayMCPURL is the credential gateway's MCP route family; a Run's
+	// registered MCP servers are reached only there (ADR-0199).
+	GatewayMCPURL string
 	// LLMKeyIsolation is KeyIsolationProxy to keep the per-Run model key out of
 	// the harness behind a loopback proxy, or "" to hand the key over.
 	LLMKeyIsolation string
@@ -540,6 +543,18 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	if err != nil {
 		return stuckReport("could not install Ploeg's skills", err.Error())
 	}
+	gatewayMCP := ""
+	if w.Cfg.CredentialGateway {
+		gatewayMCP = w.Cfg.GatewayMCPURL
+	}
+	var registry registryTools
+	if w.API != nil {
+		registry = loadRegistryTools(ctx, w.API, claimed.RunToken, home, w.Cfg.SkillDirs, gatewayMCP)
+	}
+	skillPaths = append(skillPaths, registry.SkillPaths...)
+	for _, note := range registry.Notes {
+		w.Log.Warn("registry tools", "note", note)
+	}
 	var verifyCommands []string
 	var runEnv []string
 	if !planner {
@@ -687,7 +702,7 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 		ScratchDir: scratchDir,
 		Prompt:     taskPrompt(harnessSpec, planner, writes, priorPR, onReviewBranch) + support,
 		BaseEnv:    append(append(withToolchains(harnessEnvironment(w.side().environ, home, scratchDir, writes, harnessForgeToken, w.Cfg.LLMBaseURL, harnessModelName(w.Cfg)), w.Cfg.Toolchains), runEnv...), w.runTelemetryEnvironment(claimed.Role, trace)...),
-		LLM:        harness.LLMEnv{BaseURL: w.Cfg.LLMBaseURL, Model: model, TraceID: trace},
+		LLM:        harness.LLMEnv{BaseURL: w.Cfg.LLMBaseURL, Model: model, TraceID: trace, MCPServers: registry.MCPServers},
 		Stdout:     w.harnessOutput(os.Stdout, &logTail),
 		Stderr:     w.harnessOutput(os.Stderr, &logTail),
 		Checkpoint: func(cp work.Checkpoint) {

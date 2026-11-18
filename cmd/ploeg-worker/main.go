@@ -145,6 +145,7 @@ func run(log *slog.Logger) error {
 			return err
 		}
 		cfg.GatewayForgeURL = trimSlash(os.Getenv("PLOEG_CREDENTIAL_GATEWAY_FORGE_URL"))
+		cfg.GatewayMCPURL = trimSlash(os.Getenv("PLOEG_CREDENTIAL_GATEWAY_MCP_URL"))
 	}
 	if cfg.LLMKeyIsolation != "" && cfg.LLMKeyIsolation != worker.KeyIsolationProxy {
 		return fmt.Errorf("PLOEG_LLM_KEY_ISOLATION must be empty or %q, got %q", worker.KeyIsolationProxy, cfg.LLMKeyIsolation)

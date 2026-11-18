@@ -141,7 +141,9 @@ for case in "ops/helm/ploeg/ci/reject-reader-without-read-token-values.yaml:read
 	"ops/helm/ploeg/ci/reject-credential-gateway-hmac-off-values.yaml:executor.credentialGateway.enabled needs executor.workerAuth.hmacCapability issue" \
 	"ops/helm/ploeg/ci/reject-credential-gateway-claude-environment-values.yaml:team pewter: harness claude-environment cannot run with executor.credentialGateway.enabled" \
 	"ops/helm/ploeg/ci/reject-credential-gateway-plugin-secret-values.yaml:reads LINK_TOKEN from Secret session-link-plugin, and with executor.credentialGateway.enabled no Secret enters a Run pod" \
-	"ops/helm/ploeg/ci/reject-credential-gateway-claude-runner-values.yaml:claudeRunner.enabled cannot run with executor.credentialGateway.enabled"; do
+	"ops/helm/ploeg/ci/reject-credential-gateway-claude-runner-values.yaml:claudeRunner.enabled cannot run with executor.credentialGateway.enabled" \
+	"ops/helm/ploeg/ci/reject-mcp-adapter-undigested-values.yaml:does not match pattern '@sha256:[0-9a-f]{64}\$'" \
+	"ops/helm/ploeg/ci/reject-mcp-adapter-without-gateway-values.yaml:executor.credentialGateway.mcp.adapters needs executor.credentialGateway.enabled"; do
 	values=${case%%:*}
 	expected=${case#*:}
 	if out=$(helm template ploeg ops/helm/ploeg -f "$REQUIRED" -f "$values" 2>&1); then
@@ -603,7 +605,7 @@ for injection in env volume; do
 		awk '{ print } /^  volumes:$/ { print "    - name: injected"; print "      secret:"; print "        secretName: injected" }' ops/helm/ploeg/templates/_helpers.tpl >"$injected_chart/ploeg/templates/_helpers.tpl"
 		expected='renders volume injected from a Secret or a projection'
 	fi
-	if ! helm template ploeg "$injected_chart/ploeg" -f "$REQUIRED" -f "$GATEWAY_VALUES" --set executor.credentialGateway.enabled=false >/dev/null 2>&1; then
+	if ! helm template ploeg "$injected_chart/ploeg" -f "$REQUIRED" -f "$GATEWAY_VALUES" --set executor.credentialGateway.enabled=false --set-json executor.credentialGateway.mcp.adapters=[] >/dev/null 2>&1; then
 		echo "the chart with an injected Secret $injection does not render without the credential gateway, so its refusal proves nothing"
 		status=1
 	fi

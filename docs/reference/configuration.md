@@ -80,6 +80,7 @@ The generator follows each binary's imports inside the module and records every 
 | `PLOEG_CREDENTIAL_GATEWAY` | ploeg-worker | `false` | `on` puts the worker behind the credential gateway (ADR-0197, proposed): it refuses any credential in its pod, claims through the gateway at `PLOEG_API_URL`, and uses the Run's capability against the gateway's forge and model URLs (chart `executor.credentialGateway.enabled`). | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_CREDENTIAL_GATEWAYS` | ploegd |  | JSON list of credential gateways (ADR-0197, proposed): `namespace` and `serviceAccount` as TokenReview reports them and the `teams` each serves. A Team listed here gets no credential in a claim; only its gateway fetches the Run's grant. Needs the HMAC capability and TokenReview permission (chart `executor.credentialGateway`). | [credential_gateway.go](../../cmd/ploegd/credential_gateway.go) |
 | `PLOEG_CREDENTIAL_GATEWAY_FORGE_URL` | ploeg-worker |  | The credential gateway's forge route family, which a gateway-mode worker and its harness use as the Run's forge. | [main.go](../../cmd/ploeg-worker/main.go) |
+| `PLOEG_CREDENTIAL_GATEWAY_MCP_URL` | ploeg-worker |  | The credential gateway's MCP route family; a gateway-mode worker configures its harness with one MCP server per registered server key there, with the Run's capability as bearer (ADR-0199). | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_CREDENTIAL_ISOLATION_OFF_REASON` | ploeg-worker | `disabled` | Why the chart left a credential proxy off for this workload: `unqualified`, `dind` or `disabled`. ploeg-worker logs it in one boot WARN with the harness name. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_DATABASE_URL` | ploeg-worker |  | Controller-only. The worker refuses to start when it is set. | [main.go](../../cmd/ploeg-worker/main.go) |
 | `PLOEG_DATABASE_URL` | ploegd | required | PostgreSQL connection URI. The chart reads the whole `uri` key of the CNPG app Secret named by `database.existingSecret`. | [main.go](../../cmd/ploegd/main.go) |
@@ -113,6 +114,7 @@ The generator follows each binary's imports inside the module and records every 
 | `PLOEG_GATEWAY_FORGE_ADDR` | ploeg-credential-gateway | `:8081` | Listener of the credential gateway's forge route family (default `:8081`). | [main.go](../../cmd/ploeg-credential-gateway/main.go) |
 | `PLOEG_GATEWAY_HEALTH_ADDR` | ploeg-credential-gateway | `:8090` | Listener of the credential gateway's `/healthz` (default `:8090`). | [main.go](../../cmd/ploeg-credential-gateway/main.go) |
 | `PLOEG_GATEWAY_LIMITS` | ploeg-credential-gateway |  | Per-Run token buckets per route family (`forge`, `model`, `ploegd`: `requestsPerSecond`, `burst`, `bytesPerSecond`) and `maxUpstreamConnections` for the namespace, as JSON (chart `executor.credentialGateway.limits`). | [main.go](../../cmd/ploeg-credential-gateway/main.go) |
+| `PLOEG_GATEWAY_MCP_ADDR` | ploeg-credential-gateway | `:8083` | Listener of the credential gateway's MCP route family (default `:8083`), where a Run reaches its registered MCP servers at /mcp/<key> (ADR-0199). | [main.go](../../cmd/ploeg-credential-gateway/main.go) |
 | `PLOEG_GATEWAY_MODEL_ADDR` | ploeg-credential-gateway | `:8082` | Listener of the credential gateway's model route family (default `:8082`). | [main.go](../../cmd/ploeg-credential-gateway/main.go) |
 | `PLOEG_GATEWAY_MODEL_URL` | ploeg-credential-gateway |  | The model gateway the credential gateway forwards model calls to, with the Run's key attached. | [main.go](../../cmd/ploeg-credential-gateway/main.go) |
 | `PLOEG_GATEWAY_RUN_POD_SELECTOR` | ploeg-credential-gateway | `app.kubernetes.io/name=ploeg-worker` | Label selector of the Run pods the credential gateway serves (default `app.kubernetes.io/name=ploeg-worker`). | [main.go](../../cmd/ploeg-credential-gateway/main.go) |
@@ -330,8 +332,23 @@ Keys come from [values.yaml](../../ops/helm/ploeg/values.yaml) and [values.schem
 | `executor.credentialGateway.limits` | object |  | Per Run and route family, a token bucket on requests and on request bytes; maxUpstreamConnections caps the gateway's concurrent upstream connections (PLOEG_GATEWAY_LIMITS). | values.yaml, values.schema.json |
 | `executor.credentialGateway.limits.forge` | [credentialGatewayLimit](#credentialgatewaylimit) | `{"requestsPerSecond": 20, "burst": 40, "bytesPerSecond": 52428800}` |  | values.yaml, values.schema.json |
 | `executor.credentialGateway.limits.maxUpstreamConnections` | integer | `256` |  | values.yaml, values.schema.json |
+| `executor.credentialGateway.limits.mcp` | [credentialGatewayLimit](#credentialgatewaylimit) | `{"requestsPerSecond": 5, "burst": 20, "bytesPerSecond": 5242880}` |  | values.yaml, values.schema.json |
 | `executor.credentialGateway.limits.model` | [credentialGatewayLimit](#credentialgatewaylimit) | `{"requestsPerSecond": 10, "burst": 20, "bytesPerSecond": 20971520}` |  | values.yaml, values.schema.json |
 | `executor.credentialGateway.limits.ploegd` | [credentialGatewayLimit](#credentialgatewaylimit) | `{"requestsPerSecond": 10, "burst": 20, "bytesPerSecond": 10485760}` |  | values.yaml, values.schema.json |
+| `executor.credentialGateway.mcp` | object |  | Registered MCP servers (ADR-0199): the gateway's egress to them, and stdio servers run as sandboxed adapters outside every Run pod. | values.yaml, values.schema.json |
+| `executor.credentialGateway.mcp.adapters` | array | `[]` |  | values.yaml, values.schema.json |
+| `executor.credentialGateway.mcp.adapters[].args` | array |  |  | values.schema.json |
+| `executor.credentialGateway.mcp.adapters[].command` | array |  |  | values.schema.json |
+| `executor.credentialGateway.mcp.adapters[].credentialSecret` | object |  | The server's credential, mounted only into the adapter pod, never a Run pod. | values.schema.json |
+| `executor.credentialGateway.mcp.adapters[].credentialSecret.env` | string |  |  | values.schema.json |
+| `executor.credentialGateway.mcp.adapters[].credentialSecret.key` | string |  |  | values.schema.json |
+| `executor.credentialGateway.mcp.adapters[].credentialSecret.name` | string |  |  | values.schema.json |
+| `executor.credentialGateway.mcp.adapters[].egress` | array |  | NetworkPolicy egress rules of the adapter pod besides DNS. | values.schema.json |
+| `executor.credentialGateway.mcp.adapters[].image` | string |  | The stdio MCP server's image, pinned by digest. | values.schema.json |
+| `executor.credentialGateway.mcp.adapters[].name` | string |  |  | values.schema.json |
+| `executor.credentialGateway.mcp.adapters[].resources` | object |  |  | values.schema.json |
+| `executor.credentialGateway.mcp.adapters[].sessions` | integer |  | Concurrent MCP sessions, each one process of the server. Default 16. | values.schema.json |
+| `executor.credentialGateway.mcp.egress` | array | `[]` | NetworkPolicy egress rules the credential gateway gets for registered MCP servers. | values.yaml, values.schema.json |
 | `executor.credentialGateway.nodeSelector` | object or null | `{}` | the gateway's own pool; never one executor.nodeSelector names | values.yaml, values.schema.json |
 | `executor.credentialGateway.replicas` | integer | `2` | Gateway replicas, spread over nodes; the PodDisruptionBudget allows one unavailable. | values.yaml, values.schema.json |
 | `executor.credentialGateway.resources.limits.cpu` |  | `1` |  | values.yaml |

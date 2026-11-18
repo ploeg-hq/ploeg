@@ -66,7 +66,7 @@ spec:
   egress: {{- include "ploeg.netpol.rules" (dict "rules" $ploegdEgress "extra" $np.ploegd.extraEgress) | fromJsonArray | toYaml | nindent 4 }}
 {{- if $ex.enabled }}
 {{- $ploegdFromExecutor := dict "root" . "url" $ex.apiUrl "namespace" (ternary .Release.Namespace "" (eq (include "ploeg.executorNamespaceSeparate" .) "true")) }}
-{{- $gatewayPorts := list (dict "protocol" "TCP" "port" 8080) (dict "protocol" "TCP" "port" 8081) (dict "protocol" "TCP" "port" 8082) }}
+{{- $gatewayPorts := list (dict "protocol" "TCP" "port" 8080) (dict "protocol" "TCP" "port" 8081) (dict "protocol" "TCP" "port" 8082) (dict "protocol" "TCP" "port" 8083) }}
 {{- $upstreamEgress := list (include "ploeg.netpol.dnsRule" .) (include "ploeg.netpol.ploegdRule" $ploegdFromExecutor) }}
 {{- with $ex.litellm.baseUrl }}
 {{- $upstreamEgress = append $upstreamEgress (include "ploeg.netpol.endpointRule" (dict "root" $root "url" . "endpoint" $np.gateway)) }}
@@ -112,7 +112,12 @@ spec:
     matchLabels: {{- include "ploeg.credentialGatewaySelectorLabels" . | nindent 6 }}
   policyTypes: [Ingress, Egress]
   ingress: {{- list (dict "from" (list (dict "podSelector" (dict "matchLabels" (dict "app.kubernetes.io/name" "ploeg-worker")))) "ports" $gatewayPorts) | toYaml | nindent 4 }}
-  egress: {{- include "ploeg.netpol.rules" (dict "rules" (append $upstreamEgress ($kubeApiRule | toJson)) "extra" list) | fromJsonArray | toYaml | nindent 4 }}
+{{- $gwMCP := ($ex.credentialGateway.mcp | default dict) }}
+{{- $gatewayExtra := $gwMCP.egress | default list }}
+{{- if $gwMCP.adapters }}
+{{- $gatewayExtra = append $gatewayExtra (dict "to" (list (dict "podSelector" (dict "matchLabels" (dict "app.kubernetes.io/name" "ploeg-mcp-adapter")))) "ports" (list (dict "protocol" "TCP" "port" 8080))) }}
+{{- end }}
+  egress: {{- include "ploeg.netpol.rules" (dict "rules" (append $upstreamEgress ($kubeApiRule | toJson)) "extra" $gatewayExtra) | fromJsonArray | toYaml | nindent 4 }}
 {{- end }}
 {{- range $team := $claudeTeams }}
 ---

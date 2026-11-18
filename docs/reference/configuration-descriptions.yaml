@@ -178,6 +178,7 @@ env:
   PLOEG_CREDENTIAL_GATEWAYS: "JSON list of credential gateways (ADR-0197, proposed): `namespace` and `serviceAccount` as TokenReview reports them and the `teams` each serves. A Team listed here gets no credential in a claim; only its gateway fetches the Run's grant. Needs the HMAC capability and TokenReview permission (chart `executor.credentialGateway`)."
   PLOEG_CREDENTIAL_GATEWAY: "`on` puts the worker behind the credential gateway (ADR-0197, proposed): it refuses any credential in its pod, claims through the gateway at `PLOEG_API_URL`, and uses the Run's capability against the gateway's forge and model URLs (chart `executor.credentialGateway.enabled`)."
   PLOEG_CREDENTIAL_GATEWAY_FORGE_URL: The credential gateway's forge route family, which a gateway-mode worker and its harness use as the Run's forge.
+  PLOEG_CREDENTIAL_GATEWAY_MCP_URL: The credential gateway's MCP route family; a gateway-mode worker configures its harness with one MCP server per registered server key there, with the Run's capability as bearer (ADR-0199).
   PLOEG_GATEWAY_MODEL_URL: The model gateway the credential gateway forwards model calls to, with the Run's key attached.
   PLOEG_GATEWAY_LIMITS: "Per-Run token buckets per route family (`forge`, `model`, `ploegd`: `requestsPerSecond`, `burst`, `bytesPerSecond`) and `maxUpstreamConnections` for the namespace, as JSON (chart `executor.credentialGateway.limits`)."
   PLOEG_GATEWAY_TOKEN_FILE: The projected ServiceAccount token, audience `ploegd`, the credential gateway proves itself to ploegd with.
@@ -186,6 +187,7 @@ env:
   PLOEG_GATEWAY_CONTROL_ADDR: Listener of the credential gateway's ploegd route family (default `:8080`).
   PLOEG_GATEWAY_FORGE_ADDR: Listener of the credential gateway's forge route family (default `:8081`).
   PLOEG_GATEWAY_MODEL_ADDR: Listener of the credential gateway's model route family (default `:8082`).
+  PLOEG_GATEWAY_MCP_ADDR: Listener of the credential gateway's MCP route family (default `:8083`), where a Run reaches its registered MCP servers at /mcp/<key> (ADR-0199).
   PLOEG_GATEWAY_HEALTH_ADDR: Listener of the credential gateway's `/healthz` (default `:8090`).
   PLOEG_WORKER_HMAC_CAPABILITY: "`issue` (default) still hands each claimed Run the 24-hour HMAC capability as `controlToken` and accepts it, deprecated by ADR-0156 and removed no earlier than the next minor (ADR-0134). `off` issues and accepts the transaction token only; it needs managed mode and `PLOEG_TRANSACTION_TOKEN_SIGNING_KEY`, and refuses a `PLOEG_WORKER_SIGNING_KEY` (chart `executor.workerAuth.hmacCapability`)."
   PLOEG_HARNESS_OUTPUT_IN_LOG: "`on` copies everything the harness prints to the worker's stdout and stderr, so the prompt, tool output, file contents and any secret the agent reads reach the pod log and every log store behind it (chart `executor.harnessOutputInLog`). Debugging only. Default off: the worker keeps the output in an 8 KiB in-memory tail, and only its redacted last 2000 bytes leave the worker, as a stuck reason."

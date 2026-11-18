@@ -38,9 +38,12 @@ type Config struct {
 	Limits         Limits
 	ScratchDir     string
 	HTTP           *http.Client
-	Log            *slog.Logger
-	Now            func() time.Time
-	AuditEvery     time.Duration
+	// MCPClient reaches registered MCP servers. Nil is a client that never
+	// follows a redirect.
+	MCPClient  *http.Client
+	Log        *slog.Logger
+	Now        func() time.Time
+	AuditEvery time.Duration
 }
 
 // Gateway serves the route families of ADR-0197.
@@ -77,6 +80,9 @@ func New(cfg Config) (*Gateway, error) {
 	if cfg.Log == nil {
 		cfg.Log = slog.New(slog.DiscardHandler)
 	}
+	if cfg.MCPClient == nil {
+		cfg.MCPClient = &http.Client{Timeout: 5 * time.Minute, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	}
 	if cfg.Now == nil {
 		cfg.Now = time.Now
 	}
@@ -96,6 +102,7 @@ func New(cfg Config) (*Gateway, error) {
 		runs:      map[string]*runState{},
 	}
 	g.Register(forgeUpstream{g: g})
+	g.Register(newMCPUpstream(cfg.MCPClient, cfg.Log))
 	if cfg.ModelURL != "" {
 		model, err := newModelUpstream(cfg.ModelURL)
 		if err != nil {

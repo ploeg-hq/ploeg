@@ -13,7 +13,7 @@ FORBIDDEN_ENV = {
 }
 FORBIDDEN_ENV_PREFIX = 'PLOEG_CLAUDE_PLUGIN_ENV_'
 GATEWAY_NAME = 'ploeg-credential-gateway'
-GATEWAY_PORTS = {8080, 8081, 8082}
+GATEWAY_PORTS = {8080, 8081, 8082, 8083}
 RUN_POD_LABEL = {'app.kubernetes.io/name': 'ploeg-worker'}
 
 
@@ -58,6 +58,7 @@ def check_run_pod(where, pod, host):
         'PLOEG_CREDENTIAL_GATEWAY': 'on',
         'PLOEG_API_URL': f'http://{host}:8080',
         'PLOEG_CREDENTIAL_GATEWAY_FORGE_URL': f'http://{host}:8081',
+        'PLOEG_CREDENTIAL_GATEWAY_MCP_URL': f'http://{host}:8083',
     }
     for name, value in expected.items():
         if env.get(name) != value:
@@ -140,6 +141,35 @@ def check_gateway(documents, namespace, bootstrap_keys):
     return problems
 
 
+ADAPTER_LABEL = {'app.kubernetes.io/name': 'ploeg-mcp-adapter'}
+
+
+def check_mcp_adapters(documents):
+    problems = []
+    for d in documents:
+        if d.get('kind') != 'Deployment' or d['spec']['template']['metadata'].get('labels', {}).get('app.kubernetes.io/name') != 'ploeg-mcp-adapter':
+            continue
+        name = d['metadata']['name']
+        pod = d['spec']['template']['spec']
+        if pod.get('automountServiceAccountToken') is not False:
+            problems.append(f"MCP adapter {name} mounts a ServiceAccount token")
+        for c in pod.get('containers') or []:
+            if '@sha256:' not in c.get('image', ''):
+                problems.append(f"MCP adapter {name} runs an image not pinned by digest")
+            if not (c.get('securityContext') or {}).get('readOnlyRootFilesystem'):
+                problems.append(f"MCP adapter {name} has a writable root filesystem")
+        labels = d['spec']['template']['metadata']['labels']
+        policies = [p for p in documents if p.get('kind') == 'NetworkPolicy' and selects(p, labels) and 'Ingress' in (p['spec'].get('policyTypes') or [])]
+        if not policies:
+            problems.append(f"no NetworkPolicy limits who reaches MCP adapter {name}")
+        for policy in policies:
+            for rule in policy['spec'].get('ingress') or []:
+                peers = rule.get('from') or []
+                if not peers or any((peer.get('podSelector') or {}).get('matchLabels', {}).get('app.kubernetes.io/name') != GATEWAY_NAME for peer in peers):
+                    problems.append(f"NetworkPolicy {policy['metadata']['name']} lets more than the credential gateway reach MCP adapter {name}")
+    return problems
+
+
 def main(path, namespace, bootstrap_keys):
     documents = [d for d in yaml.safe_load_all(open(path)) if d]
     host = f'{GATEWAY_NAME}.{namespace}.svc'
@@ -151,6 +181,7 @@ def main(path, namespace, bootstrap_keys):
         problems += check_run_pod(where, pod, host)
     problems += check_run_pod_egress(documents, namespace)
     problems += check_gateway(documents, namespace, [k for k in bootstrap_keys.split(',') if k])
+    problems += check_mcp_adapters(documents)
     for problem in problems:
         print(f"{path}: {problem}")
     return 1 if problems else 0

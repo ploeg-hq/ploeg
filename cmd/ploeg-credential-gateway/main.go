@@ -52,6 +52,7 @@ func run(log *slog.Logger) error {
 		{envOr("PLOEG_GATEWAY_FORGE_ADDR", ":8081"), g.Handler(credentialgateway.FamilyForge)},
 		{envOr("PLOEG_GATEWAY_HEALTH_ADDR", ":8090"), health()},
 	}
+	listeners = append(listeners, listener{envOr("PLOEG_GATEWAY_MCP_ADDR", ":8083"), g.Handler(credentialgateway.FamilyMCP)})
 	if model := g.Handler(credentialgateway.FamilyModel); model != nil {
 		listeners = append(listeners, listener{envOr("PLOEG_GATEWAY_MODEL_ADDR", ":8082"), model})
 	}
