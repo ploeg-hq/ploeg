@@ -38,33 +38,63 @@ type Client struct {
 
 var _ harness.Spawner = (*Client)(nil)
 
-// Accept listens on socket, takes the first connection, removes the socket
-// so nothing else can connect, and completes the handshake with the
-// launcher on the other end.
-func Accept(ctx context.Context, socket string) (*Client, error) {
-	if err := os.Remove(socket); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return nil, fmt.Errorf("clear the launcher socket %s: %w", socket, err)
+// Accept listens on the pod's loopback, publishes the address and a fresh
+// token at rendezvous, and takes the first connection whose hello carries
+// that token. It then stops listening and removes the rendezvous, so nothing
+// else can connect, and returns the handshaken client.
+func Accept(ctx context.Context, rendezvous string) (*Client, error) {
+	if err := os.Remove(rendezvous); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("clear the launcher rendezvous %s: %w", rendezvous, err)
 	}
-	ln, err := net.ListenUnix("unix", &net.UnixAddr{Name: socket, Net: "unix"})
+	token, err := newToken()
 	if err != nil {
-		return nil, fmt.Errorf("listen for the harness launcher on %s: %w", socket, err)
+		return nil, err
 	}
-	ln.SetUnlinkOnClose(true)
+	ln, err := listenOnLoopback()
+	if err != nil {
+		return nil, fmt.Errorf("listen for the harness launcher on the pod's loopback: %w", err)
+	}
+	defer ln.Close()
+	defer os.Remove(rendezvous)
+	if err := publishRendezvous(rendezvous, Rendezvous{Address: ln.Addr().String(), Token: token}); err != nil {
+		return nil, err
+	}
 	stop := context.AfterFunc(ctx, func() { _ = ln.Close() })
-	conn, err := ln.Accept()
-	stop()
-	_ = ln.Close()
-	if err != nil {
-		if ctx.Err() != nil {
-			return nil, fmt.Errorf("no harness launcher connected to %s: %w", socket, context.Cause(ctx))
+	defer stop()
+	var refused error
+	for {
+		conn, err := ln.Accept()
+		if err != nil {
+			if ctx.Err() != nil {
+				return nil, errors.Join(fmt.Errorf("no harness launcher connected to %s: %w", rendezvous, context.Cause(ctx)), refused)
+			}
+			return nil, fmt.Errorf("accept the harness launcher on %s: %w", ln.Addr(), err)
 		}
-		return nil, fmt.Errorf("accept the harness launcher on %s: %w", socket, err)
+		client, err := handshake(ctx, conn, token)
+		if err == nil {
+			return client, nil
+		}
+		if errors.Is(err, errProtocolMismatch) {
+			return nil, err
+		}
+		refused = fmt.Errorf("refused a connection from %s: %w", conn.RemoteAddr(), err)
 	}
-	return NewClient(conn)
 }
 
-// NewClient completes the handshake on conn and starts reading it.
-func NewClient(conn net.Conn) (*Client, error) {
+func handshake(ctx context.Context, conn net.Conn, token string) (*Client, error) {
+	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stop()
+	return NewClient(conn, token)
+}
+
+var (
+	errWrongToken       = errors.New("the launcher did not present this worker's token")
+	errProtocolMismatch = errors.New("the launcher speaks another protocol")
+)
+
+// NewClient completes the handshake on conn, refusing a launcher whose hello
+// does not carry token, and starts reading it.
+func NewClient(conn net.Conn, token string) (*Client, error) {
 	_ = conn.SetReadDeadline(time.Now().Add(helloTimeout))
 	f, err := readFrame(conn)
 	if err != nil {
@@ -76,9 +106,13 @@ func NewClient(conn net.Conn) (*Client, error) {
 		conn.Close()
 		return nil, errors.New("the launcher did not start with a hello")
 	}
+	if !tokenMatches(token, h.Token) {
+		conn.Close()
+		return nil, errWrongToken
+	}
 	if h.Protocol != ProtocolVersion {
 		conn.Close()
-		return nil, fmt.Errorf("the launcher speaks protocol %d, this worker %d; run both from the same ploeg-worker binary", h.Protocol, ProtocolVersion)
+		return nil, fmt.Errorf("%w: protocol %d, this worker %d; run both from the same ploeg-worker binary", errProtocolMismatch, h.Protocol, ProtocolVersion)
 	}
 	_ = conn.SetReadDeadline(time.Time{})
 	c := &Client{conn: conn, pid: h.PID, executable: h.Executable, procs: map[uint32]*remoteProcess{}, replies: map[uint32]chan reply{}, done: make(chan struct{})}

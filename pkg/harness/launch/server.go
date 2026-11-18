@@ -23,26 +23,34 @@ const (
 	drainDelay = 10 * time.Second
 )
 
-// Serve dials the worker's socket until it answers, then runs what the
+// Serve waits for the worker's rendezvous, dials the loopback address it
+// names until the worker answers, presents its token, then runs what the
 // worker sends until the connection ends or ctx is cancelled. Every process
 // it started is killed before it returns.
-func Serve(ctx context.Context, socket string) error {
+func Serve(ctx context.Context, rendezvous string) error {
 	var d net.Dialer
 	for {
-		conn, err := d.DialContext(ctx, "unix", socket)
+		r, err := readRendezvous(rendezvous)
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
 		if err == nil {
-			return ServeConn(ctx, conn)
+			conn, dialErr := d.DialContext(ctx, "tcp", r.Address)
+			if dialErr == nil {
+				return ServeConn(ctx, conn, r.Token)
+			}
 		}
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("the worker never listened on %s: %w", socket, context.Cause(ctx))
+			return fmt.Errorf("the worker never listened at %s: %w", rendezvous, context.Cause(ctx))
 		case <-time.After(dialRetry):
 		}
 	}
 }
 
-// ServeConn runs the launcher's side of one connection.
-func ServeConn(ctx context.Context, conn net.Conn) error {
+// ServeConn runs the launcher's side of one connection, presenting token in
+// its hello.
+func ServeConn(ctx context.Context, conn net.Conn, token string) error {
 	s := &server{conn: conn, pid: os.Getpid(), procs: map[uint32]*serverProcess{}, children: map[int]bool{}, groups: map[int]bool{}}
 	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
 	defer stop()
@@ -54,7 +62,7 @@ func ServeConn(ctx context.Context, conn net.Conn) error {
 		go s.reapOrphans(reapCtx)
 	}
 	executable, _ := os.Executable()
-	if err := s.send(jsonFrame(frameHello, 0, hello{Protocol: ProtocolVersion, PID: s.pid, Executable: executable})); err != nil {
+	if err := s.send(jsonFrame(frameHello, 0, hello{Protocol: ProtocolVersion, PID: s.pid, Executable: executable, Token: token})); err != nil {
 		return err
 	}
 	for {

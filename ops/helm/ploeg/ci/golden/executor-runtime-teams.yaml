@@ -466,7 +466,7 @@ spec:
           - name: harness
             image: harbor.webgrip.dev/webgrip/openhands-agent:0.1.0
             restartPolicy: Always
-            command: ["/mnt/bin/ploeg-worker", "harness-serve", "/run/ploeg/launcher/launcher.sock"]
+            command: ["/mnt/bin/ploeg-worker", "harness-serve", "/run/ploeg/launcher/launcher.json"]
             volumeMounts:
               - name: worker-bin
                 mountPath: /mnt/bin
@@ -554,7 +554,7 @@ spec:
               - name: WORK_DIR
                 value: /mnt/ci-shared
               - name: PLOEG_HARNESS_LAUNCHER
-                value: /run/ploeg/launcher/launcher.sock
+                value: /run/ploeg/launcher/launcher.json
               - name: GOMEMLIMIT
                 value: "460MiB"
             volumeMounts:
@@ -699,7 +699,7 @@ spec:
           - name: harness
             image: harbor.webgrip.dev/webgrip/openhands-agent:0.1.0
             restartPolicy: Always
-            command: ["/mnt/bin/ploeg-worker", "harness-serve", "/run/ploeg/launcher/launcher.sock"]
+            command: ["/mnt/bin/ploeg-worker", "harness-serve", "/run/ploeg/launcher/launcher.json"]
             volumeMounts:
               - name: worker-bin
                 mountPath: /mnt/bin
@@ -789,7 +789,7 @@ spec:
               - name: WORK_DIR
                 value: /mnt/ci-shared
               - name: PLOEG_HARNESS_LAUNCHER
-                value: /run/ploeg/launcher/launcher.sock
+                value: /run/ploeg/launcher/launcher.json
               - name: GOMEMLIMIT
                 value: "460MiB"
             volumeMounts:
@@ -936,7 +936,7 @@ spec:
           - name: harness
             image: harbor.webgrip.dev/webgrip/openhands-agent:0.1.0
             restartPolicy: Always
-            command: ["/mnt/bin/ploeg-worker", "harness-serve", "/run/ploeg/launcher/launcher.sock"]
+            command: ["/mnt/bin/ploeg-worker", "harness-serve", "/run/ploeg/launcher/launcher.json"]
             volumeMounts:
               - name: worker-bin
                 mountPath: /mnt/bin
@@ -1024,7 +1024,7 @@ spec:
               - name: WORK_DIR
                 value: /mnt/ci-shared
               - name: PLOEG_HARNESS_LAUNCHER
-                value: /run/ploeg/launcher/launcher.sock
+                value: /run/ploeg/launcher/launcher.json
               - name: GOMEMLIMIT
                 value: "460MiB"
             volumeMounts:

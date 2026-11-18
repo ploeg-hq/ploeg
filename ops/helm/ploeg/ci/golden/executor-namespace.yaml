@@ -543,7 +543,7 @@ spec:
         - name: WORK_DIR
           value: /mnt/ci-shared
         - name: PLOEG_HARNESS_LAUNCHER
-          value: /run/ploeg/launcher/launcher.sock
+          value: /run/ploeg/launcher/launcher.json
         - name: GOMEMLIMIT
           value: 460MiB
         image: ghcr.io/ploeg-hq/ploeg-worker:CHART-VERSION@sha256:cc5bedc5be0fe1c8546671c1ccbf76c62646c87e3bf52908de7c317852848e14
@@ -603,7 +603,7 @@ spec:
       - command:
         - /mnt/bin/ploeg-worker
         - harness-serve
-        - /run/ploeg/launcher/launcher.sock
+        - /run/ploeg/launcher/launcher.json
         image: registry.example/agent-runner:1.3.0@sha256:db06af1d9c0969ed594a21ee2b3369a79d6e91abb36b94d29223918581963027
         name: harness
         resources:
@@ -764,7 +764,7 @@ spec:
           - name: harness
             image: registry.example/agent-runner:1.3.0@sha256:db06af1d9c0969ed594a21ee2b3369a79d6e91abb36b94d29223918581963027
             restartPolicy: Always
-            command: ["/mnt/bin/ploeg-worker", "harness-serve", "/run/ploeg/launcher/launcher.sock"]
+            command: ["/mnt/bin/ploeg-worker", "harness-serve", "/run/ploeg/launcher/launcher.json"]
             volumeMounts:
               - name: worker-bin
                 mountPath: /mnt/bin
@@ -852,7 +852,7 @@ spec:
               - name: WORK_DIR
                 value: /mnt/ci-shared
               - name: PLOEG_HARNESS_LAUNCHER
-                value: /run/ploeg/launcher/launcher.sock
+                value: /run/ploeg/launcher/launcher.json
               - name: GOMEMLIMIT
                 value: "460MiB"
             volumeMounts:

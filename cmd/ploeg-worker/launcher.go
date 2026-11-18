@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	launcherSocketEnv     = "PLOEG_HARNESS_LAUNCHER"
+	launcherRendezvousEnv = "PLOEG_HARNESS_LAUNCHER"
 	launcherAcceptTimeout = 2 * time.Minute
 )
 
@@ -54,19 +54,19 @@ func (s harnessSide) scratch(workDir string) string {
 }
 
 func connectHarnessSide(log *slog.Logger, hc worker.HarnessConfig) (harnessSide, error) {
-	socket := os.Getenv("PLOEG_HARNESS_LAUNCHER")
-	if socket == "" {
+	rendezvous := os.Getenv("PLOEG_HARNESS_LAUNCHER")
+	if rendezvous == "" {
 		return harnessSide{spawner: harness.NewLocalSpawner(), environ: os.Environ()}, nil
 	}
 	if hc.Name == claudeenv.Name {
-		return harnessSide{}, fmt.Errorf("%s is set, but harness %s runs its claude CLI in the worker's own container; render it with executor.harnessContainer: shared", launcherSocketEnv, claudeenv.Name)
+		return harnessSide{}, fmt.Errorf("%s is set, but harness %s runs its claude CLI in the worker's own container; render it with executor.harnessContainer: shared", launcherRendezvousEnv, claudeenv.Name)
 	}
 	if _, err := lookGit("git"); err != nil {
 		return harnessSide{}, fmt.Errorf("the worker container has no git, so it cannot clone for a harness in its own container; executor.workerImage must name a ploeg-worker image, not ploegd (ADR-0138): %w", err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), launcherAcceptTimeout)
 	defer cancel()
-	client, err := launch.Accept(ctx, socket)
+	client, err := launch.Accept(ctx, rendezvous)
 	if err != nil {
 		return harnessSide{}, err
 	}
@@ -79,14 +79,14 @@ func connectHarnessSide(log *slog.Logger, hc worker.HarnessConfig) (harnessSide,
 		client.Close()
 		return harnessSide{}, fmt.Errorf("read the harness container's environment: %w", err)
 	}
-	log.Info("harness runs in its own container behind the launcher", "socket", socket)
+	log.Info("harness runs in its own container behind the launcher", "rendezvous", rendezvous)
 	return harnessSide{spawner: client, environ: environ, remote: client}, nil
 }
 
-func runHarnessServe(socket string) error {
+func runHarnessServe(rendezvous string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	err := launch.Serve(ctx, socket)
+	err := launch.Serve(ctx, rendezvous)
 	if err != nil && !errors.Is(err, context.Canceled) && ctx.Err() == nil {
 		return err
 	}
