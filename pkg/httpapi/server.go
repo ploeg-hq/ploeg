@@ -1026,7 +1026,7 @@ func (s *Server) stopUnfencedPrepare(ctx context.Context, req claimRequest, runT
 	}
 	reason := ""
 	switch {
-	case req.ForgeTokenIsolation != ForgeTokenIsolationProxy:
+	case req.ForgeTokenIsolation != ForgeTokenIsolationProxy && !s.CredentialGateways.gates(req.Team):
 		reason = "the claiming worker does not isolate the forge token behind its proxy, where a prepare Run's one deliverable is enforced"
 	case req.Harness == claudeEnvironmentHarness:
 		reason = "the claiming worker runs its Harness in a Claude environment, whose runner pushes without the worker's forge proxy"

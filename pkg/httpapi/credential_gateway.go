@@ -111,6 +111,11 @@ func (g *CredentialGateways) bindingForTeam(team string) (GatewayBinding, bool) 
 	return GatewayBinding{}, false
 }
 
+func (g *CredentialGateways) gates(team string) bool {
+	_, gated := g.bindingForTeam(team)
+	return gated
+}
+
 func (g *CredentialGateways) authenticate(r *http.Request) (GatewayBinding, bool) {
 	token, ok := strings.CutPrefix(r.Header.Get(gatewaycontract.AuthorizationHeader), "Bearer ")
 	if !ok || token == "" || len(token) > 16<<10 {
