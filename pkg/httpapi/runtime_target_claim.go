@@ -20,11 +20,35 @@ var errRuntimeTargetInactive = errors.New("the work item's runtime target is not
 // (ADR-0193 section 4). No runtime registration, or a static target, is a
 // zero Claim.
 func (s *Server) runtimeTargetClaim(ctx context.Context, t *work.Target) (worktarget.Claim, error) {
-	svc := s.targetService()
-	if svc == nil || t == nil || !t.Resolved() {
+	if t == nil || !t.Resolved() {
 		return worktarget.Claim{}, nil
 	}
-	return svc.ClaimTarget(ctx, *t)
+	if svc := s.targetService(); svc != nil {
+		return svc.ClaimTarget(ctx, *t)
+	}
+	return s.claimWithoutRegistration(ctx, *t)
+}
+
+// claimWithoutRegistration guards an installation that switched runtime
+// registration off after runtime targets existed: a Work Item still pinned
+// to one is refused with target_registration_off, so its Run never mints
+// through the static broker for a repository no static target registers.
+func (s *Server) claimWithoutRegistration(ctx context.Context, t work.Target) (worktarget.Claim, error) {
+	if s.Readiness != nil {
+		if _, static := s.Readiness.KeyOf(t); static {
+			return worktarget.Claim{}, nil
+		}
+	}
+	forge := t.Forge
+	if forge == "" && s.ClaimForges != nil {
+		forge = s.ClaimForges.Default
+	}
+	row, found, err := s.Store.WorkTargetForRepository(ctx, worktarget.DefaultTenant, forge, t.Owner+"/"+t.Repo)
+	if err != nil || !found {
+		return worktarget.Claim{}, err
+	}
+	return worktarget.Claim{Runtime: true, Key: row.Key, Connection: row.Connection, RepositoryID: row.RepositoryID,
+		Refusal: "target_registration_off", Reason: "the runtime target " + row.Key + " is not served while targetRegistration is off"}, nil
 }
 
 // stopInactiveRuntimeTarget ends a claimed Run before anything is minted when

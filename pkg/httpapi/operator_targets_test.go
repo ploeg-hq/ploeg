@@ -856,3 +856,32 @@ func TestReplaceAndRemoveRefuseAssertedAttributionAndAConsumerWithoutRegisterTar
 		t.Fatalf("a refused caller changed the target: %+v", tg)
 	}
 }
+
+type countingStaticBroker struct{ mints int }
+
+func (b *countingStaticBroker) Mint(context.Context, forgebroker.MintRequest) (forgebroker.Credential, error) {
+	b.mints++
+	return forgebroker.Credential{ID: "static-1", Token: "static-token"}, nil
+}
+
+func (b *countingStaticBroker) Revoke(context.Context, forgebroker.Credential) error { return nil }
+
+func TestARuntimeTargetIsRefusedAndNeverMintedStaticallyOnceRegistrationIsSwitchedOff(t *testing.T) {
+	rig := newTargetRig(t, nil, AttributionProven)
+	rig.register(t, `{"connection":"gh-acme","repository":"acme/app","key":"acme-app"}`)
+	base := &countingStaticBroker{}
+	off := &Server{Store: testStore, Log: slog.New(slog.DiscardHandler), Readiness: target.NewGate(map[string]work.Target{}, nil), ForgeCreds: base}
+	ctx := context.Background()
+	pinned := &work.Target{Forge: "github", Owner: "acme", Repo: "app", BaseBranch: "main"}
+	claim, err := off.runtimeTargetClaim(ctx, pinned)
+	if err != nil || claim.Refusal != "target_registration_off" {
+		t.Fatalf("claim without targetRegistration = %+v, %v; want target_registration_off", claim, err)
+	}
+	if _, ok := off.mintForgeCredential(ctx, "silver", &store.ClaimedRun{Item: work.WorkItem{Target: pinned}, RunToken: "run-off", Writes: true}); ok || base.mints != 0 {
+		t.Fatalf("a runtime target's run minted through the static broker (%d mints)", base.mints)
+	}
+	other := &work.Target{Forge: "github", Owner: "acme", Repo: "never-runtime"}
+	if claim, err := off.runtimeTargetClaim(ctx, other); err != nil || claim.Refusal != "" {
+		t.Fatalf("a repository no runtime target named = %+v, %v", claim, err)
+	}
+}
