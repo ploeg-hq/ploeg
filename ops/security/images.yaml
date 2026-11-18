@@ -11,3 +11,8 @@ images:
     repository: ghcr.io/ploeg-hq/ploeg-worker
     dockerfile: ops/docker/ploeg-worker/Dockerfile
     ships_go: true
+  - name: agent-runner
+    repository: ghcr.io/ploeg-hq/agent-runner
+    dockerfile: ops/docker/agent-runner/Dockerfile
+    ships_go: false
+    platforms: [linux/amd64]

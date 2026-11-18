@@ -107,3 +107,16 @@ func TestCloseOpenClosesNestedFramesInnermostFirst(t *testing.T) {
 		t.Errorf("CloseOpen =\n%s\nwant\n%s", got, want)
 	}
 }
+
+func TestSourceMCPIsPloegsWordAndCloseOpenRecognisesItsFrame(t *testing.T) {
+	source := SourceMCP("Logs", `search"><x y="1`)
+	if source != "mcp:logs/search-x-y-1" {
+		t.Fatalf("source = %q", source)
+	}
+	framed := Frame(source, "cut")
+	opened := strings.TrimSuffix(framed[:strings.Index(framed, "\ncut")], "\n")
+	closed := CloseOpen(opened + "\ncut")
+	if !strings.HasSuffix(closed, `</untrusted boundary="`+Boundary(source, "cut")+`">`+"\n") {
+		t.Fatalf("CloseOpen did not close an MCP frame:\n%s", closed)
+	}
+}

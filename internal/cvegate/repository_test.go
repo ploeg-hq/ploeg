@@ -95,7 +95,7 @@ func TestTheReleaseBuildsOnlyFromTheCatalogueAndGatesEachImage(t *testing.T) {
 	if hardcoded := regexp.MustCompile(`--file\s+ops/`).FindString(release); hardcoded != "" {
 		t.Errorf("scripts/release.sh builds %q directly; build from the image catalogue so the CVE gate covers every image", hardcoded)
 	}
-	for _, step := range []string{"cve-gate images", "cve-gate gate", "push-by-digest=true", "check-go-toolchain.sh", "--type openvex"} {
+	for _, step := range []string{"cve-gate images", "cve-gate gate", "push-by-digest=true", "check-go-toolchain.sh", "--type openvex", `--platform "${platforms[$name]}"`} {
 		if !strings.Contains(release, step) {
 			t.Errorf("scripts/release.sh no longer runs %q", step)
 		}
@@ -105,5 +105,22 @@ func TestTheReleaseBuildsOnlyFromTheCatalogueAndGatesEachImage(t *testing.T) {
 	sign := strings.Index(release, "cosign sign")
 	if gate < 0 || tag < 0 || sign < 0 || gate > tag || gate > sign {
 		t.Error("scripts/release.sh must gate an image before it tags or signs it")
+	}
+}
+
+func TestTheReleaseRegistersQEMUWhenAnImageBuildsForArm64(t *testing.T) {
+	root := repositoryRoot(t)
+	catalogue, err := LoadCatalogue(filepath.Join(root, "ops", "security", "images.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	workflow, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "release.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, image := range catalogue.Images {
+		if slices.Contains(image.Platforms, "linux/arm64") && !strings.Contains(string(workflow), "docker/setup-qemu-action@") {
+			t.Errorf("%s builds for linux/arm64, but .github/workflows/release.yml registers no QEMU emulator, so the release's amd64 runner cannot build it", image.Name)
+		}
 	}
 }

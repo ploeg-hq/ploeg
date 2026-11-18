@@ -78,7 +78,8 @@ for case in ":default" \
 	"ops/helm/ploeg/ci/mcp-values.yaml:mcp" \
 	"ops/helm/ploeg/ci/claude-runner-values.yaml:claude-runner" \
 	"ops/helm/ploeg/ci/name-overrides-values.yaml:name-overrides" \
-	"ops/helm/ploeg/ci/secret-store-kubernetes-values.yaml:secret-store-kubernetes"; do
+	"ops/helm/ploeg/ci/secret-store-kubernetes-values.yaml:secret-store-kubernetes" \
+	"ops/helm/ploeg/ci/executor-runtime-teams-values.yaml:executor-runtime-teams"; do
 	values=${case%%:*}
 	name=${case##*:}
 	if [ "$mode" = "update" ]; then
@@ -138,7 +139,12 @@ for case in "ops/helm/ploeg/ci/reject-reader-without-read-token-values.yaml:read
 	"ops/helm/ploeg/ci/reject-llm-key-isolation-off-values.yaml:team qualified: credential_isolation_required: every Role runs with its forge token and model key isolated from its harness (ADR-0034), and model key isolation is off" \
 	"ops/helm/ploeg/ci/reject-dind-values.yaml:team acknowledged: credential_isolation_required: every Role runs with its forge token and model key isolated from its harness (ADR-0034), and harness.dind is true" \
 	"ops/helm/ploeg/ci/reject-unqualified-harness-values.yaml:team silver/reviewer: credential_isolation_required: every Role runs with its forge token and model key isolated from its harness (ADR-0034), and harness acp/opencode is not qualified" \
-	"ops/helm/ploeg/ci/reject-claude-environment-harness-values.yaml:team pewter: credential_isolation_required: every Role runs with its forge token and model key isolated from its harness (ADR-0034), and harness claude-environment is not qualified"; do
+	"ops/helm/ploeg/ci/reject-claude-environment-harness-values.yaml:team pewter: credential_isolation_required: every Role runs with its forge token and model key isolated from its harness (ADR-0034), and harness claude-environment is not qualified" \
+	"ops/helm/ploeg/ci/reject-runtime-pool-unqualified-harness-values.yaml:is not qualified for credential isolation" \
+	"ops/helm/ploeg/ci/reject-runtime-pool-twice-values.yaml:a second pool for tenant default and harness openhands" \
+	"ops/helm/ploeg/ci/reject-runtime-pools-without-team-creation-values.yaml:executor.runtimeTeams.enabled and config.teamCreation.enabled must agree" \
+	"ops/helm/ploeg/ci/reject-runtime-pool-with-dind-values.yaml:a pool never runs DinD" \
+	"ops/helm/ploeg/ci/reject-runtime-pool-without-isolation-values.yaml:a pool needs executor.litellm.keyIsolation and executor.forgeTokenIsolation on"; do
 	values=${case%%:*}
 	expected=${case#*:}
 	if out=$(helm template ploeg ops/helm/ploeg -f "$REQUIRED" -f "$values" 2>&1); then

@@ -91,7 +91,7 @@ func (s *Server) handleClientClaim(w http.ResponseWriter, r *http.Request) {
 		operatorError(w, 503, "unavailable", "Ploeg could not read the Work Item.")
 		return
 	}
-	if s.TransactionTokens != nil && s.TeamSponsors[item.Team] == "" {
+	if s.TransactionTokens != nil && s.teamSponsor(item.Team) == "" {
 		operatorError(w, 409, "team_without_sponsor", unsponsoredTeam(item.Team))
 		return
 	}

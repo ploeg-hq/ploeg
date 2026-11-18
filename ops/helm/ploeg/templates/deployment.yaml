@@ -175,6 +175,10 @@ spec:
             {{- $_ := set $harnesses $team.name $roles }}
             {{- end }}
             {{- end }}
+            {{- with include "ploeg.runtimePools" $ | fromJsonArray }}
+            - name: PLOEG_RUNTIME_POOLS
+              value: {{ toJson . | quote }}
+            {{- end }}
             {{- if $harnesses }}
             - name: PLOEG_TEAM_HARNESSES
               value: {{ toJson $harnesses | quote }}

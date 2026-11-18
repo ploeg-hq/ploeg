@@ -69,6 +69,16 @@ The removal is a `feat!` with a `BREAKING CHANGE:` footer and an ADR, and adds a
 - **Skipped versions.** Upgrading across several releases at once is supported: every migration in between runs, in order. Because the old release may not survive a contract step two minors on, [drain the workers](../how-to/drain-workers.md) and scale `ploegd` to zero before an upgrade that skips a minor, then start the new release.
 - **Interrupted upgrade.** A migration and its `schema_migrations` row commit in one transaction. A migration cut off by a lock timeout, a killed `ploegd` or a PostgreSQL crash leaves nothing behind, and the next start applies it again. A migration that fails on the data every time cannot be rerun past: restore the backup taken before the upgrade and run the release that took it.
 
+### Locks a migration holds
+
+A migration runs in one transaction, so every lock it takes is held until it commits. `lock_timeout` only bounds the wait to acquire a lock; once held, an `ALTER TABLE` keeps its `ACCESS EXCLUSIVE` lock, which blocks reads and writes of that table, through every statement after it, and a `CREATE INDEX` blocks writes for as long as it builds. On a large table that is an outage of the Shift engine.
+
+- **Add a foreign key `NOT VALID`.** `ALTER TABLE t ADD CONSTRAINT t_x_fkey FOREIGN KEY (x) REFERENCES u (id) NOT VALID` checks only new writes and does not scan `t`. Validate it in a later migration with `ALTER TABLE t VALIDATE CONSTRAINT t_x_fkey`, which takes a `SHARE UPDATE EXCLUSIVE` lock that lets reads and writes go on. Add the column first, without `REFERENCES`, so the column and the constraint are separate statements.
+- **Build an index `CONCURRENTLY`.** `CREATE INDEX CONCURRENTLY` lets writes go on while it builds but cannot run inside a transaction. The runner ([`applyMigration`](../../pkg/store/store.go)) wraps every migration in one, so it cannot run such a statement yet. Until it can, keep an index on a large table in a migration of its own, so its write lock is not held behind other work, and say in the release notes how long it blocks writes.
+- **Keep each table's `ALTER` short and last.** Put statements that touch a large table after everything that does not, so the exclusive lock is held for the shortest time.
+
+Migration 0090 (Team identity, first in `v0.2.0-rc.117`) predates this guidance. In one transaction it adds `team_id` with a foreign key to `work_items`, `shifts`, `agent_runs`, `leases`, `chats`, `work_item_premise_checks` and `tracker_bindings`, and builds six indexes on them. Those seven tables are locked against reads and writes from the first `ALTER` until the last index is built, which on a large installation can be minutes, during which no Run is claimed and no webhook is stored. It is released and is not changed; plan the upgrade to a release that contains it as a short maintenance window: [drain the workers](../how-to/drain-workers.md), upgrade, and watch the `ploegd` log for `applying migrations`.
+
 | After an upgrade | Recovery | Data lost |
 | --- | --- | --- |
 | A migration was interrupted | Rerun: restart `ploegd` | None |
