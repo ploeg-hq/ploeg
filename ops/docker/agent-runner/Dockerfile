@@ -1,13 +1,13 @@
 # syntax=docker/dockerfile:1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
 ARG REGISTRY_CHAINGUARD=cgr.dev
 ARG REGISTRY_GHCR=ghcr.io
-ARG GOOSE_VERSION=1.57.0
-ARG GOOSE_SHA256_AMD64=6c3a05e30e1a425dc06a410dbe24b3f3697c9721b1ea2340434ddda6b64267ae
-ARG GOOSE_SHA256_ARM64=00a32522f0421ed72fc06f36bfc44c8e51cffefb4daf22a81bb84ccd29d1a1ce
+ARG GOOSE_VERSION=1.60.1
+ARG GOOSE_SHA256_AMD64=15478c207e7ad9196d3671b158c6c8559833ab5712fcea24f972773fbbf05cd5
+ARG GOOSE_SHA256_ARM64=9cf89d2f549631021b9faac6ef2cc464d60e20516ee40a4077b47b759743ad94
 
-FROM ${REGISTRY_GHCR}/astral-sh/uv:0.13.7@sha256:96f40d3904aad8d0bd010539001d36c8e2188b981e1334471a90c4a1d93bb490 AS uv
+FROM ${REGISTRY_GHCR}/astral-sh/uv:0.13.9@sha256:d3b601f0c7b118bc1753febf7c41cc80981df678445e0254284eecf84db79a7d AS uv
 
-FROM ${REGISTRY_CHAINGUARD}/chainguard/wolfi-base:latest@sha256:2c12da5496e21e99003b3db3b9246f025e53d533c4df334205391260f1e8f85b AS node
+FROM ${REGISTRY_CHAINGUARD}/chainguard/wolfi-base:latest@sha256:580c9ae79c0229cc381475fbfbed0d91fab5d6606e57cd78732f9836de109e90 AS node
 RUN printf 'https://packages.wolfi.dev/os\n' > /etc/apk/repositories \
  && apk add --no-cache nodejs-24 npm
 COPY ops/docker/agent-runner/tools/moon/package.json ops/docker/agent-runner/tools/moon/package-lock.json /opt/moon/
@@ -27,7 +27,7 @@ ARG GOOSE_SHA256_ARM64
 ADD --checksum=sha256:${GOOSE_SHA256_AMD64} https://github.com/aaif-goose/goose/releases/download/v${GOOSE_VERSION}/goose-x86_64-unknown-linux-musl.tar.gz /amd64.tar.gz
 ADD --checksum=sha256:${GOOSE_SHA256_ARM64} https://github.com/aaif-goose/goose/releases/download/v${GOOSE_VERSION}/goose-aarch64-unknown-linux-musl.tar.gz /arm64.tar.gz
 
-FROM ${REGISTRY_CHAINGUARD}/chainguard/wolfi-base:latest@sha256:2c12da5496e21e99003b3db3b9246f025e53d533c4df334205391260f1e8f85b
+FROM ${REGISTRY_CHAINGUARD}/chainguard/wolfi-base:latest@sha256:580c9ae79c0229cc381475fbfbed0d91fab5d6606e57cd78732f9836de109e90
 
 ARG TARGETARCH
 ARG IMAGE_CREATED=1970-01-01T00:00:00Z
