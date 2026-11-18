@@ -35,13 +35,14 @@ draft=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq "[.[] | sel
 chart="ghcr.io/ploeg-hq/charts/ploeg:$version"
 mkdir -p dist/bin dist/cve
 go build -o dist/bin/cve-gate ./internal/cvegate/cmd/cve-gate
-declare -A repositories dockerfiles ships_go digests
+declare -A repositories dockerfiles ships_go platforms digests
 names=()
-while read -r name repository dockerfile go_binaries; do
+while read -r name repository dockerfile go_binaries image_platforms; do
   names+=("$name")
   repositories[$name]=$repository
   dockerfiles[$name]=$dockerfile
   ships_go[$name]=$go_binaries
+  platforms[$name]=$image_platforms
 done < <(dist/bin/cve-gate images)
 [[ "${#names[@]}" -gt 0 ]] || { echo "The image catalogue lists no image" >&2; exit 1; }
 printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
@@ -66,7 +67,7 @@ metadata_file() { if [[ "$1" == ploegd ]]; then echo dist/image-metadata.json; e
 docker buildx create --name ploeg-release --driver docker-container --use
 for name in "${names[@]}"; do
   repository=${repositories[$name]}
-  docker buildx build --file "${dockerfiles[$name]}" --platform linux/amd64 \
+  docker buildx build --file "${dockerfiles[$name]}" --platform "${platforms[$name]}" \
     --build-arg "IMAGE_VERSION=$version" --build-arg "IMAGE_REVISION=$commit" --build-arg "IMAGE_CREATED=$created" \
     --label "org.opencontainers.image.version=$version" --label "org.opencontainers.image.revision=$commit" \
     --provenance=mode=max --sbom=true --metadata-file "$(metadata_file "$name")" \
@@ -85,6 +86,8 @@ done
 for name in "${names[@]}"; do
   oras tag "${repositories[$name]}@${digests[$name]}" "$version"
 done
+metadata_files=()
+for name in "${names[@]}"; do metadata_files+=("$(metadata_file "$name")"); done
 image_digest=${digests[ploegd]}
 runner_digest=${digests[claude-runner]}
 worker_digest=${digests[ploeg-worker]}
@@ -122,9 +125,9 @@ printf '%s\n' "${signed_artifacts[@]}" > dist/signed-artifacts.txt
 printf '%s\n' "$commit" > dist/source-commit.txt
 cp PROVENANCE.md dist/PROVENANCE.md
 printf 'image:\n  repository: ghcr.io/ploeg-hq/ploegd\n  tag: %s\n' "$version" > dist/registry-values.yaml
-(cd dist && sha256sum "ploeg_${version}_linux_amd64.tar.gz" "ploeg-$version.tgz" image-metadata.json claude-runner-image-metadata.json ploeg-worker-image-metadata.json signed-artifacts.txt source-commit.txt PROVENANCE.md registry-values.yaml "${attestation_assets[@]}" > SHA256SUMS)
-printf 'Ploeg %s\n\nIndependent release from commit %s. Experimental: qualification is limited to the paths docs/reference/support-matrix.md lists at that commit.\n\nController and worker: %s (Linux amd64). Self-hosted Claude runner and dispatch image (ADR-0084): ghcr.io/ploeg-hq/claude-runner:%s. Worker image, the worker container of a Run whose harness runs in its own container (ADR-0138): ghcr.io/ploeg-hq/ploeg-worker:%s. Helm chart: oci://ghcr.io/ploeg-hq/charts/ploeg, version %s. BuildKit publishes image SBOM and build provenance attestations. Every image passed the CVE gate (zero Critical and High findings after reviewed OpenVEX statements, ops/security/cve-budgets.yaml) before it was tagged, and carries its OpenVEX document and its CVE budget verdict as signed cosign attestations (verify with cosign verify-attestation --type openvex, or --type https://github.com/ploeg-hq/ploeg/attestations/cve-budget/v1); the same documents are the <image>.openvex.json and <image>.cve-budget.json release assets, for grype --vex and trivy --vex. Every image and the chart are signed keyless with cosign by the ploeg-hq/ploeg release workflow (GitHub Actions OIDC, public Rekor log); verify with cosign verify --certificate-oidc-issuer https://token.actions.githubusercontent.com --certificate-identity-regexp '^https://github.com/ploeg-hq/ploeg/.github/workflows/release.yml@'. Release assets include binaries, chart, checksums, the signed digests and source provenance.\n\nThis starts the new github.com/ploeg-hq/ploeg module; old webgrip/ploeg versions remain unchanged. No latest alias or deployment is updated. See PROVENANCE.md and the managed-worker migration guide before adoption.\n' "$version" "$commit" "ghcr.io/ploeg-hq/ploegd:$version" "$version" "$version" "$version" > dist/release-notes.md
-assets=("dist/ploeg_${version}_linux_amd64.tar.gz" "dist/ploeg-$version.tgz" dist/image-metadata.json dist/claude-runner-image-metadata.json dist/ploeg-worker-image-metadata.json dist/signed-artifacts.txt dist/source-commit.txt dist/PROVENANCE.md dist/registry-values.yaml "${attestation_assets[@]/#/dist/}" dist/SHA256SUMS)
+(cd dist && sha256sum "ploeg_${version}_linux_amd64.tar.gz" "ploeg-$version.tgz" "${metadata_files[@]#dist/}" signed-artifacts.txt source-commit.txt PROVENANCE.md registry-values.yaml "${attestation_assets[@]}" > SHA256SUMS)
+printf 'Ploeg %s\n\nIndependent release from commit %s. Experimental: qualification is limited to the paths docs/reference/support-matrix.md lists at that commit.\n\nController and worker: %s (Linux amd64). Self-hosted Claude runner and dispatch image (ADR-0084): ghcr.io/ploeg-hq/claude-runner:%s. Worker image, the worker container of a Run whose harness runs in its own container (ADR-0138): ghcr.io/ploeg-hq/ploeg-worker:%s. Agent image with the OpenHands, OpenCode, Qwen Code and goose harnesses, for Linux amd64 and arm64 (ADR-0199): ghcr.io/ploeg-hq/agent-runner:%s. Helm chart: oci://ghcr.io/ploeg-hq/charts/ploeg, version %s. BuildKit publishes image SBOM and build provenance attestations. Every image passed the CVE gate (zero Critical and High findings after reviewed OpenVEX statements, ops/security/cve-budgets.yaml) before it was tagged, and carries its OpenVEX document and its CVE budget verdict as signed cosign attestations (verify with cosign verify-attestation --type openvex, or --type https://github.com/ploeg-hq/ploeg/attestations/cve-budget/v1); the same documents are the <image>.openvex.json and <image>.cve-budget.json release assets, for grype --vex and trivy --vex. Every image and the chart are signed keyless with cosign by the ploeg-hq/ploeg release workflow (GitHub Actions OIDC, public Rekor log); verify with cosign verify --certificate-oidc-issuer https://token.actions.githubusercontent.com --certificate-identity-regexp '^https://github.com/ploeg-hq/ploeg/.github/workflows/release.yml@'. Release assets include binaries, chart, checksums, the signed digests and source provenance.\n\nThis starts the new github.com/ploeg-hq/ploeg module; old webgrip/ploeg versions remain unchanged. No latest alias or deployment is updated. See PROVENANCE.md and the managed-worker migration guide before adoption.\n' "$version" "$commit" "ghcr.io/ploeg-hq/ploegd:$version" "$version" "$version" "$version" "$version" > dist/release-notes.md
+assets=("dist/ploeg_${version}_linux_amd64.tar.gz" "dist/ploeg-$version.tgz" "${metadata_files[@]}" dist/signed-artifacts.txt dist/source-commit.txt dist/PROVENANCE.md dist/registry-values.yaml "${attestation_assets[@]/#/dist/}" dist/SHA256SUMS)
 prerelease=false
 [[ "$tag" != *-rc.* ]] || prerelease=true
 if [[ "$draft" == none ]]; then
