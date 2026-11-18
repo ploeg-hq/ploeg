@@ -37,3 +37,13 @@ The profile wrote no `permission` block for any mode, so OpenCode's `"*": "allow
 - **Goose**: `GOOSE_MODE` is `auto` under `allow_always` and `approve` otherwise.
 - **OpenHands (ACP)**: the ACP server starts in `always-ask`, and every request carries tool kind `other` and title "Confirm Agent Actions", so `allow_read_only` refuses reads as well as writes.
 - **`custom`**: the profile has no `Configure`, so nothing tells the agent the Run's mode; whether it asks is up to the agent and its `argv`.
+
+## 4. Setting the hooks file aside (2026-11-18)
+
+The owner chose to set a repository's hooks file aside rather than refuse the Run ([ADR-0148](../adrs/0148-every-acp-profile-asks-before-a-mutation-outside-allow-always-and-openhands-refuses-a-repository-that-ships-hooks.md), amended 2026-11-18). The lookup was re-read in the published `openhands` 1.16.0 and `openhands-sdk` 1.21.0 wheels before building it:
+
+- `openhands/sdk/hooks/config.py`, `HookConfig.load`: with no explicit path it tries `<working_dir>/.openhands/hooks.json`, then `Path.home() / ".openhands" / "hooks.json"`, and takes the first that `exists()`. No other project path is searched; it does not walk up from the working directory.
+- `openhands_cli/acp_impl/agent/local_agent.py` calls it once per session, with the session's working directory; `openhands_cli/setup.py` calls it once in headless mode with `get_work_dir()`. `openhands_cli/acp_impl/agent/remote_agent.py` calls it with no working directory, so only the home file. The CLI passes no plugins, so `openhands/sdk/plugin/plugin.py`'s `hooks/hooks.json` inside a plugin directory is not reached from a clone.
+- Project subagent definitions (`.agents/agents/*.md`, `.openhands/agents/*.md`) may still declare `hooks` in front matter (`openhands/sdk/subagent/schema.py`); as section 2 says, they start only when the model delegates to that subagent.
+
+**Reproduced** with the real 1.16.0 binary on macOS, through the ACP profile: with the file set aside, the hostile-repository case ran no planted `SessionStart` hook and the file came back byte-identical; with the set-aside disabled, the same case failed with "the repository's .openhands/hooks.json started code inside the openhands Run"; a hooks file planted after the set-aside, as an agent would write one, was removed by the check before `session/new` and did not run; the control case still ran a hook it was handed at `session/new`.

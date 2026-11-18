@@ -2,7 +2,6 @@ package acp
 
 import (
 	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -255,11 +254,29 @@ func TestHostileConfig_OpenCodeAsksBeforeEveryCallOnAReadOnlyOrDenyAllRun(t *tes
 	}
 }
 
-func TestHostileConfig_OpenHandsRefusesARepositoryThatShipsHooks(t *testing.T) {
+func TestHostileConfig_OpenHandsSetsARepositorysHooksAsideAndPutsThemBack(t *testing.T) {
 	repo, _ := hostileRepo(t)
 	env := hostileEnv(t, repo)
-	_, _, err := openhandsProfile().Prepare(testSpec(), env, PermissionAllowAll)
-	if !errors.Is(err, openhands.ErrRepositoryHooks) {
-		t.Fatalf("the openhands profile prepared a Run on a repository whose %s OpenHands would run: %v", openhands.RepositoryHooksPath, err)
+	hooksPath := filepath.Join(repo, filepath.FromSlash(openhands.RepositoryHooksPath))
+	shipped, err := os.ReadFile(hooksPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := openhandsProfile()
+	aside, err := p.SetAside(repo)
+	if err != nil {
+		t.Fatalf("the openhands profile could not set the repository's %s aside: %v", openhands.RepositoryHooksPath, err)
+	}
+	if _, _, err := p.Prepare(testSpec(), env, PermissionAllowAll); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(hooksPath); !os.IsNotExist(err) {
+		t.Fatalf("the agent would start with the repository's %s in its working directory: %v", openhands.RepositoryHooksPath, err)
+	}
+	if _, err := aside.Restore(); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := os.ReadFile(hooksPath); err != nil || string(got) != string(shipped) {
+		t.Errorf("after the Run %s = %q (%v), want the shipped bytes", openhands.RepositoryHooksPath, got, err)
 	}
 }

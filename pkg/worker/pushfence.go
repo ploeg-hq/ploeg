@@ -25,7 +25,20 @@ var errUnparseablePush = errors.New("the push's ref update list is not a well-fo
 
 type pushFence struct {
 	runBranchRef string
-	deliverable  *deliverableFence
+	content      []contentFence
+	fromPack     bool
+}
+
+// contentFence checks what a push to the Run's own branch carries, such as
+// a prepare Run's one deliverable or a repository's OpenHands hooks file.
+type contentFence interface {
+	admit(u refUpdate) (refusalReason, error)
+}
+
+// packedContentFence checks a push from the push's own pack, where the
+// pushed objects are in no local clone: at the credential gateway.
+type packedContentFence interface {
+	admitPacked(u refUpdate, pack []byte) (refusalReason, error)
 }
 
 func newPushFence(runBranch string) pushFence {
@@ -41,7 +54,7 @@ func (f pushFence) admit(r *http.Request) (refusalReason, error) {
 	if err != nil {
 		return refusalUninspectablePush, err
 	}
-	if f.deliverable != nil && f.deliverable.fromPack {
+	if f.fromPack && len(f.content) > 0 {
 		return f.admitWithPack(r, body)
 	}
 	var inspected bytes.Buffer
@@ -106,8 +119,14 @@ func (f pushFence) admitWithPack(r *http.Request, body io.Reader) (refusalReason
 		if reason, err := f.permitsBranch(u); err != nil {
 			return reason, err
 		}
-		if reason, err := f.deliverable.admitPacked(u, pack); err != nil {
-			return reason, err
+		for _, content := range f.content {
+			packed, ok := content.(packedContentFence)
+			if !ok {
+				return refusalUninspectablePush, errors.New("this push cannot be checked from its pack")
+			}
+			if reason, err := packed.admitPacked(u, pack); err != nil {
+				return reason, err
+			}
 		}
 	}
 	r.Body = io.NopCloser(bytes.NewReader(raw))
@@ -120,8 +139,10 @@ func (f pushFence) permits(u refUpdate) (refusalReason, error) {
 	if reason, err := f.permitsBranch(u); err != nil {
 		return reason, err
 	}
-	if f.deliverable != nil {
-		return f.deliverable.admit(u)
+	for _, content := range f.content {
+		if reason, err := content.admit(u); err != nil {
+			return reason, err
+		}
 	}
 	return "", nil
 }

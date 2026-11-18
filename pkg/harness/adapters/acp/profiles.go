@@ -28,6 +28,18 @@ type Profile struct {
 	// every file it writes MUST be trace-id-suffixed. mode is the Run's
 	// permission mode, for agents whose own approval setting must match it.
 	Configure func(spec harness.TaskSpec, env harness.RunEnv, mode PermissionMode) ([]string, error)
+	// SetAside optionally moves repository files the agent would run on its
+	// own out of the clone before the agent starts (ADR-0148). The adapter
+	// calls BeforeSession just before session/new and Restore once the agent
+	// has stopped.
+	SetAside func(repoDir string) (RepositorySetAside, error)
+}
+
+// RepositorySetAside is what a profile's SetAside moved out of the clone.
+type RepositorySetAside interface {
+	Shipped() string
+	BeforeSession() ([]string, error)
+	Restore() ([]string, error)
 }
 
 // ProfileOverrides carries per-team Helm settings.
@@ -468,9 +480,6 @@ func openhandsProfile() Profile {
 			if env.LLM.Model == "" {
 				return nil, fmt.Errorf("acp profile \"openhands\" needs a model for its agent settings")
 			}
-			if err := openhands.RefuseRepositoryHooks(env.RepoDir); err != nil {
-				return nil, err
-			}
 			dir := filepath.Join(env.ScratchDir, "openhands-"+safeSuffix(spec.TraceID))
 			if err := os.MkdirAll(dir, 0o700); err != nil {
 				return nil, fmt.Errorf("create openhands persistence directory: %w", err)
@@ -483,6 +492,9 @@ func openhandsProfile() Profile {
 				return nil, fmt.Errorf("write openhands agent settings: %w", err)
 			}
 			return []string{"OPENHANDS_PERSISTENCE_DIR=" + dir}, nil
+		},
+		SetAside: func(repoDir string) (RepositorySetAside, error) {
+			return openhands.SetAsideRepositoryHooks(repoDir)
 		},
 	}
 }

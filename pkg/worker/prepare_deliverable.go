@@ -32,7 +32,6 @@ const (
 type deliverableFence struct {
 	dir, cloneURL, base, start string
 	token                      func(context.Context) string
-	fromPack                   bool
 
 	mu      sync.Mutex
 	refused []string
@@ -69,25 +68,41 @@ func (f *deliverableFence) admitPacked(u refUpdate, pack []byte) (refusalReason,
 }
 
 func (f *deliverableFence) outsidePacked(u refUpdate, pack []byte) ([]string, error) {
-	if f.base == "" {
-		return nil, fmt.Errorf("the Run names no base branch to check its push against")
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), deliverableCheckTimeout)
 	defer cancel()
-	repo, err := openBareRepository(ctx, f.dir, f.cloneURL, f.token(ctx))
+	repo, err := openPushedRepository(ctx, f.dir, f.cloneURL, f.base, f.token(ctx), u, pack)
 	if err != nil {
 		return nil, err
 	}
 	defer repo.remove()
+	return f.outsideIn(ctx, repo, u.newID)
+}
+
+// openPushedRepository is a repository of the gateway's own holding the
+// objects a push carries, thin-pack bases fetched from the forge, so a
+// content fence can read the pushed commit against the forge's base branch.
+func openPushedRepository(ctx context.Context, dir, cloneURL, base, token string, u refUpdate, pack []byte) (*workerRepository, error) {
+	if base == "" {
+		return nil, fmt.Errorf("the Run names no base branch to check its push against")
+	}
+	repo, err := openBareRepository(ctx, dir, cloneURL, token)
+	if err != nil {
+		return nil, err
+	}
 	if strings.Trim(u.oldID, "0") != "" {
 		_ = repo.fetchBranch(ctx, strings.TrimPrefix(u.ref, "refs/heads/"), "refs/ploeg/run-branch")
 	}
+	if err := repo.fetchBranch(ctx, base, "refs/ploeg/pushed-base"); err != nil {
+		repo.remove()
+		return nil, err
+	}
 	if len(pack) > 0 {
 		if err := repo.indexPack(ctx, pack); err != nil {
+			repo.remove()
 			return nil, err
 		}
 	}
-	return f.outsideIn(ctx, repo, u.newID)
+	return repo, nil
 }
 
 func (f *deliverableFence) outside(commit string) ([]string, error) {
@@ -116,12 +131,20 @@ func (f *deliverableFence) outsideIn(ctx context.Context, repo *workerRepository
 }
 
 func (f *deliverableFence) changes(ctx context.Context, repo *workerRepository, commit string) ([]work.ChangedPath, error) {
-	base := f.start
-	if f.base != "" {
-		if err := repo.fetchBranch(ctx, f.base, deliverableBaseRef); err != nil {
+	return changesSinceFork(ctx, repo, f.base, f.start, deliverableBaseRef, commit)
+}
+
+// changesSinceFork is what commit changes against its fork point from the
+// forge's base branch, fetched into baseRef of a repository the agent cannot
+// write, or against start when there is no base branch: the pull request's
+// diff.
+func changesSinceFork(ctx context.Context, repo *workerRepository, baseBranch, start, baseRef, commit string) ([]work.ChangedPath, error) {
+	base := start
+	if baseBranch != "" {
+		if err := repo.fetchBranch(ctx, baseBranch, baseRef); err != nil {
 			return nil, err
 		}
-		base = deliverableBaseRef
+		base = baseRef
 	}
 	out, err := repo.local(ctx, "", "merge-base", commit, base).CombinedOutput()
 	if err != nil {

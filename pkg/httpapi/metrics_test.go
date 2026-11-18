@@ -122,7 +122,7 @@ func ingestAndLeaseExpired(t *testing.T) {
 func TestMetricLabelValuesAreEscaped(t *testing.T) {
 	body := string(renderMetrics(store.OperationalMetrics{
 		OpenShifts: map[string]int{"a\"b\\c\nd": 1},
-	}, nil, nil))
+	}, nil, nil, nil))
 	requireLines(t, body, `ploeg_shifts_open{team="a\"b\\c\nd"} 1`)
 }
 
@@ -173,7 +173,7 @@ func TestRunOutcomeSeriesAreSortedAndCarryAnEmptyReasonForNonFailures(t *testing
 			{Team: "bronze", Role: "builder", Outcome: "pr_opened"}:                     1,
 			{Team: "bronze", Role: "builder", Outcome: "failed", Reason: "agent_error"}: 3,
 		},
-	}, nil, nil))
+	}, nil, nil, nil))
 	want := `ploeg_runs_finished_total{team="bronze",role="builder",outcome="failed",reason="agent_error"} 3
 ploeg_runs_finished_total{team="bronze",role="builder",outcome="pr_opened",reason=""} 1
 ploeg_runs_finished_total{team="silver",role="reviewer",outcome="no_change_needed",reason=""} 2

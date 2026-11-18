@@ -3,7 +3,6 @@ package acp
 import (
 	"bufio"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -119,9 +118,11 @@ func hostileRepositoryCases() []hostileRepositoryCase {
 			profile: "openhands",
 			binary:  "openhands",
 			// OpenHands has no setting that skips the working directory's
-			// hooks file, so the profile refuses the Run (ADR-0148).
+			// hooks file, so the profile sets it aside for the Run and puts
+			// it back afterwards (ADR-0148).
 			// TestHostileRepository_OpenHandsRunsARepositoryHookItIsHanded
-			// proves the refusal is what stands between the file and a shell.
+			// proves setting it aside is what stands between the file and a
+			// shell.
 			plant:  plantOpenHandsHooks,
 			prompt: true,
 		},
@@ -154,11 +155,14 @@ func TestHostileRepository_NoRepositorySuppliedCodeStarts(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			argv, extra, err := p.Prepare(testSpec(), env, PermissionAllowAll)
-			if errors.Is(err, openhands.ErrRepositoryHooks) {
-				t.Logf("the %s profile refused the Run before starting the agent: %v", tc.profile, err)
-				return
+			shipped := snapshotRepository(t, env.RepoDir)
+			var aside RepositorySetAside
+			if p.SetAside != nil {
+				if aside, err = p.SetAside(env.RepoDir); err != nil {
+					t.Fatal(err)
+				}
 			}
+			argv, extra, err := p.Prepare(testSpec(), env, PermissionAllowAll)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -167,6 +171,14 @@ func TestHostileRepository_NoRepositorySuppliedCodeStarts(t *testing.T) {
 			}
 			if _, err := os.Stat(marker); err == nil {
 				t.Fatalf("the repository's %s started code inside the %s Run", vector, tc.profile)
+			}
+			if aside != nil {
+				if _, err := aside.Restore(); err != nil {
+					t.Fatal(err)
+				}
+				if got := snapshotRepository(t, env.RepoDir); got[vector] != shipped[vector] {
+					t.Errorf("after the Run the repository's %s = %q, want the shipped bytes %q", vector, got[vector], shipped[vector])
+				}
 			}
 		})
 	}
@@ -212,6 +224,78 @@ func TestHostileRepository_OpenHandsRunsARepositoryHookItIsHanded(t *testing.T) 
 	if _, err := os.Stat(marker); err != nil {
 		t.Fatalf("openhands did not run the repository's %s hook, so the drill's openhands case no longer shows the refusal is needed: %v", openhands.RepositoryHooksPath, err)
 	}
+}
+
+// TestHostileRepository_OpenHandsRunsNoHooksFileWrittenBeforeItsSession plants
+// the hooks file after the profile set the repository's aside, as an agent
+// would mid-Run, and requires the check the adapter makes just before
+// session/new to keep the real binary from running it.
+func TestHostileRepository_OpenHandsRunsNoHooksFileWrittenBeforeItsSession(t *testing.T) {
+	if os.Getenv(hostileRepositoryOptIn) != "1" {
+		t.Skipf("runs the real openhands binary; set %s=1 (the attack-drill workflow does) to run it", hostileRepositoryOptIn)
+	}
+	if _, err := exec.LookPath("openhands"); err != nil {
+		t.Skip("openhands is not on PATH")
+	}
+	marker := filepath.Join(t.TempDir(), "started")
+	env := harness.RunEnv{
+		RepoDir:    t.TempDir(),
+		ScratchDir: t.TempDir(),
+		LLM: harness.LLMEnv{
+			APIKey:  "ploeg-isolated-canary",
+			BaseURL: "http://127.0.0.1:9/v1",
+			Model:   "unused",
+			TraceID: "ploeg-hostile000003",
+		},
+	}
+	p, err := Lookup("openhands", ProfileOverrides{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	aside, err := p.SetAside(env.RepoDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	argv, extra, err := p.Prepare(testSpec(), env, PermissionAllowAll)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plantOpenHandsHooks(t, env.RepoDir, marker)
+	if removed, err := aside.BeforeSession(); err != nil || len(removed) == 0 {
+		t.Fatalf("the check before session/new removed %q (%v), want the planted hooks file", removed, err)
+	}
+	if !runAgent(t, argv, env.RepoDir, append(os.Environ(), extra...), true) {
+		t.Fatal("openhands did not answer session/new; the check proves nothing without a session")
+	}
+	if _, err := os.Stat(marker); err == nil {
+		t.Fatalf("openhands ran a %s written after the profile set the repository's aside", openhands.RepositoryHooksPath)
+	}
+	if written, err := aside.Restore(); err != nil || len(written) == 0 {
+		t.Errorf("Restore reported %q (%v), want the planted hooks file named", written, err)
+	}
+}
+
+// snapshotRepository reads every regular file under dir, keyed by its
+// slash-separated path.
+func snapshotRepository(t *testing.T, dir string) map[string]string {
+	t.Helper()
+	files := map[string]string{}
+	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+		if err != nil || !d.Type().IsRegular() {
+			return err
+		}
+		body, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(dir, path)
+		files[filepath.ToSlash(rel)] = string(body)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return files
 }
 
 // runAgent starts an ACP agent, sends initialize and session/new and, when
