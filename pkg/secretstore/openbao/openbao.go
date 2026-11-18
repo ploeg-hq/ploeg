@@ -46,7 +46,12 @@ type Config struct {
 	TokenFile string
 	// CAFile, when set, is the PEM bundle that verifies Address.
 	CAFile string
-	// HTTPClient replaces the default client, for tests.
+	// AllowInsecureHTTP permits an http:// Address. Without it only https
+	// is accepted, because every request carries Ploeg's token or its
+	// service account token.
+	AllowInsecureHTTP bool
+	// HTTPClient replaces the default client, for tests. Redirects are
+	// never followed, whichever client is used.
 	HTTPClient *http.Client
 	// Now replaces time.Now, for tests.
 	Now func() time.Time
@@ -67,7 +72,10 @@ type Store struct {
 func New(cfg Config) (*Store, error) {
 	u, err := url.Parse(cfg.Address)
 	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
-		return nil, errors.New("openbao: address must be an http or https URL")
+		return nil, errors.New("openbao: address must be an https URL")
+	}
+	if u.Scheme == "http" && !cfg.AllowInsecureHTTP {
+		return nil, errors.New("openbao: address must be an https URL; an http address needs the explicit insecure setting")
 	}
 	cfg.Address = strings.TrimRight(cfg.Address, "/")
 	if cfg.Role == "" {
@@ -93,9 +101,11 @@ func New(cfg Config) (*Store, error) {
 	if cfg.Now == nil {
 		cfg.Now = time.Now
 	}
-	client := cfg.HTTPClient
-	if client == nil {
-		client = &http.Client{Timeout: 10 * time.Second}
+	client := &http.Client{Timeout: 10 * time.Second}
+	if cfg.HTTPClient != nil {
+		copied := *cfg.HTTPClient
+		client = &copied
+	} else {
 		if cfg.CAFile != "" {
 			pem, err := os.ReadFile(cfg.CAFile)
 			if err != nil {
@@ -108,7 +118,12 @@ func New(cfg Config) (*Store, error) {
 			client.Transport = &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}}
 		}
 	}
+	client.CheckRedirect = refuseRedirect
 	return &Store{cfg: cfg, client: client}, nil
+}
+
+func refuseRedirect(*http.Request, []*http.Request) error {
+	return http.ErrUseLastResponse
 }
 
 func (s *Store) Name() string { return "openbao" }

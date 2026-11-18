@@ -628,6 +628,10 @@ func newFakeGitHub(t *testing.T) *fakeGitHub {
 			w.WriteHeader(401)
 			return
 		}
+		if id := r.PathValue("id"); id != "77" && id != "123" {
+			w.WriteHeader(404)
+			return
+		}
 		var suspended any
 		if f.suspended.Load() {
 			suspended = "2026-11-18T00:00:00Z"
@@ -775,5 +779,218 @@ func TestConnectionResponsesMatchThePublishedSchema(t *testing.T) {
 		if len(body) > 0 {
 			validateOperatorSchema(t, body)
 		}
+	}
+}
+
+func (rig *connRig) githubApp(t *testing.T) (*fakeGitHub, string) {
+	t.Helper()
+	gh := newFakeGitHub(t)
+	rig.svc.Instances["github"] = provider.ConnectionInstance{ID: "github", Kind: "github", URL: gh.srv.URL, APIURL: gh.srv.URL}
+	rig.svc.Config.Allow = append(rig.svc.Config.Allow, connection.Allow{Port: "forge", Kind: "github", Instance: "github", Methods: []string{"github_app_manifest", "github_app_installation"}})
+	rig.svc.PublicWebhookBase = "https://ploeg.example"
+	code, out := rig.call("POST", "/api/v1/operator/connection-flows", rig.me(), map[string]any{"port": "forge", "kind": "github", "instance": "github", "method": "github_app_manifest", "redirectUri": connRedirect, "owner": "acme"})
+	if code != 201 {
+		t.Fatalf("start = %d %v", code, out)
+	}
+	state := out["flow"].(map[string]any)["state"].(string)
+	if code, out = rig.call("POST", "/api/v1/operator/connection-flows/complete", rig.me(), map[string]any{"state": state, "code": "manifest-code"}); code != 201 {
+		t.Fatalf("conversion = %d %v", code, out)
+	}
+	webhookSecret := ""
+	for _, v := range rig.secrets.Values() {
+		if len(v) == 64 && !strings.Contains(v, "BEGIN") {
+			webhookSecret = v
+		}
+	}
+	return gh, webhookSecret
+}
+
+func installationHook(h http.Handler, path, secret, action string, installation, account int, n int) int {
+	body, _ := json.Marshal(map[string]any{"action": action, "installation": map[string]any{"id": installation, "app_id": 1001, "account": map[string]any{"id": account}}})
+	r := httptest.NewRequest("POST", path, bytes.NewReader(body))
+	r.Header.Set("X-GitHub-Event", "installation")
+	r.Header.Set("X-GitHub-Delivery", fmt.Sprintf("d-%s-%d", action, n))
+	r.Header.Set("X-GitHub-Hook-Installation-Target-ID", "1001")
+	r.Header.Set("X-GitHub-Hook-Installation-Target-Type", "integration")
+	r.Header.Set("X-Hub-Signature-256", signGitHub(secret, body))
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	return w.Code
+}
+
+func installationOf(t *testing.T, id string) (string, string) {
+	t.Helper()
+	var installation, state string
+	if err := testPool.QueryRow(context.Background(), `SELECT COALESCE(installation_id, ''), state FROM connections WHERE id = $1`, id).Scan(&installation, &state); err != nil {
+		t.Fatal(err)
+	}
+	return installation, state
+}
+
+func TestARequestedInstallationStoresNoIdItCannotReadAndBindsOnlyTheOwnersCreatedDelivery(t *testing.T) {
+	rig := newConnRig(t)
+	_, webhookSecret := rig.githubApp(t)
+	code, out := rig.call("POST", "/api/v1/operator/connection-flows", rig.me(), map[string]any{"port": "forge", "kind": "github", "instance": "github", "method": "github_app_installation", "redirectUri": connRedirect, "app": "ploeg-acme"})
+	if code != 201 {
+		t.Fatalf("install start = %d %v", code, out)
+	}
+	state := out["flow"].(map[string]any)["state"].(string)
+	code, out = rig.call("POST", "/api/v1/operator/connection-flows/complete", rig.me(), map[string]any{"state": state, "installationId": "99", "setupAction": "request"})
+	if code != 201 || out["connection"].(map[string]any)["state"] != "awaiting_consent" {
+		t.Fatalf("request = %d %v", code, out)
+	}
+	id := out["connection"].(map[string]any)["id"].(string)
+	if installation, _ := installationOf(t, id); installation != "" {
+		t.Fatalf("a claimed installation id the App cannot read was stored: %q", installation)
+	}
+	rig.server.AppWebhooks = map[string]AppWebhookReceiver{"github": &github.Provider{AppSecret: rig.svc.AppWebhookSecret, Log: rig.server.Log}}
+	h := rig.server.Handler()
+	if code := installationHook(h, "/webhooks/forge/github", webhookSecret, "created", 99, 6, 0); code != 202 {
+		t.Fatalf("created on another account = %d", code)
+	}
+	if installation, st := installationOf(t, id); installation != "" || st != "awaiting_consent" {
+		t.Fatalf("an installation on an account that does not own the App was bound: %q %s", installation, st)
+	}
+	if code := installationHook(h, "/webhooks/forge/github", webhookSecret, "created", 123, 5, 1); code != 202 {
+		t.Fatalf("created on the owner = %d", code)
+	}
+	if installation, st := installationOf(t, id); installation != "123" || st != "active" {
+		t.Fatalf("after the owner's created delivery = %q %s", installation, st)
+	}
+}
+
+func TestRuntimeAppDeliveriesReachConnectionsWithoutAStaticGitHubForgeOrTracker(t *testing.T) {
+	for i, path := range []string{"/webhooks/forge/github", "/webhooks/tracker/github"} {
+		rig := newConnRig(t)
+		_, webhookSecret := rig.githubApp(t)
+		code, out := rig.call("POST", "/api/v1/operator/connection-flows", rig.me(), map[string]any{"port": "forge", "kind": "github", "instance": "github", "method": "github_app_installation", "redirectUri": connRedirect, "app": "ploeg-acme"})
+		if code != 201 {
+			t.Fatalf("install start = %d %v", code, out)
+		}
+		state := out["flow"].(map[string]any)["state"].(string)
+		code, out = rig.call("POST", "/api/v1/operator/connection-flows/complete", rig.me(), map[string]any{"state": state, "installationId": "77", "setupAction": "install"})
+		if code != 201 {
+			t.Fatalf("install = %d %v", code, out)
+		}
+		id := out["connection"].(map[string]any)["id"].(string)
+		rig.server.Forges, rig.server.Trackers = nil, nil
+		rig.server.AppWebhooks = map[string]AppWebhookReceiver{"github": &github.Provider{AppSecret: rig.svc.AppWebhookSecret, Log: rig.server.Log}}
+		h := rig.server.Handler()
+		if code := installationHook(h, path, "static-secret", "suspend", 77, 5, i); code == 202 {
+			t.Fatalf("%s: a delivery not signed with the App's secret was taken", path)
+		}
+		if code := installationHook(h, path, webhookSecret, "suspend", 77, 5, 10+i); code != 202 {
+			t.Fatalf("%s: suspend = %d", path, code)
+		}
+		if _, st := installationOf(t, id); st != "invalid" {
+			t.Fatalf("%s: state after suspend = %s", path, st)
+		}
+	}
+}
+
+type singleVersionStore struct {
+	*secretstoretest.Fake
+	mu     sync.Mutex
+	latest map[string]int
+	onPut  func(path string)
+}
+
+func (s *singleVersionStore) Put(ctx context.Context, path string, values map[string]string) (secretstore.Ref, error) {
+	ref, err := s.Fake.Put(ctx, path, values)
+	if err == nil {
+		s.mu.Lock()
+		s.latest[path] = ref.Version
+		hook := s.onPut
+		s.mu.Unlock()
+		if hook != nil {
+			hook(path)
+		}
+	}
+	return ref, err
+}
+
+func (s *singleVersionStore) Get(ctx context.Context, ref secretstore.Ref) (map[string]string, error) {
+	s.mu.Lock()
+	if v, ok := s.latest[ref.Path]; ok && ref.Version <= v {
+		ref.Version = v
+	}
+	s.mu.Unlock()
+	return s.Fake.Get(ctx, ref)
+}
+
+func TestAFailedReconnectLeavesTheLiveConnectionReadingItsOwnToken(t *testing.T) {
+	rig := newConnRig(t)
+	gl := newFakeGitLab(t)
+	store := &singleVersionStore{Fake: rig.secrets, latest: map[string]int{}}
+	rig.svc.Secrets = store
+	rig.svc.Instances["gitlab-main"] = provider.ConnectionInstance{ID: "gitlab-main", Kind: "gitlab", URL: gl.srv.URL,
+		OAuth: &provider.OAuthApp{ClientID: "gl", ClientSecret: gitlabSecret, RedirectURIs: []string{connRedirect}}}
+	rig.svc.Config.Allow = append(rig.svc.Config.Allow, connection.Allow{Port: "forge", Kind: "gitlab", Instance: "gitlab-main", Methods: []string{"oauth"}})
+	clock := gitlab.Connector{Now: func() time.Time { return rig.now }}
+	rig.svc.Connectors["gitlab"] = provider.Connector{Authorizer: clock, Prober: clock}
+	start := func(extra map[string]any) string {
+		body := map[string]any{"port": "forge", "kind": "gitlab", "instance": "gitlab-main", "method": "oauth", "redirectUri": connRedirect}
+		for k, v := range extra {
+			body[k] = v
+		}
+		code, out := rig.call("POST", "/api/v1/operator/connection-flows", rig.me(), body)
+		if code != 201 {
+			t.Fatalf("start = %d %v", code, out)
+		}
+		return out["flow"].(map[string]any)["state"].(string)
+	}
+	code, out := rig.call("POST", "/api/v1/operator/connection-flows/complete", rig.me(), map[string]any{"state": start(nil), "code": "gl-code"})
+	if code != 201 {
+		t.Fatalf("complete = %d %v", code, out)
+	}
+	id := out["connection"].(map[string]any)["id"].(string)
+	state := start(map[string]any{"connection": id})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	store.onPut = func(path string) {
+		if path == "connections/"+id {
+			store.onPut = nil
+			cancel()
+		}
+	}
+	raw, _ := json.Marshal(map[string]any{"state": state, "code": "gl-code-2"})
+	r := httptest.NewRequestWithContext(ctx, "POST", "/api/v1/operator/connection-flows/complete", bytes.NewReader(raw))
+	r.Header.Set("Authorization", "Bearer "+rig.me())
+	r.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	rig.handler.ServeHTTP(w, r)
+	if w.Code < 500 {
+		t.Fatalf("a reconnect whose row write failed = %d %s", w.Code, w.Body.String())
+	}
+	cred, err := rig.svc.Credential(context.Background(), id)
+	if err != nil || cred.Token != "gl-access-SECRET-1" {
+		t.Fatalf("the live connection reads %q, %v; want its own token back", cred.Token, err)
+	}
+	gl.mu.Lock()
+	revoked := strings.Join(gl.revoked, ",")
+	gl.mu.Unlock()
+	if !strings.Contains(revoked, "gl-access-SECRET-2") || strings.Contains(revoked, "gl-access-SECRET-1") {
+		t.Fatalf("revoked = %q; want only the new token revoked", revoked)
+	}
+}
+
+func TestAnUnknownAppIdCostsNoQueryPerDelivery(t *testing.T) {
+	rig := newConnRig(t)
+	clock := time.Now()
+	replica := &connection.Service{Store: testStore, Secrets: rig.secrets, Now: func() time.Time { return clock }}
+	ctx := context.Background()
+	if _, held, err := replica.AppWebhookSecret(ctx, "1001"); held || err != nil {
+		t.Fatalf("before the App exists = %v, %v", held, err)
+	}
+	if _, held, err := replica.AppWebhookSecret(ctx, "../1001"); held || err != nil {
+		t.Fatalf("a non-numeric target = %v, %v", held, err)
+	}
+	_, webhookSecret := rig.githubApp(t)
+	if _, held, _ := replica.AppWebhookSecret(ctx, "1001"); held {
+		t.Fatal("a miss within the reload interval queried the database again")
+	}
+	clock = clock.Add(6 * time.Second)
+	if secret, held, err := replica.AppWebhookSecret(ctx, "1001"); !held || err != nil || secret != webhookSecret {
+		t.Fatalf("after the reload interval = %v, %v", held, err)
 	}
 }

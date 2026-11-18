@@ -77,11 +77,15 @@ spec:
               value: {{ .openbao.kvMount | default "secret" | quote }}
             - name: PLOEG_SECRET_STORE_OPENBAO_PATH_PREFIX
               value: {{ .openbao.pathPrefix | default "ploeg" | quote }}
+            {{- if .openbao.allowInsecureHttp }}
+            - name: PLOEG_SECRET_STORE_OPENBAO_ALLOW_INSECURE_HTTP
+              value: "true"
+            {{- end }}
             {{- else if eq .type "kubernetes" }}
             - name: PLOEG_SECRET_STORE
               value: kubernetes
             - name: PLOEG_SECRET_STORE_KUBERNETES_NAMESPACE
-              value: {{ .kubernetes.namespace | default $.Release.Namespace | quote }}
+              value: {{ include "ploeg.secretStoreNamespace" $ | quote }}
             {{- end }}
             {{- end }}
             {{- range .Values.connectionOAuthSecrets }}

@@ -108,6 +108,11 @@ type Server struct {
 	// (ADR-0195). Nil answers connections_not_accepted on every
 	// connection route.
 	ConnectionService *connection.Service
+	// AppWebhooks takes the deliveries of Apps Ploeg created at runtime
+	// (ADR-0195) on /webhooks/tracker/{kind} and /webhooks/forge/{kind},
+	// by kind, whether or not a static tracker or forge of that kind is
+	// configured. Nil = only static providers receive deliveries.
+	AppWebhooks map[string]AppWebhookReceiver
 	// RegisteredRepository names the Work Target key a repository of a
 	// forge instance is registered under, for the grant picker.
 	RegisteredRepository func(forge, repo string) (string, bool)
@@ -341,6 +346,18 @@ func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
 // is dropped after normalization.
 func (s *Server) handleTrackerWebhook(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("provider")
+	if app, ok := s.AppWebhooks[name]; ok {
+		held, err := app.ForApp(r)
+		if err != nil {
+			s.Log.Warn("webhook rejected", "provider", name, "err", err)
+			http.Error(w, "webhook rejected", http.StatusBadRequest)
+			return
+		}
+		if held {
+			s.handleAppWebhook(w, r, "tracker:"+name, name, app)
+			return
+		}
+	}
 	tp, ok := s.Trackers[name]
 	if !ok {
 		http.Error(w, "unknown tracker provider", http.StatusNotFound)
@@ -437,6 +454,10 @@ func (s *Server) applyTrackerEvents(w http.ResponseWriter, r *http.Request, name
 func (s *Server) handleForgeWebhook(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("provider")
 	fp, ok := s.Forges[name]
+	if app, held := s.AppWebhooks[name]; !ok && held {
+		s.handleAppWebhook(w, r, name, name, app)
+		return
+	}
 	if !ok {
 		// Not an error worth alarming on: a forge may be configured to notify
 		// an instance that does not host that provider.

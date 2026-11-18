@@ -132,6 +132,11 @@ func (c *Config) Resolve(lookup func(string) (string, bool)) (map[string]provide
 					return nil, fmt.Errorf("connections.instances.%s.oauth.redirectUris must be exact https URLs", id)
 				}
 			}
+			for _, u := range []string{o.AuthorizeURL, o.TokenURL} {
+				if u != "" && !httpsURL(u, false) {
+					return nil, fmt.Errorf("connections.instances.%s.oauth: authorizeUrl and tokenUrl must be https URLs, because the token request carries the client secret", id)
+				}
+			}
 			secret, ok := lookup(o.ClientSecretEnv)
 			if !ok || strings.TrimSpace(secret) == "" {
 				return nil, fmt.Errorf("connections.instances.%s.oauth: %s is unset", id, o.ClientSecretEnv)

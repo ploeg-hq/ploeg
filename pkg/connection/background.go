@@ -3,32 +3,59 @@ package connection
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"strings"
 	"time"
 
 	"github.com/ploeg-hq/ploeg/pkg/provider"
+	"github.com/ploeg-hq/ploeg/pkg/store"
+)
+
+// Held-App index timing: the index of App ids Ploeg holds is reloaded when
+// older than heldAppsMaxAge, and a miss reloads it at most once per
+// heldAppsMissReload, so a delivery naming an unknown App costs no query.
+const (
+	heldAppsMaxAge     = 30 * time.Second
+	heldAppsMissReload = 5 * time.Second
 )
 
 // AppWebhookSecret returns the webhook secret of an App Ploeg holds, by
-// GitHub's App id, read once from the store and held in memory.
-func (s *Service) AppWebhookSecret(ctx context.Context, appID string) (string, bool) {
+// GitHub's App id, read once from the store and held in memory. held is
+// false for an App Ploeg does not hold. An error means Ploeg cannot tell or
+// cannot read the secret; the delivery must then be refused, never verified
+// with another secret.
+func (s *Service) AppWebhookSecret(ctx context.Context, appID string) (secret string, held bool, err error) {
+	if !numericID(appID) {
+		return "", false, nil
+	}
 	s.mu.Lock()
 	if secret, ok := s.appSecrets[appID]; ok {
 		s.mu.Unlock()
-		return secret, true
+		return secret, true, nil
 	}
 	s.mu.Unlock()
+	if held, err := s.holdsApp(ctx, appID); err != nil || !held {
+		return "", false, err
+	}
 	app, err := s.Store.LiveConnectionAppByAppID(ctx, appID)
+	if errors.Is(err, store.ErrConnectionNotFound) {
+		s.forgetAppSecret(appID)
+		return "", false, nil
+	}
 	if err != nil {
-		return "", false
+		return "", true, fmt.Errorf("read App %s: %w", appID, err)
 	}
 	var refs appSecrets
 	if json.Unmarshal(app.Secrets, &refs) != nil || refs.App == nil {
-		return "", false
+		return "", true, fmt.Errorf("App %s has no secret reference", appID)
 	}
 	values, err := s.Secrets.Get(ctx, *refs.App)
-	if err != nil || values["webhook_secret"] == "" {
-		return "", false
+	if err != nil {
+		return "", true, fmt.Errorf("read the webhook secret of App %s: %w", appID, err)
+	}
+	if values["webhook_secret"] == "" {
+		return "", true, fmt.Errorf("App %s has no webhook secret in the store", appID)
 	}
 	s.mu.Lock()
 	if s.appSecrets == nil {
@@ -36,12 +63,48 @@ func (s *Service) AppWebhookSecret(ctx context.Context, appID string) (string, b
 	}
 	s.appSecrets[appID] = values["webhook_secret"]
 	s.mu.Unlock()
-	return values["webhook_secret"], true
+	return values["webhook_secret"], true, nil
+}
+
+func (s *Service) holdsApp(ctx context.Context, appID string) (bool, error) {
+	now := s.now()
+	s.mu.Lock()
+	known, fresh := s.heldApps[appID], s.heldApps != nil && now.Sub(s.heldAt) < heldAppsMaxAge
+	retry := !known && now.Sub(s.heldAt) >= heldAppsMissReload
+	s.mu.Unlock()
+	if fresh && !retry {
+		return known, nil
+	}
+	ids, err := s.Store.LiveConnectionAppIDs(ctx)
+	if err != nil {
+		return false, fmt.Errorf("list the Apps Ploeg holds: %w", err)
+	}
+	held := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		held[id] = true
+	}
+	s.mu.Lock()
+	s.heldApps, s.heldAt = held, now
+	s.mu.Unlock()
+	return held[appID], nil
+}
+
+func numericID(id string) bool {
+	if id == "" || len(id) > 20 {
+		return false
+	}
+	for _, c := range id {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *Service) forgetAppSecret(appID string) {
 	s.mu.Lock()
 	delete(s.appSecrets, appID)
+	s.heldApps = nil
 	s.mu.Unlock()
 }
 
@@ -51,6 +114,11 @@ func (s *Service) forgetAppSecret(appID string) {
 // installation_repositories changes no connection; it is logged for the
 // runtime targets that read the grant.
 func (s *Service) HandleGrant(ctx context.Context, grant provider.GrantEvent) error {
+	if grant.Event == "installation" && grant.Action == "created" {
+		if err := s.bindPendingInstallation(ctx, grant); err != nil {
+			return err
+		}
+	}
 	rows, err := s.Store.LiveConnectionsByInstallation(ctx, grant.InstallationID)
 	if err != nil {
 		return err
@@ -73,6 +141,43 @@ func (s *Service) HandleGrant(ctx context.Context, grant provider.GrantEvent) er
 				"added", len(grant.Added), "removed", len(grant.Removed))
 		}
 		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// bindPendingInstallation gives a connection that awaits an organisation
+// owner's approval, and so has no installation yet, the installation a
+// created delivery signed with its App's own secret reports. The App is
+// private, so only its owner's account can install it; an installation on
+// any other account binds nothing.
+func (s *Service) bindPendingInstallation(ctx context.Context, grant provider.GrantEvent) error {
+	if grant.AppID == "" || grant.InstallationID == "" || grant.AccountID == "" {
+		return nil
+	}
+	app, err := s.Store.LiveConnectionAppByAppID(ctx, grant.AppID)
+	if errors.Is(err, store.ErrConnectionNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	var owner provider.ConnectionAccount
+	if json.Unmarshal(app.Owner, &owner) != nil || owner.ID == "" || owner.ID != grant.AccountID {
+		s.log().Warn("installation created on an account that does not own the App; no pending connection bound",
+			"app", app.ID, "installation", grant.InstallationID)
+		return nil
+	}
+	rows, err := s.Store.LiveConnections(ctx, app.Tenant, app.Port)
+	if err != nil {
+		return err
+	}
+	for _, row := range rows {
+		if row.App != app.ID || row.InstallationID != "" || row.State != StateAwaitingConsent {
+			continue
+		}
+		if _, err := s.Store.BindPendingInstallation(ctx, row.Tenant, row.ID, grant.InstallationID); err != nil {
 			return err
 		}
 	}

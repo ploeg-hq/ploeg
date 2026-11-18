@@ -466,6 +466,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 		SecretStore:    secrets,
 
 		ConnectionService:    runtimeConns,
+		AppWebhooks:          appWebhooks(log, runtimeConns, forges),
 		RegisteredRepository: registeredRepository(cfg, forgeID),
 		ClaimForges:          release.directory(),
 		ClaudeSessions:       claudeSessions(log),
