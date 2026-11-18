@@ -206,7 +206,7 @@ func (s *Store) WorkTargetRevision(ctx context.Context) (int64, error) {
 // is ErrOperatorNotFound.
 func (s *Store) LiveWorkTarget(ctx context.Context, tenant, key string) (WorkTarget, error) {
 	t, err := scanWorkTarget(s.pool.QueryRow(ctx, `SELECT `+workTargetColumns+` FROM work_targets
-		WHERE removed_at IS NULL AND tenant = $1 AND lower(target_key) = lower($2)`, tenant, key))
+		WHERE removed_at IS NULL AND tenant = $1 AND target_key = $2`, tenant, key))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return t, ErrOperatorNotFound
 	}
@@ -318,7 +318,7 @@ func (s *Store) ReplaceWorkTarget(ctx context.Context, r WorkTargetReplacement, 
 			return err
 		}
 		current, err := scanWorkTarget(tx.QueryRow(ctx, `SELECT `+workTargetColumns+` FROM work_targets
-			WHERE removed_at IS NULL AND tenant = $1 AND lower(target_key) = lower($2)`, r.Tenant, r.Key))
+			WHERE removed_at IS NULL AND tenant = $1 AND target_key = $2`, r.Tenant, r.Key))
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrOperatorNotFound
 		}
@@ -352,7 +352,7 @@ func (s *Store) RemoveWorkTarget(ctx context.Context, tenant, key string, audit 
 			return err
 		}
 		current, err := scanWorkTarget(tx.QueryRow(ctx, `SELECT `+workTargetColumns+` FROM work_targets
-			WHERE tenant = $1 AND lower(target_key) = lower($2) ORDER BY (removed_at IS NULL) DESC, id DESC LIMIT 1`, tenant, key))
+			WHERE tenant = $1 AND target_key = $2 ORDER BY (removed_at IS NULL) DESC, id DESC LIMIT 1`, tenant, key))
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrOperatorNotFound
 		}

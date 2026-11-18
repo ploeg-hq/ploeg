@@ -63,28 +63,41 @@ func (s *Service) check(ctx context.Context, t store.WorkTarget) finding {
 	return finding{state: store.WorkTargetActive, readiness: &readiness}
 }
 
-// apply records what check found for a live target that is not shadowed.
+// apply records what check found for a live target. A shadowed target
+// keeps its state and its static entry and records or clears the invalid
+// reason, so the reason survives the shadow (ADR-0193 section 4).
 func (s *Service) apply(ctx context.Context, t store.WorkTarget, f finding, audit store.WorkTargetAudit) bool {
-	if t.State == store.WorkTargetShadowed || (f.unknown && f.state == "") {
+	if f.state == "" {
 		return false
 	}
-	switch {
-	case f.state == store.WorkTargetActive && t.State == store.WorkTargetActive:
-		if f.readiness != nil {
-			if err := s.Store.SetWorkTargetReadiness(ctx, t.ID, *f.readiness); err != nil {
-				s.log().Error("runtime target readiness not recorded", "target", t.Key, "err", err)
-			}
-		}
-		return false
-	case f.state == store.WorkTargetActive:
+	shadowed := t.State == store.WorkTargetShadowed
+	switch f.state {
+	case store.WorkTargetActive:
 		if f.unknown {
 			return false
 		}
-		return s.transition(ctx, t, store.WorkTargetStateChange{State: store.WorkTargetActive, Readiness: f.readiness}, store.AuditWorkTargetRestored, audit)
-	case t.State == store.WorkTargetInvalid && t.InvalidReason == f.reason:
+		if t.InvalidReason == "" {
+			if f.readiness != nil {
+				if err := s.Store.SetWorkTargetReadiness(ctx, t.ID, *f.readiness); err != nil {
+					s.log().Error("runtime target readiness not recorded", "target", t.Key, "err", err)
+				}
+			}
+			return false
+		}
+		to := store.WorkTargetStateChange{State: store.WorkTargetActive, Readiness: f.readiness}
+		if shadowed {
+			to.State, to.ShadowedBy = store.WorkTargetShadowed, t.ShadowedBy
+		}
+		return s.transition(ctx, t, to, store.AuditWorkTargetRestored, audit)
+	}
+	if t.InvalidReason == f.reason {
 		return false
 	}
-	return s.transition(ctx, t, store.WorkTargetStateChange{State: store.WorkTargetInvalid, InvalidReason: f.reason}, store.AuditWorkTargetInvalid, audit)
+	to := store.WorkTargetStateChange{State: store.WorkTargetInvalid, InvalidReason: f.reason}
+	if shadowed {
+		to.State, to.ShadowedBy = store.WorkTargetShadowed, t.ShadowedBy
+	}
+	return s.transition(ctx, t, to, store.AuditWorkTargetInvalid, audit)
 }
 
 func (s *Service) transition(ctx context.Context, t store.WorkTarget, to store.WorkTargetStateChange, action string, audit store.WorkTargetAudit) bool {
@@ -100,10 +113,7 @@ func (s *Service) transition(ctx context.Context, t store.WorkTarget, to store.W
 }
 
 func (s *Service) invalidate(ctx context.Context, t store.WorkTarget, reason string, audit store.WorkTargetAudit) bool {
-	if t.State == store.WorkTargetShadowed || (t.State == store.WorkTargetInvalid && t.InvalidReason == reason) {
-		return false
-	}
-	return s.transition(ctx, t, store.WorkTargetStateChange{State: store.WorkTargetInvalid, InvalidReason: reason}, store.AuditWorkTargetInvalid, audit)
+	return s.apply(ctx, t, finding{state: store.WorkTargetInvalid, reason: reason}, audit)
 }
 
 // Reconcile asks the forge about every live runtime target, so a grant
@@ -157,7 +167,7 @@ func (s *Service) HandleGrant(ctx context.Context, grant provider.GrantEvent) er
 				changed = s.invalidate(ctx, t, store.WorkTargetInstallationSuspended, audit) || changed
 			case grant.Event == "installation_repositories" && grant.Action == "removed" && names(t, grant.Removed, grant.RemovedIDs):
 				changed = s.invalidate(ctx, t, store.WorkTargetGrantRevoked, audit) || changed
-			case t.State == store.WorkTargetInvalid && restores(grant, t):
+			case t.InvalidReason != "" && restores(grant, t):
 				changed = s.apply(ctx, t, s.check(ctx, t), audit) || changed
 			}
 		}
@@ -193,9 +203,10 @@ func restores(grant provider.GrantEvent, t store.WorkTarget) bool {
 // Claim is what the claim found for a Work Item's target: whether a
 // runtime target serves it, and through which connection.
 type Claim struct {
-	Runtime    bool
-	Key        string
-	Connection string
+	Runtime      bool
+	Key          string
+	Connection   string
+	RepositoryID string
 	// Refusal names why no Run may start, empty when one may.
 	Refusal string
 	Reason  string
@@ -218,8 +229,11 @@ func (s *Service) ClaimTarget(ctx context.Context, t work.Target) (Claim, error)
 	if err != nil || !found {
 		return Claim{}, err
 	}
-	c := Claim{Runtime: true, Key: row.Key, Connection: row.Connection}
+	c := Claim{Runtime: true, Key: row.Key, Connection: row.Connection, RepositoryID: row.RepositoryID}
+	usable, known := s.connectionUsable(ctx, row.Connection)
 	switch {
+	case row.RemovedAt == nil && row.State == store.WorkTargetActive && (!known || !usable):
+		c.Refusal, c.Reason = "target_invalid", "the connection "+row.Connection+" of runtime target "+row.Key+" is not usable"
 	case row.RemovedAt != nil:
 		c.Refusal, c.Reason = "target_not_registered", "the runtime target "+row.Key+" was removed"
 	case row.State == store.WorkTargetInvalid:

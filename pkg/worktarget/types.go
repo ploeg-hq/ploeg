@@ -152,6 +152,7 @@ type Store interface {
 	SetWorkTargetReadiness(ctx context.Context, id int64, readiness store.TargetReadiness) error
 	AuditWorkTarget(ctx context.Context, action string, t store.WorkTarget, audit store.WorkTargetAudit, extra map[string]any) error
 	OpenWorkItemsOnRepository(ctx context.Context, forge, owner, repo string, limit int) ([]string, error)
+	LiveTrackerBindings(ctx context.Context) ([]store.TrackerBinding, error)
 }
 
 // Bindings is the seam to ADR-0186's registry: its rebuild and the live

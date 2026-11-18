@@ -22,7 +22,9 @@ CREATE TABLE work_targets (
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     removed_at      TIMESTAMPTZ,
-    CHECK ((state = 'invalid') = (invalid_reason IS NOT NULL))
+    CHECK (state <> 'invalid' OR invalid_reason IS NOT NULL),
+    CHECK (state <> 'active' OR invalid_reason IS NULL),
+    CHECK ((state = 'shadowed') = (shadowed_by IS NOT NULL))
 );
 
 CREATE UNIQUE INDEX work_targets_one_live_per_repository

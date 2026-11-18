@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"slices"
 	"sort"
 	"strings"
@@ -29,6 +30,14 @@ type Service struct {
 	// Static are the targets the configuration file registers, by key.
 	Static       map[string]work.Target
 	DefaultForge string
+	// ForgeHosts maps a static forge registry id to its host, so a runtime
+	// target on another id for the same forge still meets the static
+	// targets it conflicts with.
+	ForgeHosts map[string]string
+	// Minting names the connection kinds whose connections mint a per-Run
+	// credential (ADR-0192). A connection of any other kind cannot register
+	// a runtime target: a Run on it would have nothing to push with.
+	Minting map[string]bool
 	// Gate is the readiness gate the runtime targets join.
 	Gate     *target.Gate
 	Bindings Bindings
@@ -98,15 +107,52 @@ func (s *Service) StaticKeyConflict(key string) (string, bool) {
 }
 
 // StaticRepositoryConflict returns the static entry that names repository on
-// forge, on any branch.
+// forge, on any branch, where forge is the same id or the same host.
 func (s *Service) StaticRepositoryConflict(forge, repository string) *store.StaticEntry {
 	for _, k := range sortedKeys(s.Static) {
 		t := s.Static[k]
-		if s.staticForge(t) == forge && strings.EqualFold(t.Owner+"/"+t.Repo, repository) {
+		if s.SameForge(s.staticForge(t), forge) && strings.EqualFold(t.Owner+"/"+t.Repo, repository) {
 			return &store.StaticEntry{Entry: "targets." + k, Repository: t.Owner + "/" + t.Repo}
 		}
 	}
 	return nil
+}
+
+// SameForge reports whether two forge ids name one forge: the same id, or
+// ids whose instances share a host.
+func (s *Service) SameForge(a, b string) bool {
+	if a == b {
+		return true
+	}
+	ha, hb := s.forgeHost(a), s.forgeHost(b)
+	return ha != "" && ha == hb
+}
+
+func (s *Service) forgeHost(id string) string {
+	if inst, ok := s.Instances[id]; ok {
+		raw := inst.URL
+		if raw == "" && inst.Kind == "github" {
+			raw = "https://github.com"
+		}
+		if host := HostOf(raw); host != "" {
+			return host
+		}
+	}
+	return strings.ToLower(s.ForgeHosts[id])
+}
+
+// HostOf is the lower-case host of a forge URL, with GitHub's API host read
+// as github.com.
+func HostOf(raw string) string {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return ""
+	}
+	host := strings.ToLower(u.Hostname())
+	if host == "api.github.com" {
+		return "github.com"
+	}
+	return host
 }
 
 func (s *Service) staticConflict(t store.WorkTarget) *store.StaticEntry {
@@ -131,7 +177,7 @@ func (s *Service) RuntimeTarget(key string) (trackerbinding.RuntimeTarget, bool)
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	for _, t := range s.live {
-		if strings.EqualFold(t.Key, key) {
+		if t.Key == key {
 			return trackerbinding.RuntimeTarget{Target: WorkTarget(t), State: t.State, Reason: t.InvalidReason}, true
 		}
 	}
@@ -174,7 +220,7 @@ func (s *Service) Counts() map[string]int {
 func (s *Service) Registered(forge, repository string) (string, bool) {
 	for _, k := range sortedKeys(s.Static) {
 		t := s.Static[k]
-		if s.staticForge(t) == forge && strings.EqualFold(t.Owner+"/"+t.Repo, repository) {
+		if s.SameForge(s.staticForge(t), forge) && strings.EqualFold(t.Owner+"/"+t.Repo, repository) {
 			return k, true
 		}
 	}
@@ -223,24 +269,35 @@ func (s *Service) Rebuild(ctx context.Context) error {
 	return nil
 }
 
-// stateOf decides the state a live target is in without asking the forge:
-// shadowed by a static entry, back from shadowed, or invalid because its
-// connection is no longer usable. ok is false when it stays as it is.
+// stateOf decides the state a live target is in without asking the forge.
+// A static entry shadows it and keeps any invalid reason it had, and when
+// the entry goes the target returns to invalid with that reason, or to
+// active only when it had none; a fresh probe restores it later. A target
+// whose connection is no longer usable is invalid. ok is false when it
+// stays as it is.
 func (s *Service) stateOf(ctx context.Context, t store.WorkTarget) (store.WorkTargetStateChange, string, bool) {
+	usable, known := s.connectionUsable(ctx, t.Connection)
+	reason := t.InvalidReason
+	if known && !usable && reason == "" {
+		reason = store.WorkTargetConnectionUnusable
+	}
 	if entry := s.staticConflict(t); entry != nil {
-		if t.State == store.WorkTargetShadowed && t.ShadowedBy != nil && t.ShadowedBy.Entry == entry.Entry {
+		if t.State == store.WorkTargetShadowed && t.ShadowedBy != nil && t.ShadowedBy.Entry == entry.Entry && t.InvalidReason == reason {
 			return store.WorkTargetStateChange{}, "", false
 		}
-		return store.WorkTargetStateChange{State: store.WorkTargetShadowed, ShadowedBy: entry}, store.AuditWorkTargetShadowed, true
+		action := store.AuditWorkTargetShadowed
+		if t.State == store.WorkTargetShadowed {
+			action = store.AuditWorkTargetInvalid
+		}
+		return store.WorkTargetStateChange{State: store.WorkTargetShadowed, ShadowedBy: entry, InvalidReason: reason}, action, true
 	}
-	usable, known := s.connectionUsable(ctx, t.Connection)
 	switch {
-	case t.State == store.WorkTargetShadowed && known && !usable:
-		return store.WorkTargetStateChange{State: store.WorkTargetInvalid, InvalidReason: store.WorkTargetConnectionUnusable}, store.AuditWorkTargetInvalid, true
+	case t.State == store.WorkTargetShadowed && reason != "":
+		return store.WorkTargetStateChange{State: store.WorkTargetInvalid, InvalidReason: reason}, store.AuditWorkTargetUnshadowed, true
 	case t.State == store.WorkTargetShadowed:
 		return store.WorkTargetStateChange{State: store.WorkTargetActive}, store.AuditWorkTargetUnshadowed, true
-	case t.State == store.WorkTargetActive && known && !usable:
-		return store.WorkTargetStateChange{State: store.WorkTargetInvalid, InvalidReason: store.WorkTargetConnectionUnusable}, store.AuditWorkTargetInvalid, true
+	case t.State == store.WorkTargetActive && reason != "":
+		return store.WorkTargetStateChange{State: store.WorkTargetInvalid, InvalidReason: reason}, store.AuditWorkTargetInvalid, true
 	}
 	return store.WorkTargetStateChange{}, "", false
 }
@@ -324,33 +381,39 @@ func (c *connectionInspector) InspectRepository(ctx context.Context, owner, repo
 // grantsOf returns the grant prober, instance and credential of a usable
 // runtime forge connection, or the refusal registration answers with.
 func (s *Service) grantsOf(ctx context.Context, id string) (provider.RepositoryGrantProber, provider.ConnectionInstance, provider.ConnectionCredential, *Error) {
+	grants, inst, cred, _, e := s.connectionGrants(ctx, id)
+	return grants, inst, cred, e
+}
+
+func (s *Service) connectionGrants(ctx context.Context, id string) (provider.RepositoryGrantProber, provider.ConnectionInstance, provider.ConnectionCredential, ConnectionInfo, *Error) {
+	var info ConnectionInfo
 	if s.Connections == nil {
-		return nil, provider.ConnectionInstance{}, provider.ConnectionCredential{}, refuse(404, "unknown_connection", "No forge connection "+id+" exists.")
+		return nil, provider.ConnectionInstance{}, provider.ConnectionCredential{}, info, refuse(404, "unknown_connection", "No forge connection "+id+" exists.")
 	}
 	info, found, err := s.Connections.ForgeConnection(ctx, id)
 	switch {
 	case err != nil:
-		return nil, provider.ConnectionInstance{}, provider.ConnectionCredential{}, refuse(422, "connection_unusable", "The connection could not be read.")
+		return nil, provider.ConnectionInstance{}, provider.ConnectionCredential{}, info, refuse(422, "connection_unusable", "The connection could not be read.")
 	case !found:
-		return nil, provider.ConnectionInstance{}, provider.ConnectionCredential{}, refuse(404, "unknown_connection", "No forge connection "+id+" exists.")
+		return nil, provider.ConnectionInstance{}, provider.ConnectionCredential{}, info, refuse(404, "unknown_connection", "No forge connection "+id+" exists.")
 	case !info.Runtime:
-		return nil, provider.ConnectionInstance{}, provider.ConnectionCredential{}, refuse(422, "registration_not_accepted", "A static forge connection cannot grant runtime targets; connect the forge through a store-backed connection (ADR-0195).")
+		return nil, provider.ConnectionInstance{}, provider.ConnectionCredential{}, info, refuse(422, "registration_not_accepted", "A static forge connection cannot grant runtime targets; connect the forge through a store-backed connection (ADR-0195).")
 	case info.State != ConnectionActive:
-		return nil, provider.ConnectionInstance{}, provider.ConnectionCredential{}, refuse(422, "connection_unusable", "The connection is "+info.State+"; reconnect it first.")
+		return nil, provider.ConnectionInstance{}, provider.ConnectionCredential{}, info, refuse(422, "connection_unusable", "The connection is "+info.State+"; reconnect it first.")
 	}
 	grants := s.Connectors[info.Kind].Grants
 	if grants == nil {
-		return nil, provider.ConnectionInstance{}, provider.ConnectionCredential{}, refuse(422, "capability_missing", "The adapter of kind "+info.Kind+" cannot probe a repository grant (RepositoryGrantProber).")
+		return nil, provider.ConnectionInstance{}, provider.ConnectionCredential{}, info, refuse(422, "capability_missing", "The adapter of kind "+info.Kind+" cannot probe a repository grant (RepositoryGrantProber).")
 	}
 	cred, err := s.Connections.Credential(ctx, id)
 	if err != nil {
-		return nil, provider.ConnectionInstance{}, provider.ConnectionCredential{}, refuse(422, "connection_unusable", "The connection's credential could not be read.")
+		return nil, provider.ConnectionInstance{}, provider.ConnectionCredential{}, info, refuse(422, "connection_unusable", "The connection's credential could not be read.")
 	}
 	inst, ok := s.Instances[info.Instance]
 	if !ok {
 		inst = provider.ConnectionInstance{ID: info.Instance, Kind: info.Kind}
 	}
-	return grants, inst, cred, nil
+	return grants, inst, cred, info, nil
 }
 
 func (s *Service) connectionInstance(ctx context.Context, id string) (string, *Error) {

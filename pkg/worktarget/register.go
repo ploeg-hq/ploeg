@@ -3,6 +3,7 @@ package worktarget
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"time"
 
@@ -113,7 +114,7 @@ func (s *Service) Probe(ctx context.Context, req Request) Plan {
 	if plan.Refusal != nil && plan.Existing == nil {
 		return plan
 	}
-	grants, inst, cred, e := s.grantsOf(ctx, req.Connection)
+	grants, inst, cred, info, e := s.connectionGrants(ctx, req.Connection)
 	if e != nil {
 		name := "connection_usable"
 		if e.Code == "capability_missing" {
@@ -123,6 +124,11 @@ func (s *Service) Probe(ctx context.Context, req Request) Plan {
 		return plan
 	}
 	plan.pass("connection_usable", "")
+	if !s.Minting[info.Kind] {
+		plan.fail("capability", "a "+info.Kind+" connection mints no per-Run credential yet",
+			refuse(422, "capability_missing", "A "+info.Kind+" connection cannot mint a Run's credential yet (ADR-0192), so it cannot register a runtime target."))
+		return plan
+	}
 	plan.pass("capability", "")
 	grant, err := grants.ProbeRepositoryGrant(ctx, inst, cred, req.Repository)
 	switch {
@@ -313,8 +319,9 @@ func storeRefusal(err error) *Error {
 	return refuse(503, "store_unavailable", "The runtime targets could not be written.")
 }
 
-// Replace changes a live target's branch or label and probes it again;
-// connection, repository and key cannot change (ADR-0193 section 3).
+// Replace changes an active target's branch or label after probing its
+// grant and repository id again; connection, repository and key cannot
+// change, and a shadowed or invalid target is refused (ADR-0193 section 3).
 func (s *Service) Replace(ctx context.Context, audit store.WorkTargetAudit, key string, revision int64, branch, label *string) (store.WorkTarget, *Error) {
 	if e := s.Accepting(); e != nil {
 		return store.WorkTarget{}, e
@@ -325,6 +332,11 @@ func (s *Service) Replace(ctx context.Context, audit store.WorkTargetAudit, key 
 	}
 	if current.Revision != revision {
 		e := refuse(412, "revision_stale", "The target changed since that revision.")
+		e.Current = &current
+		return store.WorkTarget{}, e
+	}
+	if current.State != store.WorkTargetActive {
+		e := refuse(409, "target_not_active", "The target is "+current.State+"; only an active target can be changed.")
 		e.Current = &current
 		return store.WorkTarget{}, e
 	}
@@ -340,6 +352,10 @@ func (s *Service) Replace(ctx context.Context, audit store.WorkTargetAudit, key 
 	}
 	grants, inst, cred, e := s.grantsOf(ctx, current.Connection)
 	if e != nil {
+		s.refused(ctx, audit, current, e)
+		return store.WorkTarget{}, e
+	}
+	if e := regrant(ctx, grants, inst, cred, current); e != nil {
 		s.refused(ctx, audit, current, e)
 		return store.WorkTarget{}, e
 	}
@@ -366,6 +382,25 @@ func (s *Service) Replace(ctx context.Context, audit store.WorkTargetAudit, key 
 	return out, nil
 }
 
+// regrant asks the forge again whether the grant still reaches the very
+// repository the target was registered for, by its id.
+func regrant(ctx context.Context, grants provider.RepositoryGrantProber, inst provider.ConnectionInstance, cred provider.ConnectionCredential, t store.WorkTarget) *Error {
+	grant, err := grants.ProbeRepositoryGrant(ctx, inst, cred, t.Repository)
+	switch {
+	case errors.Is(err, provider.ErrRepositoryNotGranted):
+		return refuse(422, "not_granted", "The connection's grant no longer reaches "+t.Repository+".")
+	case errors.Is(err, provider.ErrRepositoryNotFound):
+		return refuse(422, "repository_not_found", "The forge no longer shows "+t.Repository+".")
+	case err != nil:
+		return refuse(422, "probe_failed", "The forge could not be asked whether the grant reaches the repository.")
+	case grant.ID != t.RepositoryID || !strings.EqualFold(grant.FullName, t.Repository):
+		return refuse(422, "repository_moved", "The repository at "+t.Repository+" is no longer the one this target was registered for.")
+	case !grant.CanWrite:
+		return refuse(422, "grant_insufficient", "The connection's grant on "+t.Repository+" is read-only.")
+	}
+	return nil
+}
+
 // Removal is what a removal left behind: the open Work Items pinned to the
 // target, whose next claim is refused.
 type Removal struct {
@@ -380,7 +415,11 @@ func (s *Service) Remove(ctx context.Context, audit store.WorkTargetAudit, key s
 	if e := s.Accepting(); e != nil {
 		return Removal{}, e
 	}
-	if uses := s.bindingsNaming(key); len(uses) > 0 {
+	uses, err := s.bindingsNaming(ctx, key)
+	if err != nil {
+		return Removal{}, refuse(503, "store_unavailable", "The tracker bindings could not be read.")
+	}
+	if len(uses) > 0 {
 		e := refuse(409, "target_in_use", "Live tracker bindings name this key; remove or change them first.")
 		e.Bindings = uses
 		return Removal{}, e
@@ -410,19 +449,16 @@ func (s *Service) Remove(ctx context.Context, audit store.WorkTargetAudit, key s
 	return Removal{Target: out, Removed: removed, WorkItems: pinned}, nil
 }
 
-func (s *Service) bindingsNaming(key string) []BindingUse {
-	if s.Bindings == nil {
-		return nil
+func (s *Service) bindingsNaming(ctx context.Context, key string) ([]BindingUse, error) {
+	bindings, err := s.Store.LiveTrackerBindings(ctx)
+	if err != nil {
+		return nil, err
 	}
 	var out []BindingUse
-	for _, b := range s.Bindings.Bindings() {
-		named := strings.EqualFold(b.Default, key)
-		for _, a := range b.Allow {
-			named = named || strings.EqualFold(a, key)
-		}
-		if named {
+	for _, b := range bindings {
+		if b.Default == key || slices.Contains(b.Allow, key) {
 			out = append(out, BindingUse{ID: itoa(b.ID), Team: b.Team})
 		}
 	}
-	return out
+	return out, nil
 }
