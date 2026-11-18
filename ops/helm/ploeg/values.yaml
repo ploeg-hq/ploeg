@@ -91,8 +91,12 @@ networkPolicy:
   claudeRunner:
     extraEgress: []
   # Where the claude-runner's sessions and orchestrator reach api.anthropic.com.
-  # A NetworkPolicy cannot name a host, so [] is the internet on 443; a list
-  # of NetworkPolicyPeers (Anthropic's published ranges) narrows it.
+  # WARNING: a NetworkPolicy cannot name a host, so [] lets every runner pod,
+  # where model-directed code runs, reach the WHOLE INTERNET on 443. Set a
+  # list of NetworkPolicyPeers (Anthropic's published ranges, plus
+  # downloads.claude.ai's while claudeRunner.claudeCode.install is true) or
+  # enforce the host with an FQDN-capable CNI. The install notes warn while
+  # it is empty in orchestrator mode (docs/ops/network.md).
   anthropic:
     peers: []
   mcp:

@@ -258,6 +258,11 @@ spec:
 {{- end -}}
 {{- end -}}
 {{- end -}}
+{{- if not (semverCompare ">=1.30.0-0" .Capabilities.KubeVersion.Version) -}}
+{{- fail "claudeRunner.mode orchestrator needs Kubernetes >= 1.30: a ValidatingAdmissionPolicy lets the orchestrator's ServiceAccount create only the chart's runner Job" -}}
+{{- end -}}
+{{- include "ploeg.claudeRunnerJobPolicy" . }}
+---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -446,4 +451,116 @@ spec:
           emptyDir:
             sizeLimit: 1Gi
         {{- end }}
+{{- end -}}
+
+{{- define "ploeg.claudeRunnerContainerRule" -}}
+{{- $c := .container -}}
+{{- $sc := $c.securityContext | default dict -}}
+{{- $pairs := list -}}
+{{- range $e := ($c.env | default list) -}}{{- $pairs = append $pairs (list $e.name (toString ($e.value | default ""))) -}}{{- end -}}
+{{- $mounts := list -}}
+{{- $readOnly := list -}}
+{{- range $m := ($c.volumeMounts | default list) -}}
+{{- $mounts = append $mounts (list $m.name $m.mountPath) -}}
+{{- if $m.readOnly }}{{- $readOnly = append $readOnly $m.name -}}{{- end -}}
+{{- end -}}
+{{- $envSize := len $pairs -}}
+{{- $env := printf "c.env.all(e, %s.exists(p, p[0] == e.name && p[1] == (has(e.value) ? e.value : '')))" (toJson $pairs) -}}
+{{- if .workOrder -}}
+{{- $envSize = add $envSize 1 -}}
+{{- $env = printf "c.env.exists_one(e, e.name == 'PLOEG_CLAUDE_RUNNER_WORK_ORDER') && c.env.all(e, e.name == 'PLOEG_CLAUDE_RUNNER_WORK_ORDER' || %s.exists(p, p[0] == e.name && p[1] == (has(e.value) ? e.value : '')))" (toJson $pairs) -}}
+{{- end -}}
+{{- $user := "!has(c.securityContext.runAsUser)" -}}
+{{- with $sc.runAsUser }}{{- $user = printf "has(c.securityContext.runAsUser) && c.securityContext.runAsUser == %v" . -}}{{- end -}}
+{{- $parts := list
+  (printf "c.image == %s" (toJson $c.image))
+  (printf "has(c.command) && c.command == %s" (toJson ($c.command | default list)))
+  (ternary (printf "has(c.args) && c.args == %s" (toJson $c.args)) "!has(c.args)" (not (empty $c.args)))
+  "!has(c.envFrom) && has(c.env) && c.env.all(e, !has(e.valueFrom))"
+  (printf "c.env.size() == %d" $envSize)
+  $env
+  (printf "has(c.volumeMounts) && c.volumeMounts.size() == %d && c.volumeMounts.all(m, %s.exists(x, x[0] == m.name && x[1] == m.mountPath) && (m.name in %s) == (has(m.readOnly) && m.readOnly) && !has(m.subPath) && !has(m.subPathExpr))" (len $mounts) (toJson $mounts) (toJson $readOnly))
+  "has(c.securityContext) && has(c.securityContext.allowPrivilegeEscalation) && !c.securityContext.allowPrivilegeEscalation && (!has(c.securityContext.privileged) || !c.securityContext.privileged) && has(c.securityContext.capabilities) && has(c.securityContext.capabilities.drop) && c.securityContext.capabilities.drop == ['ALL'] && !has(c.securityContext.capabilities.add) && (!has(c.securityContext.runAsNonRoot) || c.securityContext.runAsNonRoot)"
+  $user
+  "!has(c.ports) || c.ports.all(p, !has(p.hostPort) || p.hostPort == 0)"
+  "!has(c.lifecycle) && !has(c.workingDir)"
+-}}
+{{- $wrapped := list -}}
+{{- range $parts }}{{- $wrapped = append $wrapped (printf "(%s)" .) -}}{{- end -}}
+{{- printf "%s.exists_one(c, c.name == %s) && %s.all(c, c.name != %s || (%s))" .list (toJson $c.name) .list (toJson $c.name) (join " && " $wrapped) -}}
+{{- end -}}
+
+{{- define "ploeg.claudeRunnerJobPolicy" -}}
+{{- $root := . -}}
+{{- $job := include "ploeg.claudeRunnerJob" . | fromYaml -}}
+{{- $pod := $job.spec.template.spec -}}
+{{- $podMeta := $job.spec.template.metadata -}}
+{{- $name := printf "%s-%s-claude-runner-jobs" (include "ploeg.fullname" .) (include "ploeg.executorNamespace" .) | trunc 253 | trimSuffix "-" -}}
+{{- $orchestrator := printf "system:serviceaccount:%s:%s" (include "ploeg.executorNamespace" .) (include "ploeg.claudeRunnerOrchestratorName" .) -}}
+{{- $podAnnotations := omit ($podMeta.annotations | default dict) "ploeg.webgrip.dev/claude-session" -}}
+{{- $volumes := list -}}
+{{- range $pod.volumes }}{{- $volumes = append $volumes .name -}}{{- end -}}
+{{- $containers := list -}}
+{{- range $pod.containers }}{{- $containers = append $containers .name -}}{{- end -}}
+{{- $inits := list -}}
+{{- range ($pod.initContainers | default list) }}{{- $inits = append $inits .name -}}{{- end -}}
+{{- $sc := $pod.securityContext -}}
+{{- $rules := list -}}
+{{- $controllerLabels := list "batch.kubernetes.io/controller-uid" "controller-uid" "batch.kubernetes.io/job-name" "job-name" -}}
+{{- $rules = append $rules (dict "m" "The runner Job carries exactly the labels of the chart's runner Job." "e" (printf "has(object.metadata.labels) && %s.all(k, k in object.metadata.labels && object.metadata.labels[k] == %s[k]) && object.metadata.labels.all(k, k in %s || k in %s)" (toJson $job.metadata.labels) (toJson $job.metadata.labels) (toJson $job.metadata.labels) (toJson $controllerLabels))) -}}
+{{- $rules = append $rules (dict "m" "The runner Job carries no annotation but its order and session." "e" "!has(object.metadata.annotations) || object.metadata.annotations.all(k, k in ['ploeg.webgrip.dev/claude-order', 'ploeg.webgrip.dev/claude-session'])") -}}
+{{- $rules = append $rules (dict "m" "The runner pod carries exactly the labels of the chart's runner Job." "e" (printf "has(object.spec.template.metadata.labels) && %s.all(k, k in object.spec.template.metadata.labels && object.spec.template.metadata.labels[k] == %s[k]) && object.spec.template.metadata.labels.all(k, k in %s || k in %s)" (toJson $podMeta.labels) (toJson $podMeta.labels) (toJson $podMeta.labels) (toJson $controllerLabels))) -}}
+{{- $annotationRule := "has(object.spec.template.metadata.annotations) && object.spec.template.metadata.annotations.all(k, k == 'ploeg.webgrip.dev/claude-session')" -}}
+{{- if $podAnnotations -}}
+{{- $annotationRule = printf "has(object.spec.template.metadata.annotations) && object.spec.template.metadata.annotations.all(k, k == 'ploeg.webgrip.dev/claude-session' || (k in %s && object.spec.template.metadata.annotations[k] == %s[k]))" (toJson $podAnnotations) (toJson $podAnnotations) -}}
+{{- end -}}
+{{- $rules = append $rules (dict "m" "The runner pod carries no annotation but its session and the chart's podAnnotations." "e" $annotationRule) -}}
+{{- $rules = append $rules (dict "m" "The runner Job runs one pod once, for as long as the chart's runner Job." "e" (printf "object.spec.backoffLimit == %v && (!has(object.spec.parallelism) || object.spec.parallelism == 1) && (!has(object.spec.completions) || object.spec.completions == 1) && (!has(object.spec.manualSelector) || !object.spec.manualSelector) && object.spec.activeDeadlineSeconds == %v && object.spec.ttlSecondsAfterFinished == %v" $job.spec.backoffLimit $job.spec.activeDeadlineSeconds $job.spec.ttlSecondsAfterFinished)) -}}
+{{- $rules = append $rules (dict "m" "The runner pod runs as the session ServiceAccount without a Kubernetes API token." "e" (printf "variables.pod.serviceAccountName == %s && (!has(variables.pod.serviceAccount) || variables.pod.serviceAccount == %s) && has(variables.pod.automountServiceAccountToken) && !variables.pod.automountServiceAccountToken" (toJson $pod.serviceAccountName) (toJson $pod.serviceAccountName))) -}}
+{{- $rules = append $rules (dict "m" "The runner pod mounts only the chart's emptyDir volumes: no Secret, projected, hostPath or PersistentVolumeClaim volume." "e" (printf "has(variables.pod.volumes) && variables.pod.volumes.size() == %d && variables.pod.volumes.all(v, has(v.emptyDir) && v.name in %s)" (len $volumes) (toJson $volumes))) -}}
+{{- $rules = append $rules (dict "m" "The runner pod shares nothing with its node and is placed like the chart's runner Job." "e" (printf "(!has(variables.pod.hostNetwork) || !variables.pod.hostNetwork) && (!has(variables.pod.hostPID) || !variables.pod.hostPID) && (!has(variables.pod.hostIPC) || !variables.pod.hostIPC) && (!has(variables.pod.shareProcessNamespace) || !variables.pod.shareProcessNamespace) && !has(variables.pod.nodeName) && !has(variables.pod.affinity) && !has(variables.pod.tolerations) && !has(variables.pod.hostAliases) && variables.pod.restartPolicy == 'Never' && %s && %s" (ternary (printf "has(variables.pod.nodeSelector) && variables.pod.nodeSelector == %s" (toJson $pod.nodeSelector)) "!has(variables.pod.nodeSelector)" (not (empty $pod.nodeSelector))) (ternary (printf "has(variables.pod.runtimeClassName) && variables.pod.runtimeClassName == %s" (toJson $pod.runtimeClassName)) "!has(variables.pod.runtimeClassName)" (not (empty $pod.runtimeClassName))))) -}}
+{{- $rules = append $rules (dict "m" "The runner pod runs as the chart's non-root user under RuntimeDefault seccomp." "e" (printf "has(variables.pod.securityContext) && has(variables.pod.securityContext.runAsNonRoot) && variables.pod.securityContext.runAsNonRoot && has(variables.pod.securityContext.runAsUser) && variables.pod.securityContext.runAsUser == %v && has(variables.pod.securityContext.seccompProfile) && variables.pod.securityContext.seccompProfile.type == 'RuntimeDefault' && !has(variables.pod.securityContext.sysctls)" $sc.runAsUser)) -}}
+{{- $rules = append $rules (dict "m" "The runner pod runs exactly the chart's containers." "e" (printf "variables.pod.containers.size() == %d && variables.pod.containers.all(c, c.name in %s) && (has(variables.pod.initContainers) ? variables.pod.initContainers.size() : 0) == %d && !has(variables.pod.ephemeralContainers)" (len $containers) (toJson $containers) (len $inits))) -}}
+{{- range $c := $pod.containers -}}
+{{- $rules = append $rules (dict "m" (printf "Container %s is the chart's: its image, command, arguments, mounts and security context, and no environment but the chart's and the work order." $c.name) "e" (include "ploeg.claudeRunnerContainerRule" (dict "container" $c "list" "variables.pod.containers" "workOrder" (eq $c.name "runner")))) -}}
+{{- end -}}
+{{- range $c := ($pod.initContainers | default list) -}}
+{{- $rules = append $rules (dict "m" (printf "Init container %s is the chart's: its image, command, mounts, security context and environment." $c.name) "e" (printf "has(variables.pod.initContainers) && %s" (include "ploeg.claudeRunnerContainerRule" (dict "container" $c "list" "variables.pod.initContainers" "workOrder" false)))) -}}
+{{- end -}}
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: {{ $name }}
+  labels: {{- include "ploeg.labels" . | nindent 4 }}
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: {{ include "ploeg.executorNamespace" . | quote }}
+    resourceRules:
+      - apiGroups: ["batch"]
+        apiVersions: ["v1"]
+        operations: [CREATE, UPDATE]
+        resources: [jobs]
+  matchConditions:
+    - name: from-the-orchestrator
+      expression: {{ printf "request.userInfo.username == %s" (toJson $orchestrator) | quote }}
+  variables:
+    - name: pod
+      expression: "object.spec.template.spec"
+  validations:
+    {{- range $rules }}
+    - expression: {{ .e | quote }}
+      message: {{ .m | quote }}
+    {{- end }}
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: {{ $name }}
+  labels: {{- include "ploeg.labels" . | nindent 4 }}
+spec:
+  policyName: {{ $name }}
+  validationActions: [Deny]
 {{- end -}}

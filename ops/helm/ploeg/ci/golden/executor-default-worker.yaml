@@ -597,8 +597,10 @@ spec:
       matchLabels:
         kubernetes.io/metadata.name: "default"
     objectSelector:
-      matchLabels:
-        app.kubernetes.io/name: ploeg-worker
+      matchExpressions:
+        - key: app.kubernetes.io/name
+          operator: In
+          values: [ploeg-worker, ploeg-claude-runner-session]
     resourceRules:
       - apiGroups: [""]
         apiVersions: ["v1"]
