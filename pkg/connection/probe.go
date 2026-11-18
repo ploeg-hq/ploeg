@@ -114,6 +114,10 @@ func (s *Service) storedCredential(ctx context.Context, row store.ConnectionRow)
 
 // probeRow probes a stored connection, store check first.
 func (s *Service) probeRow(ctx context.Context, row store.ConnectionRow) ProbeReport {
+	if row.Method == MethodGitHubAppInstallation && row.InstallationID == "" {
+		return ProbeReport{At: s.now().UTC(), Result: "unknown", Unknown: true,
+			Checks: []Check{{Name: "installation_approved", Result: "unknown", Detail: "the installation awaits an organisation owner's approval"}}}
+	}
 	cred, _, err := s.credentialFor(ctx, row)
 	if err != nil {
 		report := ProbeReport{At: s.now().UTC(), Checks: []Check{}}

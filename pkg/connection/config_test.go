@@ -14,6 +14,8 @@ func TestConfigResolveRefusesWhatCannotBeServed(t *testing.T) {
 		"unset client secret":       {Instances: map[string]Instance{"cu": {Kind: "clickup", OAuth: &OAuth{ClientID: "c", ClientSecretEnv: "MISSING", RedirectURIs: []string{"https://a.example/cb"}}}}},
 		"http redirect":             {Instances: map[string]Instance{"cu": {Kind: "clickup", OAuth: &OAuth{ClientID: "c", ClientSecretEnv: "SECRET", RedirectURIs: []string{"http://a.example/cb"}}}}},
 		"unknown method":            {Allow: []Allow{{Port: "forge", Kind: "gitlab", Instance: "gl", Methods: []string{"magic"}}}, Instances: map[string]Instance{"gl": {Kind: "gitlab", OAuth: oauth}}},
+		"http token url":            {Instances: map[string]Instance{"cu": {Kind: "clickup", OAuth: &OAuth{ClientID: "c", ClientSecretEnv: "SECRET", RedirectURIs: []string{"https://a.example/cb"}, TokenURL: "http://a.example/token"}}}},
+		"http authorize url":        {Instances: map[string]Instance{"cu": {Kind: "clickup", OAuth: &OAuth{ClientID: "c", ClientSecretEnv: "SECRET", RedirectURIs: []string{"https://a.example/cb"}, AuthorizeURL: "http://a.example/authorize"}}}},
 		"bad port":                  {Allow: []Allow{{Port: "board", Kind: "gitlab", Instance: "gl", Methods: []string{"oauth"}}}, Instances: map[string]Instance{"gl": {Kind: "gitlab", OAuth: oauth}}},
 	}
 	for name, cfg := range cases {

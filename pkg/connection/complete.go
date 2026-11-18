@@ -299,7 +299,12 @@ func (s *Service) writeConnection(ctx context.Context, caller Caller, flow store
 	if values != nil {
 		var oldField secretsField
 		if reconnect && json.Unmarshal(old.Secrets, &oldField) == nil && oldField.Credential != nil {
-			oldValues, _ = s.Secrets.Get(ctx, *oldField.Credential)
+			var err error
+			oldValues, err = s.Secrets.Get(ctx, *oldField.Credential)
+			if err != nil && !errors.Is(err, secretstore.ErrNotFound) {
+				discard()
+				return Completed{}, storeError(err)
+			}
 		}
 		ref, err := s.Secrets.Put(ctx, "connections/"+row.ID, values)
 		if err != nil {
@@ -327,8 +332,8 @@ func (s *Service) writeConnection(ctx context.Context, caller Caller, flow store
 			[]store.ConnectionAudit{s.audit(caller.Person, "connection.created", &caller, detail)})
 	}
 	if err != nil {
-		if !reconnect && values != nil {
-			_ = s.Secrets.Delete(context.WithoutCancel(ctx), "connections/"+row.ID)
+		if values != nil {
+			s.undoCredentialWrite(ctx, row.ID, reconnect, oldValues)
 		}
 		discard()
 		if errors.Is(err, store.ErrConnectionConflict) {
@@ -345,6 +350,25 @@ func (s *Service) writeConnection(ctx context.Context, caller Caller, flow store
 	}
 	v := s.view(ctx, saved)
 	return Completed{Connection: &v, Status: status}, nil
+}
+
+// undoCredentialWrite puts the store back as it was when the row that
+// should have referenced a new credential was not written: a new
+// connection's path is deleted, and a reconnected one gets its previous
+// values back as the newest version, so the live connection never reads a
+// token that is about to be revoked, also in a store that keeps one version.
+func (s *Service) undoCredentialWrite(ctx context.Context, id string, reconnect bool, oldValues map[string]string) {
+	ctx = context.WithoutCancel(ctx)
+	path := "connections/" + id
+	if !reconnect || oldValues == nil {
+		if err := s.Secrets.Delete(ctx, path); err != nil {
+			s.log().Error("connection credential not cleaned up after a failed write", "connection", id, "err", err)
+		}
+		return
+	}
+	if _, err := s.Secrets.Put(ctx, path, oldValues); err != nil {
+		s.log().Error("previous connection credential not restored after a failed reconnect", "connection", id, "err", err)
+	}
 }
 
 func sameAccount(old, next store.ConnectionRow) bool {

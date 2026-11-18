@@ -94,8 +94,10 @@ func (s *Service) completeInstallation(ctx context.Context, caller Caller, flow 
 	installation, err := conn.Manifest.Installation(ctx, inst, app.AppID, values["private_key"], installationID)
 	switch {
 	case setupAction == "request" && err != nil && !errors.Is(err, provider.ErrVendorUnavailable) && !errors.Is(err, provider.ErrForeignInstallation):
-		row.State, row.AccountID = StateAwaitingConsent, "installation:"+installationID
-		row.Account = mustJSON(provider.ConnectionAccount{InstallationID: installationID})
+		var owner provider.ConnectionAccount
+		_ = json.Unmarshal(app.Owner, &owner)
+		row.State, row.AccountID, row.InstallationID = StateAwaitingConsent, "installation:pending:"+app.ID, ""
+		row.Account = mustJSON(provider.ConnectionAccount{Login: owner.Login})
 		return s.writeConnection(ctx, caller, flow, start, row, nil, secretsField{}, func() {})
 	case errors.Is(err, provider.ErrForeignInstallation), errors.Is(err, provider.ErrCredentialRefused):
 		return Completed{}, &Error{Status: 422, Code: "probe_failed", Message: "That installation is not an installation of this App.", Checks: []Check{{Name: "installation_belongs_to_app", Result: "fail"}}}

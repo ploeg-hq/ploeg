@@ -353,6 +353,29 @@ func (s *Store) LiveConnectionAppByAppID(ctx context.Context, appID string) (Con
 	return scanApp(s.pool.QueryRow(ctx, `SELECT `+appColumns+` FROM connection_apps WHERE app_id = $1 AND removed_at IS NULL ORDER BY created_at DESC LIMIT 1`, appID))
 }
 
+// LiveConnectionAppIDs lists the vendor App ids of every live connection
+// app, so a webhook delivery is matched to an App without a query per
+// delivery.
+func (s *Store) LiveConnectionAppIDs(ctx context.Context) ([]string, error) {
+	rows, err := s.pool.Query(ctx, `SELECT DISTINCT app_id FROM connection_apps WHERE removed_at IS NULL`)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowTo[string])
+}
+
+// BindPendingInstallation gives the awaiting_consent connection id, which
+// has no installation yet, the installation a signed created delivery
+// reported. It reports whether a row was bound.
+func (s *Store) BindPendingInstallation(ctx context.Context, tenant, id, installationID string) (bool, error) {
+	tag, err := s.pool.Exec(ctx, `UPDATE connections SET installation_id = $3, updated_at = now(), revision = revision + 1
+		WHERE tenant = $1 AND id = $2 AND removed_at IS NULL AND installation_id IS NULL AND state = 'awaiting_consent'`, tenant, id, installationID)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
+}
+
 // LiveConnectionApps lists a Tenant's live Apps by id.
 func (s *Store) LiveConnectionApps(ctx context.Context, tenant string) ([]ConnectionAppRow, error) {
 	rows, err := s.pool.Query(ctx, `SELECT `+appColumns+` FROM connection_apps WHERE tenant = $1 AND removed_at IS NULL ORDER BY id`, tenant)

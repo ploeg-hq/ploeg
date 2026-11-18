@@ -54,6 +54,8 @@ type Service struct {
 
 	mu         sync.Mutex
 	appSecrets map[string]string
+	heldApps   map[string]bool
+	heldAt     time.Time
 }
 
 func (s *Service) tenant() string {

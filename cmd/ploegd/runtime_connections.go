@@ -12,6 +12,7 @@ import (
 
 	"github.com/ploeg-hq/ploeg/pkg/config"
 	"github.com/ploeg-hq/ploeg/pkg/connection"
+	"github.com/ploeg-hq/ploeg/pkg/httpapi"
 	"github.com/ploeg-hq/ploeg/pkg/provider"
 	"github.com/ploeg-hq/ploeg/pkg/provider/clickup"
 	"github.com/ploeg-hq/ploeg/pkg/provider/forgejo"
@@ -71,11 +72,24 @@ func runtimeConnections(log *slog.Logger, cfg *config.File, st *store.Store, sec
 	}
 	svc := &connection.Service{Store: st, Secrets: secrets, Config: cfg.Connections, Instances: instances, Connectors: connectors(),
 		Static: static, PublicWebhookBase: base, Log: log}
-	if gh, ok := forges["github"].(*github.Provider); ok {
-		gh.AppSecret = svc.AppWebhookSecret
-	}
 	log.Info("runtime connections configured", "enabled", cfg.Connections.Enabled, "allowed", len(cfg.Connections.Allow))
 	return svc, nil
+}
+
+// appWebhooks gives every route a runtime App's webhook can reach the App's
+// own secret (ADR-0195): the static GitHub forge, when one is configured,
+// and a receiver for /webhooks/tracker/github and for /webhooks/forge/github
+// without one. Nil when runtime connections are off.
+func appWebhooks(log *slog.Logger, svc *connection.Service, forges map[string]provider.ForgeProvider) map[string]httpapi.AppWebhookReceiver {
+	if svc == nil {
+		return nil
+	}
+	for _, fp := range forges {
+		if gh, ok := fp.(*github.Provider); ok {
+			gh.AppSecret = svc.AppWebhookSecret
+		}
+	}
+	return map[string]httpapi.AppWebhookReceiver{"github": &github.Provider{AppSecret: svc.AppWebhookSecret, Log: log}}
 }
 
 func mapKeys[V any](m map[string]V) func(func(string) bool) {
