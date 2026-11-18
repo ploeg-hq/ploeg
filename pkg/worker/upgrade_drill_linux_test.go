@@ -296,8 +296,8 @@ func upgradeFrom(t *testing.T, lineage releaseLineage, release *olderRelease) {
 	}
 
 	holder.proceed()
-	if refused := holder.await("claim_refused"); !strings.Contains(refused.Err, "credential_isolation_required") {
-		t.Fatalf("the older worker's claim after the upgrade = %+v, want 403 credential_isolation_required: it sends no llmKeyIsolation (ADR-0034, amended 2026-11-18)", refused)
+	if refused := holder.await("claim_refused"); !strings.Contains(refused.Err, "HTTP 403") {
+		t.Fatalf("the older worker's claim after the upgrade = %+v, want HTTP 403 credential_isolation_required, which an older client prints without its body: it sends no llmKeyIsolation (ADR-0034, amended 2026-11-18)", refused)
 	}
 	reclaimed := cp.mustClaim(api, leaseTeam, leaseRole)
 	if reclaimed.WorkItem.ExternalID != "7" || reclaimed.RunToken == inFlight.Token {
@@ -354,7 +354,7 @@ func handshakeWithAFutureControlPlane(t *testing.T, cp *controlPlane, release *o
 	}
 	switch {
 	case !release.sendsVersion:
-		if events[0].Event != "claim_refused" || !strings.Contains(events[0].Err, "credential_isolation_required") {
+		if events[0].Event != "claim_refused" || !strings.Contains(events[0].Err, "HTTP 403") {
 			t.Fatalf("a %s worker, which predates the version handshake and sends no llmKeyIsolation, got %+v from ploegd %s; want 403 credential_isolation_required", release.tag, events[0], future)
 		}
 	case events[0].Event != "claim_refused" || !strings.Contains(events[0].Err, "426") && !strings.Contains(events[0].Err, release.version):
