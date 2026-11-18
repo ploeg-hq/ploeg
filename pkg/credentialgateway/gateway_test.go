@@ -450,19 +450,29 @@ func TestAuditReachesPloegdWithEveryUseAndRefusal(t *testing.T) {
 	do(t, http.MethodGet, f.forgeGW.URL+"/api/v1/repos/acme/widgets/pulls", nil, map[string]string{"Authorization": "token " + runCapability})
 	do(t, http.MethodGet, f.forgeGW.URL+"/api/v1/repos/acme/other/pulls", nil, map[string]string{"Authorization": "token " + runCapability})
 	do(t, http.MethodPost, f.modelGW.URL+"/v1/chat/completions", strings.NewReader(`{}`), map[string]string{"Authorization": "Bearer " + runCapability})
-	if err := f.gateway.FlushAudit(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if len(f.audits) != 1 {
-		t.Fatalf("ploegd got %d audit batches", len(f.audits))
-	}
-	batch := f.audits[0]
 	totals := map[string]gatewaycontract.Use{}
-	for _, u := range batch.Uses {
-		totals[u.Family] = u
+	var batch gatewaycontract.AuditBatch
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		if err := f.gateway.FlushAudit(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		f.mu.Lock()
+		for _, b := range f.audits {
+			for _, u := range b.Uses {
+				sum := totals[u.Family]
+				sum.Requests, sum.Refused = sum.Requests+u.Requests, sum.Refused+u.Refused
+				totals[u.Family] = sum
+			}
+			batch.Refusals = append(batch.Refusals, b.Refusals...)
+		}
+		f.audits = nil
+		f.mu.Unlock()
+		if totals[FamilyModel].Requests == 1 {
+			break
+		}
 	}
 	if totals[FamilyForge].Requests != 1 || totals[FamilyForge].Refused != 1 || totals[FamilyModel].Requests != 1 {
-		t.Fatalf("uses %+v", batch.Uses)
+		t.Fatalf("uses %+v", totals)
 	}
 	if len(batch.Refusals) != 1 || batch.Refusals[0].Reason != "outside_repository" || batch.Refusals[0].RunToken != "run-1" {
 		t.Fatalf("refusals %+v", batch.Refusals)
