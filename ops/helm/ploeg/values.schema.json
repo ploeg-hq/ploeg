@@ -1702,7 +1702,7 @@
             "gitlab",
             "github"
           ],
-          "description": "The default forge: the forge block of the same name serves a Work Item whose target names no forge (ADR-0023), and it must set url. Every forge block that sets url is active (ADR-0192). With one active forge, workers boot with its url and credential as before; with more than one, every active forge must mint per-Run credentials (forgejo with botPasswordSecret on Forgejo 15 or later, github with tracker.github.appId, gitlab cannot), and each claim carries the Run's forge and a credential minted for that Run alone. A release that already set url on two forge blocks and does not mint for both now fails to render: unset the url of the forge it does not use, or configure minting."
+          "description": "The default forge: the forge block of the same name serves a Work Item whose target names no forge (ADR-0023), and it must set url. Every forge block that sets url is active (ADR-0192). With one active forge, workers boot with its url and credential as before; with more than one, every active forge must mint per-Run credentials (forgejo with botPasswordSecret on Forgejo 15 or later, github with tracker.github.appId, gitlab with mintPerRun), and each claim carries the Run's forge and a credential minted for that Run alone. A release that already set url on two forge blocks and does not mint for both now fails to render: unset the url of the forge it does not use, or configure minting."
         },
         "github": {
           "type": [
@@ -1740,7 +1740,7 @@
           "properties": {
             "url": {
               "type": "string",
-              "description": "Base URL, no /api/v4. Set = GitLab is an active forge, which must then be the only one (ADR-0192); empty = ploegd configures no GitLab provider, so findings never reach a merge request."
+              "description": "Base URL, no /api/v4. Set = GitLab is an active forge, which must be the only one unless mintPerRun is set (ADR-0192, ADR-0203); empty = ploegd configures no GitLab provider, so findings never reach a merge request."
             },
             "publicUrl": {
               "type": "string",
@@ -1748,7 +1748,7 @@
             },
             "tokenSecret": {
               "$ref": "#/definitions/secretRef",
-              "description": "Token with api scope on the target projects, sent as PRIVATE-TOKEN. ADR-0013 tier 2 does not apply on GitLab: per-run push credentials are minted through a Forgejo admin endpoint with no GitLab equivalent, so this shared token is what writing Runs use."
+              "description": "Token with api scope on the target projects, sent as PRIVATE-TOKEN. Without mintPerRun it is the shared credential writing Runs use; with mintPerRun it must be a group service account's token, and each Run gets its own project access token instead (ADR-0203)."
             },
             "readTokenSecret": {
               "$ref": "#/definitions/readTokenSecretRef",
@@ -1757,6 +1757,10 @@
             "webhookSecret": {
               "$ref": "#/definitions/secretRef",
               "description": "Shared secret GitLab sends as X-Gitlab-Token to POST /webhooks/forge/gitlab. Unset = every forge webhook is rejected."
+            },
+            "mintPerRun": {
+              "type": "boolean",
+              "description": "ADR-0203: tokenSecret is a group service account's token with api scope and Maintainer on the target projects, and ploegd mints a project access token per Run with it (Developer for a writing Run, Reporter for a reading one), revoked when the Run settles. Required for GitLab to serve beside another forge (ADR-0192). False = writing Runs share tokenSecret."
             }
           }
         },

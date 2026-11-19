@@ -121,6 +121,9 @@ type ConnectionInfo struct {
 	Instance string
 	State    string
 	Runtime  bool
+	// CanMint is what the connection's last probe found: it can mint a
+	// per-Run credential (ADR-0203).
+	CanMint bool
 }
 
 // ConnectionActive is the state of a usable connection.
@@ -136,6 +139,13 @@ type Connections interface {
 	// ConnectionsOfInstallation returns the runtime connections of one App
 	// installation.
 	ConnectionsOfInstallation(ctx context.Context, appID, installationID string) ([]string, error)
+}
+
+// HookSecrets is the part of the connections seam that keeps a
+// connection's webhook secret (ADR-0203). A Connections without it registers
+// no repository webhook.
+type HookSecrets interface {
+	WebhookSecret(ctx context.Context, id string) (secret string, held bool, err error)
 }
 
 // Store is the persistence the service needs.

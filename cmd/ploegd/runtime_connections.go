@@ -27,7 +27,8 @@ import (
 func connectors() map[string]provider.Connector {
 	return map[string]provider.Connector{
 		"clickup": {Authorizer: clickup.Connector{}, Prober: clickup.Connector{}},
-		"gitlab":  {Authorizer: gitlab.Connector{}, Prober: gitlab.Connector{}, Repos: gitlab.Connector{}, Grants: gitlab.Connector{}},
+		"gitlab": {Authorizer: gitlab.Connector{}, Prober: gitlab.Connector{}, Repos: gitlab.Connector{}, Grants: gitlab.Connector{},
+			ServiceAccounts: gitlab.Connector{}, Rotator: gitlab.Connector{}, Hooks: gitlab.Connector{}},
 		"forgejo": {Authorizer: forgejo.Connector{}, Prober: forgejo.Connector{}, Repos: forgejo.Connector{}, Grants: forgejo.Connector{}},
 		"github":  {Prober: github.Connector{}, Manifest: github.Connector{}, Repos: github.Connector{}, Grants: github.Connector{}},
 	}
@@ -77,19 +78,25 @@ func runtimeConnections(log *slog.Logger, cfg *config.File, st *store.Store, sec
 }
 
 // appWebhooks gives every route a runtime App's webhook can reach the App's
-// own secret (ADR-0195): the static GitHub forge, when one is configured,
-// and a receiver for /webhooks/tracker/github and for /webhooks/forge/github
-// without one. Nil when runtime connections are off.
+// own secret (ADR-0195), and every route a runtime GitLab connection's
+// project webhook reaches that connection's secret (ADR-0203): the static
+// GitHub and GitLab forges, when configured, and a receiver for
+// /webhooks/tracker/github and for /webhooks/forge/{github,gitlab} without
+// one. Nil when runtime connections are off.
 func appWebhooks(log *slog.Logger, svc *connection.Service, forges map[string]provider.ForgeProvider) map[string]httpapi.AppWebhookReceiver {
 	if svc == nil {
 		return nil
 	}
 	for _, fp := range forges {
-		if gh, ok := fp.(*github.Provider); ok {
-			gh.AppSecret = svc.AppWebhookSecret
+		switch p := fp.(type) {
+		case *github.Provider:
+			p.AppSecret = svc.AppWebhookSecret
+		case *gitlab.Provider:
+			p.HookSecret = svc.WebhookSecret
 		}
 	}
-	return map[string]httpapi.AppWebhookReceiver{"github": &github.Provider{AppSecret: svc.AppWebhookSecret, Log: log}}
+	return map[string]httpapi.AppWebhookReceiver{"github": &github.Provider{AppSecret: svc.AppWebhookSecret, Log: log},
+		"gitlab": &gitlab.Provider{HookSecret: svc.WebhookSecret, Log: log}}
 }
 
 func mapKeys[V any](m map[string]V) func(func(string) bool) {

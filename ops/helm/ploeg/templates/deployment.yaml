@@ -268,6 +268,13 @@ spec:
                 secretKeyRef:
                   name: {{ .tokenSecret.name }}
                   key: {{ .tokenSecret.key }}
+            {{- if .mintPerRun }}
+            {{- /* ADR-0203: tokenSecret is a group service account's token
+                 with api scope, and ploegd mints a project access token per
+                 Run with it. */}}
+            - name: PLOEG_GITLAB_MINT_PER_RUN
+              value: "on"
+            {{- end }}
             {{- with .webhookSecret }}
             - name: PLOEG_GITLAB_SECRET
               valueFrom:

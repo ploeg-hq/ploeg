@@ -66,7 +66,7 @@ func TestTwoForgesRefuseToStartWhenOneCannotMint(t *testing.T) {
 		},
 		"gitlab beside another forge": {
 			releaseOf("forgejo", minting, nil, forgejoAt("https://forgejo.example"), gitlabAt("https://gitlab.example")),
-			[]string{"forge gitlab", "only forge of its release"},
+			[]string{"forge gitlab", "PLOEG_GITLAB_MINT_PER_RUN"},
 		},
 	}
 	for name, c := range cases {

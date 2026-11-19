@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 
@@ -12,6 +14,7 @@ import (
 	"github.com/ploeg-hq/ploeg/pkg/githubapp"
 	"github.com/ploeg-hq/ploeg/pkg/httpapi"
 	"github.com/ploeg-hq/ploeg/pkg/provider"
+	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
 // activeForge is one forge provider ploegd serves, under its dialect.
@@ -34,6 +37,51 @@ type releaseForges struct {
 	forgejoCreds   forgebroker.Broker
 	forgejoSweeper forgebroker.Sweeper
 	githubApp      *githubapp.Minter
+	// gitlabCreds mints a project access token per Run when
+	// PLOEG_GITLAB_MINT_PER_RUN is on (ADR-0203); nil mints nothing.
+	gitlabCreds *forgebroker.GitLab
+}
+
+// gitlabMinter is the static GitLab forge's per-Run broker: on with
+// PLOEG_GITLAB_MINT_PER_RUN, when PLOEG_GITLAB_TOKEN is a group service
+// account's token with api scope and Maintainer on the target projects.
+func gitlabMinter(log *slog.Logger, active map[string]activeForge) (*forgebroker.GitLab, error) {
+	on, err := switchEnv("PLOEG_GITLAB_MINT_PER_RUN", false)
+	if err != nil || !on {
+		return nil, err
+	}
+	gl, ok := active["gitlab"]
+	if !ok {
+		return nil, errors.New("PLOEG_GITLAB_MINT_PER_RUN is on but PLOEG_GITLAB_URL is unset")
+	}
+	token := os.Getenv("PLOEG_GITLAB_TOKEN")
+	if token == "" {
+		return nil, errors.New("PLOEG_GITLAB_MINT_PER_RUN is on but PLOEG_GITLAB_TOKEN is unset: it must be a group service account's token with api scope")
+	}
+	log.Info("per-run GitLab project access tokens enabled", "url", gl.url)
+	return &forgebroker.GitLab{APIURL: gl.url + "/api/v4", Token: token}, nil
+}
+
+// sweepGitLabTargets lets the static GitLab broker's sweep list the projects
+// of the static targets on a GitLab forge.
+func (r releaseForges) sweepGitLabTargets(targets map[string]work.Target) {
+	gl, ok := r.byDialect["gitlab"]
+	if r.gitlabCreds == nil || !ok {
+		return
+	}
+	ids := forgeIDsOf(r.registry, gl.provider)
+	var projects []string
+	for _, t := range targets {
+		forge := t.Forge
+		if forge == "" {
+			forge = r.defaultForge
+		}
+		if slices.Contains(ids, forge) && t.Owner != "" && t.Repo != "" {
+			projects = append(projects, t.Owner+"/"+t.Repo)
+		}
+	}
+	sort.Strings(projects)
+	r.gitlabCreds.Projects = func(context.Context) ([]string, error) { return projects, nil }
 }
 
 func workerURLFromEnv(dialect string) string {
@@ -74,6 +122,10 @@ func (r releaseForges) requireMinting() error {
 			if r.githubApp == nil {
 				lacks = append(lacks, errors.New("forge github cannot mint per-Run credentials: configure a GitHub App with PLOEG_GITHUB_APP_ID and PLOEG_GITHUB_APP_PRIVATE_KEY (chart tracker.github.appId and appPrivateKeySecret)"))
 			}
+		case "gitlab":
+			if r.gitlabCreds == nil {
+				lacks = append(lacks, errors.New("forge gitlab cannot mint per-Run credentials: set PLOEG_GITLAB_MINT_PER_RUN=on with a group service account's token in PLOEG_GITLAB_TOKEN (chart executor.gitlab.mintPerRun)"))
+			}
 		default:
 			lacks = append(lacks, fmt.Errorf("forge %s cannot mint per-Run credentials, so it can only be the only forge of its release", dialect))
 		}
@@ -90,7 +142,7 @@ func (r releaseForges) requireMinting() error {
 // ADR-0192; any other is routed by forge id, so no mint reaches another
 // forge's broker.
 func (r releaseForges) credentials(log *slog.Logger) (forgebroker.Broker, forgebroker.Sweeper) {
-	if r.githubApp == nil && !r.multiForge() {
+	if r.githubApp == nil && r.gitlabCreds == nil && !r.multiForge() {
 		return r.forgejoCreds, r.forgejoSweeper
 	}
 	router := &forgebroker.Router{Forgejo: r.forgejoCreds, ForgejoSweeper: r.forgejoSweeper, DefaultForge: r.defaultForge}
@@ -101,6 +153,10 @@ func (r releaseForges) credentials(log *slog.Logger) (forgebroker.Broker, forgeb
 		router.GitHub = &forgebroker.GitHubApp{App: r.githubApp}
 		router.GitHubForges = forgeIDsOf(r.registry, gh.provider)
 		log.Info("per-run GitHub App installation tokens enabled", "forges", router.GitHubForges)
+	}
+	if gl, ok := r.byDialect["gitlab"]; ok && r.gitlabCreds != nil {
+		router.GitLab = r.gitlabCreds
+		router.GitLabForges = forgeIDsOf(r.registry, gl.provider)
 	}
 	return router, router
 }
