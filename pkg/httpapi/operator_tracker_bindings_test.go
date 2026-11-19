@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/ploeg-hq/ploeg/pkg/config"
 	"github.com/ploeg-hq/ploeg/pkg/provider"
@@ -640,5 +642,150 @@ func TestTrackerBindingThroughAStoreBackedConnectionMatchesTheKindWildcard(t *te
 	w = f.do(t, "POST", "/api/v1/operator/teams/bronze/tracker-bindings", `{"connection":"clickup-acme","scope":{"id":"901"},"default":"app"}`)
 	if w.Code != 422 || bindingErrorCode(t, w) != "bindings_not_accepted" {
 		t.Fatalf("an invalid runtime connection: %d %s", w.Code, w.Body)
+	}
+}
+
+type pauseTracker struct{ recordingTracker }
+
+func (p *pauseTracker) Name() string { return "clickup" }
+func (p *pauseTracker) FetchItem(context.Context, string) (work.WorkItem, error) {
+	return work.WorkItem{}, errors.New("not fetched in this test")
+}
+
+func (f *bindingFixture) assign(t *testing.T, tp provider.TrackerProvider, externalID string) {
+	t.Helper()
+	ev := provider.TrackerEvent{Kind: provider.TrackerAssigned, ExternalID: externalID, Team: "default", Scope: provider.Scope{ID: "901"}}
+	w := httptest.NewRecorder()
+	if !f.server.applyTrackerEvents(w, httptest.NewRequest("POST", "/webhooks/tracker/clickup", nil), "clickup", tp, []provider.TrackerEvent{ev}) {
+		t.Fatalf("assignment %s not applied: %d %s", externalID, w.Code, w.Body)
+	}
+}
+
+func bindingAudit(t *testing.T) []string {
+	t.Helper()
+	rows, err := testPool.Query(context.Background(), `SELECT action FROM audit_log WHERE action LIKE 'tracker_binding.%' ORDER BY id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var actions []string
+	for rows.Next() {
+		var a string
+		_ = rows.Scan(&a)
+		actions = append(actions, a)
+	}
+	return actions
+}
+
+func TestTrackerBindingPauseRefusesNewWorkAndResumeAdmitsAgain(t *testing.T) {
+	f := newBindingFixture(t, nil, true, false)
+	w := f.do(t, "POST", bindingsPath, `{"connection":"clickup","scope":{"id":"901"},"default":"app"}`)
+	if w.Code != 201 {
+		t.Fatalf("create: %d %s", w.Code, w.Body)
+	}
+	created := bindingBody(t, w)["binding"].(map[string]any)
+	if created["paused"] != false || created["pausedAt"] != nil {
+		t.Fatalf("a new binding is paused: %v", created)
+	}
+	path := bindingsPath + "/" + created["id"].(string)
+	ctx := context.Background()
+	tracker := &pauseTracker{}
+
+	w = f.do(t, "POST", path+"/pause", "")
+	if w.Code != 200 {
+		t.Fatalf("pause: %d %s", w.Code, w.Body)
+	}
+	validateOperatorSchema(t, w.Body.Bytes())
+	paused := bindingBody(t, w)
+	b := paused["binding"].(map[string]any)
+	if paused["changed"] != true || b["paused"] != true || b["pausedAt"] == nil || b["pausedBy"] != "person-1" || b["revision"] == created["revision"] {
+		t.Fatalf("paused = %v", paused)
+	}
+	if w.Header().Get("ETag") != `"`+b["revision"].(string)+`"` {
+		t.Errorf("ETag = %q, want the new revision", w.Header().Get("ETag"))
+	}
+	if w = f.do(t, "POST", path+"/pause", ""); w.Code != 200 || bindingBody(t, w)["changed"] != false {
+		t.Fatalf("repeated pause: %d %s", w.Code, w.Body)
+	}
+	w = f.do(t, "GET", "/api/v1/operator/tracker-bindings", "")
+	validateOperatorSchema(t, w.Body.Bytes())
+	for _, listed := range bindingBody(t, w)["bindings"].([]any) {
+		l := listed.(map[string]any)
+		if want := l["source"] == "runtime"; l["paused"] != want {
+			t.Errorf("listed %v, want paused %v", l, want)
+		}
+	}
+
+	f.assign(t, tracker, "task-paused")
+	if _, _, err := testStore.TrackerWorkItemID(ctx, "clickup", "task-paused"); !errors.Is(err, store.ErrWorkItemNotFound) {
+		t.Fatalf("a paused binding admitted a Work Item: %v", err)
+	}
+	refusals, err := testStore.RecentRouteRefusals(ctx, nil, time.Now().Add(-time.Hour), 10)
+	if err != nil || len(refusals) != 1 || refusals[0].Code != target.RefusalBindingPaused || refusals[0].Team != "silver" {
+		t.Fatalf("refusals = %+v %v, want task-paused refused as binding_paused for silver", refusals, err)
+	}
+	if comments := tracker.all(); len(comments) != 1 || !strings.Contains(comments[0], "is paused") {
+		t.Errorf("tracker comments = %q, want one saying the binding is paused", comments)
+	}
+
+	w = f.do(t, "PUT", path, `{"default":"docs"}`, "If-Match", `"`+b["revision"].(string)+`"`)
+	if w.Code != 200 || bindingBody(t, w)["binding"].(map[string]any)["paused"] != true {
+		t.Fatalf("a replacement must keep the pause: %d %s", w.Code, w.Body)
+	}
+
+	w = f.do(t, "POST", path+"/resume", "")
+	if w.Code != 200 {
+		t.Fatalf("resume: %d %s", w.Code, w.Body)
+	}
+	validateOperatorSchema(t, w.Body.Bytes())
+	resumed := bindingBody(t, w)
+	if r := resumed["binding"].(map[string]any); resumed["changed"] != true || r["paused"] != false || r["pausedAt"] != nil || r["pausedBy"] != nil {
+		t.Fatalf("resumed = %v", resumed)
+	}
+	if w = f.do(t, "POST", path+"/resume", ""); w.Code != 200 || bindingBody(t, w)["changed"] != false {
+		t.Fatalf("repeated resume: %d %s", w.Code, w.Body)
+	}
+	f.assign(t, tracker, "task-paused")
+	id, _, err := testStore.TrackerWorkItemID(ctx, "clickup", "task-paused")
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, err := testStore.WorkItem(ctx, id)
+	if err != nil || item.Team != "silver" || item.State != work.StateQueued || item.Target == nil || item.Target.Repo != "docs" {
+		t.Fatalf("after resume = %+v %v, want the assignment queued for silver on acme/docs", item, err)
+	}
+
+	want := "tracker_binding.created,tracker_binding.paused,tracker_binding.updated,tracker_binding.resumed"
+	if got := strings.Join(bindingAudit(t), ","); got != want {
+		t.Errorf("audit = %s, want %s", got, want)
+	}
+}
+
+func TestTrackerBindingPauseNeedsWhatRemovalNeeds(t *testing.T) {
+	f := newBindingFixture(t, nil, true, false)
+	w := f.do(t, "POST", bindingsPath, `{"connection":"clickup","scope":{"id":"901"},"default":"app"}`)
+	if w.Code != 201 {
+		t.Fatalf("create: %d %s", w.Code, w.Body)
+	}
+	path := bindingsPath + "/" + bindingBody(t, w)["binding"].(map[string]any)["id"].(string)
+	if w = f.do(t, "POST", bindingsPath+"/999999/pause", ""); w.Code != 404 {
+		t.Errorf("unknown binding: %d %s", w.Code, w.Body)
+	}
+	if w = f.do(t, "POST", "/api/v1/operator/teams/gold/tracker-bindings/1/pause", ""); w.Code != 403 || bindingErrorCode(t, w) != "team_not_allowed" {
+		t.Errorf("Team outside the scope: %d %s", w.Code, w.Body)
+	}
+	if w = f.do(t, "POST", path+"/pause?now=true", ""); w.Code != 400 {
+		t.Errorf("query parameter: %d %s", w.Code, w.Body)
+	}
+	if w = f.do(t, "POST", path+"/pause", `{"paused":true}`); w.Code != 400 {
+		t.Errorf("a body: %d %s", w.Code, w.Body)
+	}
+	readOnly, token := bindingConsumers(t, []string{"silver"}, false)
+	f.server.OperatorConfig.Consumers, f.token = readOnly, token
+	if w = f.do(t, "POST", path+"/pause", ""); w.Code != 403 || bindingErrorCode(t, w) != "permission_required" {
+		t.Errorf("consumer without bindScopes: %d %s", w.Code, w.Body)
+	}
+	if got := bindingAudit(t); strings.Join(got, ",") != "tracker_binding.created" {
+		t.Errorf("audit = %v, want no pause event from a refused call", got)
 	}
 }

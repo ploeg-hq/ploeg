@@ -270,6 +270,7 @@ fails otherwise.
 | [0201](0201-the-worker-meets-its-harness-launcher-on-the-pods-loopback-with-a-per-pod-token.md) | The worker meets its harness launcher on the pod's loopback with a per-pod token | accepted | 2026-11-18 |
 | [0202](0202-development-merges-through-a-merge-queue-that-requires-gate-checks-with-no-bypass.md) | `development` merges through a merge queue that requires gate checks, with no bypass | accepted | 2026-11-19 |
 | [0203](0203-a-gitlab-forge-connection-is-a-group-service-account-that-mints-a-project-token-per-run.md) | A GitLab forge connection is a group service account that mints a project token per Run | proposed | 2026-11-19 |
+| [0204](0204-a-person-pauses-a-tracker-binding-and-a-paused-binding-admits-no-new-work.md) | A person pauses a tracker binding, and a paused binding admits no new work | proposed | 2026-11-19 |
 
 
 ## Review calendar
@@ -414,3 +415,4 @@ triggers.
 | 2027-05-18 | [0201](0201-the-worker-meets-its-harness-launcher-on-the-pods-loopback-with-a-per-pod-token.md) — or sooner, when containers of one pod stop sharing a network namespace, gVisor shares emptyDir sockets without annotations, a Run fails because the launcher never connected, a supported runtime cannot read a file renamed into a shared Memory emptyDir, or a reviewer finds another reader of `harness-launcher` |
 | 2027-05-19 | [0202](0202-development-merges-through-a-merge-queue-that-requires-gate-checks-with-no-bypass.md) — or sooner, when the queue's median wait exceeds one hour over a month, GitHub lets a pull request run satisfy a queue's required check, a required check that does not run on `merge_group` holds the queue, or a consumer needs a pin to land faster than one queue run |
 | 2027-05-19 | [0203](0203-a-gitlab-forge-connection-is-a-group-service-account-that-mints-a-project-token-per-run.md) — or sooner, when GitLab makes fine-grained project-restricted tokens for group service accounts generally available, a Run needs to merge on GitLab, project access tokens change tier or hit a limit, GitLab changes how token expiry or rotation works, or a live qualification contradicts the signed webhook format
+| 2027-05-19 | [0204](0204-a-person-pauses-a-tracker-binding-and-a-paused-binding-admits-no-new-work.md) — or sooner, when a consumer asks for assignments refused during a pause to be admitted on resume, a pause per Team is asked for, Ploeg gains a board re-read for runtime bindings, or the deprecation window for the Team's `paused` closes |

@@ -474,7 +474,11 @@ func (s *Server) applyTrackerEvents(w http.ResponseWriter, r *http.Request, name
 		}
 		item, labelsRead := s.mirror(r.Context(), tp, ev)
 		s.pinTeam(&item)
-		if refusal := s.resolveTarget(r.Context(), &item, labelsRead, ev); refusal != nil {
+		refusal := s.pausedRoute(item)
+		if refusal == nil {
+			refusal = s.resolveTarget(r.Context(), &item, labelsRead, ev)
+		}
+		if refusal != nil {
 			if err := s.refuseRoute(r.Context(), tp, item, refusal); err != nil {
 				s.Log.Error("route refusal audit failed", "provider", name, "external_id", ev.ExternalID, "err", err)
 				http.Error(w, "ingest failed", http.StatusInternalServerError)
@@ -624,6 +628,17 @@ func (s *Server) pinnedTeam(scope string) (string, bool) {
 	return "", false
 }
 
+// pausedRoute refuses an assignment that a paused tracker binding routes
+// (ADR-0204): the item is neither admitted nor left to fall through to the
+// worker's own repository.
+func (s *Server) pausedRoute(item work.WorkItem) *target.Refusal {
+	if s.TrackerBindings == nil || s.TrackerBindings.Registry == nil || !s.TrackerBindings.Registry.Paused(item.ExternalScope, item.Team) {
+		return nil
+	}
+	return &target.Refusal{Code: target.RefusalBindingPaused, Allowed: []string{},
+		Reason: fmt.Sprintf("the tracker binding of scope %q for team %q is paused", item.ExternalScope, item.Team)}
+}
+
 func (s *Server) resolveTarget(ctx context.Context, item *work.WorkItem, labelsRead bool, ev provider.TrackerEvent) *target.Refusal {
 	if s.Targets == nil {
 		return nil
@@ -676,6 +691,10 @@ func (s *Server) refuseRoute(ctx context.Context, tp provider.TrackerProvider, i
 }
 
 func routeRefusalComment(refusal *target.Refusal) string {
+	if refusal.Code == target.RefusalBindingPaused {
+		return "<p>Ploeg did not queue this task: " + html.EscapeString(refusal.Reason) + ".</p>" +
+			"<p>Nothing was sent to any repository. Assign it again once an operator resumes the binding.</p>"
+	}
 	return "<p>Ploeg did not queue this task: " + html.EscapeString(refusal.Reason) + ".</p>" +
 		"<p>Nothing was sent to any repository. Give the task exactly one <code>" + target.HintPrefix +
 		"&lt;target&gt;</code> label this board allows, or ask an operator to register the target, then assign it again.</p>"

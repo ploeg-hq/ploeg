@@ -33,6 +33,7 @@ var observerReads = []string{
 	`SELECT t.id, t.source, t.state, k.key, k.kind FROM teams t JOIN team_keys k ON k.team_id = t.id WHERE k.released_at IS NULL`,
 	`SELECT r.team_id, count(*) FROM agent_runs r JOIN work_items w ON w.id = r.work_item_id WHERE w.team_id = r.team_id GROUP BY 1`,
 	`SELECT team_id FROM leases UNION ALL SELECT team_id FROM tracker_bindings`,
+	`SELECT team, count(*) FILTER (WHERE paused_at IS NOT NULL) FROM tracker_bindings GROUP BY team`,
 }
 
 var observerRefusals = []string{
@@ -60,6 +61,7 @@ var observerRefusals = []string{
 	`SELECT command_id FROM work_item_take_overs`,
 	`SELECT label FROM tracker_bindings`,
 	`SELECT created_by, updated_by FROM tracker_bindings`,
+	`SELECT paused_by FROM tracker_bindings`,
 	`SELECT label, readiness FROM work_targets`,
 	`SELECT name FROM teams`,
 	`SELECT manifest FROM teams`,
