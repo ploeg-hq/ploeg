@@ -270,7 +270,7 @@ fails otherwise.
 | [0201](0201-the-worker-meets-its-harness-launcher-on-the-pods-loopback-with-a-per-pod-token.md) | The worker meets its harness launcher on the pod's loopback with a per-pod token | accepted | 2026-11-18 |
 | [0202](0202-development-merges-through-a-merge-queue-that-requires-gate-checks-with-no-bypass.md) | `development` merges through a merge queue that requires gate checks, with no bypass | accepted | 2026-11-19 |
 | [0203](0203-a-gitlab-forge-connection-is-a-group-service-account-that-mints-a-project-token-per-run.md) | A GitLab forge connection is a group service account that mints a project token per Run | proposed | 2026-11-19 |
-| [0204](0204-a-person-pauses-a-tracker-binding-and-a-paused-binding-admits-no-new-work.md) | A person pauses a tracker binding, and a paused binding admits no new work | proposed | 2026-11-19 |
+| [0204](0204-a-person-pauses-a-tracker-binding-and-a-paused-binding-admits-no-new-work.md) | A person pauses a tracker binding, and a paused binding admits no new work | accepted | 2026-11-19 |
 
 
 ## Review calendar
