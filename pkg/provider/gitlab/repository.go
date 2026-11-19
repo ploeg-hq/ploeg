@@ -70,8 +70,8 @@ func (p *Provider) inspect(ctx context.Context, method, target string, out any) 
 		return 0, err
 	}
 	req.Header.Set("Accept", "application/json")
-	if p.Token != "" {
-		req.Header.Set("PRIVATE-TOKEN", p.Token)
+	if err := p.authorize(req); err != nil {
+		return 0, err
 	}
 	resp, err := p.client().Do(req)
 	if err != nil {

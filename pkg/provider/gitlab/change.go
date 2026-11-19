@@ -124,8 +124,8 @@ func (p *Provider) getJSON(ctx context.Context, target string, out any) error {
 		return err
 	}
 	req.Header.Set("Accept", "application/json")
-	if p.Token != "" {
-		req.Header.Set("PRIVATE-TOKEN", p.Token)
+	if err := p.authorize(req); err != nil {
+		return err
 	}
 	resp, err := p.client().Do(req)
 	if err != nil {

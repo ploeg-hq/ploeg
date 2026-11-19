@@ -54,8 +54,8 @@ func (p *Provider) AttachToComment(ctx context.Context, repo string, mr int, com
 	}
 	req.Header.Set("Content-Type", w.FormDataContentType())
 	req.Header.Set("Accept", "application/json")
-	if p.Token != "" {
-		req.Header.Set("PRIVATE-TOKEN", p.Token)
+	if err := p.authorize(req); err != nil {
+		return "", err
 	}
 	resp, err := p.client().Do(req)
 	if err != nil {
