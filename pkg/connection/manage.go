@@ -304,8 +304,21 @@ func (s *Service) revokeGrant(ctx context.Context, row store.ConnectionRow) ([]L
 		case err != nil:
 			return []Left{{Kind: "installation", ID: row.InstallationID}}, nil
 		}
+	case MethodGitLabServiceAccount:
+		left := []Left{{Kind: "service_account", ID: accountLogin(row)}}
+		if conn.ServiceAccounts == nil {
+			return append(left, Left{Kind: "token", ID: values["token_id"]}), nil
+		}
+		err := conn.ServiceAccounts.RevokeOwnToken(ctx, inst, values["access_token"])
+		switch {
+		case errors.Is(err, provider.ErrVendorUnavailable):
+			return nil, err
+		case err != nil:
+			return append(left, Left{Kind: "token", ID: values["token_id"]}), nil
+		}
+		return left, nil
 	case MethodOAuth:
-		if conn.Authorizer == nil {
+		if conn.Authorizer == nil || inst.OAuth == nil {
 			return nil, nil
 		}
 		for _, token := range []string{values["refresh_token"], values["access_token"]} {
@@ -324,6 +337,12 @@ func (s *Service) revokeGrant(ctx context.Context, row store.ConnectionRow) ([]L
 		}
 	}
 	return nil, nil
+}
+
+func accountLogin(row store.ConnectionRow) string {
+	var account provider.ConnectionAccount
+	_ = json.Unmarshal(row.Account, &account)
+	return firstNonEmpty(account.Login, row.AccountID)
 }
 
 // Apps lists the connection apps.

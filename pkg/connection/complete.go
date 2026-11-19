@@ -43,8 +43,13 @@ func validComplete(req CompleteRequest) *Error {
 	} else if req.SetupAction != "" {
 		return refuse(400, "invalid_request", "setupAction comes with installationId.")
 	}
+	if req.Group != "" && (req.Token == "" || !groupPattern.MatchString(req.Group) || strings.Contains(req.Group, "..")) {
+		return refuse(400, "invalid_request", "group comes with token and is a group's full path, such as acme/team.")
+	}
 	return nil
 }
+
+var groupPattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+){0,20}$`)
 
 func unknownFlow() *Error {
 	return refuse(404, "unknown_flow", "No flow of this consumer and person has that state.")
@@ -95,8 +100,12 @@ func (s *Service) complete(ctx context.Context, caller Caller, flow store.Connec
 			return Completed{}, refuse(400, "invalid_request", "This flow completes with installationId and setupAction only.")
 		}
 	case MethodToken:
-		if req.Token == "" {
+		if req.Token == "" || req.Group != "" {
 			return Completed{}, refuse(400, "invalid_request", "This flow completes with token only.")
+		}
+	case MethodGitLabServiceAccount:
+		if req.Token == "" || req.Group == "" {
+			return Completed{}, refuse(400, "invalid_request", "This flow completes with token and group: a group Owner's short-lived token with api scope and the full path of the group Ploeg may work in.")
 		}
 	}
 	if e := s.Accepting(); e != nil {
@@ -120,6 +129,8 @@ func (s *Service) complete(ctx context.Context, caller Caller, flow store.Connec
 		out, e = s.completeOAuth(ctx, caller, flow, start, req.Code)
 	case MethodToken:
 		out, e = s.finishCredential(ctx, caller, flow, start, credential{values: map[string]string{"access_token": req.Token}, token: req.Token})
+	case MethodGitLabServiceAccount:
+		out, e = s.completeServiceAccount(ctx, caller, flow, start, req.Token, req.Group)
 	case MethodGitHubAppManifest:
 		out, e = s.completeManifest(ctx, caller, flow, start, req.Code)
 	case MethodGitHubAppInstallation:
@@ -175,6 +186,8 @@ type credential struct {
 	expires *time.Time
 	field   secretsField
 	revoke  bool
+	undo    func()
+	account *provider.ConnectionAccount
 }
 
 func (s *Service) completeOAuth(ctx context.Context, caller Caller, flow store.ConnectionFlow, start StartRequest, code string) (Completed, *Error) {
@@ -212,12 +225,24 @@ func (s *Service) completeOAuth(ctx context.Context, caller Caller, flow store.C
 	return s.finishCredential(ctx, caller, flow, start, c)
 }
 
-func (s *Service) revokeQuietly(ctx context.Context, kind string, inst provider.ConnectionInstance, token string) {
+// revokeQuietly revokes a token Ploeg holds and no longer uses: an OAuth
+// token at the vendor's revoke endpoint, a service account's token with
+// itself. A pasted token is the person's and is left alone.
+func (s *Service) revokeQuietly(ctx context.Context, kind, method string, inst provider.ConnectionInstance, token string) {
 	conn := s.Connectors[kind]
-	if conn.Authorizer == nil || token == "" {
+	if token == "" {
 		return
 	}
-	if err := conn.Authorizer.Revoke(context.WithoutCancel(ctx), inst, token); err != nil && !errors.Is(err, provider.ErrNotSupported) {
+	var err error
+	switch {
+	case method == MethodGitLabServiceAccount && conn.ServiceAccounts != nil:
+		err = conn.ServiceAccounts.RevokeOwnToken(context.WithoutCancel(ctx), inst, token)
+	case method == MethodGitLabServiceAccount, conn.Authorizer == nil, inst.OAuth == nil:
+		return
+	default:
+		err = conn.Authorizer.Revoke(context.WithoutCancel(ctx), inst, token)
+	}
+	if err != nil && !errors.Is(err, provider.ErrNotSupported) {
 		s.log().Warn("connection token revocation failed", "kind", kind, "instance", inst.ID, "err", err)
 	}
 }
@@ -225,11 +250,21 @@ func (s *Service) revokeQuietly(ctx context.Context, kind string, inst provider.
 func (s *Service) finishCredential(ctx context.Context, caller Caller, flow store.ConnectionFlow, start StartRequest, c credential) (Completed, *Error) {
 	inst := s.Instances[start.Instance]
 	discard := func() {
+		if c.undo != nil {
+			c.undo()
+		}
 		if c.revoke {
-			s.revokeQuietly(ctx, start.Kind, inst, c.token)
+			s.revokeQuietly(ctx, start.Kind, flow.Method, inst, c.token)
 		}
 	}
-	report := s.probeCredential(ctx, start.Port, start.Kind, inst, provider.ConnectionCredential{Port: start.Port, Token: c.token}, nil)
+	if start.Port == PortForge && c.values != nil && c.values["webhook_secret"] == "" {
+		c.values["webhook_secret"] = newSigningToken()
+	}
+	report := s.probeCredential(ctx, start.Port, start.Kind, inst, provider.ConnectionCredential{Port: start.Port, Method: flow.Method, Token: c.token}, nil)
+	if report.Result == "pass" && c.account != nil && report.Accounts.ID != c.account.ID {
+		report.Result, report.State, report.Reason = "fail", StateInvalid, "account_changed"
+		report.Checks = append(report.Checks, Check{Name: "account_matches", Result: "fail", Detail: "the new token does not act as the service account"})
+	}
 	if report.Result != "pass" {
 		discard()
 		if report.Unknown {
@@ -307,6 +342,9 @@ func (s *Service) writeConnection(ctx context.Context, caller Caller, flow store
 				return Completed{}, storeError(err)
 			}
 		}
+		if oldValues["webhook_secret"] != "" && values["webhook_secret"] != "" {
+			values["webhook_secret"] = oldValues["webhook_secret"]
+		}
 		ref, err := s.Secrets.Put(ctx, "connections/"+row.ID, values)
 		if err != nil {
 			discard()
@@ -343,7 +381,7 @@ func (s *Service) writeConnection(ctx context.Context, caller Caller, flow store
 		return Completed{}, refuse(503, "unavailable", "Ploeg could not record the connection; what it stored was deleted.")
 	}
 	if reconnect && oldValues["access_token"] != "" && oldValues["access_token"] != values["access_token"] {
-		s.revokeQuietly(ctx, row.Kind, s.Instances[row.Instance], oldValues["access_token"])
+		s.revokeQuietly(ctx, row.Kind, old.Method, s.Instances[row.Instance], oldValues["access_token"])
 	}
 	saved, err := s.Store.Connection(ctx, s.tenant(), row.ID)
 	if err != nil {

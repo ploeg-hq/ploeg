@@ -22,6 +22,10 @@ const (
 	MethodGitHubAppManifest     = "github_app_manifest"
 	MethodGitHubAppInstallation = "github_app_installation"
 	MethodToken                 = "token"
+	// MethodGitLabServiceAccount turns a GitLab group Owner's short-lived
+	// token into a group service account Ploeg acts as, with its own token,
+	// and revokes the Owner's token (ADR-0203).
+	MethodGitLabServiceAccount = "gitlab_service_account"
 )
 
 // Ports a connection serves.
@@ -78,7 +82,16 @@ type Instance struct {
 	APIURL            string `yaml:"apiUrl"`
 	OAuth             *OAuth `yaml:"oauth"`
 	AllowInsecureHTTP bool   `yaml:"allowInsecureHttp"`
+	// ServiceAccountTokenDays is how many days a service account's token
+	// lives before the hourly pass rotates it (ADR-0203); 0 is
+	// DefaultServiceAccountTokenDays.
+	ServiceAccountTokenDays int `yaml:"serviceAccountTokenDays"`
 }
+
+// DefaultServiceAccountTokenDays is one day under GitLab's longest token
+// lifetime of 365 days, so a GitLab whose day starts before UTC's still
+// accepts the date.
+const DefaultServiceAccountTokenDays = 364
 
 // OAuth is an instance's OAuth application. The client secret is read from
 // the environment variable ClientSecretEnv names, never from this file.
@@ -94,7 +107,7 @@ type OAuth struct {
 var (
 	namePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$`)
 	envPattern  = regexp.MustCompile(`^[A-Z][A-Z0-9_]{0,127}$`)
-	methods     = []string{MethodOAuth, MethodGitHubAppManifest, MethodGitHubAppInstallation, MethodToken}
+	methods     = []string{MethodOAuth, MethodGitHubAppManifest, MethodGitHubAppInstallation, MethodToken, MethodGitLabServiceAccount}
 )
 
 // DefaultMax is the default limit on live runtime connections per Tenant.
@@ -124,6 +137,9 @@ func (c *Config) Resolve(lookup func(string) (string, bool)) (map[string]provide
 			if raw != "" && !httpsURL(raw, true) {
 				return nil, fmt.Errorf("connections.instances.%s: url and apiUrl must be absolute http(s) URLs", id)
 			}
+		}
+		if inst.ServiceAccountTokenDays < 0 || inst.ServiceAccountTokenDays > 365 {
+			return nil, fmt.Errorf("connections.instances.%s.serviceAccountTokenDays must be between 1 and 365", id)
 		}
 		resolved := provider.ConnectionInstance{ID: id, Kind: inst.Kind, URL: inst.URL, APIURL: inst.APIURL}
 		if o := inst.OAuth; o != nil {
@@ -170,6 +186,9 @@ func (c *Config) Resolve(lookup func(string) (string, bool)) (map[string]provide
 			if m == MethodOAuth && inst.OAuth == nil {
 				return nil, fmt.Errorf("connections.allow[%d] allows oauth but instance %s has no oauth application", i, a.Instance)
 			}
+			if m == MethodGitLabServiceAccount && (a.Port != PortForge || a.Kind != "gitlab") {
+				return nil, fmt.Errorf("connections.allow[%d] allows gitlab_service_account, which only a gitlab forge connection can use", i)
+			}
 		}
 	}
 	return out, nil
@@ -187,6 +206,15 @@ func httpsURL(raw string, allowHTTP bool) bool {
 // list in connectionRedirectUris.
 func ValidRedirectURI(raw string) bool {
 	return len(raw) <= 2048 && httpsURL(raw, false)
+}
+
+func (c *Config) serviceAccountDays(instance string) int {
+	if c != nil {
+		if days := c.Instances[instance].ServiceAccountTokenDays; days > 0 {
+			return days
+		}
+	}
+	return DefaultServiceAccountTokenDays
 }
 
 func (c *Config) allowed(port, kind, instance string) (Allow, bool) {

@@ -55,13 +55,15 @@ type Service struct {
 	Log      *slog.Logger
 	Now      func() time.Time
 
-	mu         sync.Mutex
-	appSecrets map[string]string
-	heldApps   map[string]bool
-	heldAt     time.Time
+	mu          sync.Mutex
+	hookSecrets map[string]heldHookSecret
+	appSecrets  map[string]string
+	heldApps    map[string]bool
+	heldAt      time.Time
 }
 
 func (s *Service) changed(id string) {
+	s.forgetHookSecret(id)
 	if s.OnChange != nil {
 		s.OnChange(id)
 	}
@@ -238,7 +240,7 @@ func (s *Service) checkStart(ctx context.Context, caller Caller, req *StartReque
 		return refuse(400, "invalid_request", "port is tracker or forge.")
 	}
 	if !slices.Contains(methods, req.Method) {
-		return refuse(400, "invalid_request", "method is oauth, github_app_manifest, github_app_installation or token.")
+		return refuse(400, "invalid_request", "method is oauth, github_app_manifest, github_app_installation, token or gitlab_service_account.")
 	}
 	for _, v := range []string{req.Kind, req.Instance} {
 		if !namePattern.MatchString(v) {
@@ -295,6 +297,13 @@ func (s *Service) checkStart(ctx context.Context, caller Caller, req *StartReque
 			}
 		} else if req.App == "" {
 			return refuse(400, "invalid_request", "An installation flow names the connection app to install.")
+		}
+	case MethodGitLabServiceAccount:
+		if req.RedirectURI != "" {
+			return refuse(400, "invalid_request", "A gitlab_service_account flow has no redirectUri.")
+		}
+		if req.Port != PortForge || conn.ServiceAccounts == nil {
+			return refuse(422, "capability_missing", "This kind or port cannot bootstrap a service account (ServiceAccountBootstrapper).")
 		}
 	case MethodToken:
 		if req.RedirectURI != "" {

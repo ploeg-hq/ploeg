@@ -8906,7 +8906,8 @@
               "enum": [
                 "oauth",
                 "github_app_installation",
-                "token"
+                "token",
+                "gitlab_service_account"
               ]
             },
             {
@@ -9146,7 +9147,8 @@
             "oauth",
             "github_app_manifest",
             "github_app_installation",
-            "token"
+            "token",
+            "gitlab_service_account"
           ]
         },
         "port": {
@@ -9215,8 +9217,11 @@
             "webhook",
             "installation",
             "grant",
-            "app"
-          ]
+            "app",
+            "service_account",
+            "token"
+          ],
+          "description": "What a removal left at the vendor: a webhook, an App installation, a grant, an App, or for a gitlab_service_account connection the service account and its membership (service_account), which only a group Owner can delete, and a token GitLab refused to revoke (token)."
         },
         "id": {
           "type": "string"
@@ -9294,7 +9299,8 @@
             "oauth",
             "github_app_manifest",
             "github_app_installation",
-            "token"
+            "token",
+            "gitlab_service_account"
           ]
         },
         "redirectUri": {
@@ -9353,6 +9359,12 @@
         "token": {
           "type": "string",
           "maxLength": 4096
+        },
+        "group": {
+          "type": "string",
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+){0,20}$",
+          "description": "With token, for a gitlab_service_account flow only: the full path of the GitLab group (a subgroup is allowed) whose projects the service account may reach as a Maintainer (ADR-0203). token is then a short-lived personal access token with api scope of an Owner of the group's top-level group; Ploeg revokes it before it answers."
         }
       }
     },
@@ -9415,6 +9427,60 @@
         },
         "replayed": {
           "type": "boolean"
+        },
+        "serviceAccount": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "What a gitlab_service_account completion made at GitLab (ADR-0203). Never a token: the service account's token lives only in the secret store.",
+          "required": [
+            "username",
+            "group",
+            "topGroup",
+            "created",
+            "tokenExpiresAt"
+          ],
+          "properties": {
+            "username": {
+              "type": "string"
+            },
+            "group": {
+              "type": "string"
+            },
+            "topGroup": {
+              "type": "string"
+            },
+            "created": {
+              "type": "boolean",
+              "description": "False when an existing service account of that username in the top-level group was reused."
+            },
+            "tokenExpiresAt": {
+              "type": "string",
+              "format": "date-time",
+              "description": "When the service account's token expires; the hourly connection pass rotates it when fewer than 30 days remain."
+            }
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "description": "Something the completion could not do although it answered, such as owner_token_not_revoked: Ploeg could not revoke the token it was given, so the person must revoke it at GitLab.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "code",
+              "message"
+            ],
+            "properties": {
+              "code": {
+                "enum": [
+                  "owner_token_not_revoked"
+                ]
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          }
         }
       }
     },

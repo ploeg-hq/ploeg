@@ -136,12 +136,31 @@ type Started struct {
 
 // Completed is the answer to a completion.
 type Completed struct {
-	Connection    *View     `json:"connection,omitempty"`
-	ConnectionApp *AppView  `json:"connectionApp,omitempty"`
-	Flow          *FlowView `json:"flow,omitempty"`
-	Next          *Next     `json:"next,omitempty"`
-	Replayed      bool      `json:"replayed"`
-	Status        int       `json:"-"`
+	Connection     *View           `json:"connection,omitempty"`
+	ConnectionApp  *AppView        `json:"connectionApp,omitempty"`
+	ServiceAccount *ServiceAccount `json:"serviceAccount,omitempty"`
+	Flow           *FlowView       `json:"flow,omitempty"`
+	Next           *Next           `json:"next,omitempty"`
+	Warnings       []Warning       `json:"warnings,omitempty"`
+	Replayed       bool            `json:"replayed"`
+	Status         int             `json:"-"`
+}
+
+// ServiceAccount is what a gitlab_service_account completion made at
+// GitLab (ADR-0203), never a token.
+type ServiceAccount struct {
+	Username       string    `json:"username"`
+	Group          string    `json:"group"`
+	TopGroup       string    `json:"topGroup"`
+	Created        bool      `json:"created"`
+	TokenExpiresAt time.Time `json:"tokenExpiresAt"`
+}
+
+// Warning is something a completion could not do although the connection
+// was made, such as revoking the token it was given.
+type Warning struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
 }
 
 // FlowStatus is the answer to a flow read.
@@ -180,6 +199,9 @@ type CompleteRequest struct {
 	InstallationID string `json:"installationId,omitempty"`
 	SetupAction    string `json:"setupAction,omitempty"`
 	Token          string `json:"token,omitempty"`
+	// Group is the full path of the GitLab group whose projects a
+	// gitlab_service_account connection may reach.
+	Group string `json:"group,omitempty"`
 }
 
 // PatchRequest is the body of PATCH on a connection.

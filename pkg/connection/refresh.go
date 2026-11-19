@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"maps"
 	"time"
 
 	"github.com/ploeg-hq/ploeg/pkg/provider"
+	"github.com/ploeg-hq/ploeg/pkg/secretstore"
 	"github.com/ploeg-hq/ploeg/pkg/store"
 )
 
@@ -21,6 +23,9 @@ func refreshMargin(lifetime int64) time.Duration {
 }
 
 func (s *Service) due(row store.ConnectionRow) bool {
+	if row.Method == MethodGitLabServiceAccount && row.ExpiresAt != nil {
+		return !s.now().Before(row.ExpiresAt.Add(-rotationMargin))
+	}
 	if row.Method != MethodOAuth || row.ExpiresAt == nil {
 		return false
 	}
@@ -74,7 +79,8 @@ func (s *Service) CredentialRefused(ctx context.Context, id string) error {
 
 // refresh exchanges the stored refresh token under the row's lock, so a
 // rotating refresh token is never spent twice, and writes the new tokens as
-// one new version under the same reference.
+// one new version under the same reference. A service account's token is
+// rotated with itself instead (ADR-0203).
 func (s *Service) refresh(ctx context.Context, id string, force bool) error {
 	var refused *store.ConnectionRow
 	err := s.Store.RefreshConnection(ctx, s.tenant(), id, func(row store.ConnectionRow) (json.RawMessage, *time.Time, bool, error) {
@@ -90,6 +96,9 @@ func (s *Service) refresh(ctx context.Context, id string, force bool) error {
 			return nil, nil, false, err
 		}
 		conn := s.Connectors[row.Kind]
+		if row.Method == MethodGitLabServiceAccount {
+			return s.rotate(ctx, row, field, values, &refused)
+		}
 		if conn.Authorizer == nil || values["refresh_token"] == "" {
 			refused = &row
 			return nil, nil, false, errRefreshRefused
@@ -102,7 +111,8 @@ func (s *Service) refresh(ctx context.Context, id string, force bool) error {
 		if err != nil {
 			return nil, nil, false, err
 		}
-		next := map[string]string{"access_token": cred.AccessToken, "refresh_token": values["refresh_token"]}
+		next := maps.Clone(values)
+		next["access_token"] = cred.AccessToken
 		if cred.RefreshToken != "" {
 			next["refresh_token"] = cred.RefreshToken
 		}
@@ -128,4 +138,42 @@ func (s *Service) refresh(ctx context.Context, id string, force bool) error {
 		}
 	}
 	return err
+}
+
+// rotationWrites is how often a rotated token's write to the store is
+// tried: GitLab revoked the old token when it answered the new one, so a
+// lost write loses the connection.
+const rotationWrites = 3
+
+func (s *Service) rotate(ctx context.Context, row store.ConnectionRow, field secretsField, values map[string]string, refused **store.ConnectionRow) (json.RawMessage, *time.Time, bool, error) {
+	conn := s.Connectors[row.Kind]
+	if conn.Rotator == nil || values["access_token"] == "" {
+		return nil, nil, false, nil
+	}
+	expires := s.now().UTC().AddDate(0, 0, s.Config.serviceAccountDays(row.Instance))
+	rotated, err := conn.Rotator.RotateOwnToken(ctx, s.Instances[row.Instance], values["access_token"], expires)
+	if errors.Is(err, provider.ErrCredentialRefused) {
+		*refused = &row
+		return nil, nil, false, errRefreshRefused
+	}
+	if err != nil {
+		return nil, nil, false, err
+	}
+	next := maps.Clone(values)
+	next["access_token"], next["token_id"] = rotated.Token, rotated.ID
+	var ref secretstore.Ref
+	for try := 0; try < rotationWrites; try++ {
+		if ref, err = s.Secrets.Put(context.WithoutCancel(ctx), field.Credential.Path, next); err == nil {
+			break
+		}
+	}
+	if err != nil {
+		s.log().Error("a rotated service account token was not stored; GitLab revoked the old one, so the connection must be reconnected", "connection", row.ID, "err", err)
+		*refused = &row
+		return nil, nil, false, errRefreshRefused
+	}
+	field.Credential = &ref
+	at := rotated.ExpiresAt.UTC()
+	raw, _ := json.Marshal(field)
+	return raw, &at, true, nil
 }
