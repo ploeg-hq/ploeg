@@ -62,6 +62,7 @@ for case in ":default" \
 	"ops/helm/ploeg/ci/executor-gitlab-values.yaml:executor-gitlab" \
 	"ops/helm/ploeg/ci/executor-github-values.yaml:executor-github" \
 	"ops/helm/ploeg/ci/executor-two-forges-values.yaml:executor-two-forges" \
+	"ops/helm/ploeg/ci/executor-runtime-forge-values.yaml:executor-runtime-forge" \
 	"ops/helm/ploeg/ci/executor-sandbox-values.yaml:executor-sandbox" \
 	"ops/helm/ploeg/ci/executor-sandbox-runtimeclass-values.yaml:executor-sandbox-runtimeclass" \
 	"ops/helm/ploeg/ci/executor-sandbox-team-values.yaml:executor-sandbox-team" \
@@ -107,6 +108,7 @@ for case in "ops/helm/ploeg/ci/reject-reader-without-read-token-values.yaml:read
 	"ops/helm/ploeg/ci/reject-two-forges-forgejo-without-bot-password-values.yaml:executor.forgejo is active beside another forge (forgejo, github) but sets no botPasswordSecret" \
 	"ops/helm/ploeg/ci/reject-two-forges-with-gitlab-values.yaml:executor.gitlab is active beside another forge (forgejo, gitlab)" \
 	"ops/helm/ploeg/ci/reject-two-forges-env-target-values.yaml:team silver: targetSource env pins a worker to its env forge, and a worker of a release with more than one forge (forgejo, github)" \
+	"ops/helm/ploeg/ci/reject-runtime-forge-env-target-values.yaml:team silver: targetSource env pins a worker to its env forge, and a worker of a release whose forges are all runtime connections" \
 	"ops/helm/ploeg/ci/reject-two-forges-github-without-app-values.yaml:executor.github is active beside another forge (forgejo, github) but tracker.github.appId is unset" \
 	"ops/helm/ploeg/ci/reject-runtimeclass-non-string-values.yaml:runtimeClassName" \
 	"ops/helm/ploeg/ci/reject-runtimeclass-invalid-name-values.yaml:runtimeClassName" \

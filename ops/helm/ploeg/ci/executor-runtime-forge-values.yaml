@@ -1,0 +1,45 @@
+# CI-only values: an executor whose only forge is a runtime GitLab
+# connection (ADR-0193, ADR-0203). No forge block sets a url, so ploegd gets
+# no PLOEG_GITLAB_* and workers no FORGE_URL, AGENT_BUILDER_TOKEN or reader
+# token: each claim carries the forge of its target's connection and a
+# project access token minted through it. A reading Role needs no
+# readTokenSecret here, and networkPolicy.runtimeForgeUrls opens egress to
+# the instance.
+config:
+  connections:
+    enabled: true
+    allow:
+      - {port: forge, kind: gitlab, instance: gitlab-main, methods: [gitlab_service_account]}
+    instances:
+      gitlab-main:
+        kind: gitlab
+        url: https://gitlab.example.com
+  targetRegistration:
+    enabled: true
+    connections: ["*"]
+env:
+  PLOEG_PUBLIC_WEBHOOK_BASE: https://ploeg.example.com
+secretStore:
+  type: kubernetes
+  kubernetes:
+    namespace: ploeg-connections
+networkPolicy:
+  runtimeForgeUrls: [https://gitlab.example.com]
+executor:
+  enabled: true
+  forge: gitlab
+  forgejo: null
+  teams:
+    - name: silver
+      model: litellm_proxy/claude-sonnet-5
+      budget: "6"
+      maxReplicaCount: 1
+      harness:
+        name: openhands
+        dind: false
+      plan:
+        - roles:
+            - {name: builder, writes: true, cap: "3.00"}
+        - roles:
+            - {name: reviewer, writes: false, cap: "0.75", harness: {dind: false}}
+supportProfile: unsupported

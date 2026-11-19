@@ -48,6 +48,11 @@ type Provider struct {
 	// access token or bot PAT with `api` scope; commenting is not pushing, so
 	// this needs no push right.
 	Token string
+	// TokenFor returns the token for one project, by its full path, and
+	// wins over Token: a GitLab that is only a runtime forge connection
+	// acts on each project with the credential of the connection its
+	// runtime Work Target was granted through. Nil sends Token.
+	TokenFor func(ctx context.Context, project string) (string, error)
 	// Secret is compared against X-Gitlab-Token. Empty rejects every
 	// delivery that names no runtime connection.
 	Secret string
@@ -69,6 +74,40 @@ func (p *Provider) client() *http.Client {
 		return p.HC
 	}
 	return apilimit.Client("gitlab", 30*time.Second)
+}
+
+// authorize sets the request's credential: Token, or the token TokenFor
+// returns for the project the request's path names.
+func (p *Provider) authorize(req *http.Request) error {
+	token := p.Token
+	if p.TokenFor != nil {
+		project, ok := projectOfPath(req.URL)
+		if !ok {
+			return fmt.Errorf("gitlab: %s names no project to authorize", req.URL.Path)
+		}
+		var err error
+		if token, err = p.TokenFor(req.Context(), project); err != nil {
+			return err
+		}
+	}
+	if token != "" {
+		req.Header.Set("PRIVATE-TOKEN", token)
+	}
+	return nil
+}
+
+// projectOfPath is the project an /api/v4/projects/:id path names, unescaped.
+func projectOfPath(u *url.URL) (string, bool) {
+	_, rest, found := strings.Cut(u.EscapedPath(), "/api/v4/projects/")
+	if !found {
+		return "", false
+	}
+	escaped, _, _ := strings.Cut(rest, "/")
+	project, err := url.PathUnescape(escaped)
+	if err != nil || project == "" {
+		return "", false
+	}
+	return project, true
 }
 
 func (p *Provider) log() *slog.Logger {
@@ -106,8 +145,8 @@ func (p *Provider) Comment(ctx context.Context, repo string, mr int, body string
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	if p.Token != "" {
-		req.Header.Set("PRIVATE-TOKEN", p.Token)
+	if err := p.authorize(req); err != nil {
+		return err
 	}
 	resp, err := p.client().Do(req)
 	if err != nil {
@@ -149,8 +188,8 @@ func (p *Provider) Comments(ctx context.Context, repo string, mr int) ([]provide
 			return nil, err
 		}
 		req.Header.Set("Accept", "application/json")
-		if p.Token != "" {
-			req.Header.Set("PRIVATE-TOKEN", p.Token)
+		if err := p.authorize(req); err != nil {
+			return nil, err
 		}
 		resp, err := p.client().Do(req)
 		if err != nil {
@@ -199,8 +238,8 @@ func (p *Provider) EditComment(ctx context.Context, repo string, mr int, id int6
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	if p.Token != "" {
-		req.Header.Set("PRIVATE-TOKEN", p.Token)
+	if err := p.authorize(req); err != nil {
+		return err
 	}
 	resp, err := p.client().Do(req)
 	if err != nil {
@@ -241,8 +280,8 @@ func (p *Provider) PullRequestFacts(ctx context.Context, repo string, mr int) (p
 		return provider.PullRequestFacts{}, err
 	}
 	req.Header.Set("Accept", "application/json")
-	if p.Token != "" {
-		req.Header.Set("PRIVATE-TOKEN", p.Token)
+	if err := p.authorize(req); err != nil {
+		return provider.PullRequestFacts{}, err
 	}
 	resp, err := p.client().Do(req)
 	if err != nil {
@@ -398,8 +437,8 @@ func (p *Provider) commitStatusPage(ctx context.Context, endpoint string) ([]com
 		return nil, nextPage{}, err
 	}
 	req.Header.Set("Accept", "application/json")
-	if p.Token != "" {
-		req.Header.Set("PRIVATE-TOKEN", p.Token)
+	if err := p.authorize(req); err != nil {
+		return nil, nextPage{}, err
 	}
 	resp, err := p.client().Do(req)
 	if err != nil {
@@ -737,8 +776,8 @@ func (p *Provider) DeleteComment(ctx context.Context, repo string, mr int, id in
 		return err
 	}
 	req.Header.Set("Accept", "application/json")
-	if p.Token != "" {
-		req.Header.Set("PRIVATE-TOKEN", p.Token)
+	if err := p.authorize(req); err != nil {
+		return err
 	}
 	resp, err := p.client().Do(req)
 	if err != nil {

@@ -470,6 +470,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 	readiness = ensureGate(readiness, cfg, forges)
 	bindings := trackerBindings(ctx, log, st, cfg, staticTable, targets, readiness, trackers, forgeID, secrets, runtimeConns)
 	workTargets := runtimeTargets(ctx, log, cfg, st, runtimeConns, staticTable, readiness, bindings, forgeID, release.directory())
+	release.runtime = runtimeForges(log, runtimeConns, forges, workTargets)
 	tools := toolRegistry(ctx, log, cfg, st, secrets, teams)
 	runtimeTeams, err := runtimeTeamService(ctx, log, cfg, st, teams, func(key string) bool {
 		if _, ok := staticTable.Targets[key]; ok {

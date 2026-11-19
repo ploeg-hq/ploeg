@@ -40,6 +40,9 @@ type releaseForges struct {
 	// gitlabCreds mints a project access token per Run when
 	// PLOEG_GITLAB_MINT_PER_RUN is on (ADR-0203); nil mints nothing.
 	gitlabCreds *forgebroker.GitLab
+	// runtime are the forge instances served only through runtime forge
+	// connections, by instance id (runtimeForges).
+	runtime map[string]httpapi.ClaimForge
 }
 
 // gitlabMinter is the static GitLab forge's per-Run broker: on with
@@ -165,20 +168,25 @@ func (r releaseForges) credentials(log *slog.Logger) (forgebroker.Broker, forgeb
 // URL rides on the claim when it is configured, and in a release with more
 // than one forge it defaults to ploegd's own URL for that forge; otherwise the
 // worker keeps its FORGE_URL. A release without a forge provider resolves
-// nothing, and its workers keep their env forge as before ADR-0192.
+// nothing, and its workers keep their env forge as before ADR-0192. A
+// forge served only through runtime connections resolves its instance id
+// alone, at the instance's URL.
 func (r releaseForges) directory() *httpapi.ForgeDirectory {
-	if len(r.registry) == 0 {
-		return nil
-	}
-	d := &httpapi.ForgeDirectory{Default: r.defaultForge, Forges: map[string]httpapi.ClaimForge{}}
+	d := &httpapi.ForgeDirectory{Default: r.defaultForge, Forges: map[string]httpapi.ClaimForge{}, Runtime: r.runtime}
 	for id, p := range r.registry {
 		dialect := p.Name()
-		f := r.byDialect[dialect]
+		f, static := r.byDialect[dialect]
+		if !static {
+			continue
+		}
 		url := f.workerURL
 		if url == "" && r.multiForge() {
 			url = f.url
 		}
 		d.Forges[id] = httpapi.ClaimForge{Dialect: dialect, URL: url, PloegdURL: f.url}
+	}
+	if len(d.Forges) == 0 && len(d.Runtime) == 0 {
+		return nil
 	}
 	return d
 }
