@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-11-19
 decision-makers: Ryan Grippeling
 supersedes: none
@@ -72,4 +72,5 @@ Chosen option: "pause and resume per binding, refused at intake", because it tou
 ## More Information
 
 * 2026-11-19 — The owner decided to add pause and resume per binding, to use the existing binding removal for remove, and not to offer run now. The Team's `paused` field was found unwritten and is deprecated.
+* 2026-11-19 — Accepted by the owner. The pause and resume routes, the `binding_paused` refusal and the deprecation of the Team's `paused` shipped in PR #468.
 * Related: [ADR-0186](0186-an-operator-consumer-binds-a-tracker-scope-to-a-team-at-runtime-and-static-routing-wins-on-conflict.md) (bindings), [ADR-0038](0038-a-repo-label-selects-among-registered-targets-and-the-board-default-is-the-fallback.md) (route refusals), [ADR-0108](0108-every-operator-action-names-its-person-and-channel-and-an-mcp-action-needs-the-persons-confirmation.md) (attribution), [ADR-0134](0134-ploeg-keeps-each-release-compatible-with-the-one-before-and-removes-only-after-a-deprecated-minor.md) (deprecation).
