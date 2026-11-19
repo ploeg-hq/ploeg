@@ -28,15 +28,23 @@ type ClaimForge struct {
 type ForgeDirectory struct {
 	Default string
 	Forges  map[string]ClaimForge
+	// Runtime are the forge instances runtime forge connections are made
+	// on (ADR-0193), by instance id, beside the static forges: a runtime
+	// Work Target names its connection's instance. Only an exact id
+	// resolves to one; no other id ever falls back to it.
+	Runtime map[string]ClaimForge
 }
 
 // Resolve returns the forge registered under id, or under Default for an
-// empty id.
+// empty id. A static forge wins over a runtime instance of the same id.
 func (d *ForgeDirectory) Resolve(id string) (ClaimForge, bool) {
 	if id == "" {
 		id = d.Default
 	}
-	f, ok := d.Forges[id]
+	if f, ok := d.Forges[id]; ok {
+		return f, true
+	}
+	f, ok := d.Runtime[id]
 	return f, ok
 }
 

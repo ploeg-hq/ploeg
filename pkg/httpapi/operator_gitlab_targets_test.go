@@ -36,7 +36,9 @@ type projectGitLab struct {
 	hooks  map[int]map[string]any
 	nextID int
 	mints  []map[string]any
+	notes  []map[string]any
 	level  int
+	url    string
 }
 
 func (f *projectGitLab) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -87,6 +89,9 @@ func (f *projectGitLab) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		answer(204, nil)
+	case path == "/projects/acme%2Fteam%2Fapp/merge_requests/7/notes" && r.Method == "POST":
+		f.notes = append(f.notes, body)
+		answer(201, map[string]any{"id": 900 + len(f.notes)})
 	case path == "/projects/500/access_tokens" && r.Method == "POST":
 		f.mints = append(f.mints, body)
 		answer(201, map[string]any{"id": 77, "token": "run-pat-77", "expires_at": body["expires_at"]})
@@ -99,6 +104,7 @@ func (rig *targetRig) withGitLab(t *testing.T) *projectGitLab {
 	t.Helper()
 	gl := &projectGitLab{hooks: map[int]map[string]any{}, level: 40}
 	srv := httptest.NewServer(gl)
+	gl.url = srv.URL
 	t.Cleanup(srv.Close)
 	rig.conns.infos["gl-team"] = worktarget.ConnectionInfo{ID: "gl-team", Kind: "gitlab", Instance: "gitlab-main", State: "active", Runtime: true, CanMint: true}
 	rig.conns.creds["gl-team"] = provider.ConnectionCredential{Port: "forge", Method: "gitlab_service_account", Token: glServiceToken}
