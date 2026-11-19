@@ -74,11 +74,37 @@ ploegd or its workers need is unset.
 {{- fail "executor.litellm.baseUrl is required when executor.enabled is true: the model gateway URL workers call, e.g. http://litellm.<namespace>.svc.cluster.local:4000/v1" -}}
 {{- end -}}
 {{- $forge := include "ploeg.forge" . | fromJson -}}
-{{- if not $forge.url -}}
-{{- fail (printf "executor.%s.url is required when executor.enabled is true: the forge URL workers clone from and push to" $forge.kind) -}}
+{{- if and (not $forge.url) (not (include "ploeg.runtimeForgesOnly" .)) -}}
+{{- fail (printf "executor.%s.url is required when executor.enabled is true: the forge URL workers clone from and push to. A release without a static forge needs a runtime forge connection instead: config.targetRegistration.enabled and a config.connections.allow entry with port forge (ADR-0193)" $forge.kind) -}}
 {{- end -}}
 {{- end -}}
 {{- include "ploeg.requireMintingForges" . -}}
+{{- end -}}
+
+{{/*
+ploeg.runtimeForgeAllowed is true when the configuration file lets an
+operator register Work Targets at runtime on a forge connection: its
+targetRegistration is enabled and connections.allow names the forge port
+(ADR-0193, ADR-0195).
+*/}}
+{{- define "ploeg.runtimeForgeAllowed" -}}
+{{- $cfg := .Values.config | default dict -}}
+{{- if ($cfg.targetRegistration | default dict).enabled -}}
+{{- range (($cfg.connections | default dict).allow | default list) -}}
+{{- if eq (toString .port) "forge" -}}true{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+ploeg.runtimeForgesOnly is true when no forge block sets a url and runtime
+forge connections are allowed: every forge of the release is a runtime
+connection, so a worker holds no forge URL and no forge credential, and each
+claim carries the Run's forge and a credential minted through its target's
+connection.
+*/}}
+{{- define "ploeg.runtimeForgesOnly" -}}
+{{- if and (not (include "ploeg.activeForges" . | fromJsonArray)) (include "ploeg.runtimeForgeAllowed" .) -}}true{{- end -}}
 {{- end -}}
 
 {{/*
@@ -1015,12 +1041,14 @@ spec:
         {{- end }}
         {{- $forge := include "ploeg.forge" $root | fromJson }}
         {{- $multiForge := include "ploeg.multiForge" $root }}
+        {{- $runtimeOnly := include "ploeg.runtimeForgesOnly" $root }}
         - name: PLOEG_TARGET_FORGE
           value: {{ $forge.kind | quote }}
         {{- /* ADR-0192: a worker of a multi-forge release holds no forge URL
              and no forge credential. Each claim carries the Run's forge and
-             a credential ploegd minted for that Run alone. */}}
-        {{- if not (or $multiForge $gateway) }}
+             a credential ploegd minted for that Run alone. So does a worker
+             of a release whose forges are all runtime connections. */}}
+        {{- if not (or $multiForge $gateway $runtimeOnly) }}
         - name: FORGE_URL
           value: {{ $forge.url | quote }}
         {{- end }}
@@ -1034,14 +1062,14 @@ spec:
              when the pod was built some other way. */}}
         {{- $isReader := and (ne ($role.name | default "") "") (not $role.writes) }}
         {{- $readSecret := $forge.readTokenSecret }}
-        {{- if and $isReader (not $multiForge) (not (and $readSecret.name $readSecret.key)) }}
+        {{- if and $isReader (not $multiForge) (not $runtimeOnly) (not (and $readSecret.name $readSecret.key)) }}
         {{- fail (printf "team %s: role %q reads but executor.%s.readTokenSecret is not set; a reading Role must not receive the read-write forge token (ADR-0013 tier 1). Set readTokenSecret.name and readTokenSecret.key to a read-only token" $team.name $role.name $forge.kind) }}
         {{- end }}
         {{- if $role.name }}
         - name: PLOEG_FORGE_TOKEN_ACCESS
           value: {{ ternary "read-only" "read-write" $isReader | quote }}
         {{- end }}
-        {{- if not (or $multiForge $gateway) }}
+        {{- if not (or $multiForge $gateway $runtimeOnly) }}
         - name: AGENT_BUILDER_TOKEN
           valueFrom:
             secretKeyRef:
@@ -1076,6 +1104,9 @@ spec:
         {{- end }}
         {{- if and $multiForge (eq ($team.targetSource | default "") "env") }}
         {{- fail (printf "team %s: targetSource env pins a worker to its env forge, and a worker of a release with more than one forge (%s) holds no forge URL and no forge credential of its own (ADR-0192). Unset targetSource, or serve one forge" $team.name (join ", " (include "ploeg.activeForges" $root | fromJsonArray))) }}
+        {{- end }}
+        {{- if and $runtimeOnly (eq ($team.targetSource | default "") "env") }}
+        {{- fail (printf "team %s: targetSource env pins a worker to its env forge, and a worker of a release whose forges are all runtime connections holds no forge URL and no forge credential of its own (ADR-0193). Unset targetSource, or set a static forge url" $team.name) }}
         {{- end }}
         {{- if $team.targetSource }}
         # env = ignore the claim's target and use this team's pinned repo.

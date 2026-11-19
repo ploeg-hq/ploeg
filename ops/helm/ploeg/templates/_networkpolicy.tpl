@@ -101,6 +101,12 @@
 {{- end }}
 {{- end }}
 {{- end }}
+{{- range (.root.Values.networkPolicy.forge | default dict).runtimeUrls | default list }}
+{{- $urls = append $urls . }}
+{{- if eq (trimSuffix "/" .) "https://github.com" }}
+{{- $urls = append $urls "https://api.github.com" }}
+{{- end }}
+{{- end }}
 {{- $urls | toJson }}
 {{- end -}}
 

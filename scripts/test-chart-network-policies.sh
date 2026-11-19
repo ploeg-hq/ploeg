@@ -163,4 +163,13 @@ assert_admits "$rendered" ploeg-worker 93.184.215.14 443 'workers cannot reach a
 assert_denies "$rendered" ploeg-worker 93.184.215.14 22 'the public endpoint rules open a port no URL names'
 assert_denies "$rendered" ploeg-ploegd 169.254.169.254 80 'ploegd on a public http forge reaches the instance metadata service on 80'
 
+rendered=$(render -f "$ci/executor-runtime-forge-values.yaml" --set-json 'networkPolicy.forge.runtimeUrls=[]')
+worker=$(policy "$rendered" ploeg-worker)
+[[ -n "$worker" ]] || fail 'a runtime-forge-only executor renders no worker policy'
+assert_lacks "$worker" 'cidr: 0.0.0.0/0' 'a runtime forge is open to workers without networkPolicy.forge.runtimeUrls'
+rendered=$(render -f "$ci/executor-runtime-forge-values.yaml")
+assert_admits "$rendered" ploeg-worker 93.184.215.14 443 'workers cannot reach the runtime forge networkPolicy.forge.runtimeUrls lists'
+assert_admits "$rendered" ploeg-ploegd 93.184.215.14 443 'ploegd cannot reach the runtime forge networkPolicy.forge.runtimeUrls lists'
+assert_denies "$rendered" ploeg-worker 10.43.0.1 443 'a runtime forge URL opens a private range to workers'
+
 echo 'Every Ploeg pod the chart renders is under a default-deny NetworkPolicy with its own allowlist'
