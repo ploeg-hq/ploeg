@@ -1,14 +1,15 @@
 name: CI
 on:
   pull_request:
+  merge_group:
   push:
-    branches: [main, development]
+    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   verify:
     runs-on: ubuntu-24.04
@@ -34,6 +35,11 @@ jobs:
             sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           fi
       - run: mise run verify
+      - name: An added migration is numbered above every migration on the base branch, and no number above the legacy 0036 repeats
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+        env:
+          BASE: ${{ github.event.merge_group.base_sha || github.event.pull_request.base.sha }}
+        run: bash scripts/check-migration-order.sh "$BASE"
       - name: The history starts at the recorded root and the initial tree is the recorded derivation of its frozen source
         run: bash scripts/check-provenance.sh --source
       - run: mise run docs-check
@@ -125,3 +131,20 @@ jobs:
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
       - name: A repository's plugins never start inside a Run
         run: PLOEG_HOSTILE_REPOSITORY=1 mise exec -- go test -run TestHostileRepository -v ./pkg/harness/adapters/acp/
+  ci-gate:
+    needs: [verify, dco, contract-bundle-reproducible, worker-admission, hostile-repository]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Every job this gate waits for succeeded or was skipped by its own condition
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          results=$(printf '%s' "$NEEDS" | grep -oE '"result": ?"[a-z]+"' | sed -E 's/.*"([a-z]+)"$/\1/' || true)
+          printf '%s\n' "$NEEDS"
+          if [ -z "$results" ] || grep -vqxE 'success|skipped' <<< "$results"; then
+            echo "A job the gate waits for failed or was cancelled, or the gate read no results."
+            exit 1
+          fi
+          echo "Every job the gate waits for succeeded or was skipped."

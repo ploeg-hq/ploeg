@@ -4,7 +4,7 @@ on:
     - cron: "11 6 * * 1"
   workflow_dispatch:
   push:
-    branches: [main, development]
+    branches: [main]
     paths:
       - "pkg/store/**"
       - "pkg/httpapi/**"
@@ -14,14 +14,7 @@ on:
       - "mise.toml"
       - ".github/workflows/upgrade-drill.yml"
   pull_request:
-    paths:
-      - "pkg/store/**"
-      - "pkg/httpapi/**"
-      - "pkg/shiftengine/**"
-      - "pkg/worker/**"
-      - "go.mod"
-      - "mise.toml"
-      - ".github/workflows/upgrade-drill.yml"
+  merge_group:
 permissions:
   contents: read
 concurrency:

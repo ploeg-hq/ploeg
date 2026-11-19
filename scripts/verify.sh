@@ -14,6 +14,7 @@ bash scripts/test-contract-bundle.sh
 bash scripts/test-go-module-published.sh
 bash scripts/test-release-consumers.sh
 bash scripts/test-dco-check.sh
+bash scripts/test-check-migration-order.sh
 bash scripts/test-claude-code-install.sh
 bash scripts/test-check-go-toolchain.sh
 bash scripts/test-quickstart.sh

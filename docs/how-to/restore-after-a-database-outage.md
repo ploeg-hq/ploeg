@@ -119,7 +119,7 @@ Unpause the workers and resume the HelmRelease as in [Drain workers, step 6](dra
 
 ## What a restore can promise
 
-The [restore drill](../research/2026-10-25-restore-drill.md) rehearses this procedure on every change to the store, the run API, the Shift engine or the worker, and weekly:
+The [restore drill](../research/2026-10-25-restore-drill.md) rehearses this procedure on every pull request and merge queue entry, and weekly:
 
 ```sh
 mise run restore-drill
