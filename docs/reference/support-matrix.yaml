@@ -514,8 +514,8 @@ rows:
       - doc:
           path: docs/security/threat-model.md#what-the-profile-excludes
           label: threat model, excluded
-          contains: ["No per-Run GitLab broker exists; GitLab writers always use the shared token"]
-    limits: Implemented as a forge; no per-Run broker (F-31).
+          contains: ["is tested only against a fake; without `executor.gitlab.mintPerRun`"]
+    limits: Implemented as a forge. A project access token per Run through a group service account (ADR-0203), with `executor.gitlab.mintPerRun` or a `gitlab_service_account` connection, is tested against a fake only and not qualified against a live GitLab (F-31).
 
   - id: tracker-github-issues
     axis: tracker
