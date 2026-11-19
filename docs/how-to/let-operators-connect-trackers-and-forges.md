@@ -2,8 +2,8 @@
 type: how-to
 audience: [operator]
 owner: ploeg
-last_verified: 2026-11-18
-verified_by: "Read pkg/connection, pkg/httpapi/operator_connections.go and cmd/ploegd/runtime_connections.go; go test ./pkg/connection/; go test ./pkg/httpapi/ -run 'Connection|ClickUp|GitLab|GitHubApp|Reconnect'"
+last_verified: 2026-11-19
+verified_by: "Read pkg/connection, pkg/httpapi/operator_connections.go, pkg/provider/clickup/handover.go and cmd/ploegd/runtime_connections.go; go test ./pkg/connection/ ./pkg/provider/clickup/; go test ./pkg/httpapi/ -run 'Connection|ClickUp|GitLab|GitHubApp|Reconnect|HandOver'"
 ---
 
 # Let operators connect trackers and forges
@@ -65,6 +65,19 @@ In `PLOEG_OPERATOR_CONSUMERS`, give the consumer `"manageConnections": true` and
 3. `POST /api/v1/operator/connection-flows/complete` with `state` and `code` (or `installationId` and `setupAction` from GitHub's setup redirect, or `token`). A manifest completion answers with the new connection app and a follow-on installation flow.
 
 Read connections with `GET /api/v1/operator/tracker-connections` and `/forge-connections`, probe one with `POST .../{id}/probe`, reconnect by starting a flow with `connection: <id>`, and remove one with `DELETE .../{id}`. The full contract is in [the operator API schema](../contracts/operator-api.v1.schema.json).
+
+## Hand work over by assigning the connection's own account
+
+A tracker connection made from a dedicated tracker member can be the hand-over agent itself ([ADR-0195 section 9](../adrs/0195-a-proven-operator-makes-and-manages-a-tracker-or-forge-connection-through-a-flow-ploeg-starts-and-the-consumer-only-relays-codes.md)). Send `handOverAgent: true` when you start the flow, or `PATCH .../tracker-connections/{id}` with it later. Only ClickUp recognises such an assignment today; every other kind answers `422 capability_missing`.
+
+For a ClickUp connection with `handOverAgent: true`:
+
+- The account is the one the probe read through `GET /user`, by its immutable user id (the connection's `account.id`). A reconnect to another account is refused, so the agent never changes under a connection.
+- Assigning that account to a task in a List bound ([ADR-0186](../adrs/0186-an-operator-consumer-binds-a-tracker-scope-to-a-team-at-runtime-and-static-routing-wins-on-conflict.md)) through this same connection admits the task to the binding's Team, through the same dedupe, routing, gates and budget as an assignment to a static agent. Removing the account withdraws it the same way.
+- An assignment to anyone else on that List is ignored when `trackers.clickup.agents` is set. With no static agents, every assignee still hands work over, as it does today.
+- The account hands nothing over on a List any static route names, also when a binding for another Team routes it: static routing wins.
+- Ploeg reads and writes a task in a List bound through a store-backed connection (mirror, comments, statuses, board reads) with that connection's token from the secret store, not with `PLOEG_CLICKUP_TOKEN`.
+- Ploeg registers a missing List webhook with the connection's token, in the Workspace that holds the List, subscribed to `taskAssigneeUpdated` among the dispatch events. Its deliveries arrive on `/webhooks/tracker/clickup` and are verified with that webhook's own secret from the store, so the static ClickUp tracker must be configured (`PLOEG_CLICKUP_SECRET` or `PLOEG_CLICKUP_TOKEN`) for the route to exist.
 
 ## Check it
 
