@@ -47,6 +47,8 @@ const (
 	AuditBindingRestored          = "tracker_binding.restored"
 	AuditBindingWebhookRegistered = "tracker_binding.webhook_registered"
 	AuditBindingWebhookRemoved    = "tracker_binding.webhook_removed"
+	AuditBindingPaused            = "tracker_binding.paused"
+	AuditBindingResumed           = "tracker_binding.resumed"
 )
 
 // StaticEntry names the static route a binding conflicts with.
@@ -119,7 +121,15 @@ type TrackerBinding struct {
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
 	RemovedAt     *time.Time
+	// PausedAt is when a person paused the binding; nil while it is not
+	// paused. A paused binding admits no new Work Item and keeps everything
+	// else it does for work already admitted.
+	PausedAt *time.Time
+	PausedBy string
 }
+
+// Paused reports whether a person paused the binding.
+func (b TrackerBinding) Paused() bool { return b.PausedAt != nil }
 
 // NewTrackerBinding is a binding to create, already probed.
 type NewTrackerBinding struct {
@@ -170,7 +180,8 @@ func (e *StaleRevisionError) Error() string { return "the binding's revision cha
 
 const bindingColumns = `id, tenant, team, connection, scope_id, scope_name, default_target, allow_targets,
 	statuses, label, revision, state, shadowed_by, invalid_reason, invalid_detail, webhook_state,
-	webhook_id, webhook_source, created_by, updated_by, created_at, updated_at, removed_at, coalesce(team_id, '')`
+	webhook_id, webhook_source, created_by, updated_by, created_at, updated_at, removed_at, coalesce(team_id, ''),
+	paused_at, coalesce(paused_by, '')`
 
 const bindingWriteLock = `SELECT pg_advisory_xact_lock(hashtextextended('ploeg.tracker-bindings', 0))`
 
@@ -180,7 +191,8 @@ func scanBinding(row pgx.Row) (TrackerBinding, error) {
 	var invalidReason, webhookID *string
 	err := row.Scan(&b.ID, &b.Tenant, &b.Team, &b.Connection, &b.ScopeID, &b.ScopeName, &b.Default, &b.Allow,
 		&statuses, &b.Label, &b.Revision, &b.State, &shadowed, &invalidReason, &invalid, &b.Webhook.State,
-		&webhookID, &b.Webhook.Source, &b.CreatedBy, &b.UpdatedBy, &b.CreatedAt, &b.UpdatedAt, &b.RemovedAt, &b.TeamID)
+		&webhookID, &b.Webhook.Source, &b.CreatedBy, &b.UpdatedBy, &b.CreatedAt, &b.UpdatedAt, &b.RemovedAt, &b.TeamID,
+		&b.PausedAt, &b.PausedBy)
 	if err != nil {
 		return b, err
 	}
@@ -397,6 +409,48 @@ func (s *Store) RemoveTrackerBinding(ctx context.Context, team string, id int64,
 	return out, removed, err
 }
 
+// SetTrackerBindingPaused pauses or resumes a live binding of team by id. A
+// binding already in the asked state is returned unchanged with changed
+// false and no event, so a retry is safe; a binding that is not live is
+// ErrOperatorNotFound. A change takes a new revision, so every replica
+// rebuilds its routing, and writes tracker_binding.paused or
+// tracker_binding.resumed.
+func (s *Store) SetTrackerBindingPaused(ctx context.Context, team string, id int64, paused bool, audit BindingAudit) (TrackerBinding, bool, error) {
+	var out TrackerBinding
+	changed := false
+	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, bindingWriteLock); err != nil {
+			return err
+		}
+		current, err := scanBinding(tx.QueryRow(ctx, `SELECT `+bindingColumns+` FROM tracker_bindings
+			WHERE id = $1 AND team = $2 AND tenant = '' AND removed_at IS NULL`, id, team))
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrOperatorNotFound
+		}
+		if err != nil {
+			return err
+		}
+		if current.Paused() == paused {
+			out = current
+			return nil
+		}
+		out, err = scanBinding(tx.QueryRow(ctx, `UPDATE tracker_bindings SET
+			paused_at = CASE WHEN $2 THEN now() END, paused_by = CASE WHEN $2 THEN $3 END,
+			updated_by = $3, updated_at = now(), revision = nextval('tracker_binding_revisions')
+			WHERE id = $1 RETURNING `+bindingColumns, id, paused, audit.actor()))
+		if err != nil {
+			return err
+		}
+		changed = true
+		action := AuditBindingResumed
+		if paused {
+			action = AuditBindingPaused
+		}
+		return auditBinding(ctx, tx, action, out, audit, map[string]any{"oldRevision": current.Revision, "newRevision": out.Revision})
+	})
+	return out, changed, err
+}
+
 // BindingStateChange is the state the routing rebuild computed for a binding.
 type BindingStateChange struct {
 	State         string
@@ -475,6 +529,7 @@ func auditBinding(ctx context.Context, db execer, action string, b TrackerBindin
 		"binding": map[string]any{
 			"id": fmt.Sprint(b.ID), "connection": b.Connection, "scopeId": b.ScopeID, "team": b.Team,
 			"default": b.Default, "allow": nonNilAllow(b.Allow), "revision": b.Revision, "state": b.State,
+			"paused": b.Paused(),
 		},
 	}
 	if b.ID == 0 {

@@ -75,6 +75,8 @@ const (
 	RefusalLabelNotAllowed = "label_not_allowed"
 	// RefusalTargetNotReady: the selected target failed its readiness check at ingest.
 	RefusalTargetNotReady = "target_not_ready"
+	// RefusalBindingPaused: the tracker binding that routes the item's Scope for its Team is paused (ADR-0204).
+	RefusalBindingPaused = "binding_paused"
 )
 
 // Refusal is a routing failure that must not fall back to any repository.

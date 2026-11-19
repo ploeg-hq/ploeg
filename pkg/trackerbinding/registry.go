@@ -524,6 +524,25 @@ func (r *Registry) ScopeTeam(scope string) (string, bool) {
 	return team, ok
 }
 
+// Paused reports whether a routed binding of a Scope for team is paused, as
+// of the last rebuild, so an assignment it would route is refused instead of
+// admitted or left to fall through to another route. A paused binding stays
+// in the routing table, its pin, its statuses and its connection, so work it
+// admitted before the pause runs and writes back as before.
+func (r *Registry) Paused(scope, team string) bool {
+	if scope == "" {
+		return false
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, b := range r.bindings {
+		if b.ScopeID == scope && b.Team == team && Routed(b.State) && b.Paused() {
+			return true
+		}
+	}
+	return false
+}
+
 // RoutedConnection is the connection the routed bindings of a Scope name, as
 // of the last rebuild. A Scope is bound through one connection at most
 // (scope_bound_elsewhere). A Scope any static rule names has none, also

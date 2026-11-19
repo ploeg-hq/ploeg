@@ -77,6 +77,8 @@ func (s *Server) registerOperatorTrackerBindings(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/operator/teams/{team}/tracker-bindings", s.handleCreateTrackerBinding)
 	mux.HandleFunc("PUT /api/v1/operator/teams/{team}/tracker-bindings/{id}", s.handleReplaceTrackerBinding)
 	mux.HandleFunc("DELETE /api/v1/operator/teams/{team}/tracker-bindings/{id}", s.handleRemoveTrackerBinding)
+	mux.HandleFunc("POST /api/v1/operator/teams/{team}/tracker-bindings/{id}/pause", s.handlePauseTrackerBinding(true))
+	mux.HandleFunc("POST /api/v1/operator/teams/{team}/tracker-bindings/{id}/resume", s.handlePauseTrackerBinding(false))
 }
 
 type bindingScope struct {
@@ -609,6 +611,44 @@ func (s *Server) handleRemoveTrackerBinding(w http.ResponseWriter, r *http.Reque
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// handlePauseTrackerBinding pauses or resumes a runtime binding (ADR-0204)
+// under the gates its removal has. It answers 200 with the binding and
+// whether this call changed it, so a retry is safe.
+func (s *Server) handlePauseTrackerBinding(paused bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		team := r.PathValue("team")
+		if r.URL.RawQuery != "" {
+			operatorError(w, 400, "invalid_request", "This resource does not accept query parameters.")
+			return
+		}
+		p, attribution, ok := s.bindingCallerFor(w, r, team, true, false)
+		if !ok {
+			return
+		}
+		id, ok := bindingID(w, r)
+		if !ok {
+			return
+		}
+		if r.ContentLength != 0 {
+			operatorError(w, 400, "invalid_request", "Pausing or resuming a binding takes no body.")
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), bindingTimeout)
+		defer cancel()
+		audit := store.BindingAudit{Attribution: attribution}
+		b, changed, err := s.Store.SetTrackerBindingPaused(ctx, team, id, paused, audit)
+		if s.answerStoreError(ctx, w, store.TrackerBinding{Team: team, ID: id}, err, audit) {
+			return
+		}
+		if changed {
+			s.rebuildBindings(ctx)
+			s.Log.Info("tracker binding pause changed", "binding", b.ID, "team", team, "paused", paused, "consumer", p.Name)
+		}
+		w.Header().Set("ETag", `"`+strconv.FormatInt(b.Revision, 10)+`"`)
+		operatorJSON(w, 200, map[string]any{"schemaVersion": "1.0", "binding": bindingJSON(b), "changed": changed})
+	}
+}
+
 func checksJSON(checks []trackerbinding.Check) []map[string]any {
 	out := make([]map[string]any, 0, len(checks))
 	for _, c := range checks {
@@ -673,7 +713,15 @@ func bindingJSON(b store.TrackerBinding) map[string]any {
 			"createdByBinding": b.Webhook.Source == store.BindingWebhookRegistered},
 		"revision": revision, "createdBy": nullString(b.CreatedBy), "updatedBy": nullString(b.UpdatedBy),
 		"createdAt": created, "updatedAt": updated,
+		"paused": b.Paused(), "pausedAt": pausedAt(b), "pausedBy": nullString(b.PausedBy),
 	}
+}
+
+func pausedAt(b store.TrackerBinding) any {
+	if !b.Paused() {
+		return nil
+	}
+	return b.PausedAt.UTC().Format(time.RFC3339Nano)
 }
 
 func staticBindingJSON(route trackerbinding.StaticRoute) map[string]any {
@@ -685,6 +733,7 @@ func staticBindingJSON(route trackerbinding.StaticRoute) map[string]any {
 		"statuses": nil, "label": nil, "state": store.BindingActive,
 		"shadowedBy": nil, "invalidReason": nil, "invalidDetail": nil, "webhook": nil,
 		"revision": nil, "createdBy": nil, "updatedBy": nil, "createdAt": nil, "updatedAt": nil,
+		"paused": false, "pausedAt": nil, "pausedBy": nil,
 	}
 }
 

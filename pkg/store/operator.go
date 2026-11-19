@@ -50,10 +50,12 @@ type OperatorTeam struct {
 	NameSource *team.NameSource `json:"nameSource,omitempty"`
 	Source     string           `json:"source,omitempty"`
 	State      string           `json:"state,omitempty"`
-	Paused     *bool            `json:"paused"`
-	QueueDepth int64            `json:"queueDepth"`
-	Roles      []OperatorRole   `json:"roles"`
-	Assignees  []string         `json:"assignees"`
+	// Paused is deprecated and always nil: Ploeg pauses a tracker binding,
+	// not a Team (ADR-0204). It stays until the deprecation window closes.
+	Paused     *bool          `json:"paused"`
+	QueueDepth int64          `json:"queueDepth"`
+	Roles      []OperatorRole `json:"roles"`
+	Assignees  []string       `json:"assignees"`
 	// PinnedScopes are the tracker containers whose items always run as this team, whoever is assigned.
 	PinnedScopes []string `json:"pinnedScopes"`
 	// SpendCap is the team's spend cap and its spend in the current period
