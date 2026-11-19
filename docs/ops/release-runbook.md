@@ -27,6 +27,7 @@ No release credential is long-lived except the consumer credentials (the Forgejo
 Repository rules, as `gh api repos/ploeg-hq/ploeg/rulesets` lists them:
 
 - `Protect development` requires `verify`, `dco`, `govulncheck`, `analyze`, `cve-gate-self-test` and `cve-budget` for each image.
+  [ADR 0202](../adrs/0202-development-merges-through-a-merge-queue-that-requires-gate-checks-with-no-bypass.md) replaces this, once the owner applies it, with a merge queue (`MERGE`, `ALLGREEN`, 3 to build) that requires `ci-gate`, `image-security-gate`, `analyze` and both drills, and with no bypass.
 - `Protect main` requires `verify`.
 - `Release tags are immutable` forbids moving or deleting any `v*` tag, for everyone.
 
