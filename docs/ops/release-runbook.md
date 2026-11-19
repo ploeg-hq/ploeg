@@ -3,7 +3,7 @@ type: how-to
 audience: [maintainer]
 owner: ploeg
 last_verified: 2026-10-25
-verified_by: "Read .github/workflows/{release-candidate,release,contract-bundle,release-consumers}.yml, scripts/release.sh and gh api rulesets on 2026-10-25; ran every command under Rehearse against v0.2.0-rc.72 and v0.1.0; verified v0.2.0-rc.72 with verify-a-release.md"
+verified_by: "Read .github/workflows/{release-candidate,release,contract-bundle,release-consumers}.yml, scripts/release.sh on 2026-10-25 and gh api rulesets on 2026-11-19; ran every command under Rehearse against v0.2.0-rc.72 and v0.1.0; verified v0.2.0-rc.72 with verify-a-release.md"
 ---
 
 # Release runbook
@@ -22,13 +22,12 @@ No release credential is long-lived except the consumer credentials (the Forgejo
 | [release-consumers.yml](../../.github/workflows/release-consumers.yml) | repository secret `RELEASE_CONSUMER_TOKEN_FORGEJO` | a Forgejo user with write access to the consumer repositories only; `write:repository`, `write:issue`, `read:user` | consumer pull requests on Forgejo ([details](release-versioning.md#consumer-pull-requests)) |
 | [release-consumers.yml](../../.github/workflows/release-consumers.yml) | repository secrets `RELEASE_CONSUMER_GITHUB_APP_ID` and `RELEASE_CONSUMER_GITHUB_APP_PRIVATE_KEY`, turned into an installation token per job | a GitHub App installed on the consumer repository; the token reaches that one repository with Contents, Pull requests, Issues and Workflows write | consumer pull requests on GitHub ([details](release-versioning.md#consumer-pull-requests)) |
 | Maintainer | GitHub account with write access to `ploeg-hq/ploeg` | merge pull requests, dispatch workflows, push a stable tag | every step below |
-| Maintainer with the admin role | the same account | bypass the `Protect development` and `Protect main` rulesets; set a new GHCR package public | only when a step says so |
+| Maintainer with the admin role | the same account | bypass the `Protect main` ruleset; set a new GHCR package public | only when a step says so |
 
 Repository rules, as `gh api repos/ploeg-hq/ploeg/rulesets` lists them:
 
-- `Protect development` requires `verify`, `dco`, `govulncheck`, `analyze`, `cve-gate-self-test` and `cve-budget` for each image.
-  [ADR 0202](../adrs/0202-development-merges-through-a-merge-queue-that-requires-gate-checks-with-no-bypass.md) replaces this, once the owner applies it, with a merge queue (`MERGE`, `ALLGREEN`, 3 to build) that requires `ci-gate`, `image-security-gate`, `analyze` and both drills, and with no bypass.
-- `Protect main` requires `verify`.
+- `Protect development` ([ADR 0202](../adrs/0202-development-merges-through-a-merge-queue-that-requires-gate-checks-with-no-bypass.md)) merges every pull request through a merge queue (`MERGE`, `ALLGREEN`, 3 to build, 3 to merge) that requires `ci-gate`, `image-security-gate`, `analyze`, `Restore an older release's backup, upgrade it and interrupt the upgrade` and `Back up, destroy, restore and reconcile`. It allows only the merge method `merge`, forbids deleting the branch and force-pushing to it, and has no bypass actors, so an administrator merges through the queue too.
+- `Protect main` requires `verify`; the admin role can bypass it.
 - `Release tags are immutable` forbids moving or deleting any `v*` tag, for everyone.
 
 ## Cut a candidate
