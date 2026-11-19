@@ -1,6 +1,7 @@
 name: Image security
 on:
   pull_request:
+  merge_group:
   push:
     branches: [main, development]
   schedule:
@@ -116,3 +117,20 @@ jobs:
           cache: false
       - name: No reachable known vulnerability in the Go code or its standard library
         run: mise exec -- govulncheck ./...
+  image-security-gate:
+    needs: [catalogue, cve-budget, arm64-build, cve-gate-self-test, govulncheck]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Every job this gate waits for succeeded
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          results=$(printf '%s' "$NEEDS" | grep -oE '"result": ?"[a-z]+"' | sed -E 's/.*"([a-z]+)"$/\1/' || true)
+          printf '%s\n' "$NEEDS"
+          if [ -z "$results" ] || grep -vqx success <<< "$results"; then
+            echo "A job the gate waits for did not succeed, or the gate read no results."
+            exit 1
+          fi
+          echo "Every job the gate waits for succeeded."
