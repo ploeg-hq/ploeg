@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://webgrip.dev/ploeg/contracts/taskspec.v1.schema.json",
+  "$id": "https://ploeg-hq.github.io/ploeg/contracts/taskspec.v1.schema.json",
   "title": "TaskSpec",
   "description": "The harness contract input (design §5, harness.TaskSpec): everything a run needs to know about the work, the repo, and its identity. Credentials are delivered out-of-band (env, mounted secrets), never here (R8).",
   "type": "object",
@@ -180,6 +180,8 @@
         },
         "origin": { "type": "string", "enum": ["assignment", "follow_up", "pull_request"],
           "description": "pull_request is a Work Item that explains a pull request someone else opened, read on its own branch by reading Roles only (ADR-0109)." },
+        "kind": { "type": "string", "enum": ["change", "prepare_repository"],
+          "description": "What the Work Item may deliver (ADR-0194). prepare_repository: the writer gets Ploeg's own brief instead of the description, and the worker refuses any push whose branch changes anything but an added root AGENTS.md. Absent from older ploegd, and read as change." },
         "priority": { "type": "integer" },
         "title": { "type": "string" },
         "description": { "type": "string" },

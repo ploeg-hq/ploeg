@@ -16,7 +16,7 @@ Read [Before you start](index.md#before-you-start) for names and the database se
 
 ## What `ploeg_observer` can read
 
-Migration [`0072_observer_role.sql`](../../pkg/store/migrations/0072_observer_role.sql) defines `ploeg_grant_observer()`, the one list of grants, and [`0080_observer_role_reads_more_metadata.sql`](../../pkg/store/migrations/0080_observer_role_reads_more_metadata.sql) extends it. ploegd calls it once at every boot, right after it applies migrations. Ploeg never creates the role: its database owner has no `CREATEROLE`. Without the role the call changes nothing.
+Migration [`0072_observer_role.sql`](../../pkg/store/migrations/0072_observer_role.sql) defines `ploeg_grant_observer()`, the one list of grants, and [`0080_observer_role_reads_more_metadata.sql`](../../pkg/store/migrations/0080_observer_role_reads_more_metadata.sql) extends it, and every later migration that adds an observable table or column redefines it whole. A redefinition replaces the function, so the last one must carry every grant an earlier one made: when two branches each redefine it, whichever merges last carries the union and takes the highest migration number, because an installation that already applied the other one applies it next. `TestTheLastObserverGrantFunctionCarriesEveryEarlierGrant` in [`pkg/store`](../../pkg/store/observer_grants_union_test.go) fails when the last definition drops an earlier grant. ploegd calls it once at every boot, right after it applies migrations. Ploeg never creates the role: its database owner has no `CREATEROLE`. Without the role the call changes nothing.
 
 | Granted | Not granted |
 | --- | --- |

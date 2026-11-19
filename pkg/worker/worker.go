@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/ploeg-hq/ploeg/pkg/boardview"
+	"github.com/ploeg-hq/ploeg/pkg/gatewaycontract"
 	"github.com/ploeg-hq/ploeg/pkg/harness"
 	"github.com/ploeg-hq/ploeg/pkg/harness/claudeplugins"
 	"github.com/ploeg-hq/ploeg/pkg/harness/skills"
@@ -69,6 +70,15 @@ type Config struct {
 	WorkDir          string
 
 	LLMBaseURL string // OpenAI-compatible base URL handed to the harness
+	// CredentialGateway puts the worker in gateway mode (ADR-0197): it holds
+	// no credential, claims through the gateway at APIURL, and reaches the
+	// forge at GatewayForgeURL and the model at LLMBaseURL with the Run's
+	// capability, which the gateway replaces with the Run's credentials.
+	CredentialGateway bool
+	GatewayForgeURL   string
+	// GatewayMCPURL is the credential gateway's MCP route family; a Run's
+	// registered MCP servers are reached only there (ADR-0199).
+	GatewayMCPURL string
 	// LLMKeyIsolation is KeyIsolationProxy to keep the per-Run model key out of
 	// the harness behind a loopback proxy, or "" to hand the key over.
 	LLMKeyIsolation string
@@ -174,6 +184,11 @@ func New(cfg Config, adapter harness.Adapter, broker llmbroker.Broker, log *slog
 		}
 		api.HarnessVersion = cfg.HarnessVersion
 		api.Yields = harness.AdapterYields(adapter)
+	}
+	api.ForgeTokenIsolation = cfg.ForgeTokenIsolation
+	api.LLMKeyIsolation = cfg.LLMKeyIsolation
+	if broker == nil && cfg.CredentialGateway {
+		broker = gatewayBroker{api: api}
 	}
 	if broker == nil {
 		broker = api
@@ -322,8 +337,14 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	// env one: it dies when the run settles, so a partitioned pod whose Lease
 	// lapsed cannot keep pushing. Empty = the deployment has no forge admin
 	// credential and the shared token stands.
+	if w.Cfg.CredentialGateway && (!claimed.CredentialGateway || claimed.ControlToken == "") {
+		return stuckReport(gatewaycontract.RefusedUnavailable,
+			"this worker runs behind a credential gateway, and ploegd answered a claim the gateway did not record, so no credential can be attached for this Run. The worker never uses a credential of its own (ADR-0197)")
+	}
 	forgeToken := w.Cfg.BuilderToken
-	if claimed.ForgeToken != "" {
+	if w.Cfg.CredentialGateway {
+		forgeToken = claimed.ControlToken
+	} else if claimed.ForgeToken != "" {
 		forgeToken = claimed.ForgeToken
 		// Say which one it actually is. The Static broker returns the SHARED
 		// token in this same field, and logging "per-run" for it claims a
@@ -336,8 +357,14 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 		}
 	}
 
+	if forgeToken == "" {
+		return stuckReport("no forge credential for this run",
+			"the claim carries no forge credential and this worker has no AGENT_BUILDER_TOKEN: in a release with more than one forge, "+
+				"ploegd must mint one per Run (ADR-0192)")
+	}
+
 	forgeCred := &forgeCredential{token: forgeToken, log: w.Log}
-	if claimed.ForgeTokenPerRun && claimed.ForgeTokenExpiresAt != nil {
+	if claimed.ForgeTokenPerRun && claimed.ForgeTokenExpiresAt != nil && !w.Cfg.CredentialGateway {
 		forgeCred.expiresAt = *claimed.ForgeTokenExpiresAt
 		forgeCred.refresh = func(ctx context.Context) (string, time.Time, error) {
 			return w.API.RefreshForgeCredential(ctx, claimed.RunToken)
@@ -346,11 +373,14 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 
 	// Resolve the repository BEFORE touching disk: a misconfigured run must
 	// park itself without leaving a clone behind.
-	ref, err := resolveTarget(w.Cfg, item, w.Log)
+	ref, err := resolveClaimTarget(w.Cfg, claimed, w.Log)
 	if err != nil {
 		return stuckReport("no repository for this work item", err.Error())
 	}
-	w.Log.Info("resolved work target", "repo", ref.Owner+"/"+ref.Name, "base", ref.BaseBranch, "route_rule", item.RouteRule)
+	if w.Cfg.CredentialGateway {
+		ref.ForgeURL = w.Cfg.GatewayForgeURL
+	}
+	w.Log.Info("resolved work target", "repo", ref.Owner+"/"+ref.Name, "base", ref.BaseBranch, "forge", ref.Forge, "route_rule", item.RouteRule)
 
 	cloneDir := filepath.Join(w.Cfg.WorkDir, "vik-"+item.ExternalID)
 	_ = os.RemoveAll(cloneDir)
@@ -514,6 +544,18 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	if err != nil {
 		return stuckReport("could not install Ploeg's skills", err.Error())
 	}
+	gatewayMCP := ""
+	if w.Cfg.CredentialGateway {
+		gatewayMCP = w.Cfg.GatewayMCPURL
+	}
+	var registry registryTools
+	if w.API != nil {
+		registry = loadRegistryTools(ctx, w.API, claimed.RunToken, home, w.Cfg.SkillDirs, gatewayMCP)
+	}
+	skillPaths = append(skillPaths, registry.SkillPaths...)
+	for _, note := range registry.Notes {
+		w.Log.Warn("registry tools", "note", note)
+	}
 	var verifyCommands []string
 	var runEnv []string
 	if !planner {
@@ -626,8 +668,27 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	if writes {
 		gitEnv = gitAuthenticationEnvironment(cloneURL, forgeToken)
 	}
+	var deliverable *deliverableFence
+	if writes && item.PreparesRepository() {
+		if forgeToken == "" || (w.Cfg.ForgeTokenIsolation != ForgeTokenIsolationProxy && !w.Cfg.CredentialGateway) || w.Adapter.Name() == "claude-environment" {
+			return stuckReport("prepare_unsupported_for_team",
+				"Ploeg enforces a prepare Run's one deliverable at the worker's forge proxy (ADR-0194): this worker hands the harness its forge token or runs it in a Claude environment, whose runner pushes on its own. Set PLOEG_FORGE_TOKEN_ISOLATION=proxy and give the writing Role a worker-run Harness")
+		}
+		deliverable = &deliverableFence{dir: cloneDir, cloneURL: cloneURL, base: ref.BaseBranch, start: baseline.start, token: forgeCred.current}
+	}
+	var hooksFence *repositoryHooksFence
+	if writes && loadsRepositoryHooks(w.Adapter) {
+		hooksFence = &repositoryHooksFence{dir: cloneDir, cloneURL: cloneURL, base: ref.BaseBranch, start: baseline.start, token: forgeCred.current}
+	}
 	if writes && forgeToken != "" && w.Cfg.ForgeTokenIsolation == ForgeTokenIsolationProxy {
-		forgeProxy, err := startForgeTokenProxy(ref, forgeCred, forgeWriter, branch, leaks)
+		var fences []contentFence
+		if deliverable != nil {
+			fences = append(fences, deliverable)
+		}
+		if hooksFence != nil {
+			fences = append(fences, hooksFence)
+		}
+		forgeProxy, err := startForgeTokenProxy(ref, forgeCred, forgeWriter, branch, leaks, fences...)
 		if err != nil {
 			return stuckReport("could not isolate the forge token", err.Error())
 		}
@@ -642,7 +703,7 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 		ScratchDir: scratchDir,
 		Prompt:     taskPrompt(harnessSpec, planner, writes, priorPR, onReviewBranch) + support,
 		BaseEnv:    append(append(withToolchains(harnessEnvironment(w.side().environ, home, scratchDir, writes, harnessForgeToken, w.Cfg.LLMBaseURL, harnessModelName(w.Cfg)), w.Cfg.Toolchains), runEnv...), w.runTelemetryEnvironment(claimed.Role, trace)...),
-		LLM:        harness.LLMEnv{BaseURL: w.Cfg.LLMBaseURL, Model: model, TraceID: trace},
+		LLM:        harness.LLMEnv{BaseURL: w.Cfg.LLMBaseURL, Model: model, TraceID: trace, MCPServers: registry.MCPServers},
 		Stdout:     w.harnessOutput(os.Stdout, &logTail),
 		Stderr:     w.harnessOutput(os.Stderr, &logTail),
 		Checkpoint: func(cp work.Checkpoint) {
@@ -694,7 +755,7 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	forgeToken = forgeCred.current(context.WithoutCancel(ctx))
 	if errors.Is(runErr, harness.ErrYielded) {
 		return w.yielded(ctx, report, yieldCheck{writes: writes, dir: cloneDir, cloneURL: cloneURL, token: forgeToken, branch: branch,
-			baseline: baseline, leaks: leaks, trace: trace, reference: work.Reference(item)}, ref, prior, priorErr)
+			baseline: baseline, leaks: leaks, trace: trace, reference: work.Reference(item), deliverable: deliverable, hooks: hooksFence}, ref, prior, priorErr)
 	}
 	// The PR is the ground truth (git/forge state stays the durable medium).
 	after, prErr := readChangeRequest(ref, forgeToken, branch)
@@ -705,6 +766,8 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	final := resolveOutcome(w.Adapter.Name(), report, runErr, context.Cause(ctx), prURL, samePullRequest(prior, after),
 		item.Title, branch, redactedOutput(logTail.Bytes(), leaks.watch), w.Adapter.ExpectsLLM(), writes)
 	final = withReviewedCommit(final, branch, prURL, reviewedCommit)
+	final = deliverable.checkDelivered(final, after.HeadSHA)
+	final = hooksFence.checkDelivered(final, after.HeadSHA)
 	final = guardUnpublishedWork(context.WithoutCancel(ctx), final, deliveryCheck{
 		writes: writes, dir: cloneDir, cloneURL: cloneURL, token: forgeToken, branch: branch, baseline: baseline, prErr: prErr,
 	})
@@ -718,7 +781,7 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 		synced := syncWithBase(ctx, w.side(), baseCandidate{
 			pushedCandidate: pushedCandidate{dir: filepath.Join(w.Cfg.WorkDir, "rebase-vik-"+item.ExternalID), cloneURL: cloneURL, token: forgeToken,
 				branch: branch, commit: after.HeadSHA},
-			base: pullRequestBase(after, ref),
+			base: syncBase(after, ref, deliverable),
 		}, checkEnv, fastCheck, w.Cfg.VerifyTimeout)
 		w.Log.Info("brought the pull request up to date with its base", "result", string(synced.result), "base", synced.base,
 			"base_commit", synced.baseCommit, "head", synced.head, "rebased", synced.rebased, "conflicts", synced.conflicts,
@@ -1151,7 +1214,7 @@ func discardMalformedCreated(report *harness.OutcomeReport) error {
 }
 
 func refuseReaderWithoutReadOnlyToken(cfg Config, claimed *ClaimResponse) (harness.OutcomeReport, bool) {
-	if claimed.Role == "" || claimed.Writes || cfg.ForgeTokenAccess == ForgeTokenReadOnly {
+	if claimed.Role == "" || claimed.Writes || cfg.ForgeTokenAccess == ForgeTokenReadOnly || claimed.ForgeTokenPerRun {
 		return harness.OutcomeReport{}, false
 	}
 	access := cfg.ForgeTokenAccess

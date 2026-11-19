@@ -1,0 +1,61 @@
+# ADR-0192: GitHub beside another forge must mint per Run, so it needs the GitHub App.
+runIdentity:
+  issuer: https://ploeg.example.com
+  signingKeySecret:
+    name: ploeg-run-identity
+    key: signing-key.pem
+transactionToken:
+  issuer: https://ploeg.example.com
+  audience: urn:ploeg:example
+  signingKeySecret:
+    name: ploeg-transaction-token
+    key: signing-key.pem
+config:
+  teams:
+    silver:
+      sponsor: oidc-0123456789abcdef0123456789abcdef
+executor:
+  enabled: true
+  forge: forgejo
+  forgejo:
+    url: http://forgejo-http.forgejo.svc.cluster.local:3000
+    publicUrl: https://forgejo.example.com
+    tokenSecret:
+      name: agent-builder-token
+      key: FORGEJO_TOKEN
+    botPasswordSecret:
+      name: agent-builder-password
+      key: FORGEJO_BOT_PASSWORD
+    botUser: agent-builder
+    webhookSecret:
+      name: ploeg-forge-webhook
+      key: PLOEG_FORGEJO_SECRET
+  github:
+    url: https://github.com
+    webhookSecret:
+      name: ploeg-github-forge-webhook
+      key: PLOEG_GITHUB_FORGE_SECRET
+    botLogin: ploeg[bot]
+  workerAuth:
+    mode: managed
+    hmacCapability: "off"
+    signingKeySecret:
+      name: ploeg-worker-signing
+      key: key
+    bootstrapSecret:
+      name: ploeg-worker-bootstrap
+      registryKey: registry.json
+  teams:
+    - name: silver
+      model: litellm_proxy/claude-sonnet-5
+      budget: "6"
+      maxReplicaCount: 1
+      harness:
+        name: openhands
+        dind: false
+      plan:
+        - roles:
+            - {name: builder, writes: true, cap: "3.00"}
+        - roles:
+            - {name: reviewer, writes: false, cap: "0.75", harness: {dind: false}}
+supportProfile: unsupported

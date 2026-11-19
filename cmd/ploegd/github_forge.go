@@ -7,10 +7,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/ploeg-hq/ploeg/pkg/forgebroker"
 	"github.com/ploeg-hq/ploeg/pkg/githubapi"
 	"github.com/ploeg-hq/ploeg/pkg/githubapp"
-	"github.com/ploeg-hq/ploeg/pkg/provider"
 	"github.com/ploeg-hq/ploeg/pkg/provider/github"
 )
 
@@ -62,25 +60,4 @@ func githubForge(log *slog.Logger, env githubForgeEnv) (*github.Provider, *githu
 	}
 	log.Warn("github forge has no credential (PLOEG_GITHUB_APP_ID or PLOEG_GITHUB_TOKEN); it reads public repositories only", "url", webURL)
 	return p, nil, nil
-}
-
-func withGitHubCredentials(log *slog.Logger, base forgebroker.Broker, baseSweeper forgebroker.Sweeper, app *githubapp.Minter,
-	githubForges []string, defaultForge string) (forgebroker.Broker, forgebroker.Sweeper) {
-	if app == nil {
-		return base, baseSweeper
-	}
-	r := &forgebroker.Router{Default: base, DefaultSweeper: baseSweeper, GitHub: &forgebroker.GitHubApp{App: app},
-		GitHubForges: githubForges, DefaultForge: defaultForge}
-	log.Info("per-run GitHub App installation tokens enabled", "forges", githubForges)
-	return r, r
-}
-
-func forgeIDsOf(forges map[string]provider.ForgeProvider, fp provider.ForgeProvider) []string {
-	var ids []string
-	for id, candidate := range forges {
-		if candidate == fp {
-			ids = append(ids, id)
-		}
-	}
-	return ids
 }

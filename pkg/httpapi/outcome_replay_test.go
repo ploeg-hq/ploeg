@@ -48,7 +48,7 @@ func assertLostResponseRetryReplays(t *testing.T, runToken string, post func(bod
 
 func TestManagedOutcomeRetryWithCheckpointReplaysOriginalSuccess(t *testing.T) {
 	s, bootstrap := secureWorkerFixture(t, &managedBrokerFixture{})
-	w := workerRequest(s, "POST", "/api/v1/claim", bootstrap, "pod", `{"team":"bronze","role":"reviewer"}`)
+	w := workerRequest(s, "POST", "/api/v1/claim", bootstrap, "pod", `{"team":"bronze","role":"reviewer","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	var claim struct {
 		RunToken     string `json:"runToken"`
 		ControlToken string `json:"controlToken"`

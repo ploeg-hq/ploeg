@@ -90,5 +90,56 @@ ASKPASS
   fi
 }
 
-deliver
+deliver_through_gateway() {
+  [ -n "$workspace" ] && [ -d "$workspace/.git" ] || { log "no workspace; nothing to push"; return; }
+  g() { git -C "$workspace" -c core.fsmonitor=false -c core.hooksPath=/dev/null "$@"; }
+  local gitdir head response repository branch base title reference dialect remote api
+  gitdir=$(g rev-parse --absolute-git-dir) || return
+  [ -f "$gitdir/ploeg-final-message" ] && final_message=$(head -c 65536 "$gitdir/ploeg-final-message")
+  head=$(g rev-parse --verify -q HEAD) || { log "no commit; nothing to push"; return; }
+
+  response=$(curl -fsS --max-time 20 -H @"$clean/session-auth" "${PLOEG_URL%/}/api/v1/claude-sessions/run") ||
+    { log "the credential gateway serves no Run for this session"; return; }
+  repository=$(jq -re '.repository' <<<"$response") || return
+  branch=$(jq -re '.branch' <<<"$response") || return
+  base=$(jq -re '.baseBranch' <<<"$response") || return
+  title=$(jq -r '.title' <<<"$response")
+  reference=$(jq -r '.reference' <<<"$response")
+  dialect=$(jq -r '.dialect' <<<"$response")
+  remote="${PLOEG_URL%/}/$repository.git"
+
+  (
+    export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_TERMINAL_PROMPT=0
+    export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.extraHeader GIT_CONFIG_VALUE_0="Authorization: Bearer $CLAUDE_CODE_SESSION_ACCESS_TOKEN"
+    git init -q --bare "$clean/repo.git" &&
+      GIT_ALLOW_PROTOCOL=file git -C "$clean/repo.git" fetch -q --no-tags "$workspace" "+$head:refs/heads/push" &&
+      GIT_ALLOW_PROTOCOL=http:https git -C "$clean/repo.git" -c credential.helper= push -q "$remote" "refs/heads/push:refs/heads/$branch"
+  ) || { log "push to $branch through the credential gateway failed"; return; }
+  pushed=$head
+  log "pushed ${head:0:12} to $branch through the credential gateway"
+
+  [ "$dialect" = forgejo ] || { log "pull requests on $dialect are not opened by this hook"; return; }
+  api="${PLOEG_URL%/}/api/v1/repos/$repository"
+  pull_request=$(curl -fsS --max-time 20 -H @"$clean/session-auth" "$api/pulls?state=open&limit=50" |
+    jq -r --arg b "$branch" '[.[] | select(.head.ref == $b)][0].html_url // empty') || pull_request=""
+  if [ -z "$pull_request" ]; then
+    local body
+    body=$(jq -rn --arg m "$final_message" --arg ref "$reference" '
+      (first($m | capture("(?s)(?<j>\\{.*\\})").j | fromjson?) // null) as $o |
+      if ($o | type) == "object" and ($o.problem // "") != "" then
+        "## Problem\n\n\($o.problem)\n\n## Solution\n\n\($o.solution // "")\n\n\($ref)"
+      else $ref end')
+    pull_request=$(jq -n --arg head "$branch" --arg base "$base" --arg title "$title" --arg body "$body" \
+      '{head: $head, base: $base, title: $title, body: $body}' |
+      curl -fsS --max-time 20 -X POST -H @"$clean/session-auth" -H 'Content-Type: application/json' \
+        --data-binary @- "$api/pulls" | jq -r '.html_url // empty') || pull_request=""
+    [ -n "$pull_request" ] && log "opened $pull_request" || log "could not open the pull request"
+  fi
+}
+
+if [ "${PLOEG_CREDENTIAL_GATEWAY:-}" = on ]; then
+  deliver_through_gateway
+else
+  deliver
+fi
 report

@@ -230,9 +230,15 @@ request's base commit, SHALL re-open the writing Round as a fix round within
 the fix-round cap and budget, whatever a reviewer's verdict, with each failing
 check in the writer's briefing. A cancelled check, or one failing on the base
 commit too, SHALL NOT open a fix round: Ploeg SHALL ask the forge to re-run CI
-once, and SHALL close `ci_not_passed` when it still does not pass or the forge
-cannot re-run. A Work Item in `awaiting_review` whose head CI stops being
-`success` SHALL leave `awaiting_review` after the same wait and re-run.
+once, and SHALL close `ci_not_passed` when it still does not pass. On a forge
+that cannot re-run CI, Ploeg SHALL instead wait up to the route's
+`ci.waitTimeout` for every cancelled check to be reported again, and SHALL
+close `ci_not_passed` when nobody re-ran it in time (ADR-0189). A Work Item in
+`awaiting_review` whose head CI stops being `success` SHALL leave
+`awaiting_review` after the same wait and re-run. A Work Item parked in
+`needs_human` with `ci_not_passed` or `ci_not_finished` SHALL reach `done` when
+its pull request is merged, and SHALL return to `awaiting_review`, without a
+new Shift, when the forge's CI is `success` on the head it was delivered at.
 
 #### Scenario: Red forge CI with fix rounds left
 
@@ -247,6 +253,23 @@ cannot re-run. A Work Item in `awaiting_review` whose head CI stops being
 - **WHEN** one re-run still does not pass
 - **THEN** the Shift closes `ci_not_passed`, no fix round runs, and the Work
   Item reaches `needs_human`
+
+#### Scenario: Cancelled forge CI on a forge that cannot re-run
+
+- **GIVEN** a cancelled forge check on a forge that cannot re-run CI
+- **WHEN** a person re-runs it in the forge and it passes
+- **THEN** the Shift settles as if CI had passed first time
+- **WHEN** nobody re-runs it within the route's `ci.waitTimeout`
+- **THEN** the Shift closes `ci_not_passed` and the message says nobody re-ran
+  the named checks
+
+#### Scenario: A CI-parked Work Item's pull request moves on
+
+- **GIVEN** a Work Item in `needs_human` whose last Shift closed `ci_not_passed`
+- **WHEN** its pull request is merged
+- **THEN** the Work Item reaches `done`
+- **WHEN** instead the forge's CI passes on the head it was delivered at
+- **THEN** the Work Item returns to `awaiting_review` and no Shift starts
 
 #### Scenario: Forge CI still running
 

@@ -106,6 +106,10 @@
           "$ref": "#/definitions/networkPolicyEndpoint",
           "description": "The Omnigraph server at `knowledgeGraph.url`, reached by ploegd only. Empty `peers` derives the destination from the URL."
         },
+        "secretStore": {
+          "$ref": "#/definitions/networkPolicyEndpoint",
+          "description": "The OpenBao or Vault at `secretStore.openbao.address`, reached by ploegd only when `secretStore.type` is openbao. Empty `peers` derives the destination from the address. For `secretStore.type` kubernetes ploegd reaches the API server through `kubernetesApi`."
+        },
         "telemetry": {
           "$ref": "#/definitions/networkPolicyEndpoint",
           "description": "Every OTLP collector a harness `telemetry.endpoint` or `claudeRunner.env.OTEL_EXPORTER_OTLP_ENDPOINT` names. Empty `peers` derives the destination from each URL."
@@ -146,7 +150,7 @@
           "properties": {
             "extraEgress": {
               "$ref": "#/definitions/networkPolicyEgressRules",
-              "description": "Further egress rules for every worker pod, such as the registry a DinD sidecar pulls from or the allowlist proxy of ADR-0037. Each rule widens what a model-directed harness can reach."
+              "description": "Further egress rules for every worker pod, such as the registry a DinD sidecar pulls from or the allowlist proxy of ADR-0037. Each rule widens what a model-directed harness can reach. Not applied with executor.credentialGateway.enabled, where a Run pod reaches only DNS and the credential gateway."
             }
           }
         },
@@ -165,6 +169,17 @@
           "properties": {
             "extraEgress": {
               "$ref": "#/definitions/networkPolicyEgressRules"
+            }
+          }
+        },
+        "anthropic": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "peers": {
+              "type": "array",
+              "items": {"type": "object"},
+              "description": "NetworkPolicyPeers the claude-runner's sessions and orchestrator reach api.anthropic.com at on 443; empty is the internet"
             }
           }
         },
@@ -462,6 +477,26 @@
               "pattern": "^([a-f0-9]{64})?$",
               "description": "Expected sha256 of the version's Linux binary; empty trusts the signed manifest alone"
             }
+          }
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["fleet", "orchestrator"],
+          "description": "fleet: a Deployment of runners holding the environment secret. orchestrator: Anthropic's on-demand runners, one runner Job per session started by an orchestrator that alone holds the environment secret; the only mode with executor.credentialGateway.enabled (ADR-0197 section 7)"
+        },
+        "orchestrator": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "replicas": {"type": "integer", "minimum": 0},
+            "args": {"type": "array", "items": {"type": "string"}},
+            "extraArgs": {"type": "array", "items": {"type": "string"}},
+            "terminationGracePeriodSeconds": {"type": "integer", "minimum": 0},
+            "runnerActiveDeadlineSeconds": {"type": "integer", "minimum": 60},
+            "runnerTtlSecondsAfterFinished": {"type": "integer", "minimum": 0},
+            "resources": {"type": "object"},
+            "nodeSelector": {"type": "object", "additionalProperties": {"type": "string"}},
+            "tolerations": {"type": "array", "items": {"type": "object"}}
           }
         },
         "replicas": {
@@ -1002,6 +1037,65 @@
         }
       }
     },
+    "connectionOAuthSecrets": {
+      "type": "array",
+      "maxItems": 20,
+      "description": "Environment variables that hold the OAuth client secrets connections.instances.<id>.oauth.clientSecretEnv names (ADR-0195), each read from a Secret.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "env",
+          "name",
+          "key"
+        ],
+        "properties": {
+          "env": {
+            "type": "string",
+            "pattern": "^PLOEG_[A-Z0-9_]{1,120}$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 253,
+            "pattern": "^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$"
+          },
+          "key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 253,
+            "pattern": "^[A-Za-z0-9._-]+$"
+          }
+        }
+      }
+    },
+    "secretStore": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "ADR-0184: where ploegd writes the secrets of connections made through the operator API. Empty `type` = none, and every store-backed connection call fails closed. A set type mounts ploegd's ServiceAccount token.",
+      "properties": {
+        "type": {"type": "string", "enum": ["", "openbao", "kubernetes"], "default": ""},
+        "openbao": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "address": {"type": "string", "pattern": "^(|https?://.+)$", "description": "OpenBao or Vault base URL; required for type openbao."},
+            "authMount": {"type": "string", "default": "kubernetes", "description": "Kubernetes auth mount."},
+            "role": {"type": "string", "description": "Kubernetes auth role bound to ploegd's ServiceAccount; required for type openbao."},
+            "kvMount": {"type": "string", "default": "secret", "description": "KV v2 mount."},
+            "pathPrefix": {"type": "string", "default": "ploeg", "description": "The only path under kvMount Ploeg writes; the role's policy allows nothing else."},
+            "allowInsecureHttp": {"type": "boolean", "default": false, "description": "Accept an http:// address. Off, ploegd refuses one, because every request carries its token."}
+          }
+        },
+        "kubernetes": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "namespace": {"type": "string", "description": "The dedicated namespace that holds the connection Secrets and the chart's Role; required for type kubernetes, and the chart refuses the release namespace. It must hold nothing else: RBAC cannot limit the Role to the Secrets Ploeg created."}
+          }
+        }
+      }
+    },
     "deploys": {
       "type": "object",
       "additionalProperties": false,
@@ -1067,10 +1161,36 @@
                 "type": "boolean",
                 "description": "Grants reading what agents and people wrote beyond Work Item metadata: Run transcripts and briefings, the context people attached and Work Item Note reviews. Unset follows execute: an executing consumer reads them, a read-only one does not."
               },
+              "bindScopes": {
+                "type": "boolean",
+                "description": "Lets the consumer bind tracker Scopes to its Teams at runtime through /api/v1/operator/teams/{team}/tracker-bindings (ADR-0186). The Team must also accept bindings in config.teams.<team>.trackerBindings. Default false."
+              },
+              "registerTargets": {
+                "type": "boolean",
+                "description": "Lets the consumer register, change and remove runtime Work Targets through /api/v1/operator/targets (ADR-0193), for repositories a store-backed forge connection was granted. Not narrowed by teams. Needs config.targetRegistration.enabled and a proven person in every attribution mode. Default false."
+              },
+              "manageTools": {
+                "type": "boolean",
+                "description": "Lets the consumer register MCP servers and skill sources and attach them to a Team's Roles through /api/v1/operator/mcp-servers, /api/v1/operator/skill-sources and /api/v1/operator/teams/{team}/tools (ADR-0199). Not narrowed by teams. Needs config.toolRegistry.enabled and a proven person in every attribution mode. Default false."
+              },
+              "manageTeams": {
+                "type": "boolean",
+                "description": "Lets the consumer create, change and remove runtime Teams of its Tenant through /api/v1/operator/teams (ADR-0198). Needs config.teamCreation.enabled, executor.runtimeTeams.enabled and a proven person in every attribution mode. Default false."
+              },
               "maxBudgetUsd": {
                 "type": "number",
                 "minimum": 0.01,
                 "maximum": 10000
+              },
+              "readTrackers": {
+                "type": "array",
+                "maxItems": 100,
+                "uniqueItems": true,
+                "description": "Tracker connections whose Scopes and items the consumer may read through Ploeg (ADR-0196): [clickup], or [\"*\"] for every tracker connection. Unset or empty reads none.",
+                "items": {
+                  "type": "string",
+                  "pattern": "^(\\*|[A-Za-z0-9][A-Za-z0-9_.:-]{0,127})$"
+                }
               },
               "tokenSecret": {
                 "type": "object",
@@ -1119,6 +1239,21 @@
                   "minLength": 1,
                   "maxLength": 256,
                   "pattern": "^[!-~]+$"
+                }
+              },
+              "manageConnections": {
+                "type": "boolean",
+                "description": "Lets this consumer make, probe, change and remove tracker and forge connections for a proven person (ADR-0195); not narrowed by teams."
+              },
+              "connectionRedirectUris": {
+                "type": "array",
+                "maxItems": 10,
+                "uniqueItems": true,
+                "description": "Exact HTTPS callbacks a connection flow may return the person to (ADR-0195).",
+                "items": {
+                  "type": "string",
+                  "maxLength": 2048,
+                  "pattern": "^https://[^\\s#]+$"
                 }
               },
               "requireClaims": {
@@ -1315,6 +1450,68 @@
           "type": "boolean",
           "description": "true keeps the worker workloads in the release namespace under supportProfile P1. Without it, P1 warns before chart 0.3.0 and refuses from it while executor.namespace is empty or names the release namespace (F-44, ADR-0169)."
         },
+        "credentialGateway": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "PROPOSED (ADR-0197), opt-in: renders ploeg-credential-gateway in the executor namespace and makes every Run pod credential-free; the Run pod reaches ploegd, its forge and the model gateway only through the gateway.",
+          "properties": {
+            "enabled": {"type": "boolean", "description": "true renders the gateway's Deployment, Service, PodDisruptionBudget, ServiceAccount, Role and NetworkPolicy, ploegd's TokenReview ClusterRole and PLOEG_CREDENTIAL_GATEWAYS, and renders every Run pod with PLOEG_CREDENTIAL_GATEWAY=on and no secret."},
+            "replicas": {"type": "integer", "minimum": 1, "description": "Gateway replicas, spread over nodes; the PodDisruptionBudget allows one unavailable."},
+            "scratchSizeLimit": {"type": "string", "pattern": "^[0-9]+(Mi|Gi)$", "description": "sizeLimit of the gateway's /tmp emptyDir, where it checks a prepare or OpenHands Run's push from its pack: up to 64 MiB of pack, its indexed copy and a fetch of the forge's base branch per push. The default 2Gi holds four such pushes at once with a base branch of up to 384 MiB packed; scripts/check-credential-gateway.py refuses less than one (512Mi)."},
+            "acknowledgeSingleNode": {
+              "type": "boolean",
+              "description": "true relaxes the gateway's anti-affinity against Run pods and its exclusion of executor.nodeSelector's pool to preferred, and labels every Run pod and the gateway ploeg.webgrip.dev/credential-gateway-shared-node. The chart cannot count nodes; set it only where no node is free of Run pods."
+            },
+            "limits": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "forge": {"$ref": "#/definitions/credentialGatewayLimit"},
+                "model": {"$ref": "#/definitions/credentialGatewayLimit"},
+                "ploegd": {"$ref": "#/definitions/credentialGatewayLimit"},
+                "mcp": {"$ref": "#/definitions/credentialGatewayLimit"},
+                "maxUpstreamConnections": {"type": "integer", "minimum": 1}
+              }
+            },
+            "mcp": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "Registered MCP servers (ADR-0199): the gateway's egress to them, and stdio servers run as sandboxed adapters outside every Run pod.",
+              "properties": {
+                "egress": {"type": "array", "items": {"type": "object"}, "description": "NetworkPolicy egress rules the credential gateway gets for registered MCP servers."},
+                "adapters": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["name", "image", "command"],
+                    "properties": {
+                      "name": {"type": "string", "pattern": "^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$"},
+                      "team": {"type": "string", "pattern": "^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$", "description": "The one Team whose Runs use this adapter; register its URL only in that Team's tools. An adapter's sessions share its pod, its user and its credential, so a Team that needs the same server gets an adapter of its own."},
+                      "sessionsSizeLimit": {"type": "string", "pattern": "^[0-9]+(Mi|Gi)$", "description": "sizeLimit of the emptyDir that holds each session's own directory (its HOME, TMPDIR and working directory, created 0700 and removed when the session ends). Default 1Gi. The adapter has no writable /tmp."},
+                      "image": {"type": "string", "pattern": "@sha256:[0-9a-f]{64}$", "description": "The stdio MCP server's image, pinned by digest."},
+                      "command": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+                      "args": {"type": "array", "items": {"type": "string"}},
+                      "sessions": {"type": "integer", "minimum": 1, "maximum": 256, "description": "Concurrent MCP sessions, each one process of the server. Default 16."},
+                      "credentialSecret": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["name", "key", "env"],
+                        "properties": {"name": {"type": "string"}, "key": {"type": "string"}, "env": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]*$"}},
+                        "description": "The server's credential, mounted only into the adapter pod, never a Run pod."
+                      },
+                      "egress": {"type": "array", "items": {"type": "object"}, "description": "NetworkPolicy egress rules of the adapter pod besides DNS."},
+                      "resources": {"type": "object"}
+                    }
+                  }
+                }
+              }
+            },
+            "resources": {"type": "object"},
+            "nodeSelector": {"type": ["object", "null"], "additionalProperties": {"type": "string"}},
+            "tolerations": {"type": ["array", "null"], "items": {"type": "object"}}
+          }
+        },
         "cronjob": {
           "type": "object",
           "properties": {
@@ -1339,6 +1536,28 @@
             }
           },
           "additionalProperties": false
+        },
+        "runtimeTeams": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Generic worker pools for runtime Teams (ADR-0198 section 7): one ScaledJob per tenant and harness. enabled must agree with config.teamCreation.enabled. A pool renders only for an isolation-qualified harness, with both credential proxies on (isolation proxy), and never with DinD. Isolation gateway is refused until the credential gateway outside the Run pod (ADR-0197) serves pools.",
+          "properties": {
+            "enabled": {"type": "boolean"},
+            "pools": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["tenant", "harness"],
+                "properties": {
+                  "tenant": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,30}$"},
+                  "harness": {"type": "string", "pattern": "^[a-z0-9][a-z0-9/._-]{0,40}$"},
+                  "maxReplicaCount": {"type": "integer", "minimum": 1, "maximum": 100},
+                  "isolation": {"enum": ["proxy", "gateway"]}
+                }
+              }
+            }
+          }
         },
         "teams": {
           "type": "array",
@@ -1483,7 +1702,7 @@
             "gitlab",
             "github"
           ],
-          "description": "Which forge the workers act against; selects the sibling block of the same name. Also the default dialect for a Work Item whose target names no forge (ADR-0023). One active forge per release: a worker pod holds one forge URL and one credential."
+          "description": "The default forge: the forge block of the same name serves a Work Item whose target names no forge (ADR-0023), and it must set url. Every forge block that sets url is active (ADR-0192). With one active forge, workers boot with its url and credential as before; with more than one, every active forge must mint per-Run credentials (forgejo with botPasswordSecret on Forgejo 15 or later, github with tracker.github.appId, gitlab cannot), and each claim carries the Run's forge and a credential minted for that Run alone. A release that already set url on two forge blocks and does not mint for both now fails to render: unset the url of the forge it does not use, or configure minting."
         },
         "github": {
           "type": [
@@ -1493,7 +1712,7 @@
           "properties": {
             "url": {
               "type": "string",
-              "description": "Web root, https://github.com or a GitHub Enterprise Server root; the REST API is derived. Empty = ploegd configures no GitHub forge provider."
+              "description": "Web root, https://github.com or a GitHub Enterprise Server root; the REST API is derived. Set = GitHub is an active forge (ADR-0192); empty = ploegd configures no GitHub forge provider."
             },
             "tokenSecret": {
               "$ref": "#/definitions/secretRef",
@@ -1521,7 +1740,7 @@
           "properties": {
             "url": {
               "type": "string",
-              "description": "Base URL, no /api/v4. Empty = ploegd configures no GitLab provider, so findings never reach a merge request."
+              "description": "Base URL, no /api/v4. Set = GitLab is an active forge, which must then be the only one (ADR-0192); empty = ploegd configures no GitLab provider, so findings never reach a merge request."
             },
             "publicUrl": {
               "type": "string",
@@ -1549,7 +1768,7 @@
           "properties": {
             "url": {
               "type": "string",
-              "description": "The workers' forge URL (FORGE_URL): clone, push, pull-request API and the forge proxy upstream. An in-cluster URL keeps Run traffic off the public gateway. Required when the executor is enabled on this forge; empty with the executor off = ploegd has no forge provider."
+              "description": "The workers' forge URL (FORGE_URL, or the claim's forgeUrl in a multi-forge release): clone, push, pull-request API and the forge proxy upstream. An in-cluster URL keeps Run traffic off the public gateway. Set = Forgejo is an active forge (ADR-0192). Required when the executor is enabled on this forge; empty with the executor off = ploegd has no forge provider."
             },
             "publicUrl": {
               "type": "string",
@@ -1874,10 +2093,19 @@
     },
     "config": {
       "type": "object",
-      "description": "ploegd's routing and roster as a file (mounted at /etc/ploeg/ploeg.yaml). Projects are NAMED and resolved to tracker ids at boot, so no magic numbers live in cluster config. `targets:` registers repositories a `repo/<key>` label may select, and a project's `default:`/`allow:` name them (ADR-0038). A project's `gates:` maps its statuses or bucket titles to the delivery gates development, test, acceptance and done (ADR-0051), and Ploeg records every tracker status move of a project with `gates:` (ADR-0080). A target's or project's `ci.waitTimeout:` is how long a Shift on that repository waits for the forge's CI on its pull request's head before a person is asked, default `60m` (ADR-0119). A target's or project's `fastCheck:` lists the repository's fast check, shell command lines a writing Run runs after it rebases onto the base branch and the worker runs before it pushes a rebase of its own; omitted, a rebase is pushed with the check recorded as skipped (ADR-0146). A team's `forgeFollowUps.rebaseOnConflict: true` queues a rebase Follow-Up when a pull request in review is confirmed conflicting with its base (ADR-0146). A team's `forgeFollowUps.reworkOnChangesRequested: true` sends work back on a request for changes only from a reviewer listed in `reworkReviewers` or reported by the forge with write access, at most `maxReworks` times per Work Item, default 3; any other request is refused and audited (ADR-0151). On a Forgejo target, list the reviewers in `reworkReviewers` rather than give the bot admin: Forgejo shows another login's repository permission only to an administrator. A target's `readPullRequests:` lists routes: the `authors` whose open pull requests a `team` reads and reports on, on the pull request, with the operator's `instructions` and `maxOpen` and `maxReviewsPerPullRequest` caps (ADR-0109). A team's `premiseCheck: {model: <gateway model>}` runs one classifier call on that model before its first writer, and ploegd refuses a model the gateway does not price at zero (ADR-0123). The Run card keys `cards`, a target's or project's `cardStyle`, `release`, `rarity` and `cardShape`, a project's `statusKinds` and a team's `cards` and `workingHours` are unknown keys that fail the boot (ADR-0080). A team's `sponsor:` is the person (Ploeg's person id) its Runs act for when nobody handed the work over; with transactionToken.signingKeySecret a Team without one runs nothing (ADR-0156). Empty = the legacy PLOEG_TARGET_MAP/PLOEG_TEAM_MAP/PLOEG_TEAM_PLANS env vars still apply."
+      "description": "ploegd's routing and roster as a file (mounted at /etc/ploeg/ploeg.yaml). Projects are NAMED and resolved to tracker ids at boot, so no magic numbers live in cluster config. `targets:` registers repositories a `repo/<key>` label may select, and a project's `default:`/`allow:` name them (ADR-0038). A project's `gates:` maps its statuses or bucket titles to the delivery gates development, test, acceptance and done (ADR-0051), and Ploeg records every tracker status move of a project with `gates:` (ADR-0080). A target's or project's `ci.waitTimeout:` is how long a Shift on that repository waits for the forge's CI on its pull request's head before a person is asked, default `60m` (ADR-0119). A target's or project's `fastCheck:` lists the repository's fast check, shell command lines a writing Run runs after it rebases onto the base branch and the worker runs before it pushes a rebase of its own; omitted, a rebase is pushed with the check recorded as skipped (ADR-0146). A team's `forgeFollowUps.rebaseOnConflict: true` queues a rebase Follow-Up when a pull request in review is confirmed conflicting with its base (ADR-0146). A team's `forgeFollowUps.reworkOnChangesRequested: true` sends work back on a request for changes only from a reviewer listed in `reworkReviewers` or reported by the forge with write access, at most `maxReworks` times per Work Item, default 3; any other request is refused and audited (ADR-0151). On a Forgejo target, list the reviewers in `reworkReviewers` rather than give the bot admin: Forgejo shows another login's repository permission only to an administrator. A target's `readPullRequests:` lists routes: the `authors` whose open pull requests a `team` reads and reports on, on the pull request, with the operator's `instructions` and `maxOpen` and `maxReviewsPerPullRequest` caps (ADR-0109). A team's `premiseCheck: {model: <gateway model>}` runs one classifier call on that model before its first writer, and ploegd refuses a model the gateway does not price at zero (ADR-0123). The Run card keys `cards`, a target's or project's `cardStyle`, `release`, `rarity` and `cardShape`, a project's `statusKinds` and a team's `cards` and `workingHours` are unknown keys that fail the boot (ADR-0080). A team's `prepareRepository: {maxBudgetUsd: <usd>}` caps the pool of each prepare_repository Work Item, which adds a root AGENTS.md to a target missing only that; default 2.00 (ADR-0194). A team's `sponsor:` is the person (Ploeg's person id) its Runs act for when nobody handed the work over; with transactionToken.signingKeySecret a Team without one runs nothing (ADR-0156). A team's `trackerBindings: {connections: [...], max: 20}` lets an operator consumer with bindScopes bind tracker Scopes to it at runtime through the connections it names, `\"*\"` or `\"*:<kind>\"` matching store-backed connections only; static routes win on conflict (ADR-0186). `targetRegistration: {enabled: true, connections: [...], max: 100, requireClaims: {...}, stepUp: {...}}` lets an operator consumer with registerTargets register runtime Work Targets for repositories the named store-backed forge connections (or `\"*\"`) were granted; a runtime key never equals a static key and static targets win on conflict (ADR-0193). `toolRegistry: {enabled: true, allowWriteTools: false, plainHTTPHosts: [...], privateHosts: [...], max: 50, requireClaims: {...}, stepUp: {...}, mcpServers: {...}, skillSources: {...}}` registers MCP servers (Streamable HTTP, credential from `credentialEnv`, an allowed tool list with read or write access) and digest-pinned skill sources (oci, https or git), and lets an operator consumer with manageTools change them at runtime; a team's `tools: {<role or \"*\">: {mcp: [{server, tools}], skills: [...]}}` attaches them, and a Run reaches a server only through the credential gateway (ADR-0199). Empty = the legacy PLOEG_TARGET_MAP/PLOEG_TEAM_MAP/PLOEG_TEAM_PLANS env vars still apply."
     }
   },
   "definitions": {
+    "credentialGatewayLimit": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "requestsPerSecond": {"type": "number", "exclusiveMinimum": 0},
+        "burst": {"type": "integer", "minimum": 1},
+        "bytesPerSecond": {"type": "integer", "minimum": 1}
+      }
+    },
     "spendCap": {
       "type": "object",
       "additionalProperties": false,
@@ -2088,7 +2316,7 @@
         },
         "dind": {
           "type": "boolean",
-          "description": "false (the chart default) renders no privileged sidecar and keeps both credential proxies on for a qualified harness. true adds the privileged docker:dind sidecar, mounts its client certificates into the harness container and turns both credential proxies off for that workload (PLOEG_CREDENTIAL_ISOLATION_OFF_REASON=dind); the render refuses it without acknowledgePrivilegedDind (ADR-0136)."
+          "description": "false (the chart default) renders no privileged sidecar and keeps both credential proxies on for a qualified harness. true adds the privileged docker:dind sidecar, mounts its client certificates into the harness container and turns both credential proxies off for that workload (PLOEG_CREDENTIAL_ISOLATION_OFF_REASON=dind); the render refuses it without acknowledgePrivilegedDind (ADR-0136), and since credential isolation is required for every Role it refuses it with one too (credential_isolation_required, ADR-0034 amended 2026-11-18) until the credential gateway of ADR-0197 is built."
         },
         "acknowledgePrivilegedDind": {
           "type": "boolean",
@@ -2099,7 +2327,7 @@
             "",
             "proxy"
           ],
-          "description": "Explicit per-workload setting for both credential proxies (ADR-0034). Unset = executor.forgeTokenIsolation and executor.litellm.keyIsolation apply to a qualified harness without DinD, and every other workload runs with both off."
+          "description": "Explicit per-workload setting for both credential proxies (ADR-0034). Unset = executor.forgeTokenIsolation and executor.litellm.keyIsolation apply to a qualified harness without DinD. Anything but proxy, on any workload, fails the render with credential_isolation_required (ADR-0034, amended 2026-11-18)."
         },
         "timeout": {
           "type": "string",
@@ -2170,7 +2398,7 @@
         },
         "dind": {
           "type": "boolean",
-          "description": "false (the chart default) renders no privileged sidecar and keeps both credential proxies on for a qualified harness. true adds the privileged docker:dind sidecar, mounts its client certificates into the harness container and turns both credential proxies off for that workload (PLOEG_CREDENTIAL_ISOLATION_OFF_REASON=dind); the render refuses it without acknowledgePrivilegedDind (ADR-0136)."
+          "description": "false (the chart default) renders no privileged sidecar and keeps both credential proxies on for a qualified harness. true adds the privileged docker:dind sidecar, mounts its client certificates into the harness container and turns both credential proxies off for that workload (PLOEG_CREDENTIAL_ISOLATION_OFF_REASON=dind); the render refuses it without acknowledgePrivilegedDind (ADR-0136), and since credential isolation is required for every Role it refuses it with one too (credential_isolation_required, ADR-0034 amended 2026-11-18) until the credential gateway of ADR-0197 is built."
         },
         "acknowledgePrivilegedDind": {
           "type": "boolean",
@@ -2181,7 +2409,7 @@
             "",
             "proxy"
           ],
-          "description": "Explicit per-workload setting for both credential proxies (ADR-0034). Unset = executor.forgeTokenIsolation and executor.litellm.keyIsolation apply to a qualified harness without DinD, and every other workload runs with both off."
+          "description": "Explicit per-workload setting for both credential proxies (ADR-0034). Unset = executor.forgeTokenIsolation and executor.litellm.keyIsolation apply to a qualified harness without DinD. Anything but proxy, on any workload, fails the render with credential_isolation_required (ADR-0034, amended 2026-11-18)."
         },
         "timeout": {
           "type": "string",
@@ -2343,7 +2571,7 @@
         "loginSecret": { "type": "string", "description": "Secret with the keys refreshToken and scopes (CLAUDE_CODE_OAUTH_REFRESH_TOKEN, CLAUDE_CODE_OAUTH_SCOPES)." },
         "loginVolume": { "type": "string", "description": "PersistentVolumeClaim holding a signed-in Claude config directory, mounted as PLOEG_CLAUDE_CONFIG_DIR. Wins over loginSecret." },
         "pollInterval": { "type": "string", "pattern": "^$|^[0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h)$" },
-        "carrier": { "enum": ["", "client"], "description": "client: the person's own Claude Code carries the Runs (ADR-0112); the chart renders no worker for them and needs no login, only environmentId." }
+        "carrier": { "enum": ["", "client", "routine"], "description": "client: the person's own Claude Code carries the Runs (ADR-0112). routine: ploegd fires the person's own registered routine for a Work Item they start (ADR-0197 section 7). Either way the chart renders no worker for them and needs no login, only environmentId." }
       },
       "additionalProperties": false
     },

@@ -51,3 +51,17 @@ func TestMCPServersOnlyTheGatewayAndOnlyWhenGranted(t *testing.T) {
 		t.Fatalf("server on the wire = %s", body)
 	}
 }
+
+func TestMCPServersIncludeEachRegisteredServerAtTheGatewayWithTheCapability(t *testing.T) {
+	llm := harness.LLMEnv{APIKey: "run-capability", MCPServers: []harness.MCPServer{{Name: "obs", URL: "http://gateway:8083/mcp/obs"}, {Name: "litellm", URL: "http://x/mcp"}}}
+	got := mcpServers(llm, sdk.McpCapabilities{Http: true})
+	if len(got) != 1 || got[0].Http == nil || got[0].Http.Name != "obs" || got[0].Http.Url != "http://gateway:8083/mcp/obs" {
+		t.Fatalf("servers = %+v", got)
+	}
+	if h := got[0].Http.Headers; len(h) != 1 || h[0].Name != "Authorization" || h[0].Value != "Bearer run-capability" {
+		t.Fatalf("headers = %+v", h)
+	}
+	if got := mcpServers(llm, sdk.McpCapabilities{Sse: true}); len(got) != 0 {
+		t.Fatal("an agent without MCP over HTTP got a server")
+	}
+}

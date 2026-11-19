@@ -1,5 +1,7 @@
+{{- include "ploeg.requireRoutineGateway" . }}
 {{- include "ploeg.requireIntegrations" . }}
 {{- include "ploeg.requireSupportProfile" . }}
+{{- $kubeApiAccess := and (include "ploeg.credentialGatewayEnabled" .) (not .Values.secretStore.type) }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -26,7 +28,7 @@ spec:
       {{- end }}
     spec:
       serviceAccountName: {{ include "ploeg.fullname" . }}
-      automountServiceAccountToken: false
+      automountServiceAccountToken: {{ if .Values.secretStore.type }}true{{ else }}false{{ end }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets: {{- toYaml . | nindent 8 }}
       {{- end }}
@@ -50,11 +52,18 @@ spec:
           ports:
             - name: http
               containerPort: 8080
-          {{- if .Values.config }}
+          {{- if or .Values.config $kubeApiAccess }}
           volumeMounts:
+            {{- if .Values.config }}
             - name: config
               mountPath: /etc/ploeg
               readOnly: true
+            {{- end }}
+            {{- if $kubeApiAccess }}
+            - name: kube-api-access
+              mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+              readOnly: true
+            {{- end }}
           {{- end }}
           env:
             {{- if .Values.config }}
@@ -63,6 +72,38 @@ spec:
             {{- end }}
             - name: PLOEG_LISTEN
               value: ":8080"
+            {{- with .Values.secretStore }}
+            {{- if eq .type "openbao" }}
+            - name: PLOEG_SECRET_STORE
+              value: openbao
+            - name: PLOEG_SECRET_STORE_OPENBAO_ADDR
+              value: {{ required "secretStore.openbao.address is required when secretStore.type is openbao" .openbao.address | quote }}
+            - name: PLOEG_SECRET_STORE_OPENBAO_ROLE
+              value: {{ required "secretStore.openbao.role is required when secretStore.type is openbao" .openbao.role | quote }}
+            - name: PLOEG_SECRET_STORE_OPENBAO_AUTH_MOUNT
+              value: {{ .openbao.authMount | default "kubernetes" | quote }}
+            - name: PLOEG_SECRET_STORE_OPENBAO_KV_MOUNT
+              value: {{ .openbao.kvMount | default "secret" | quote }}
+            - name: PLOEG_SECRET_STORE_OPENBAO_PATH_PREFIX
+              value: {{ .openbao.pathPrefix | default "ploeg" | quote }}
+            {{- if .openbao.allowInsecureHttp }}
+            - name: PLOEG_SECRET_STORE_OPENBAO_ALLOW_INSECURE_HTTP
+              value: "true"
+            {{- end }}
+            {{- else if eq .type "kubernetes" }}
+            - name: PLOEG_SECRET_STORE
+              value: kubernetes
+            - name: PLOEG_SECRET_STORE_KUBERNETES_NAMESPACE
+              value: {{ include "ploeg.secretStoreNamespace" $ | quote }}
+            {{- end }}
+            {{- end }}
+            {{- range .Values.connectionOAuthSecrets }}
+            - name: {{ .env }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .name }}
+                  key: {{ .key }}
+            {{- end }}
             - name: PLOEG_DATABASE_URL
               valueFrom:
                 secretKeyRef:
@@ -130,8 +171,8 @@ spec:
             {{- $allowed = append $allowed $a }}
             {{- if $w.default }}
             {{- $entry = omit $a "qualification" }}
-            {{- if eq ($w.carrier | default "") "client" }}
-            {{- $_ := set $entry "carrier" "client" }}
+            {{- if has ($w.carrier | default "") (list "client" "routine") }}
+            {{- $_ := set $entry "carrier" $w.carrier }}
             {{- $_ := set $entry "environmentId" $w.environmentId }}
             {{- end }}
             {{- end }}
@@ -142,6 +183,10 @@ spec:
             {{- end }}
             {{- $_ := set $harnesses $team.name $roles }}
             {{- end }}
+            {{- end }}
+            {{- with include "ploeg.runtimePools" $ | fromJsonArray }}
+            - name: PLOEG_RUNTIME_POOLS
+              value: {{ toJson . | quote }}
             {{- end }}
             {{- if $harnesses }}
             - name: PLOEG_TEAM_HARNESSES
@@ -167,6 +212,10 @@ spec:
             {{- if $spendCaps }}
             - name: PLOEG_TEAM_SPEND_CAPS
               value: {{ toJson $spendCaps | quote }}
+            {{- end }}
+            {{- with .Values.executor.forgeTokenIsolation }}
+            - name: PLOEG_WORKER_FORGE_TOKEN_ISOLATION
+              value: {{ . | quote }}
             {{- end }}
             {{- /* The forge seam: ploegd publishes findings to the pull
                  request as the same bot that opens them (ADR-0011). Commenting
@@ -257,6 +306,15 @@ spec:
             {{- end }}
             - name: PLOEG_TARGET_FORGE
               value: {{ .Values.executor.forge | default "forgejo" | quote }}
+            {{- /* ADR-0192: in a multi-forge release each claim carries the
+                 URL workers use for the Run's forge, which is the block's
+                 url, not ploegd's publicUrl. */}}
+            {{- if include "ploeg.multiForge" . }}
+            {{- range $name := include "ploeg.activeForges" . | fromJsonArray }}
+            - name: {{ printf "PLOEG_%s_WORKER_URL" (upper $name) }}
+              value: {{ (get $.Values.executor $name).url | quote }}
+            {{- end }}
+            {{- end }}
             {{- with .Values.tracker }}
             {{- if .url }}
             - name: PLOEG_VIKUNJA_URL
@@ -436,6 +494,12 @@ spec:
             {{- end }}
             {{- end }}
             {{- end }}
+            {{- if include "ploeg.credentialGatewayEnabled" . }}
+            {{- $teams := list }}
+            {{- range .Values.executor.teams }}{{- $teams = append $teams .name }}{{- end }}
+            - name: PLOEG_CREDENTIAL_GATEWAYS
+              value: {{ list (dict "namespace" (include "ploeg.executorNamespace" .) "serviceAccount" (include "ploeg.credentialGatewayName" .) "teams" $teams) | toJson | quote }}
+            {{- end }}
             {{- include "ploeg.workerControlEnv" . | nindent 12 }}
             {{- if .Values.operator.consumers }}
             {{- include "ploeg.operatorControlEnv" . | nindent 12 }}
@@ -462,9 +526,29 @@ spec:
               sleep:
                 seconds: 5
           resources: {{- toYaml .Values.resources | nindent 12 }}
-      {{- if .Values.config }}
+      {{- if or .Values.config $kubeApiAccess }}
       volumes:
+        {{- if .Values.config }}
         - name: config
           configMap:
             name: {{ include "ploeg.fullname" . }}-config
+        {{- end }}
+        {{- if $kubeApiAccess }}
+        - name: kube-api-access
+          projected:
+            sources:
+              - serviceAccountToken:
+                  expirationSeconds: 3607
+                  path: token
+              - configMap:
+                  name: kube-root-ca.crt
+                  items:
+                    - key: ca.crt
+                      path: ca.crt
+              - downwardAPI:
+                  items:
+                    - path: namespace
+                      fieldRef:
+                        fieldPath: metadata.namespace
+        {{- end }}
       {{- end }}

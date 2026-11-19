@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://webgrip.dev/ploeg/contracts/operator-delivery.schema.json",
+  "$id": "https://ploeg-hq.github.io/ploeg/contracts/operator-delivery.schema.json",
   "title": "Ploeg operator delivery API 1.0",
   "description": "Authenticated control service delivery governance; candidate and receipt inputs require verify capability, human approval and reservation require execution ownership. Failed verification is durable. Publication effect authority is granted only on first committed reservation; uncertain operation replay never grants another effect. Request schemas are addressable in $defs; root schema validates successful responses.",
   "oneOf": [

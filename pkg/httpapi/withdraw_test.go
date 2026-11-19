@@ -138,7 +138,7 @@ func TestOperatorCancelBlocksRunningRunKey(t *testing.T) {
 	s.OperatorConfig = OperatorConfig{Consumers: append(consumers, readOnly...)}
 	ctx := context.Background()
 
-	w := workerRequest(s, "POST", "/api/v1/claim", bootstrap, "pod", `{"team":"bronze","role":"reviewer"}`)
+	w := workerRequest(s, "POST", "/api/v1/claim", bootstrap, "pod", `{"team":"bronze","role":"reviewer","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	var claim struct {
 		RunToken     string        `json:"runToken"`
 		ControlToken string        `json:"controlToken"`
@@ -255,7 +255,7 @@ func TestReassignmentAfterWithdrawalRequeuesCleanly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	status, claimed := postClaim(t, h, `{"team":"bronze"}`)
+	status, claimed := postClaim(t, h, `{"team":"bronze","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	if status != http.StatusOK {
 		t.Fatalf("claim: %d", status)
 	}
@@ -278,7 +278,7 @@ func TestReassignmentAfterWithdrawalRequeuesCleanly(t *testing.T) {
 	if got.state != "queued" || got.attempts != 0 || got.liveShifts != 1 || got.unfinished != 1 {
 		t.Fatalf("re-assignment did not re-queue cleanly: %+v", got)
 	}
-	status, again := postClaim(t, h, `{"team":"bronze"}`)
+	status, again := postClaim(t, h, `{"team":"bronze","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	if status != http.StatusOK || again.WorkItem.ID != fmt.Sprint(id) || again.RunToken == claimed.RunToken {
 		t.Fatalf("re-queued item not claimable: %d %+v", status, again)
 	}

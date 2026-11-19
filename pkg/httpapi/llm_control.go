@@ -51,6 +51,10 @@ type LLMControl struct {
 	// logs stays provisional and is read again for late charges. Zero makes
 	// the first settlement final.
 	CorrectionWindow time.Duration
+	// Runtime is the policy of a runtime Team's Role (ADR-0198), built from
+	// its manifest. It answers only for a key a runtime Team holds, and then
+	// a static policy left for that key never applies.
+	Runtime func(team, role string) (LLMPolicy, bool)
 }
 
 func NewLLMControl(st *store.Store, broker ManagedLLMBroker, policiesJSON string) (*LLMControl, error) {
@@ -126,6 +130,11 @@ func policyRole(role string) string {
 
 // Policy returns the managed inference policy of a team and Role.
 func (c *LLMControl) Policy(team, role string) (LLMPolicy, bool) {
+	if c.Runtime != nil {
+		if p, ok := c.Runtime(team, role); ok {
+			return p, true
+		}
+	}
 	for _, p := range c.Policies {
 		if p.Team == team && p.Role == role {
 			return p, true
@@ -140,7 +149,11 @@ func (c *LLMControl) Reserve(ctx context.Context, runToken string) error {
 		return err
 	}
 	role := policyRole(run.Role)
-	for _, p := range c.Policies {
+	policies := c.Policies
+	if p, ok := c.Policy(run.Team, role); ok {
+		policies = []LLMPolicy{p}
+	}
+	for _, p := range policies {
 		if p.Team == run.Team && p.Role == role {
 			ttl, err := time.ParseDuration(p.TTL)
 			if err != nil {

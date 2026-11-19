@@ -9,9 +9,7 @@ import (
 	"log/slog"
 	"testing"
 
-	"github.com/ploeg-hq/ploeg/pkg/forgebroker"
 	"github.com/ploeg-hq/ploeg/pkg/githubapp"
-	"github.com/ploeg-hq/ploeg/pkg/provider"
 )
 
 func forgeAppKeyPEM(t *testing.T) string {
@@ -61,26 +59,5 @@ func TestGitHubForgeUsesTheSharedAppOverAStaticToken(t *testing.T) {
 	}
 	if tok, _ := p.Tokens.Token(context.Background(), "a", "b"); tok != "github_pat_x" {
 		t.Fatalf("static token = %q", tok)
-	}
-}
-
-func TestGitHubCredentialsRouteOnlyTheGitHubForges(t *testing.T) {
-	_, app, err := githubForge(slog.New(slog.DiscardHandler), githubForgeEnv{url: "https://github.com", appID: "1", appKey: forgeAppKeyPEM(t)})
-	if err != nil {
-		t.Fatal(err)
-	}
-	gh := &struct{ provider.ForgeProvider }{}
-	forges := map[string]provider.ForgeProvider{"github": gh, "gh-prod": gh, "forgejo": &struct{ provider.ForgeProvider }{}}
-	ids := forgeIDsOf(forges, gh)
-	if len(ids) != 2 {
-		t.Fatalf("github forge ids = %v", ids)
-	}
-	broker, sweeper := withGitHubCredentials(slog.New(slog.DiscardHandler), forgebroker.Static{}, nil, app, ids, "forgejo")
-	router, ok := broker.(*forgebroker.Router)
-	if !ok || sweeper == nil || router.GitHub == nil || router.DefaultForge != "forgejo" {
-		t.Fatalf("broker %T sweeper %v", broker, sweeper)
-	}
-	if b, _ := withGitHubCredentials(slog.New(slog.DiscardHandler), forgebroker.Static{}, nil, nil, ids, "forgejo"); b != (forgebroker.Static{}) {
-		t.Fatalf("without an App the broker changed to %T", b)
 	}
 }

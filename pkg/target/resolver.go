@@ -85,6 +85,9 @@ type Refusal struct {
 	// Allowed are the repo/ labels the matched board rule allows, sorted; empty
 	// and non-nil when no rule matched or the caller cannot know them.
 	Allowed []string
+	// PrepareAvailable is set on a target_not_ready refusal whose only
+	// readiness reason is the missing instruction file (ADR-0194).
+	PrepareAvailable bool
 }
 
 func (r *Refusal) Error() string { return r.Reason }
@@ -98,6 +101,13 @@ type Rule struct {
 	Target  work.Target
 	Default string
 	Allow   []string
+	// Tracker is the tracker kind whose configuration declared the rule;
+	// empty when the source does not say.
+	Tracker string
+	// Origin names where the rule was declared, such as
+	// "trackers.clickup.projects[3]" or a runtime binding, for conflict
+	// reports.
+	Origin string
 }
 
 // ID is the rule's identity, echoed into work_items.route_rule for audit.

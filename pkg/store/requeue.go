@@ -53,7 +53,7 @@ func requeueTx(ctx context.Context, tx pgx.Tx, workItemID int64, from []string) 
 	tag, err := tx.Exec(ctx, `UPDATE work_items SET state = 'queued', attempts = 0, infra_failures = 0,
 			next_eligible_at = NULL, updated_at = now()
 		WHERE id = $1 AND NOT operator_owned AND state = ANY($2)
-		  AND NOT EXISTS (SELECT 1 FROM agent_runs r WHERE r.work_item_id = work_items.id AND r.carrier = 'client' AND r.state = 'pending')`, workItemID, from)
+		  AND NOT EXISTS (SELECT 1 FROM agent_runs r WHERE r.work_item_id = work_items.id AND r.carrier IN ('client', 'routine') AND r.state = 'pending')`, workItemID, from)
 	if err != nil {
 		return false, err
 	}

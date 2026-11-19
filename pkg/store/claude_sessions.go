@@ -51,10 +51,16 @@ type ClaudeSessionRun struct {
 	Team        string
 	Role        string
 	Owner, Repo string
+	// Forge is the forge id of the Run's Work Target; empty is the default
+	// forge (ADR-0192).
+	Forge string
 	// Branch is the Shift's branch, the one the Run's Lease lets it push.
 	Branch string
 	// BaseBranch, Title and Reference come from the worker's record.
 	BaseBranch, Title, Reference string
+	WorkItemID                   int64
+	// ActsFor is the person the Run acts for; empty for a Run nobody started.
+	ActsFor string
 }
 
 // RecordClaudeSession binds a running Run to the Claude session its worker
@@ -102,16 +108,16 @@ func (s *Store) WriterForClaudeSession(ctx context.Context, environmentID, sessi
 	var r ClaudeSessionRun
 	var writes, leased bool
 	err := s.pool.QueryRow(ctx, `
-		SELECT r.run_token, r.team, r.role, w.target_owner, w.target_repo, COALESCE(sh.branch, ''),
-		       c.base_branch, c.title, c.reference, r.writes,
+		SELECT r.run_token, r.team, r.role, w.target_owner, w.target_repo, w.target_forge, COALESCE(sh.branch, ''),
+		       c.base_branch, c.title, c.reference, r.writes, w.id, w.acts_for,
 		       EXISTS (SELECT 1 FROM leases l WHERE l.run_token = r.run_token AND l.expires_at > now())
 		FROM claude_sessions c
 		JOIN agent_runs r ON r.id = c.run_id
 		JOIN work_items w ON w.id = r.work_item_id
 		LEFT JOIN shifts sh ON sh.id = r.shift_id
 		WHERE c.environment_id = $1 AND c.session_id = $2 AND r.state = 'running'`,
-		environmentID, sessionID).Scan(&r.RunToken, &r.Team, &r.Role, &r.Owner, &r.Repo, &r.Branch,
-		&r.BaseBranch, &r.Title, &r.Reference, &writes, &leased)
+		environmentID, sessionID).Scan(&r.RunToken, &r.Team, &r.Role, &r.Owner, &r.Repo, &r.Forge, &r.Branch,
+		&r.BaseBranch, &r.Title, &r.Reference, &writes, &r.WorkItemID, &r.ActsFor, &leased)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ClaudeSessionRun{}, ErrUnknownRun
 	}
@@ -187,6 +193,19 @@ func (s *Store) ClaudeSessionFor(ctx context.Context, runToken string) (ClaudeSe
 		return ClaudeSessionState{}, ErrUnknownRun
 	}
 	return st, err
+}
+
+// ReadingRunTarget returns the Work Target of a running reading Run: the one
+// repository a refreshed read credential may name (ADR-0192).
+func (s *Store) ReadingRunTarget(ctx context.Context, runToken string) (work.Target, error) {
+	b, found, err := loadRunBinding(ctx, s.pool, runToken)
+	if err != nil {
+		return work.Target{}, err
+	}
+	if !found || b.writes || !b.target.Resolved() {
+		return work.Target{}, ErrUnknownRun
+	}
+	return b.target, nil
 }
 
 // WritingRunTarget returns the Work Target of a running writing Run that

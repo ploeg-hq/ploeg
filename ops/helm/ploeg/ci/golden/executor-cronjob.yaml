@@ -249,6 +249,8 @@ spec:
               value: "{\"bronze\":{\"\":{\"allowUnqualified\":false,\"allowed\":[{\"name\":\"openhands\",\"qualification\":\"qualified\"}],\"name\":\"openhands\"}}}"
             - name: PLOEG_TEAM_SPEND_CAPS
               value: "{\"bronze\":{\"period\":\"day\",\"usd\":20}}"
+            - name: PLOEG_WORKER_FORGE_TOKEN_ISOLATION
+              value: "proxy"
             - name: PLOEG_FORGEJO_URL
               value: "http://forgejo-http.forgejo.svc.cluster.local:3000"
             - name: PLOEG_FORGEJO_TOKEN
@@ -407,7 +409,7 @@ spec:
             - name: harness
               image: registry.example/agent-runner:1.3.0@sha256:db06af1d9c0969ed594a21ee2b3369a79d6e91abb36b94d29223918581963027
               restartPolicy: Always
-              command: ["/mnt/bin/ploeg-worker", "harness-serve", "/run/ploeg/launcher/launcher.sock"]
+              command: ["/mnt/bin/ploeg-worker", "harness-serve", "/run/ploeg/launcher/launcher.json"]
               volumeMounts:
                 - name: worker-bin
                   mountPath: /mnt/bin
@@ -503,7 +505,7 @@ spec:
                 - name: WORK_DIR
                   value: /mnt/ci-shared
                 - name: PLOEG_HARNESS_LAUNCHER
-                  value: /run/ploeg/launcher/launcher.sock
+                  value: /run/ploeg/launcher/launcher.json
                 - name: GOMEMLIMIT
                   value: "460MiB"
               volumeMounts:
@@ -560,8 +562,10 @@ spec:
       matchLabels:
         kubernetes.io/metadata.name: "default"
     objectSelector:
-      matchLabels:
-        app.kubernetes.io/name: ploeg-worker
+      matchExpressions:
+        - key: app.kubernetes.io/name
+          operator: In
+          values: [ploeg-worker, ploeg-claude-runner-session]
     resourceRules:
       - apiGroups: [""]
         apiVersions: ["v1"]

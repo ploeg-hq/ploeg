@@ -43,6 +43,9 @@ type Chat struct {
 	ScopeID       string     `json:"-"`
 	PeriodStart   time.Time  `json:"-"`
 	RunToken      string     `json:"-"`
+	// ForgeTokenID is the read credential FinishChat took from the chat's
+	// Run, for the caller to revoke (ADR-0192).
+	ForgeTokenID string `json:"-"`
 }
 
 // AdmitChat is one chat admission. BudgetUSD is the per-chat Budget, LimitUSD
@@ -185,12 +188,12 @@ func (s *Store) FinishChat(ctx context.Context, consumer, actor, chatID string) 
 	if err != nil {
 		return Chat{}, err
 	}
+	var forgeTokenID string
 	if finished == nil {
 		if _, err = tx.Exec(ctx, `UPDATE chats SET finished_at = now() WHERE run_id = $1`, runID); err != nil {
 			return Chat{}, err
 		}
-		if _, err = tx.Exec(ctx, `UPDATE agent_runs SET state = 'finished', finished_at = now(), summary = 'Chat finished'
-			WHERE id = $1 AND state = 'running'`, runID); err != nil {
+		if forgeTokenID, err = finishRunningRun(ctx, tx, runID, "Chat finished"); err != nil {
 			return Chat{}, err
 		}
 		if err = audit(ctx, tx, "operator:"+consumer+":"+actor, "chat.finished", nil, map[string]any{
@@ -202,5 +205,6 @@ func (s *Store) FinishChat(ctx context.Context, consumer, actor, chatID string) 
 	if err != nil {
 		return c, err
 	}
+	c.ForgeTokenID = forgeTokenID
 	return c, tx.Commit(ctx)
 }

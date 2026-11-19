@@ -53,7 +53,7 @@ func recordedHarness(t *testing.T, token string) store.OperatorRun {
 
 func TestARunKilledAfterItsClaimKeepsTheClaimedHarnessVersion(t *testing.T) {
 	s, _ := harnessServer(t)
-	token := harnessClaim(t, s, `{"team":"bronze","role":"reviewer","harness":"acp","harnessProfile":"opencode","harnessVersion":"opencode 1.18.30"}`)
+	token := harnessClaim(t, s, `{"team":"bronze","role":"reviewer","harness":"acp","harnessProfile":"openhands","harnessVersion":"openhands 1.18.30","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	execSQL(t, `UPDATE agent_runs SET expires_at = now() - interval '1 second' WHERE run_token = $1`, token)
 	expired, err := testStore.ExpireRuns(context.Background())
 	if err != nil || len(expired) != 1 {
@@ -63,18 +63,18 @@ func TestARunKilledAfterItsClaimKeepsTheClaimedHarnessVersion(t *testing.T) {
 	if run.State != "finished" || run.FailureReason == nil || *run.FailureReason != "lease_lost" {
 		t.Fatalf("expired Run = state %s failure %v, want recovered as lease_lost", run.State, run.FailureReason)
 	}
-	if strOf(run.HarnessVersion) != "opencode 1.18.30" || run.HarnessAgent != nil {
+	if strOf(run.HarnessVersion) != "openhands 1.18.30" || run.HarnessAgent != nil {
 		t.Fatalf("killed Run reads version %s agent %+v, want the claimed version and no agent", strOf(run.HarnessVersion), run.HarnessAgent)
 	}
 }
 
 func TestTheOutcomeReportAddsTheAgentAndKeepsTheClaimedVersion(t *testing.T) {
 	s, logs := harnessServer(t)
-	token := harnessClaim(t, s, `{"team":"bronze","role":"reviewer","harness":"acp","harnessProfile":"opencode","harnessVersion":"1.18.30"}`)
+	token := harnessClaim(t, s, `{"team":"bronze","role":"reviewer","harness":"acp","harnessProfile":"openhands","harnessVersion":"1.18.30","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	harnessOutcome(t, s, token, `{"outcome":"no_change_needed","summary":"read it",
-		"harness":{"name":"acp","profile":"opencode","version":"1.19.0","agent":{"name":"opencode","version":"1.19.0"}}}`)
+		"harness":{"name":"acp","profile":"openhands","version":"1.19.0","agent":{"name":"openhands","version":"1.19.0"}}}`)
 	run := recordedHarness(t, token)
-	if strOf(run.HarnessVersion) != "1.18.30" || run.HarnessAgent == nil || run.HarnessAgent.Name != "opencode" || strOf(run.HarnessAgent.Version) != "1.19.0" {
+	if strOf(run.HarnessVersion) != "1.18.30" || run.HarnessAgent == nil || run.HarnessAgent.Name != "openhands" || strOf(run.HarnessAgent.Version) != "1.19.0" {
 		t.Fatalf("recorded version %s agent %+v", strOf(run.HarnessVersion), run.HarnessAgent)
 	}
 	if run.Outcome == nil || *run.Outcome != string(work.OutcomeNoChangeNeeded) {
@@ -87,7 +87,7 @@ func TestTheOutcomeReportAddsTheAgentAndKeepsTheClaimedVersion(t *testing.T) {
 
 func TestARecordingFailureNeverChangesTheOutcome(t *testing.T) {
 	s, logs := harnessServer(t)
-	token := harnessClaim(t, s, `{"team":"bronze","role":"reviewer"}`)
+	token := harnessClaim(t, s, `{"team":"bronze","role":"reviewer","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	execSQL(t, `CREATE FUNCTION refuse_harness_agent() RETURNS trigger LANGUAGE plpgsql AS $$
 		BEGIN IF NEW.harness_agent IS DISTINCT FROM OLD.harness_agent THEN RAISE EXCEPTION 'harness write refused'; END IF; RETURN NEW; END $$`)
 	execSQL(t, `CREATE TRIGGER refuse_harness_agent BEFORE UPDATE ON agent_runs FOR EACH ROW EXECUTE FUNCTION refuse_harness_agent()`)
@@ -95,7 +95,7 @@ func TestARecordingFailureNeverChangesTheOutcome(t *testing.T) {
 		execSQL(t, `DROP TRIGGER refuse_harness_agent ON agent_runs`)
 		execSQL(t, `DROP FUNCTION refuse_harness_agent()`)
 	})
-	harnessOutcome(t, s, token, `{"outcome":"no_change_needed","summary":"read it","harness":{"name":"acp","agent":{"name":"opencode"}}}`)
+	harnessOutcome(t, s, token, `{"outcome":"no_change_needed","summary":"read it","harness":{"name":"acp","agent":{"name":"openhands"}}}`)
 	run := recordedHarness(t, token)
 	if run.Outcome == nil || *run.Outcome != string(work.OutcomeNoChangeNeeded) || run.Summary != "read it" || run.State != "finished" {
 		t.Fatalf("outcome = %v summary %q state %s", run.Outcome, run.Summary, run.State)
@@ -110,14 +110,14 @@ func TestARecordingFailureNeverChangesTheOutcome(t *testing.T) {
 
 func TestClaimAndOutcomeAcceptFieldsTheyDoNotKnow(t *testing.T) {
 	s, _ := harnessServer(t)
-	token := harnessClaim(t, s, `{"team":"bronze","role":"reviewer","harness":"openhands"}`)
+	token := harnessClaim(t, s, `{"team":"bronze","role":"reviewer","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	harnessOutcome(t, s, token, `{"outcome":"no_change_needed","summary":"read it"}`)
 	if run := recordedHarness(t, token); run.HarnessVersion != nil || run.HarnessAgent != nil {
 		t.Fatalf("older worker's Run = %s %+v, want unknown", strOf(run.HarnessVersion), run.HarnessAgent)
 	}
 
 	shiftFixture(t, "harness-future", 5, []store.Role{{Name: "reviewer", Cap: 1}})
-	token = harnessClaim(t, s, `{"team":"bronze","role":"reviewer","harnessVersion":"2.0","futureField":{"x":1}}`)
+	token = harnessClaim(t, s, `{"team":"bronze","role":"reviewer","harnessVersion":"2.0","futureField":{"x":1},"harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	harnessOutcome(t, s, token, `{"outcome":"no_change_needed","summary":"read it","futureField":true,
 		"harness":{"name":"openhands","futureField":"y"}}`)
 	if run := recordedHarness(t, token); strOf(run.HarnessVersion) != "2.0" {
@@ -127,11 +127,11 @@ func TestClaimAndOutcomeAcceptFieldsTheyDoNotKnow(t *testing.T) {
 
 func TestTheTeamsReadShowsEachRolesHarnessModelAndObservedVersion(t *testing.T) {
 	s, _ := harnessServer(t)
-	token := harnessClaim(t, s, `{"team":"bronze","role":"reviewer","harness":"acp","harnessProfile":"opencode","harnessVersion":"1.18.30"}`)
-	harnessOutcome(t, s, token, `{"outcome":"no_change_needed","summary":"read it","harness":{"name":"acp","agent":{"name":"opencode","version":"1.18.30"}}}`)
+	token := harnessClaim(t, s, `{"team":"bronze","role":"reviewer","harness":"acp","harnessProfile":"openhands","harnessVersion":"1.18.30","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
+	harnessOutcome(t, s, token, `{"outcome":"no_change_needed","summary":"read it","harness":{"name":"acp","agent":{"name":"openhands","version":"1.18.30"}}}`)
 
 	consumers, operator := operatorTestConsumers(t, []string{"bronze"}, false)
-	harnesses, err := ParseTeamHarnesses(`{"bronze":{"reviewer":{"name":"acp","profile":"opencode"},"builder":{"name":"openhands"}}}`)
+	harnesses, err := ParseTeamHarnesses(`{"bronze":{"reviewer":{"name":"acp","profile":"openhands"},"builder":{"name":"openhands"}}}`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -175,11 +175,11 @@ func TestTheTeamsReadShowsEachRolesHarnessModelAndObservedVersion(t *testing.T) 
 	}
 	roles := read()
 	reviewer, builder := roles["reviewer"], roles["builder"]
-	if reviewer.Harness == nil || reviewer.Harness.Name != "acp" || strOf(reviewer.Harness.Profile) != "opencode" || strOf(reviewer.Model) != "trusted-model" {
+	if reviewer.Harness == nil || reviewer.Harness.Name != "acp" || strOf(reviewer.Harness.Profile) != "openhands" || strOf(reviewer.Model) != "trusted-model" {
 		t.Fatalf("reviewer = %+v", reviewer)
 	}
 	o := reviewer.ObservedHarness
-	if o == nil || o.Version != "1.18.30" || strOf(o.Name) != "acp" || strOf(o.Profile) != "opencode" || o.Agent == nil || o.Agent.Name != "opencode" ||
+	if o == nil || o.Version != "1.18.30" || strOf(o.Name) != "acp" || strOf(o.Profile) != "openhands" || o.Agent == nil || o.Agent.Name != "openhands" ||
 		time.Since(o.RecordedAt) > time.Minute {
 		t.Fatalf("reviewer observed = %+v", o)
 	}

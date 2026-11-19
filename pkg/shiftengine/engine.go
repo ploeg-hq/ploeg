@@ -30,7 +30,11 @@ import (
 type Engine struct {
 	Store *store.Store
 	Plans plan.Plans
-	Log   *slog.Logger
+	// Runtime returns the plan of a runtime Team by key (ADR-0198). It
+	// answers only for a key an active runtime Team holds, and then a static
+	// plan left for that key never applies. Nil = only static plans.
+	Runtime func(team string) (plan.TeamPlan, bool)
+	Log     *slog.Logger
 	// Forges publishes findings to the pull request (ADR-0011). Keyed by
 	// forge id, matching the Work Target's Forge. Nil or missing = findings
 	// stay in the database and the run is otherwise unaffected.
@@ -122,7 +126,7 @@ func (e *Engine) EnsureShift(ctx context.Context, workItemID int64, item work.Wo
 // ensureShift is EnsureShift. A non-nil sweep allows premise checks; the
 // fast path leaves them to the next sweep.
 func (e *Engine) ensureShift(ctx context.Context, workItemID int64, item work.WorkItem, sweep *sweepAllowance) error {
-	tp, planned, _ := e.planForItem(item.Team, item.Origin)
+	tp, planned, _ := e.planForItem(item.Team, item.Origin, item.Kind)
 	if !planned {
 		return nil
 	}
@@ -148,22 +152,32 @@ func (e *Engine) ensureShift(ctx context.Context, workItemID int64, item work.Wo
 		e.Log.Info("shift opened", "work_item", workItemID, "team", item.Team,
 			"pool", float64(tp.Pool), "rounds", len(tp.Rounds))
 		if err == nil {
-			e.markStarted(ctx, item)
+			e.markStarted(ctx, workItemID, item)
 		}
 	}
 	return e.EvaluateItem(ctx, workItemID)
 }
 
-// markStarted tells the item's tracker that a Shift opened on it, so a
-// tracker that maps the active state moves the item to its started status.
-// A failed write is logged; the Shift goes on.
-func (e *Engine) markStarted(ctx context.Context, item work.WorkItem) {
+// markStarted tells the item's tracker that a Shift opened on it: a tracker
+// that maps the active state moves the item to its started status, and when
+// the deployment names where a Work Item is followed (ReportLinks.WorkItem)
+// the item gets a comment with that link, so a person can open the work from
+// the card instead of hearing nothing until the Shift closes. A failed write
+// is logged; the Shift goes on.
+func (e *Engine) markStarted(ctx context.Context, workItemID int64, item work.WorkItem) {
 	tp, ok := e.Trackers[item.Provider]
 	if !ok || item.ExternalID == "" {
 		return
 	}
 	if err := tp.SetStatus(ctx, item.ExternalID, work.StateActive); err != nil {
 		e.Log.Warn("tracker status write failed; the Shift goes on", "external_id", item.ExternalID, "state", string(work.StateActive), "err", err)
+	}
+	body, ok := startedMessage(item.Team, workItemLink(e.ReportLinks, workItemID))
+	if !ok {
+		return
+	}
+	if err := tp.Comment(ctx, item.ExternalID, body); err != nil {
+		e.Log.Warn("tracker comment failed; the Shift goes on", "external_id", item.ExternalID, "work_item", workItemID, "err", err)
 	}
 }
 
@@ -210,6 +224,11 @@ func (e *Engine) Dispatches(team string) bool {
 // reports whether the plan was SYNTHESIZED, which decides how its Shift ends
 // (see close).
 func (e *Engine) planFor(team string) (tp plan.TeamPlan, ok, synthesized bool) {
+	if e.Runtime != nil {
+		if tp, ok := e.Runtime(team); ok {
+			return tp, true, false
+		}
+	}
 	if tp, ok := e.Plans[team]; ok {
 		return tp, true, false
 	}
@@ -225,11 +244,12 @@ func (e *Engine) planFor(team string) (tp plan.TeamPlan, ok, synthesized bool) {
 // someone else opened (ADR-0109) gets only the reading Roles of its Team's
 // review Round: nothing may write to that pull request's branch, and no
 // verdict re-opens a writer. A Team whose plan has no such Round cannot
-// read, and the item is not planned.
-func (e *Engine) planForItem(team string, origin work.Origin) (tp plan.TeamPlan, ok, synthesized bool) {
+// read, and the item is not planned. A prepare_repository Work Item runs no
+// fix round (ADR-0194).
+func (e *Engine) planForItem(team string, origin work.Origin, kind work.Kind) (tp plan.TeamPlan, ok, synthesized bool) {
 	tp, ok, synthesized = e.planFor(team)
 	if !ok || origin != work.OriginPullRequest {
-		return tp, ok, synthesized
+		return withoutFixRounds(tp, kind), ok, synthesized
 	}
 	review, found := tp.ReviewOnly()
 	if !found {
@@ -256,7 +276,7 @@ func (e *Engine) EvaluateItem(ctx context.Context, workItemID int64) error {
 // them has finished; the next Round comes from the plan; a stuck Run freezes
 // the plan; an exhausted plan closes the Shift and asks a person to merge.
 func (e *Engine) evaluate(ctx context.Context, si store.ShiftInfo) error {
-	tp, planned, synthesized := e.planForItem(si.Team, si.Origin)
+	tp, planned, synthesized := e.planForItem(si.Team, si.Origin, si.Kind)
 	if !planned {
 		if si.Origin == work.OriginPullRequest {
 			return e.close(ctx, si, "no reading role in the plan",
@@ -474,6 +494,9 @@ func settleState(si store.ShiftInfo, closeReason string, synthesized bool, repor
 	next := work.StateNeedsHuman
 	if closeReason == work.CloseReasonTakenOver {
 		return next
+	}
+	if si.Kind == work.KindPrepareRepository {
+		reports = verdictsRecordedOnly(reports)
 	}
 	if synthesized {
 		if outcome, ok := terminalOutcome(reports); ok {

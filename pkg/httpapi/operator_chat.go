@@ -220,6 +220,7 @@ func (s *Server) handleFinishChat(w http.ResponseWriter, r *http.Request) {
 		chatError(w, err)
 		return
 	}
+	s.revokeFinishedRunCredentials(r.Context(), "chat", chat.ForgeTokenID)
 	if chat.Spend.KeyState != "none" {
 		if s.LLMControl == nil {
 			operatorError(w, 503, "inference_unavailable", "Managed inference is unavailable.")

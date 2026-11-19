@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/ploeg-hq/ploeg/pkg/forgebroker"
 	"github.com/ploeg-hq/ploeg/pkg/provider"
 	"github.com/ploeg-hq/ploeg/pkg/store"
 	"github.com/ploeg-hq/ploeg/pkg/work"
@@ -34,20 +33,29 @@ func (s *Server) withdrawGuarded(ctx context.Context, workItemID int64, teams []
 			s.Log.Error("withdrawn run key block unresolved; the block sweep will retry", "work_item", workItemID)
 		}
 	}
-	for _, id := range wd.ForgeTokenIDs {
-		if s.ForgeCreds == nil {
-			break
-		}
-		revokeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), forgeCleanupTimeout)
-		err := s.ForgeCreds.Revoke(revokeCtx, forgebroker.Credential{ID: id})
-		cancel()
-		if err != nil {
-			s.Log.Error("withdrawn run forge credential revoke failed; the forge sweep will retry", "work_item", workItemID)
-		}
-	}
+	s.revokeFinishedRunCredentials(ctx, "withdrawn work item "+strconv.FormatInt(workItemID, 10), wd.ForgeTokenIDs...)
 	s.Log.Info("work item withdrawn", "id", workItemID, "reason", reason, "shift", wd.ShiftID,
 		"cancelled_runs", wd.CancelledRuns, "stopped_runs", len(wd.StoppedRunTokens), "keys_blocked", blocked)
 	return wd, blocked, nil
+}
+
+// StopRunCredentials blocks the model keys of runTokens and revokes
+// forgeTokenIDs, for Runs ploegd stopped outside a withdrawal (an expired
+// drain, ADR-0198). A key the block cannot reach is retried by the block
+// sweep.
+func (s *Server) StopRunCredentials(ctx context.Context, reason string, runTokens, forgeTokenIDs []string) {
+	for _, token := range runTokens {
+		if s.LLMControl == nil {
+			break
+		}
+		if _, err := s.Store.LLMAccount(ctx, token); err != nil {
+			continue
+		}
+		if err := s.LLMControl.Block(ctx, token); err != nil {
+			s.Log.Error("stopped run key block unresolved; the block sweep will retry", "reason", reason)
+		}
+	}
+	s.revokeFinishedRunCredentials(ctx, reason, forgeTokenIDs...)
 }
 
 func (s *Server) trackerUnassigned(ctx context.Context, name string, ev provider.TrackerEvent) error {
@@ -63,7 +71,7 @@ func (s *Server) trackerUnassigned(ctx context.Context, name string, ev provider
 	if scope == "" {
 		scope = item.ExternalScope
 	}
-	if pinned := s.ScopeTeams[scope]; scope != "" && pinned != "" {
+	if pinned, ok := s.pinnedTeam(scope); ok {
 		team = pinned
 	}
 	if team != item.Team {
@@ -162,27 +170,37 @@ func (s *Server) handleOperatorCancel(w http.ResponseWriter, r *http.Request) {
 		operatorError(w, 503, "unavailable", "Ploeg could not confirm the cancellation.")
 		return
 	}
+	var prepared *store.PrepareCancelled
 	if wd.Withdrawn {
 		s.notifyWithdrawn(r.Context(), id, actor)
+		prepared = s.closePreparePullRequest(r.Context(), id, actor)
 	}
 	var shift *string
 	if wd.ShiftID != 0 {
 		value := strconv.FormatInt(wd.ShiftID, 10)
 		shift = &value
 	}
+	cancellation := map[string]any{
+		"workItemId":    strconv.FormatInt(id, 10),
+		"state":         string(wd.State),
+		"withdrawn":     wd.Withdrawn,
+		"shiftId":       shift,
+		"cancelledRuns": wd.CancelledRuns,
+		"stoppedRuns":   len(wd.StoppedRunTokens),
+		"keysBlocked":   blocked,
+		"commandId":     optionalString(wd.CommandID),
+		"replayed":      wd.Replayed,
+	}
+	if prepared != nil {
+		state := "open"
+		if prepared.Closed {
+			state = "closed"
+		}
+		cancellation["pullRequest"] = map[string]any{"url": prepared.PullRequestURL, "state": state}
+	}
 	operatorJSON(w, 200, map[string]any{
 		"schemaVersion": "1.0",
-		"cancellation": map[string]any{
-			"workItemId":    strconv.FormatInt(id, 10),
-			"state":         string(wd.State),
-			"withdrawn":     wd.Withdrawn,
-			"shiftId":       shift,
-			"cancelledRuns": wd.CancelledRuns,
-			"stoppedRuns":   len(wd.StoppedRunTokens),
-			"keysBlocked":   blocked,
-			"commandId":     optionalString(wd.CommandID),
-			"replayed":      wd.Replayed,
-		},
+		"cancellation":  cancellation,
 	})
 }
 

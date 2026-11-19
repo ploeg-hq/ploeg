@@ -91,3 +91,23 @@ func TestCredentialIsolationOffLogsOneWarningNamingHarnessAndReason(t *testing.T
 		})
 	}
 }
+
+func TestTheEnvForgeIsBothOrNeither(t *testing.T) {
+	for _, c := range []struct{ url, token string }{{"https://forge.example", ""}, {"", "tok"}} {
+		t.Setenv("FORGE_URL", c.url)
+		t.Setenv("AGENT_BUILDER_TOKEN", c.token)
+		if _, _, err := envForge(); err == nil {
+			t.Errorf("FORGE_URL=%q with AGENT_BUILDER_TOKEN set=%v booted", c.url, c.token != "")
+		}
+	}
+	t.Setenv("FORGE_URL", "")
+	t.Setenv("AGENT_BUILDER_TOKEN", "")
+	if url, token, err := envForge(); err != nil || url != "" || token != "" {
+		t.Errorf("a multi-forge worker without an env forge = %q %q %v; it takes its forge from each claim", url, token, err)
+	}
+	t.Setenv("FORGE_URL", "https://forge.example/")
+	t.Setenv("AGENT_BUILDER_TOKEN", "tok")
+	if url, token, err := envForge(); err != nil || url != "https://forge.example" || token != "tok" {
+		t.Errorf("a single-forge worker = %q %q %v", url, token, err)
+	}
+}

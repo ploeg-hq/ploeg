@@ -1,0 +1,59 @@
+{{- $root := . }}
+{{- $pools := include "ploeg.runtimePools" . | fromJsonArray }}
+{{- if and .Values.executor.enabled $pools }}
+{{- if ne (.Values.executor.type | default "keda") "keda" }}
+{{- fail "executor.runtimeTeams renders pools for the keda executor only (ADR-0198)" }}
+{{- end }}
+{{- range $pool := $pools }}
+{{- $team := include "ploeg.poolTeam" $pool | fromJson }}
+---
+# A generic worker pool for runtime Teams (ADR-0198 section 7): one
+# ScaledJob per Tenant and Harness, from the same pod template as a Team's
+# workload, with the Harness's default image and no Team-specific shape.
+# Its worker holds a pool bootstrap; a claim selects the oldest pending Run
+# of an active runtime Team of the Tenant on the Harness and never a static
+# Team's Run.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledJob
+metadata:
+  name: {{ printf "%s-pool-%s-%s" (include "ploeg.fullname" $root) $pool.tenant (replace "/" "-" $pool.harness) | trunc 63 | trimSuffix "-" }}
+  {{- with include "ploeg.executorNamespaceMetadata" $root }}
+  {{ . }}
+  {{- end }}
+  labels: {{- include "ploeg.labels" $root | nindent 4 }}
+    ploeg.webgrip.dev/pool: {{ printf "%s.%s" $pool.tenant (replace "/" "-" $pool.harness) | quote }}
+spec:
+  pollingInterval: {{ $root.Values.executor.pollingInterval }}
+  minReplicaCount: 0
+  maxReplicaCount: {{ $pool.maxReplicaCount }}
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  rollout:
+    strategy: gradual
+  scalingStrategy:
+    strategy: accurate
+  jobTargetRef:
+    parallelism: 1
+    completions: 1
+    backoffLimit: 0
+    ttlSecondsAfterFinished: {{ $root.Values.executor.finishedRunTtlSeconds }}
+    activeDeadlineSeconds: {{ $root.Values.executor.activeDeadlineSeconds }}
+    template:
+      {{- include "ploeg.runPodTemplate" (dict "root" $root "team" $team "role" dict "pool" $pool) | nindent 6 }}
+  triggers:
+    - type: postgresql
+      metadata:
+        host: {{ required "executor.scaler.host is required for the keda executor" $root.Values.executor.scaler.host | quote }}
+        port: {{ $root.Values.executor.scaler.port | quote }}
+        userName: {{ $root.Values.executor.scaler.userName | quote }}
+        dbName: {{ $root.Values.executor.scaler.dbName | quote }}
+        sslmode: {{ $root.Values.executor.scaler.sslmode | quote }}
+        # store.PoolScalerQuery with this pool's Tenant and Harness; the
+        # scaler agreement test runs the rendered query against the claim.
+        query: "SELECT COUNT(*) FROM agent_runs r JOIN teams t ON t.id = r.team_id WHERE t.source = 'runtime' AND t.state = 'active' AND t.removed_at IS NULL AND t.tenant = '{{ $pool.tenant }}' AND r.state = 'pending' AND r.harness_requested = '{{ $pool.harness }}' AND r.carrier IS NULL"
+        targetQueryValue: "1"
+        activationTargetQueryValue: "0"
+      authenticationRef:
+        name: {{ include "ploeg.fullname" $root }}-scaler
+{{- end }}
+{{- end }}

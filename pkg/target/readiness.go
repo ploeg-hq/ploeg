@@ -19,7 +19,27 @@ type Readiness struct {
 	// Unknown means the forge could not be asked. It is not a verdict on the
 	// repository, so it is retried rather than trusted.
 	Unknown bool
-	Reason  string
+	// Reasons are the structured reasons a target that the forge described
+	// is not ready, in the order ReasonArchived, ReasonMirror,
+	// ReasonInstructionFileMissing (ADR-0194). Empty when Ready or Unknown,
+	// and when the target is not registered or its forge cannot describe it.
+	Reasons []string
+	// Reason is the sentence Ploeg comments and answers with.
+	Reason string
+}
+
+// The structured readiness reasons (ADR-0194).
+const (
+	ReasonArchived               = "archived"
+	ReasonMirror                 = "mirror"
+	ReasonInstructionFileMissing = "instruction_file_missing"
+)
+
+// PrepareAvailable reports whether the only thing keeping the target from
+// ready is its missing instruction file, so a prepare_repository Work Item
+// may make it ready (ADR-0194).
+func (r Readiness) PrepareAvailable() bool {
+	return !r.Ready && !r.Unknown && len(r.Reasons) == 1 && r.Reasons[0] == ReasonInstructionFileMissing
 }
 
 // Gate holds the readiness of every registered target. It is checked when the
@@ -31,6 +51,37 @@ type Gate struct {
 
 	mu       sync.Mutex
 	verdicts map[string]Readiness
+	runtime  map[string]RuntimeEntry
+}
+
+// RuntimeEntry is a Work Target registered at runtime (ADR-0193) and the
+// inspector that reads it through its own forge connection.
+type RuntimeEntry struct {
+	Target    work.Target
+	Inspector provider.RepositoryInspector
+}
+
+// SetRuntime replaces the runtime targets the gate holds beside the static
+// ones. A key the configuration registers keeps its static target.
+func (g *Gate) SetRuntime(entries map[string]RuntimeEntry) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	for key := range g.runtime {
+		if _, ok := entries[key]; !ok {
+			delete(g.verdicts, key)
+		}
+	}
+	g.runtime = entries
+}
+
+func (g *Gate) lookup(key string) (work.Target, provider.RepositoryInspector, bool) {
+	if t, ok := g.targets[key]; ok {
+		return t, g.inspectors[t.Forge], true
+	}
+	g.mu.Lock()
+	e, ok := g.runtime[key]
+	g.mu.Unlock()
+	return e.Target, e.Inspector, ok
 }
 
 // NewGate gates targets by asking the inspector registered under each
@@ -64,11 +115,11 @@ func (g *Gate) Admit(ctx context.Context, key string) Readiness {
 
 // Check inspects the target now and records the verdict.
 func (g *Gate) Check(ctx context.Context, key string) Readiness {
-	t, ok := g.targets[key]
+	t, inspector, ok := g.lookup(key)
 	if !ok {
 		return Readiness{Reason: fmt.Sprintf("target %q is not registered", key)}
 	}
-	v := g.inspect(ctx, t)
+	v := inspectWith(ctx, inspector, t)
 	g.mu.Lock()
 	g.verdicts[key] = v
 	g.mu.Unlock()
@@ -80,7 +131,7 @@ func (g *Gate) Target(key string) (work.Target, bool) {
 	if g == nil {
 		return work.Target{}, false
 	}
-	t, ok := g.targets[key]
+	t, _, ok := g.lookup(key)
 	return t, ok
 }
 
@@ -88,34 +139,57 @@ func (g *Gate) Target(key string) (work.Target, bool) {
 // share its verdict, so any of them will do.
 func (g *Gate) KeyOf(t work.Target) (string, bool) {
 	for _, key := range g.keys() {
-		if g.targets[key] == t {
+		if candidate, _, ok := g.lookup(key); ok && candidate == t {
 			return key, true
 		}
 	}
 	return "", false
 }
 
-func (g *Gate) inspect(ctx context.Context, t work.Target) Readiness {
-	inspector, ok := g.inspectors[t.Forge]
+// Recheck inspects the registered target t now (ADR-0194), as after a merged
+// prepare pull request, and returns the verdict last seen before it and the
+// new one. registered is false when no key names t.
+func (g *Gate) Recheck(ctx context.Context, t work.Target) (before, after Readiness, seen, registered bool) {
+	if g == nil {
+		return Readiness{}, Readiness{}, false, false
+	}
+	key, ok := g.KeyOf(t)
 	if !ok {
+		return Readiness{}, Readiness{}, false, false
+	}
+	g.mu.Lock()
+	before, seen = g.verdicts[key]
+	g.mu.Unlock()
+	return before, g.Check(ctx, key), seen, true
+}
+
+// Inspect reads t's readiness through inspector without recording it, as a
+// probe before a target is registered does.
+func Inspect(ctx context.Context, inspector provider.RepositoryInspector, t work.Target) Readiness {
+	return inspectWith(ctx, inspector, t)
+}
+
+func inspectWith(ctx context.Context, inspector provider.RepositoryInspector, t work.Target) Readiness {
+	if inspector == nil {
 		return Readiness{Reason: fmt.Sprintf("forge %q cannot report whether %s/%s is ready", t.Forge, t.Owner, t.Repo)}
 	}
 	state, err := inspector.InspectRepository(ctx, t.Owner, t.Repo, t.BaseBranch)
 	if err != nil {
 		return Readiness{Unknown: true, Reason: fmt.Sprintf("could not read %s/%s from forge %q: %v", t.Owner, t.Repo, t.Forge, err)}
 	}
-	var reasons []string
+	var reasons, sentences []string
 	if state.Archived {
-		reasons = append(reasons, "is archived")
+		reasons, sentences = append(reasons, ReasonArchived), append(sentences, "is archived")
 	}
 	if state.Mirror {
-		reasons = append(reasons, "is a mirror")
+		reasons, sentences = append(reasons, ReasonMirror), append(sentences, "is a mirror")
 	}
 	if !state.AgentsFile {
-		reasons = append(reasons, fmt.Sprintf("has no AGENTS.md on branch %q", state.Branch))
+		reasons = append(reasons, ReasonInstructionFileMissing)
+		sentences = append(sentences, fmt.Sprintf("has no AGENTS.md on branch %q", state.Branch))
 	}
 	if len(reasons) > 0 {
-		return Readiness{Reason: fmt.Sprintf("%s/%s %s", t.Owner, t.Repo, strings.Join(reasons, ", "))}
+		return Readiness{Reasons: reasons, Reason: fmt.Sprintf("%s/%s %s", t.Owner, t.Repo, strings.Join(sentences, ", "))}
 	}
 	return Readiness{Ready: true}
 }
@@ -125,6 +199,25 @@ func (g *Gate) keys() []string {
 	for key := range g.targets {
 		keys = append(keys, key)
 	}
+	g.mu.Lock()
+	for key := range g.runtime {
+		if _, static := g.targets[key]; !static {
+			keys = append(keys, key)
+		}
+	}
+	g.mu.Unlock()
 	sort.Strings(keys)
 	return keys
+}
+
+// Verdict returns the verdict last recorded for key without asking the
+// forge; seen is false when none was recorded yet.
+func (g *Gate) Verdict(key string) (Readiness, bool) {
+	if g == nil {
+		return Readiness{}, false
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	v, seen := g.verdicts[key]
+	return v, seen
 }

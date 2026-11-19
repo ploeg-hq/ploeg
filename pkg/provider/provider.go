@@ -125,6 +125,9 @@ const (
 	// ForgePRSynchronized reports that new commits reached a pull request's
 	// head branch.
 	ForgePRSynchronized ForgeEventKind = "pr_synchronized"
+	// ForgeGrantChanged reports a change to an App installation's grant;
+	// the event carries it in Grant.
+	ForgeGrantChanged ForgeEventKind = "grant_changed"
 )
 
 // PullRequestState is a forge's answer to "what happened to this pull request".
@@ -166,6 +169,8 @@ type ForgeEvent struct {
 	// its head for every event, and the merge or close facts for
 	// ForgePRMerged and ForgePRClosed (ADR-0045).
 	PullRequest PullRequestFacts
+	// Grant is the installation change of a ForgeGrantChanged event.
+	Grant *GrantEvent
 }
 
 // PullRequestFacts is what a forge reports about one pull request. A zero

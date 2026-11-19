@@ -30,6 +30,10 @@ var (
 	// ErrNothingToTakeOver reports a Work Item with no open Shift or no
 	// running Run in it.
 	ErrNothingToTakeOver = errors.New("the work item has no running run to take over")
+	// ErrPrepareNotTakenOver refuses a take-over of a prepare_repository
+	// Work Item (ADR-0194): the yield would push the work in progress
+	// outside the worker's delivery fence.
+	ErrPrepareNotTakenOver = errors.New("a prepare_repository work item is not taken over")
 	// ErrClientCarriedRun reports a running Run the person's own client
 	// carries (ADR-0112): it is theirs already.
 	ErrClientCarriedRun = errors.New("a running run is carried by a person's client")
@@ -144,8 +148,9 @@ func (s *Store) RequestTakeOver(ctx context.Context, cmd TakeOverCommand) (TakeO
 
 	var operatorOwned bool
 	var actsFor string
-	err = tx.QueryRow(ctx, `SELECT operator_owned, acts_for FROM work_items
-		WHERE id = $1 AND ($2::text[] IS NULL OR team = ANY($2)) FOR UPDATE`, cmd.WorkItemID, cmd.Teams).Scan(&operatorOwned, &actsFor)
+	var kind work.Kind
+	err = tx.QueryRow(ctx, `SELECT operator_owned, acts_for, kind FROM work_items
+		WHERE id = $1 AND ($2::text[] IS NULL OR team = ANY($2)) FOR UPDATE`, cmd.WorkItemID, cmd.Teams).Scan(&operatorOwned, &actsFor, &kind)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return TakeOver{}, ErrWorkItemNotFound
 	}
@@ -173,6 +178,9 @@ func (s *Store) RequestTakeOver(ctx context.Context, cmd TakeOverCommand) (TakeO
 
 	if operatorOwned {
 		return TakeOver{}, ErrOperatorOwned
+	}
+	if kind == work.KindPrepareRepository {
+		return TakeOver{}, ErrPrepareNotTakenOver
 	}
 	if actsFor != "" && actsFor != cmd.Actor {
 		return TakeOver{}, ErrNotThePerson

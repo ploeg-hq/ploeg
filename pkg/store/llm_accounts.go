@@ -52,6 +52,18 @@ func (s *Store) RunControl(ctx context.Context, token string) (RunControlState, 
 	return r, err
 }
 
+// RunTenant is the Tenant of the runtime Team a Run belongs to, or "" for a
+// Run of a static Team, which belongs to the installation's own Tenant.
+func (s *Store) RunTenant(ctx context.Context, token string) (string, error) {
+	var tenant string
+	err := s.pool.QueryRow(ctx, `SELECT COALESCE(t.tenant, '') FROM agent_runs r LEFT JOIN teams t ON t.id = r.team_id
+		WHERE r.run_token = $1`, token).Scan(&tenant)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrUnknownRun
+	}
+	return tenant, err
+}
+
 func (s *Store) ReserveLLMAccount(ctx context.Context, a LLMAccount) error {
 	if !validSpend(a.Authorized) || a.Authorized <= 0 || a.TTLSeconds <= 0 || len(a.Models) == 0 || a.Alias == "" {
 		return ErrLLMAccountState

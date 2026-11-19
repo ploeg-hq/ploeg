@@ -25,8 +25,12 @@
 package config
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/ploeg-hq/ploeg/pkg/connection"
+	"math"
 	"os"
 	"reflect"
 	"regexp"
@@ -40,6 +44,7 @@ import (
 	"github.com/ploeg-hq/ploeg/pkg/gate"
 	"github.com/ploeg-hq/ploeg/pkg/plan"
 	"github.com/ploeg-hq/ploeg/pkg/spendcap"
+	"github.com/ploeg-hq/ploeg/pkg/team"
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
@@ -52,6 +57,19 @@ type File struct {
 	Targets map[string]Target `yaml:"targets"`
 	// Teams is the roster: what each team is made of and what it may spend.
 	Teams map[string]Team `yaml:"teams"`
+	// Connections lets a proven operator make tracker and forge connections
+	// at runtime (ADR-0195). Omitted = none is accepted.
+	Connections *connection.Config `yaml:"connections"`
+	// TargetRegistration lets a proven operator register Work Targets at
+	// runtime for repositories a store-backed forge connection was granted
+	// (ADR-0193). Omitted = none is accepted.
+	TargetRegistration *TargetRegistration `yaml:"targetRegistration"`
+	// ToolRegistry registers MCP servers and skill sources and lets a
+	// proven operator change them at runtime (ADR-0199). Omitted = none.
+	ToolRegistry *ToolRegistry `yaml:"toolRegistry"`
+	// TeamCreation lets a proven person create Teams at runtime
+	// (ADR-0198). Omitted = runtime Teams are refused.
+	TeamCreation *TeamCreation `yaml:"teamCreation"`
 }
 
 type Trackers struct {
@@ -142,6 +160,13 @@ type Project struct {
 
 // Team is a roster entry: who works, at what cost, in what order.
 type Team struct {
+	// Name is the Team's display name (ADR-0198). Omitted = a hint built
+	// from its plan. The file is its only source: the operator API refuses
+	// to change a static Team's name.
+	Name string `yaml:"name"`
+	// Aliases are earlier keys of this Team. A key renamed in the file
+	// keeps its Team id when the old key is listed here (ADR-0198).
+	Aliases []string `yaml:"aliases"`
 	// Assignees are the tracker usernames that dispatch to this team, so a
 	// human assigns a colleague rather than an infrastructure tier.
 	Assignees []string `yaml:"assignees"`
@@ -154,6 +179,9 @@ type Team struct {
 	// a claim whose hold would take the period's settled and held spend over
 	// it starts nothing. Omitted = no cap.
 	SpendCap *spendcap.Cap `yaml:"spendCap"`
+	// PrepareRepository bounds a prepare_repository Work Item of this team
+	// (ADR-0194). Omitted = a cap of USD 2.00.
+	PrepareRepository *PrepareRepository `yaml:"prepareRepository"`
 	// ForgeFollowUps opts this team in to acting on forge events on its pull
 	// requests. Omitted = forge events are recorded and nothing else happens.
 	ForgeFollowUps work.ForgeFollowUps `yaml:"forgeFollowUps"`
@@ -168,6 +196,13 @@ type Team struct {
 	// never a bot. While ploegd signs transaction tokens, a Team without one
 	// runs nothing.
 	Sponsor string `yaml:"sponsor"`
+	// TrackerBindings lets an Operator Consumer bind tracker Scopes to this
+	// Team while ploegd runs (ADR-0186). Omitted = the Team accepts none.
+	TrackerBindings *TrackerBindings `yaml:"trackerBindings"`
+	// Tools gives this Team's Roles registered MCP servers and skill
+	// sources by Role or "*" (ADR-0199). Set here, the file is the
+	// authority and the operator API refuses to change it.
+	Tools TeamTools `yaml:"tools"`
 }
 
 // PremiseCheck names the gateway model a Team's premise check calls. ploegd
@@ -321,6 +356,11 @@ func (f *File) Validate() error {
 			}
 		}
 	}
+	for _, name := range sortedTeamNames(f.Teams) {
+		if p := f.Teams[name].PrepareRepository; p != nil && (p.MaxBudgetUSD == nil || !(*p.MaxBudgetUSD > 0) || math.IsInf(*p.MaxBudgetUSD, 0)) {
+			return fmt.Errorf("teams.%s.prepareRepository.maxBudgetUsd: must be a finite number above 0", name)
+		}
+	}
 	for name, t := range f.Teams {
 		if t.ForgeFollowUps.MaxRepairs < 0 {
 			return fmt.Errorf("teams.%s.forgeFollowUps.maxRepairs: must not be negative", name)
@@ -350,12 +390,27 @@ func (f *File) Validate() error {
 			return fmt.Errorf("teams.%s.createdWork: %w", name, err)
 		}
 	}
+	if err := f.validateTeamIdentity(); err != nil {
+		return err
+	}
 	for _, name := range sortedTeamNames(f.Teams) {
 		if sponsor := f.Teams[name].Sponsor; sponsor != "" && !personID.MatchString(sponsor) {
 			return fmt.Errorf("teams.%s.sponsor: %q is not a person id", name, sponsor)
 		}
 	}
 	if err := f.validatePeople(); err != nil {
+		return err
+	}
+	if err := f.validateTrackerBindings(); err != nil {
+		return err
+	}
+	if err := f.validateTargetRegistration(); err != nil {
+		return err
+	}
+	if err := f.validateToolRegistry(); err != nil {
+		return err
+	}
+	if err := f.validateTeamCreation(); err != nil {
 		return err
 	}
 	if err := f.validateFastChecks(); err != nil {
@@ -365,6 +420,37 @@ func (f *File) Validate() error {
 		return err
 	}
 	return f.validateGates()
+}
+
+func (f *File) validateTeamIdentity() error {
+	holder := map[string]string{}
+	for _, key := range sortedTeamNames(f.Teams) {
+		if prev, taken := holder[strings.ToLower(key)]; taken {
+			return fmt.Errorf("teams.%s: differs from team %q only in case, and Team keys ignore case", key, prev)
+		}
+		holder[strings.ToLower(key)] = key
+	}
+	for _, key := range sortedTeamNames(f.Teams) {
+		t := f.Teams[key]
+		if t.Name != "" {
+			if err := team.ValidateName(t.Name); err != nil {
+				return fmt.Errorf("teams.%s.name: %w", key, err)
+			}
+		}
+		if len(t.Aliases) > team.MaxAliases {
+			return fmt.Errorf("teams.%s.aliases: at most %d", key, team.MaxAliases)
+		}
+		for i, alias := range t.Aliases {
+			if strings.TrimSpace(alias) == "" || alias != strings.TrimSpace(alias) {
+				return fmt.Errorf("teams.%s.aliases[%d]: must be a key without spaces", key, i)
+			}
+			if prev, taken := holder[strings.ToLower(alias)]; taken {
+				return fmt.Errorf("teams.%s.aliases[%d]: %q is already a key or alias of team %q", key, i, alias, prev)
+			}
+			holder[strings.ToLower(alias)] = key
+		}
+	}
+	return nil
 }
 
 var personID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:@-]{0,127}$`)
@@ -495,15 +581,32 @@ func (f *File) validateRoute(p Project) error {
 	if p.Repo != "" && !ownerName(p.Repo) {
 		return fmt.Errorf("repo %q must be owner/name", p.Repo)
 	}
-	for _, key := range append([]string{p.Default}, p.Allow...) {
+	return CheckTargetKeys(p.Default, p.Allow, func(key string) bool {
+		_, ok := f.Targets[key]
+		return ok
+	})
+}
+
+// CheckTargetKeys applies the rule a route's destination keys follow, at boot
+// for a static route and at the call for a runtime binding (ADR-0186): every
+// key names a target the registry knows.
+func CheckTargetKeys(def string, allow []string, known func(string) bool) error {
+	for _, key := range append([]string{def}, allow...) {
 		if key == "" {
 			continue
 		}
-		if _, ok := f.Targets[key]; !ok {
-			return fmt.Errorf("target %q is not in targets", key)
+		if !known(key) {
+			return &UnknownTargetError{Key: key}
 		}
 	}
 	return nil
+}
+
+// UnknownTargetError names a destination key the registry does not know.
+type UnknownTargetError struct{ Key string }
+
+func (e *UnknownTargetError) Error() string {
+	return fmt.Sprintf("target %q is not in targets", e.Key)
 }
 
 func ownerName(repo string) bool {
@@ -687,6 +790,27 @@ func (f *File) SpendCaps(base spendcap.Caps) spendcap.Caps {
 	return out
 }
 
+// PrepareRepository is a team's bound on prepare_repository Work Items
+// (ADR-0194).
+type PrepareRepository struct {
+	// MaxBudgetUSD caps the Shift pool of each prepare_repository Work Item,
+	// below the plan's pool, the consumer's maxBudgetUsd and the Admission's
+	// budgetUsd.
+	MaxBudgetUSD *float64 `yaml:"maxBudgetUsd"`
+}
+
+// PrepareRepositoryCaps returns each team's prepareRepository.maxBudgetUsd;
+// a team that sets none is absent and takes the default.
+func (f *File) PrepareRepositoryCaps() map[string]float64 {
+	out := map[string]float64{}
+	for name, t := range f.Teams {
+		if t.PrepareRepository != nil && t.PrepareRepository.MaxBudgetUSD != nil {
+			out[name] = *t.PrepareRepository.MaxBudgetUSD
+		}
+	}
+	return out
+}
+
 // ForgeFollowUps returns the forge-event policy of every team that enabled
 // one. A team that is missing acts on no forge event.
 func (f *File) ForgeFollowUps() map[string]work.ForgeFollowUps {
@@ -746,4 +870,36 @@ func sortedTeamNames(teams map[string]Team) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// StaticTeamIdentity is a static Team's key, aliases and configured name,
+// sorted by key, as the boot reconciler of ADR-0198 reads them.
+type StaticTeamIdentity struct {
+	Key     string
+	Aliases []string
+	Name    string
+	// Digest fingerprints everything the Team is made of except its name
+	// and aliases, so a key that left the file and a new key with the same
+	// Digest read as a rename that forgot its alias.
+	Digest string
+}
+
+// StaticTeams returns the identity of every Team in the file.
+func (f *File) StaticTeams() []StaticTeamIdentity {
+	out := make([]StaticTeamIdentity, 0, len(f.Teams))
+	for _, key := range sortedTeamNames(f.Teams) {
+		t := f.Teams[key]
+		out = append(out, StaticTeamIdentity{Key: key, Aliases: append([]string(nil), t.Aliases...), Name: t.Name, Digest: teamDigest(t)})
+	}
+	return out
+}
+
+func teamDigest(t Team) string {
+	t.Name, t.Aliases = "", nil
+	raw, err := yaml.Marshal(t)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:])
 }

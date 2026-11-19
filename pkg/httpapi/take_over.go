@@ -57,6 +57,9 @@ func (s *Server) handleOperatorTakeOver(w http.ResponseWriter, r *http.Request) 
 	case errors.Is(err, store.ErrShiftMismatch):
 		operatorError(w, 409, "shift_changed", "The work item's open Shift is not the one expected. Nothing changed; refresh it and try again.")
 		return
+	case errors.Is(err, store.ErrPrepareNotTakenOver):
+		operatorError(w, 409, "prepare_not_taken_over", "A prepare_repository work item is not taken over: its work in progress would leave the worker's delivery fence. Cancel it and add AGENTS.md by hand instead.")
+		return
 	case errors.Is(err, store.ErrNothingToTakeOver):
 		operatorError(w, 409, "nothing_running", "The work item has no running Run to take over.")
 		return

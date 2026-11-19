@@ -372,7 +372,7 @@ func (s *Store) ClaimRoleFor(ctx context.Context, team, role, harness string, tt
 	var p pendingRun
 	err = tx.QueryRow(ctx, `
 		SELECT id, shift_id, work_item_id, run_token, round, writes, COALESCE(model_selected, '') FROM agent_runs
-		WHERE team = $1 AND role = $2 AND state = 'pending' AND `+harnessPredicate+`
+		WHERE team = $1 AND role = $2 AND state = 'pending' AND `+harnessPredicate+` AND `+teamSourcePredicate(ctx)+`
 		ORDER BY id
 		FOR UPDATE SKIP LOCKED
 		LIMIT 1`, team, role, harness).Scan(&p.runID, &p.shiftID, &p.workItemID, &p.token, &p.round, &p.writes, &p.model)
@@ -384,6 +384,9 @@ func (s *Store) ClaimRoleFor(ctx context.Context, team, role, harness string, tt
 	}
 	p.team, p.role = team, role
 	p.spendCap, p.now = s.TeamSpendCap(team), s.spendNow()
+	if pool, ok := poolClaimFrom(ctx); ok {
+		p.spendCap, p.teamID = pool.SpendCap, pool.TeamID
+	}
 	claimed, err := startPendingRun(ctx, tx, p, ttl, cap, "team:"+team, nil)
 	if err != nil {
 		_ = tx.Rollback(ctx)
@@ -403,6 +406,9 @@ type pendingRun struct {
 	writes                     bool
 	spendCap                   spendcap.Cap
 	now                        time.Time
+	// teamID counts a runtime Team's spend by its id, so a rename or an
+	// alias never starts a fresh cap (ADR-0198).
+	teamID string
 }
 
 // startPendingRun moves a locked pending Run to running inside tx: it
@@ -480,11 +486,11 @@ func startPendingRun(ctx context.Context, tx pgx.Tx, p pendingRun, ttl time.Dura
 		WHERE id = $1 AND NOT operator_owned
 		RETURNING provider, external_id, revision, team, origin, priority, title, description, url,
 			external_scope, target_forge, target_owner, target_repo, target_base_branch, route_rule, route_hint,
-			COALESCE(source_work_item_id::text, ''), source_branch, source_pr`,
+			COALESCE(source_work_item_id::text, ''), source_branch, source_pr, kind`,
 		workItemID).Scan(&it.Provider, &it.ExternalID, &it.Revision, &it.Team, &it.Origin,
 		&it.Priority, &it.Title, &it.Description, &it.URL,
 		&it.ExternalScope, &tg.Forge, &tg.Owner, &tg.Repo, &tg.BaseBranch, &it.RouteRule, &it.RouteHint,
-		&it.SourceWorkItemID, &it.SourceBranch, &it.SourcePR); err != nil {
+		&it.SourceWorkItemID, &it.SourceBranch, &it.SourcePR, &it.Kind); err != nil {
 		return nil, err
 	}
 	it.ID = fmt.Sprint(workItemID)
@@ -538,10 +544,50 @@ func (s *Store) RecordForgeToken(ctx context.Context, runToken, tokenID string) 
 	return nil
 }
 
-// LeasedRunTokens lists the run token of every Run that holds a Lease: the
-// Runs whose push credentials the forge sweep must leave alone.
+// RecordReaderForgeToken stores the read credential minted for a running
+// reading Run (ADR-0192), so the Run's settlement, its expiry and the forge
+// sweep can revoke it. A reader holds no Lease, so it lives on the Run.
+func (s *Store) RecordReaderForgeToken(ctx context.Context, runToken, tokenID string) error {
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE agent_runs SET forge_token_id = $2
+		WHERE run_token = $1 AND state = 'running' AND NOT writes`, runToken, tokenID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrLeaseLost
+	}
+	return nil
+}
+
+// SwapReaderForgeToken replaces a running reading Run's read credential and
+// returns the one it replaced, for the caller to revoke.
+func (s *Store) SwapReaderForgeToken(ctx context.Context, runToken, tokenID string) (string, error) {
+	var previous string
+	err := s.pool.QueryRow(ctx, `
+		WITH old AS (
+			SELECT id, forge_token_id FROM agent_runs
+			WHERE run_token = $1 AND state = 'running' AND NOT writes
+			FOR UPDATE
+		)
+		UPDATE agent_runs r SET forge_token_id = $2 FROM old
+		WHERE r.id = old.id
+		RETURNING old.forge_token_id`, runToken, tokenID).Scan(&previous)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrLeaseLost
+	}
+	return previous, err
+}
+
+// LeasedRunTokens lists the run token of every Run that holds a Lease or
+// still runs: the Runs whose forge credentials the forge sweep must leave
+// alone. A running reader counts before its credential is recorded, because
+// a reader takes no Lease before it mints (ADR-0192).
 func (s *Store) LeasedRunTokens(ctx context.Context) ([]string, error) {
-	rows, err := s.pool.Query(ctx, `SELECT run_token FROM leases`)
+	rows, err := s.pool.Query(ctx, `
+		SELECT run_token FROM leases
+		UNION
+		SELECT run_token FROM agent_runs WHERE state = 'running'`)
 	if err != nil {
 		return nil, err
 	}
@@ -589,9 +635,10 @@ type ExpiredRun struct {
 	Team, Role string
 	RunToken   string
 	Writes     bool
-	// ForgeTokenID is the per-run push credential minted for a writing Run
-	// (ADR-0013 tier 2). The sweeper revokes it: a partitioned pod whose
-	// Lease lapsed must lose the ability to push, not merely the right to.
+	// ForgeTokenID is the per-run forge credential minted for the Run: a
+	// writer's push credential (ADR-0013 tier 2) or a reader's read
+	// credential (ADR-0192). The sweeper revokes it: a partitioned pod whose
+	// Run lapsed must lose the ability to push or read, not merely the right.
 	ForgeTokenID string
 }
 
@@ -619,7 +666,7 @@ func (s *Store) ExpireRuns(ctx context.Context) ([]ExpiredRun, error) {
 		    summary = 'run deadline expired', failure_reason = 'lease_lost'
 		WHERE state = 'running' AND expires_at IS NOT NULL AND expires_at < now()
 		AND NOT EXISTS(SELECT 1 FROM operator_executions e WHERE e.run_id=agent_runs.id)
-		RETURNING work_item_id, COALESCE(shift_id, 0), team, role, run_token, writes`)
+		RETURNING work_item_id, COALESCE(shift_id, 0), team, role, run_token, writes, forge_token_id`)
 	if err != nil {
 		return nil, err
 	}
@@ -627,7 +674,7 @@ func (s *Store) ExpireRuns(ctx context.Context) ([]ExpiredRun, error) {
 	for rows.Next() {
 		var e ExpiredRun
 		var workItemID *int64
-		if err := rows.Scan(&workItemID, &e.ShiftID, &e.Team, &e.Role, &e.RunToken, &e.Writes); err != nil {
+		if err := rows.Scan(&workItemID, &e.ShiftID, &e.Team, &e.Role, &e.RunToken, &e.Writes, &e.ForgeTokenID); err != nil {
 			return nil, err
 		}
 		if workItemID != nil {
@@ -645,10 +692,14 @@ func (s *Store) ExpireRuns(ctx context.Context) ([]ExpiredRun, error) {
 		// returned so the caller can revoke it at the forge (ADR-0013 tier 2)
 		// — a zombie writer must LOSE the ability to push, not merely the
 		// right to.
+		var leaseTokenID string
 		if err := tx.QueryRow(ctx,
 			`DELETE FROM leases WHERE run_token = $1 RETURNING forge_token_id`, e.RunToken).
-			Scan(&e.ForgeTokenID); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			Scan(&leaseTokenID); err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return nil, err
+		}
+		if leaseTokenID != "" {
+			e.ForgeTokenID = leaseTokenID
 		}
 		var workItemID *int64
 		if e.WorkItemID != 0 {
@@ -685,6 +736,9 @@ type ShiftInfo struct {
 	// Origin is the Work Item's origin. A Shift on a Work Item of
 	// OriginPullRequest runs only reading Roles (ADR-0109).
 	Origin work.Origin
+	// Kind is the Work Item's kind. A prepare_repository Shift runs no fix
+	// round (ADR-0194).
+	Kind work.Kind
 }
 
 // LiveShifts enumerates every open Shift — the sweeper's worklist. Without
@@ -692,7 +746,7 @@ type ShiftInfo struct {
 // outcome report and its evaluation would strand the Shift forever (R2).
 func (s *Store) LiveShifts(ctx context.Context) ([]ShiftInfo, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT s.id, s.work_item_id, s.team, s.round, s.branch, w.origin FROM shifts s
+		SELECT s.id, s.work_item_id, s.team, s.round, s.branch, w.origin, w.kind FROM shifts s
 		JOIN work_items w ON w.id = s.work_item_id
 		WHERE s.closed_at IS NULL AND NOT EXISTS(SELECT 1 FROM operator_executions e WHERE e.shift_id=s.id) ORDER BY s.id`)
 	if err != nil {
@@ -702,7 +756,7 @@ func (s *Store) LiveShifts(ctx context.Context) ([]ShiftInfo, error) {
 	var out []ShiftInfo
 	for rows.Next() {
 		var si ShiftInfo
-		if err := rows.Scan(&si.ID, &si.WorkItemID, &si.Team, &si.Round, &si.Branch, &si.Origin); err != nil {
+		if err := rows.Scan(&si.ID, &si.WorkItemID, &si.Team, &si.Round, &si.Branch, &si.Origin, &si.Kind); err != nil {
 			return nil, err
 		}
 		out = append(out, si)
@@ -752,7 +806,7 @@ func (s *Store) ShiftInfoByID(ctx context.Context, shiftID int64) (ShiftInfo, er
 }
 
 const liveShiftForItemQuery = `
-		SELECT s.id, s.work_item_id, s.team, s.round, s.branch, w.origin FROM shifts s
+		SELECT s.id, s.work_item_id, s.team, s.round, s.branch, w.origin, w.kind FROM shifts s
 		JOIN work_items w ON w.id = s.work_item_id
 		WHERE s.work_item_id = $1 AND s.closed_at IS NULL AND NOT EXISTS(SELECT 1 FROM operator_executions e WHERE e.shift_id=s.id)`
 
@@ -762,7 +816,7 @@ const liveShiftForItemQuery = `
 func (s *Store) LiveShiftForItem(ctx context.Context, workItemID int64) (*ShiftInfo, error) {
 	var si ShiftInfo
 	err := s.pool.QueryRow(ctx, liveShiftForItemQuery, workItemID).
-		Scan(&si.ID, &si.WorkItemID, &si.Team, &si.Round, &si.Branch, &si.Origin)
+		Scan(&si.ID, &si.WorkItemID, &si.Team, &si.Round, &si.Branch, &si.Origin, &si.Kind)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}

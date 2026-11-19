@@ -1,0 +1,11 @@
+# Credential isolation is mandatory (ADR-0034, amended 2026-11-18): an
+# acknowledged DinD harness fails the render, because DinD turns both
+# credential proxies off and reaches a daemon that is root on the node.
+executor:
+  enabled: true
+  teams:
+    - name: acknowledged
+      model: litellm_proxy/deepseek-chat
+      budget: "1"
+      harness: {name: openhands, dind: true, acknowledgePrivilegedDind: true}
+supportProfile: unsupported

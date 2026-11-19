@@ -12,28 +12,42 @@ import (
 	"html"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/ploeg-hq/ploeg/pkg/connection"
 	"github.com/ploeg-hq/ploeg/pkg/followup"
 	"github.com/ploeg-hq/ploeg/pkg/forgebroker"
 	"github.com/ploeg-hq/ploeg/pkg/gate"
 	"github.com/ploeg-hq/ploeg/pkg/harness"
 	"github.com/ploeg-hq/ploeg/pkg/provider"
 	"github.com/ploeg-hq/ploeg/pkg/runidentity"
+	"github.com/ploeg-hq/ploeg/pkg/secretstore"
 	"github.com/ploeg-hq/ploeg/pkg/store"
 	"github.com/ploeg-hq/ploeg/pkg/target"
+	"github.com/ploeg-hq/ploeg/pkg/team"
+	"github.com/ploeg-hq/ploeg/pkg/teamruntime"
 	"github.com/ploeg-hq/ploeg/pkg/txntoken"
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
 type Server struct {
 	OperatorConfig OperatorConfig
+	// Teams resolves a Team's id, key or alias (ADR-0198). Nil = ploegd
+	// knows no Team identity, and reads show none.
+	Teams *team.Directory
+	// RuntimeTeams serves the Teams people create at runtime (ADR-0198).
+	// Nil refuses every change with creation_not_accepted.
+	RuntimeTeams   *teamruntime.Service
 	WorkerSecurity *WorkerSecurity
 	LLMControl     *LLMControl
-	Store          *store.Store
-	Trackers       map[string]provider.TrackerProvider
+	// CredentialGateways is set when Teams run behind a credential gateway
+	// (ADR-0197).
+	CredentialGateways *CredentialGateways
+	Store              *store.Store
+	Trackers           map[string]provider.TrackerProvider
 	// Targets resolves a tracker scope to the repository the work lands in.
 	// Nil = no mapping configured; every item stays unresolved and workers use
 	// their env-configured repo (the pre-decoupling behavior).
@@ -49,8 +63,19 @@ type Server struct {
 	// whole implementation. Nil or missing scope = the assignee decides,
 	// unchanged.
 	ScopeTeams map[string]string
-	LeaseTTL   time.Duration
-	Log        *slog.Logger
+	// TrackerBindings serves the runtime Scope bindings (ADR-0186); its
+	// registry also pins a Scope one binding routes to that binding's Team,
+	// after ScopeTeams. Nil = no runtime bindings.
+	TrackerBindings *TrackerBindings
+	// WorkTargets serves and guards the runtime Work Targets of ADR-0193.
+	// Nil registers none, and the claim and mint treat every target as
+	// static.
+	WorkTargets *WorkTargets
+	// ToolRegistry serves and guards the MCP server and skill source
+	// registry of ADR-0199.
+	ToolRegistry *ToolRegistry
+	LeaseTTL     time.Duration
+	Log          *slog.Logger
 	// RunIdentity signs the Run identities a Team's declared plugins receive
 	// and publishes its key set (ADR-0149). Nil = both routes answer 404.
 	RunIdentity *runidentity.Signer
@@ -66,6 +91,12 @@ type Server struct {
 	// handed their work over (ADR-0156). While TransactionTokens is set, a
 	// Team absent here runs nothing.
 	TeamSponsors map[string]string
+	// PrepareRepositoryCaps is each Team's prepareRepository.maxBudgetUsd
+	// (ADR-0194); a Team absent here takes DefaultPrepareRepositoryMaxBudgetUSD.
+	PrepareRepositoryCaps map[string]float64
+	// ForgeTokenIsolation is PLOEG_WORKER_FORGE_TOKEN_ISOLATION, the deployment's worker forge token isolation. A
+	// prepare_repository Work Item is admitted only under proxy (ADR-0194).
+	ForgeTokenIsolation string
 	// Engine is the Shift lifecycle fast path (run-multi-agent-shifts): ingest
 	// opens, an outcome report evaluates. Nil = no shift engine configured,
 	// dispatch unchanged. Engine errors are logged, never returned to the
@@ -82,10 +113,35 @@ type Server struct {
 	// registered target's policy covers is opened or pushed to (ADR-0109).
 	// Nil = no target opted in; the events are recorded only.
 	PullRequestReads PullRequestReader
-	// ForgeCreds mints the per-run push credential a writing Run gets
-	// (ADR-0013 tier 2). Nil = the worker keeps its env credential, which is
-	// the pre-tier-2 behaviour.
+	// ForgeCreds mints the per-run forge credential a Run gets: push rights
+	// for a writing Run (ADR-0013 tier 2), read rights for a reading one
+	// (ADR-0192). Nil = the worker keeps its env credential, which is the
+	// pre-tier-2 behaviour.
 	ForgeCreds forgebroker.Broker
+	// SecretStore holds the secrets of connections made through the
+	// operator API (ADR-0184). secretstore.Unconfigured makes every
+	// store-backed call fail closed; static connections never use it.
+	SecretStore secretstore.Store
+	// ClaudeRoutines fires a person's own routine to start a
+	// claude-environment Run (ADR-0197 section 7). Nil answers
+	// routines_not_accepted.
+	ClaudeRoutines *ClaudeRoutines
+	// Connections makes and manages runtime tracker and forge connections
+	// (ADR-0195). Nil answers connections_not_accepted on every
+	// connection route.
+	ConnectionService *connection.Service
+	// AppWebhooks takes the deliveries of Apps Ploeg created at runtime
+	// (ADR-0195) on /webhooks/tracker/{kind} and /webhooks/forge/{kind},
+	// by kind, whether or not a static tracker or forge of that kind is
+	// configured. Nil = only static providers receive deliveries.
+	AppWebhooks map[string]AppWebhookReceiver
+	// RegisteredRepository names the Work Target key a repository of a
+	// forge instance is registered under, for the grant picker.
+	RegisteredRepository func(forge, repo string) (string, bool)
+	// ClaimForges resolves the forge a claimed Run acts on from its Work
+	// Target (ADR-0192). Nil = the claim carries no forge and the worker
+	// keeps its env forge.
+	ClaimForges *ForgeDirectory
 	// ClaudeSessions enables Runs executed in a Team's self-hosted Claude
 	// environment (ADR-0084). Nil = both of its routes answer 404.
 	ClaudeSessions *ClaudeSessions
@@ -172,6 +228,7 @@ type Server struct {
 
 	pipelineWork  sync.WaitGroup
 	pipelineOnce  sync.Once
+	trackerReads  trackerReadCache
 	pipelineSlots chan struct{}
 }
 
@@ -233,10 +290,48 @@ type TeamCaps interface {
 }
 
 func (s *Server) maxRunning(team string) int {
+	if rt, ok := s.runtimeTeam(team); ok {
+		return rt.Manifest.MaxRunning
+	}
 	if s.TeamCaps == nil {
 		return 0
 	}
 	return s.TeamCaps.MaxRunning(team)
+}
+
+// runtimeTeam is the live runtime Team a key names (ADR-0198); a static
+// Team's key never names one, because static wins.
+func (s *Server) runtimeTeam(key string) (store.RuntimeTeam, bool) {
+	if s.RuntimeTeams == nil {
+		return store.RuntimeTeam{}, false
+	}
+	return s.RuntimeTeams.Lookup(context.Background(), key)
+}
+
+// teamSponsor is the person a Team's Runs act for when nobody handed the
+// work over: a runtime Team's sponsor for a key a runtime Team holds, so a
+// static sponsor left for that key never applies, else teams.<key>.sponsor.
+func (s *Server) teamSponsor(team string) string {
+	if rt, ok := s.runtimeTeam(team); ok {
+		return rt.Manifest.Sponsor
+	}
+	return s.TeamSponsors[team]
+}
+
+// roleCap is a Role's per-Run cap, from the plan or a runtime manifest.
+func (s *Server) roleCap(team, role string) float64 {
+	if rt, ok := s.runtimeTeam(team); ok {
+		for _, r := range rt.Manifest.Roles() {
+			if r.Name == role {
+				return r.Cap
+			}
+		}
+		return 0
+	}
+	if s.RoleCaps == nil {
+		return 0
+	}
+	return s.RoleCaps.RoleCap(team, role)
 }
 
 // ShiftEngine is implemented by pkg/shiftengine. An interface here rather
@@ -279,6 +374,7 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("GET /api/v1/runs/{token}/claude-session", s.handleClaudeSessionState)
 	mux.HandleFunc("POST /api/v1/runs/{token}/transcript", s.handleRunTranscript)
 	mux.HandleFunc("POST /api/v1/runs/{token}/forge-credential", s.handleRefreshForgeCredential)
+	s.registerRunTools(mux)
 	mux.HandleFunc("POST /api/v1/claude-sessions/forge-credential", s.handleClaudeForgeCredential)
 	mux.HandleFunc("POST /api/v1/claude-sessions/report", s.handleClaudeSessionReport)
 	mux.HandleFunc("GET /api/v1/queue/{team}", s.handleQueue)
@@ -287,6 +383,7 @@ func (s *Server) routes() *http.ServeMux {
 	s.RegisterLLMControl(mux)
 	s.registerRunIdentity(mux)
 	s.registerTransactionTokens(mux)
+	s.registerCredentialGateway(mux)
 	return mux
 }
 
@@ -311,6 +408,18 @@ func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
 // is dropped after normalization.
 func (s *Server) handleTrackerWebhook(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("provider")
+	if app, ok := s.AppWebhooks[name]; ok {
+		held, err := app.ForApp(r)
+		if err != nil {
+			s.Log.Warn("webhook rejected", "provider", name, "err", err)
+			http.Error(w, "webhook rejected", http.StatusBadRequest)
+			return
+		}
+		if held {
+			s.handleAppWebhook(w, r, "tracker:"+name, name, app)
+			return
+		}
+	}
 	tp, ok := s.Trackers[name]
 	if !ok {
 		http.Error(w, "unknown tracker provider", http.StatusNotFound)
@@ -407,6 +516,10 @@ func (s *Server) applyTrackerEvents(w http.ResponseWriter, r *http.Request, name
 func (s *Server) handleForgeWebhook(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("provider")
 	fp, ok := s.Forges[name]
+	if app, held := s.AppWebhooks[name]; !ok && held {
+		s.handleAppWebhook(w, r, name, name, app)
+		return
+	}
 	if !ok {
 		// Not an error worth alarming on: a forge may be configured to notify
 		// an instance that does not host that provider.
@@ -432,6 +545,10 @@ func (s *Server) handleForgeWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for _, ev := range events {
+		if ev.Kind == provider.ForgeGrantChanged && ev.Grant != nil {
+			s.handleGrant(r, name, *ev.Grant)
+			continue
+		}
 		if err := s.Store.AuditForgeEvent(r.Context(), name, store.ForgeEventAudit{
 			Kind: string(ev.Kind), Repo: ev.Repo, Branch: ev.Branch, PR: ev.PR,
 			Actor: ev.Actor, Review: string(ev.Review), HeadSHA: ev.PullRequest.HeadSHA,
@@ -482,13 +599,29 @@ func (s *Server) pinTeam(item *work.WorkItem) {
 	if item.ExternalScope == "" {
 		return
 	}
-	pinned, ok := s.ScopeTeams[item.ExternalScope]
-	if !ok || pinned == "" || pinned == item.Team {
+	pinned, ok := s.pinnedTeam(item.ExternalScope)
+	if !ok || pinned == item.Team {
 		return
 	}
 	s.Log.Info("team pinned by tracker container", "external_id", item.ExternalID,
 		"scope", item.ExternalScope, "assignee_team", item.Team, "team", pinned)
 	item.Team = pinned
+}
+
+// pinnedTeam is the Team a tracker container pins its work to: a static
+// project's team, else the Team of the one runtime binding routing it
+// (ADR-0186).
+func (s *Server) pinnedTeam(scope string) (string, bool) {
+	if scope == "" {
+		return "", false
+	}
+	if pinned := s.ScopeTeams[scope]; pinned != "" {
+		return pinned, true
+	}
+	if s.TrackerBindings != nil && s.TrackerBindings.Registry != nil {
+		return s.TrackerBindings.Registry.ScopeTeam(scope)
+	}
+	return "", false
 }
 
 func (s *Server) resolveTarget(ctx context.Context, item *work.WorkItem, labelsRead bool, ev provider.TrackerEvent) *target.Refusal {
@@ -517,7 +650,8 @@ func (s *Server) resolveTarget(ctx context.Context, item *work.WorkItem, labelsR
 			s.Log.Warn("target readiness unknown at ingest; the claim checks it again",
 				"external_id", ev.ExternalID, "target", route.Key, "reason", v.Reason)
 		case !v.Ready:
-			return &target.Refusal{Code: target.RefusalTargetNotReady, Reason: fmt.Sprintf("target %q is not ready: %s", route.Key, v.Reason), Allowed: []string{}}
+			return &target.Refusal{Code: target.RefusalTargetNotReady, Reason: fmt.Sprintf("target %q is not ready: %s", route.Key, v.Reason), Allowed: []string{},
+				PrepareAvailable: v.PrepareAvailable()}
 		}
 	}
 	item.Target = &route.Target
@@ -532,7 +666,7 @@ func (s *Server) resolveTarget(ctx context.Context, item *work.WorkItem, labelsR
 func (s *Server) refuseRoute(ctx context.Context, tp provider.TrackerProvider, item work.WorkItem, refusal *target.Refusal) error {
 	s.Log.Warn("tracker item refused by routing; nothing queued", "provider", item.Provider,
 		"external_id", item.ExternalID, "scope", item.ExternalScope, "team", item.Team, "reason", refusal.Reason)
-	if err := s.Store.RefuseRoute(ctx, item, refusal.Code, refusal.Reason, refusal.Allowed); err != nil {
+	if err := s.Store.RefuseRoute(ctx, item, refusal.Code, refusal.Reason, refusal.Allowed, refusal.PrepareAvailable); err != nil {
 		return err
 	}
 	if err := tp.Comment(ctx, item.ExternalID, routeRefusalComment(refusal)); err != nil {
@@ -563,6 +697,11 @@ type claimRequest struct {
 	// Yields says the worker's Harness can stop at a safe point for a person
 	// (ADR-0142); ploegd records it on the claimed Run. Absent is false.
 	Yields bool `json:"yields,omitempty"`
+	// ForgeTokenIsolation and LLMKeyIsolation are the worker's
+	// PLOEG_FORGE_TOKEN_ISOLATION and PLOEG_LLM_KEY_ISOLATION. ploegd hands a
+	// Run only to a worker that says proxy for both (ADR-0034).
+	ForgeTokenIsolation string `json:"forgeTokenIsolation,omitempty"`
+	LLMKeyIsolation     string `json:"llmKeyIsolation,omitempty"`
 
 	WorkerVersion string `json:"workerVersion,omitempty"`
 }
@@ -610,6 +749,12 @@ type claimResponse struct {
 	// for a token that lives until it is revoked. The worker refreshes an
 	// expiring token through POST /api/v1/runs/{token}/forge-credential.
 	ForgeTokenExpiresAt *time.Time `json:"forgeTokenExpiresAt,omitempty"`
+	// ForgeDialect and ForgeURL are the forge the Run acts on, resolved from
+	// its Work Target through the forge registry (ADR-0192). Absent when
+	// ploegd resolves none; ForgeURL is also absent when the worker keeps its
+	// own FORGE_URL.
+	ForgeDialect string `json:"forgeDialect,omitempty"`
+	ForgeURL     string `json:"forgeUrl,omitempty"`
 	// Planner marks a Role the team's plan configures as a planner
 	// (ADR-0031).
 	Planner bool `json:"planner,omitempty"`
@@ -668,6 +813,9 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 	if s.refuseUnsponsoredTeam(w, req.Team) {
 		return
 	}
+	if s.refuseUnisolatedCredentials(w, r, req) {
+		return
+	}
 	if req.Role != "" {
 		s.claimRole(w, r, req)
 		return
@@ -709,16 +857,47 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "claim failed", http.StatusInternalServerError)
 		return
 	}
-	if s.stopUnreadyTarget(r.Context(), req.Team, claimed.RunToken, claimed.Item) {
+	if s.stopInactiveRuntimeTarget(r.Context(), req.Team, claimed.RunToken, claimed.Item) ||
+		s.stopUnreadyTarget(r.Context(), req.Team, claimed.RunToken, claimed.Item, true) {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	forge, ok := s.claimForge(r.Context(), req.Team, claimed.RunToken, &claimed.Item)
+	if !ok {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 	s.recordRunConfig(r.Context(), claimed.RunToken, req.Team, "", true, runHarness{Name: req.Harness, Profile: req.HarnessProfile, Version: req.HarnessVersion})
+	resp := claimResponse{RunToken: claimed.RunToken, Deadline: claimed.Deadline, ExpiresInMs: leaseExpiresInMs(claimed.Deadline), WorkItem: claimed.Item,
+		ForgeDialect: forge.Dialect, ForgeURL: forge.URL}
+	if s.ForgeCreds != nil && claimed.Item.Target != nil {
+		cred, ok := s.mintForgeCredential(r.Context(), req.Team, &store.ClaimedRun{Item: claimed.Item, RunToken: claimed.RunToken, Writes: true})
+		if !ok {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		resp.carryForgeCredential(cred)
+	}
+	resp.Context = s.claimContext(r.Context(), claimed.RunToken)
+	resp.Board = s.recordBoardClaim(r.Context(), claimed.RunToken)
+	resp.Briefing = s.consumeOperatorNotes(r.Context(), claimed.Item.ID, claimed.RunToken, 0)
+	resp.FastCheck = s.fastCheckFor(claimed.Item, true)
 	s.Log.Info("lease acquired", "team", req.Team, "work_item", claimed.Item.ID, "deadline", claimed.Deadline)
-	writeJSON(w, http.StatusOK, claimResponse{RunToken: claimed.RunToken, Deadline: claimed.Deadline, ExpiresInMs: leaseExpiresInMs(claimed.Deadline), WorkItem: claimed.Item,
-		Context: s.claimContext(r.Context(), claimed.RunToken), Board: s.recordBoardClaim(r.Context(), claimed.RunToken),
-		Briefing:  s.consumeOperatorNotes(r.Context(), claimed.Item.ID, claimed.RunToken, 0),
-		FastCheck: s.fastCheckFor(claimed.Item, true)})
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// carryForgeCredential puts a credential minted for this Run on its claim;
+// a broker that mints nothing leaves the worker its pod's token.
+func (resp *claimResponse) carryForgeCredential(cred forgebroker.Credential) {
+	if cred.ID == "" {
+		return
+	}
+	resp.ForgeToken = cred.Token
+	resp.ForgeTokenPerRun = true
+	if !cred.ExpiresAt.IsZero() {
+		expires := cred.ExpiresAt.UTC()
+		resp.ForgeTokenExpiresAt = &expires
+	}
 }
 
 // claimRole serves a Shift-scoped claim, carrying everything the Run needs
@@ -726,10 +905,7 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 // the budget ceiling its credential must be minted at, and the briefing of
 // earlier Rounds' findings (ADR-0011 — the agent fetches nothing itself).
 func (s *Server) claimRole(w http.ResponseWriter, r *http.Request, req claimRequest) {
-	cap := 0.0
-	if s.RoleCaps != nil {
-		cap = s.RoleCaps.RoleCap(req.Team, req.Role)
-	}
+	cap := s.roleCap(req.Team, req.Role)
 	run, err := s.Store.ClaimRoleFor(r.Context(), req.Team, req.Role, req.harnessKey(), s.LeaseTTL, cap, s.maxRunning(req.Team))
 	switch {
 	case errors.Is(err, store.ErrNoWork):
@@ -757,7 +933,13 @@ func (s *Server) claimRole(w http.ResponseWriter, r *http.Request, req claimRequ
 
 // respondClaimedRun builds the Shift-shaped claim response, briefing and all.
 func (s *Server) respondClaimedRun(w http.ResponseWriter, r *http.Request, req claimRequest, run *store.ClaimedRun) {
-	if s.stopUnreadyTarget(r.Context(), req.Team, run.RunToken, run.Item) {
+	if s.stopInactiveRuntimeTarget(r.Context(), req.Team, run.RunToken, run.Item) ||
+		s.stopUnreadyTarget(r.Context(), req.Team, run.RunToken, run.Item, run.Writes) {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	forge, ok := s.claimForge(r.Context(), req.Team, run.RunToken, &run.Item)
+	if !ok {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
@@ -768,6 +950,7 @@ func (s *Server) respondClaimedRun(w http.ResponseWriter, r *http.Request, req c
 		Shift: run.ShiftID, Role: run.Role, Round: run.Round,
 		Writes: run.Writes, Branch: run.Branch, Authorized: run.Authorized,
 		PreAuthor: run.PreAuthor, Model: run.Model,
+		ForgeDialect: forge.Dialect, ForgeURL: forge.URL,
 	}
 	if planners, ok := s.RoleCaps.(PlannerRoles); ok && !run.Writes {
 		resp.Planner = planners.IsPlanner(req.Team, run.Role)
@@ -783,21 +966,15 @@ func (s *Server) respondClaimedRun(w http.ResponseWriter, r *http.Request, req c
 	resp.FastCheck = s.fastCheckFor(run.Item, run.Writes)
 	// Push rights are minted per writing Run, so holding the Lease and being
 	// able to push are one fact rather than two that can disagree. A reader
-	// gets nothing here — it has no Lease and no business pushing.
-	if run.Writes && s.ForgeCreds != nil && run.Item.Target != nil {
+	// is minted read rights on its repository alone, which die with the Run
+	// (ADR-0192); a broker that mints nothing leaves it its pod's read token.
+	if s.ForgeCreds != nil && run.Item.Target != nil {
 		cred, ok := s.mintForgeCredential(r.Context(), req.Team, run)
 		if !ok {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-		if cred.ID != "" {
-			resp.ForgeToken = cred.Token
-			resp.ForgeTokenPerRun = true
-			if !cred.ExpiresAt.IsZero() {
-				expires := cred.ExpiresAt.UTC()
-				resp.ForgeTokenExpiresAt = &expires
-			}
-		}
+		resp.carryForgeCredential(cred)
 	}
 
 	if run.Role != "ask" {
@@ -852,7 +1029,7 @@ func (s *Server) runBriefing(ctx context.Context, run *store.ClaimedRun) ([]harn
 	return briefing, findings, questions
 }
 
-func (s *Server) stopUnreadyTarget(ctx context.Context, team, runToken string, item work.WorkItem) bool {
+func (s *Server) stopUnreadyTarget(ctx context.Context, team, runToken string, item work.WorkItem, writes bool) bool {
 	if s.Readiness == nil || item.Target == nil {
 		return false
 	}
@@ -861,6 +1038,17 @@ func (s *Server) stopUnreadyTarget(ctx context.Context, team, runToken string, i
 		return false
 	}
 	v := s.Readiness.Check(ctx, key)
+	if item.PreparesRepository() {
+		switch {
+		case v.PrepareAvailable():
+			return false
+		case v.Ready && !writes:
+			return false
+		case v.Ready:
+			s.withdrawAlreadyPrepared(ctx, team, item, key)
+			return true
+		}
+	}
 	if v.Ready {
 		return false
 	}
@@ -884,6 +1072,25 @@ func (s *Server) stopUnreadyTarget(ctx context.Context, team, runToken string, i
 	return true
 }
 
+// withdrawAlreadyPrepared withdraws a prepare_repository Work Item whose
+// target became ready before its writer started (ADR-0194): no Run starts,
+// its hold is released and work_item.prepare_not_needed is written.
+func (s *Server) withdrawAlreadyPrepared(ctx context.Context, team string, item work.WorkItem, key string) {
+	id, err := strconv.ParseInt(item.ID, 10, 64)
+	if err != nil {
+		return
+	}
+	s.Log.Info("prepare not needed: the target became ready before the claim; no run started", "team", team,
+		"work_item", item.ID, "target", key)
+	if _, _, err := s.withdraw(ctx, id, nil, "ploegd:readiness", store.CloseReasonAlreadyPrepared); err != nil {
+		s.Log.Error("withdrawing the prepared work item failed", "work_item", item.ID, "err", err)
+		return
+	}
+	if err := s.Store.RecordPrepareNotNeeded(ctx, id, key); err != nil {
+		s.Log.Error("prepare_not_needed not audited", "work_item", item.ID, "err", err)
+	}
+}
+
 func leaseExpiresInMs(deadline time.Time) int64 {
 	return max(time.Until(deadline).Milliseconds(), 0)
 }
@@ -896,7 +1103,7 @@ func (s *Server) handleRenew(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	body := map[string]any{"deadline": deadline, "expiresInMs": leaseExpiresInMs(deadline)}
-	if worker := runWorkerFrom(r.Context()); s.TransactionTokens != nil && worker != "" {
+	if worker := runWorkerFrom(r.Context()); s.TransactionTokens != nil && worker != "" && !gatewayRunFrom(r.Context()) {
 		renewed, _, err := s.issueTransactionToken(r.Context(), token, worker)
 		if err != nil {
 			s.Log.Error("renewed run got no transaction token", "err", err)

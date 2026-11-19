@@ -165,6 +165,7 @@ Ploeg's maintainer is today the only owner of the `ploeg-hq` GitHub organisation
 | Name and mark | Held by the maintainers ([trademark policy](docs/brand/TRADEMARK.md)) | A fork has to take another name. |
 | Domains | Ploeg uses no domain of its own today; the docs use example domains | Nothing. A domain the project registers gets a row here. |
 | Consumer update token `RELEASE_CONSUMER_TOKEN_FORGEJO` | The maintainer's own credential, stored as an Actions secret ([releases](docs/ops/release-versioning.md#consumer-pull-requests)) | Consumer update pull requests stop once it lapses. Releases are unaffected. |
+| Consumer update app `RELEASE_CONSUMER_GITHUB_APP_ID` and `RELEASE_CONSUMER_GITHUB_APP_PRIVATE_KEY` | A GitHub App owned by the consumer and installed on its repository; its ID and key are stored as Actions secrets ([releases](docs/ops/release-versioning.md#consumer-pull-requests)) | GitHub consumer update pull requests stop once the key is revoked or the app is uninstalled. Releases are unaffected. |
 | Private security advisories | GitHub; visible to organisation owners and repository admins | Nobody can read or answer them. |
 
 ### What happens and when

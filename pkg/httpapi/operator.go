@@ -12,7 +12,6 @@ import (
 	"net/url"
 	"regexp"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -31,7 +30,45 @@ type OperatorPrincipal struct {
 	CanExecute     bool
 	CanVerify      bool
 	CanReadContent bool
+	// CanBindScopes lets the consumer bind tracker Scopes to its Teams at
+	// runtime (ADR-0186).
+	CanBindScopes bool
+	// CanRegisterTargets lets the consumer register, change and remove
+	// runtime Work Targets (ADR-0193); not narrowed by Team scope.
+	CanRegisterTargets bool
+	// CanManageTeams lets the consumer create, change and remove runtime
+	// Teams of its Tenant (ADR-0198).
+	CanManageTeams bool
 	BudgetLimitUSD float64
+	// ReadTrackers names the tracker connections whose Scopes and items the
+	// consumer may read (ADR-0196). Nil reads none; AllTrackers reads every
+	// one.
+	ReadTrackers []string
+	// CanManageConnections lets the consumer make, probe, change and remove
+	// tracker and forge connections for a proven person (ADR-0195). It is
+	// not narrowed by Team scope.
+	CanManageConnections bool
+	// ConnectionRedirectURIs are the exact HTTPS callbacks a connection
+	// flow may send the person back to.
+	ConnectionRedirectURIs []string
+	// CanManageTools lets the consumer register MCP servers and skill
+	// sources and attach them to Teams for a proven person (ADR-0199); not
+	// narrowed by Team scope.
+	CanManageTools bool
+}
+
+// AllTrackers is the readTrackers grant for every tracker connection.
+const AllTrackers = "*"
+
+// CanReadTracker reports whether the consumer may read the Scopes and items
+// of the tracker connection named connection.
+func (p OperatorPrincipal) CanReadTracker(connection string) bool {
+	for _, allowed := range p.ReadTrackers {
+		if allowed == AllTrackers || allowed == connection {
+			return true
+		}
+	}
+	return false
 }
 
 // AllTeams is the team scope that grants an Operator Consumer every Team. A
@@ -88,21 +125,28 @@ func ParseOperatorConsumers(raw string, lookup func(string) (string, bool)) ([]O
 		return nil, errors.New("operator consumer configuration exceeds 64 KiB")
 	}
 	var configs []struct {
-		Name          string              `json:"name"`
-		TokenEnv      string              `json:"tokenEnv"`
-		Teams         []string            `json:"teams"`
-		Execute       bool                `json:"execute"`
-		Verify        bool                `json:"verify"`
-		ReadContent   *bool               `json:"readContent"`
-		MaxBudgetUSD  *float64            `json:"maxBudgetUsd"`
-		ClientIDs     []string            `json:"clientIds"`
-		Audiences     []string            `json:"audiences"`
-		RequireClaims map[string][]string `json:"requireClaims"`
+		Name            string              `json:"name"`
+		TokenEnv        string              `json:"tokenEnv"`
+		Teams           []string            `json:"teams"`
+		Execute         bool                `json:"execute"`
+		Verify          bool                `json:"verify"`
+		ReadContent     *bool               `json:"readContent"`
+		MaxBudgetUSD    *float64            `json:"maxBudgetUsd"`
+		ClientIDs       []string            `json:"clientIds"`
+		Audiences       []string            `json:"audiences"`
+		RequireClaims   map[string][]string `json:"requireClaims"`
+		ReadTrackers    []string            `json:"readTrackers"`
+		ManageConns     bool                `json:"manageConnections"`
+		RedirectURIs    []string            `json:"connectionRedirectUris"`
+		BindScopes      bool                `json:"bindScopes"`
+		RegisterTargets bool                `json:"registerTargets"`
+		ManageTools     bool                `json:"manageTools"`
+		ManageTeams     bool                `json:"manageTeams"`
 	}
 	decoder := json.NewDecoder(strings.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&configs); err != nil {
-		return nil, errors.New("operator consumers must be a JSON array of name, tokenEnv, teams, execute, verify, readContent, maxBudgetUsd, clientIds, audiences and requireClaims")
+		return nil, errors.New("operator consumers must be a JSON array of name, tokenEnv, teams, execute, verify, readContent, maxBudgetUsd, clientIds, audiences, requireClaims, readTrackers, manageConnections, connectionRedirectUris, bindScopes, registerTargets, manageTools and manageTeams")
 	}
 	if err := decoder.Decode(new(any)); err != io.EOF {
 		return nil, errors.New("operator consumers must contain one JSON value")
@@ -131,6 +175,10 @@ func ParseOperatorConsumers(raw string, lookup func(string) (string, bool)) ([]O
 		if err != nil {
 			return nil, err
 		}
+		readTrackers, err := consumerTrackerGrant(cfg.Name, cfg.ReadTrackers)
+		if err != nil {
+			return nil, err
+		}
 		readContent := cfg.Execute
 		if cfg.ReadContent != nil {
 			readContent = *cfg.ReadContent
@@ -155,11 +203,15 @@ func ParseOperatorConsumers(raw string, lookup func(string) (string, bool)) ([]O
 				seen[id] = true
 			}
 		}
+		if err := checkConnectionRedirectURIs(cfg.Name, cfg.RedirectURIs); err != nil {
+			return nil, err
+		}
 		required, err := requiredPersonClaims(cfg.Name, cfg.RequireClaims, len(cfg.ClientIDs)+len(cfg.Audiences) > 0)
 		if err != nil {
 			return nil, err
 		}
-		consumers = append(consumers, OperatorConsumer{Principal: OperatorPrincipal{Name: cfg.Name, Teams: teams, CanExecute: cfg.Execute, CanVerify: cfg.Verify, CanReadContent: readContent, BudgetLimitUSD: budgetLimit}, tokenHash: hash, clientIDs: cfg.ClientIDs, audiences: cfg.Audiences, requiredClaims: required})
+		consumers = append(consumers, OperatorConsumer{Principal: OperatorPrincipal{Name: cfg.Name, Teams: teams, CanExecute: cfg.Execute, CanVerify: cfg.Verify, CanReadContent: readContent, CanBindScopes: cfg.BindScopes, CanRegisterTargets: cfg.RegisterTargets, CanManageTeams: cfg.ManageTeams, BudgetLimitUSD: budgetLimit, ReadTrackers: readTrackers,
+			CanManageConnections: cfg.ManageConns, ConnectionRedirectURIs: slices.Clone(cfg.RedirectURIs), CanManageTools: cfg.ManageTools}, tokenHash: hash, clientIDs: cfg.ClientIDs, audiences: cfg.Audiences, requiredClaims: required})
 		names[cfg.Name], hashes[hash] = true, true
 	}
 	return consumers, nil
@@ -179,6 +231,26 @@ func consumerTeamScope(name string, configured []string) ([]string, error) {
 		teams = append(teams, team)
 	}
 	return teams, nil
+}
+
+func consumerTrackerGrant(name string, configured []string) ([]string, error) {
+	if len(configured) == 0 {
+		return nil, nil
+	}
+	if len(configured) > 100 {
+		return nil, fmt.Errorf("operator consumer %s names more than 100 readTrackers", name)
+	}
+	if slices.Equal(configured, []string{AllTrackers}) {
+		return []string{AllTrackers}, nil
+	}
+	seen := map[string]bool{}
+	for _, connection := range configured {
+		if !operatorName.MatchString(connection) || seen[connection] {
+			return nil, fmt.Errorf("operator consumer %s has an invalid or duplicated readTrackers entry; %q grants every tracker connection only on its own", name, AllTrackers)
+		}
+		seen[connection] = true
+	}
+	return slices.Clone(configured), nil
 }
 
 // OperatorConsumersNameClientIDs reports whether any consumer accepts person
@@ -235,6 +307,18 @@ func (s *Server) operatorAuth(next http.Handler) http.Handler {
 		}
 		if r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/api/v1/operator/teams/") && strings.HasSuffix(r.URL.Path, "/chats") {
 			timeout = 30 * time.Second
+		}
+		if isConnectionVendorCall(r) {
+			timeout = 60 * time.Second
+		}
+		if isTargetProbeCall(r) {
+			timeout = targetRequestTimeout
+		}
+		if isToolProbeCall(r) {
+			timeout = toolRequestTimeout
+		}
+		if (r.Method == http.MethodPost || r.Method == http.MethodPut) && strings.HasPrefix(r.URL.Path, "/api/v1/operator/teams/") && strings.Contains(r.URL.Path, "/tracker-bindings") {
+			timeout = bindingTimeout
 		}
 		if isContextUpload(r) {
 			timeout = 60 * time.Second
@@ -419,6 +503,7 @@ func (s *Server) operatorRoutes() *http.ServeMux {
 	mux.HandleFunc("GET /api/v1/operator/events", s.handleOperatorEvents)
 	mux.HandleFunc("GET /api/v1/operator/route-refusals", s.handleOperatorRouteRefusals)
 	mux.HandleFunc("GET /api/v1/operator/connections", s.handleOperatorConnections)
+	s.registerTrackerReads(mux)
 	mux.HandleFunc("GET /api/v1/operator/allowances", s.handleOperatorAllowance)
 	s.registerOperatorExecution(mux)
 	s.registerOperatorWorkAdmission(mux)
@@ -429,6 +514,12 @@ func (s *Server) operatorRoutes() *http.ServeMux {
 	s.registerContext(mux)
 	s.registerFacts(mux)
 	s.registerOperatorKnowledge(mux)
+	s.registerOperatorConnections(mux)
+	s.registerOperatorTrackerBindings(mux)
+	s.registerOperatorTargets(mux)
+	s.registerOperatorTeams(mux)
+	s.registerOperatorTools(mux)
+	s.registerClaudeRoutines(mux)
 	return mux
 }
 
@@ -446,21 +537,13 @@ func (s *Server) handleOperatorTeams(w http.ResponseWriter, r *http.Request) {
 		operatorReadError(w, err)
 		return
 	}
-	for i := range teams {
-		if assignees := s.OperatorConfig.TeamAssignees[teams[i].ID]; len(assignees) > 0 {
-			teams[i].Assignees = append([]string{}, assignees...)
-			sort.Strings(teams[i].Assignees)
-		}
-		if scopes := s.OperatorConfig.TeamScopes[teams[i].ID]; len(scopes) > 0 {
-			teams[i].PinnedScopes = append([]string{}, scopes...)
-			sort.Strings(teams[i].PinnedScopes)
-		}
-	}
+	s.decorateTeams(teams)
 	if err := s.describeRoles(r.Context(), teams); err != nil {
 		operatorReadError(w, err)
 		return
 	}
-	operatorJSON(w, 200, map[string]any{"schemaVersion": "1.0", "teams": teams})
+	s.identifyTeams(teams)
+	operatorJSON(w, 200, map[string]any{"schemaVersion": "1.0", "teams": s.withRuntimeTeams(r, principal, teams)})
 }
 
 func (s *Server) handleOperatorItems(w http.ResponseWriter, r *http.Request) {
@@ -502,6 +585,7 @@ func (s *Server) handleOperatorItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.linkTask(&detail.Item)
+	s.preparePullRequestState(r.Context(), &detail.Item)
 	detail.Resume = s.resumeOffer(r.Context(), id)
 	detail.TakeOver = s.takeOverDetail(r.Context(), id)
 	operatorJSON(w, 200, struct {

@@ -334,3 +334,41 @@ func TestAssigneeTeams_IsDeterministic(t *testing.T) {
 		}
 	}
 }
+
+func TestTrackerBindingsValidateAndMatchWildcardsOnlyForRuntimeConnections(t *testing.T) {
+	for _, bad := range []string{
+		"teams:\n  a:\n    trackerBindings: {connections: []}\n",
+		"teams:\n  a:\n    trackerBindings: {connections: [\"*:\"]}\n",
+		"teams:\n  a:\n    trackerBindings: {connections: [clickup, clickup]}\n",
+		"teams:\n  a:\n    trackerBindings: {connections: [clickup], max: 0}\n",
+	} {
+		if _, err := Load(write(t, bad)); err == nil {
+			t.Errorf("accepted %q", bad)
+		}
+	}
+	f, err := Load(write(t, "teams:\n  a:\n    trackerBindings: {connections: [clickup, \"*:vikunja\"]}\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, ok := f.TeamTrackerBindings("a")
+	if !ok || b.Limit() != DefaultMaxTrackerBindings {
+		t.Fatalf("bindings = %+v %v", b, ok)
+	}
+	for _, tc := range []struct {
+		ref  ConnectionRef
+		want bool
+	}{
+		{ConnectionRef{ID: "clickup", Kind: "clickup"}, true},
+		{ConnectionRef{ID: "vikunja", Kind: "vikunja"}, false},
+		{ConnectionRef{ID: "vikunja-acme", Kind: "vikunja", Runtime: true, Active: true}, true},
+		{ConnectionRef{ID: "vikunja-acme", Kind: "vikunja", Runtime: true}, false},
+		{ConnectionRef{ID: "clickup-acme", Kind: "clickup", Runtime: true, Active: true}, false},
+	} {
+		if got := b.Accepts(tc.ref); got != tc.want {
+			t.Errorf("Accepts(%+v) = %v", tc.ref, got)
+		}
+	}
+	if _, ok := f.TeamTrackerBindings("missing"); ok {
+		t.Error("a missing Team accepts bindings")
+	}
+}

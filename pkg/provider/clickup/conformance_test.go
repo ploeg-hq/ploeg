@@ -30,7 +30,7 @@ func TestClickUpPassesTheTrackerConformanceSuite(t *testing.T) {
 
 func TestClickUpDeclaresItsTrackerCapabilities(t *testing.T) {
 	got := strings.Join(provider.TrackerCapabilities(&Provider{}), ",")
-	want := "execution_reader,delivery_identifier,board_reader,task_linker,relation_reader,dependency_reader,webhook_checker,webhook_registrar,reference_namer"
+	want := "execution_reader,delivery_identifier,board_reader,task_linker,relation_reader,dependency_reader,webhook_checker,webhook_registrar,reference_namer,scope_lister,scope_item_lister,scope_prober,scope_namer,scope_webhook_registrar,webhook_remover"
 	if got != want {
 		t.Fatalf("capabilities = %s, want %s", got, want)
 	}
@@ -48,6 +48,23 @@ func fakeClickUp(w *trackertest.World) http.Handler {
 	return http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") == "" {
 			http.Error(rw, `{"err":"Token invalid"}`, http.StatusUnauthorized)
+			return
+		}
+		if listID, ok := strings.CutSuffix(strings.TrimPrefix(r.URL.Path, "/list/"), "/task"); ok && r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/list/") {
+			if r.URL.Query().Get("include_closed") != "false" {
+				http.Error(rw, `{"err":"the adapter must leave closed tasks out"}`, http.StatusBadRequest)
+				return
+			}
+			tasks := []map[string]any{}
+			if r.URL.Query().Get("page") == "0" {
+				for _, task := range w.Tasks() {
+					if task.Scope == listID && !task.Closed {
+						tasks = append(tasks, map[string]any{"id": task.ID, "name": task.Title, "url": "https://app.clickup.com/t/" + task.ID,
+							"status": map[string]any{"status": task.Status, "type": "custom"}, "date_updated": "1759310400000"})
+					}
+				}
+			}
+			_ = json.NewEncoder(rw).Encode(map[string]any{"tasks": tasks, "last_page": true})
 			return
 		}
 		rest, ok := strings.CutPrefix(r.URL.Path, "/task/")

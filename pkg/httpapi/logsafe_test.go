@@ -29,7 +29,7 @@ func assertLogsCarryNone(t *testing.T, logs string, seeded ...string) {
 
 func TestAnOutcomeReportLogsNoTextTheRunWrote(t *testing.T) {
 	s, logs := harnessServer(t)
-	token := harnessClaim(t, s, `{"team":"bronze","role":"reviewer"}`)
+	token := harnessClaim(t, s, `{"team":"bronze","role":"reviewer","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	harnessOutcome(t, s, token, fmt.Sprintf(`{"outcome":"stuck","summary":%q,"stuckReason":%q,"findings":%q,
 		"links":["https://forge.example/acme/app/pulls/7?%s"]}`, seededSummary, seededStuck, seededFinding, seededQuery))
 	if !strings.Contains(logs.String(), `msg="outcome reported"`) {

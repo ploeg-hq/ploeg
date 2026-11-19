@@ -38,7 +38,7 @@ func queueOneItem(t *testing.T, externalID string) {
 
 func claimAs(t *testing.T, h http.Handler, workerVersion string) *httptest.ResponseRecorder {
 	t.Helper()
-	body, _ := json.Marshal(map[string]string{"team": "silver", "workerVersion": workerVersion})
+	body, _ := json.Marshal(map[string]string{"team": "silver", "workerVersion": workerVersion, "harness": "openhands", "forgeTokenIsolation": "proxy", "llmKeyIsolation": "proxy"})
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/v1/claim", bytes.NewReader(body)))
 	return rec

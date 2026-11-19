@@ -55,7 +55,7 @@ func (s *Server) currentOperatorSource(ctx context.Context, source store.Operato
 }
 
 func (s *Server) operatorSourceTargetMatches(source store.OperatorSource, team string, labels []string) bool {
-	if s.Targets == nil || (s.ScopeTeams[source.ExpectedScope] != "" && s.ScopeTeams[source.ExpectedScope] != team) {
+	if s.Targets == nil || s.pinnedElsewhere(source.ExpectedScope, team) {
 		return false
 	}
 	route, ok, err := s.Targets.Route(target.Request{Scope: source.ExpectedScope, Team: team, Labels: labels, LabelsRead: true})
@@ -127,4 +127,9 @@ func (s *Server) validateOperatorSource(ctx context.Context, input store.AdmitOp
 		return store.ErrExecutionConflict
 	}
 	return nil
+}
+
+func (s *Server) pinnedElsewhere(scope, team string) bool {
+	pinned, ok := s.pinnedTeam(scope)
+	return ok && pinned != team
 }

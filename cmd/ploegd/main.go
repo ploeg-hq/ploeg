@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/ploeg-hq/ploeg/pkg/config"
+	"github.com/ploeg-hq/ploeg/pkg/forgebroker"
 	"github.com/ploeg-hq/ploeg/pkg/httpapi"
 	"github.com/ploeg-hq/ploeg/pkg/litellm"
 	"github.com/ploeg-hq/ploeg/pkg/llmbroker"
@@ -109,6 +110,10 @@ func run(ctx context.Context, log *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("PLOEG_CONFIG: %w", err)
 	}
+	gate.enter("reconciling Teams")
+	teams := teamDirectory(ctx, log, cfg, st)
+	go backfillTeamIDs(ctx, log, st)
+	gate.enter("resolving configuration")
 
 	// Tracker write-backs are opt-in by credential: without a URL and token
 	// the provider keeps its logging no-op, so a deployment that has not been
@@ -188,6 +193,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 	// registered under both, since a webhook path names the dialect.
 	forgeID := forgeIDFromEnv()
 	forges := map[string]provider.ForgeProvider{}
+	active := map[string]activeForge{}
 	if forgeURL := trimSlash(os.Getenv("PLOEG_FORGEJO_URL")); forgeURL != "" {
 		fj := &forgejo.Provider{
 			BaseURL: forgeURL,
@@ -196,6 +202,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 			Log:     log,
 		}
 		forges[fj.Name()] = fj
+		active[fj.Name()] = activeForge{provider: fj, url: forgeURL, workerURL: workerURLFromEnv(fj.Name())}
 		log.Info("forge provider configured", "dialect", fj.Name(), "url", forgeURL)
 		if fj.Secret == "" {
 			log.Warn("PLOEG_FORGEJO_SECRET is unset; every Forgejo webhook is rejected")
@@ -209,6 +216,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 			Log:     log,
 		}
 		forges[gl.Name()] = gl
+		active[gl.Name()] = activeForge{provider: gl, url: glURL, workerURL: workerURLFromEnv(gl.Name())}
 		log.Info("forge provider configured", "dialect", gl.Name(), "url", glURL)
 		if gl.Secret == "" {
 			log.Warn("PLOEG_GITLAB_SECRET is unset; every GitLab webhook is rejected")
@@ -218,9 +226,9 @@ func run(ctx context.Context, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	var githubForgeIDs []string
 	if ghForge != nil {
 		forges[ghForge.Name()] = ghForge
+		active[ghForge.Name()] = activeForge{provider: ghForge, url: ghForge.BaseURL, workerURL: workerURLFromEnv(ghForge.Name())}
 		log.Info("forge provider configured", "dialect", ghForge.Name(), "url", ghForge.BaseURL)
 	}
 	// Bind the INSTANCE id (ADR-0016) to a dialect. PLOEG_TARGET_FORGE names
@@ -245,14 +253,20 @@ func run(ctx context.Context, log *slog.Logger) error {
 		log.Info("no forge provider configured (PLOEG_FORGEJO_URL/PLOEG_GITLAB_URL/PLOEG_GITHUB_URL unset); findings will not reach a pull request")
 	}
 
-	forgeCreds, forgeSweeper, err := forgeCredentials(ctx, log)
+	forgejoCreds, forgejoSweeper, err := forgeCredentials(ctx, log)
 	if err != nil {
 		return err
 	}
-	if ghForge != nil {
-		githubForgeIDs = forgeIDsOf(forges, ghForge)
+	release := releaseForges{registry: forges, defaultForge: forgeID, byDialect: active,
+		forgejoCreds: forgejoCreds, forgejoSweeper: forgejoSweeper, githubApp: ghApp}
+	if err := release.requireMinting(); err != nil {
+		return err
 	}
-	forgeCreds, forgeSweeper = withGitHubCredentials(log, forgeCreds, forgeSweeper, ghApp, githubForgeIDs, forgeID)
+	forgeCreds, forgeSweeper := release.credentials(log)
+	secrets, err := secretStore(log, secretStoreEnvFromOS())
+	if err != nil {
+		return err
+	}
 
 	// Gateway credential sweeper (llmbroker.Sweeper) for per-run key
 	// lifecycle: nil = no gateway configured, revocation disabled.
@@ -276,7 +290,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 	// Routing rules come from the config file when it names projects — which
 	// is where the project IDs get resolved from names, so nothing in cluster
 	// config is a bare number. The env var remains as the fallback.
-	targets, readiness, err := routing(ctx, log, cfg, vik, forges, forgeID)
+	staticTable, targets, readiness, err := staticRouting(ctx, log, cfg, vik, forges, forgeID)
 	if err != nil {
 		return err
 	}
@@ -377,6 +391,10 @@ func run(ctx context.Context, log *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("operator configuration: %w", err)
 	}
+	routines, err := claudeRoutines(log, operator.TeamHarnesses)
+	if err != nil {
+		return err
+	}
 	if err := httpapi.CheckIndependentReview(plans, llmControl, operator.TeamHarnesses); err != nil {
 		return fmt.Errorf("team plans: %w", err)
 	}
@@ -432,25 +450,76 @@ func run(ctx context.Context, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	runtimeConns, err := runtimeConnections(log, cfg, st, secrets, trackers, forges)
+	if err != nil {
+		return fmt.Errorf("connections: %w", err)
+	}
+	readiness = ensureGate(readiness, cfg, forges)
+	bindings := trackerBindings(ctx, log, st, cfg, staticTable, targets, readiness, trackers, forgeID, secrets, runtimeConns)
+	workTargets := runtimeTargets(ctx, log, cfg, st, runtimeConns, staticTable, readiness, bindings, forgeID, release.directory())
+	tools := toolRegistry(ctx, log, cfg, st, secrets, teams)
+	runtimeTeams, err := runtimeTeamService(ctx, log, cfg, st, teams, func(key string) bool {
+		if _, ok := staticTable.Targets[key]; ok {
+			return true
+		}
+		if workTargets == nil {
+			return false
+		}
+		for _, t := range workTargets.Live() {
+			if t.Key == key {
+				return true
+			}
+		}
+		return false
+	}, bindings)
+	if err != nil {
+		return fmt.Errorf("runtime Teams: %w", err)
+	}
+	if llmControl != nil {
+		llmControl.Runtime = runtimeLLMPolicy(runtimeTeams, llmControl.Policies)
+	}
+	if engine != nil {
+		engine.Runtime = runtimeTeams.Plan
+		engine.Selections = httpapi.RunSelections{Harnesses: operator.TeamHarnesses, LLM: llmControl, Runtime: runtimeTeams.Harness}
+	}
+	if workTargets != nil {
+		withConnections := &forgebroker.WithConnections{Base: forgeCreds, BaseSweeper: forgeSweeper, Resolve: connectionBroker(runtimeConns)}
+		forgeCreds, forgeSweeper = withConnections, withConnections
+		runtimeConns.OnChange = withConnections.Forget
+	}
+	credentialGateways, err := credentialGatewaysFromEnv(workerSecurity, log)
+	if err != nil {
+		return fmt.Errorf("credential gateways: %w", err)
+	}
 	srv := &httpapi.Server{
-		OperatorConfig: operator,
-		WorkerSecurity: workerSecurity,
-		LLMControl:     llmControl,
-		Store:          st,
-		Trackers:       trackers,
-		Targets:        targets,
-		Readiness:      readiness,
-		ScopeTeams:     cfg.ScopeTeams(),
-		TrackerPeople:  cfg.TrackerPeople(),
-		LeaseTTL:       leaseTTL,
-		Log:            log,
-		Version:        version,
-		RoleCaps:       plans,
-		TeamCaps:       runCaps,
-		Forges:         forges,
-		ForgeCreds:     forgeCreds,
-		ClaudeSessions: claudeSessions(log),
-		CreatedWork:    createdWork,
+		CredentialGateways: credentialGateways,
+		OperatorConfig:     operator,
+		Teams:              teams,
+		RuntimeTeams:       runtimeTeams,
+		WorkerSecurity:     workerSecurity,
+		LLMControl:         llmControl,
+		Store:              st,
+		Trackers:           trackers,
+		Targets:            bindings.Live,
+		Readiness:          readiness,
+		ScopeTeams:         cfg.ScopeTeams(),
+		TrackerPeople:      cfg.TrackerPeople(),
+		LeaseTTL:           leaseTTL,
+		Log:                log,
+		Version:            version,
+		RoleCaps:           plans,
+		TeamCaps:           runCaps,
+		Forges:             forges,
+		ForgeCreds:         forgeCreds,
+		SecretStore:        secrets,
+
+		ConnectionService:    runtimeConns,
+		AppWebhooks:          appWebhooks(log, runtimeConns, forges),
+		RegisteredRepository: registeredRepositories(registeredRepository(cfg, forgeID), workTargets),
+		ClaimForges:          release.directory(),
+		ClaudeSessions:       claudeSessions(log),
+		ClaudeRoutines:       routines,
+		CreatedWork:          createdWork,
 
 		MetricsCacheTTL:  durationOr("PLOEG_METRICS_CACHE_TTL", httpapi.DefaultMetricsCacheTTL),
 		AskAllowanceUSD:  askAllowance,
@@ -471,7 +540,16 @@ func run(ctx context.Context, log *slog.Logger) error {
 		RunIdentityAudiences:  identityAudiences,
 		TransactionTokens:     transactionTokens,
 		TeamSponsors:          cfg.Sponsors(),
+		PrepareRepositoryCaps: cfg.PrepareRepositoryCaps(),
+		ForgeTokenIsolation:   os.Getenv("PLOEG_WORKER_FORGE_TOKEN_ISOLATION"),
+		TrackerBindings:       &httpapi.TrackerBindings{Registry: bindings},
+		WorkTargets:           &httpapi.WorkTargets{Service: workTargets},
+		ToolRegistry:          tools,
 	}
+	runtimeTeams.OnStopped = func(ctx context.Context, runTokens, forgeTokenIDs []string) {
+		srv.StopRunCredentials(ctx, "expired Team drain", runTokens, forgeTokenIDs)
+	}
+
 	if notes != nil {
 		srv.Notes = notes
 	}
@@ -500,6 +578,9 @@ func run(ctx context.Context, log *slog.Logger) error {
 			Log:             log,
 		}
 		reviews.Conflicts = srv
+		if readiness != nil {
+			reviews.Readiness = readiness
+		}
 		srv.Reviews = reviews
 		log.Info("pull request merge detection enabled", "reconcile_every", reviewEvery,
 			"tracker_done_on_merge", reviews.MarkTrackerDone)
@@ -560,6 +641,12 @@ func run(ctx context.Context, log *slog.Logger) error {
 		loops.Go(func() { pullRequestReadLoop(ctx, readPullRequests, reviewEvery) })
 	}
 	loops.Go(func() { deployCheckLoop(ctx, srv, deployCheckEvery) })
+	loops.Go(func() { connectionReconcileLoop(ctx, runtimeConns, time.Hour) })
+	loops.Go(func() { bindings.Poll(ctx) })
+	loops.Go(func() { runtimeTeamLoop(ctx, log, runtimeTeams, time.Minute) })
+	if workTargets != nil {
+		loops.Go(func() { workTargets.Poll(ctx) })
+	}
 	if srv.Notes != nil {
 		notesEvery := durationOr("PLOEG_NOTES_WRITE_INTERVAL", 15*time.Second)
 		loops.Go(func() { noteWriteLoop(ctx, srv, notesEvery) })

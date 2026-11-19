@@ -81,7 +81,14 @@
 {{- define "ploeg.netpol.forgeUrls" -}}
 {{- $ex := .root.Values.executor }}
 {{- $urls := list }}
-{{- if eq .side "worker" }}
+{{- if and (eq .side "worker") (include "ploeg.multiForge" .root) }}
+{{- range $name := include "ploeg.activeForges" .root | fromJsonArray }}
+{{- $urls = append $urls (get $ex $name).url }}
+{{- if and (eq $name "github") (eq (trimSuffix "/" (get $ex $name).url) "https://github.com") }}
+{{- $urls = append $urls "https://api.github.com" }}
+{{- end }}
+{{- end }}
+{{- else if eq .side "worker" }}
 {{- with (get $ex ($ex.forge | default "forgejo") | default dict).url }}{{- $urls = append $urls . }}{{- end }}
 {{- else }}
 {{- range $name := list "forgejo" "gitlab" "github" }}
@@ -135,7 +142,7 @@
 {{- range $role := (include "ploeg.teamRoles" $team | fromJsonArray) }}
 {{- $identity := include "ploeg.roleHarness" (dict "root" $root "team" $team "role" $role) | fromJson }}
 {{- $ce := include "ploeg.claudeEnvironment" (dict "root" $root "team" $team "role" $role) | fromJson }}
-{{- if and (eq $identity.name "claude-environment") (ne $ce.carrier "client") }}{{- $found = true }}{{- end }}
+{{- if and (eq $identity.name "claude-environment") (not (has $ce.carrier (list "client" "routine"))) }}{{- $found = true }}{{- end }}
 {{- end }}
 {{- if $found }}{{- $teams = append $teams $team.name }}{{- end }}
 {{- end }}

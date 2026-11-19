@@ -17,7 +17,7 @@ import (
 const (
 	yieldedAt  = "1111111111111111111111111111111111111111"
 	wipCommit  = "2222222222222222222222222222222222222222"
-	yieldClaim = `{"team":"bronze","role":"builder","harness":"acp","harnessProfile":"opencode","yields":true}`
+	yieldClaim = `{"team":"bronze","role":"builder","harness":"acp","harnessProfile":"openhands","yields":true,"forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`
 )
 
 func takeOverPath(id int64) string {
@@ -180,12 +180,12 @@ func TestTakeOverRefusals(t *testing.T) {
 	if w := operatorExecutionRequest(s, "POST", takeOverPath(idle), token, "alice", map[string]any{"commandId": "n1"}); w.Code != 409 || errorCode(t, w) != "nothing_running" {
 		t.Fatalf("take-over of an unclaimed Work Item: %d %s", w.Code, w.Body)
 	}
-	status, claim := postClaim(t, h, `{"team":"bronze","role":"builder","harness":"claude-code"}`)
+	status, claim := postClaim(t, h, `{"team":"bronze","role":"builder","harness":"exec","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	if status != http.StatusOK {
 		t.Fatalf("claim: %d", status)
 	}
 	w := operatorExecutionRequest(s, "POST", takeOverPath(idle), token, "alice", map[string]any{"commandId": "n2"})
-	if w.Code != 409 || errorCode(t, w) != "yield_unsupported" || !strings.Contains(w.Body.String(), "claude-code") {
+	if w.Code != 409 || errorCode(t, w) != "yield_unsupported" || !strings.Contains(w.Body.String(), "exec") {
 		t.Fatalf("take-over of a Harness that cannot yield: %d %s", w.Code, w.Body)
 	}
 	if n := countRows(t, `SELECT count(*) FROM agent_runs WHERE work_item_id=$1 AND yield_requested_at IS NOT NULL`, idle); n != 0 {

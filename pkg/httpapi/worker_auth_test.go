@@ -66,14 +66,14 @@ func TestWorkerControlRejectsWrongScopesAndExpiredLeases(t *testing.T) {
 	s, bootstrap := secureWorkerFixture(t, &managedBrokerFixture{})
 	s.Log = slog.New(slog.DiscardHandler)
 	for _, token := range []string{"", strings.Repeat("x", 32)} {
-		if got := workerRequest(s, "POST", "/api/v1/claim", token, "pod", "{\"team\":\"bronze\",\"role\":\"reviewer\"}").Code; got != 401 {
+		if got := workerRequest(s, "POST", "/api/v1/claim", token, "pod", "{\"harness\":\"openhands\",\"forgeTokenIsolation\":\"proxy\",\"llmKeyIsolation\":\"proxy\",\"team\":\"bronze\",\"role\":\"reviewer\"}").Code; got != 401 {
 			t.Fatalf("unauthorized claim=%d", got)
 		}
 	}
-	if got := workerRequest(s, "POST", "/api/v1/claim", bootstrap, "pod", `{"team":"other","role":"reviewer"}`).Code; got != 401 {
+	if got := workerRequest(s, "POST", "/api/v1/claim", bootstrap, "pod", `{"team":"other","role":"reviewer","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`).Code; got != 401 {
 		t.Fatalf("wrong team=%d", got)
 	}
-	w := workerRequest(s, "POST", "/api/v1/claim", bootstrap, "pod", `{"team":"bronze","role":"reviewer"}`)
+	w := workerRequest(s, "POST", "/api/v1/claim", bootstrap, "pod", `{"team":"bronze","role":"reviewer","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	var claim struct {
 		RunToken     string `json:"runToken"`
 		ControlToken string `json:"controlToken"`
@@ -102,7 +102,7 @@ func TestManagedMintUsesControllerPolicyAndDoesNotRetryUnknownEffects(t *testing
 	b := &managedBrokerFixture{fail: true}
 	s, bootstrap := secureWorkerFixture(t, b)
 	s.Log = slog.New(slog.DiscardHandler)
-	w := workerRequest(s, "POST", "/api/v1/claim", bootstrap, "pod", `{"team":"bronze","role":"reviewer"}`)
+	w := workerRequest(s, "POST", "/api/v1/claim", bootstrap, "pod", `{"team":"bronze","role":"reviewer","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	var claim struct {
 		RunToken     string `json:"runToken"`
 		ControlToken string `json:"controlToken"`

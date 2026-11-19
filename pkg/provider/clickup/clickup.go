@@ -35,6 +35,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/ploeg-hq/ploeg/pkg/apilimit"
@@ -82,6 +83,15 @@ type Provider struct {
 	// CheckWebhooks lists and RegisterWebhook writes. Empty reports every
 	// List's webhook as unreadable.
 	Workspace string
+	// ScopeStatuses returns the status names one List overrides SetStatus
+	// with (ADR-0186 runtime bindings); nil, or no entry for a state, keeps
+	// Statuses.
+	ScopeStatuses func(listID string) map[work.State]string
+	// WebhookSecret returns the signing secret of a webhook Ploeg registered,
+	// by the webhook id a delivery names, for a delivery PLOEG_CLICKUP_SECRET
+	// does not verify (ADR-0186). Nil verifies with Secret alone.
+	WebhookSecret func(ctx context.Context, webhookID string) (string, bool)
+	scopes        atomic.Pointer[scopeCache]
 	// HC is optional; nil gets a 30s client.
 	HC  *http.Client
 	Log *slog.Logger
@@ -158,7 +168,7 @@ func (p *Provider) ParseWebhook(r *http.Request) ([]provider.TrackerEvent, error
 	if p.Secret == "" {
 		return nil, errors.New("no webhook secret configured; set PLOEG_CLICKUP_SECRET")
 	}
-	if !verify(p.Secret, body, r.Header.Get("X-Signature")) {
+	if !p.verified(r.Context(), body, r.Header.Get("X-Signature")) {
 		return nil, errors.New("invalid webhook signature")
 	}
 
@@ -240,6 +250,27 @@ func (p *Provider) ParseWebhook(r *http.Request) ([]provider.TrackerEvent, error
 		// than the core consumes.
 		return nil, nil
 	}
+}
+
+// verified checks a delivery's signature with PLOEG_CLICKUP_SECRET, else
+// with the secret of the webhook Ploeg registered that the payload names.
+// The webhook id is read before verification only to choose the key; a
+// delivery is accepted only when the HMAC over its raw body matches.
+func (p *Provider) verified(ctx context.Context, body []byte, signature string) bool {
+	if verify(p.Secret, body, signature) {
+		return true
+	}
+	if p.WebhookSecret == nil {
+		return false
+	}
+	var named struct {
+		WebhookID string `json:"webhook_id"`
+	}
+	if json.Unmarshal(body, &named) != nil || named.WebhookID == "" {
+		return false
+	}
+	secret, ok := p.WebhookSecret(ctx, named.WebhookID)
+	return ok && secret != "" && verify(secret, body, signature)
 }
 
 func (p *Provider) isAgent(identities ...string) bool {
@@ -366,12 +397,26 @@ func (p *Provider) do(ctx context.Context, method, path string, body, out any) e
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return fmt.Errorf("clickup: %s %s: HTTP %d: %s", method, path, resp.StatusCode, bytes.TrimSpace(snippet))
+		err := &apiError{method: method, path: path, status: resp.StatusCode, snippet: string(bytes.TrimSpace(snippet))}
+		if resp.StatusCode == http.StatusNotFound {
+			return provider.NotFound(err)
+		}
+		return err
 	}
 	if out == nil {
 		return nil
 	}
 	return json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(out)
+}
+
+// apiError is a ClickUp answer outside 2xx.
+type apiError struct {
+	method, path, snippet string
+	status                int
+}
+
+func (e *apiError) Error() string {
+	return fmt.Sprintf("clickup: %s %s: HTTP %d: %s", e.method, e.path, e.status, e.snippet)
 }
 
 // task is the subset of ClickUp's task representation Ploeg mirrors.
@@ -427,7 +472,7 @@ func (p *Provider) readTask(ctx context.Context, externalID string) (task, error
 		return task{}, err
 	}
 	if t.ID == "" {
-		return task{}, fmt.Errorf("clickup: task %s not found", externalID)
+		return task{}, provider.NotFound(fmt.Errorf("clickup: task %s not found", externalID))
 	}
 	return t, nil
 }
@@ -593,6 +638,13 @@ func (p *Provider) SetStatus(ctx context.Context, externalID string, state work.
 		return nil
 	}
 	status := p.statusFor(state)
+	if p.ScopeStatuses != nil {
+		if t, err := p.readTask(ctx, externalID); err == nil && t.List.ID != "" {
+			if name := strings.TrimSpace(p.ScopeStatuses(t.List.ID)[state]); name != "" {
+				status = name
+			}
+		}
+	}
 	if status == "" {
 		p.log().Debug("clickup status write-back skipped (no List status configured for this state)", "external_id", externalID, "state", state)
 		return nil

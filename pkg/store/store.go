@@ -304,7 +304,7 @@ func trackerEstimate(item work.WorkItem) *int64 {
 // RefuseRoute records a tracker item that routing refused (ADR-0038): an
 // audit row and no Work Item, so nothing is queued anywhere. code is a
 // target.Refusal code and allowed the repo/ labels the board allows.
-func (s *Store) RefuseRoute(ctx context.Context, item work.WorkItem, code, reason string, allowed []string) error {
+func (s *Store) RefuseRoute(ctx context.Context, item work.WorkItem, code, reason string, allowed []string, prepareAvailable bool) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -315,7 +315,7 @@ func (s *Store) RefuseRoute(ctx context.Context, item work.WorkItem, code, reaso
 	}
 	detail := map[string]any{"external_id": item.ExternalID, "team": item.Team, "title": item.Title,
 		"external_scope": item.ExternalScope, "labels": item.Labels, "reason": reason,
-		"code": code, "allowed_labels": allowed}
+		"code": code, "allowed_labels": allowed, "prepare_available": prepareAvailable}
 	if err := audit(ctx, tx, "webhook:"+item.Provider, "work_item.route_refused", nil, detail); err != nil {
 		return err
 	}
@@ -378,10 +378,10 @@ func (s *Store) ClaimWithin(ctx context.Context, team string, ttl time.Duration,
 		WHERE id = (`+nextClaimableQuery+`)
 		RETURNING id, provider, external_id, revision, team, origin, priority, title, description, url,
 			external_scope, target_forge, target_owner, target_repo, target_base_branch, route_rule, route_hint,
-			COALESCE(source_work_item_id::text, ''), source_branch, source_pr`,
+			COALESCE(source_work_item_id::text, ''), source_branch, source_pr, kind`,
 		team).Scan(&id, &it.Provider, &it.ExternalID, &it.Revision, &it.Team, &it.Origin, &it.Priority, &it.Title, &it.Description, &it.URL,
 		&it.ExternalScope, &t.Forge, &t.Owner, &t.Repo, &t.BaseBranch, &it.RouteRule, &it.RouteHint,
-		&it.SourceWorkItemID, &it.SourceBranch, &it.SourcePR)
+		&it.SourceWorkItemID, &it.SourceBranch, &it.SourcePR, &it.Kind)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNoWork
 	}
@@ -447,7 +447,7 @@ func (s *Store) Renew(ctx context.Context, runToken string, ttl time.Duration) (
 	// longer deadline (ADR-0112): a client that still renews never shortens it.
 	runRenewed := true
 	err = tx.QueryRow(ctx,
-		`UPDATE agent_runs SET expires_at = CASE WHEN carrier = 'client' THEN GREATEST(expires_at, $1) ELSE $1 END
+		`UPDATE agent_runs SET expires_at = CASE WHEN carrier IN ('client', 'routine') THEN GREATEST(expires_at, $1) ELSE $1 END
 		 WHERE run_token = $2 AND state = 'running' AND expires_at IS NOT NULL RETURNING expires_at`,
 		deadline, runToken).Scan(&deadline)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -457,7 +457,7 @@ func (s *Store) Renew(ctx context.Context, runToken string, ttl time.Duration) (
 		return time.Time{}, err
 	}
 	leaseTag, err := tx.Exec(ctx,
-		`UPDATE leases SET expires_at = CASE WHEN EXISTS (SELECT 1 FROM agent_runs r WHERE r.run_token = $2 AND r.carrier = 'client')
+		`UPDATE leases SET expires_at = CASE WHEN EXISTS (SELECT 1 FROM agent_runs r WHERE r.run_token = $2 AND r.carrier IN ('client', 'routine'))
 			THEN GREATEST(expires_at, $1) ELSE $1 END, renewed_at = now() WHERE run_token = $2`,
 		deadline, runToken)
 	if err != nil {
@@ -564,9 +564,9 @@ type OutcomeResult struct {
 	WorkItemID int64
 	// ShiftID is nil for a legacy (shift-less) run.
 	ShiftID *int64
-	// ForgeTokenID is the per-run push credential to revoke, if one was
-	// minted (ADR-0013 tier 2). Empty for readers and for deployments
-	// without a forge admin credential.
+	// ForgeTokenID is the per-run forge credential to revoke, if one was
+	// minted: a writer's push credential (ADR-0013 tier 2) or a reader's
+	// read credential (ADR-0192). Empty for deployments that mint none.
 	ForgeTokenID string
 	// Created lists the Work Items this report created, in proposal order.
 	// Rejected proposals are absent here and recorded in the audit log.
@@ -642,6 +642,7 @@ func (s *Store) ReportOutcome(ctx context.Context, runToken string, rep harnessR
 	var team string
 	var shiftID *int64
 	var shadow, writes bool
+	var readerTokenID string
 	if err := tx.QueryRow(ctx, `
 		UPDATE agent_runs
 		SET state = 'finished', finished_at = now(), outcome = $1, summary = $2,
@@ -651,10 +652,10 @@ func (s *Store) ReportOutcome(ctx context.Context, runToken string, rep harnessR
 		    verification = CASE WHEN writes THEN $13::jsonb ELSE NULL END,
 		    evidence_version = $14, delivery = $15::jsonb, delivery_source = $16
 		WHERE run_token = $9 AND state = 'running'
-		RETURNING id, work_item_id, team, shift_id, shadow, writes`,
+		RETURNING id, work_item_id, team, shift_id, shadow, writes, forge_token_id`,
 		string(rep.Outcome), rep.Summary, rep.StuckReason, rep.Links, rep.Usage,
 		rep.FailureReason, rep.Findings, rep.Verdict, runToken, digest, rep.Problem, rep.Solution, verification,
-		CurrentEvidenceVersion, delivery, deliverySource).Scan(&runID, &id, &team, &shiftID, &shadow, &writes); err != nil {
+		CurrentEvidenceVersion, delivery, deliverySource).Scan(&runID, &id, &team, &shiftID, &shadow, &writes, &readerTokenID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			if err := tx.QueryRow(ctx, `SELECT work_item_id,shift_id FROM agent_runs
 				WHERE run_token=$1 AND state='finished' AND outcome_digest=$2
@@ -674,6 +675,9 @@ func (s *Store) ReportOutcome(ctx context.Context, runToken string, rep harnessR
 		`DELETE FROM leases WHERE run_token = $1 RETURNING forge_token_id`, runToken).
 		Scan(&forgeTokenID); err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return OutcomeResult{}, err
+	}
+	if forgeTokenID == "" {
+		forgeTokenID = readerTokenID
 	}
 	// Settlement (ADR-0012): record what was actually spent. The authorization
 	// needs no explicit release — `reserved` is summed over running Runs, and
@@ -917,12 +921,12 @@ func (s *Store) WorkItem(ctx context.Context, id int64) (work.WorkItem, error) {
 	err := s.pool.QueryRow(ctx, `
 		SELECT provider, external_id, revision, team, state, origin, priority, title, description, url,
 			external_scope, target_forge, target_owner, target_repo, target_base_branch, route_rule, route_hint,
-			COALESCE(source_work_item_id::text, ''), source_branch, source_pr
+			COALESCE(source_work_item_id::text, ''), source_branch, source_pr, kind
 		FROM work_items WHERE id = $1`, id).
 		Scan(&it.Provider, &it.ExternalID, &it.Revision, &it.Team, &it.State, &it.Origin,
 			&it.Priority, &it.Title, &it.Description, &it.URL,
 			&it.ExternalScope, &t.Forge, &t.Owner, &t.Repo, &t.BaseBranch, &it.RouteRule, &it.RouteHint,
-			&it.SourceWorkItemID, &it.SourceBranch, &it.SourcePR)
+			&it.SourceWorkItemID, &it.SourceBranch, &it.SourcePR, &it.Kind)
 	if err != nil {
 		return work.WorkItem{}, err
 	}

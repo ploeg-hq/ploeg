@@ -14,4 +14,4 @@ var errUnsupported = errors.New("launch: the harness launcher requires a unix ho
 func Serve(context.Context, string) error { return errUnsupported }
 
 // ServeConn is unavailable off unix.
-func ServeConn(context.Context, net.Conn) error { return errUnsupported }
+func ServeConn(context.Context, net.Conn, string) error { return errUnsupported }

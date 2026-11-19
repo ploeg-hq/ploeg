@@ -46,6 +46,8 @@ jobs:
         run: mise exec -- go test -v -count=1 -run TestHostileConfig ./pkg/harness/adapters/acp/
       - name: The harness environment never holds a real credential
         run: mise exec -- go test -v -count=1 -run TestAttackDrill ./pkg/worker/
+      - name: An OpenHands Run delivers a repository's hooks file unchanged and none it wrote
+        run: mise exec -- go test -v -count=1 -run 'TestAnOpenHands' ./pkg/worker/
       - name: Allow the unprivileged user and PID namespace the harness container drill runs in
         run: |
           if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then

@@ -44,3 +44,10 @@ func TestOnlyAReadingClaimNeedsAReadOnlyForgeToken(t *testing.T) {
 		}
 	}
 }
+
+func TestAReadingClaimWithAMintedCredentialNeedsNoReadOnlyEnvToken(t *testing.T) {
+	claimed := &ClaimResponse{Role: "reviewer", ForgeToken: "minted-read", ForgeTokenPerRun: true}
+	if _, refused := refuseReaderWithoutReadOnlyToken(Config{}, claimed); refused {
+		t.Fatal("a reader holding a credential ploegd minted read-only for its Run was refused")
+	}
+}

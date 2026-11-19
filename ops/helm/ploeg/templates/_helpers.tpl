@@ -78,6 +78,50 @@ ploegd or its workers need is unset.
 {{- fail (printf "executor.%s.url is required when executor.enabled is true: the forge URL workers clone from and push to" $forge.kind) -}}
 {{- end -}}
 {{- end -}}
+{{- include "ploeg.requireMintingForges" . -}}
+{{- end -}}
+
+{{/*
+ploeg.activeForges lists the forge blocks that set a url, as a JSON array:
+each is a forge ploegd serves (ADR-0192). More than one makes the release
+multi-forge.
+*/}}
+{{- define "ploeg.activeForges" -}}
+{{- $ex := .Values.executor -}}
+{{- $out := list -}}
+{{- range $name := list "forgejo" "gitlab" "github" -}}
+{{- if (get $ex $name | default dict).url -}}
+{{- $out = append $out $name -}}
+{{- end -}}
+{{- end -}}
+{{- $out | toJson -}}
+{{- end -}}
+
+{{- define "ploeg.multiForge" -}}
+{{- if gt (len (include "ploeg.activeForges" . | fromJsonArray)) 1 }}true{{ end -}}
+{{- end -}}
+
+{{/*
+ploeg.requireMintingForges fails the render of a multi-forge release in which
+a forge cannot mint per-Run credentials: its worker pods hold no forge
+credential, so ploegd mints every Run's (ADR-0192). ploegd refuses the same
+release at start.
+*/}}
+{{- define "ploeg.requireMintingForges" -}}
+{{- $active := include "ploeg.activeForges" . | fromJsonArray -}}
+{{- if gt (len $active) 1 -}}
+{{- $ex := .Values.executor -}}
+{{- $names := join ", " $active -}}
+{{- if has "gitlab" $active -}}
+{{- fail (printf "executor.gitlab is active beside another forge (%s): GitLab cannot mint a credential per Run, so it can only be the only forge of its release (ADR-0192). Unset executor.gitlab.url, or the url of every other forge block" $names) -}}
+{{- end -}}
+{{- if and (has "forgejo" $active) (not ($ex.forgejo.botPasswordSecret | default dict).name) -}}
+{{- fail (printf "executor.forgejo is active beside another forge (%s) but sets no botPasswordSecret: in a release with more than one forge ploegd mints every Run's forge credential, and Forgejo mints only with the bot's password on Forgejo 15 or later (ADR-0192). Set executor.forgejo.botPasswordSecret" $names) -}}
+{{- end -}}
+{{- if and (has "github" $active) (not ((.Values.tracker | default dict).github | default dict).appId) -}}
+{{- fail (printf "executor.github is active beside another forge (%s) but tracker.github.appId is unset: in a release with more than one forge ploegd mints every Run's forge credential, and GitHub mints only through a GitHub App (ADR-0192). Set tracker.github.appId and tracker.github.appPrivateKeySecret" $names) -}}
+{{- end -}}
+{{- end -}}
 {{- end -}}
 
 {{- define "ploeg.apiUrl" -}}
@@ -189,6 +233,46 @@ Context: (dict "root" $ "team" <team> "role" <role>).
 {{- list "openhands" "acp/openhands" "exec" | toJson -}}
 {{- end -}}
 
+{{/*
+ploeg.credentialModesOutsideHarness lists the per-workload credential modes
+under which the harness never holds the Run's forge token or model key
+(ADR-0034). The chart renders no credential gateway (ADR-0197) yet, so only
+both in-worker proxies qualify; ploegd also accepts a claim its Team's
+gateway admitted.
+*/}}
+{{- define "ploeg.credentialModesOutsideHarness" -}}
+{{- list "proxy" | toJson -}}
+{{- end -}}
+
+{{/*
+ploeg.requireCredentialIsolation fails the render for a Role workload whose
+harness would hold its Run's forge token or model key: an unqualified
+harness, DinD, or either credential proxy off. It holds under every
+supportProfile (ADR-0034, amended 2026-11-18). Context: (dict "root" $
+"who" <team/role> "harness" <qualification key> "dind" <bool> "isolation"
+<ploeg.credentialIsolation result>).
+*/}}
+{{- define "ploeg.requireCredentialIsolation" -}}
+{{- $modes := include "ploeg.credentialModesOutsideHarness" .root | fromJsonArray -}}
+{{- $qualified := include "ploeg.isolationQualifiedHarnesses" .root | fromJsonArray -}}
+{{- $missing := list -}}
+{{- if not (has .harness $qualified) -}}
+{{- $missing = append $missing (printf "harness %s is not qualified to run with its credentials isolated (qualified: %s)" .harness (join ", " $qualified)) -}}
+{{- end -}}
+{{- if .dind -}}
+{{- $missing = append $missing "harness.dind is true, and a DinD harness reaches a privileged Docker daemon that is root on the node" -}}
+{{- end -}}
+{{- if not (has .isolation.forgeToken $modes) -}}
+{{- $missing = append $missing "forge token isolation is off (executor.forgeTokenIsolation or harness.credentialIsolation is not proxy)" -}}
+{{- end -}}
+{{- if not (has .isolation.llmKey $modes) -}}
+{{- $missing = append $missing "model key isolation is off (executor.litellm.keyIsolation or harness.credentialIsolation is not proxy)" -}}
+{{- end -}}
+{{- if $missing -}}
+{{- fail (printf "team %s: credential_isolation_required: every Role runs with its forge token and model key isolated from its harness (ADR-0034), and %s. Run it on a qualified harness with both proxies on and no DinD; see docs/ops/managed-workers.md#credential-isolation-is-required" .who (join "; " $missing)) -}}
+{{- end -}}
+{{- end -}}
+
 {{- define "ploeg.qualifiedHarnesses" -}}
 {{- list "openhands" "acp/openhands" "exec" | toJson -}}
 {{- end -}}
@@ -217,7 +301,7 @@ Context: (dict "root" $ "team" <team> "role" <Role entry or empty dict>).
 {{- $carrier := "" }}
 {{- if eq $id.name "claude-environment" }}{{- $carrier = $ce.carrier }}{{- end }}
 {{- if and $carrier (not $ce.environmentId) }}
-{{- fail (printf "team %s: harness.claudeEnvironment.carrier client requires harness.claudeEnvironment.environmentId" ($role.name | default $team.name)) }}
+{{- fail (printf "team %s: harness.claudeEnvironment.carrier %s requires harness.claudeEnvironment.environmentId" ($role.name | default $team.name) $carrier) }}
 {{- end }}
 {{- $out = append $out (dict "role" $role "key" $key "suffix" "" "default" true "qualified" (has $key $qualified) "carrier" $carrier "environmentId" $ce.environmentId) }}
 {{- else }}
@@ -282,7 +366,7 @@ context as ploeg.roleWorkloads.
 {{- define "ploeg.workerWorkloads" -}}
 {{- $out := list }}
 {{- range $w := (include "ploeg.roleWorkloads" . | fromJsonArray) }}
-{{- if ne ($w.carrier | default "") "client" }}
+{{- if not (has ($w.carrier | default "") (list "client" "routine")) }}
 {{- $out = append $out $w }}
 {{- end }}
 {{- end }}
@@ -519,7 +603,7 @@ global executor.harness defaults field-by-field (explicit hasKey checks, so
 {{- $hName := $identity.name }}
 {{- $hImage := (include "ploeg.roleHarnessImage" (dict "root" $root "team" $team "role" $role) | fromJson).image }}
 {{- if not $hImage }}
-{{- fail (printf "team %s: no agent image; set executor.harness.image, or harness.image on the team or Role. Ploeg publishes no agent image" $team.name) }}
+{{- fail (printf "team %s: no agent image; set executor.harness.image, or harness.image on the team or Role, for example to ghcr.io/ploeg-hq/agent-runner by digest. The chart names no default agent image" $team.name) }}
 {{- end }}
 {{- $hEntrypoint := $rh.entrypoint | default ($th.entrypoint | default $gh.entrypoint) }}
 {{- $hArgs := $rh.args | default ($th.args | default $gh.args) }}
@@ -541,9 +625,15 @@ global executor.harness defaults field-by-field (explicit hasKey checks, so
 {{- $ploegSecrets := list $root.Values.executor.litellm.masterKeySecret.name }}
 {{- with $root.Values.executor.workerAuth.bootstrapSecret }}{{- $ploegSecrets = append $ploegSecrets .name }}{{- end }}
 {{- with $root.Values.executor.workerAuth.staticInferenceSecret }}{{- $ploegSecrets = append $ploegSecrets .name }}{{- end }}
-{{- $forgeCfg := include "ploeg.forge" $root | fromJson }}
-{{- with $forgeCfg.tokenSecret.name }}{{- $ploegSecrets = append $ploegSecrets . }}{{- end }}
-{{- with $forgeCfg.readTokenSecret.name }}{{- $ploegSecrets = append $ploegSecrets . }}{{- end }}
+{{- $credentialForges := include "ploeg.activeForges" $root | fromJsonArray }}
+{{- $credentialForges = append $credentialForges ($root.Values.executor.forge | default "forgejo") | uniq }}
+{{- range $forgeName := $credentialForges }}
+{{- $forgeBlock := get $root.Values.executor $forgeName | default dict }}
+{{- range $secretField := list "tokenSecret" "readTokenSecret" "botPasswordSecret" }}
+{{- with (get $forgeBlock $secretField | default dict).name }}{{- $ploegSecrets = append $ploegSecrets . }}{{- end }}
+{{- end }}
+{{- end }}
+{{- with ((($root.Values.tracker | default dict).github | default dict).appPrivateKeySecret | default dict).name }}{{- $ploegSecrets = append $ploegSecrets . }}{{- end }}
 {{- with $root.Values.runIdentity }}{{- with .signingKeySecret }}{{- $ploegSecrets = append $ploegSecrets .name }}{{- end }}{{- end }}
 {{- with $root.Values.transactionToken }}{{- with .signingKeySecret }}{{- $ploegSecrets = append $ploegSecrets .name }}{{- end }}{{- end }}
 {{- range $i, $p := $ccPlugins }}
@@ -603,6 +693,12 @@ global executor.harness defaults field-by-field (explicit hasKey checks, so
 {{- if hasKey $rh "harnessContainer" }}{{- $layoutOverride = dict "value" $rh.harnessContainer }}{{- else if hasKey $th "harnessContainer" }}{{- $layoutOverride = dict "value" $th.harnessContainer }}{{- end }}
 {{- $separate := eq (include "ploeg.harnessContainer" (dict "root" $root "name" $hName "dind" $hDind "isolation" $isolation "override" $layoutOverride "who" $who)) "separate" }}
 {{- $workerImage := (include "ploeg.workerImageSource" $root | fromJson).image }}
+{{- $gateway := include "ploeg.credentialGatewayEnabled" $root }}
+{{- $gatewayUrls := dict }}
+{{- if $gateway }}
+{{- include "ploeg.requireCredentialGatewayValues" $root }}
+{{- $gatewayUrls = include "ploeg.credentialGatewayUrls" $root | fromJson }}
+{{- end }}
 {{- /* claude-environment harness (ADR-0084): same override chain. */}}
 {{- $gce := $gh.claudeEnvironment | default dict }}
 {{- $tce := $th.claudeEnvironment | default dict }}
@@ -617,6 +713,7 @@ global executor.harness defaults field-by-field (explicit hasKey checks, so
 {{- if and (eq $hName "acp") (eq ($acpProfile | default "opencode") "custom") (not $acpArgv) }}
 {{- fail (printf "team %s: harness.acp.profile=custom requires harness.acp.argv" $who) }}
 {{- end -}}
+{{- include "ploeg.requireCredentialIsolation" (dict "root" $root "who" $who "harness" (include "ploeg.qualificationHarnessName" (dict "name" $hName "acpProfile" $acpProfile)) "dind" $hDind "isolation" $isolation) -}}
 metadata:
   labels:
     app.kubernetes.io/name: ploeg-worker
@@ -631,6 +728,9 @@ metadata:
     # the full baseline — so adding a Role costs no security-repo change, and
     # readers are not waived for a privilege they do not take.
     ploeg.webgrip.dev/privileged-dind: "true"
+    {{- end }}
+    {{- if and $gateway $root.Values.executor.credentialGateway.acknowledgeSingleNode }}
+    ploeg.webgrip.dev/credential-gateway-shared-node: "true"
     {{- end }}
 spec:
   restartPolicy: Never
@@ -707,7 +807,7 @@ spec:
     - name: harness
       image: {{ $hImage }}
       restartPolicy: Always
-      command: ["/mnt/bin/ploeg-worker", "harness-serve", "/run/ploeg/launcher/launcher.sock"]
+      command: ["/mnt/bin/ploeg-worker", "harness-serve", "/run/ploeg/launcher/launcher.json"]
       volumeMounts:
         - name: worker-bin
           mountPath: /mnt/bin
@@ -737,10 +837,26 @@ spec:
       command: ["/mnt/bin/ploeg-worker"]
       {{- end }}
       env:
+        {{- if $gateway }}
+        - name: PLOEG_API_URL
+          value: {{ $gatewayUrls.control | quote }}
+        - name: PLOEG_CREDENTIAL_GATEWAY
+          value: "on"
+        - name: PLOEG_CREDENTIAL_GATEWAY_FORGE_URL
+          value: {{ $gatewayUrls.forge | quote }}
+        - name: PLOEG_CREDENTIAL_GATEWAY_MCP_URL
+          value: {{ $gatewayUrls.mcp | quote }}
+        {{- else }}
         - name: PLOEG_API_URL
           value: {{ include "ploeg.workerApiUrl" $root | quote }}
+        {{- end }}
+        {{- with .pool }}
+        - name: PLOEG_POOL
+          value: {{ printf "%s/%s" .tenant .harness | quote }}
+        {{- else }}
         - name: PLOEG_TEAM
           value: {{ $team.name | quote }}
+        {{- end }}
         {{- if $role.name }}
         - name: PLOEG_ROLE
           value: {{ $role.name | quote }}
@@ -858,7 +974,8 @@ spec:
         - name: LITELLM_KEY_DURATION
           value: {{ $root.Values.executor.litellm.keyDuration | quote }}
         - name: LLM_BASE_URL
-          value: {{ $root.Values.executor.litellm.baseUrl | quote }}
+          value: {{ ternary $gatewayUrls.model $root.Values.executor.litellm.baseUrl (eq $gateway "true") | quote }}
+        {{- if not $gateway }}
         {{- with $isolation.llmKey }}
         - name: PLOEG_LLM_KEY_ISOLATION
           value: {{ . | quote }}
@@ -871,18 +988,24 @@ spec:
         - name: PLOEG_CREDENTIAL_ISOLATION_OFF_REASON
           value: {{ . | quote }}
         {{- end }}
+        {{- end }}
         {{- if $root.Values.executor.harnessOutputInLog }}
         - name: PLOEG_HARNESS_OUTPUT_IN_LOG
           value: "on"
         {{- end }}
         - name: PLOEG_LLM_CREDENTIAL_MODE
           value: {{ ternary "static-compatibility" "managed" (eq $root.Values.executor.workerAuth.mode "legacy") | quote }}
-        {{- if eq $root.Values.executor.workerAuth.mode "managed" }}
+        {{- if $gateway }}
+        {{- else if eq $root.Values.executor.workerAuth.mode "managed" }}
         - name: PLOEG_WORKER_BOOTSTRAP_TOKEN
           valueFrom:
             secretKeyRef:
               name: {{ $root.Values.executor.workerAuth.bootstrapSecret.name }}
+              {{- if .pool }}
+              key: {{ include "ploeg.poolBootstrapKey" .pool | quote }}
+              {{- else }}
               key: {{ printf "%s--%s" $team.name ($role.name | default "default") | quote }}
+              {{- end }}
         {{- else if $root.Values.executor.workerAuth.staticInferenceSecret }}
         - name: LLM_API_KEY
           valueFrom:
@@ -891,10 +1014,16 @@ spec:
               key: {{ $root.Values.executor.workerAuth.staticInferenceSecret.key }}
         {{- end }}
         {{- $forge := include "ploeg.forge" $root | fromJson }}
+        {{- $multiForge := include "ploeg.multiForge" $root }}
         - name: PLOEG_TARGET_FORGE
           value: {{ $forge.kind | quote }}
+        {{- /* ADR-0192: a worker of a multi-forge release holds no forge URL
+             and no forge credential. Each claim carries the Run's forge and
+             a credential ploegd minted for that Run alone. */}}
+        {{- if not (or $multiForge $gateway) }}
         - name: FORGE_URL
           value: {{ $forge.url | quote }}
+        {{- end }}
         {{- /* ADR-0013 tier 1: a READING Run gets a read-only forge credential,
              so the writer/reader split is enforced by the forge and not only
              by Ploeg's scheduling. The repos are private, so "no credential at
@@ -905,13 +1034,14 @@ spec:
              when the pod was built some other way. */}}
         {{- $isReader := and (ne ($role.name | default "") "") (not $role.writes) }}
         {{- $readSecret := $forge.readTokenSecret }}
-        {{- if and $isReader (not (and $readSecret.name $readSecret.key)) }}
+        {{- if and $isReader (not $multiForge) (not (and $readSecret.name $readSecret.key)) }}
         {{- fail (printf "team %s: role %q reads but executor.%s.readTokenSecret is not set; a reading Role must not receive the read-write forge token (ADR-0013 tier 1). Set readTokenSecret.name and readTokenSecret.key to a read-only token" $team.name $role.name $forge.kind) }}
         {{- end }}
         {{- if $role.name }}
         - name: PLOEG_FORGE_TOKEN_ACCESS
           value: {{ ternary "read-only" "read-write" $isReader | quote }}
         {{- end }}
+        {{- if not (or $multiForge $gateway) }}
         - name: AGENT_BUILDER_TOKEN
           valueFrom:
             secretKeyRef:
@@ -922,6 +1052,7 @@ spec:
               name: {{ $forge.tokenSecret.name }}
               key: {{ $forge.tokenSecret.key }}
               {{- end }}
+        {{- end }}
         # FALLBACK target only. The repository belongs to the work item,
         # resolved at ingest from its tracker scope and delivered on the claim
         # (R11, ADR-0001); these render only while a team still pins a repo,
@@ -942,6 +1073,9 @@ spec:
         # default branch on clone and the worker's historical "main".
         - name: PLOEG_BASE_BRANCH
           value: {{ $baseBranch | quote }}
+        {{- end }}
+        {{- if and $multiForge (eq ($team.targetSource | default "") "env") }}
+        {{- fail (printf "team %s: targetSource env pins a worker to its env forge, and a worker of a release with more than one forge (%s) holds no forge URL and no forge credential of its own (ADR-0192). Unset targetSource, or serve one forge" $team.name (join ", " (include "ploeg.activeForges" $root | fromJsonArray))) }}
         {{- end }}
         {{- if $team.targetSource }}
         # env = ignore the claim's target and use this team's pinned repo.
@@ -964,7 +1098,7 @@ spec:
           value: /mnt/ci-shared
         {{- if $separate }}
         - name: PLOEG_HARNESS_LAUNCHER
-          value: /run/ploeg/launcher/launcher.sock
+          value: /run/ploeg/launcher/launcher.json
         {{- with include "ploeg.goMemLimitEnv" (dict "goMemLimit" "" "resources" $root.Values.executor.workerContainerResources) | trim }}{{ . | nindent 8 }}{{- end }}
         {{- end }}
         {{- if $hDind }}
@@ -1119,4 +1253,105 @@ true
 {{- fail (printf "cannot derive GOMEMLIMIT from the memory limit %q: set the goMemLimit value next to it" $quantity) -}}
 {{- end -}}
 {{- printf "%dMiB" (int64 (floor (divf (mulf (float64 $number) (get $units $suffix) 0.9) 1048576.0))) -}}
+{{- end -}}
+
+{{/*
+The dedicated namespace of the Kubernetes connection secret store
+(ADR-0184). The release namespace holds the database URL, the gateway key
+and the forge credentials, and RBAC cannot limit a Role to the Secrets
+Ploeg created, so the chart refuses it and an empty value.
+*/}}
+{{- define "ploeg.secretStoreNamespace" -}}
+{{- $namespace := .Values.secretStore.kubernetes.namespace | default "" | trim -}}
+{{- if not $namespace -}}
+{{- fail "secretStore.kubernetes.namespace is required when secretStore.type is kubernetes: name a dedicated namespace that holds nothing but Ploeg's connection Secrets" -}}
+{{- end -}}
+{{- if eq $namespace .Release.Namespace -}}
+{{- fail (printf "secretStore.kubernetes.namespace must not be the release namespace %s: the Role it grants could read every Secret there, including the database URL and the forge credentials" .Release.Namespace) -}}
+{{- end -}}
+{{- $namespace -}}
+{{- end -}}
+
+{{/*
+ploeg.runtimePools validates executor.runtimeTeams (ADR-0198 section 7) and
+returns its pools as JSON [{tenant, harness, maxReplicaCount, isolation}]:
+the generic worker pools that run runtime Teams' Runs, one per Tenant and
+Harness. A pool runs only an isolation-qualified Harness with both
+credential proxies on and no DinD; isolation is "proxy" today and
+"gateway" once the credential gateway serves the pool.
+*/}}
+{{- define "ploeg.runtimePools" -}}
+{{- $rt := .Values.executor.runtimeTeams | default dict }}
+{{- $creation := ((.Values.config | default dict).teamCreation | default dict).enabled | default false }}
+{{- if ne ($rt.enabled | default false) $creation }}
+{{- fail "executor.runtimeTeams.enabled and config.teamCreation.enabled must agree: runtime Teams need both the pools that run them and the opt-in that lets a person create them (ADR-0198)" }}
+{{- end }}
+{{- $out := list }}
+{{- if $rt.enabled }}
+{{- $qualified := include "ploeg.isolationQualifiedHarnesses" . | fromJsonArray }}
+{{- $seen := list }}
+{{- range $p := ($rt.pools | default list) }}
+{{- $id := printf "%s/%s" $p.tenant $p.harness }}
+{{- if has $id $seen }}
+{{- fail (printf "executor.runtimeTeams.pools: a second pool for tenant %s and harness %s" $p.tenant $p.harness) }}
+{{- end }}
+{{- $seen = append $seen $id }}
+{{- if not (has $p.harness $qualified) }}
+{{- fail (printf "executor.runtimeTeams.pools: harness %s is not qualified for credential isolation, so no runtime Team may run on it (ADR-0034, ADR-0198)" $p.harness) }}
+{{- end }}
+{{- $isolation := $p.isolation | default "proxy" }}
+{{- if eq $isolation "gateway" }}
+{{- fail "executor.runtimeTeams.pools: isolation gateway qualifies a pool only once the credential gateway outside the Run pod ships (ADR-0197); use proxy" }}
+{{- end }}
+{{- if ne $isolation "proxy" }}
+{{- fail (printf "executor.runtimeTeams.pools: isolation is proxy, not %q" $isolation) }}
+{{- end }}
+{{- if or (not $.Values.executor.litellm.keyIsolation) (not $.Values.executor.forgeTokenIsolation) }}
+{{- fail "executor.runtimeTeams.pools: a pool needs executor.litellm.keyIsolation and executor.forgeTokenIsolation on" }}
+{{- end }}
+{{- if (($.Values.executor.harness | default dict).dind) }}
+{{- fail "executor.runtimeTeams.pools: a pool never runs DinD, and executor.harness.dind is on" }}
+{{- end }}
+{{- $out = append $out (dict "tenant" $p.tenant "harness" $p.harness "maxReplicaCount" ($p.maxReplicaCount | default 1 | int) "isolation" $isolation) }}
+{{- end }}
+{{- end }}
+{{- toJson $out }}
+{{- end -}}
+
+{{- define "ploeg.poolBootstrapKey" -}}
+{{- printf "pool--%s--%s" .tenant (replace "/" "-" .harness) -}}
+{{- end -}}
+
+{{- define "ploeg.poolTeam" -}}
+{{- $harness := dict "name" .harness }}
+{{- if hasPrefix "acp/" .harness }}
+{{- $harness = dict "name" "acp" "acp" (dict "profile" (trimPrefix "acp/" .harness)) }}
+{{- end }}
+{{- dict "name" (printf "pool-%s-%s" .tenant (replace "/" "-" .harness)) "harness" $harness | toJson }}
+{{- end -}}
+
+{{/*
+ploeg.requireRoutineGateway refuses routine-carried claude-environment Runs
+(ADR-0197 section 7) unless the credential gateway is enabled: their sessions
+run in the claude-runner, which may hold no credential. A Role with carrier
+routine also needs PLOEG_CLAUDE_ROUTINES, as ploegd refuses it otherwise.
+*/}}
+{{- define "ploeg.requireRoutineGateway" -}}
+{{- $routines := eq (toString (.Values.env.PLOEG_CLAUDE_ROUTINES | default "")) "true" }}
+{{- $gateway := ((.Values.executor | default dict).credentialGateway | default dict).enabled }}
+{{- if and $routines (not $gateway) }}
+{{- fail "env.PLOEG_CLAUDE_ROUTINES needs executor.credentialGateway.enabled: a routine Run's session runs in the claude-runner, which may hold no forge credential or environment secret (ADR-0197)" }}
+{{- end }}
+{{- $root := . }}
+{{- if and (.Values.executor | default dict).enabled (not $routines) }}
+{{- range $team := .Values.executor.teams }}
+{{- range $role := (include "ploeg.teamRoles" $team | fromJsonArray) }}
+{{- $identity := include "ploeg.roleHarness" (dict "root" $root "team" $team "role" $role) | fromJson }}
+{{- $ce := include "ploeg.claudeEnvironment" (dict "root" $root "team" $team "role" $role) | fromJson }}
+{{- if and (eq $identity.name "claude-environment") (eq $ce.carrier "routine") }}
+{{- fail (printf "team %s: harness.claudeEnvironment.carrier routine needs env.PLOEG_CLAUDE_ROUTINES: \"true\" and the credential gateway (ADR-0197)" $team.name) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
 {{- end -}}

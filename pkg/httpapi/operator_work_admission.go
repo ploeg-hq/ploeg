@@ -6,10 +6,12 @@ import (
 	"math"
 	"net/http"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/ploeg-hq/ploeg/pkg/store"
+	"github.com/ploeg-hq/ploeg/pkg/team"
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
@@ -34,8 +36,15 @@ func (s *Server) handleAdmitWorkItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !validAdmission(input) {
-		operatorError(w, 400, "invalid_admission", "Supply a requestId, team, registered target key, a title of 1 to 200 characters, a description of 1 to 110000 characters, an optional positive budgetUsd, an optional harness key and an optional model alias.")
+		operatorError(w, 400, "invalid_admission", "Supply a requestId, team, registered target key, a title of 1 to 200 characters, a description of 1 to 110000 characters, an optional positive budgetUsd, an optional harness key and an optional model alias. A kind of prepare_repository takes no title or description.")
 		return
+	}
+	prepare := input.Kind == work.KindPrepareRepository
+	if prepare {
+		if _, proof, _ := store.ActingPersonProof(r.Context(), actor); proof != ProofProven {
+			s.refuseUnprovenChange(w, r, p.Name, actor)
+			return
+		}
 	}
 	input.Harness = normalHarnessKey(input.Harness)
 	budget := p.BudgetLimitUSD
@@ -46,9 +55,11 @@ func (s *Server) handleAdmitWorkItem(w http.ResponseWriter, r *http.Request) {
 		}
 		budget = *input.BudgetUSD
 	}
-	if !p.AllowsTeam(input.Team) {
-		operatorError(w, 403, "team_forbidden", "This team is outside the consumer scope.")
+	if !s.admissionTeam(w, p, &input) {
 		return
+	}
+	if prepare {
+		budget = min(budget, s.prepareCap(input.Team))
 	}
 	admitted, err := s.Store.OperatorWorkAdmitted(r.Context(), p.Name, input.RequestID)
 	if err != nil {
@@ -57,7 +68,7 @@ func (s *Server) handleAdmitWorkItem(w http.ResponseWriter, r *http.Request) {
 	}
 	var target work.Target
 	if !admitted {
-		if s.TransactionTokens != nil && s.TeamSponsors[input.Team] == "" {
+		if s.TransactionTokens != nil && s.teamSponsor(input.Team) == "" {
 			operatorError(w, 409, "team_without_sponsor", unsponsoredTeam(input.Team))
 			return
 		}
@@ -67,11 +78,25 @@ func (s *Server) handleAdmitWorkItem(w http.ResponseWriter, r *http.Request) {
 		if !s.admissionSelection(w, input) {
 			return
 		}
+		if reason := s.prepareUnsupported(input.Team, input.Harness); prepare && reason != "" {
+			refusePrepareUnsupported(w, input.Team, reason)
+			return
+		}
+		if prepare && !s.noUnclosedPrepare(r.Context(), w, target) {
+			return
+		}
+	}
+	if prepare && !admitted {
+		input.Title, input.Description = prepareTitle(target), prepareDescription
 	}
 	a, err := s.Store.AdmitOperatorWorkItem(r.Context(), p.Name, actor, input, target, budget)
+	var inProgress *store.PrepareInProgressError
 	switch {
 	case errors.Is(err, store.ErrRequestConflict):
 		operatorError(w, 409, "request_conflict", "This requestId already admitted other work. Use a new requestId for new work.")
+		return
+	case errors.As(err, &inProgress):
+		refusePrepareInProgress(w, inProgress)
 		return
 	case err != nil:
 		operatorError(w, 503, "unavailable", "Ploeg could not confirm the admission.")
@@ -92,6 +117,7 @@ func (s *Server) handleAdmitWorkItem(w http.ResponseWriter, r *http.Request) {
 			"shiftId":   optionalShift(a.ShiftID),
 			"budgetUsd": a.BudgetUSD,
 			"poolUsd":   a.PoolUSD,
+			"kind":      string(admittedKind(a.Kind)),
 		},
 		"created":  a.Created,
 		"replayed": !a.Created,
@@ -103,7 +129,15 @@ func validAdmission(in store.AdmitOperatorWorkItem) bool {
 	if !operatorName.MatchString(in.RequestID) || !operatorName.MatchString(in.Team) || !operatorName.MatchString(in.Target) {
 		return false
 	}
-	if strings.TrimSpace(in.Title) == "" || len(in.Title) > 200 || strings.TrimSpace(in.Description) == "" || len(in.Description) > maxAdmissionDescription {
+	kind, known := work.ParseKind(string(in.Kind))
+	switch {
+	case !known:
+		return false
+	case kind == work.KindPrepareRepository:
+		if in.Title != "" || in.Description != "" {
+			return false
+		}
+	case strings.TrimSpace(in.Title) == "" || len(in.Title) > 200 || strings.TrimSpace(in.Description) == "" || len(in.Description) > maxAdmissionDescription:
 		return false
 	}
 	if in.BudgetUSD != nil && (math.IsNaN(*in.BudgetUSD) || math.IsInf(*in.BudgetUSD, 0) || *in.BudgetUSD <= 0) {
@@ -121,8 +155,16 @@ func (s *Server) admissionTarget(ctx context.Context, w http.ResponseWriter, in 
 		operatorError(w, 422, "unknown_target", "The target is not a registered target key.")
 		return target, false
 	}
-	if v := s.Readiness.Admit(ctx, in.Target); !v.Ready && !v.Unknown {
-		operatorError(w, 422, "target_not_ready", "Target "+in.Target+" is not ready: "+v.Reason)
+	v := s.Readiness.Admit(ctx, in.Target)
+	switch {
+	case in.Kind == work.KindPrepareRepository && v.Ready:
+		operatorError(w, 409, "target_already_ready", "Target "+in.Target+" is already ready: it has an AGENTS.md on its base branch, so there is nothing to prepare.")
+		return target, false
+	case in.Kind == work.KindPrepareRepository && !v.Unknown && !v.PrepareAvailable():
+		refuseTargetNotReady(w, in.Target, v, false)
+		return target, false
+	case !v.Ready && !v.Unknown && in.Kind != work.KindPrepareRepository:
+		refuseTargetNotReady(w, in.Target, v, v.PrepareAvailable())
 		return target, false
 	}
 	if s.Engine == nil {
@@ -158,4 +200,48 @@ func optionalShift(id *int64) *string {
 		return nil
 	}
 	return optionalID(*id)
+}
+
+// admissionTeam resolves the Team an Admission names, an id, key or alias,
+// to its key, and applies a runtime Team's intake (ADR-0198): it must be
+// active, not draining, accept admissions and, when it lists targets,
+// name one of them. A consumer reads a runtime Team through manageTeams or
+// its Team scope.
+func (s *Server) admissionTeam(w http.ResponseWriter, p OperatorPrincipal, input *store.AdmitOperatorWorkItem) bool {
+	t, _, resolved := s.Teams.Resolve(input.Team)
+	if !resolved || t.Source != team.SourceRuntime {
+		if resolved {
+			input.Team = t.Key
+		}
+		if !p.AllowsTeam(input.Team) {
+			operatorError(w, 403, "team_forbidden", "This team is outside the consumer scope.")
+			return false
+		}
+		return true
+	}
+	if !p.allowsResolvedTeam(t) {
+		operatorError(w, 403, "team_forbidden", "This team is outside the consumer scope.")
+		return false
+	}
+	rt, ok := s.runtimeTeam(t.ID)
+	if !ok {
+		operatorError(w, 404, "unknown_team", "No live Team "+input.Team+".")
+		return false
+	}
+	input.Team = rt.Key
+	switch {
+	case rt.State != team.StateActive:
+		operatorError(w, 409, "team_unavailable", "Runtime Team "+rt.Key+" is "+rt.State+", so it takes no new work.")
+		return false
+	case rt.DrainingSince != nil:
+		operatorError(w, 409, "team_draining", "Runtime Team "+rt.Key+" is draining and takes no new work.")
+		return false
+	case !rt.Manifest.Intake.Admissions:
+		operatorError(w, 422, "admissions_not_accepted", "Runtime Team "+rt.Key+" takes no operator admissions: its intake.admissions is false.")
+		return false
+	case len(rt.Manifest.Intake.Targets) > 0 && !slices.Contains(rt.Manifest.Intake.Targets, input.Target):
+		operatorError(w, 422, "target_not_allowed", "Runtime Team "+rt.Key+" works only on the targets its intake.targets lists.")
+		return false
+	}
+	return true
 }

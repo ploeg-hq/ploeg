@@ -16,6 +16,7 @@ const (
 	pktLengthSize       = 4
 	maxPktLength        = 65520
 	maxCommandListBytes = 1 << 20
+	maxFencedPushBytes  = 64 << 20
 	pushCertificate     = "push-cert"
 	shallowAdvertised   = "shallow "
 )
@@ -24,6 +25,20 @@ var errUnparseablePush = errors.New("the push's ref update list is not a well-fo
 
 type pushFence struct {
 	runBranchRef string
+	content      []contentFence
+	fromPack     bool
+}
+
+// contentFence checks what a push to the Run's own branch carries, such as
+// a prepare Run's one deliverable or a repository's OpenHands hooks file.
+type contentFence interface {
+	admit(u refUpdate) (refusalReason, error)
+}
+
+// packedContentFence checks a push from the push's own pack, where the
+// pushed objects are in no local clone: at the credential gateway.
+type packedContentFence interface {
+	admitPacked(u refUpdate, pack []byte) (refusalReason, error)
 }
 
 func newPushFence(runBranch string) pushFence {
@@ -38,6 +53,9 @@ func (f pushFence) admit(r *http.Request) (refusalReason, error) {
 	body, err := decodedPushBody(r)
 	if err != nil {
 		return refusalUninspectablePush, err
+	}
+	if f.fromPack && len(f.content) > 0 {
+		return f.admitWithPack(r, body)
 	}
 	var inspected bytes.Buffer
 	updates, err := readRefUpdates(io.LimitReader(io.TeeReader(body, &inspected), maxCommandListBytes))
@@ -83,7 +101,53 @@ func (u refUpdate) deletes() bool {
 	return strings.Trim(u.newID, "0") == ""
 }
 
+func (f pushFence) admitWithPack(r *http.Request, body io.Reader) (refusalReason, error) {
+	raw, err := io.ReadAll(io.LimitReader(body, maxFencedPushBytes+1))
+	if err != nil {
+		return refusalUninspectablePush, errUnparseablePush
+	}
+	if len(raw) > maxFencedPushBytes {
+		return refusalUninspectablePush, fmt.Errorf("a prepare Run's push larger than %d bytes cannot be checked against its one deliverable", maxFencedPushBytes)
+	}
+	commands := bytes.NewReader(raw)
+	updates, err := readRefUpdates(commands)
+	if err != nil {
+		return refusalUninspectablePush, err
+	}
+	pack := raw[len(raw)-commands.Len():]
+	for _, u := range updates {
+		if reason, err := f.permitsBranch(u); err != nil {
+			return reason, err
+		}
+		for _, content := range f.content {
+			packed, ok := content.(packedContentFence)
+			if !ok {
+				return refusalUninspectablePush, errors.New("this push cannot be checked from its pack")
+			}
+			if reason, err := packed.admitPacked(u, pack); err != nil {
+				return reason, err
+			}
+		}
+	}
+	r.Body = io.NopCloser(bytes.NewReader(raw))
+	r.ContentLength = int64(len(raw))
+	r.Header.Set("Content-Length", strconv.Itoa(len(raw)))
+	return "", nil
+}
+
 func (f pushFence) permits(u refUpdate) (refusalReason, error) {
+	if reason, err := f.permitsBranch(u); err != nil {
+		return reason, err
+	}
+	for _, content := range f.content {
+		if reason, err := content.admit(u); err != nil {
+			return reason, err
+		}
+	}
+	return "", nil
+}
+
+func (f pushFence) permitsBranch(u refUpdate) (refusalReason, error) {
 	if u.ref != f.runBranchRef {
 		return refusalPushToOtherBranch, fmt.Errorf("this Run may push only %s, not %s", f.runBranchRef, u.ref)
 	}

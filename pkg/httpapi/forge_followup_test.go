@@ -262,7 +262,7 @@ func TestChangesRequestedOnAwaitingReviewOpensAShiftWithTheReviewAsBriefing(t *t
 	if err != nil || si == nil {
 		t.Fatalf("no new shift after changes were requested: %v", err)
 	}
-	code, resp := postClaim(t, h, `{"team":"bronze"}`)
+	code, resp := postClaim(t, h, `{"team":"bronze","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	if code != http.StatusOK {
 		t.Fatalf("claim returned %d", code)
 	}

@@ -224,12 +224,12 @@ func TestCancelledForgeCIReRunsOnceThenNeedsAPerson(t *testing.T) {
 	t.Run("a forge that cannot re-run", func(t *testing.T) {
 		forge := newCIForge()
 		e, _, id := ciEngine(t, 2, forge)
-		forge.setCI(ciHead, cancelled)
+		forge.setCI(ciHead, provider.CommitCheck{Context: "ci/e2e", State: provider.CommitFailure, Cancelled: true})
 
 		writeAndApprove(t, e, id, work.OutcomePROpened)
 
-		if got := closeReason(t, id); got != reasonCINotPassed {
-			t.Errorf("close reason = %q, want %q", got, reasonCINotPassed)
+		if shiftClosed(t, id) {
+			t.Errorf("the shift settled at once on a forge that cannot re-run (close reason %q)", closeReason(t, id))
 		}
 	})
 }
@@ -323,5 +323,122 @@ func TestNoForgeStatusesAwaitReview(t *testing.T) {
 
 	if got := itemState(t, id); got != "awaiting_review" {
 		t.Errorf("item state = %q for a repository without CI, want awaiting_review", got)
+	}
+}
+
+// A forge that cannot re-run CI on Ploeg's request (Forgejo) waits for
+// someone to re-run the cancelled checks in the forge (ADR-0189).
+func cancelledOnAForgeWithoutReRun(t *testing.T) (*Engine, *ciForge, *fakeTracker, int64) {
+	t.Helper()
+	forge := newCIForge()
+	e, tracker, id := ciEngine(t, 2, forge)
+	forge.setCI(ciBase, provider.CommitCheck{Context: "ci/e2e", State: provider.CommitSuccess})
+	forge.setCI(ciHead, provider.CommitCheck{Context: "ci/e2e", State: provider.CommitFailure,
+		Description: "Has been cancelled", Cancelled: true, UpdatedAt: time.Now().Add(-time.Minute)})
+	writeAndApprove(t, e, id, work.OutcomePROpened)
+	return e, forge, tracker, id
+}
+
+func ageCIWait(t *testing.T, by time.Duration) {
+	t.Helper()
+	if _, err := testPool.Exec(context.Background(),
+		`UPDATE forge_ci_gates SET waiting_since = waiting_since - $1::interval`, by); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCancelledForgeCIWithoutReRunWaitsForARerunInTheForge(t *testing.T) {
+	ctx := context.Background()
+	e, forge, _, id := cancelledOnAForgeWithoutReRun(t)
+
+	if err := e.EvaluateItem(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	if shiftClosed(t, id) {
+		t.Fatalf("the shift settled while nobody had re-run the cancelled CI yet (close reason %q)", closeReason(t, id))
+	}
+	if got := itemState(t, id); got == "awaiting_review" || got == "needs_human" {
+		t.Fatalf("item state = %q while waiting for a re-run in the forge", got)
+	}
+	asks := forge.commentsMatching("Ploeg: CI on this pull request's head")
+	if len(asks) != 1 || !strings.Contains(asks[0], `"ci/e2e"`) || !strings.Contains(asks[0], "cannot re-run") {
+		t.Errorf("the pull request was not asked once for a re-run in the forge: %q", asks)
+	}
+	if n, _ := testStore.PendingRuns(ctx, "bronze", "builder"); n != 0 {
+		t.Errorf("cancelled CI spent a fix round (pending=%d)", n)
+	}
+}
+
+func TestCancelledForgeCIRerunInTheForgeThatPassesAwaitsReview(t *testing.T) {
+	ctx := context.Background()
+	e, forge, _, id := cancelledOnAForgeWithoutReRun(t)
+
+	forge.setCI(ciHead, provider.CommitCheck{Context: "ci/e2e", State: provider.CommitPending, UpdatedAt: time.Now().Add(time.Minute)})
+	if err := e.EvaluateItem(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	if shiftClosed(t, id) {
+		t.Fatal("the shift settled while the re-run was still running")
+	}
+	forge.setCI(ciHead, provider.CommitCheck{Context: "ci/e2e", State: provider.CommitSuccess, UpdatedAt: time.Now().Add(2 * time.Minute)})
+	if err := e.EvaluateItem(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := itemState(t, id); got != "awaiting_review" {
+		t.Errorf("item state = %q after the re-run in the forge passed, want awaiting_review", got)
+	}
+	if got := closeReason(t, id); got != reasonApproved {
+		t.Errorf("close reason = %q, want %q", got, reasonApproved)
+	}
+}
+
+func TestCancelledForgeCIRerunInTheForgeThatFailsFollowsTheNormalRules(t *testing.T) {
+	ctx := context.Background()
+	e, forge, _, id := cancelledOnAForgeWithoutReRun(t)
+
+	forge.setCI(ciHead, provider.CommitCheck{Context: "ci/e2e", State: provider.CommitFailure,
+		Description: "Failing after 3m", UpdatedAt: time.Now().Add(time.Minute)})
+	if err := e.EvaluateItem(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+
+	if n, _ := testStore.PendingRuns(ctx, "bronze", "builder"); n != 1 {
+		t.Errorf("a re-run that failed for real did not open a fix round (pending=%d)", n)
+	}
+
+	t.Run("cancelled again", func(t *testing.T) {
+		e, forge, tracker, id := cancelledOnAForgeWithoutReRun(t)
+		forge.setCI(ciHead, provider.CommitCheck{Context: "ci/e2e", State: provider.CommitFailure,
+			Description: "Has been cancelled", Cancelled: true, UpdatedAt: time.Now().Add(time.Minute)})
+		if err := e.EvaluateItem(ctx, id); err != nil {
+			t.Fatal(err)
+		}
+		if got := closeReason(t, id); got != reasonCINotPassed {
+			t.Errorf("close reason = %q, want %q", got, reasonCINotPassed)
+		}
+		if msg := lastTrackerComment(t, tracker); !strings.Contains(msg, "re-run in the forge") {
+			t.Errorf("the message does not say CI was re-run in the forge:\n%s", msg)
+		}
+	})
+}
+
+func TestCancelledForgeCINobodyReRanParksAfterTheTimeout(t *testing.T) {
+	ctx := context.Background()
+	e, _, tracker, id := cancelledOnAForgeWithoutReRun(t)
+
+	ageCIWait(t, 61*time.Minute)
+	if err := e.EvaluateItem(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := itemState(t, id); got != "needs_human" {
+		t.Errorf("item state = %q, want needs_human", got)
+	}
+	if got := closeReason(t, id); got != reasonCINotPassed {
+		t.Errorf("close reason = %q, want %q", got, reasonCINotPassed)
+	}
+	if msg := lastTrackerComment(t, tracker); !strings.Contains(msg, "cannot re-run CI and nobody re-ran") || !strings.Contains(msg, `"ci/e2e"`) {
+		t.Errorf("the message does not say nobody re-ran the cancelled check:\n%s", msg)
 	}
 }

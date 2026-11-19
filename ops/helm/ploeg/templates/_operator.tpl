@@ -41,6 +41,13 @@ asserted
 {{- if .clientIds -}}{{- $_ := set $consumer "clientIds" .clientIds -}}{{- $clientIds = true -}}{{- end -}}
 {{- if .audiences -}}{{- $_ := set $consumer "audiences" .audiences -}}{{- end -}}
 {{- if .requireClaims -}}{{- $_ := set $consumer "requireClaims" .requireClaims -}}{{- end -}}
+{{- if .readTrackers -}}{{- $_ := set $consumer "readTrackers" .readTrackers -}}{{- end -}}
+{{- if .manageConnections -}}{{- $_ := set $consumer "manageConnections" true -}}{{- end -}}
+{{- if .connectionRedirectUris -}}{{- $_ := set $consumer "connectionRedirectUris" .connectionRedirectUris -}}{{- end -}}
+{{- if .bindScopes -}}{{- $_ := set $consumer "bindScopes" true -}}{{- end -}}
+{{- if .registerTargets -}}{{- $_ := set $consumer "registerTargets" true -}}{{- end -}}
+{{- if .manageTools -}}{{- $_ := set $consumer "manageTools" true -}}{{- end -}}
+{{- if .manageTeams -}}{{- $_ := set $consumer "manageTeams" true -}}{{- end -}}
 {{- $consumers = append $consumers $consumer }}
 - name: {{ $tokenEnv }}
   valueFrom:

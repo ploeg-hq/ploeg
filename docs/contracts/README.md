@@ -15,6 +15,11 @@ change either side and the test tells you.
 | [tracker-execution.md](tracker-execution.md), [v1 schema](tracker-execution.v1.schema.json) | Scoped source lookup and exclusive operator binding of an existing pristine tracker Work Item. |
 | [acp-profiles.md](acp-profiles.md) | The `acp` harness profiles: launch command, gateway wiring, instruction files and approval mapping per agent, and what an image needs to run them. |
 | [executor.md](executor.md) | The executor SPI: what any launcher (KEDA, CronJob, agent-sandbox, a human with curl) must and must not do. |
+| [credential-gateway.md](credential-gateway.md) | The credential gateway of [ADR-0197](../adrs/0197-no-credential-enters-a-run-pod-and-a-credential-gateway-outside-it-attaches-each-one-a-run-uses.md) (proposed, opt-in): how it proves itself to ploegd, the gateway claim, the grants and audit routes, its route families and refusals. |
+
+## Schema identifiers
+
+Every schema's `$id` is `https://ploeg-hq.github.io/ploeg/contracts/<file name>`, and schemas refer to each other by relative `$ref`s, which resolve against it ([ADR 0191](../adrs/0191-contract-schemas-are-identified-by-their-url-on-the-projects-github-pages-site.md)). [The contract pages workflow](../../.github/workflows/contract-pages.yml) publishes the schemas of `development` to that address, with an index at [ploeg-hq.github.io/ploeg/contracts/](https://ploeg-hq.github.io/ploeg/contracts/), whenever they change. Pages serves trunk; pin a release through its contract bundle below. A consumer that compiles schemas offline maps that prefix to its local copies, as `contractsLoader` in `pkg/harness/contract_test.go` does; `TestEverySchemaIDIsItsPublishedURL` keeps every `$id` on it.
 
 ## The contract bundle
 
@@ -109,6 +114,14 @@ The check does not compare enum values: a consumer must treat an unknown value a
   whether each in-scope Team's tracker users can see it, and every
   repository a board or label can reach with its readiness and when its
   forge last sent an event. An older Ploeg answers 404.
+- `GET /api/v1/operator/tracker-connections/{connection}/scopes`,
+  `.../scopes/{scope}/items` and `.../items/{item}` are new responses,
+  `trackerScopesResponse`, `trackerScopeItemsResponse` and
+  `trackerItemResponse` ([ADR-0196](../adrs/0196-an-operator-consumer-reads-a-tracker-connections-scopes-and-items-through-ploeg-and-holds-no-tracker-credential.md)):
+  the containers a tracker connection reaches, a page of a Scope's open
+  items and one item, read through Ploeg's credential, with tracker text
+  under `untrusted`. They need the consumer's new `readTrackers`. An older
+  Ploeg answers 404.
 - Since VIK-1698 Ploeg keeps the paths a pull request changes at a head
   (`path`, `status` `added`, `modified`, `deleted`, `renamed` or `copied`,
   and `previousPath` for a rename or copy), at most 300 in the forge's

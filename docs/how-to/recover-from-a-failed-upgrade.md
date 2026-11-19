@@ -2,8 +2,8 @@
 type: how-to
 audience: [operator]
 owner: ploeg
-last_verified: 2026-10-26
-verified_by: "Ran the upgrade drill (mise run upgrade-drill) from v0.2.0-rc.77 and v0.2.0-rc.1, and once from v0.1.0; read pkg/store/store.go (Migrate, applyMigration), pkg/httpapi/worker_version.go, docs/ops/compatibility.md and ADR 0158"
+last_verified: 2026-11-17
+verified_by: "Ran the upgrade drill (mise run upgrade-drill) from v0.2.0-rc.77 and v0.2.0-rc.1, and once from v0.1.0; read pkg/store/store.go (Migrate, applyMigration), pkg/httpapi/worker_version.go, docs/ops/compatibility.md and ADR 0158; for per-Run read credentials read LeasedRunTokens in pkg/store/shift.go at ee43538 and its parent and ops/helm/ploeg/templates/deployment.yaml"
 ---
 
 # Recover from a failed upgrade
@@ -66,6 +66,14 @@ Only to the release directly before the one you upgraded to. Every migration exp
 3. Resume dispatch as in [Drain workers, step 6](drain-workers.md#6-resume).
 
 Upgrading again later is the normal upgrade: the newer `ploegd` finds its migrations already applied.
+
+### Roll back past per-Run read credentials
+
+From the release that adopted [ADR-0192](../adrs/0192-a-runs-forge-is-resolved-from-its-work-target-and-the-claim-carries-the-forge-and-a-credential-minted-for-that-run.md), `ploegd` mints a read credential for every reading Run when its forge mints (Forgejo with `botPasswordSecret`, GitHub with an App). A `ploegd` from before it spares only Runs that hold a Lease in its forge sweep, so while it runs, in a rollback or beside a newer replica during a rolling upgrade, it revokes the credential of every running reader, and that reader's fetches fail until the Run ends `failed` and is retried.
+
+1. Before rolling back a release that serves two forges, unset the `url` of every forge block but `executor.forge`'s and let the Work Items on the other forge finish or withdraw them: an older release hands every worker the default forge's URL and credential, whatever forge the Work Item's target names.
+2. Drain reading Runs, as in [Drain workers](drain-workers.md), or accept that each running reader is retried once.
+3. Upgrading forward has the same window while the old and the new `ploegd` pod overlap in the rolling update; drain reading Runs first if a retried review costs too much.
 
 ## 3. Restore the pre-upgrade backup
 

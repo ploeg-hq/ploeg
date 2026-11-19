@@ -1,0 +1,17 @@
+executor:
+  enabled: true
+  harness:
+    image: harbor.webgrip.dev/webgrip/openhands-agent:0.1.0
+  teams:
+    - name: bronze
+      model: litellm_proxy/deepseek-chat
+      budget: "2"
+      harness: {credentialIsolation: proxy}
+  forgeTokenIsolation: ""
+  runtimeTeams:
+    enabled: true
+    pools:
+      - {tenant: default, harness: openhands}
+config:
+  teamCreation: {enabled: true, models: [m]}
+supportProfile: unsupported

@@ -4,6 +4,7 @@ import subprocess
 import sys
 import time
 
+import claude_runner_admission_cases as claude
 from worker_admission_cases import (
     ALLOWED_RUNTIME_CLASS,
     UNAPPROVED_RUNTIME_CLASS,
@@ -164,6 +165,54 @@ def check_installed_variant(variant, documents, policy_name):
     return counts
 
 
+def create_job_dry_run(job, user=None):
+    impersonate = ["--as", user] if user else []
+    return kubectl("create", "--dry-run=server", "-o", "name", *impersonate, "-f", "-", stdin=json.dumps(job), ok=False)
+
+
+def remove_claude_runner(policy_name):
+    kubectl("delete", "validatingadmissionpolicybinding", policy_name, "--ignore-not-found", "--wait=true")
+    kubectl("delete", "validatingadmissionpolicy", policy_name, "--ignore-not-found", "--wait=true")
+    kubectl("delete", "namespace", claude.NAMESPACE, "--ignore-not-found", "--wait=true")
+
+
+def check_claude_runner(kube):
+    documents, template, policy, binding, _ = claude.rendered(kube)
+    policy_name = policy["metadata"]["name"]
+    orchestrator = f"system:serviceaccount:{claude.NAMESPACE}:{claude.ORCHESTRATOR}"
+    remove_claude_runner(policy_name)
+    try:
+        kubectl("create", "namespace", claude.NAMESPACE)
+        for doc in documents:
+            if doc["kind"] in ("ServiceAccount", "Role", "RoleBinding") and doc["metadata"].get("namespace", claude.NAMESPACE) == claude.NAMESPACE:
+                doc["metadata"]["namespace"] = claude.NAMESPACE
+                apply(doc)
+        apply(policy)
+        apply(binding)
+        warnings = type_check_warnings(policy_name)
+        assert warnings == [], f"{policy_name}: API server type checking warned: {warnings}"
+        job = claude.spawned(template)
+        hostile = claude.hostile_jobs(job)
+        deadline = time.monotonic() + ACTIVATION_TIMEOUT_SECONDS
+        while f"ValidatingAdmissionPolicy '{policy_name}'" not in denial_text(create_job_dry_run(hostile[0].job, orchestrator)):
+            assert time.monotonic() < deadline, f"{policy_name}: the binding never started denying"
+            time.sleep(1)
+        counts = {"admitted": 0, "denied": 0}
+        assert_admitted(create_job_dry_run(job, orchestrator), "the runner Job spawn-runner submits")
+        counts["admitted"] += 1
+        for case in hostile:
+            result = create_job_dry_run(case.job, orchestrator)
+            text = denial_text(result)
+            assert result.returncode != 0, f"runner Job with {case.name}: admitted"
+            assert f"ValidatingAdmissionPolicy '{policy_name}'" in text and any(m in text for m in case.messages), f"runner Job with {case.name}: refused for another reason: {text.strip()}"
+            counts["denied"] += 1
+        assert_admitted(create_job_dry_run(hostile[0].job), "a Job another user creates is outside the orchestrator's policy")
+        counts["admitted"] += 1
+        return counts
+    finally:
+        remove_claude_runner(policy_name)
+
+
 context = refuse_unless_disposable_cluster()
 kube, git_version = server_version()
 install_runtime_classes()
@@ -171,4 +220,6 @@ totals = {"admitted": 0, "denied": 0}
 for variant in VARIANTS:
     counts = check_variant(variant, kube)
     totals = {key: totals[key] + counts[key] for key in totals}
+counts = check_claude_runner(kube)
+totals = {key: totals[key] + counts[key] for key in totals}
 print(f"{context} (Kubernetes {git_version}): API server type-checked every policy without warnings; {totals['admitted']} expected admissions passed and {totals['denied']} hostile requests were refused by the rule that names them.")

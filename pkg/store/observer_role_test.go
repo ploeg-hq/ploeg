@@ -27,6 +27,12 @@ var observerReads = []string{
 	`SELECT yields, yield_requested_at FROM agent_runs`,
 	`SELECT node_name, pod_uid, count(*) FROM checkpoints GROUP BY 1, 2`,
 	`SELECT work_item_id, shift_id, round, actor, requested_at, yielded_at, pushed, handed_back_at FROM work_item_take_overs`,
+	`SELECT team, connection, scope_id, state, invalid_reason, webhook_state, count(*) FROM tracker_bindings GROUP BY 1, 2, 3, 4, 5, 6`,
+	`SELECT port, kind, state, count(*) FROM connections GROUP BY 1, 2, 3`,
+	`SELECT target_key, connection, forge, repository, state, invalid_reason, count(*) FROM work_targets GROUP BY 1, 2, 3, 4, 5, 6`,
+	`SELECT t.id, t.source, t.state, k.key, k.kind FROM teams t JOIN team_keys k ON k.team_id = t.id WHERE k.released_at IS NULL`,
+	`SELECT r.team_id, count(*) FROM agent_runs r JOIN work_items w ON w.id = r.work_item_id WHERE w.team_id = r.team_id GROUP BY 1`,
+	`SELECT team_id FROM leases UNION ALL SELECT team_id FROM tracker_bindings`,
 }
 
 var observerRefusals = []string{
@@ -52,17 +58,28 @@ var observerRefusals = []string{
 	`SELECT count(*) FROM run_llm_operator_settlements`,
 	`SELECT yield_detail FROM work_item_take_overs`,
 	`SELECT command_id FROM work_item_take_overs`,
+	`SELECT label FROM tracker_bindings`,
+	`SELECT created_by, updated_by FROM tracker_bindings`,
+	`SELECT label, readiness FROM work_targets`,
+	`SELECT name FROM teams`,
+	`SELECT manifest FROM teams`,
+	`SELECT created_by, updated_by, removed_by FROM teams`,
+	`SELECT created_by, updated_by, removed_by FROM work_targets`,
 }
 
 func TestObserverRoleReadsMetadataAndNeverText(t *testing.T) {
 	ctx := context.Background()
-	createObserverRole(t)
 	s, err := New(ctx, scratchDatabase(t, "ploeg_observer_grants"), PoolConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(s.Close)
 	if err := s.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	createObserverRole(t)
+	t.Cleanup(func() { _, _ = s.pool.Exec(context.Background(), `DROP OWNED BY ploeg_observer`) })
+	if _, err := s.pool.Exec(ctx, `SELECT ploeg_grant_observer()`); err != nil {
 		t.Fatal(err)
 	}
 

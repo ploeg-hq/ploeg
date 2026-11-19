@@ -73,7 +73,7 @@ func TestOperatorMintDoesNotReturnCredentialAfterConcurrentPause(t *testing.T) {
 func TestBlockingUnissuedAccountIsIdempotentAndPreventsLaterMint(t *testing.T) {
 	b := &managedBrokerFixture{}
 	s, bootstrap := secureWorkerFixture(t, b)
-	w := workerRequest(s, "POST", "/api/v1/claim", bootstrap, "pod", `{"team":"bronze","role":"reviewer"}`)
+	w := workerRequest(s, "POST", "/api/v1/claim", bootstrap, "pod", `{"team":"bronze","role":"reviewer","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	var claim struct {
 		RunToken string `json:"runToken"`
 	}

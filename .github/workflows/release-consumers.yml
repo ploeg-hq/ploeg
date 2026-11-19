@@ -15,6 +15,10 @@ on:
     secrets:
       RELEASE_CONSUMER_TOKEN_FORGEJO:
         required: false
+      RELEASE_CONSUMER_GITHUB_APP_ID:
+        required: false
+      RELEASE_CONSUMER_GITHUB_APP_PRIVATE_KEY:
+        required: false
 permissions:
   contents: read
 jobs:
@@ -40,10 +44,33 @@ jobs:
           version: 2026.9.18
           install: false
           cache: false
+      - name: Split the GitHub consumer repository into owner and name
+        id: github-repository
+        if: matrix.consumer.forge == 'github'
+        env:
+          REPOSITORY: ${{ matrix.consumer.repo }}
+        run: |
+          [[ "$REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || { echo "$REPOSITORY is not an owner/name repository" >&2; exit 1; }
+          echo "owner=${REPOSITORY%%/*}" >> "$GITHUB_OUTPUT"
+          echo "name=${REPOSITORY#*/}" >> "$GITHUB_OUTPUT"
+      - name: Mint an installation token that writes only the consumer repository
+        id: github-app
+        if: matrix.consumer.forge == 'github'
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.RELEASE_CONSUMER_GITHUB_APP_ID }}
+          private-key: ${{ secrets.RELEASE_CONSUMER_GITHUB_APP_PRIVATE_KEY }}
+          owner: ${{ steps.github-repository.outputs.owner }}
+          repositories: ${{ steps.github-repository.outputs.name }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-issues: write
+          permission-workflows: write
       - name: Run the consumer's recipe for this release and open its pull request
         env:
           RELEASE_CONSUMER: ${{ toJSON(matrix.consumer) }}
-          RELEASE_CONSUMER_TOKEN: ${{ matrix.consumer.forge == 'forgejo' && secrets.RELEASE_CONSUMER_TOKEN_FORGEJO || '' }}
+          RELEASE_CONSUMER_TOKEN: ${{ matrix.consumer.forge == 'forgejo' && secrets.RELEASE_CONSUMER_TOKEN_FORGEJO || matrix.consumer.forge == 'github' && steps.github-app.outputs.token || '' }}
+          RELEASE_CONSUMER_GITHUB_APP_SLUG: ${{ steps.github-app.outputs.app-slug }}
           RELEASE_TAG: ${{ inputs.tag }}
           RELEASE_URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ inputs.tag }}
         run: python3 scripts/release-consumers.py "$RELEASE_TAG"

@@ -68,6 +68,24 @@ func (w *World) Read(id string) (Task, bool) {
 	return out, true
 }
 
+// Tasks returns a copy of every task, ordered by id.
+func (w *World) Tasks() []Task {
+	w.mu.Lock()
+	ids := make([]string, 0, len(w.tasks))
+	for id := range w.tasks {
+		ids = append(ids, id)
+	}
+	w.mu.Unlock()
+	slices.Sort(ids)
+	out := make([]Task, 0, len(ids))
+	for _, id := range ids {
+		if t, ok := w.Read(id); ok {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
 // Update changes a task under the World's lock. It reports false when the
 // task does not exist.
 func (w *World) Update(id string, change func(*Task)) bool {
@@ -263,6 +281,33 @@ func Run(t *testing.T, f Fixture) {
 		id := ident.DeliveryID(first)
 		if id == "" || ident.DeliveryID(f.Assignment(secret, "t1", "builder")) != id {
 			t.Fatalf("delivery ids differ or are empty: %q", id)
+		}
+	})
+
+	t.Run("a Scope's open items list every open item in it and no closed one", func(t *testing.T) {
+		_, tp := open(t, true, nil)
+		lister, ok := tp.(provider.ScopeItemLister)
+		if !ok {
+			t.Skip("the adapter declares no scope_item_lister")
+		}
+		page, err := lister.ListOpenItems(context.Background(), "901", 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		titles := map[string]string{}
+		for _, item := range page.Items {
+			titles[item.ID] = item.Title
+		}
+		if len(page.Items) != 2 || titles["t1"] != "Fix the login" || titles["t3"] != "API" || page.NextPage != 0 {
+			t.Fatalf("open items = %+v, want t1 and t3 on one page", page)
+		}
+		empty, err := lister.ListOpenItems(context.Background(), "902", 1)
+		if err != nil || len(empty.Items) != 0 {
+			t.Fatalf("a Scope without items listed %+v, %v", empty, err)
+		}
+		_, unconfigured := open(t, false, nil)
+		if _, err := unconfigured.(provider.ScopeItemLister).ListOpenItems(context.Background(), "901", 1); err == nil {
+			t.Error("an unconfigured adapter listed items")
 		}
 	})
 

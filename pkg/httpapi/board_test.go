@@ -79,8 +79,8 @@ func TestBoard_VersionsCatchUpNextRoundAndReplay(t *testing.T) {
 		WorkerSecurity: &WorkerSecurity{AllowLegacy: true}, OperatorConfig: OperatorConfig{Consumers: consumers}}
 	h := s.Handler()
 
-	_, analyst := postClaim(t, h, `{"team":"bronze","role":"analyst"}`)
-	_, sibling := postClaim(t, h, `{"team":"bronze","role":"tests"}`)
+	_, analyst := postClaim(t, h, `{"team":"bronze","role":"analyst","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
+	_, sibling := postClaim(t, h, `{"team":"bronze","role":"tests","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	if analyst.Board == nil || analyst.Board.PloegSequence <= 0 {
 		t.Fatalf("claim carried no version vector: %+v", analyst.Board)
 	}
@@ -146,7 +146,7 @@ func TestBoard_VersionsCatchUpNextRoundAndReplay(t *testing.T) {
 	if _, err := testStore.OpenRound(ctx, shiftID, 1, []store.Role{{Name: "builder", Writes: true, Cap: 3}}); err != nil {
 		t.Fatal(err)
 	}
-	_, builder := postClaim(t, h, `{"team":"bronze","role":"builder"}`)
+	_, builder := postClaim(t, h, `{"team":"bronze","role":"builder","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	var told bool
 	for _, f := range builder.Briefing {
 		if strings.HasPrefix(f.Role, "board changes during round 1") && strings.Contains(f.Findings, "A reviewer requested changes") {
@@ -181,7 +181,7 @@ func TestBoard_RefusesRunsWithoutVersionsAndBadRequests(t *testing.T) {
 	reset(t)
 	shiftFixture(t, "board-old", 5, []store.Role{{Name: "reviewer", Cap: 1}})
 	h := apiServer(t, nil)
-	_, claimed := postClaim(t, h, `{"team":"bronze","role":"reviewer"}`)
+	_, claimed := postClaim(t, h, `{"team":"bronze","role":"reviewer","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	if code, _ := postBoard(t, h, claimed.RunToken, work.BoardChangesRequest{Checkpoint: "whenever", Delivery: work.DeliveryFile}); code != 400 {
 		t.Fatalf("unknown checkpoint answered %d", code)
 	}
@@ -200,7 +200,7 @@ func TestBoard_UsefulnessQueryInTheOpsGuideRuns(t *testing.T) {
 	ctx := context.Background()
 	shiftID := shiftFixture(t, "board-use", 5, []store.Role{{Name: "reviewer", Cap: 1}})
 	h := apiServer(t, nil)
-	_, claimed := postClaim(t, h, `{"team":"bronze","role":"reviewer"}`)
+	_, claimed := postClaim(t, h, `{"team":"bronze","role":"reviewer","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	postCheckpoint(t, h, claimed.RunToken, briefed(nil, "", "ploeg-x/1"))
 	if _, err := testPool.Exec(ctx, `UPDATE shifts SET closed_at = now(), spent = 0.5, round = 2 WHERE id = $1`, shiftID); err != nil {
 		t.Fatal(err)
@@ -259,7 +259,7 @@ func TestBoard_IntegratesNotesQuestionsAndActiveWork(t *testing.T) {
 	s := &Server{Store: testStore, LeaseTTL: time.Minute, Log: slog.New(slog.DiscardHandler),
 		WorkerSecurity: &WorkerSecurity{AllowLegacy: true}, OperatorConfig: OperatorConfig{Consumers: consumers}}
 	h := s.Handler()
-	_, claimed := postClaim(t, h, `{"team":"bronze","role":"reviewer"}`)
+	_, claimed := postClaim(t, h, `{"team":"bronze","role":"reviewer","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	if !strings.Contains(claimed.ActiveWork, "VIK-int-other") && !strings.Contains(claimed.ActiveWork, "int-other") {
 		t.Fatalf("the claim does not name the other active work: %q", claimed.ActiveWork)
 	}

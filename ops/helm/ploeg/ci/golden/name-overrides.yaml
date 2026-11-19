@@ -231,6 +231,8 @@ spec:
               value: "30s"
             - name: GOMEMLIMIT
               value: "230MiB"
+            - name: PLOEG_WORKER_FORGE_TOKEN_ISOLATION
+              value: "proxy"
             - name: PLOEG_FORGEJO_URL
               value: "http://forgejo-http.forgejo.svc.cluster.local:3000"
             - name: PLOEG_FORGEJO_TOKEN
@@ -388,8 +390,10 @@ spec:
       matchLabels:
         kubernetes.io/metadata.name: "default"
     objectSelector:
-      matchLabels:
-        app.kubernetes.io/name: ploeg-worker
+      matchExpressions:
+        - key: app.kubernetes.io/name
+          operator: In
+          values: [ploeg-worker, ploeg-claude-runner-session]
     resourceRules:
       - apiGroups: [""]
         apiVersions: ["v1"]

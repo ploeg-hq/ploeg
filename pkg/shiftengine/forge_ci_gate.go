@@ -15,12 +15,14 @@ import (
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
-// The forge CI gate (ADR-0119). A Shift that would hand its pull request to
-// a person waits until the forge's CI on the pull request's head passed. The
-// wait does not block anything: the Shift stays open, and the sweeper's next
-// evaluation reads the CI again. A red check the change caused opens a fix
-// round; a cancelled one, or one that also fails on the base commit, is not
-// the writer's to fix and gets one re-run before a person is asked.
+// The forge CI gate (ADR-0119, ADR-0189). A Shift that would hand its pull
+// request to a person waits until the forge's CI on the pull request's head
+// passed. The wait does not block anything: the Shift stays open, and the
+// sweeper's next evaluation reads the CI again. A red check the change caused
+// opens a fix round; a cancelled one, or one that also fails on the base
+// commit, is not the writer's to fix and gets one re-run before a person is
+// asked. A forge that cannot re-run CI waits for someone to re-run a
+// cancelled check in the forge instead.
 
 // DefaultCIWaitTimeout is how long a Shift waits for the forge's CI when its
 // route sets no ci.waitTimeout.
@@ -168,7 +170,7 @@ type ciGate struct {
 	log   *slog.Logger
 }
 
-func (g ciGate) decide(ctx context.Context, shiftID int64, fp provider.ForgeProvider, repo string, reading ciReading,
+func (g ciGate) decide(ctx context.Context, shiftID int64, fp provider.ForgeProvider, repo string, pr int, reading ciReading,
 	readErr error, timeout time.Duration) (ciStep, error) {
 	if readErr != nil {
 		g.log.Warn("forge CI gate: CI unreadable; holding", "shift", shiftID, "repo", repo, "head", reading.headSHA, "err", readErr)
@@ -180,7 +182,7 @@ func (g ciGate) decide(ctx context.Context, shiftID int64, fp provider.ForgeProv
 	case ciPending:
 		return g.hold(ctx, shiftID, reading, timeout, "CI is still running: "+checkList(reading.pending))
 	case ciNotWritersToFix:
-		return g.reRunOnce(ctx, shiftID, fp, repo, reading, timeout)
+		return g.reRunOnce(ctx, shiftID, fp, repo, pr, reading, timeout)
 	}
 	return ciStep{kind: ciProceed, reading: reading}, nil
 }
@@ -198,32 +200,89 @@ func (g ciGate) hold(ctx context.Context, shiftID int64, reading ciReading, time
 		timeout, waitingFor)}, nil
 }
 
-func (g ciGate) reRunOnce(ctx context.Context, shiftID int64, fp provider.ForgeProvider, repo string, reading ciReading, timeout time.Duration) (ciStep, error) {
+func (g ciGate) reRunOnce(ctx context.Context, shiftID int64, fp provider.ForgeProvider, repo string, pr int, reading ciReading, timeout time.Duration) (ciStep, error) {
 	wait, err := g.store.WaitForCI(ctx, shiftID, reading.headSHA)
 	if err != nil {
 		return ciStep{}, err
 	}
+	_, forgeReRuns := fp.(provider.CIReRunner)
+	awaited := reading.excused
+	if !forgeReRuns {
+		awaited = cancelledChecks(reading.excused)
+	}
 	if wait.ReRunAt == nil {
 		err := provider.ReRunCI(ctx, fp, repo, reading.headSHA)
-		if err == nil {
+		switch {
+		case err == nil:
 			if _, err := g.store.MarkCIReRun(ctx, shiftID, reading.headSHA); err != nil {
 				return ciStep{}, err
 			}
 			g.log.Info("forge CI gate: CI re-run requested", "shift", shiftID, "repo", repo, "head", reading.headSHA,
 				"checks", checkNames(reading.excused))
 			return ciStep{kind: ciHold, reading: reading}, nil
+		case errors.Is(err, provider.ErrNoReRun) && len(awaited) > 0:
+			return g.awaitReRunInForge(ctx, shiftID, fp, repo, pr, reading, awaited, timeout)
+		case errors.Is(err, provider.ErrNoReRun):
+			return notPassed(reading, "the forge cannot re-run CI"), nil
 		}
-		why := "the forge cannot re-run CI"
-		if !errors.Is(err, provider.ErrNoReRun) {
-			g.log.Warn("forge CI gate: CI re-run refused", "shift", shiftID, "repo", repo, "head", reading.headSHA, "err", err)
-			why = "the forge refused to re-run CI (" + err.Error() + ")"
-		}
-		return notPassed(reading, why), nil
+		g.log.Warn("forge CI gate: CI re-run refused", "shift", shiftID, "repo", repo, "head", reading.headSHA, "err", err)
+		return notPassed(reading, "the forge refused to re-run CI ("+err.Error()+")"), nil
 	}
-	if !reportedSince(reading.excused, *wait.ReRunAt) && wait.Waited() < timeout {
+	reported := reportedSince(awaited, *wait.ReRunAt)
+	if !reported && wait.Waited() < timeout {
 		return ciStep{kind: ciHold, reading: reading}, nil
 	}
-	return notPassed(reading, "CI was re-run once"), nil
+	switch {
+	case forgeReRuns:
+		return notPassed(reading, "CI was re-run once"), nil
+	case reported:
+		return notPassed(reading, "CI was re-run in the forge"), nil
+	}
+	return notPassed(reading, fmt.Sprintf("the forge cannot re-run CI and nobody re-ran %s in the forge within %s",
+		strings.Join(quoted(checkNames(awaited)), ", "), timeout)), nil
+}
+
+// awaitReRunInForge starts the wait for someone to re-run cancelled checks
+// in the forge, which cannot re-run them on Ploeg's request, and says so once
+// on the pull request.
+func (g ciGate) awaitReRunInForge(ctx context.Context, shiftID int64, fp provider.ForgeProvider, repo string, pr int,
+	reading ciReading, cancelled []excusedCheck, timeout time.Duration) (ciStep, error) {
+	started, err := g.store.MarkCIReRun(ctx, shiftID, reading.headSHA)
+	if err != nil {
+		return ciStep{}, err
+	}
+	if !started {
+		return ciStep{kind: ciHold, reading: reading}, nil
+	}
+	g.log.Info("forge CI gate: the forge cannot re-run CI; waiting for a re-run in the forge", "shift", shiftID,
+		"repo", repo, "head", reading.headSHA, "checks", checkNames(cancelled), "timeout", timeout)
+	if pr > 0 {
+		body := fmt.Sprintf("Ploeg: CI on this pull request's head %s was cancelled: %s. This forge cannot re-run CI on Ploeg's request. "+
+			"Re-run it here within %s and Ploeg carries on when it passes; otherwise a person is asked to take over.",
+			reading.headSHA, strings.Join(quoted(checkNames(cancelled)), ", "), timeout)
+		if err := fp.Comment(ctx, repo, pr, body); err != nil {
+			g.log.Warn("forge CI gate: re-run request not commented on the pull request", "shift", shiftID, "repo", repo, "pr", pr, "err", err)
+		}
+	}
+	return ciStep{kind: ciHold, reading: reading}, nil
+}
+
+func cancelledChecks(excused []excusedCheck) []excusedCheck {
+	var out []excusedCheck
+	for _, e := range excused {
+		if e.check.Cancelled {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+func quoted(names []string) []string {
+	out := make([]string, 0, len(names))
+	for _, n := range names {
+		out = append(out, fmt.Sprintf("%q", n))
+	}
+	return out
 }
 
 func notPassed(reading ciReading, after string) ciStep {
@@ -268,7 +327,7 @@ func (e *Engine) gateOnForgeCI(ctx context.Context, si store.ShiftInfo, tp plan.
 		return false, nil
 	}
 	reading, readErr := readForgeCI(ctx, fp, repo, pr)
-	step, err := ciGate{store: e.Store, log: e.Log}.decide(ctx, si.ID, fp, repo, reading, readErr, e.CIWaits.timeout(*item.Target))
+	step, err := ciGate{store: e.Store, log: e.Log}.decide(ctx, si.ID, fp, repo, pr, reading, readErr, e.CIWaits.timeout(*item.Target))
 	if err != nil {
 		return false, err
 	}

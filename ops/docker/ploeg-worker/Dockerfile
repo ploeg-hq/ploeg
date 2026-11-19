@@ -2,7 +2,7 @@
 ARG REGISTRY_DOCKERHUB=docker.io
 ARG REGISTRY_CHAINGUARD=cgr.dev
 
-FROM --platform=$BUILDPLATFORM ${REGISTRY_DOCKERHUB}/golang:1.27.3-trixie@sha256:fbb7ae40b62ff8afe31662df570d39b4f5052ac32b90dae8e60d7657a20a74f4 AS builder
+FROM --platform=$BUILDPLATFORM ${REGISTRY_DOCKERHUB}/golang:1.27.4-trixie@sha256:b54b2639de8c1bfe538ec5ffc45f29b1932235ac5f6d63c059853646677112d9 AS builder
 ENV GOTOOLCHAIN=auto
 WORKDIR /src
 COPY go.* ./
@@ -13,9 +13,15 @@ ARG IMAGE_VERSION=0.0.0-dev
 ENV CGO_ENABLED=0
 RUN GOOS=$TARGETOS GOARCH=$TARGETARCH \
     go build -trimpath -ldflags "-s -w -X main.version=${IMAGE_VERSION}" \
-    -o /out/ploeg-worker ./cmd/ploeg-worker
+    -o /out/ploeg-worker ./cmd/ploeg-worker && \
+    GOOS=$TARGETOS GOARCH=$TARGETARCH \
+    go build -trimpath -ldflags "-s -w -X main.version=${IMAGE_VERSION}" \
+    -o /out/ploeg-credential-gateway ./cmd/ploeg-credential-gateway && \
+    GOOS=$TARGETOS GOARCH=$TARGETARCH \
+    go build -trimpath -ldflags "-s -w" \
+    -o /out/ploeg-mcp-stdio-bridge ./cmd/ploeg-mcp-stdio-bridge
 
-FROM ${REGISTRY_CHAINGUARD}/chainguard/wolfi-base:latest@sha256:360896efb0753a5701c48f860e17130c205eae5a264797aa3e7ea126ee2923a7 AS rootfs
+FROM ${REGISTRY_CHAINGUARD}/chainguard/wolfi-base:latest@sha256:2c12da5496e21e99003b3db3b9246f025e53d533c4df334205391260f1e8f85b AS rootfs
 RUN printf 'https://packages.wolfi.dev/os\n' > /etc/apk/repositories \
  && apk add --no-cache --no-scripts --root /rootfs --initdb --keys-dir /etc/apk/keys --repositories-file /etc/apk/repositories \
       wolfi-baselayout ca-certificates-bundle git \
@@ -42,5 +48,7 @@ LABEL org.opencontainers.image.title="ploeg-worker" \
 COPY --from=rootfs /rootfs/ /
 COPY LICENSE NOTICE THIRD-PARTY-NOTICES /usr/share/doc/ploeg/
 COPY --from=builder /out/ploeg-worker /usr/local/bin/ploeg-worker
+COPY --from=builder /out/ploeg-credential-gateway /usr/local/bin/ploeg-credential-gateway
+COPY --from=builder /out/ploeg-mcp-stdio-bridge /usr/local/bin/ploeg-mcp-stdio-bridge
 USER 65532:65532
 ENTRYPOINT ["/usr/local/bin/ploeg-worker"]

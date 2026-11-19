@@ -28,7 +28,7 @@ func (s *Store) TransactionTokenFacts(ctx context.Context, runToken string) (Tra
 	var f TransactionTokenFacts
 	err := s.pool.QueryRow(ctx, `SELECT r.id, r.work_item_id, r.shift_id, r.round, r.role, r.team,
 		COALESCE(r.harness, ''), COALESCE(sh.branch, ''), r.run_token, r.state,
-		COALESCE(r.expires_at, l.expires_at, now()), r.carrier IS NOT DISTINCT FROM 'client',
+		COALESCE(r.expires_at, l.expires_at, now()), r.carrier IS NOT NULL,
 		r.writes, r.authorized::text,
 		COALESCE(w.target_forge, ''), COALESCE(w.target_owner, ''), COALESCE(w.target_repo, ''),
 		COALESCE(w.acts_for, ''), COALESCE(w.acts_for_proof, ''), COALESCE(w.acts_for_act, '')

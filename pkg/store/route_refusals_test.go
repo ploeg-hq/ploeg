@@ -16,7 +16,7 @@ func refusedTask(id, team string) work.WorkItem {
 
 func refuseTask(t *testing.T, item work.WorkItem, code, reason string, allowed []string) {
 	t.Helper()
-	if err := testStore.RefuseRoute(context.Background(), item, code, reason, allowed); err != nil {
+	if err := testStore.RefuseRoute(context.Background(), item, code, reason, allowed, false); err != nil {
 		t.Fatalf("RefuseRoute: %v", err)
 	}
 }

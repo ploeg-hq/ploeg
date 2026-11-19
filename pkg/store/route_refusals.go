@@ -13,16 +13,19 @@ const RouteRefusalUnclassified = "unclassified"
 // RouteRefusal is a tracker task that routing refused (ADR-0038). It is not a
 // Work Item: none exists for it.
 type RouteRefusal struct {
-	Provider      string    `json:"provider"`
-	ExternalID    string    `json:"externalId"`
-	ExternalScope string    `json:"externalScope"`
-	Team          string    `json:"team"`
-	Title         string    `json:"title"`
-	Labels        []string  `json:"labels"`
-	Code          string    `json:"code"`
-	Reason        string    `json:"reason"`
-	AllowedLabels []string  `json:"allowedLabels"`
-	RefusedAt     time.Time `json:"refusedAt"`
+	Provider      string   `json:"provider"`
+	ExternalID    string   `json:"externalId"`
+	ExternalScope string   `json:"externalScope"`
+	Team          string   `json:"team"`
+	Title         string   `json:"title"`
+	Labels        []string `json:"labels"`
+	Code          string   `json:"code"`
+	Reason        string   `json:"reason"`
+	AllowedLabels []string `json:"allowedLabels"`
+	// PrepareAvailable is true on a target_not_ready refusal whose only
+	// readiness reason is the missing instruction file (ADR-0194).
+	PrepareAvailable bool      `json:"prepareAvailable"`
+	RefusedAt        time.Time `json:"refusedAt"`
 }
 
 const recentRouteRefusalsQuery = `
@@ -44,6 +47,7 @@ const recentRouteRefusalsQuery = `
 		'code', CASE WHEN jsonb_typeof(l.detail->'code') = 'string' AND l.detail->>'code' <> '' THEN l.detail->>'code' ELSE '` + RouteRefusalUnclassified + `' END,
 		'reason', left(COALESCE(l.detail->>'reason', ''), 4096),
 		'allowedLabels', CASE WHEN jsonb_typeof(l.detail->'allowed_labels') = 'array' THEN l.detail->'allowed_labels' ELSE '[]'::jsonb END,
+		'prepareAvailable', COALESCE(l.detail->>'prepare_available', '') = 'true',
 		'refusedAt', l.at)
 	FROM latest l
 	WHERE ($1::text[] IS NULL OR l.detail->>'team' = ANY($1))

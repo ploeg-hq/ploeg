@@ -187,6 +187,7 @@ func (s *Server) handleFinishAsk(w http.ResponseWriter, r *http.Request) {
 		askError(w, err)
 		return
 	}
+	s.revokeFinishedRunCredentials(r.Context(), "ask", ask.ForgeTokenID)
 	if ask.Spend.KeyState != "none" {
 		if s.LLMControl == nil {
 			operatorError(w, 503, "inference_unavailable", "Managed inference is unavailable.")

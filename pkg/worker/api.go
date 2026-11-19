@@ -36,10 +36,16 @@ type APIClient struct {
 	// a safe point for a person (ADR-0142), so ploegd refuses a take-over of
 	// a Run that cannot.
 	Yields bool
+	// ForgeTokenIsolation and LLMKeyIsolation are sent with each claim, so
+	// ploegd hands a Run only to a worker that keeps both credentials out of
+	// the harness's reach (ADR-0034).
+	ForgeTokenIsolation string
+	LLMKeyIsolation     string
 	// WorkerVersion is this ploeg-worker's release, sent with each claim so
 	// ploegd can refuse a release it does not serve (ADR-0134).
 	WorkerVersion string
 	controlTokens sync.Map
+	capabilities  sync.Map
 }
 
 // UnsupportedWorkerVersion is ploegd's 426 answer to a claim from a worker
@@ -64,6 +70,9 @@ func (u *UnsupportedWorkerVersion) Error() string {
 type ClaimResponse struct {
 	RunToken     string `json:"runToken"`
 	ControlToken string `json:"controlToken,omitempty"`
+	// CredentialGateway is true when the Run was claimed through its
+	// namespace's credential gateway and ploegd holds its grant (ADR-0197).
+	CredentialGateway bool `json:"credentialGateway,omitempty"`
 	// TransactionToken is the Run's transaction token (ADR-0156). The worker
 	// presents it instead of ControlToken, the deprecated HMAC capability,
 	// and replaces it with the one each renewal answers.
@@ -95,8 +104,9 @@ type ClaimResponse struct {
 	// ActiveWork is the other active work in the Run's repository, rendered
 	// by ploegd within its section's budget (ADR-0123, ADR-0124).
 	ActiveWork string `json:"activeWork,omitempty"`
-	// ForgeToken is a push credential minted for this run alone and revoked
-	// when it settles (ADR-0013 tier 2). Empty = use the env credential.
+	// ForgeToken is a forge credential minted for this run alone and revoked
+	// when it settles: push rights for a writer (ADR-0013 tier 2), read
+	// rights for a reader (ADR-0192). Empty = use the env credential.
 	ForgeToken string `json:"forgeToken,omitempty"`
 	// ForgeTokenPerRun distinguishes a minted credential from the shared
 	// token, which arrives in the same field. Only ploegd knows the
@@ -105,6 +115,11 @@ type ClaimResponse struct {
 	// ForgeTokenExpiresAt is when the forge ends ForgeToken by itself; nil
 	// for a token that lives until it is revoked.
 	ForgeTokenExpiresAt *time.Time `json:"forgeTokenExpiresAt,omitempty"`
+	// ForgeDialect and ForgeURL are the forge this Run acts on, resolved by
+	// ploegd from the Work Target (ADR-0192). They win over
+	// PLOEG_TARGET_FORGE and FORGE_URL; empty keeps those.
+	ForgeDialect string `json:"forgeDialect,omitempty"`
+	ForgeURL     string `json:"forgeUrl,omitempty"`
 	// Planner selects the planner prompt (ADR-0031): the Run splits or
 	// clarifies its Work Item and returns created Work Items, not code.
 	Planner bool `json:"planner,omitempty"`
@@ -154,6 +169,12 @@ func (a *APIClient) Claim(team, role string) (*ClaimResponse, error) {
 	if a.Yields {
 		req["yields"] = true
 	}
+	if a.ForgeTokenIsolation != "" {
+		req["forgeTokenIsolation"] = a.ForgeTokenIsolation
+	}
+	if a.LLMKeyIsolation != "" {
+		req["llmKeyIsolation"] = a.LLMKeyIsolation
+	}
 	if a.WorkerVersion != "" {
 		req["workerVersion"] = a.WorkerVersion
 	}
@@ -173,6 +194,9 @@ func (a *APIClient) Claim(team, role string) (*ClaimResponse, error) {
 		}
 		if a.BootstrapToken != "" && c.ControlToken == "" && c.TransactionToken == "" {
 			return nil, fmt.Errorf("managed claim returned no run capability")
+		}
+		if c.CredentialGateway && c.ControlToken != "" {
+			a.capabilities.Store(c.RunToken, c.ControlToken)
 		}
 		if c.TransactionToken != "" {
 			a.controlTokens.Store(c.RunToken, c.TransactionToken)

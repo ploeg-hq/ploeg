@@ -19,6 +19,88 @@ import (
 // repeats it, so ploegd deduplicates on it.
 const DeliveryHeader = "X-GitHub-Delivery"
 
+// HookTargetHeader names the App a delivery is for when its target type is
+// an integration: the App id, by which its webhook secret is chosen.
+const HookTargetHeader = "X-GitHub-Hook-Installation-Target-ID"
+
+const hookTargetTypeHeader = "X-GitHub-Hook-Installation-Target-Type"
+
+type installationHook struct {
+	Action       string `json:"action"`
+	Installation struct {
+		ID      int64 `json:"id"`
+		AppID   int64 `json:"app_id"`
+		Account struct {
+			ID int64 `json:"id"`
+		} `json:"account"`
+	} `json:"installation"`
+	RepositoriesAdded   []grantRepository `json:"repositories_added"`
+	RepositoriesRemoved []grantRepository `json:"repositories_removed"`
+}
+
+type grantRepository struct {
+	ID       int64  `json:"id"`
+	FullName string `json:"full_name"`
+}
+
+// grantEvent normalises an installation or installation_repositories
+// delivery into a grant event (ADR-0193 section 7). appID is the App whose
+// own webhook secret verified the delivery; a payload naming another App
+// yields nothing.
+func grantEvent(event, appID string, body []byte) ([]provider.ForgeEvent, error) {
+	var h installationHook
+	if err := json.Unmarshal(body, &h); err != nil {
+		return nil, fmt.Errorf("parse payload: %w", err)
+	}
+	if h.Installation.ID == 0 {
+		return nil, nil
+	}
+	if h.Installation.AppID != 0 && strconv.FormatInt(h.Installation.AppID, 10) != appID {
+		return nil, nil
+	}
+	grant := &provider.GrantEvent{AppID: appID, InstallationID: strconv.FormatInt(h.Installation.ID, 10), Event: event, Action: h.Action,
+		AccountID: strconv.FormatInt(h.Installation.Account.ID, 10)}
+	for _, r := range h.RepositoriesAdded {
+		grant.Added = append(grant.Added, r.FullName)
+		grant.AddedIDs = append(grant.AddedIDs, strconv.FormatInt(r.ID, 10))
+	}
+	for _, r := range h.RepositoriesRemoved {
+		grant.Removed = append(grant.Removed, r.FullName)
+		grant.RemovedIDs = append(grant.RemovedIDs, strconv.FormatInt(r.ID, 10))
+	}
+	return []provider.ForgeEvent{{Kind: provider.ForgeGrantChanged, Grant: grant}}, nil
+}
+
+// heldApp returns the App id and webhook secret of a delivery for an App
+// Ploeg holds: one whose target type is integration and whose target id
+// AppSecret knows. ok is false for any other delivery. An error means
+// Ploeg cannot tell, and the delivery must be refused rather than verified
+// with the static secret.
+func (p *Provider) heldApp(r *http.Request) (appID, secret string, ok bool, err error) {
+	if p.AppSecret == nil || !strings.EqualFold(strings.TrimSpace(r.Header.Get(hookTargetTypeHeader)), "integration") {
+		return "", "", false, nil
+	}
+	target := strings.TrimSpace(r.Header.Get(HookTargetHeader))
+	if target == "" {
+		return "", "", false, nil
+	}
+	secret, held, err := p.AppSecret(r.Context(), target)
+	if err != nil {
+		return "", "", false, fmt.Errorf("webhook secret of App %s unavailable: %w", target, err)
+	}
+	if !held || secret == "" {
+		return "", "", false, nil
+	}
+	return target, secret, true, nil
+}
+
+// ForApp reports whether a delivery is for an App Ploeg holds, so a route
+// without a static GitHub tracker or forge can still take it.
+func (p *Provider) ForApp(r *http.Request) (bool, error) {
+	_, _, ok, err := p.heldApp(r)
+	return ok, err
+}
+
 // DeliveryID returns the delivery id GitHub repeats on a redelivery.
 func (p *Provider) DeliveryID(r *http.Request) string {
 	return strings.TrimSpace(r.Header.Get(DeliveryHeader))
@@ -60,8 +142,11 @@ type hook struct {
 
 // ParseWebhook verifies X-Hub-Signature-256 over the raw body, requires a
 // delivery id, and normalizes pull_request, pull_request_review, check_run
-// and status events. Every other event, ping included, is accepted and
-// dropped. A merged or closed event is confirmed against the API when the
+// and status events. installation and installation_repositories become
+// grant events only when the App's own webhook secret verified them; with
+// the static secret they are dropped, so that secret can never change the
+// connections of an App Ploeg holds. Every other event, ping included, is
+// accepted and dropped. A merged or closed event is confirmed against the API when the
 // provider has a credential, so a replayed delivery cannot settle a pull
 // request that is open again.
 func (p *Provider) ParseWebhook(r *http.Request) ([]provider.ForgeEvent, error) {
@@ -69,14 +154,28 @@ func (p *Provider) ParseWebhook(r *http.Request) ([]provider.ForgeEvent, error) 
 	if err != nil {
 		return nil, err
 	}
-	if p.Secret == "" {
+	appID, secret, _, err := p.heldApp(r)
+	if err != nil {
+		return nil, err
+	}
+	if appID == "" {
+		secret = p.Secret
+	}
+	if secret == "" {
 		return nil, errors.New("no webhook secret configured; set PLOEG_GITHUB_FORGE_SECRET")
 	}
-	if !verify(p.Secret, body, r.Header.Get("X-Hub-Signature-256")) {
+	if !verify(secret, body, r.Header.Get("X-Hub-Signature-256")) {
 		return nil, errors.New("invalid webhook signature")
 	}
 	if strings.TrimSpace(r.Header.Get(DeliveryHeader)) == "" {
 		return nil, errors.New("webhook names no " + DeliveryHeader)
+	}
+	switch event := r.Header.Get("X-GitHub-Event"); event {
+	case "installation", "installation_repositories":
+		if appID == "" {
+			return nil, nil
+		}
+		return grantEvent(event, appID, body)
 	}
 	var h hook
 	if err := json.Unmarshal(body, &h); err != nil {

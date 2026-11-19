@@ -16,6 +16,7 @@ import (
 
 	"github.com/ploeg-hq/ploeg/pkg/apilimit"
 	"github.com/ploeg-hq/ploeg/pkg/store"
+	"github.com/ploeg-hq/ploeg/pkg/team"
 )
 
 // DefaultMetricsCacheTTL bounds how often a scrape reaches the database when
@@ -42,7 +43,7 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "metrics unavailable", http.StatusServiceUnavailable)
 			return
 		}
-		s.metrics.body = renderMetrics(m, s.TrackerWebhooks, s.harnessAllowed)
+		s.metrics.body = renderMetrics(m, s.TrackerWebhooks, s.harnessAllowed, s.Teams)
 		s.metrics.at = time.Now()
 	}
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
@@ -50,6 +51,26 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(renderPoolMetrics(s.Store.PoolStat()))
 	_, _ = w.Write(renderProviderAPIMetrics(apilimit.Snapshot()))
 	_, _ = w.Write(s.Loops.render())
+	_, _ = w.Write(s.renderConnectionMetrics(r))
+	_, _ = w.Write(s.renderBindingMetrics())
+	_, _ = w.Write(s.renderWorkTargetMetrics())
+}
+
+func (s *Server) renderConnectionMetrics(r *http.Request) []byte {
+	if s.ConnectionService == nil {
+		return nil
+	}
+	counts, err := s.ConnectionService.StateCounts(r.Context())
+	if err != nil {
+		return nil
+	}
+	keys := slices.SortedFunc(maps.Keys(counts), func(a, b [2]string) int { return strings.Compare(a[0]+"\x00"+a[1], b[0]+"\x00"+b[1]) })
+	var b metricWriter
+	b.family("ploeg_connections", "gauge", "Live runtime tracker and forge connections (ADR-0195), by kind and state.")
+	for _, k := range keys {
+		b.sample("ploeg_connections", float64(counts[k]), "kind", k[0], "state", k[1])
+	}
+	return b.Bytes()
 }
 
 func renderProviderAPIMetrics(counts []apilimit.Counts) []byte {
@@ -179,24 +200,25 @@ func (s *Server) harnessAllowed(team, role, harness string) bool {
 	return ok && h.Allows(harness)
 }
 
-func renderMetrics(m store.OperationalMetrics, webhooks map[string]*WebhookCoverage, harnessAllowed func(team, role, harness string) bool) []byte {
+func renderMetrics(m store.OperationalMetrics, webhooks map[string]*WebhookCoverage, harnessAllowed func(team, role, harness string) bool, directory *team.Directory) []byte {
 	var b metricWriter
+	labels := func(teamKey string, rest ...string) []string { return teamLabels(directory, teamKey, rest...) }
 
 	b.family("ploeg_shifts_open", "gauge", "Open Shifts per team.")
 	for _, team := range sortedKeys(m.OpenShifts) {
-		b.sample("ploeg_shifts_open", float64(m.OpenShifts[team]), "team", team)
+		b.sample("ploeg_shifts_open", float64(m.OpenShifts[team]), labels(team)...)
 	}
 	b.family("ploeg_shift_idle_seconds_max", "gauge", "Longest time an open Shift of this team has gone without Run progress (a Run start, finish or checkpoint; a Run that ended failed is no progress).")
 	for _, team := range sortedKeys(m.ShiftIdleSeconds) {
-		b.sample("ploeg_shift_idle_seconds_max", m.ShiftIdleSeconds[team], "team", team)
+		b.sample("ploeg_shift_idle_seconds_max", m.ShiftIdleSeconds[team], labels(team)...)
 	}
 	b.family("ploeg_shift_runs_without_pr_max", "gauge", "Most finished Runs in any open Shift of this team that has no recorded pull request.")
 	for _, team := range sortedKeys(m.ShiftRunsWithoutPRMax) {
-		b.sample("ploeg_shift_runs_without_pr_max", float64(m.ShiftRunsWithoutPRMax[team]), "team", team)
+		b.sample("ploeg_shift_runs_without_pr_max", float64(m.ShiftRunsWithoutPRMax[team]), labels(team)...)
 	}
 	b.family("ploeg_work_item_oldest_queued_seconds", "gauge", "How long the longest-waiting claimable queued Work Item of this team has waited since it last became queued.")
 	for _, team := range sortedKeys(m.OldestQueuedSeconds) {
-		b.sample("ploeg_work_item_oldest_queued_seconds", m.OldestQueuedSeconds[team], "team", team)
+		b.sample("ploeg_work_item_oldest_queued_seconds", m.OldestQueuedSeconds[team], labels(team)...)
 	}
 
 	b.family("ploeg_leases_expired", "gauge", "Leases whose expiry has passed and that the sweep has not yet released.")
@@ -223,12 +245,12 @@ func renderMetrics(m store.OperationalMetrics, webhooks map[string]*WebhookCover
 
 	b.family("ploeg_team_spend_cap_usd", "gauge", "A capped Team's spend cap for its period (ADR-0162), in USD.")
 	for _, t := range m.TeamSpend {
-		b.sample("ploeg_team_spend_cap_usd", t.Cap.USD, "team", t.Team, "period", string(t.Cap.Period))
+		b.sample("ploeg_team_spend_cap_usd", t.Cap.USD, labels(t.Team, "period", string(t.Cap.Period))...)
 	}
 	b.family("ploeg_team_period_spend_usd", "gauge", "A capped Team's spend in its current period, in USD: settled in the period, or held by its Runs now.")
 	for _, t := range m.TeamSpend {
-		b.sample("ploeg_team_period_spend_usd", t.SettledUSD, "team", t.Team, "period", string(t.Cap.Period), "kind", "settled")
-		b.sample("ploeg_team_period_spend_usd", t.HeldUSD, "team", t.Team, "period", string(t.Cap.Period), "kind", "held")
+		b.sample("ploeg_team_period_spend_usd", t.SettledUSD, labels(t.Team, "period", string(t.Cap.Period), "kind", "settled")...)
+		b.sample("ploeg_team_period_spend_usd", t.HeldUSD, labels(t.Team, "period", string(t.Cap.Period), "kind", "held")...)
 	}
 
 	b.family("ploeg_runs_failed_total", "counter", "Runs that ended failed, by failure reason. A credential_leak Run carried one of its credentials or its canary to the forge.")
@@ -237,7 +259,7 @@ func renderMetrics(m store.OperationalMetrics, webhooks map[string]*WebhookCover
 	}
 	b.family("ploeg_runs_finished_total", "counter", "Runs that finished, by team, Role, outcome and, for a failed Run, failure reason.")
 	for _, k := range sortedRunOutcomes(m.FinishedRuns) {
-		b.sample("ploeg_runs_finished_total", float64(m.FinishedRuns[k]), "team", k.Team, "role", k.Role, "outcome", k.Outcome, "reason", k.Reason)
+		b.sample("ploeg_runs_finished_total", float64(m.FinishedRuns[k]), labels(k.Team, "role", k.Role, "outcome", k.Outcome, "reason", k.Reason)...)
 	}
 	b.family("ploeg_runs_without_observed_delivery_last_day", "gauge", "Runs finished in the last day whose report carried no delivery record from the worker (legacy) or one that did not match the Run (mismatch).")
 	for _, source := range sortedKeys(m.RunsWithoutObservedDeliveryLastDay) {
@@ -245,21 +267,24 @@ func renderMetrics(m store.OperationalMetrics, webhooks map[string]*WebhookCover
 	}
 	b.family("ploeg_shadow_reviews_total", "counter", "Finished shadow Runs (ADR-0096), by team, shadow Role, the verdict the Round's acting readers gave (primary) and the shadow's own verdict (shadow); each verdict is approve, request_changes or none.")
 	for _, k := range sortedShadowReviews(m.ShadowReviews) {
-		b.sample("ploeg_shadow_reviews_total", float64(m.ShadowReviews[k]), "team", k.Team, "role", k.Role, "primary", k.Primary, "shadow", k.Shadow)
+		b.sample("ploeg_shadow_reviews_total", float64(m.ShadowReviews[k]), labels(k.Team, "role", k.Role, "primary", k.Primary, "shadow", k.Shadow)...)
 	}
 	b.family("ploeg_runs_pending_outside_allowlist", "gauge", "Pending Runs that store a Harness the current allowlist of their team and Role no longer contains, so no workload claims them (ADR-0099).")
 	for _, p := range m.PendingRunsByHarness {
 		if harnessAllowed == nil || !harnessAllowed(p.Team, p.Role, p.Harness) {
-			b.sample("ploeg_runs_pending_outside_allowlist", float64(p.Pending), "team", p.Team, "role", p.Role, "harness", p.Harness)
+			b.sample("ploeg_runs_pending_outside_allowlist", float64(p.Pending), labels(p.Team, "role", p.Role, "harness", p.Harness)...)
 		}
 	}
 	b.family("ploeg_runs_briefed_total", "counter", "Finished Runs that recorded their briefing (ADR-0124), by team, Role and whether the briefing held any Work Item Note (notes is with or without).")
 	for _, k := range sortedBriefedRuns(m.BriefedRuns) {
-		b.sample("ploeg_runs_briefed_total", float64(m.BriefedRuns[k]), "team", k.Team, "role", k.Role, "notes", k.Notes)
+		b.sample("ploeg_runs_briefed_total", float64(m.BriefedRuns[k]), labels(k.Team, "role", k.Role, "notes", k.Notes)...)
 	}
 	b.family("ploeg_run_briefed_notes_total", "counter", "Work Item Notes the finished Runs of a team and Role were briefed with (ADR-0124).")
 	for _, k := range sortedBriefedRuns(m.BriefedNotes) {
-		b.sample("ploeg_run_briefed_notes_total", float64(m.BriefedNotes[k]), "team", k.Team, "role", k.Role)
+		b.sample("ploeg_run_briefed_notes_total", float64(m.BriefedNotes[k]), labels(k.Team, "role", k.Role)...)
+	}
+	if directory != nil {
+		renderTeamInfo(&b, directory)
 	}
 	b.family("ploeg_awaiting_review_with_unsuccessful_ci", "gauge", "Work Items in awaiting_review whose pull request's head CI, as last read from the forge, is not success (ADR-0119); stays at 0.")
 	b.sample("ploeg_awaiting_review_with_unsuccessful_ci", float64(m.AwaitingReviewWithUnsuccessfulCI))
@@ -293,4 +318,33 @@ func renderMetrics(m store.OperationalMetrics, webhooks map[string]*WebhookCover
 		}
 	}
 	return b.Bytes()
+}
+
+func teamLabels(directory *team.Directory, teamKey string, rest ...string) []string {
+	out := []string{"team", teamKey}
+	if id := directory.ID(teamKey); id != "" {
+		out = append(out, "team_id", id)
+	}
+	return append(out, rest...)
+}
+
+func renderTeamInfo(b *metricWriter, directory *team.Directory) {
+	teams := directory.All()
+	b.family("ploeg_team_info", "gauge", "One series per live Team (ADR-0198) joining its immutable team_id to its current key, source and state; the display name is never a label.")
+	for _, t := range teams {
+		b.sample("ploeg_team_info", 1, "team_id", t.ID, "key", t.Key, "source", t.Source, "state", t.State)
+	}
+	counts := map[[2]string]int{}
+	for _, source := range []string{team.SourceStatic, team.SourceRuntime} {
+		for _, state := range []string{team.StateActive, team.StateShadowed, team.StateInvalid} {
+			counts[[2]string{source, state}] = 0
+		}
+	}
+	for _, t := range teams {
+		counts[[2]string{t.Source, t.State}]++
+	}
+	b.family("ploeg_teams", "gauge", "Live Teams by source (static or runtime) and state (active, shadowed or invalid), for alerting on a shadowed or invalid Team (ADR-0198).")
+	for _, k := range slices.SortedFunc(maps.Keys(counts), func(a, b [2]string) int { return strings.Compare(a[0]+"\x00"+a[1], b[0]+"\x00"+b[1]) }) {
+		b.sample("ploeg_teams", float64(counts[k]), "source", k[0], "state", k[1])
+	}
 }

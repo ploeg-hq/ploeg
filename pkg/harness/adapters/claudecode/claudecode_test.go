@@ -672,3 +672,38 @@ func TestPrepare_NoPluginsKeepsTheTargetHooksOff(t *testing.T) {
 		t.Errorf("a Run without plugins received %s", RepositoryInstructions)
 	}
 }
+
+func TestPrepare_RegisteredServersPointAtTheGatewayWithTheCapabilityOnly(t *testing.T) {
+	env := testEnv()
+	env.ScratchDir = t.TempDir()
+	env.LLM.APIKey = "run-capability"
+	env.LLM.MCPServers = []harness.MCPServer{{Name: "obs", URL: "http://gateway:8083/mcp/obs"}}
+	inv, err := New("", "").Prepare(harness.TaskSpec{}, env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(inv.Argv, "--strict-mcp-config") {
+		t.Fatalf("argv lets the target's .mcp.json servers start: %q", inv.Argv)
+	}
+	body, err := os.ReadFile(inv.Argv[slices.Index(inv.Argv, "--mcp-config")+1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cfg struct {
+		MCPServers map[string]struct {
+			URL     string            `json:"url"`
+			Headers map[string]string `json:"headers"`
+		} `json:"mcpServers"`
+	}
+	if err := json.Unmarshal(body, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	obs, ok := cfg.MCPServers["obs"]
+	if len(cfg.MCPServers) != 1 || !ok || obs.URL != "http://gateway:8083/mcp/obs" || len(obs.Headers) != 1 || obs.Headers["Authorization"] != "Bearer run-capability" {
+		t.Fatalf("MCP config = %s", body)
+	}
+	env.LLM.MCPServers = []harness.MCPServer{{Name: MCPServerName, URL: "http://gateway:8083/mcp/litellm"}}
+	if _, err := New("", "").Prepare(harness.TaskSpec{}, env); err == nil {
+		t.Fatal("a registered server took the model gateway's name")
+	}
+}

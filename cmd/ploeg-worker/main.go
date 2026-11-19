@@ -9,6 +9,7 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -46,7 +47,7 @@ func main() {
 
 	if len(os.Args) >= 3 && os.Args[1] == "harness-serve" {
 		if err := runHarnessServe(os.Args[2]); err != nil {
-			log.Error("harness launcher exiting", "socket", os.Args[2], "err", err)
+			log.Error("harness launcher exiting", "rendezvous", os.Args[2], "err", err)
 			os.Exit(1)
 		}
 		return
@@ -97,8 +98,7 @@ func run(log *slog.Logger) error {
 	// Boot-required and parsed strictly. Discarding this error turned a typo
 	// or a dropped chart value into budget 0, and budget 0 mints an UNCAPPED
 	// key rather than a useless one. Failing here costs no attempt and
-	// strands no lease, which is the same reason AGENT_BUILDER_TOKEN is
-	// required below: it is true for every possible target.
+	// strands no lease.
 	budgetRaw := os.Getenv("LITELLM_KEY_BUDGET")
 	budget, err := strconv.ParseFloat(budgetRaw, 64)
 	if err != nil {
@@ -109,7 +109,7 @@ func run(log *slog.Logger) error {
 		APIURL:         requireEnv("PLOEG_API_URL"),
 		BootstrapToken: os.Getenv("PLOEG_WORKER_BOOTSTRAP_TOKEN"),
 		WorkerID:       envOr("PLOEG_WORKER_ID", os.Getenv("POD_UID")),
-		Team:           requireEnv("PLOEG_TEAM"),
+		Team:           workerTeam(),
 		Version:        version,
 		// This pod's slot in a Round. NOT boot-required: unset is the
 		// pre-Shift claim over queued work items, which is exactly what a
@@ -125,11 +125,7 @@ func run(log *slog.Logger) error {
 		RepoName:     os.Getenv("REPO_NAME"),
 		BaseBranch:   envOr("PLOEG_BASE_BRANCH", ""),
 		TargetSource: envOr("PLOEG_TARGET_SOURCE", ""),
-		ForgeURL:     trimSlash(requireEnv("FORGE_URL")),
 		DefaultForge: envOr("PLOEG_TARGET_FORGE", harness.ForgeForgejo),
-		// The credential is true for EVERY possible target, so it stays
-		// boot-required: failing here costs no attempt and strands no lease.
-		BuilderToken: requireEnv("AGENT_BUILDER_TOKEN"),
 		WorkDir:      envOr("WORK_DIR", "/mnt/ci-shared"),
 
 		LLMBaseURL:          os.Getenv("LLM_BASE_URL"),
@@ -141,6 +137,16 @@ func run(log *slog.Logger) error {
 		KeyTTL:              durationOr("LITELLM_KEY_DURATION", 4*time.Hour),
 	}
 
+	if cfg.CredentialGateway, err = switchEnv("PLOEG_CREDENTIAL_GATEWAY", false); err != nil {
+		return err
+	}
+	if cfg.CredentialGateway {
+		if err := refuseCredentialsInGatewayMode(cfg); err != nil {
+			return err
+		}
+		cfg.GatewayForgeURL = trimSlash(os.Getenv("PLOEG_CREDENTIAL_GATEWAY_FORGE_URL"))
+		cfg.GatewayMCPURL = trimSlash(os.Getenv("PLOEG_CREDENTIAL_GATEWAY_MCP_URL"))
+	}
 	if cfg.LLMKeyIsolation != "" && cfg.LLMKeyIsolation != worker.KeyIsolationProxy {
 		return fmt.Errorf("PLOEG_LLM_KEY_ISOLATION must be empty or %q, got %q", worker.KeyIsolationProxy, cfg.LLMKeyIsolation)
 	}
@@ -154,6 +160,12 @@ func run(log *slog.Logger) error {
 	}
 	if cfg.ForgeTokenAccess, err = forgeTokenAccess(); err != nil {
 		return err
+	}
+	if cfg.ForgeURL, cfg.BuilderToken, err = envForge(); err != nil {
+		return err
+	}
+	if cfg.CredentialGateway {
+		cfg.ForgeURL = cfg.GatewayForgeURL
 	}
 
 	// The harness seam: fail fast on a misconfigured adapter BEFORE claiming.
@@ -198,6 +210,9 @@ func run(log *slog.Logger) error {
 	}
 	if cfg.HarnessIdleTimeout, err = boundEnv("PLOEG_HARNESS_IDLE_TIMEOUT", defaultHarnessIdleTimeout); err != nil {
 		return err
+	}
+	if cfg.CredentialGateway && hc.Name == "claude-environment" {
+		return errors.New("PLOEG_CREDENTIAL_GATEWAY: a claude-environment Run reaches Anthropic through the gateway's anthropic route family, which is not built yet; run this Role with a worker-run Harness (ADR-0197 section 7)")
 	}
 	adapter, err := worker.NewAdapter(hc)
 	if err != nil {
@@ -258,6 +273,9 @@ func run(log *slog.Logger) error {
 	var broker llmbroker.Broker
 	switch envOr("PLOEG_LLM_CREDENTIAL_MODE", "managed") {
 	case "managed":
+		if cfg.CredentialGateway && cfg.WorkerID != "" {
+			break
+		}
 		if cfg.BootstrapToken == "" || cfg.WorkerID == "" {
 			return fmt.Errorf("managed worker requires bootstrap capability and worker identity")
 		}
@@ -353,6 +371,22 @@ func rejectAdministrativeEnvironment() error {
 	return nil
 }
 
+// envForge reads the worker's own forge: FORGE_URL and AGENT_BUILDER_TOKEN
+// together, or neither. A release with one forge renders both and a worker
+// fails its boot without one, which costs no attempt and strands no lease. A
+// release with several forges renders neither: every claim carries the
+// Run's forge and a credential minted for it (ADR-0192).
+func envForge() (string, string, error) {
+	url, token := trimSlash(os.Getenv("FORGE_URL")), os.Getenv("AGENT_BUILDER_TOKEN")
+	switch {
+	case url != "" && token == "":
+		return "", "", errors.New("FORGE_URL is set without AGENT_BUILDER_TOKEN: a worker with its own forge needs its credential")
+	case url == "" && token != "":
+		return "", "", errors.New("AGENT_BUILDER_TOKEN is set without FORGE_URL: a worker with its own credential needs its forge")
+	}
+	return url, token, nil
+}
+
 func forgeTokenAccess() (string, error) {
 	v := os.Getenv("PLOEG_FORGE_TOKEN_ACCESS")
 	switch v {
@@ -437,4 +471,43 @@ func durationEnv(key string) (time.Duration, error) {
 		return 0, fmt.Errorf("%s must be a Go duration such as 45m or 90s: %w", key, err)
 	}
 	return d, nil
+}
+
+var gatewayModeForbiddenEnvironment = []string{
+	"PLOEG_WORKER_BOOTSTRAP_TOKEN", "AGENT_BUILDER_TOKEN", "LLM_API_KEY", "CLAUDE_CODE_OAUTH_REFRESH_TOKEN",
+	"CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "SELF_HOSTED_RUNNER_ENVIRONMENT_SECRET",
+}
+
+// refuseCredentialsInGatewayMode stops a gateway-mode worker that finds any
+// credential in its pod, so a misrendered pod never runs a Run with one
+// (ADR-0197): no credential variable, no ServiceAccount token, no in-worker
+// proxy, and a gateway to reach.
+func refuseCredentialsInGatewayMode(cfg worker.Config) error {
+	for _, key := range gatewayModeForbiddenEnvironment {
+		if os.Getenv(key) != "" {
+			return fmt.Errorf("PLOEG_CREDENTIAL_GATEWAY: %s is set, but a Run pod behind the credential gateway holds no credential", key)
+		}
+	}
+	for _, kv := range os.Environ() {
+		if strings.HasPrefix(kv, "PLOEG_CLAUDE_PLUGIN_ENV_") {
+			return fmt.Errorf("PLOEG_CREDENTIAL_GATEWAY: %s is set, but a Run pod behind the credential gateway passes no variable to a plugin", strings.SplitN(kv, "=", 2)[0])
+		}
+	}
+	if cfg.LLMKeyIsolation != "" || cfg.ForgeTokenIsolation != "" {
+		return errors.New("PLOEG_CREDENTIAL_GATEWAY: the in-worker credential proxies are refused behind the credential gateway; unset PLOEG_LLM_KEY_ISOLATION and PLOEG_FORGE_TOKEN_ISOLATION")
+	}
+	if os.Getenv("PLOEG_CREDENTIAL_GATEWAY_FORGE_URL") == "" || os.Getenv("LLM_BASE_URL") == "" {
+		return errors.New("PLOEG_CREDENTIAL_GATEWAY: PLOEG_CREDENTIAL_GATEWAY_FORGE_URL and LLM_BASE_URL must name the gateway")
+	}
+	return worker.RefuseServiceAccountToken()
+}
+
+// workerTeam is the Team the worker claims for. A runtime Team pool's
+// worker (PLOEG_POOL, ADR-0198) names none: its bootstrap decides, and the
+// claim names the Team and Role of the Run it got.
+func workerTeam() string {
+	if os.Getenv("PLOEG_POOL") != "" {
+		return ""
+	}
+	return requireEnv("PLOEG_TEAM")
 }

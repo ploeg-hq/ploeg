@@ -15,7 +15,7 @@ func TestThePromptStartedCheckpointRecordsLimitsThatOperatorReadsServe(t *testin
 	consumers, operator := operatorTestConsumers(t, []string{"bronze"}, false)
 	s.OperatorConfig = OperatorConfig{Consumers: consumers}
 
-	w := workerRequest(s, "POST", "/api/v1/claim", bootstrap, "pod", `{"team":"bronze","role":"reviewer","harness":"acp","harnessProfile":"opencode"}`)
+	w := workerRequest(s, "POST", "/api/v1/claim", bootstrap, "pod", `{"team":"bronze","role":"reviewer","harness":"acp","harnessProfile":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
 	var claim struct {
 		RunToken     string `json:"runToken"`
 		ControlToken string `json:"controlToken"`

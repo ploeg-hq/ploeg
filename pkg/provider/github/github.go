@@ -34,6 +34,13 @@ type Provider struct {
 	Tokens githubapi.TokenSource
 	// Secret verifies X-Hub-Signature-256. Empty rejects every delivery.
 	Secret string
+	// AppSecret returns the webhook secret of an App Ploeg created from a
+	// manifest (ADR-0195), by the App id GitHub sends in
+	// X-GitHub-Hook-Installation-Target-ID, and whether Ploeg holds that
+	// App. A delivery for such an App is verified with its secret only; any
+	// other delivery with Secret. An error refuses the delivery: it is never
+	// verified with Secret instead. Nil verifies every delivery with Secret.
+	AppSecret func(ctx context.Context, appID string) (secret string, held bool, err error)
 	// Client is optional; nil gets githubapi defaults.
 	Client *githubapi.Client
 	Log    *slog.Logger

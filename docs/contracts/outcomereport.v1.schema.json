@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://webgrip.dev/ploeg/contracts/outcomereport.v1.schema.json",
+  "$id": "https://ploeg-hq.github.io/ploeg/contracts/outcomereport.v1.schema.json",
   "title": "OutcomeReport",
   "description": "The harness contract output (design \u00a75, harness.OutcomeReport) and the body of POST /api/v1/runs/{token}/outcome. A stuck outcome always carries a stuckReason (R4).",
   "type": "object",
