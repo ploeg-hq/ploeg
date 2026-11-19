@@ -3,7 +3,7 @@
 # no PLOEG_GITLAB_* and workers no FORGE_URL, AGENT_BUILDER_TOKEN or reader
 # token: each claim carries the forge of its target's connection and a
 # project access token minted through it. A reading Role needs no
-# readTokenSecret here, and networkPolicy.forge.runtimeUrls opens egress to
+# readTokenSecret here, and networkPolicy.runtimeForgeUrls opens egress to
 # the instance.
 config:
   connections:
@@ -24,8 +24,7 @@ secretStore:
   kubernetes:
     namespace: ploeg-connections
 networkPolicy:
-  forge:
-    runtimeUrls: [https://gitlab.example.com]
+  runtimeForgeUrls: [https://gitlab.example.com]
 executor:
   enabled: true
   forge: gitlab

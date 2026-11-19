@@ -68,8 +68,7 @@ executor:
   enabled: true
   forge: gitlab
 networkPolicy:
-  forge:
-    runtimeUrls: [https://gitlab.example.com]
+  runtimeForgeUrls: [https://gitlab.example.com]
 env:
   PLOEG_PUBLIC_WEBHOOK_BASE: https://ploeg.example.com
 secretStore:
@@ -92,7 +91,7 @@ config:
 
 Each claim then carries the target's forge, resolved from its connection's instance (dialect `gitlab`, the instance's `url`), and a project access token minted through the connection, so `executor.forge` only names the dialect of a claim that carries none. ploegd acts on each project outside a Run, posting the Run's card, reading the merge request, its CI and notes, and taking the project webhook's deliveries on `/webhooks/forge/gitlab?connection=<id>`, with the credential of the connection the project's active runtime target was granted through. A project no active runtime target names, or one on a GitLab OAuth connection, is refused before any request. A release with a static forge of the same dialect keeps serving that dialect's runtime targets through the static forge, as before.
 
-The network policy keeps a runtime forge closed by default: list each instance URL in `networkPolicy.forge.runtimeUrls`, and ploegd, every worker pod, the credential gateway and claude-runner get egress to it, derived as a forge block's `url` is ([network](../ops/network.md)). GitHub and Forgejo runtime-only releases resolve the claim the same way but have no runtime forge provider yet, so their cards, merge reads and webhooks still need a static forge.
+The network policy keeps a runtime forge closed by default: list each instance URL in `networkPolicy.runtimeForgeUrls`, and ploegd, every worker pod, the credential gateway and claude-runner get egress to it, derived as a forge block's `url` is ([network](../ops/network.md)). GitHub and Forgejo runtime-only releases resolve the claim the same way but have no runtime forge provider yet, so their cards, merge reads and webhooks still need a static forge.
 
 ## Check it
 

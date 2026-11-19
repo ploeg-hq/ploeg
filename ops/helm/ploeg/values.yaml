@@ -61,12 +61,13 @@ networkPolicy:
   forge:
     peers: []
     port: ""
-    # Forges reached only through runtime forge connections, by the url of
-    # their config.connections.instances entry, e.g.
-    # [https://gitlab.example.com]. ploegd, workers, the credential gateway
-    # and claude-runner reach each, derived as a forge block's url is. Empty =
-    # a runtime forge stays closed (docs/ops/network.md).
-    runtimeUrls: []
+  # Forges reached only through runtime forge connections, by the url of
+  # their config.connections.instances entry, e.g.
+  # [https://gitlab.example.com]. ploegd, workers, the credential gateway and
+  # claude-runner reach each, derived as a forge block's url is, with
+  # forge.peers and forge.port. Empty = a runtime forge stays closed
+  # (docs/ops/network.md).
+  runtimeForgeUrls: []
   tracker:
     peers: []
     port: ""
@@ -660,7 +661,7 @@ executor:
   # entry on port forge lets the executor run, workers then hold no forge URL
   # or credential, and each claim carries the forge of its target's
   # connection and a credential minted through it (ADR-0193). Open egress to
-  # such a forge with networkPolicy.forge.runtimeUrls.
+  # such a forge with networkPolicy.runtimeForgeUrls.
   forge: forgejo
   # "proxy" keeps a Run's forge token inside ploeg-worker: git and the forge
   # API reach only the Run's own repository through a loopback proxy that adds

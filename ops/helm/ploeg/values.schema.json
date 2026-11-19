@@ -95,23 +95,14 @@
           "description": "The model gateway: ploegd reaches `executor.litellm.adminUrl` and workers `executor.litellm.baseUrl`. Empty `peers` derives the destination from each URL."
         },
         "forge": {
-          "type": "object",
-          "additionalProperties": false,
-          "description": "The forges: workers reach the executor's forge `url`; ploegd and claude-runner reach every configured forge's `publicUrl` or `url`, and api.github.com for github.com. Empty `peers` derives the destination from each URL.",
-          "properties": {
-            "peers": {
-              "$ref": "#/definitions/networkPolicyPeers"
-            },
-            "port": {
-              "type": ["integer", "string"]
-            },
-            "runtimeUrls": {
-              "type": "array",
-              "items": {"type": "string", "pattern": "^https?://"},
-              "default": [],
-              "description": "Forges reached only through runtime forge connections (config.connections.instances): ploegd, every worker pod, the credential gateway and claude-runner reach each URL, derived as a configured forge's url is, with peers and port above. Empty = no egress to them: a runtime forge stays closed until its instance URL is listed here (ADR-0193)."
-            }
-          }
+          "$ref": "#/definitions/networkPolicyEndpoint",
+          "description": "The forges: workers reach the executor's forge `url`; ploegd and claude-runner reach every configured forge's `publicUrl` or `url`, and api.github.com for github.com. Empty `peers` derives the destination from each URL."
+        },
+        "runtimeForgeUrls": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^https?://"},
+          "default": [],
+          "description": "Forges reached only through runtime forge connections (config.connections.instances): ploegd, every worker pod, the credential gateway and claude-runner reach each URL, derived as a configured forge's url is, with networkPolicy.forge peers and port. Empty = no egress to them: a runtime forge stays closed until its instance URL is listed here (ADR-0193)."
         },
         "tracker": {
           "$ref": "#/definitions/networkPolicyEndpoint",
