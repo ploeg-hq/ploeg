@@ -69,26 +69,30 @@ func (Connector) project(ctx context.Context, inst provider.ConnectionInstance, 
 	return p, u, nil
 }
 
-// ProbeRepositoryGrant reports whether the consenting account may push to
-// fullName: Developer access or above.
+// ProbeRepositoryGrant reports whether the connection may work in fullName:
+// an OAuth connection pushes as its person and needs Developer access; a
+// connection that mints a project access token per Run needs Maintainer,
+// the least role that may create one.
 func (c Connector) ProbeRepositoryGrant(ctx context.Context, inst provider.ConnectionInstance, cred provider.ConnectionCredential, fullName string) (provider.RepositoryGrant, error) {
 	p, _, err := c.project(ctx, inst, cred, fullName)
 	if err != nil {
 		return provider.RepositoryGrant{}, err
 	}
-	var info struct {
-		Scope []string `json:"scope"`
-	}
-	if err := oauthconn.GetJSON(ctx, oauthconn.Trim(inst.URL)+"/oauth/token/info", "Bearer "+cred.Token, &info); err != nil {
+	scopes, err := tokenScopes(ctx, inst, cred)
+	if err != nil {
 		return provider.RepositoryGrant{}, err
 	}
 	level := p.accessLevel()
 	perms := []string{"access_level:" + strconv.Itoa(level)}
-	for _, scope := range info.Scope {
+	for _, scope := range scopes {
 		perms = append(perms, "scope:"+scope)
 	}
+	need := developerAccess
+	if personalToken(cred) {
+		need = maintainerAccess
+	}
 	return provider.RepositoryGrant{ID: strconv.FormatInt(p.ID, 10), FullName: p.PathWithNamespace,
-		CanWrite: level >= developerAccess && slices.Contains(info.Scope, "api"), Permissions: perms, DefaultBranch: p.DefaultBranch}, nil
+		CanWrite: level >= need && slices.Contains(scopes, "api"), Permissions: perms, DefaultBranch: p.DefaultBranch}, nil
 }
 
 // InspectGrantedRepository reads whether fullName is archived or a mirror

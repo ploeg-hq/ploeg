@@ -72,9 +72,11 @@ type ConnectionAuthorizer interface {
 }
 
 // ConnectionCredential is what a probe acts with: an access token, or a
-// GitHub App's key and an installation id.
+// GitHub App's key and an installation id. Method is the connection's
+// method, so an adapter can tell an OAuth token from a personal access token.
 type ConnectionCredential struct {
 	Port           string
+	Method         string
 	Token          string
 	AppID          string
 	PrivateKey     string
@@ -202,14 +204,89 @@ type RepositoryGrantProber interface {
 	InspectGrantedRepository(ctx context.Context, inst ConnectionInstance, cred ConnectionCredential, fullName, branch string) (RepositoryState, error)
 }
 
+// ServiceAccountRequest is what a service account bootstrap is asked for:
+// the short-lived token of a person who may create service accounts in the
+// top-level group of Group, the group whose projects the account may reach,
+// the account's username and display name, and when its token expires.
+type ServiceAccountRequest struct {
+	OwnerToken string
+	Group      string
+	Username   string
+	Name       string
+	ExpiresAt  time.Time
+}
+
+// ServiceAccountGrant is what a bootstrap made at the vendor. Token is the
+// service account's own token. The Created and Added flags say what the
+// bootstrap made, so an undo removes only that.
+type ServiceAccountGrant struct {
+	Account       ConnectionAccount
+	Token         string
+	TokenID       string
+	ExpiresAt     time.Time
+	TopGroup      string
+	TopGroupID    string
+	Group         string
+	GroupID       string
+	CreatedUser   bool
+	AddedMember   bool
+	PreviousLevel int
+}
+
+// ErrServiceAccountRefused is a vendor refusing a step of a service account
+// bootstrap for a reason a person can fix, such as a missing role or a taken
+// username. Its message names the step.
+var ErrServiceAccountRefused = errors.New("connection: the vendor refused a service account step")
+
+// ServiceAccountBootstrapper turns a person's short-lived token into a
+// service account with its own token (ADR-0203): it creates or reuses the
+// account, gives it a role on one group, creates its token, undoes what it
+// made when a later step fails, and revokes a token presented to it.
+type ServiceAccountBootstrapper interface {
+	BootstrapServiceAccount(ctx context.Context, inst ConnectionInstance, req ServiceAccountRequest) (ServiceAccountGrant, error)
+	UndoServiceAccount(ctx context.Context, inst ConnectionInstance, ownerToken string, grant ServiceAccountGrant) error
+	RevokeOwnToken(ctx context.Context, inst ConnectionInstance, token string) error
+}
+
+// RotatedToken is a token a rotation returned.
+type RotatedToken struct {
+	Token     string
+	ID        string
+	ExpiresAt time.Time
+}
+
+// TokenRotator rotates a token with itself: the vendor revokes the old
+// token and answers a new one that expires at expiresAt.
+type TokenRotator interface {
+	RotateOwnToken(ctx context.Context, inst ConnectionInstance, token string, expiresAt time.Time) (RotatedToken, error)
+}
+
+// RepositoryHook is one webhook Ploeg keeps on a repository: its URL and the
+// secret the vendor proves each delivery with.
+type RepositoryHook struct {
+	URL    string
+	Secret string
+}
+
+// RepositoryHooks registers and removes a repository's webhook with a forge
+// connection's own credential, addressed by the forge's repository id. Both
+// are idempotent: a hook at the same URL is updated, a missing one is done.
+type RepositoryHooks interface {
+	EnsureRepositoryHook(ctx context.Context, inst ConnectionInstance, cred ConnectionCredential, repositoryID string, hook RepositoryHook) error
+	RemoveRepositoryHook(ctx context.Context, inst ConnectionInstance, cred ConnectionCredential, repositoryID, hookURL string) error
+}
+
 // Connector is everything one kind offers for runtime connections; nil
 // fields are capabilities the kind lacks.
 type Connector struct {
-	Authorizer ConnectionAuthorizer
-	Prober     ConnectionProber
-	Manifest   AppManifest
-	Repos      RepositoryLister
-	Grants     RepositoryGrantProber
+	Authorizer      ConnectionAuthorizer
+	Prober          ConnectionProber
+	Manifest        AppManifest
+	Repos           RepositoryLister
+	Grants          RepositoryGrantProber
+	ServiceAccounts ServiceAccountBootstrapper
+	Rotator         TokenRotator
+	Hooks           RepositoryHooks
 	// TokenOnly reports that the kind offers no OAuth flow at all, so a
 	// pasted token is always allowed (ADR-0184 rule 1).
 	TokenOnly bool
@@ -231,3 +308,9 @@ type GrantEvent struct {
 	AddedIDs   []string
 	RemovedIDs []string
 }
+
+// RunActorPrefix starts the name of every per-Run forge credential Ploeg
+// mints. A forge that attributes an event to such a credential's own bot
+// user reports that name as the event's actor, so Ploeg tells its own Runs'
+// comments from a person's.
+const RunActorPrefix = "ploeg-run-"

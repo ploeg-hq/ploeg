@@ -184,6 +184,9 @@ func (s *Server) reworkRefusal(ctx context.Context, providerName string, policy 
 }
 
 func (s *Server) isForgeBot(login string) bool {
+	if strings.HasPrefix(login, provider.RunActorPrefix) {
+		return true
+	}
 	for _, bot := range s.ForgeBots {
 		if strings.EqualFold(strings.TrimSpace(bot), login) {
 			return true
