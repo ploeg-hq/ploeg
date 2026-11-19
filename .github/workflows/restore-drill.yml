@@ -4,7 +4,7 @@ on:
     - cron: "41 5 * * 1"
   workflow_dispatch:
   push:
-    branches: [main, development]
+    branches: [main]
     paths:
       - "pkg/store/**"
       - "pkg/httpapi/**"
@@ -13,13 +13,7 @@ on:
       - "go.mod"
       - ".github/workflows/restore-drill.yml"
   pull_request:
-    paths:
-      - "pkg/store/**"
-      - "pkg/httpapi/**"
-      - "pkg/shiftengine/**"
-      - "pkg/worker/**"
-      - "go.mod"
-      - ".github/workflows/restore-drill.yml"
+  merge_group:
 permissions:
   contents: read
 concurrency:

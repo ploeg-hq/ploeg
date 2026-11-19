@@ -112,8 +112,8 @@ release at start.
 {{- if gt (len $active) 1 -}}
 {{- $ex := .Values.executor -}}
 {{- $names := join ", " $active -}}
-{{- if has "gitlab" $active -}}
-{{- fail (printf "executor.gitlab is active beside another forge (%s): GitLab cannot mint a credential per Run, so it can only be the only forge of its release (ADR-0192). Unset executor.gitlab.url, or the url of every other forge block" $names) -}}
+{{- if and (has "gitlab" $active) (not $ex.gitlab.mintPerRun) -}}
+{{- fail (printf "executor.gitlab is active beside another forge (%s) but sets no mintPerRun: in a release with more than one forge ploegd mints every Run's forge credential, and GitLab mints a project access token per Run only with a group service account's token in tokenSecret (ADR-0192, ADR-0203). Set executor.gitlab.mintPerRun, or unset executor.gitlab.url" $names) -}}
 {{- end -}}
 {{- if and (has "forgejo" $active) (not ($ex.forgejo.botPasswordSecret | default dict).name) -}}
 {{- fail (printf "executor.forgejo is active beside another forge (%s) but sets no botPasswordSecret: in a release with more than one forge ploegd mints every Run's forge credential, and Forgejo mints only with the bot's password on Forgejo 15 or later (ADR-0192). Set executor.forgejo.botPasswordSecret" $names) -}}

@@ -31,6 +31,7 @@ executor:
     webhookSecret:
       name: ploeg-gitlab-webhook
       key: PLOEG_GITLAB_SECRET
+    mintPerRun: true
   teams:
     - name: silver
       model: litellm_proxy/claude-sonnet-5

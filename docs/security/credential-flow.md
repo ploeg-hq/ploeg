@@ -134,5 +134,5 @@ The Secret and key names are the maintainer's homelab's; another installation us
 | A Forgejo per-Run token has no expiry; the sweep is the only backstop for a failed delete | ADR-0013 re-evaluation trigger (Forgejo native token expiry) |
 | The broker checks the restriction Forgejo reports on each token, not that Forgejo enforces it; the live qualification with a second repository has not yet run through the broker | [F-10](threat-model.md#findings), [ADR-0172](../adrs/0172-the-forgejo-broker-runs-only-on-forgejo-15-and-refuses-a-token-the-forge-did-not-restrict-to-the-runs-repository.md) |
 | GitHub token handles are lost on a ploegd restart | [F-15](threat-model.md#findings) |
-| GitLab has no per-Run broker | [F-31](threat-model.md#findings) |
+| GitLab mints per Run only with `mintPerRun` or a `gitlab_service_account` connection (ADR-0203), tested against a fake only | [F-31](threat-model.md#findings) |
 | Proxy refusals reach the worker log only, not ploegd's audit log | T-WK-1 |

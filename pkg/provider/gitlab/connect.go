@@ -2,7 +2,9 @@ package gitlab
 
 import (
 	"context"
+	"fmt"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -11,9 +13,13 @@ import (
 	"github.com/ploeg-hq/ploeg/pkg/provider/oauthconn"
 )
 
-// Connector is GitLab's runtime connection support (ADR-0195): OAuth with
-// PKCE, expiring access tokens with rotating refresh tokens, revocation, and
-// a probe of GET /api/v4/user and the token's scopes.
+// Connector is GitLab's runtime connection support (ADR-0195, ADR-0203):
+// OAuth with PKCE, expiring access tokens with rotating refresh tokens,
+// revocation, a group service account bootstrapped from an Owner's token,
+// self-rotation, project webhooks, and a probe of GET /api/v4/user and the
+// token's scopes. A personal access token with api scope and Maintainer reach
+// can mint a project access token per Run; an OAuth token acts as a person
+// and mints none.
 type Connector struct {
 	Now func() time.Time
 }
@@ -59,26 +65,57 @@ func (Connector) Revoke(ctx context.Context, inst provider.ConnectionInstance, t
 }
 
 func (Connector) ProbeConnection(ctx context.Context, inst provider.ConnectionInstance, cred provider.ConnectionCredential) (provider.ConnectionProbe, error) {
-	api := oauthconn.Trim(inst.APIURL)
-	if api == "" {
-		api = oauthconn.Trim(inst.URL) + "/api/v4"
-	}
 	var user struct {
 		ID       int64  `json:"id"`
 		Username string `json:"username"`
 	}
-	if err := oauthconn.GetJSON(ctx, api+"/user", "Bearer "+cred.Token, &user); err != nil {
+	if err := oauthconn.GetJSON(ctx, apiRoot(inst)+"/user", "Bearer "+cred.Token, &user); err != nil {
 		return provider.ConnectionProbe{}, err
 	}
-	var info struct {
-		Scope []string `json:"scope"`
-	}
-	if err := oauthconn.GetJSON(ctx, oauthconn.Trim(inst.URL)+"/oauth/token/info", "Bearer "+cred.Token, &info); err != nil {
+	scopes, err := tokenScopes(ctx, inst, cred)
+	if err != nil {
 		return provider.ConnectionProbe{}, err
 	}
 	canMint := false
+	if personalToken(cred) && slices.Contains(scopes, "api") {
+		if canMint, err = maintainerReach(ctx, inst, cred.Token); err != nil {
+			return provider.ConnectionProbe{}, err
+		}
+	}
 	return provider.ConnectionProbe{Account: provider.ConnectionAccount{ID: strconv.FormatInt(user.ID, 10), Login: user.Username},
-		Scopes: info.Scope, Missing: oauthconn.Missing(NeededScopes, info.Scope), CanMint: &canMint}, nil
+		Scopes: scopes, Missing: oauthconn.Missing(NeededScopes, scopes), CanMint: &canMint}, nil
+}
+
+// oauthMethod is the connection method whose token is an OAuth access
+// token. An empty method is one too, as before methods were told apart;
+// every other GitLab method holds a personal access token.
+const oauthMethod = "oauth"
+
+func personalToken(cred provider.ConnectionCredential) bool {
+	return cred.Method != "" && cred.Method != oauthMethod
+}
+
+// tokenScopes reads the scopes of an OAuth token from /oauth/token/info and
+// of a personal access token from /personal_access_tokens/self, which
+// answers only for a personal access token.
+func tokenScopes(ctx context.Context, inst provider.ConnectionInstance, cred provider.ConnectionCredential) ([]string, error) {
+	if !personalToken(cred) {
+		var info struct {
+			Scope []string `json:"scope"`
+		}
+		if err := oauthconn.GetJSON(ctx, oauthconn.Trim(inst.URL)+"/oauth/token/info", "Bearer "+cred.Token, &info); err != nil {
+			return nil, err
+		}
+		return info.Scope, nil
+	}
+	tok, err := tokenSelf(ctx, inst, cred.Token)
+	if err != nil {
+		return nil, err
+	}
+	if tok.Revoked || (!tok.Active && tok.ID != 0) {
+		return nil, fmt.Errorf("gitlab: the token is revoked or expired: %w", provider.ErrCredentialRefused)
+	}
+	return tok.Scopes, nil
 }
 
 func (c Connector) now() time.Time {
@@ -124,3 +161,6 @@ func (Connector) ListGrantedRepositories(ctx context.Context, inst provider.Conn
 	}
 	return repos, len(out) == perPage, nil
 }
+
+// ConnectionAPIURL is the REST root of a GitLab connection instance.
+func ConnectionAPIURL(inst provider.ConnectionInstance) string { return apiRoot(inst) }

@@ -166,8 +166,9 @@ var ErrNoBroker = errors.New("forgebroker: no credential broker serves this forg
 
 // Router sends a Run's mint to the broker of its forge and a revocation to
 // the broker that minted the credential: GitHub for the forge ids in
-// GitHubForges, Forgejo for the forge ids in ForgejoForges. A forge id in
-// neither is refused with ErrNoBroker.
+// GitHubForges, GitLab for the forge ids in GitLabForges, Forgejo for the
+// forge ids in ForgejoForges. A forge id in none is refused with
+// ErrNoBroker.
 type Router struct {
 	// Forgejo mints for ForgejoForges: a Forgejo broker, or Static when the
 	// deployment mints nothing for Forgejo.
@@ -177,6 +178,10 @@ type Router struct {
 	GitHub         *GitHubApp
 	// GitHubForges are the forge ids whose Runs get GitHub App tokens.
 	GitHubForges []string
+	GitLab       *GitLab
+	// GitLabForges are the forge ids whose Runs get GitLab project access
+	// tokens (ADR-0203).
+	GitLabForges []string
 	// DefaultForge is the forge id of a Work Target that names none.
 	DefaultForge string
 }
@@ -199,6 +204,8 @@ func (r *Router) Mint(ctx context.Context, req MintRequest) (Credential, error) 
 	switch {
 	case r.GitHub != nil && servesForge(r.GitHubForges, forge):
 		return r.GitHub.Mint(ctx, req)
+	case r.GitLab != nil && servesForge(r.GitLabForges, forge):
+		return r.GitLab.Mint(ctx, req)
 	case r.Forgejo != nil && servesForge(r.ForgejoForges, forge):
 		return r.Forgejo.Mint(ctx, req)
 	}
@@ -210,6 +217,12 @@ func (r *Router) Revoke(ctx context.Context, cred Credential) error {
 	if r.GitHub != nil && strings.HasPrefix(cred.ID, GitHubAppIDPrefix) {
 		return r.GitHub.Revoke(ctx, cred)
 	}
+	if strings.HasPrefix(cred.ID, GitLabIDPrefix) {
+		if r.GitLab == nil {
+			return nil
+		}
+		return r.GitLab.Revoke(ctx, cred)
+	}
 	if r.Forgejo == nil {
 		return nil
 	}
@@ -220,6 +233,12 @@ func (r *Router) Revoke(ctx context.Context, cred Credential) error {
 func (r *Router) RevokeByID(ctx context.Context, id string) error {
 	if r.GitHub != nil && strings.HasPrefix(id, GitHubAppIDPrefix) {
 		return r.GitHub.RevokeByID(ctx, id)
+	}
+	if strings.HasPrefix(id, GitLabIDPrefix) {
+		if r.GitLab == nil {
+			return nil
+		}
+		return r.GitLab.RevokeByID(ctx, id)
 	}
 	if r.ForgejoSweeper == nil {
 		return nil
@@ -238,6 +257,11 @@ func (r *Router) SweepOrphans(ctx context.Context, leased func(context.Context) 
 	}
 	if r.GitHub != nil {
 		n, err := r.GitHub.SweepOrphans(ctx, leased)
+		total += n
+		errs = append(errs, err)
+	}
+	if r.GitLab != nil {
+		n, err := r.GitLab.SweepOrphans(ctx, leased)
 		total += n
 		errs = append(errs, err)
 	}

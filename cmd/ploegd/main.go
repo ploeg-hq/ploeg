@@ -257,8 +257,12 @@ func run(ctx context.Context, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	gitlabCreds, err := gitlabMinter(log, active)
+	if err != nil {
+		return err
+	}
 	release := releaseForges{registry: forges, defaultForge: forgeID, byDialect: active,
-		forgejoCreds: forgejoCreds, forgejoSweeper: forgejoSweeper, githubApp: ghApp}
+		forgejoCreds: forgejoCreds, forgejoSweeper: forgejoSweeper, githubApp: ghApp, gitlabCreds: gitlabCreds}
 	if err := release.requireMinting(); err != nil {
 		return err
 	}
@@ -294,6 +298,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	release.sweepGitLabTargets(staticTable.Targets)
 
 	// Team plans (run-multi-agent-shifts): config for the shift engine, parsed
 	// and validated at boot so a plan that could open a malformed Round never
@@ -491,7 +496,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 		engine.Selections = httpapi.RunSelections{Harnesses: operator.TeamHarnesses, LLM: llmControl, Runtime: runtimeTeams.Harness}
 	}
 	if workTargets != nil {
-		withConnections := &forgebroker.WithConnections{Base: forgeCreds, BaseSweeper: forgeSweeper, Resolve: connectionBroker(runtimeConns)}
+		withConnections := &forgebroker.WithConnections{Base: forgeCreds, BaseSweeper: forgeSweeper, Resolve: connectionBroker(runtimeConns, targetProjects(workTargets))}
 		forgeCreds, forgeSweeper = withConnections, withConnections
 		runtimeConns.OnChange = withConnections.Forget
 	}

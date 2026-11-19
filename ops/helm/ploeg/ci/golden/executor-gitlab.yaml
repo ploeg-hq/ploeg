@@ -272,6 +272,8 @@ spec:
                 secretKeyRef:
                   name: agent-builder-token
                   key: GITLAB_TOKEN
+            - name: PLOEG_GITLAB_MINT_PER_RUN
+              value: "on"
             - name: PLOEG_GITLAB_SECRET
               valueFrom:
                 secretKeyRef:

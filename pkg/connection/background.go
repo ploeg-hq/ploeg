@@ -254,6 +254,10 @@ type ForgeConnectionInfo struct {
 	Instance string
 	State    string
 	Runtime  bool
+	// Method is a runtime connection's method; CanMint is what its last
+	// probe found about minting a per-Run credential.
+	Method  string
+	CanMint bool
 }
 
 // ForgeConnection returns the live forge connection id, static or runtime;
@@ -272,7 +276,12 @@ func (s *Service) ForgeConnection(ctx context.Context, id string) (ForgeConnecti
 		}
 		return ForgeConnectionInfo{}, false, e
 	}
-	return ForgeConnectionInfo{ID: row.ID, Kind: row.Kind, Instance: row.Instance, State: row.State, Runtime: true}, true, nil
+	info := ForgeConnectionInfo{ID: row.ID, Kind: row.Kind, Instance: row.Instance, State: row.State, Runtime: true, Method: row.Method}
+	var report ProbeReport
+	if len(row.LastProbe) > 0 && json.Unmarshal(row.LastProbe, &report) == nil && report.CanMint != nil {
+		info.CanMint = *report.CanMint
+	}
+	return info, true, nil
 }
 
 // ConnectionsOfInstallation returns the live runtime connections of one App

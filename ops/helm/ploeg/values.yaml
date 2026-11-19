@@ -1010,6 +1010,12 @@ executor:
     # project access token at read_repository scope.
     readTokenSecret: {}
     webhookSecret: {}
+    # ADR-0203: true when tokenSecret is a group service account's token with
+    # api scope and Maintainer on the target projects. ploegd then mints a
+    # project access token per Run (Developer for a writing Run, Reporter for
+    # a reading one) and revokes it when the Run settles, so GitLab may serve
+    # beside another forge. False = writing Runs share tokenSecret.
+    mintPerRun: false
   github:
     # GitHub as the forge (ADR-0086): https://github.com, or a GitHub
     # Enterprise Server web root. The REST API is derived (api.github.com, or

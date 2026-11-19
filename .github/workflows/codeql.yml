@@ -1,6 +1,7 @@
 name: CodeQL
 on:
   pull_request:
+  merge_group:
   push:
     branches: [main, development]
   schedule:
@@ -46,7 +47,7 @@ jobs:
           SCOPE: ${{ github.event_name == 'pull_request' && 'diff-informed' || 'complete' }}
         run: mise exec -- go run ./internal/codeqlgate/cmd/codeql-gate
       - name: Code scanning shows every accepted finding as dismissed
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && github.event_name != 'merge_group'
         env:
           GH_TOKEN: ${{ github.token }}
           REF: ${{ github.ref }}

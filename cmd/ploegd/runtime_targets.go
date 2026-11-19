@@ -13,6 +13,7 @@ import (
 	"github.com/ploeg-hq/ploeg/pkg/httpapi"
 	"github.com/ploeg-hq/ploeg/pkg/provider"
 	"github.com/ploeg-hq/ploeg/pkg/provider/github"
+	"github.com/ploeg-hq/ploeg/pkg/provider/gitlab"
 	"github.com/ploeg-hq/ploeg/pkg/store"
 	"github.com/ploeg-hq/ploeg/pkg/target"
 	"github.com/ploeg-hq/ploeg/pkg/trackerbinding"
@@ -24,7 +25,11 @@ type targetConnections struct{ svc *connection.Service }
 
 func (c targetConnections) ForgeConnection(ctx context.Context, id string) (worktarget.ConnectionInfo, bool, error) {
 	info, found, err := c.svc.ForgeConnection(ctx, id)
-	return worktarget.ConnectionInfo{ID: info.ID, Kind: info.Kind, Instance: info.Instance, State: info.State, Runtime: info.Runtime}, found, err
+	return worktarget.ConnectionInfo{ID: info.ID, Kind: info.Kind, Instance: info.Instance, State: info.State, Runtime: info.Runtime, CanMint: info.CanMint}, found, err
+}
+
+func (c targetConnections) WebhookSecret(ctx context.Context, id string) (string, bool, error) {
+	return c.svc.WebhookSecret(ctx, id)
 }
 
 func (c targetConnections) Credential(ctx context.Context, id string) (provider.ConnectionCredential, error) {
@@ -50,7 +55,8 @@ func runtimeTargets(ctx context.Context, log *slog.Logger, cfg *config.File, st 
 	}
 	svc := &worktarget.Service{Store: st, Config: cfg.TargetRegistration, Connections: targetConnections{svc: conns},
 		Connectors: conns.Connectors, Instances: conns.Instances, Static: static.Targets, DefaultForge: forgeID,
-		Gate: gate, Bindings: bindings, Log: log, ForgeHosts: forgeHosts(directory), Minting: map[string]bool{"github": true}}
+		Gate: gate, Bindings: bindings, Log: log, ForgeHosts: forgeHosts(directory), Minting: map[string]bool{"github": true},
+		PublicWebhookBase: conns.PublicWebhookBase}
 	bindings.Runtime = svc
 	bindingUsers := conns.Users
 	conns.Users = func(ctx context.Context, id string) ([]connection.Use, error) {
@@ -77,13 +83,19 @@ func runtimeTargets(ctx context.Context, log *slog.Logger, cfg *config.File, st 
 
 // connectionBroker mints a Run's credential through the runtime forge
 // connection of its Work Target (ADR-0193 section 4, ADR-0192): a GitHub App
-// installation's token pinned to that installation. Other kinds mint no
-// per-Run credential yet and refuse.
-func connectionBroker(conns *connection.Service) forgebroker.ConnectionResolver {
+// installation's token pinned to that installation, or a GitLab project
+// access token minted with a service account's token (ADR-0203). A GitLab
+// OAuth connection acts as a person and mints nothing; other kinds mint no
+// per-Run credential yet. Both refuse. projects names the repository ids of
+// a connection's live targets, which the GitLab sweep lists.
+func connectionBroker(conns *connection.Service, projects func(connection string) []string) forgebroker.ConnectionResolver {
 	return func(ctx context.Context, id string) (forgebroker.Broker, error) {
 		info, found, err := conns.ForgeConnection(ctx, id)
 		if err != nil {
 			return nil, err
+		}
+		if found && info.Runtime && info.Kind == "gitlab" {
+			return gitlabConnectionBroker(ctx, conns, info, projects)
 		}
 		if !found || !info.Runtime || info.Kind != "github" {
 			return nil, fmt.Errorf("%w: %s", forgebroker.ErrConnectionCannotMint, id)
@@ -105,6 +117,44 @@ func connectionBroker(conns *connection.Service) forgebroker.ConnectionResolver 
 		}
 		inst := conns.Instances[info.Instance]
 		return &forgebroker.GitHubApp{App: &githubapp.Minter{AppID: cred.AppID, Key: key, APIURL: github.ConnectionAPIURL(inst), Installation: installation}}, nil
+	}
+}
+
+func gitlabConnectionBroker(ctx context.Context, conns *connection.Service, info connection.ForgeConnectionInfo, projects func(string) []string) (forgebroker.Broker, error) {
+	if info.Method != connection.MethodGitLabServiceAccount && info.Method != connection.MethodToken {
+		return nil, fmt.Errorf("%w: %s is a GitLab %s connection, which acts as a person; connect GitLab with gitlab_service_account to mint per Run", forgebroker.ErrConnectionCannotMint, info.ID, info.Method)
+	}
+	cred, err := conns.Credential(ctx, info.ID)
+	if err != nil {
+		return nil, err
+	}
+	if cred.Token == "" {
+		return nil, fmt.Errorf("%w: %s holds no token", forgebroker.ErrConnectionCannotMint, info.ID)
+	}
+	id := info.ID
+	return &forgebroker.GitLab{APIURL: gitlab.ConnectionAPIURL(conns.Instances[info.Instance]), Token: cred.Token,
+		Projects: func(context.Context) ([]string, error) {
+			if projects == nil {
+				return nil, nil
+			}
+			return projects(id), nil
+		}}, nil
+}
+
+// targetProjects names the repository ids of a connection's live runtime
+// targets.
+func targetProjects(svc *worktarget.Service) func(string) []string {
+	return func(connection string) []string {
+		if svc == nil {
+			return nil
+		}
+		var out []string
+		for _, t := range svc.Live() {
+			if t.Connection == connection && t.RepositoryID != "" {
+				out = append(out, t.RepositoryID)
+			}
+		}
+		return out
 	}
 }
 
