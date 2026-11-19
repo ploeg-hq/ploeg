@@ -16,6 +16,7 @@ import (
 // dependencies of it. Each waited-on task is read once more for its name and
 // whether its status is closed or done (ADR-0123).
 func (p *Provider) Dependencies(ctx context.Context, externalID string) ([]provider.TrackerDependency, error) {
+	p = p.via(ctx, externalID)
 	if !p.configured() {
 		return nil, errors.New("clickup: no API credentials configured; cannot read dependencies")
 	}

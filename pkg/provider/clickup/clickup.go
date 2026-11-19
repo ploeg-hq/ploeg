@@ -35,6 +35,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -80,8 +81,9 @@ type Provider struct {
 	// Empty dispatches on every assignee.
 	Agents []string
 	// Workspace is the ClickUp Workspace (the API's team) whose webhooks
-	// CheckWebhooks lists and RegisterWebhook writes. Empty reports every
-	// List's webhook as unreadable.
+	// CheckWebhooks lists and RegisterWebhook writes. Empty finds each List's
+	// Workspace through GET /team, and RegisterWebhook, which names no List,
+	// refuses.
 	Workspace string
 	// ScopeStatuses returns the status names one List overrides SetStatus
 	// with (ADR-0186 runtime bindings); nil, or no entry for a state, keeps
@@ -91,7 +93,13 @@ type Provider struct {
 	// by the webhook id a delivery names, for a delivery PLOEG_CLICKUP_SECRET
 	// does not verify (ADR-0186). Nil verifies with Secret alone.
 	WebhookSecret func(ctx context.Context, webhookID string) (string, bool)
-	scopes        atomic.Pointer[scopeCache]
+	// Connections finds the store-backed connections whose own account hands
+	// work over on the Lists bound through them, and the connection a task's
+	// write-backs use (ADR-0195 section 9). Nil reads and writes with Token
+	// alone and recognises only Agents.
+	Connections Connections
+	handed      sync.Map
+	scopes      atomic.Pointer[scopeCache]
 	// HC is optional; nil gets a 30s client.
 	HC  *http.Client
 	Log *slog.Logger
@@ -122,12 +130,14 @@ type hookPayload struct {
 // string, an array or a status object for other fields. Anything that is not
 // a member object reads as no member, so those deliveries are not rejected.
 type hookUser struct {
+	ID       string
 	Username string
 	Email    string
 }
 
 func (u *hookUser) UnmarshalJSON(b []byte) error {
 	var m struct {
+		ID       flexID `json:"id"`
 		Username string `json:"username"`
 		Email    string `json:"email"`
 	}
@@ -135,7 +145,7 @@ func (u *hookUser) UnmarshalJSON(b []byte) error {
 		*u = hookUser{}
 		return nil
 	}
-	*u = hookUser{Username: m.Username, Email: m.Email}
+	*u = hookUser{ID: string(m.ID), Username: m.Username, Email: m.Email}
 	return nil
 }
 
@@ -199,7 +209,13 @@ func (p *Provider) ParseWebhook(r *http.Request) ([]provider.TrackerEvent, error
 		actor, removed = who, h.Field == "assignee_rem"
 		break
 	}
-	if pl.Event == "taskAssigneeUpdated" && len(p.Agents) > 0 && actor == "" {
+	agentOnly := len(p.Agents) > 0
+	if pl.Event == "taskAssigneeUpdated" && (!agentOnly || actor == "") {
+		if h, ok := p.handOver(r.Context(), pl); ok {
+			actor, removed, agentOnly = h.who, h.removed, true
+		}
+	}
+	if pl.Event == "taskAssigneeUpdated" && agentOnly && actor == "" {
 		p.log().Debug("clickup assignment ignored: no agent member was assigned or removed", "task", pl.TaskID)
 		return nil, nil
 	}
@@ -225,7 +241,7 @@ func (p *Provider) ParseWebhook(r *http.Request) ([]provider.TrackerEvent, error
 		// One ClickUp event covers both directions; the history item's field
 		// is what separates them.
 		kind := provider.TrackerAssigned
-		if len(p.Agents) > 0 {
+		if agentOnly {
 			if removed {
 				kind = provider.TrackerUnassigned
 			}
@@ -288,6 +304,7 @@ func (p *Provider) isAgent(identities ...string) bool {
 }
 
 func (p *Provider) confirmedClosed(ctx context.Context, externalID string) bool {
+	p = p.via(ctx, externalID)
 	if !p.configured() {
 		return false
 	}
@@ -504,6 +521,7 @@ func (p *Provider) TaskURL(externalID string) string {
 }
 
 func (p *Provider) FetchExecutionItem(ctx context.Context, externalID string) (provider.ExecutionItem, error) {
+	p = p.via(ctx, externalID)
 	if !p.configured() {
 		return provider.ExecutionItem{}, errors.New("clickup: no API credentials configured (falling back to the webhook snapshot)")
 	}
@@ -593,6 +611,7 @@ func priority(t task) int {
 // Scope reports the List a task belongs to, for callers that need the Work
 // Target without a full mirror. Empty Scope when unconfigured or unknown.
 func (p *Provider) Scope(ctx context.Context, externalID string) (provider.Scope, error) {
+	p = p.via(ctx, externalID)
 	if !p.configured() {
 		return provider.Scope{}, errors.New("clickup: no API credentials configured")
 	}
@@ -614,6 +633,7 @@ func (p *Provider) Scope(ctx context.Context, externalID string) (provider.Scope
 // code, links, lists, small print as italic) with comment_text carrying the
 // same words without markup for any reader of the plain field.
 func (p *Provider) Comment(ctx context.Context, externalID, body string) error {
+	p = p.via(ctx, externalID)
 	if !p.configured() {
 		p.log().Info("clickup write-back skipped (no API credentials)", "action", "comment", "external_id", externalID)
 		return nil
@@ -633,6 +653,7 @@ func (p *Provider) Comment(ctx context.Context, externalID, body string) error {
 // nobody named leaves the board untouched: needs_human and stale are NOT
 // done, and without a mapping the only safe move is none.
 func (p *Provider) SetStatus(ctx context.Context, externalID string, state work.State) error {
+	p = p.via(ctx, externalID)
 	if !p.configured() {
 		p.log().Info("clickup write-back skipped (no API credentials)", "action", "set_status", "external_id", externalID, "state", state)
 		return nil
@@ -732,6 +753,7 @@ func (p *Provider) ListsByName(ctx context.Context, spaceID string) (map[string]
 // BoardStatus reads the task's List, its status and its tags through
 // GET /task/{id} (ADR-0051).
 func (p *Provider) BoardStatus(ctx context.Context, externalID string) (provider.BoardStatus, error) {
+	p = p.via(ctx, externalID)
 	if !p.configured() {
 		return provider.BoardStatus{}, errors.New("clickup: no API credentials configured; cannot read the board")
 	}
@@ -750,6 +772,7 @@ func (p *Provider) BoardStatus(ctx context.Context, externalID string) (provider
 // BoardComments reads the task's most recent comments through
 // GET /task/{id}/comment, which returns at most 25, newest first.
 func (p *Provider) BoardComments(ctx context.Context, externalID string) ([]provider.BoardComment, error) {
+	p = p.via(ctx, externalID)
 	if !p.configured() {
 		return nil, errors.New("clickup: no API credentials configured; cannot read comments")
 	}

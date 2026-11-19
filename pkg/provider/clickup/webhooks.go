@@ -175,7 +175,15 @@ func DeliversDispatchEvents(h Webhook, expectedURL string) bool {
 // for its Folder and Space. ClickUp lists only the webhooks the token's user
 // created.
 func (p *Provider) CheckWebhooks(ctx context.Context, lists []string, endpoint string) []provider.ScopeWebhook {
-	hooks, hooksErr := p.WorkspaceWebhooks(ctx, p.Workspace)
+	type listed struct {
+		hooks []Webhook
+		err   error
+	}
+	byWorkspace := map[string]listed{}
+	if p.Workspace != "" {
+		hooks, err := p.WorkspaceWebhooks(ctx, p.Workspace)
+		byWorkspace[p.Workspace] = listed{hooks, err}
+	}
 	out := make([]provider.ScopeWebhook, 0, len(lists))
 	for _, id := range lists {
 		found := provider.ScopeWebhook{Scope: id, Webhook: provider.WebhookMissing}
@@ -183,17 +191,67 @@ func (p *Provider) CheckWebhooks(ctx context.Context, lists []string, endpoint s
 			found.Members = members
 		}
 		loc, err := p.List(ctx, id)
+		var hooks listed
+		if err == nil {
+			workspace, wsErr := p.workspaceOf(ctx, loc)
+			cached, seen := byWorkspace[workspace]
+			switch {
+			case wsErr != nil:
+				cached = listed{err: wsErr}
+			case !seen:
+				cached.hooks, cached.err = p.WorkspaceWebhooks(ctx, workspace)
+				byWorkspace[workspace] = cached
+			}
+			hooks = cached
+		}
 		switch {
 		case err != nil:
 			found.Webhook, found.Err = provider.WebhookUnreadable, err
-		case hooksErr != nil:
-			found.Webhook, found.Err = provider.WebhookUnreadable, hooksErr
-		case covered(hooks, loc, endpoint):
+		case hooks.err != nil:
+			found.Webhook, found.Err = provider.WebhookUnreadable, hooks.err
+		case covered(hooks.hooks, loc, endpoint):
 			found.Webhook = provider.WebhookPresent
 		}
 		out = append(out, found)
 	}
 	return out
+}
+
+// workspaceOf is the Workspace that holds a List: Workspace when set, else
+// the token's only Workspace, else the one whose Spaces include the List's
+// Space. A store-backed connection names no Workspace, so its List webhooks
+// are checked and registered in the Workspace the List lives in.
+func (p *Provider) workspaceOf(ctx context.Context, loc ListLocation) (string, error) {
+	if p.Workspace != "" {
+		return p.Workspace, nil
+	}
+	var teams struct {
+		Teams []struct {
+			ID flexID `json:"id"`
+		} `json:"teams"`
+	}
+	if err := p.do(ctx, http.MethodGet, "/team", nil, &teams); err != nil {
+		return "", err
+	}
+	if len(teams.Teams) == 1 {
+		return string(teams.Teams[0].ID), nil
+	}
+	for _, t := range teams.Teams {
+		var spaces struct {
+			Spaces []struct {
+				ID flexID `json:"id"`
+			} `json:"spaces"`
+		}
+		if err := p.do(ctx, http.MethodGet, "/team/"+url.PathEscape(string(t.ID))+"/space", nil, &spaces); err != nil {
+			return "", err
+		}
+		for _, sp := range spaces.Spaces {
+			if loc.SpaceID != "" && string(sp.ID) == loc.SpaceID {
+				return string(t.ID), nil
+			}
+		}
+	}
+	return "", fmt.Errorf("clickup: no Workspace the token sees holds list %s", loc.ID)
 }
 
 func covered(hooks []Webhook, loc ListLocation, endpoint string) bool {
@@ -238,6 +296,15 @@ func (p *Provider) registerWebhook(ctx context.Context, targetURL string, sink p
 	}
 	if sink == nil {
 		return "", errors.New("clickup: refusing to register a webhook: ClickUp hands its signing secret over at creation and no secret sink is configured to keep it")
+	}
+	if workspaceID == "" && listID != "" {
+		loc, err := p.List(ctx, listID)
+		if err != nil {
+			return "", err
+		}
+		if workspaceID, err = p.workspaceOf(ctx, loc); err != nil {
+			return "", err
+		}
 	}
 	if workspaceID == "" || targetURL == "" {
 		return "", errors.New("clickup: webhook registration needs the Workspace id and Ploeg's public webhook URL")

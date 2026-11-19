@@ -186,12 +186,12 @@ func (s *Service) Patch(ctx context.Context, caller Caller, port, id string, rev
 	if req.HandOverAgent != nil && port != PortTracker {
 		return View{}, refuse(400, "invalid_request", "handOverAgent is for tracker connections only.")
 	}
-	if req.HandOverAgent != nil && *req.HandOverAgent {
-		return View{}, refuse(422, "capability_missing", "No adapter recognises an assignment to a per-connection agent yet, so handOverAgent cannot be true.")
-	}
 	row, e := s.live(ctx, port, id)
 	if e != nil {
 		return View{}, e
+	}
+	if req.HandOverAgent != nil && *req.HandOverAgent && !s.Connectors[row.Kind].HandOverAgent {
+		return View{}, refuse(422, "capability_missing", handOverMissing)
 	}
 	detail := map[string]any{"connection": id, "kind": row.Kind, "instance": row.Instance}
 	if req.Label != nil {

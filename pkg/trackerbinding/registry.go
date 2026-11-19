@@ -524,6 +524,27 @@ func (r *Registry) ScopeTeam(scope string) (string, bool) {
 	return team, ok
 }
 
+// RoutedConnection is the connection the routed bindings of a Scope name, as
+// of the last rebuild. A Scope is bound through one connection at most
+// (scope_bound_elsewhere). A Scope any static rule names has none, also
+// when a binding for another Team routes it, so a static route never gains
+// a connection's hand-over agent or credential (ADR-0195 section 9).
+func (r *Registry) RoutedConnection(scope string) (string, bool) {
+	for _, rule := range r.Static.Rules {
+		if rule.Scope == scope {
+			return "", false
+		}
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, b := range r.bindings {
+		if b.ScopeID == scope && Routed(b.State) {
+			return b.Connection, true
+		}
+	}
+	return "", false
+}
+
 // ScopeStatuses returns the status names the binding of a Scope through a
 // connection overrides the connection's map with.
 func (r *Registry) ScopeStatuses(connection string) func(scope string) map[work.State]string {
