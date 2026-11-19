@@ -9327,7 +9327,8 @@
           "maxLength": 200
         },
         "handOverAgent": {
-          "type": "boolean"
+          "type": "boolean",
+          "description": "Tracker connections only: the connection's own account, by the vendor user id its probe read, becomes a hand-over agent for the Scopes bound through this connection (ADR-0195 section 9). A kind whose adapter does not recognise such an assignment answers 422 capability_missing; ClickUp recognises it."
         }
       }
     },
@@ -9378,7 +9379,8 @@
           "maxLength": 200
         },
         "handOverAgent": {
-          "type": "boolean"
+          "type": "boolean",
+          "description": "Tracker connections only: the connection's own account, by the vendor user id its probe read, becomes a hand-over agent for the Scopes bound through this connection (ADR-0195 section 9). A kind whose adapter does not recognise such an assignment answers 422 capability_missing; ClickUp recognises it."
         }
       }
     },

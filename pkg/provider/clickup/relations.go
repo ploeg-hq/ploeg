@@ -14,6 +14,7 @@ import (
 // and the parent's name from GET /task/{parent} (ADR-0053). A parent whose
 // name cannot be read is still reported, without a title.
 func (p *Provider) Parents(ctx context.Context, externalID string) ([]provider.TrackerParent, error) {
+	p = p.via(ctx, externalID)
 	if !p.configured() {
 		return nil, errors.New("clickup: no API credentials configured; cannot read relations")
 	}

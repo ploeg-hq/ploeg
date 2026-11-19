@@ -290,6 +290,11 @@ type Connector struct {
 	// TokenOnly reports that the kind offers no OAuth flow at all, so a
 	// pasted token is always allowed (ADR-0184 rule 1).
 	TokenOnly bool
+	// HandOverAgent reports that the kind's tracker intake recognises an
+	// assignment to a connection's own account on a Scope bound through that
+	// connection (ADR-0195 section 9). Without it handOverAgent: true is
+	// refused with capability_missing.
+	HandOverAgent bool
 }
 
 // GrantEvent is a change to what a forge App installation may reach

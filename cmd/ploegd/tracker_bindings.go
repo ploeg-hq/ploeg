@@ -52,6 +52,9 @@ func bindingWebhookSink(secrets secretstore.Store, kind string) provider.Webhook
 func staticTrackerConnections(cfg *config.File, trackers map[string]provider.TrackerProvider, secrets secretstore.Store) trackerbinding.StaticConnections {
 	out := trackerbinding.StaticConnections{}
 	for name, tp := range trackers {
+		if cu, ok := tp.(*clickup.Provider); ok && cu.ConnectionsOnly {
+			continue
+		}
 		c := trackerbinding.Connection{ID: name, Kind: name, State: trackerbinding.ConnectionActive, Tracker: tp,
 			WebhookEndpoint: trackerWebhookEndpoint(name), Secrets: bindingWebhookSink(secrets, name)}
 		c.RegisterWebhooks = c.Secrets != nil && c.WebhookEndpoint != ""
@@ -99,9 +102,78 @@ func (r runtimeTrackerConnections) TrackerConnection(ctx context.Context, id str
 		if json.Unmarshal(row.Account, &account) == nil && row.HandOverAgent && account.Login != "" {
 			c.Agents = []string{account.Login}
 		}
-		c.Tracker = &clickup.Provider{Token: cred.Token, BaseURL: strings.TrimRight(r.svc.Instances[row.Instance].APIURL, "/")}
+		c.Tracker = &clickup.Provider{Token: cred.Token, BaseURL: clickup.ConnectionBaseURL(r.svc.Instances[row.Instance])}
 	}
 	return c, true
+}
+
+// clickupConnections are the store-backed ClickUp connections the static
+// ClickUp provider hands intake and write-backs to (ADR-0195 section 9):
+// whose own account is a hand-over agent, which one a List is bound
+// through, and which List a held task is in.
+type clickupConnections struct {
+	runtime runtimeTrackerConnections
+	reg     *trackerbinding.Registry
+}
+
+func (c clickupConnections) tenant() string {
+	if c.runtime.svc.Tenant != "" {
+		return c.runtime.svc.Tenant
+	}
+	return connection.DefaultTenant
+}
+
+func (c clickupConnections) connection(ctx context.Context, row store.ConnectionRow) (clickup.Connection, bool) {
+	if row.RemovedAt != nil || row.Port != connection.PortTracker || row.Kind != "clickup" || row.State != connection.StateActive {
+		return clickup.Connection{}, false
+	}
+	cred, err := c.runtime.svc.Credential(ctx, row.ID)
+	if err != nil || cred.Token == "" {
+		return clickup.Connection{}, false
+	}
+	out := clickup.Connection{ID: row.ID, Token: cred.Token, BaseURL: clickup.ConnectionBaseURL(c.runtime.svc.Instances[row.Instance]),
+		ScopeStatuses: c.reg.ScopeStatuses(row.ID)}
+	if row.HandOverAgent {
+		out.Agent = row.AccountID
+	}
+	return out, true
+}
+
+func (c clickupConnections) HandOverAgents(ctx context.Context, userID string) []clickup.Connection {
+	rows, err := c.runtime.st.LiveConnections(ctx, c.tenant(), connection.PortTracker)
+	if err != nil {
+		return nil
+	}
+	var out []clickup.Connection
+	for _, row := range rows {
+		if !row.HandOverAgent || row.AccountID != userID {
+			continue
+		}
+		if conn, ok := c.connection(ctx, row); ok {
+			out = append(out, conn)
+		}
+	}
+	return out
+}
+
+func (c clickupConnections) BoundThrough(ctx context.Context, listID string) (clickup.Connection, bool) {
+	id, ok := c.reg.RoutedConnection(listID)
+	if !ok {
+		return clickup.Connection{}, false
+	}
+	row, err := c.runtime.st.Connection(ctx, c.tenant(), id)
+	if err != nil {
+		return clickup.Connection{}, false
+	}
+	return c.connection(ctx, row)
+}
+
+func (c clickupConnections) TaskList(ctx context.Context, taskID string) (string, bool) {
+	_, item, err := c.runtime.st.TrackerWorkItemID(ctx, "clickup", taskID)
+	if err != nil || item.ExternalScope == "" {
+		return "", false
+	}
+	return item.ExternalScope, true
 }
 
 // bindingUsers lists the live bindings that name a connection, so a
@@ -128,13 +200,20 @@ func bindingUsers(st *store.Store) func(ctx context.Context, id string) ([]conne
 func trackerBindings(ctx context.Context, log *slog.Logger, st *store.Store, cfg *config.File, static target.Table,
 	resolver *target.MapResolver, readiness *target.Gate, trackers map[string]provider.TrackerProvider, forgeID string,
 	secrets secretstore.Store, svc *connection.Service) *trackerbinding.Registry {
-	connections := trackerbinding.Chain{staticTrackerConnections(cfg, trackers, secrets), runtimeTrackerConnections{svc: svc, st: st, secrets: secrets}}
+	runtime := runtimeTrackerConnections{svc: svc, st: st, secrets: secrets}
+	connections := trackerbinding.Chain{staticTrackerConnections(cfg, trackers, secrets), runtime}
 	reg := &trackerbinding.Registry{Store: st, Config: cfg, Static: static, DefaultForge: forgeID,
 		Connections: connections, Readiness: readiness, Live: target.NewLive(resolver), Log: log}
 	if cu, ok := trackers["clickup"].(*clickup.Provider); ok {
 		cu.ScopeStatuses = reg.ScopeStatuses("clickup")
+		if svc != nil && st != nil {
+			cu.Connections = clickupConnections{runtime: runtime, reg: reg}
+		}
 		if sink, ok := bindingWebhookSink(secrets, "clickup").(secretstore.WebhookSecrets); ok {
 			cu.WebhookSecret = func(ctx context.Context, webhookID string) (string, bool) {
+				if !reg.RegisteredWebhook(webhookID) {
+					return "", false
+				}
 				secret, err := sink.WebhookSecret(ctx, webhookID)
 				return secret, err == nil
 			}
