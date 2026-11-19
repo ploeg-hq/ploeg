@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/url"
 	"os"
@@ -90,6 +91,37 @@ func appWebhooks(log *slog.Logger, svc *connection.Service, forges map[string]pr
 		}
 	}
 	return map[string]httpapi.AppWebhookReceiver{"github": &github.Provider{AppSecret: svc.AppWebhookSecret, Log: log}}
+}
+
+// runtimeClickUpReceiver is the ClickUp tracker of a deployment that
+// configures no static ClickUp but allows ClickUp connections at runtime: it
+// holds no static credential or secret, verifies each delivery with the
+// secret of the webhook Ploeg registered for a runtime binding, and hands
+// every task to its store-backed connection. Nil when a static ClickUp is
+// configured or no ClickUp connection may be made.
+func runtimeClickUpReceiver(cfg *config.File, svc *connection.Service, trackers map[string]provider.TrackerProvider, log *slog.Logger) (*clickup.Provider, error) {
+	if _, static := trackers["clickup"]; static || svc == nil || svc.Config == nil {
+		return nil, nil
+	}
+	allowed := slices.ContainsFunc(svc.Config.Allow, func(a connection.Allow) bool {
+		return a.Port == connection.PortTracker && a.Kind == "clickup"
+	})
+	if !allowed {
+		return nil, nil
+	}
+	statuses, err := provider.ParseStatusMap(os.Getenv("PLOEG_CLICKUP_STATUS_MAP"))
+	if err != nil {
+		return nil, fmt.Errorf("PLOEG_CLICKUP_STATUS_MAP: %w", err)
+	}
+	return &clickup.Provider{
+		ConnectionsOnly: true,
+		DefaultTeam:     envOr("PLOEG_DEFAULT_TEAM", "default"),
+		TeamMap:         mergeTeamMap(cfg.AssigneeTeams(), parseTeamMap(os.Getenv("PLOEG_TEAM_MAP"))),
+		DoneStatus:      os.Getenv("PLOEG_CLICKUP_DONE_STATUS"),
+		Statuses:        statuses,
+		Agents:          cfg.Trackers.Clickup.Agents,
+		Log:             log,
+	}, nil
 }
 
 func mapKeys[V any](m map[string]V) func(func(string) bool) {

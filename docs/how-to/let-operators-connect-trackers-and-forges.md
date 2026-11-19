@@ -77,7 +77,7 @@ For a ClickUp connection with `handOverAgent: true`:
 - An assignment to anyone else on that List is ignored when `trackers.clickup.agents` is set. With no static agents, every assignee still hands work over, as it does today.
 - The account hands nothing over on a List any static route names, also when a binding for another Team routes it: static routing wins.
 - Ploeg reads and writes a task in a List bound through a store-backed connection (mirror, comments, statuses, board reads) with that connection's token from the secret store, not with `PLOEG_CLICKUP_TOKEN`.
-- Ploeg registers a missing List webhook with the connection's token, in the Workspace that holds the List, subscribed to `taskAssigneeUpdated` among the dispatch events. Its deliveries arrive on `/webhooks/tracker/clickup` and are verified with that webhook's own secret from the store, so the static ClickUp tracker must be configured (`PLOEG_CLICKUP_SECRET` or `PLOEG_CLICKUP_TOKEN`) for the route to exist.
+- Ploeg registers a missing List webhook with the connection's token, in the Workspace that holds the List, subscribed to `taskAssigneeUpdated` among the dispatch events. Its deliveries arrive on `/webhooks/tracker/clickup` and are verified with that webhook's own signing secret from the secret store; a delivery naming a webhook no live binding registered is refused like a bad signature. Without a static ClickUp tracker (no `PLOEG_CLICKUP_SECRET` or `PLOEG_CLICKUP_TOKEN`), ploegd still serves that route whenever `connections.allow` names a ClickUp tracker kind, and accepts only those deliveries. With a static ClickUp, static deliveries keep verifying with `PLOEG_CLICKUP_SECRET` and static routing wins.
 
 ## Check it
 

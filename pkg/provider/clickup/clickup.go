@@ -98,8 +98,13 @@ type Provider struct {
 	// write-backs use (ADR-0195 section 9). Nil reads and writes with Token
 	// alone and recognises only Agents.
 	Connections Connections
-	handed      sync.Map
-	scopes      atomic.Pointer[scopeCache]
+	// ConnectionsOnly marks the receiver of a deployment without a static
+	// ClickUp tracker: it holds no static credential or secret, receives only
+	// the deliveries of webhooks Ploeg registered for runtime bindings, and
+	// is no static connection a binding may name.
+	ConnectionsOnly bool
+	handed          sync.Map
+	scopes          atomic.Pointer[scopeCache]
 	// HC is optional; nil gets a 30s client.
 	HC  *http.Client
 	Log *slog.Logger
@@ -175,7 +180,7 @@ func (p *Provider) ParseWebhook(r *http.Request) ([]provider.TrackerEvent, error
 	if err != nil {
 		return nil, err
 	}
-	if p.Secret == "" {
+	if p.Secret == "" && p.WebhookSecret == nil {
 		return nil, errors.New("no webhook secret configured; set PLOEG_CLICKUP_SECRET")
 	}
 	if !p.verified(r.Context(), body, r.Header.Get("X-Signature")) {
@@ -268,12 +273,13 @@ func (p *Provider) ParseWebhook(r *http.Request) ([]provider.TrackerEvent, error
 	}
 }
 
-// verified checks a delivery's signature with PLOEG_CLICKUP_SECRET, else
-// with the secret of the webhook Ploeg registered that the payload names.
+// verified checks a delivery's signature with PLOEG_CLICKUP_SECRET when one
+// is set, else with the secret of the webhook Ploeg registered that the
+// payload names. An empty key never verifies anything.
 // The webhook id is read before verification only to choose the key; a
 // delivery is accepted only when the HMAC over its raw body matches.
 func (p *Provider) verified(ctx context.Context, body []byte, signature string) bool {
-	if verify(p.Secret, body, signature) {
+	if p.Secret != "" && verify(p.Secret, body, signature) {
 		return true
 	}
 	if p.WebhookSecret == nil {

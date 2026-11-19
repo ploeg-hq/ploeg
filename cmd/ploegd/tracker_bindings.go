@@ -52,6 +52,9 @@ func bindingWebhookSink(secrets secretstore.Store, kind string) provider.Webhook
 func staticTrackerConnections(cfg *config.File, trackers map[string]provider.TrackerProvider, secrets secretstore.Store) trackerbinding.StaticConnections {
 	out := trackerbinding.StaticConnections{}
 	for name, tp := range trackers {
+		if cu, ok := tp.(*clickup.Provider); ok && cu.ConnectionsOnly {
+			continue
+		}
 		c := trackerbinding.Connection{ID: name, Kind: name, State: trackerbinding.ConnectionActive, Tracker: tp,
 			WebhookEndpoint: trackerWebhookEndpoint(name), Secrets: bindingWebhookSink(secrets, name)}
 		c.RegisterWebhooks = c.Secrets != nil && c.WebhookEndpoint != ""
@@ -208,6 +211,9 @@ func trackerBindings(ctx context.Context, log *slog.Logger, st *store.Store, cfg
 		}
 		if sink, ok := bindingWebhookSink(secrets, "clickup").(secretstore.WebhookSecrets); ok {
 			cu.WebhookSecret = func(ctx context.Context, webhookID string) (string, bool) {
+				if !reg.RegisteredWebhook(webhookID) {
+					return "", false
+				}
 				secret, err := sink.WebhookSecret(ctx, webhookID)
 				return secret, err == nil
 			}

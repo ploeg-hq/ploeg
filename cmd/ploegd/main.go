@@ -454,6 +454,14 @@ func run(ctx context.Context, log *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("connections: %w", err)
 	}
+	receiver, err := runtimeClickUpReceiver(cfg, runtimeConns, trackers, log)
+	if err != nil {
+		return err
+	}
+	if receiver != nil {
+		trackers[receiver.Name()] = receiver
+		log.Info("clickup receiver for runtime connections configured; no static ClickUp tracker is set")
+	}
 	readiness = ensureGate(readiness, cfg, forges)
 	bindings := trackerBindings(ctx, log, st, cfg, staticTable, targets, readiness, trackers, forgeID, secrets, runtimeConns)
 	workTargets := runtimeTargets(ctx, log, cfg, st, runtimeConns, staticTable, readiness, bindings, forgeID, release.directory())

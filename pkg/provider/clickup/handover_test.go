@@ -207,3 +207,15 @@ func TestConnectionBaseURLAddsTheAPIVersionTheProbeUses(t *testing.T) {
 		t.Fatalf("default base = %q, want %q", got, DefaultBaseURL)
 	}
 }
+
+func TestAReceiverWithoutAStaticSecretNeverVerifiesWithAnEmptyKey(t *testing.T) {
+	body := `{"event":"taskAssigneeUpdated","webhook_id":"wh-1","task_id":"t1","history_items":[{"id":"h1","field":"assignee_add","after":{"id":1}}]}`
+	mac := hmac.New(sha256.New, []byte(""))
+	mac.Write([]byte(body))
+	r := httptest.NewRequest(http.MethodPost, WebhookPath, strings.NewReader(body))
+	r.Header.Set("X-Signature", hex.EncodeToString(mac.Sum(nil)))
+	p := &Provider{WebhookSecret: func(context.Context, string) (string, bool) { return "", false }}
+	if _, err := p.ParseWebhook(r); err == nil {
+		t.Fatal("a delivery signed with an empty key was accepted by a receiver without a static secret")
+	}
+}

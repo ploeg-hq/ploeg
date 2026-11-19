@@ -545,6 +545,23 @@ func (r *Registry) RoutedConnection(scope string) (string, bool) {
 	return "", false
 }
 
+// RegisteredWebhook reports whether a live binding relies on a webhook Ploeg
+// registered with this id, as of the last rebuild, so a delivery naming any
+// other id is not verified with a stored secret.
+func (r *Registry) RegisteredWebhook(id string) bool {
+	if id == "" {
+		return false
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, b := range r.bindings {
+		if b.Webhook.ID == id && b.Webhook.Source == store.BindingWebhookRegistered {
+			return true
+		}
+	}
+	return false
+}
+
 // ScopeStatuses returns the status names the binding of a Scope through a
 // connection overrides the connection's map with.
 func (r *Registry) ScopeStatuses(connection string) func(scope string) map[work.State]string {
