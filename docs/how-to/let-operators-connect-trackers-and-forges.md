@@ -2,13 +2,13 @@
 type: how-to
 audience: [operator]
 owner: ploeg
-last_verified: 2026-11-18
-verified_by: "Read pkg/connection, pkg/httpapi/operator_connections.go and cmd/ploegd/runtime_connections.go; go test ./pkg/connection/; go test ./pkg/httpapi/ -run 'Connection|ClickUp|GitLab|GitHubApp|Reconnect'"
+last_verified: 2026-11-19
+verified_by: "Read pkg/connection, pkg/httpapi/operator_connections.go and cmd/ploegd/runtime_connections.go; go test ./pkg/connection/; go test ./pkg/httpapi/ -run 'Connection|ClickUp|GitLab|GitHubApp|Reconnect|ServiceAccount|OwnerToken'"
 ---
 
 # Let operators connect trackers and forges
 
-Use this when an operator consumer should connect a tracker or forge on a person's behalf: ClickUp or GitLab or Forgejo through OAuth, GitHub through an App Ploeg creates from a manifest, or a pasted token where no OAuth application exists. Ploeg starts every flow and issues its `state`; the consumer hosts the vendor's callback and relays the code to Ploeg in a request body ([ADR-0195](../adrs/0195-a-proven-operator-makes-and-manages-a-tracker-or-forge-connection-through-a-flow-ploeg-starts-and-the-consumer-only-relays-codes.md)). Every secret goes to the secret store, never to a row, log, response or event ([ADR-0184](../adrs/0184-tracker-and-forge-connection-secrets-live-in-a-secret-store-ploeg-writes-itself-and-no-person-handles-them.md)).
+Use this when an operator consumer should connect a tracker or forge on a person's behalf: ClickUp or GitLab or Forgejo through OAuth, GitHub through an App Ploeg creates from a manifest, GitLab through a group service account Ploeg makes from an Owner's short-lived token, or a pasted token where no OAuth application exists. Ploeg starts every flow and issues its `state`; the consumer hosts the vendor's callback and relays the code to Ploeg in a request body ([ADR-0195](../adrs/0195-a-proven-operator-makes-and-manages-a-tracker-or-forge-connection-through-a-flow-ploeg-starts-and-the-consumer-only-relays-codes.md)). Every secret goes to the secret store, never to a row, log, response or event ([ADR-0184](../adrs/0184-tracker-and-forge-connection-secrets-live-in-a-secret-store-ploeg-writes-itself-and-no-person-handles-them.md)).
 
 ## Before you start
 
@@ -31,7 +31,7 @@ connections:
   allow:
     - {port: tracker, kind: clickup, instance: clickup, methods: [oauth]}
     - {port: forge, kind: github, instance: github, methods: [github_app_manifest, github_app_installation]}
-    - {port: forge, kind: gitlab, instance: gitlab, methods: [oauth]}
+    - {port: forge, kind: gitlab, instance: gitlab, methods: [oauth, gitlab_service_account]}
   instances:
     clickup:
       kind: clickup
@@ -62,7 +62,19 @@ In `PLOEG_OPERATOR_CONSUMERS`, give the consumer `"manageConnections": true` and
 
 1. `POST /api/v1/operator/connection-flows` with `port`, `kind`, `instance`, `method` and `redirectUri`. The answer carries `flow.state` once and `next.authorizeUrl` (OAuth), `next.manifest` and `next.postUrl` (GitHub manifest) or `next.installUrl` (GitHub installation).
 2. Send the person there. The vendor returns them to the consumer's callback with a code and the `state`; keep that page out of access logs and send it with `Referrer-Policy: no-referrer`.
-3. `POST /api/v1/operator/connection-flows/complete` with `state` and `code` (or `installationId` and `setupAction` from GitHub's setup redirect, or `token`). A manifest completion answers with the new connection app and a follow-on installation flow.
+3. `POST /api/v1/operator/connection-flows/complete` with `state` and `code` (or `installationId` and `setupAction` from GitHub's setup redirect, or `token`, with `group` for `gitlab_service_account`). A manifest completion answers with the new connection app and a follow-on installation flow.
+
+### A GitLab service account
+
+`gitlab_service_account` makes the GitLab connection that mints a project access token per Run ([ADR-0203](../adrs/0203-a-gitlab-forge-connection-is-a-group-service-account-that-mints-a-project-token-per-run.md)). The group's GitLab must offer service accounts (check the tier: GitLab gates them by plan), its top-level group must allow project access tokens, and gitlab.com allows those only on Premium or Ultimate. On gitlab.com the Owner must also be identity-verified to create a service account.
+
+1. The person creates a personal access token with scope `api` and an expiry of one day, as an Owner of the top-level group. Nobody else ever sees it: the consumer relays it once.
+2. `POST /api/v1/operator/connection-flows` with `port: forge`, `kind: gitlab`, `instance`, `method: gitlab_service_account` and an optional `label` or `id`; there is no `redirectUri` and no `next` step.
+3. `POST /api/v1/operator/connection-flows/complete` with `state`, `token` and `group`, the full path of the group (a subgroup is allowed) whose projects Ploeg may work in.
+
+Ploeg then reuses or creates the service account `ploeg-<id or label>` in the top-level group, makes it a Maintainer of `group` alone, creates its token with scopes `api` and `self_rotate` for 364 days (`connections.instances.<id>.serviceAccountTokenDays`, at most 365), keeps that token and a webhook signing token in the secret store only, probes the token as the service account, and revokes the Owner's token with `DELETE /api/v4/personal_access_tokens/self`, also when the flow fails. A failure part-way removes what the flow made: the token, the account when it created it, otherwise the membership it added. The answer carries the connection and `serviceAccount` (`username`, `group`, `topGroup`, `created`, `tokenExpiresAt`), never a token. When the Owner's token could not be revoked the connection is still made, the answer carries the warning `owner_token_not_revoked` and the audit log `connection.owner_token_not_revoked`: revoke it at GitLab. The hourly pass rotates the service account's token with itself when fewer than 30 days remain. Removing the connection revokes its token; the service account and its membership stay at GitLab and are named under `leftAtVendor`, because deleting them needs an Owner.
+
+A `token` connection for GitLab takes a service account's token an administrator made by hand; it is accepted only for an instance without `oauth`, and it mints per Run when its probe finds `api` scope and Maintainer reach. Ploeg does not rotate or revoke a pasted token.
 
 Read connections with `GET /api/v1/operator/tracker-connections` and `/forge-connections`, probe one with `POST .../{id}/probe`, reconnect by starting a flow with `connection: <id>`, and remove one with `DELETE .../{id}`. The full contract is in [the operator API schema](../contracts/operator-api.v1.schema.json).
 
@@ -70,4 +82,4 @@ Read connections with `GET /api/v1/operator/tracker-connections` and `/forge-con
 
 - `ploeg_connections{kind,state}` counts live connections; alert on `invalid` and `token_missing`.
 - The audit log holds `connection.*` and `connection_app.*` events with the proven person as actor.
-- An hourly pass probes every connection, refreshes expiring GitLab and Forgejo tokens and deletes store paths nothing references.
+- An hourly pass probes every connection, refreshes expiring GitLab and Forgejo OAuth tokens, rotates a GitLab service account's token in its last 30 days and deletes store paths nothing references.

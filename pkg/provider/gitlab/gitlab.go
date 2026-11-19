@@ -7,10 +7,13 @@
 // Two things differ from Forgejo in ways that matter, and both are places a
 // copy-paste of the Forgejo provider would be silently wrong:
 //
-//   - GitLab does NOT sign webhooks. It echoes a shared secret verbatim in
+//   - A static hook is not signed. GitLab echoes a shared secret verbatim in
 //     X-Gitlab-Token; there is no HMAC over the body. That is a weaker
 //     guarantee — it authenticates the sender, not the payload — so the
-//     comparison is constant-time and the secret should be per-hook.
+//     comparison is constant-time and the secret should be per-hook. A hook
+//     Ploeg registers for a runtime connection (ADR-0203) names the
+//     connection in its URL and, on GitLab 19 or later, carries an HMAC in
+//     webhook-signature under that connection's own signing token.
 //   - A merge request has two numbers. `id` is instance-global and useless in
 //     a URL; `iid` is the per-project number a human sees and the only one the
 //     API accepts. This package uses iid throughout.
@@ -27,6 +30,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -45,8 +49,14 @@ type Provider struct {
 	// this needs no push right.
 	Token string
 	// Secret is compared against X-Gitlab-Token. Empty rejects every
-	// delivery.
+	// delivery that names no runtime connection.
 	Secret string
+	// HookSecret returns the webhook secret of a runtime connection, for a
+	// delivery whose URL names it (ADR-0203). held is false for a
+	// connection Ploeg does not hold. Nil refuses every such delivery.
+	HookSecret func(ctx context.Context, connection string) (secret string, held bool, err error)
+	// Now is the clock a signed delivery's timestamp is checked against.
+	Now func() time.Time
 	// HC is optional; nil gets a 30s client.
 	HC  *http.Client
 	Log *slog.Logger
@@ -493,7 +503,23 @@ type hook struct {
 	} `json:"merge_request"`
 	User struct {
 		Username string `json:"username"`
+		Name     string `json:"name"`
 	} `json:"user"`
+}
+
+// projectBotUsername is the username GitLab gives the bot user of a
+// project access token.
+var projectBotUsername = regexp.MustCompile(`^project_[0-9]+_bot`)
+
+// actor is the login an event is attributed to. A per-Run project access
+// token's bot user carries the token's name as its display name (ADR-0203),
+// so its events are attributed to that name, which provider.RunActorPrefix
+// marks as Ploeg's own.
+func (h hook) actor() string {
+	if strings.HasPrefix(h.User.Name, provider.RunActorPrefix) && projectBotUsername.MatchString(h.User.Username) {
+		return h.User.Name
+	}
+	return h.User.Username
 }
 
 // ParseWebhook authenticates the sender, then normalizes.
@@ -506,14 +532,8 @@ func (p *Provider) ParseWebhook(r *http.Request) ([]provider.ForgeEvent, error) 
 	if err != nil {
 		return nil, err
 	}
-	if p.Secret == "" {
-		return nil, errors.New("no webhook secret configured; set PLOEG_GITLAB_SECRET")
-	}
-	// Constant time: this is a bare secret comparison, not a MAC, so a
-	// naive == would leak it a byte at a time to a patient caller.
-	got := r.Header.Get("X-Gitlab-Token")
-	if subtle.ConstantTimeCompare([]byte(got), []byte(p.Secret)) != 1 {
-		return nil, errors.New("invalid webhook token")
+	if err := p.authenticate(r, body); err != nil {
+		return nil, err
 	}
 
 	var h hook
@@ -537,7 +557,7 @@ func (p *Provider) ParseWebhook(r *http.Request) ([]provider.ForgeEvent, error) 
 		return []provider.ForgeEvent{{
 			Kind: provider.ForgeReviewSubmitted, Repo: repo, PR: h.MergeRequest.IID,
 			Branch: h.MergeRequest.SourceBranch, Body: h.ObjectAttributes.Note,
-			Actor: h.User.Username, Review: provider.ForgeReviewCommented, ReviewID: noteID(h.ObjectAttributes.ID),
+			Actor: h.actor(), Review: provider.ForgeReviewCommented, ReviewID: noteID(h.ObjectAttributes.ID),
 			PullRequest: provider.PullRequestFacts{HeadSHA: h.MergeRequest.LastCommit.ID},
 		}}, nil
 
@@ -551,7 +571,7 @@ func (p *Provider) ParseWebhook(r *http.Request) ([]provider.ForgeEvent, error) 
 		switch {
 		case h.ObjectAttributes.Action == "merge":
 			return []provider.ForgeEvent{{Kind: provider.ForgePRMerged, Repo: repo, PR: iid, Branch: branch,
-				Actor: h.User.Username, PullRequest: provider.PullRequestFacts{
+				Actor: h.actor(), PullRequest: provider.PullRequestFacts{
 					State: provider.PullRequestMerged, HeadSHA: head,
 					MergeCommitSHA: h.ObjectAttributes.MergeCommitSHA,
 					MergedAt:       provider.ParseForgeTime(h.ObjectAttributes.MergedAt),
@@ -559,7 +579,7 @@ func (p *Provider) ParseWebhook(r *http.Request) ([]provider.ForgeEvent, error) 
 				}}}, nil
 		case h.ObjectAttributes.Action == "close":
 			return []provider.ForgeEvent{{Kind: provider.ForgePRClosed, Repo: repo, PR: iid, Branch: branch,
-				Actor: h.User.Username, PullRequest: provider.PullRequestFacts{
+				Actor: h.actor(), PullRequest: provider.PullRequestFacts{
 					State: provider.PullRequestClosed, HeadSHA: head,
 					ClosedAt: provider.ParseForgeTime(h.ObjectAttributes.ClosedAt),
 				}}}, nil
@@ -569,21 +589,21 @@ func (p *Provider) ParseWebhook(r *http.Request) ([]provider.ForgeEvent, error) 
 		case h.ObjectAttributes.Action == "approved" || h.ObjectAttributes.Action == "unapproved":
 			return []provider.ForgeEvent{{
 				Kind: provider.ForgeReviewSubmitted, Repo: repo, PR: iid, Branch: branch,
-				Body: h.ObjectAttributes.Action, Actor: h.User.Username, Review: approvalState(h.ObjectAttributes.Action),
+				Body: h.ObjectAttributes.Action, Actor: h.actor(), Review: approvalState(h.ObjectAttributes.Action),
 				PullRequest: provider.PullRequestFacts{HeadSHA: head},
 			}}, nil
 		// The branch stopped being mergeable — conflicts, usually.
 		case h.ObjectAttributes.MergeStatus == "cannot_be_merged":
 			return []provider.ForgeEvent{{
 				Kind: provider.ForgeMergeStateDirty, Repo: repo, PR: iid, Branch: branch,
-				Actor: h.User.Username, PullRequest: provider.PullRequestFacts{HeadSHA: head},
+				Actor: h.actor(), PullRequest: provider.PullRequestFacts{HeadSHA: head},
 			}}, nil
 		case h.ObjectAttributes.Action == "open" || h.ObjectAttributes.Action == "reopen":
 			return []provider.ForgeEvent{{Kind: provider.ForgePROpened, Repo: repo, PR: iid, Branch: branch,
-				Actor: h.User.Username, PullRequest: provider.PullRequestFacts{State: provider.PullRequestOpen, HeadSHA: head}}}, nil
+				Actor: h.actor(), PullRequest: provider.PullRequestFacts{State: provider.PullRequestOpen, HeadSHA: head}}}, nil
 		case h.ObjectAttributes.Action == "update" && h.ObjectAttributes.OldRev != "":
 			return []provider.ForgeEvent{{Kind: provider.ForgePRSynchronized, Repo: repo, PR: iid, Branch: branch,
-				Actor: h.User.Username, PullRequest: provider.PullRequestFacts{State: provider.PullRequestOpen, HeadSHA: head}}}, nil
+				Actor: h.actor(), PullRequest: provider.PullRequestFacts{State: provider.PullRequestOpen, HeadSHA: head}}}, nil
 		}
 		return nil, nil
 
@@ -600,7 +620,7 @@ func (p *Provider) ParseWebhook(r *http.Request) ([]provider.ForgeEvent, error) 
 		}
 		return []provider.ForgeEvent{{
 			Kind: provider.ForgeCheckFailed, Repo: repo, PR: h.MergeRequest.IID,
-			Branch: branch, Body: h.ObjectAttributes.Status, Actor: h.User.Username,
+			Branch: branch, Body: h.ObjectAttributes.Status, Actor: h.actor(),
 		}}, nil
 	}
 	return nil, nil
@@ -611,6 +631,48 @@ const maxPayloadBytes = 1 << 20
 // IdempotencyKeyHeader carries the id GitLab keeps when it retries a webhook
 // delivery, sent by GitLab 17.4 and later.
 const IdempotencyKeyHeader = "Idempotency-Key"
+
+func (p *Provider) authenticate(r *http.Request, body []byte) error {
+	if connection := r.URL.Query().Get(HookConnectionParam); connection != "" {
+		if p.HookSecret == nil {
+			return errors.New("a delivery for a runtime connection reached a receiver that holds none")
+		}
+		secret, held, err := p.HookSecret(r.Context(), connection)
+		switch {
+		case err != nil:
+			return fmt.Errorf("the connection's webhook secret could not be read: %w", err)
+		case !held || secret == "":
+			return errors.New("the delivery names a connection Ploeg does not hold")
+		}
+		return verifyHookSecret(r, body, secret, p.now())
+	}
+	if p.Secret == "" {
+		return errors.New("no webhook secret configured; set PLOEG_GITLAB_SECRET")
+	}
+	got := r.Header.Get("X-Gitlab-Token")
+	if subtle.ConstantTimeCompare([]byte(got), []byte(p.Secret)) != 1 {
+		return errors.New("invalid webhook token")
+	}
+	return nil
+}
+
+func (p *Provider) now() time.Time {
+	if p.Now != nil {
+		return p.Now()
+	}
+	return time.Now()
+}
+
+// ForApp reports whether a delivery names a runtime connection Ploeg holds,
+// so the route without a static GitLab forge takes it (ADR-0203).
+func (p *Provider) ForApp(r *http.Request) (bool, error) {
+	connection := r.URL.Query().Get(HookConnectionParam)
+	if connection == "" || p.HookSecret == nil {
+		return false, nil
+	}
+	_, held, err := p.HookSecret(r.Context(), connection)
+	return held, err
+}
 
 // DeliveryID returns GitLab's Idempotency-Key when the request carries one.
 // An older GitLab sends none, and the id is then synthetic: the object kind,

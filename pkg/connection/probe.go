@@ -88,7 +88,7 @@ func (s *Service) storedCredential(ctx context.Context, row store.ConnectionRow)
 	if err := json.Unmarshal(row.Secrets, &field); err != nil {
 		return provider.ConnectionCredential{}, nil, secretstore.ErrNotFound
 	}
-	cred := provider.ConnectionCredential{Port: row.Port, InstallationID: row.InstallationID}
+	cred := provider.ConnectionCredential{Port: row.Port, Method: row.Method, InstallationID: row.InstallationID}
 	if field.App != nil {
 		app, err := s.Store.ConnectionApp(ctx, s.tenant(), row.App)
 		if err != nil {

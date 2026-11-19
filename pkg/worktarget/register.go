@@ -124,12 +124,20 @@ func (s *Service) Probe(ctx context.Context, req Request) Plan {
 		return plan
 	}
 	plan.pass("connection_usable", "")
-	if !s.Minting[info.Kind] {
-		plan.fail("capability", "a "+info.Kind+" connection mints no per-Run credential yet",
-			refuse(422, "capability_missing", "A "+info.Kind+" connection cannot mint a Run's credential yet (ADR-0192), so it cannot register a runtime target."))
+	if !s.Minting[info.Kind] && !info.CanMint {
+		plan.fail("capability", "this "+info.Kind+" connection mints no per-Run credential",
+			refuse(422, "capability_missing", "This "+info.Kind+" connection cannot mint a Run's credential (ADR-0192), so it cannot register a runtime target; a GitLab connection mints only as a gitlab_service_account or token connection whose probe found api scope and Maintainer reach (ADR-0203)."))
 		return plan
 	}
 	plan.pass("capability", "")
+	if s.Connectors[info.Kind].Hooks != nil {
+		if s.PublicWebhookBase == "" {
+			plan.fail("webhook", "PLOEG_PUBLIC_WEBHOOK_BASE is unset",
+				refuse(422, "webhook_base_missing", "PLOEG_PUBLIC_WEBHOOK_BASE is unset, so Ploeg cannot register the repository webhook a "+info.Kind+" target needs."))
+			return plan
+		}
+		plan.pass("webhook", "")
+	}
 	grant, err := grants.ProbeRepositoryGrant(ctx, inst, cred, req.Repository)
 	switch {
 	case errors.Is(err, provider.ErrRepositoryNotGranted):
@@ -282,9 +290,14 @@ func (s *Service) Register(ctx context.Context, audit store.WorkTargetAudit, req
 		return store.WorkTarget{}, false, e
 	}
 	t := plan.Target
+	if e := s.ensureHook(ctx, t); e != nil {
+		s.refused(ctx, audit, t, e)
+		return store.WorkTarget{}, false, e
+	}
 	out, created, err := s.Store.CreateWorkTarget(ctx, store.NewWorkTarget{Tenant: t.Tenant, Key: t.Key, Connection: t.Connection, Forge: t.Forge,
 		Repository: t.Repository, RepositoryID: t.RepositoryID, Branch: t.Branch, Label: t.Label, Readiness: t.Readiness, Max: s.Config.Limit()}, audit)
 	if e := storeRefusal(err); e != nil {
+		s.removeHook(context.WithoutCancel(ctx), t)
 		s.refused(ctx, audit, t, e)
 		return store.WorkTarget{}, false, e
 	}
@@ -425,13 +438,18 @@ func (s *Service) Remove(ctx context.Context, audit store.WorkTargetAudit, key s
 		return Removal{}, e
 	}
 	var pinned []string
+	extra := map[string]any{}
 	if current, err := s.Store.LiveWorkTarget(ctx, s.tenant(), key); err == nil {
 		owner, name := SplitRepository(current.Repository)
 		if ids, err := s.Store.OpenWorkItemsOnRepository(ctx, current.Forge, owner, name, 100); err == nil {
 			pinned = ids
 		}
+		if left := s.removeHook(ctx, current); left != "" {
+			extra["webhookLeft"] = left
+		}
 	}
-	out, removed, err := s.Store.RemoveWorkTarget(ctx, s.tenant(), key, audit, map[string]any{"openWorkItems": pinned})
+	extra["openWorkItems"] = pinned
+	out, removed, err := s.Store.RemoveWorkTarget(ctx, s.tenant(), key, audit, extra)
 	if errors.Is(err, store.ErrOperatorNotFound) {
 		return Removal{}, refuse(404, "unknown_target", "No runtime target ever had this key.")
 	}

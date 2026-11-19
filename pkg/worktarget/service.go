@@ -36,8 +36,12 @@ type Service struct {
 	ForgeHosts map[string]string
 	// Minting names the connection kinds whose connections mint a per-Run
 	// credential (ADR-0192). A connection of any other kind cannot register
-	// a runtime target: a Run on it would have nothing to push with.
+	// a runtime target unless its last probe found it can mint (ADR-0203):
+	// a Run on it would have nothing to push with.
 	Minting map[string]bool
+	// PublicWebhookBase is PLOEG_PUBLIC_WEBHOOK_BASE. A kind whose connector
+	// registers repository webhooks needs it to register a target.
+	PublicWebhookBase string
 	// Gate is the readiness gate the runtime targets join.
 	Gate     *target.Gate
 	Bindings Bindings
