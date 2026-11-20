@@ -21,8 +21,6 @@ const (
 	rebaseHeadRef       = "refs/ploeg/head"
 	rebaseBaseRef       = "refs/ploeg/base"
 	maxNamedConflicts   = 50
-	committerName       = "agent-builder"
-	committerEmail      = "agent-builder@webgrip.dev"
 )
 
 type baseSyncResult string
@@ -48,7 +46,8 @@ type baseSync struct {
 
 type baseCandidate struct {
 	pushedCandidate
-	base string
+	base     string
+	identity commitIdentity
 }
 
 func syncWithBase(ctx context.Context, side harnessSide, c baseCandidate, env, fastCheck []string, limit time.Duration) baseSync {
@@ -69,7 +68,7 @@ func syncWithBase(ctx context.Context, side harnessSide, c baseCandidate, env, f
 	}
 	defer os.RemoveAll(gitDir)
 	defer os.RemoveAll(c.dir)
-	repo := &workerRepository{gitDir: gitDir, workTree: c.dir, remote: c.cloneURL, token: c.token}
+	repo := &workerRepository{gitDir: gitDir, workTree: c.dir, remote: c.cloneURL, token: c.token, identity: c.identity}
 	if out, err := repo.local(ctx, "", "init", "--quiet", "--bare", "--template=").CombinedOutput(); err != nil {
 		return unchecked(fmt.Sprintf("git init: %v: %s", err, strings.TrimSpace(tail(out, 400))))
 	}
@@ -130,7 +129,7 @@ func syncWithBase(ctx context.Context, side harnessSide, c baseCandidate, env, f
 }
 
 func (r *workerRepository) inWorkTree(ctx context.Context, args ...string) *exec.Cmd {
-	identity := []string{"-c", "core.bare=false", "-c", "user.name=" + committerName, "-c", "user.email=" + committerEmail}
+	identity := append([]string{"-c", "core.bare=false"}, r.identity.gitConfig()...)
 	return r.local(ctx, r.workTree, append(identity, args...)...)
 }
 

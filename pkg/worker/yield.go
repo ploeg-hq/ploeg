@@ -16,12 +16,10 @@ import (
 )
 
 const (
-	yieldPushTimeout     = 2 * time.Minute
-	maxHandbackCommits   = 50
-	yieldCommitSubject   = "wip: work in progress handed to a person"
-	yieldTrailer         = "Ploeg-Yield"
-	yieldCommitAuthor    = "agent-builder"
-	yieldCommitAuthorKey = "agent-builder@webgrip.dev"
+	yieldPushTimeout   = 2 * time.Minute
+	maxHandbackCommits = 50
+	yieldCommitSubject = "wip: work in progress handed to a person"
+	yieldTrailer       = "Ploeg-Yield"
 )
 
 // yieldCheck is what the worker needs to put a yielded writer's work on the
@@ -36,6 +34,7 @@ type yieldCheck struct {
 	leaks     leakScope
 	trace     string
 	reference string
+	identity  commitIdentity
 	// deliverable fences a prepare_repository Run's yield push as its own
 	// pushes are fenced (ADR-0194); nil for every other Run.
 	deliverable *deliverableFence
@@ -106,8 +105,7 @@ func yieldWork(ctx context.Context, c yieldCheck) harness.YieldReport {
 	if !bytes.Equal(bytes.TrimSpace(tree), bytes.TrimSpace(headTree)) {
 		commit := repo.local(ctx, "", "commit-tree", strings.TrimSpace(string(tree)), "-p", tip, "-F", "-")
 		commit.Stdin = strings.NewReader(yieldCommitMessage(c.reference, c.trace))
-		commit.Env = append(commit.Env, "GIT_AUTHOR_NAME="+yieldCommitAuthor, "GIT_AUTHOR_EMAIL="+yieldCommitAuthorKey,
-			"GIT_COMMITTER_NAME="+yieldCommitAuthor, "GIT_COMMITTER_EMAIL="+yieldCommitAuthorKey)
+		commit.Env = append(commit.Env, c.identity.environ()...)
 		out, err := commit.Output()
 		if err != nil {
 			return fail("git commit-tree: %v", err)

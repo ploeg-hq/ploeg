@@ -23,6 +23,7 @@ type workerRepository struct {
 	workTree string
 	remote   string
 	token    string
+	identity commitIdentity
 }
 
 type checkoutRefs struct {

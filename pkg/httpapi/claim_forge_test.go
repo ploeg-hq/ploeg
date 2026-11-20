@@ -44,8 +44,9 @@ func (b *askedBroker) Revoke(_ context.Context, cred forgebroker.Credential) err
 
 func twoForges() *ForgeDirectory {
 	return &ForgeDirectory{Default: "forgejo", Forges: map[string]ClaimForge{
-		"forgejo": {Dialect: harness.ForgeForgejo, URL: "http://forgejo-http.forgejo.svc:3000", PloegdURL: "https://forgejo.example.com"},
-		"github":  {Dialect: harness.ForgeGitHub, URL: "https://github.com", PloegdURL: "https://github.com"},
+		"forgejo": {Dialect: harness.ForgeForgejo, URL: "http://forgejo-http.forgejo.svc:3000", PloegdURL: "https://forgejo.example.com",
+			CommitName: "forgejo-agent", CommitEmail: "forgejo-agent@forgejo.example.com"},
+		"github": {Dialect: harness.ForgeGitHub, URL: "https://github.com", PloegdURL: "https://github.com"},
 	}}
 }
 
@@ -82,7 +83,8 @@ func shiftOn(t *testing.T, externalID, forge string, roles ...store.Role) {
 func TestClaim_CarriesTheForgeResolvedFromTheWorkTarget(t *testing.T) {
 	for forge, want := range map[string]ClaimForge{
 		"github": {Dialect: "github", URL: "https://github.com", PloegdURL: "https://github.com"},
-		"":       {Dialect: "forgejo", URL: "http://forgejo-http.forgejo.svc:3000", PloegdURL: "https://forgejo.example.com"},
+		"": {Dialect: "forgejo", URL: "http://forgejo-http.forgejo.svc:3000", PloegdURL: "https://forgejo.example.com",
+			CommitName: "forgejo-agent", CommitEmail: "forgejo-agent@forgejo.example.com"},
 	} {
 		t.Run("forge "+forge, func(t *testing.T) {
 			reset(t)
@@ -94,6 +96,9 @@ func TestClaim_CarriesTheForgeResolvedFromTheWorkTarget(t *testing.T) {
 			}
 			if resp.ForgeDialect != want.Dialect || resp.ForgeURL != want.URL {
 				t.Errorf("claim forge = %q %q, want %+v", resp.ForgeDialect, resp.ForgeURL, want)
+			}
+			if resp.CommitName != want.CommitName || resp.CommitEmail != want.CommitEmail {
+				t.Errorf("claim commit identity = %q %q, want %+v", resp.CommitName, resp.CommitEmail, want)
 			}
 			if len(broker.asked) != 1 || broker.asked[0].Forge != forge || broker.asked[0].Read {
 				t.Errorf("mint asked %+v, want one push credential on forge %q", broker.asked, forge)

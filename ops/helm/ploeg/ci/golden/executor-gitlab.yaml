@@ -274,6 +274,10 @@ spec:
                   key: GITLAB_TOKEN
             - name: PLOEG_GITLAB_MINT_PER_RUN
               value: "on"
+            - name: PLOEG_GITLAB_COMMIT_NAME
+              value: "ploeg-agent"
+            - name: PLOEG_GITLAB_COMMIT_EMAIL
+              value: "ploeg-agent@gitlab.example.com"
             - name: PLOEG_GITLAB_SECRET
               valueFrom:
                 secretKeyRef:

@@ -774,6 +774,11 @@ type claimResponse struct {
 	// own FORGE_URL.
 	ForgeDialect string `json:"forgeDialect,omitempty"`
 	ForgeURL     string `json:"forgeUrl,omitempty"`
+	// CommitName and CommitEmail are the git identity the Run commits as,
+	// configured on its forge (ADR-0016). Absent when the forge configures
+	// none, and the worker then commits as its default identity.
+	CommitName  string `json:"commitName,omitempty"`
+	CommitEmail string `json:"commitEmail,omitempty"`
 	// Planner marks a Role the team's plan configures as a planner
 	// (ADR-0031).
 	Planner bool `json:"planner,omitempty"`
@@ -888,7 +893,7 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 	}
 	s.recordRunConfig(r.Context(), claimed.RunToken, req.Team, "", true, runHarness{Name: req.Harness, Profile: req.HarnessProfile, Version: req.HarnessVersion})
 	resp := claimResponse{RunToken: claimed.RunToken, Deadline: claimed.Deadline, ExpiresInMs: leaseExpiresInMs(claimed.Deadline), WorkItem: claimed.Item,
-		ForgeDialect: forge.Dialect, ForgeURL: forge.URL}
+		ForgeDialect: forge.Dialect, ForgeURL: forge.URL, CommitName: forge.CommitName, CommitEmail: forge.CommitEmail}
 	if s.ForgeCreds != nil && claimed.Item.Target != nil {
 		cred, ok := s.mintForgeCredential(r.Context(), req.Team, &store.ClaimedRun{Item: claimed.Item, RunToken: claimed.RunToken, Writes: true})
 		if !ok {
@@ -970,6 +975,7 @@ func (s *Server) respondClaimedRun(w http.ResponseWriter, r *http.Request, req c
 		Writes: run.Writes, Branch: run.Branch, Authorized: run.Authorized,
 		PreAuthor: run.PreAuthor, Model: run.Model,
 		ForgeDialect: forge.Dialect, ForgeURL: forge.URL,
+		CommitName: forge.CommitName, CommitEmail: forge.CommitEmail,
 	}
 	if planners, ok := s.RoleCaps.(PlannerRoles); ok && !run.Writes {
 		resp.Planner = planners.IsPlanner(req.Team, run.Role)

@@ -21,6 +21,11 @@ type ClaimForge struct {
 	// one a runner outside the cluster pushes to, since URL may be an
 	// in-cluster address only workers reach.
 	PloegdURL string
+	// CommitName and CommitEmail are the git identity of the commits a Run
+	// on this forge makes (ADR-0016), from PLOEG_<DIALECT>_COMMIT_NAME and
+	// PLOEG_<DIALECT>_COMMIT_EMAIL. Empty leaves the worker's default.
+	CommitName  string
+	CommitEmail string
 }
 
 // ForgeDirectory resolves a Work Target's forge id through the forge

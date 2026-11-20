@@ -23,6 +23,10 @@ type activeForge struct {
 	// url is ploegd's own URL for the forge; workerURL is the one workers
 	// clone from, push to and call its API at (PLOEG_<DIALECT>_WORKER_URL).
 	url, workerURL string
+	// commitName and commitEmail are the git identity of a Run's commits on
+	// the forge (PLOEG_<DIALECT>_COMMIT_NAME and _COMMIT_EMAIL); empty keeps
+	// the worker's default.
+	commitName, commitEmail string
 }
 
 // releaseForges is every forge one release serves and how each mints
@@ -93,6 +97,22 @@ func workerURLFromEnv(dialect string) string {
 		"gitlab":  os.Getenv("PLOEG_GITLAB_WORKER_URL"),
 		"github":  os.Getenv("PLOEG_GITHUB_WORKER_URL"),
 	}[dialect])
+}
+
+func activeForgeFromEnv(p provider.ForgeProvider, url string) activeForge {
+	dialect := p.Name()
+	name := map[string]string{
+		"forgejo": os.Getenv("PLOEG_FORGEJO_COMMIT_NAME"),
+		"gitlab":  os.Getenv("PLOEG_GITLAB_COMMIT_NAME"),
+		"github":  os.Getenv("PLOEG_GITHUB_COMMIT_NAME"),
+	}[dialect]
+	email := map[string]string{
+		"forgejo": os.Getenv("PLOEG_FORGEJO_COMMIT_EMAIL"),
+		"gitlab":  os.Getenv("PLOEG_GITLAB_COMMIT_EMAIL"),
+		"github":  os.Getenv("PLOEG_GITHUB_COMMIT_EMAIL"),
+	}[dialect]
+	return activeForge{provider: p, url: url, workerURL: workerURLFromEnv(dialect),
+		commitName: strings.TrimSpace(name), commitEmail: strings.TrimSpace(email)}
 }
 
 func (r releaseForges) dialects() []string {
@@ -183,7 +203,7 @@ func (r releaseForges) directory() *httpapi.ForgeDirectory {
 		if url == "" && r.multiForge() {
 			url = f.url
 		}
-		d.Forges[id] = httpapi.ClaimForge{Dialect: dialect, URL: url, PloegdURL: f.url}
+		d.Forges[id] = httpapi.ClaimForge{Dialect: dialect, URL: url, PloegdURL: f.url, CommitName: f.commitName, CommitEmail: f.commitEmail}
 	}
 	if len(d.Forges) == 0 && len(d.Runtime) == 0 {
 		return nil

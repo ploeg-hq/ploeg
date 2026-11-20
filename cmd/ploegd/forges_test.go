@@ -110,6 +110,9 @@ func TestTwoMintingForgesStartAndRouteEachForgeToItsOwnBroker(t *testing.T) {
 	if f, ok := d.Resolve("github"); !ok || f.Dialect != "github" || f.URL != "https://github.com" {
 		t.Errorf("github resolves to %+v %v", f, ok)
 	}
+	if f, _ := d.Resolve(""); f.CommitName != "" || f.CommitEmail != "" {
+		t.Errorf("a forge without a configured commit identity resolves to %q %q", f.CommitName, f.CommitEmail)
+	}
 	if _, ok := d.Resolve("gitlab"); ok {
 		t.Error("a forge the release does not serve resolves")
 	}
@@ -191,4 +194,25 @@ func TestRunStartsWithOneForgeAndTheSharedToken(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	t.Fatal("ploegd with one forge and the shared token never became ready")
+}
+
+func TestEachForgeCarriesTheCommitIdentityItsEnvironmentConfigures(t *testing.T) {
+	t.Setenv("PLOEG_FORGEJO_COMMIT_NAME", "forgejo-agent")
+	t.Setenv("PLOEG_FORGEJO_COMMIT_EMAIL", " forgejo-agent@forgejo.example ")
+	t.Setenv("PLOEG_GITHUB_COMMIT_NAME", "ploeg[bot]")
+	t.Setenv("PLOEG_GITHUB_COMMIT_EMAIL", "1+ploeg[bot]@users.noreply.github.com")
+	fj := activeForgeFromEnv(&forgejo.Provider{BaseURL: "https://forgejo.example"}, "https://forgejo.example")
+	gh := activeForgeFromEnv(&github.Provider{BaseURL: "https://github.com"}, "https://github.com")
+	gl := activeForgeFromEnv(&gitlab.Provider{BaseURL: "https://gitlab.example"}, "https://gitlab.example")
+	d := releaseOf("forgejo", forgebroker.Static{}, nil, fj, gh, gl).directory()
+	for id, want := range map[string][2]string{
+		"forgejo": {"forgejo-agent", "forgejo-agent@forgejo.example"},
+		"github":  {"ploeg[bot]", "1+ploeg[bot]@users.noreply.github.com"},
+		"gitlab":  {"", ""},
+	} {
+		f, ok := d.Resolve(id)
+		if !ok || f.CommitName != want[0] || f.CommitEmail != want[1] {
+			t.Errorf("%s resolves to %+v %v, want commit identity %q", id, f, ok, want)
+		}
+	}
 }

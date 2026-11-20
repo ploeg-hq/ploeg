@@ -123,6 +123,14 @@
           "format": "uri",
           "description": "The URL workers clone from, push to and call the forge's API at for this Run (ADR-0192). The worker uses it instead of FORGE_URL. Absent when the release serves one forge and ploegd has no PLOEG_<DIALECT>_WORKER_URL for it: the worker then keeps its FORGE_URL."
         },
+        "commitName": {
+          "type": "string",
+          "description": "The git author and committer name of the commits this Run makes, configured on its forge as PLOEG_<DIALECT>_COMMIT_NAME (ADR-0016). Absent when the forge configures none: the worker then commits as agent-builder."
+        },
+        "commitEmail": {
+          "type": "string",
+          "description": "The git author and committer e-mail of the commits this Run makes, configured on its forge as PLOEG_<DIALECT>_COMMIT_EMAIL (ADR-0016). Absent when the forge configures none: the worker then commits as agent-builder@ploeg.invalid."
+        },
         "planner": {
           "type": "boolean",
           "description": "True when the team's plan marks this Role as a planner (ADR-0031): the worker composes the planner prompt, which asks for createdWorkItems instead of code. Absent = not a planner."

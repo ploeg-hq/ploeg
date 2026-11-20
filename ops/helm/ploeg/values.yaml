@@ -990,7 +990,7 @@ executor:
     # without it, because the only alternative is handing the reader the
     # read-write builder token below. The repos are private, so "no
     # credential" cannot clone; a read-only token is the honest tier 1. It is
-    # one OpenBao entry plus one ExternalSecret in homelab-cluster.
+    # one more Secret beside the builder token.
     readTokenSecret: {}
     #  name: agent-reader-token
     #  key: FORGEJO_TOKEN
@@ -1008,6 +1008,13 @@ executor:
     #  name: agent-builder-password
     #  key: FORGEJO_BOT_PASSWORD
     botUser: agent-builder
+    # The git author and committer of the commits a Run on this forge makes
+    # (ADR-0016): PLOEG_FORGEJO_COMMIT_NAME and PLOEG_FORGEJO_COMMIT_EMAIL. Empty =
+    # agent-builder <agent-builder@ploeg.invalid>, an address no forge links
+    # to an account. Set commitEmail to an e-mail of botUser so
+    # Forgejo attributes the commits to it.
+    commitName: ""
+    commitEmail: ""
     # Verifies X-Forgejo-Signature on POST /webhooks/forge/forgejo. Unset =
     # every forge webhook is rejected.
     webhookSecret: {}
@@ -1034,6 +1041,13 @@ executor:
     # a reading one) and revokes it when the Run settles, so GitLab may serve
     # beside another forge. False = writing Runs share tokenSecret.
     mintPerRun: false
+    # The git author and committer of the commits a Run on this forge makes
+    # (ADR-0016): PLOEG_GITLAB_COMMIT_NAME and PLOEG_GITLAB_COMMIT_EMAIL. Empty =
+    # agent-builder <agent-builder@ploeg.invalid>, an address no forge links
+    # to an account. Set commitEmail to the commit e-mail of the
+    # account tokenSecret belongs to so GitLab attributes the commits to it.
+    commitName: ""
+    commitEmail: ""
   github:
     # GitHub as the forge (ADR-0086): https://github.com, or a GitHub
     # Enterprise Server web root. The REST API is derived (api.github.com, or
@@ -1068,6 +1082,14 @@ executor:
     # The App's bot login, e.g. "ploeg[bot]", so reviews Ploeg itself posts
     # never trigger rework.
     botLogin: ""
+    # The git author and committer of the commits a Run on this forge makes
+    # (ADR-0016): PLOEG_GITHUB_COMMIT_NAME and PLOEG_GITHUB_COMMIT_EMAIL. Empty =
+    # agent-builder <agent-builder@ploeg.invalid>, an address no forge links
+    # to an account. With a GitHub App, set commitName to its bot
+    # login and commitEmail to <bot user id>+<app slug>[bot]@users.noreply.github.com
+    # so GitHub attributes the commits to the App.
+    commitName: ""
+    commitEmail: ""
   scaler:
     # REQUIRED for the keda and sandbox executors: the PostgreSQL host KEDA
     # polls, e.g. ploeg-db-rw.<namespace>.svc.cluster.local. Must be a name
@@ -1160,7 +1182,7 @@ executor:
   #   # resolved at ingest from its tracker scope (R11, ADR-0001) — omit these
   #   # once the item's scope resolves a target, and onboarding a repo becomes
   #   # one map entry plus a webhook instead of a whole new team.
-  #   repoOwner: webgrip
+  #   repoOwner: acme
   #   repoName: some-repo
   #   # Branch the worker clones, branches from, and opens the PR against.
   #   # Unset = the repo's default branch (which may be a stale stub — pin
@@ -1255,34 +1277,34 @@ executor:
 config: {}
 #   targets:                          # ADR-0038: repositories a `repo/<key>` label may select
 #     app:
-#       repo: webgrip/app
+#       repo: acme/app
 #       branch: development
 #       forge: forgejo
-#     homelab-cluster:
-#       repo: webgrip/homelab-cluster
+#     infra:
+#       repo: acme/infra
 #       branch: main
 #       forge: forgejo
 #   trackers:
 #     vikunja:
 #       projects:
 #         - name: "Ploeg Test"        # or: id: "11" to pin, skipping resolution
-#           repo: webgrip/ploeg
+#           repo: acme/widgets
 #           branch: development       # unset = the repo default, may be a stub
 #           team: bronze              # unset = the assignee decides
 #         - name: "App"                # a board serving several repositories
 #           default: app               # a targets key, instead of repo/branch/forge
-#           allow: [homelab-cluster]  # what a repo/<key> label may select here
+#           allow: [infra]            # what a repo/<key> label may select here
 #           gates:                    # ADR-0051: bucket titles (Vikunja) or statuses (ClickUp) per delivery gate; also records every status move (ADR-0080)
 #             development: ["Doing"]
 #             test: ["In test"]
 #             acceptance: ["Acceptance", "UAT"]
 #             done: ["Done"]
 #         - name: "Forgejo Migration" # no default: every ticket needs a repo/<key> label
-#           allow: [app, homelab-cluster]
+#           allow: [app, infra]
 #     github:                         # ADR-0085: a `ploeg:<team>` label dispatches an issue
 #       projects:
-#         - name: webgrip/app         # the repository owner/name; no lookup
-#           repo: webgrip/app
+#         - name: acme/app            # the repository owner/name; no lookup
+#           repo: acme/app
 #           branch: development
 #   teams:
 #     bronze:

@@ -391,7 +391,8 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	if out, err := runGit(ctx, "", cloneURL, forgeToken, cloneArgs(ref.BaseBranch, cloneURL, cloneDir)...); err != nil {
 		return stuckReport("git clone failed", tail(out, 2000))
 	}
-	for _, kv := range [][2]string{{"user.name", committerName}, {"user.email", committerEmail}} {
+	identity := claimedCommitIdentity(claimed)
+	for _, kv := range [][2]string{{"user.name", identity.name}, {"user.email", identity.email}} {
 		if out, err := runGit(ctx, cloneDir, cloneURL, forgeToken, "config", kv[0], kv[1]); err != nil {
 			return stuckReport("git config failed", tail(out, 2000))
 		}
@@ -755,7 +756,7 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	forgeToken = forgeCred.current(context.WithoutCancel(ctx))
 	if errors.Is(runErr, harness.ErrYielded) {
 		return w.yielded(ctx, report, yieldCheck{writes: writes, dir: cloneDir, cloneURL: cloneURL, token: forgeToken, branch: branch,
-			baseline: baseline, leaks: leaks, trace: trace, reference: work.Reference(item), deliverable: deliverable, hooks: hooksFence}, ref, prior, priorErr)
+			baseline: baseline, leaks: leaks, trace: trace, reference: work.Reference(item), identity: identity, deliverable: deliverable, hooks: hooksFence}, ref, prior, priorErr)
 	}
 	// The PR is the ground truth (git/forge state stays the durable medium).
 	after, prErr := readChangeRequest(ref, forgeToken, branch)
@@ -781,7 +782,8 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 		synced := syncWithBase(ctx, w.side(), baseCandidate{
 			pushedCandidate: pushedCandidate{dir: filepath.Join(w.Cfg.WorkDir, "rebase-vik-"+item.ExternalID), cloneURL: cloneURL, token: forgeToken,
 				branch: branch, commit: after.HeadSHA},
-			base: syncBase(after, ref, deliverable),
+			base:     syncBase(after, ref, deliverable),
+			identity: identity,
 		}, checkEnv, fastCheck, w.Cfg.VerifyTimeout)
 		w.Log.Info("brought the pull request up to date with its base", "result", string(synced.result), "base", synced.base,
 			"base_commit", synced.baseCommit, "head", synced.head, "rebased", synced.rebased, "conflicts", synced.conflicts,
