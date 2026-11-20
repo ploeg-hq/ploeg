@@ -6,6 +6,7 @@ import (
 	"slices"
 
 	"github.com/ploeg-hq/ploeg/pkg/connection"
+	"github.com/ploeg-hq/ploeg/pkg/forgeidentity"
 	"github.com/ploeg-hq/ploeg/pkg/httpapi"
 	"github.com/ploeg-hq/ploeg/pkg/provider"
 	"github.com/ploeg-hq/ploeg/pkg/provider/gitlab"
@@ -50,7 +51,7 @@ func runtimeForges(log *slog.Logger, conns *connection.Service, forges map[strin
 			continue
 		}
 		url := trimSlash(inst.URL)
-		out[inst.ID] = httpapi.ClaimForge{Dialect: inst.Kind, URL: url, PloegdURL: url}
+		out[inst.ID] = httpapi.ClaimForge{Dialect: inst.Kind, URL: url, PloegdURL: url, Committer: runtimeCommitter(inst.Kind, url, inst.ID, targets)}
 		if inst.Kind == "gitlab" && targets != nil {
 			gitlabs = append(gitlabs, inst.ID)
 		}
@@ -72,4 +73,15 @@ func runtimeForges(log *slog.Logger, conns *connection.Service, forges map[strin
 		log.Warn("more than one runtime GitLab instance and no static GitLab: /webhooks/forge/gitlab verifies and acknowledges their deliveries without acting on them", "instances", gitlabs)
 	}
 	return out
+}
+
+// runtimeCommitter reads, once per repository, the account of the connection
+// a runtime Work Target was granted through: the account its Runs push as.
+func runtimeCommitter(dialect, url, instance string, targets *worktarget.Service) forgeidentity.Source {
+	if targets == nil {
+		return nil
+	}
+	return forgeidentity.Cached(forgeidentity.FromToken(dialect, url, func(ctx context.Context, owner, repo string) (string, error) {
+		return targets.ActingToken(ctx, instance, owner+"/"+repo)
+	}, nil), forgeidentity.PerRepository)
 }

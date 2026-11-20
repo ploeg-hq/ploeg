@@ -35,6 +35,7 @@ type yieldCheck struct {
 	trace     string
 	reference string
 	identity  commitIdentity
+	trailers  []string
 	// deliverable fences a prepare_repository Run's yield push as its own
 	// pushes are fenced (ADR-0194); nil for every other Run.
 	deliverable *deliverableFence
@@ -104,7 +105,7 @@ func yieldWork(ctx context.Context, c yieldCheck) harness.YieldReport {
 	}
 	if !bytes.Equal(bytes.TrimSpace(tree), bytes.TrimSpace(headTree)) {
 		commit := repo.local(ctx, "", "commit-tree", strings.TrimSpace(string(tree)), "-p", tip, "-F", "-")
-		commit.Stdin = strings.NewReader(yieldCommitMessage(c.reference, c.trace))
+		commit.Stdin = strings.NewReader(yieldCommitMessage(c.reference, c.trace, c.trailers))
 		commit.Env = append(commit.Env, c.identity.environ()...)
 		out, err := commit.Output()
 		if err != nil {
@@ -160,7 +161,7 @@ func yieldWork(ctx context.Context, c yieldCheck) harness.YieldReport {
 	return y
 }
 
-func yieldCommitMessage(reference, trace string) string {
+func yieldCommitMessage(reference, trace string, trailers []string) string {
 	var b strings.Builder
 	b.WriteString(yieldCommitSubject + "\n\n")
 	b.WriteString("The Run stopped at a safe point because a person took it over.\n")
@@ -168,7 +169,11 @@ func yieldCommitMessage(reference, trace string) string {
 	if reference != "" {
 		fmt.Fprintf(&b, "%s\n", reference)
 	}
-	fmt.Fprintf(&b, "Agent-Trace-Id: %s\n%s: %s\n", trace, yieldTrailer, trace)
+	fmt.Fprintf(&b, "Agent-Trace-Id: %s\n", trace)
+	for _, t := range trailers {
+		fmt.Fprintf(&b, "%s\n", t)
+	}
+	fmt.Fprintf(&b, "%s: %s\n", yieldTrailer, trace)
 	return b.String()
 }
 

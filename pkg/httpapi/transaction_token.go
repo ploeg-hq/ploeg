@@ -54,16 +54,23 @@ func (s *Server) issueTransactionToken(ctx context.Context, runToken, worker str
 	if a, err := strconv.ParseFloat(f.Authorized, 64); err == nil && a > 0 {
 		run.Context.Allowance = f.Authorized
 	}
-	switch {
-	case f.ActsFor != "":
-		run.Person, run.Proof, run.IdentityActor = f.ActsFor, txntoken.ProofAsserted, ""
-		if f.ActsForProof == txntoken.ProofProven {
-			run.Proof, run.IdentityActor = txntoken.ProofProven, f.ActsForAct
-		}
-	case s.teamSponsor(f.Team) != "":
-		run.Person, run.Proof = s.teamSponsor(f.Team), txntoken.ProofSponsor
-	}
+	run.Person, run.Proof, run.IdentityActor = s.runPerson(f)
 	return s.TransactionTokens.Sign(run)
+}
+
+// runPerson is who a Run acts for and how Ploeg knows them: the person who
+// handed the Work Item over, else the Team's sponsor (ADR-0156). act is the
+// identity provider's actor of a proven person.
+func (s *Server) runPerson(f store.TransactionTokenFacts) (person, proof, act string) {
+	switch {
+	case f.ActsFor != "" && f.ActsForProof == txntoken.ProofProven:
+		return f.ActsFor, txntoken.ProofProven, f.ActsForAct
+	case f.ActsFor != "":
+		return f.ActsFor, txntoken.ProofAsserted, ""
+	case s.teamSponsor(f.Team) != "":
+		return s.teamSponsor(f.Team), txntoken.ProofSponsor, ""
+	}
+	return "", "", ""
 }
 
 // verifyTransactionToken checks a worker's transaction token against

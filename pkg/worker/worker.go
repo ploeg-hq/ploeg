@@ -391,7 +391,8 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	if out, err := runGit(ctx, "", cloneURL, forgeToken, cloneArgs(ref.BaseBranch, cloneURL, cloneDir)...); err != nil {
 		return stuckReport("git clone failed", tail(out, 2000))
 	}
-	identity := claimedCommitIdentity(claimed)
+	identity := claimedCommitIdentity(claimed, w.Log)
+	trailers := attributionTrailers(claimed.Attribution, item)
 	for _, kv := range [][2]string{{"user.name", identity.name}, {"user.email", identity.email}} {
 		if out, err := runGit(ctx, cloneDir, cloneURL, forgeToken, "config", kv[0], kv[1]); err != nil {
 			return stuckReport("git config failed", tail(out, 2000))
@@ -474,6 +475,7 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 		Repo:     ref,
 		Branch:   branch,
 		TraceID:  trace,
+		Trailers: trailers,
 		Briefing: withHandback(withHandback(claimed.Briefing, handedBack), writerInstructions),
 
 		ReviewFindings: claimed.ReviewFindings,
@@ -756,7 +758,7 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	forgeToken = forgeCred.current(context.WithoutCancel(ctx))
 	if errors.Is(runErr, harness.ErrYielded) {
 		return w.yielded(ctx, report, yieldCheck{writes: writes, dir: cloneDir, cloneURL: cloneURL, token: forgeToken, branch: branch,
-			baseline: baseline, leaks: leaks, trace: trace, reference: work.Reference(item), identity: identity, deliverable: deliverable, hooks: hooksFence}, ref, prior, priorErr)
+			baseline: baseline, leaks: leaks, trace: trace, reference: work.Reference(item), identity: identity, trailers: trailers, deliverable: deliverable, hooks: hooksFence}, ref, prior, priorErr)
 	}
 	// The PR is the ground truth (git/forge state stays the durable medium).
 	after, prErr := readChangeRequest(ref, forgeToken, branch)

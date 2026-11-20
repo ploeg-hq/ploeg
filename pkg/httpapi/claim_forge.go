@@ -6,6 +6,7 @@ import (
 	"maps"
 	"slices"
 
+	"github.com/ploeg-hq/ploeg/pkg/forgeidentity"
 	"github.com/ploeg-hq/ploeg/pkg/store"
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
@@ -21,11 +22,9 @@ type ClaimForge struct {
 	// one a runner outside the cluster pushes to, since URL may be an
 	// in-cluster address only workers reach.
 	PloegdURL string
-	// CommitName and CommitEmail are the git identity of the commits a Run
-	// on this forge makes (ADR-0016), from PLOEG_<DIALECT>_COMMIT_NAME and
-	// PLOEG_<DIALECT>_COMMIT_EMAIL. Empty leaves the worker's default.
-	CommitName  string
-	CommitEmail string
+	// Committer reads the identity of the account the Run's forge
+	// credential pushes as (ADR-0206); nil reads none.
+	Committer forgeidentity.Source
 }
 
 // ForgeDirectory resolves a Work Target's forge id through the forge
