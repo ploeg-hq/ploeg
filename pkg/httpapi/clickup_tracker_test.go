@@ -66,7 +66,7 @@ func (b *clickupBoard) set(id string, task clickupTask) {
 }
 
 func (b *clickupBoard) provider() *clickup.Provider {
-	return &clickup.Provider{Secret: testTrackerSecret, DefaultTeam: "bronze", BaseURL: b.api.URL, Token: "fixture",
+	return &clickup.Provider{Secret: testTrackerSecret, DefaultTeam: "bronze", BaseURL: b.api.URL, Token: "fixture", Agents: []string{"builder"},
 		Log: slog.New(slog.DiscardHandler)}
 }
 

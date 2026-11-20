@@ -74,11 +74,11 @@ type Provider struct {
 	// provider.ParseStatusMap, which refuses a state SetStatus is never
 	// called with.
 	Statuses map[work.State]string
-	// Agents are the usernames or email addresses of the members whose
-	// assignment hands a task to Ploeg, compared without case. When set, an
-	// assignment or removal of anyone else is ignored, so a person assigning
-	// themselves starts nothing; the List's pinned team then picks the Team.
-	// Empty dispatches on every assignee.
+	// Agents are extra usernames or email addresses, compared without case,
+	// whose assignment hands a task to Ploeg beside its own accounts: the
+	// account Token belongs to, the TeamMap's team accounts, and the account
+	// of a hand-over connection on the Lists bound through it (ADR-0205).
+	// Anyone else's assignment or removal is ignored, set or not.
 	Agents []string
 	// Workspace is the ClickUp Workspace (the API's team) whose webhooks
 	// CheckWebhooks lists and RegisterWebhook writes. Empty finds each List's
@@ -105,6 +105,7 @@ type Provider struct {
 	ConnectionsOnly bool
 	handed          sync.Map
 	scopes          atomic.Pointer[scopeCache]
+	self            atomic.Pointer[string]
 	// HC is optional; nil gets a 30s client.
 	HC  *http.Client
 	Log *slog.Logger
@@ -195,34 +196,18 @@ func (p *Provider) ParseWebhook(r *http.Request) ([]provider.TrackerEvent, error
 		return nil, errors.New("payload has no task")
 	}
 
-	// Route on whoever was ADDED as an assignee; on removal the relevant
-	// identity is the one that left. With Agents set, only an agent member's
-	// assignment or removal counts, and one that names none is dropped.
+	// Only an assignment of one of Ploeg's own accounts hands work over
+	// (ADR-0205). Anyone else's assignment or removal starts and stops
+	// nothing, so a person assigning themselves never spends money.
 	var actor string
 	removed := false
-	for _, h := range pl.HistoryItems {
-		if h.Field != "assignee" && h.Field != "assignee_add" && h.Field != "assignee_rem" {
-			continue
+	if pl.Event == "taskAssigneeUpdated" {
+		h, ok := p.ownAssignment(r.Context(), pl)
+		if !ok {
+			p.log().Debug("clickup assignment ignored: none of Ploeg's own accounts was assigned or removed", "task", pl.TaskID)
+			return nil, nil
 		}
-		who := firstNonEmpty(h.After.Username, h.After.Email)
-		if who == "" {
-			who = firstNonEmpty(h.Before.Username, h.Before.Email)
-		}
-		if who == "" || (len(p.Agents) > 0 && !p.isAgent(h.After.Username, h.After.Email, h.Before.Username, h.Before.Email)) {
-			continue
-		}
-		actor, removed = who, h.Field == "assignee_rem"
-		break
-	}
-	agentOnly := len(p.Agents) > 0
-	if pl.Event == "taskAssigneeUpdated" && (!agentOnly || actor == "") {
-		if h, ok := p.handOver(r.Context(), pl); ok {
-			actor, removed, agentOnly = h.who, h.removed, true
-		}
-	}
-	if pl.Event == "taskAssigneeUpdated" && agentOnly && actor == "" {
-		p.log().Debug("clickup assignment ignored: no agent member was assigned or removed", "task", pl.TaskID)
-		return nil, nil
+		actor, removed = h.who, h.removed
 	}
 	team := p.DefaultTeam
 	if t, ok := p.TeamMap[strings.ToLower(actor)]; ok {
@@ -243,19 +228,11 @@ func (p *Provider) ParseWebhook(r *http.Request) ([]provider.TrackerEvent, error
 
 	switch pl.Event {
 	case "taskAssigneeUpdated":
-		// One ClickUp event covers both directions; the history item's field
-		// is what separates them.
+		// One ClickUp event covers both directions; the history item of
+		// Ploeg's own account is what separates them.
 		kind := provider.TrackerAssigned
-		if agentOnly {
-			if removed {
-				kind = provider.TrackerUnassigned
-			}
-		} else {
-			for _, h := range pl.HistoryItems {
-				if h.Field == "assignee_rem" {
-					kind = provider.TrackerUnassigned
-				}
-			}
+		if removed {
+			kind = provider.TrackerUnassigned
 		}
 		changer, at := pl.changedBy()
 		return []provider.TrackerEvent{{Kind: kind, ExternalID: pl.TaskID, Team: team, Item: item, Actor: changer, At: at}}, nil

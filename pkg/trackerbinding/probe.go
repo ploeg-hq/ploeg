@@ -240,7 +240,7 @@ func (r *Registry) checkAgents(req Request, probe provider.ScopeProbe, res *Resu
 	}
 	candidates := append(slices.Clone(req.Connection.Agents), req.Assignees...)
 	if len(candidates) == 0 {
-		res.add(CheckAgentVisible, true, "", "no agent or assignee is named, so any assignee hands work over")
+		res.add(CheckAgentVisible, true, "", "no agent or assignee is named; only the tracker token's own account hands work over")
 		return
 	}
 	if probe.Members == nil {
