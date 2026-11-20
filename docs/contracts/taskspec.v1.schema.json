@@ -33,6 +33,11 @@
       "pattern": "^ploeg-[0-9a-f]{12}$",
       "description": "run trace id; doubles as the LiteLLM key alias Grafana joins on"
     },
+    "trailers": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9-]*: [^\\n]+$" },
+      "description": "Attribution trailers every commit ends with after Agent-Trace-Id (ADR-0206): Ploeg-Run, Work-Item and Ploeg-Acts-For. Absent = none."
+    },
     "briefing": { "$ref": "#/$defs/briefing" },
     "reviewFindings": { "$ref": "#/$defs/reviewFindings" },
     "questions": { "$ref": "#/$defs/briefedQuestions" },

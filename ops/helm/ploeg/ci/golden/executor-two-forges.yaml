@@ -325,10 +325,6 @@ spec:
                   key: FORGEJO_BOT_PASSWORD
             - name: PLOEG_FORGEJO_BOT
               value: "agent-builder"
-            - name: PLOEG_FORGEJO_COMMIT_NAME
-              value: "agent-builder"
-            - name: PLOEG_FORGEJO_COMMIT_EMAIL
-              value: "agent-builder@forgejo.example.com"
             - name: PLOEG_FORGEJO_SECRET
               valueFrom:
                 secretKeyRef:
@@ -343,10 +339,6 @@ spec:
                   key: PLOEG_GITHUB_FORGE_SECRET
             - name: PLOEG_GITHUB_BOT
               value: "ploeg[bot]"
-            - name: PLOEG_GITHUB_COMMIT_NAME
-              value: "ploeg[bot]"
-            - name: PLOEG_GITHUB_COMMIT_EMAIL
-              value: "123456+ploeg[bot]@users.noreply.github.com"
             - name: PLOEG_TARGET_FORGE
               value: "forgejo"
             - name: PLOEG_FORGEJO_WORKER_URL

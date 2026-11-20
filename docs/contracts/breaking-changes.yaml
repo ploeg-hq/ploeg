@@ -71,3 +71,59 @@ exceptions:
     surface: ops/helm/ploeg/values.yaml
     pointer: executor.namespace
     adr: "0169"
+  - base: v0.2.0-rc.136
+    surface: ops/helm/ploeg/values.schema.json
+    pointer: /properties/executor/properties/forgejo/properties/commitName
+    adr: "0206"
+  - base: v0.2.0-rc.136
+    surface: ops/helm/ploeg/values.schema.json
+    pointer: /properties/executor/properties/forgejo/properties/commitEmail
+    adr: "0206"
+  - base: v0.2.0-rc.136
+    surface: ops/helm/ploeg/values.schema.json
+    pointer: /properties/executor/properties/github/properties/commitName
+    adr: "0206"
+  - base: v0.2.0-rc.136
+    surface: ops/helm/ploeg/values.schema.json
+    pointer: /properties/executor/properties/github/properties/commitEmail
+    adr: "0206"
+  - base: v0.2.0-rc.136
+    surface: ops/helm/ploeg/values.schema.json
+    pointer: /properties/executor/properties/gitlab/properties/commitName
+    adr: "0206"
+  - base: v0.2.0-rc.136
+    surface: ops/helm/ploeg/values.schema.json
+    pointer: /properties/executor/properties/gitlab/properties/commitEmail
+    adr: "0206"
+  - base: v0.2.0-rc.136
+    surface: docs/contracts/run-api.v1.schema.json
+    pointer: /$defs/claimResponse/properties/commitName
+    adr: "0206"
+  - base: v0.2.0-rc.136
+    surface: docs/contracts/run-api.v1.schema.json
+    pointer: /$defs/claimResponse/properties/commitEmail
+    adr: "0206"
+  - base: v0.2.0-rc.136
+    surface: environment
+    pointer: ploegd/PLOEG_FORGEJO_COMMIT_NAME
+    adr: "0206"
+  - base: v0.2.0-rc.136
+    surface: environment
+    pointer: ploegd/PLOEG_FORGEJO_COMMIT_EMAIL
+    adr: "0206"
+  - base: v0.2.0-rc.136
+    surface: environment
+    pointer: ploegd/PLOEG_GITHUB_COMMIT_NAME
+    adr: "0206"
+  - base: v0.2.0-rc.136
+    surface: environment
+    pointer: ploegd/PLOEG_GITHUB_COMMIT_EMAIL
+    adr: "0206"
+  - base: v0.2.0-rc.136
+    surface: environment
+    pointer: ploegd/PLOEG_GITLAB_COMMIT_NAME
+    adr: "0206"
+  - base: v0.2.0-rc.136
+    surface: environment
+    pointer: ploegd/PLOEG_GITLAB_COMMIT_EMAIL
+    adr: "0206"

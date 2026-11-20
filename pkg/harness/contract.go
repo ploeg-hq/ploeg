@@ -24,6 +24,10 @@ type TaskSpec struct {
 	Repo       RepoRef          `json:"repo"`
 	Branch     string           `json:"branch"`  // e.g. agent/vik-<id>
 	TraceID    string           `json:"traceId"` // ploeg-<12hex>; doubles as the LiteLLM key alias
+	// Trailers are the attribution trailers every commit ends with after
+	// Agent-Trace-Id (ADR-0206): the Run, the Work Item and the person the
+	// Run acts for, each line "Key: value".
+	Trailers []string `json:"trailers,omitempty"`
 	// Briefing carries earlier Rounds' findings into this one (ADR-0011).
 	// Ploeg reads them from the Shift and injects them; the agent never calls
 	// a forge or a Ploeg API to fetch them (R6).

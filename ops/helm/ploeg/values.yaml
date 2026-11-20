@@ -1008,13 +1008,6 @@ executor:
     #  name: agent-builder-password
     #  key: FORGEJO_BOT_PASSWORD
     botUser: agent-builder
-    # The git author and committer of the commits a Run on this forge makes
-    # (ADR-0016): PLOEG_FORGEJO_COMMIT_NAME and PLOEG_FORGEJO_COMMIT_EMAIL. Empty =
-    # agent-builder <agent-builder@ploeg.invalid>, an address no forge links
-    # to an account. Set commitEmail to an e-mail of botUser so
-    # Forgejo attributes the commits to it.
-    commitName: ""
-    commitEmail: ""
     # Verifies X-Forgejo-Signature on POST /webhooks/forge/forgejo. Unset =
     # every forge webhook is rejected.
     webhookSecret: {}
@@ -1041,13 +1034,6 @@ executor:
     # a reading one) and revokes it when the Run settles, so GitLab may serve
     # beside another forge. False = writing Runs share tokenSecret.
     mintPerRun: false
-    # The git author and committer of the commits a Run on this forge makes
-    # (ADR-0016): PLOEG_GITLAB_COMMIT_NAME and PLOEG_GITLAB_COMMIT_EMAIL. Empty =
-    # agent-builder <agent-builder@ploeg.invalid>, an address no forge links
-    # to an account. Set commitEmail to the commit e-mail of the
-    # account tokenSecret belongs to so GitLab attributes the commits to it.
-    commitName: ""
-    commitEmail: ""
   github:
     # GitHub as the forge (ADR-0086): https://github.com, or a GitHub
     # Enterprise Server web root. The REST API is derived (api.github.com, or
@@ -1082,14 +1068,6 @@ executor:
     # The App's bot login, e.g. "ploeg[bot]", so reviews Ploeg itself posts
     # never trigger rework.
     botLogin: ""
-    # The git author and committer of the commits a Run on this forge makes
-    # (ADR-0016): PLOEG_GITHUB_COMMIT_NAME and PLOEG_GITHUB_COMMIT_EMAIL. Empty =
-    # agent-builder <agent-builder@ploeg.invalid>, an address no forge links
-    # to an account. With a GitHub App, set commitName to its bot
-    # login and commitEmail to <bot user id>+<app slug>[bot]@users.noreply.github.com
-    # so GitHub attributes the commits to the App.
-    commitName: ""
-    commitEmail: ""
   scaler:
     # REQUIRED for the keda and sandbox executors: the PostgreSQL host KEDA
     # polls, e.g. ploeg-db-rw.<namespace>.svc.cluster.local. Must be a name

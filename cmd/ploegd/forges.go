@@ -11,9 +11,11 @@ import (
 	"strings"
 
 	"github.com/ploeg-hq/ploeg/pkg/forgebroker"
+	"github.com/ploeg-hq/ploeg/pkg/forgeidentity"
 	"github.com/ploeg-hq/ploeg/pkg/githubapp"
 	"github.com/ploeg-hq/ploeg/pkg/httpapi"
 	"github.com/ploeg-hq/ploeg/pkg/provider"
+	"github.com/ploeg-hq/ploeg/pkg/provider/github"
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
@@ -23,10 +25,9 @@ type activeForge struct {
 	// url is ploegd's own URL for the forge; workerURL is the one workers
 	// clone from, push to and call its API at (PLOEG_<DIALECT>_WORKER_URL).
 	url, workerURL string
-	// commitName and commitEmail are the git identity of a Run's commits on
-	// the forge (PLOEG_<DIALECT>_COMMIT_NAME and _COMMIT_EMAIL); empty keeps
-	// the worker's default.
-	commitName, commitEmail string
+	// committer reads the account the forge's credential commits as
+	// (ADR-0206); nil reads none.
+	committer forgeidentity.Source
 }
 
 // releaseForges is every forge one release serves and how each mints
@@ -97,22 +98,6 @@ func workerURLFromEnv(dialect string) string {
 		"gitlab":  os.Getenv("PLOEG_GITLAB_WORKER_URL"),
 		"github":  os.Getenv("PLOEG_GITHUB_WORKER_URL"),
 	}[dialect])
-}
-
-func activeForgeFromEnv(p provider.ForgeProvider, url string) activeForge {
-	dialect := p.Name()
-	name := map[string]string{
-		"forgejo": os.Getenv("PLOEG_FORGEJO_COMMIT_NAME"),
-		"gitlab":  os.Getenv("PLOEG_GITLAB_COMMIT_NAME"),
-		"github":  os.Getenv("PLOEG_GITHUB_COMMIT_NAME"),
-	}[dialect]
-	email := map[string]string{
-		"forgejo": os.Getenv("PLOEG_FORGEJO_COMMIT_EMAIL"),
-		"gitlab":  os.Getenv("PLOEG_GITLAB_COMMIT_EMAIL"),
-		"github":  os.Getenv("PLOEG_GITHUB_COMMIT_EMAIL"),
-	}[dialect]
-	return activeForge{provider: p, url: url, workerURL: workerURLFromEnv(dialect),
-		commitName: strings.TrimSpace(name), commitEmail: strings.TrimSpace(email)}
 }
 
 func (r releaseForges) dialects() []string {
@@ -203,7 +188,7 @@ func (r releaseForges) directory() *httpapi.ForgeDirectory {
 		if url == "" && r.multiForge() {
 			url = f.url
 		}
-		d.Forges[id] = httpapi.ClaimForge{Dialect: dialect, URL: url, PloegdURL: f.url, CommitName: f.commitName, CommitEmail: f.commitEmail}
+		d.Forges[id] = httpapi.ClaimForge{Dialect: dialect, URL: url, PloegdURL: f.url, Committer: f.committer}
 	}
 	if len(d.Forges) == 0 && len(d.Runtime) == 0 {
 		return nil
@@ -220,4 +205,24 @@ func forgeIDsOf(forges map[string]provider.ForgeProvider, fp provider.ForgeProvi
 	}
 	sort.Strings(ids)
 	return ids
+}
+
+// staticCommitter reads, once, the account a static forge's token belongs
+// to: the bot every Run on that forge pushes as.
+func staticCommitter(dialect, url, token string) forgeidentity.Source {
+	return forgeidentity.Cached(forgeidentity.FromToken(dialect, url, func(context.Context, string, string) (string, error) {
+		return token, nil
+	}, nil), forgeidentity.Shared)
+}
+
+// githubCommitter is the GitHub App's bot when Runs push with its
+// installation tokens, else the account of the static token.
+func githubCommitter(p *github.Provider, app *githubapp.Minter) forgeidentity.Source {
+	if app != nil {
+		return forgeidentity.Cached(forgeidentity.FromGitHubApp(app), forgeidentity.Shared)
+	}
+	if p.Tokens == nil {
+		return nil
+	}
+	return forgeidentity.Cached(forgeidentity.FromToken("github", p.BaseURL, p.Tokens.Token, nil), forgeidentity.Shared)
 }

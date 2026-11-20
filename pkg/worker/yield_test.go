@@ -87,7 +87,7 @@ func TestYieldedWriterPushesItsWorkInProgressToTheBranch(t *testing.T) {
 		t.Fatalf("report = %+v, want no failure and the agent's usage kept", report)
 	}
 	message := forge.git(t, "log", "-1", "--format=%an%n%B", head)
-	for _, want := range []string{"agent-builder", yieldCommitSubject, "VIK-7", "Agent-Trace-Id: trace", "Ploeg-Yield: trace"} {
+	for _, want := range []string{fallbackCommitName, yieldCommitSubject, "VIK-7", "Agent-Trace-Id: trace", "Ploeg-Yield: trace"} {
 		if !strings.Contains(message, want) {
 			t.Fatalf("commit message lacks %q:\n%s", want, message)
 		}
@@ -100,15 +100,23 @@ func TestYieldedWriterPushesItsWorkInProgressToTheBranch(t *testing.T) {
 	}
 }
 
-// ADR-0016: a Run commits as the identity its forge configures, and as a
-// default that names no installation when the forge configures none.
-func TestYieldedWorkIsCommittedAsTheIdentityTheClaimsForgeConfigures(t *testing.T) {
+// ADR-0206: a Run commits as the account its forge credential pushes as,
+// names the Run, the Work Item and the person it acts for in trailers, and
+// falls back to a neutral identity only when ploegd read none.
+func TestYieldedWorkIsCommittedAsTheForgeAccountAndNamesThePerson(t *testing.T) {
 	for name, tc := range map[string]struct {
-		claimName, claimEmail string
-		want                  string
+		attribution *work.Attribution
+		want        string
+		trailers    []string
 	}{
-		"configured": {claimName: "Ploeg Agent", claimEmail: "ploeg-agent@forge.example", want: "Ploeg Agent <ploeg-agent@forge.example>"},
-		"default":    {want: "agent-builder <agent-builder@ploeg.invalid>"},
+		"forge account": {
+			attribution: &work.Attribution{Committer: &work.GitIdentity{Name: "ploeg-fixture[bot]", Email: "41898282+ploeg-fixture[bot]@users.noreply.github.com"},
+				Person: "oidc-0123456789abcdef0123456789abcdef", PersonProof: "proven", Run: "42"},
+			want: "ploeg-fixture[bot] <41898282+ploeg-fixture[bot]@users.noreply.github.com>",
+			trailers: []string{"Ploeg-Run: 42", "Work-Item: VIK-7 https://tracker.example/tasks/7",
+				"Ploeg-Acts-For: oidc-0123456789abcdef0123456789abcdef (proven)"},
+		},
+		"fallback": {want: "ploeg-agent <agent@ploeg.invalid>", trailers: []string{"Work-Item: VIK-7 https://tracker.example/tasks/7"}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			forge := newWriterForge(t, false, pullsNone)
@@ -120,7 +128,8 @@ func TestYieldedWorkIsCommittedAsTheIdentityTheClaimsForgeConfigures(t *testing.
 				writeTree(t, dir, map[string]string{"main.go": "package main\n\nfunc half() {}\n"})
 			}}
 			report := runYieldingWriter(t, forge, adapter, nil, func(c *ClaimResponse) {
-				c.CommitName, c.CommitEmail = tc.claimName, tc.claimEmail
+				c.Attribution = tc.attribution
+				c.WorkItem.URL = "https://tracker.example/tasks/7"
 			})
 			if report.Yield == nil || !report.Yield.Pushed {
 				t.Fatalf("report = %+v, want a pushed yield", report)
@@ -128,9 +137,18 @@ func TestYieldedWorkIsCommittedAsTheIdentityTheClaimsForgeConfigures(t *testing.
 			if checkoutIdentity != tc.want {
 				t.Errorf("the agent's checkout commits as %q, want %q", checkoutIdentity, tc.want)
 			}
-			got := forge.git(t, "log", "-1", "--format=%an <%ae>%n%cn <%ce>", forge.branchHead())
-			if got != tc.want+"\n"+tc.want {
+			if strings.Join(adapter.spec.Trailers, "|") != strings.Join(tc.trailers, "|") {
+				t.Errorf("the Task Spec's trailers are %q, want %q", adapter.spec.Trailers, tc.trailers)
+			}
+			head := forge.branchHead()
+			if got := forge.git(t, "log", "-1", "--format=%an <%ae>%n%cn <%ce>", head); got != tc.want+"\n"+tc.want {
 				t.Errorf("the yield commit's author and committer are %q, want %q", got, tc.want)
+			}
+			message := forge.git(t, "log", "-1", "--format=%B", head)
+			for _, trailer := range tc.trailers {
+				if !strings.Contains(message, "\n"+trailer+"\n") {
+					t.Errorf("the yield commit lacks %q:\n%s", trailer, message)
+				}
 			}
 		})
 	}

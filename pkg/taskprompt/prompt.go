@@ -147,6 +147,9 @@ func Compose(spec harness.TaskSpec, writes bool, priorPR string, onReviewBranch 
   %[2]s
   Agent-Trace-Id: %[3]s
 `, spec.Branch, ref, spec.TraceID, base)
+	for _, trailer := range spec.Trailers {
+		fmt.Fprintf(&b, "  %s\n", trailer)
+	}
 
 	if priorPR != "" {
 		fmt.Fprintf(&b, `- A %[3]s is ALREADY OPEN on this branch: %[1]s

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/ploeg-hq/ploeg/pkg/forgebroker"
+	"github.com/ploeg-hq/ploeg/pkg/forgeidentity"
 	"github.com/ploeg-hq/ploeg/pkg/harness"
 	"github.com/ploeg-hq/ploeg/pkg/plan"
 	"github.com/ploeg-hq/ploeg/pkg/shiftengine"
@@ -45,7 +46,9 @@ func (b *askedBroker) Revoke(_ context.Context, cred forgebroker.Credential) err
 func twoForges() *ForgeDirectory {
 	return &ForgeDirectory{Default: "forgejo", Forges: map[string]ClaimForge{
 		"forgejo": {Dialect: harness.ForgeForgejo, URL: "http://forgejo-http.forgejo.svc:3000", PloegdURL: "https://forgejo.example.com",
-			CommitName: "forgejo-agent", CommitEmail: "forgejo-agent@forgejo.example.com"},
+			Committer: func(context.Context, string, string) (forgeidentity.Identity, error) {
+				return forgeidentity.Identity{Name: "Ploeg Bot", Email: "bot@forgejo.example.com"}, nil
+			}},
 		"github": {Dialect: harness.ForgeGitHub, URL: "https://github.com", PloegdURL: "https://github.com"},
 	}}
 }
@@ -83,8 +86,7 @@ func shiftOn(t *testing.T, externalID, forge string, roles ...store.Role) {
 func TestClaim_CarriesTheForgeResolvedFromTheWorkTarget(t *testing.T) {
 	for forge, want := range map[string]ClaimForge{
 		"github": {Dialect: "github", URL: "https://github.com", PloegdURL: "https://github.com"},
-		"": {Dialect: "forgejo", URL: "http://forgejo-http.forgejo.svc:3000", PloegdURL: "https://forgejo.example.com",
-			CommitName: "forgejo-agent", CommitEmail: "forgejo-agent@forgejo.example.com"},
+		"":       {Dialect: "forgejo", URL: "http://forgejo-http.forgejo.svc:3000", PloegdURL: "https://forgejo.example.com"},
 	} {
 		t.Run("forge "+forge, func(t *testing.T) {
 			reset(t)
@@ -97,11 +99,18 @@ func TestClaim_CarriesTheForgeResolvedFromTheWorkTarget(t *testing.T) {
 			if resp.ForgeDialect != want.Dialect || resp.ForgeURL != want.URL {
 				t.Errorf("claim forge = %q %q, want %+v", resp.ForgeDialect, resp.ForgeURL, want)
 			}
-			if resp.CommitName != want.CommitName || resp.CommitEmail != want.CommitEmail {
-				t.Errorf("claim commit identity = %q %q, want %+v", resp.CommitName, resp.CommitEmail, want)
-			}
 			if len(broker.asked) != 1 || broker.asked[0].Forge != forge || broker.asked[0].Read {
 				t.Errorf("mint asked %+v, want one push credential on forge %q", broker.asked, forge)
+			}
+			a := resp.Attribution
+			if a == nil || a.Run == "" {
+				t.Fatalf("attribution = %+v, want the Run's id", a)
+			}
+			switch {
+			case forge == "" && (a.Committer == nil || *a.Committer != work.GitIdentity{Name: "Ploeg Bot", Email: "bot@forgejo.example.com"}):
+				t.Errorf("the forgejo Run commits as %+v, want the forge account", a.Committer)
+			case forge == "github" && a.Committer != nil:
+				t.Errorf("a forge without a committer source named %+v", a.Committer)
 			}
 		})
 	}
@@ -354,5 +363,26 @@ func TestRefreshForgeCredential_AReadingRunGetsAFreshReadCredential(t *testing.T
 	}
 	if len(broker.asked) != 2 || !broker.asked[1].Read || broker.asked[1].Forge != "github" {
 		t.Fatalf("mints asked %+v, want a second read credential on github", broker.asked)
+	}
+}
+
+func TestClaim_AttributesTheRunToThePersonItActsFor(t *testing.T) {
+	reset(t)
+	shiftOn(t, "1905", "", store.Role{Name: "builder", Writes: true, Cap: 1})
+	h := (&Server{
+		Store:          testStore,
+		LeaseTTL:       time.Minute,
+		Log:            slog.New(slog.DiscardHandler),
+		ForgeCreds:     &askedBroker{},
+		ClaimForges:    twoForges(),
+		TeamSponsors:   map[string]string{"bronze": "oidc-0123456789abcdef0123456789abcdef"},
+		WorkerSecurity: &WorkerSecurity{AllowLegacy: true},
+	}).Handler()
+	code, resp := postClaim(t, h, `{"team":"bronze","role":"builder","harness":"openhands","forgeTokenIsolation":"proxy","llmKeyIsolation":"proxy"}`)
+	if code != http.StatusOK {
+		t.Fatalf("claim returned %d, want 200", code)
+	}
+	if a := resp.Attribution; a == nil || a.Person != "oidc-0123456789abcdef0123456789abcdef" || a.PersonProof != "sponsor" {
+		t.Fatalf("attribution = %+v, want the Team's sponsor", a)
 	}
 }
