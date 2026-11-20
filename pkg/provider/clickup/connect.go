@@ -64,7 +64,7 @@ const maxVisibleWalk = 500
 // ProbeConnection reads GET /v2/user and walks workspaces, Spaces and
 // Folders for the Lists the token can see, stopping after 500.
 func (Connector) ProbeConnection(ctx context.Context, inst provider.ConnectionInstance, cred provider.ConnectionCredential) (provider.ConnectionProbe, error) {
-	auth := "Bearer " + cred.Token
+	auth := cred.Token
 	base := apiURL(inst)
 	var user struct {
 		User struct {
