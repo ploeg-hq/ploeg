@@ -33,7 +33,7 @@ config:
     clickup:
       projects:
         - id: "901234"
-          repo: webgrip/site
+          repo: acme/site
           gates:
             test: ["qa"]
             done: ["complete"]

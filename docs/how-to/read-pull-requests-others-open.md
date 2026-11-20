@@ -53,7 +53,7 @@ In the configuration file (`config:` in the chart), on the registered target, on
 ```yaml
 targets:
   app:
-    repo: webgrip/app
+    repo: acme/app
     branch: development
     forge: forgejo
     readPullRequests:

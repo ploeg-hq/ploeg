@@ -31,7 +31,7 @@ executor:
       harness:
         toolchains:
           - name: go
-            image: harbor.webgrip.dev/dockerhub/library/golang:1.27-alpine@sha256:<digest>
+            image: registry.example.com/library/golang:1.27-alpine@sha256:<digest>
             path: [/usr/local/go/bin]
             env: {GOTOOLCHAIN: local}
         verify:
@@ -70,7 +70,7 @@ After the worker's checks pass, the Shift does not settle until the forge report
   ```yaml
   targets:
     ploeg:
-      repo: webgrip/ploeg
+      repo: acme/widgets
       ci:
         waitTimeout: 90m
   ```

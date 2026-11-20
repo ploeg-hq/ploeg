@@ -202,7 +202,7 @@ func (m *MapResolver) withForge(t work.Target) work.Target {
 //
 //	<scope>[/<team>]=<owner>/<repo>[@<baseBranch>][;forge=<id>], comma separated
 //
-// e.g. "11/bronze=webgrip/erfbeeld@main,11/silver=webgrip/ploeg@development,14=webgrip/homelab-cluster@main"
+// e.g. "11/bronze=acme/site@main,11/silver=acme/widgets@development,14=acme/infra@main"
 //
 // A malformed entry is an error rather than a silent drop: a typo that routes
 // work to the wrong repository must never boot.

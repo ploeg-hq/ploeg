@@ -50,7 +50,7 @@ func (f *writerForge) git(t *testing.T, args ...string) string {
 	return strings.TrimSpace(string(out))
 }
 
-func runYieldingWriter(t *testing.T, forge *writerForge, adapter harness.Adapter, handback *work.Handback) harness.OutcomeReport {
+func runYieldingWriter(t *testing.T, forge *writerForge, adapter harness.Adapter, handback *work.Handback, claim ...func(*ClaimResponse)) harness.OutcomeReport {
 	t.Helper()
 	var rec checkpointRecorder
 	w := New(Config{APIURL: rec.server(t), ForgeURL: forge.url, DefaultForge: harness.ForgeForgejo, BuilderToken: "tok",
@@ -60,6 +60,9 @@ func runYieldingWriter(t *testing.T, forge *writerForge, adapter harness.Adapter
 	w.yield.raise()
 	claimed := &ClaimResponse{RunToken: "rt", Role: "builder", Round: 3, Writes: true, Handback: handback,
 		WorkItem: work.WorkItem{ID: "1", ExternalID: "7", Title: "t"}}
+	for _, edit := range claim {
+		edit(claimed)
+	}
 	return w.execute(context.Background(), claimed, writerBranch, "trace", "", "")
 }
 
@@ -94,6 +97,42 @@ func TestYieldedWriterPushesItsWorkInProgressToTheBranch(t *testing.T) {
 	}
 	if out, err := exec.Command("git", "--git-dir", forge.bare, "cat-file", "-e", head+":bin/out").CombinedOutput(); err == nil {
 		t.Fatalf("an ignored file was committed: %s", out)
+	}
+}
+
+// ADR-0016: a Run commits as the identity its forge configures, and as a
+// default that names no installation when the forge configures none.
+func TestYieldedWorkIsCommittedAsTheIdentityTheClaimsForgeConfigures(t *testing.T) {
+	for name, tc := range map[string]struct {
+		claimName, claimEmail string
+		want                  string
+	}{
+		"configured": {claimName: "Ploeg Agent", claimEmail: "ploeg-agent@forge.example", want: "Ploeg Agent <ploeg-agent@forge.example>"},
+		"default":    {want: "agent-builder <agent-builder@ploeg.invalid>"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			forge := newWriterForge(t, false, pullsNone)
+			var checkoutIdentity string
+			adapter := &yieldingAdapter{edit: func(dir string, _ harness.RunEnv) {
+				nameOut, _ := exec.Command("git", "-C", dir, "config", "user.name").Output()
+				emailOut, _ := exec.Command("git", "-C", dir, "config", "user.email").Output()
+				checkoutIdentity = strings.TrimSpace(string(nameOut)) + " <" + strings.TrimSpace(string(emailOut)) + ">"
+				writeTree(t, dir, map[string]string{"main.go": "package main\n\nfunc half() {}\n"})
+			}}
+			report := runYieldingWriter(t, forge, adapter, nil, func(c *ClaimResponse) {
+				c.CommitName, c.CommitEmail = tc.claimName, tc.claimEmail
+			})
+			if report.Yield == nil || !report.Yield.Pushed {
+				t.Fatalf("report = %+v, want a pushed yield", report)
+			}
+			if checkoutIdentity != tc.want {
+				t.Errorf("the agent's checkout commits as %q, want %q", checkoutIdentity, tc.want)
+			}
+			got := forge.git(t, "log", "-1", "--format=%an <%ae>%n%cn <%ce>", forge.branchHead())
+			if got != tc.want+"\n"+tc.want {
+				t.Errorf("the yield commit's author and committer are %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
 

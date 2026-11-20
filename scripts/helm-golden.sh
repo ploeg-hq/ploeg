@@ -5,8 +5,8 @@
 # golden; `update` regenerates them after an intended change.
 #
 # Why a chart has goldens at all: the worker pod is a security boundary. Its
-# privileged DinD sidecar is waived by a Kyverno PolicyException in
-# webgrip/homelab-cluster that matches the `ploeg.webgrip.dev/privileged-dind`
+# privileged DinD sidecar is waived by an admission policy exception in
+# the cluster that runs Ploeg, which matches the `ploeg.webgrip.dev/privileged-dind`
 # label THIS chart emits. A template edit that put that label on a workload
 # which takes no privilege — or dropped it from one that does — would widen or
 # void a security waiver with nothing in the diff to review. The goldens make
@@ -708,6 +708,6 @@ if [ "$mode" = "check" ] && [ "$status" -ne 0 ]; then
 	echo
 	echo "Read it carefully when it touches a securityContext, a privileged"
 	echo "container, or the ploeg.webgrip.dev/privileged-dind label: that label"
-	echo "is what the Kyverno PolicyException in webgrip/homelab-cluster waives."
+	echo "is what an admission policy exception in the cluster that runs Ploeg waives."
 fi
 exit $status

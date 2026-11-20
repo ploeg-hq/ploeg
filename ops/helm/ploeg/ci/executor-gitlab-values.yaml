@@ -32,6 +32,8 @@ executor:
       name: ploeg-gitlab-webhook
       key: PLOEG_GITLAB_SECRET
     mintPerRun: true
+    commitName: ploeg-agent
+    commitEmail: ploeg-agent@gitlab.example.com
   teams:
     - name: silver
       model: litellm_proxy/claude-sonnet-5

@@ -250,6 +250,14 @@ spec:
             - name: PLOEG_FORGEJO_BOT
               value: {{ . | quote }}
             {{- end }}
+            {{- with .commitName }}
+            - name: PLOEG_FORGEJO_COMMIT_NAME
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .commitEmail }}
+            - name: PLOEG_FORGEJO_COMMIT_EMAIL
+              value: {{ . | quote }}
+            {{- end }}
             {{- with .webhookSecret }}
             - name: PLOEG_FORGEJO_SECRET
               valueFrom:
@@ -274,6 +282,14 @@ spec:
                  Run with it. */}}
             - name: PLOEG_GITLAB_MINT_PER_RUN
               value: "on"
+            {{- end }}
+            {{- with .commitName }}
+            - name: PLOEG_GITLAB_COMMIT_NAME
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .commitEmail }}
+            - name: PLOEG_GITLAB_COMMIT_EMAIL
+              value: {{ . | quote }}
             {{- end }}
             {{- with .webhookSecret }}
             - name: PLOEG_GITLAB_SECRET
@@ -307,6 +323,14 @@ spec:
             {{- end }}
             {{- with .botLogin }}
             - name: PLOEG_GITHUB_BOT
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .commitName }}
+            - name: PLOEG_GITHUB_COMMIT_NAME
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .commitEmail }}
+            - name: PLOEG_GITHUB_COMMIT_EMAIL
               value: {{ . | quote }}
             {{- end }}
             {{- end }}

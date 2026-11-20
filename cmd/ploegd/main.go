@@ -202,7 +202,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 			Log:     log,
 		}
 		forges[fj.Name()] = fj
-		active[fj.Name()] = activeForge{provider: fj, url: forgeURL, workerURL: workerURLFromEnv(fj.Name())}
+		active[fj.Name()] = activeForgeFromEnv(fj, forgeURL)
 		log.Info("forge provider configured", "dialect", fj.Name(), "url", forgeURL)
 		if fj.Secret == "" {
 			log.Warn("PLOEG_FORGEJO_SECRET is unset; every Forgejo webhook is rejected")
@@ -216,7 +216,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 			Log:     log,
 		}
 		forges[gl.Name()] = gl
-		active[gl.Name()] = activeForge{provider: gl, url: glURL, workerURL: workerURLFromEnv(gl.Name())}
+		active[gl.Name()] = activeForgeFromEnv(gl, glURL)
 		log.Info("forge provider configured", "dialect", gl.Name(), "url", glURL)
 		if gl.Secret == "" {
 			log.Warn("PLOEG_GITLAB_SECRET is unset; every GitLab webhook is rejected")
@@ -228,7 +228,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 	}
 	if ghForge != nil {
 		forges[ghForge.Name()] = ghForge
-		active[ghForge.Name()] = activeForge{provider: ghForge, url: ghForge.BaseURL, workerURL: workerURLFromEnv(ghForge.Name())}
+		active[ghForge.Name()] = activeForgeFromEnv(ghForge, ghForge.BaseURL)
 		log.Info("forge provider configured", "dialect", ghForge.Name(), "url", ghForge.BaseURL)
 	}
 	// Bind the INSTANCE id (ADR-0016) to a dialect. PLOEG_TARGET_FORGE names

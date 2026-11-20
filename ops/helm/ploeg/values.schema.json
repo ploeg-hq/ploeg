@@ -1732,6 +1732,14 @@
               "$ref": "#/definitions/secretRef",
               "description": "Verifies X-Hub-Signature-256 on POST /webhooks/forge/github. Unset = every GitHub forge webhook is rejected."
             },
+            "commitName": {
+              "type": "string",
+              "description": "Git author and committer name of the commits a Run on this forge makes (PLOEG_GITHUB_COMMIT_NAME, ADR-0016). Empty = agent-builder."
+            },
+            "commitEmail": {
+              "type": "string",
+              "description": "Git author and committer e-mail of the commits a Run on this forge makes (PLOEG_GITHUB_COMMIT_EMAIL, ADR-0016). Set it to the App's bot noreply address, <bot user id>+<app slug>[bot]@users.noreply.github.com, so GitHub attributes the commits to the App. Empty = agent-builder@ploeg.invalid, which no forge links to an account."
+            },
             "botLogin": {
               "type": "string",
               "description": "The GitHub App's bot login, e.g. ploeg[bot], so Ploeg's own reviews never trigger rework."
@@ -1764,6 +1772,14 @@
               "$ref": "#/definitions/secretRef",
               "description": "Shared secret GitLab sends as X-Gitlab-Token to POST /webhooks/forge/gitlab. Unset = every forge webhook is rejected."
             },
+            "commitName": {
+              "type": "string",
+              "description": "Git author and committer name of the commits a Run on this forge makes (PLOEG_GITLAB_COMMIT_NAME, ADR-0016). Empty = agent-builder."
+            },
+            "commitEmail": {
+              "type": "string",
+              "description": "Git author and committer e-mail of the commits a Run on this forge makes (PLOEG_GITLAB_COMMIT_EMAIL, ADR-0016). Set it to the bot or service account's commit e-mail so GitLab attributes the commits to it. Empty = agent-builder@ploeg.invalid, which no forge links to an account."
+            },
             "mintPerRun": {
               "type": "boolean",
               "description": "ADR-0203: tokenSecret is a group service account's token with api scope and Maintainer on the target projects, and ploegd mints a project access token per Run with it (Developer for a writing Run, Reporter for a reading one), revoked when the Run settles. Required for GitLab to serve beside another forge (ADR-0192). False = writing Runs share tokenSecret."
@@ -1794,6 +1810,14 @@
             "botPasswordSecret": {
               "$ref": "#/definitions/secretRef",
               "description": "ADR-0013 tier 2: the password of botUser, which ploegd uses to MINT per-run push tokens limited to the Run's repository. Held only by ploegd, never by a worker. Unset = nothing is minted."
+            },
+            "commitName": {
+              "type": "string",
+              "description": "Git author and committer name of the commits a Run on this forge makes (PLOEG_FORGEJO_COMMIT_NAME, ADR-0016). Empty = agent-builder."
+            },
+            "commitEmail": {
+              "type": "string",
+              "description": "Git author and committer e-mail of the commits a Run on this forge makes (PLOEG_FORGEJO_COMMIT_EMAIL, ADR-0016). Set it to an e-mail of botUser so Forgejo attributes the commits to it. Empty = agent-builder@ploeg.invalid, which no forge links to an account."
             },
             "botUser": {
               "type": "string",

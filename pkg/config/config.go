@@ -2,7 +2,7 @@
 // rather than from environment variables.
 //
 // The env-var forms it replaces — PLOEG_TARGET_MAP's
-// "11/bronze=webgrip/ploeg@development,…", PLOEG_TEAM_MAP's "jake=bronze,…"
+// "11/bronze=acme/widgets@development,…", PLOEG_TEAM_MAP's "jake=bronze,…"
 // and PLOEG_TEAM_PLANS' inlined JSON — were three hand-rolled DSLs with no
 // schema, no comments and no diff worth reading. They also forced the
 // operator to write a Vikunja project ID into cluster config, where a bare
@@ -15,7 +15,7 @@
 //	  vikunja:
 //	    projects:
 //	      - name: "Ploeg Test"          # resolved to an id at boot
-//	        repo: webgrip/ploeg
+//	        repo: acme/widgets
 //	        branch: development
 //
 // ploegd asks the tracker which id that name has when it starts, logs the

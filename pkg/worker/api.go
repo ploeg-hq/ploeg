@@ -120,6 +120,12 @@ type ClaimResponse struct {
 	// PLOEG_TARGET_FORGE and FORGE_URL; empty keeps those.
 	ForgeDialect string `json:"forgeDialect,omitempty"`
 	ForgeURL     string `json:"forgeUrl,omitempty"`
+	// CommitName and CommitEmail are the git identity the Run commits as,
+	// configured on its forge (ADR-0016). Empty from an older ploegd or a
+	// forge that configures none: the worker then commits as
+	// defaultCommitName and defaultCommitEmail.
+	CommitName  string `json:"commitName,omitempty"`
+	CommitEmail string `json:"commitEmail,omitempty"`
 	// Planner selects the planner prompt (ADR-0031): the Run splits or
 	// clarifies its Work Item and returns created Work Items, not code.
 	Planner bool `json:"planner,omitempty"`

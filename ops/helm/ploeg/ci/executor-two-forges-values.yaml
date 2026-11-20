@@ -40,6 +40,8 @@ executor:
       name: agent-builder-password
       key: FORGEJO_BOT_PASSWORD
     botUser: agent-builder
+    commitName: agent-builder
+    commitEmail: agent-builder@forgejo.example.com
     webhookSecret:
       name: ploeg-forge-webhook
       key: PLOEG_FORGEJO_SECRET
@@ -49,6 +51,8 @@ executor:
       name: ploeg-github-forge-webhook
       key: PLOEG_GITHUB_FORGE_SECRET
     botLogin: ploeg[bot]
+    commitName: ploeg[bot]
+    commitEmail: 123456+ploeg[bot]@users.noreply.github.com
   workerAuth:
     mode: managed
     hmacCapability: "off"
