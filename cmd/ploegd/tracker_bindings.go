@@ -87,7 +87,7 @@ func (r runtimeTrackerConnections) TrackerConnection(ctx context.Context, id str
 	if err != nil || row.RemovedAt != nil || row.Port != connection.PortTracker {
 		return trackerbinding.Connection{}, false
 	}
-	c := trackerbinding.Connection{ID: row.ID, Kind: row.Kind, Runtime: true, State: row.State, HandOverAgent: row.HandOverAgent,
+	c := trackerbinding.Connection{ID: row.ID, Kind: row.Kind, Runtime: true, State: row.State, HandOverAgent: r.svc.Connectors[row.Kind].HandOverAgent,
 		WebhookEndpoint: trackerWebhookEndpoint(row.Kind), Secrets: bindingWebhookSink(r.secrets, row.Kind)}
 	c.RegisterWebhooks = c.Secrets != nil && c.WebhookEndpoint != ""
 	if row.State != connection.StateActive {
@@ -99,7 +99,7 @@ func (r runtimeTrackerConnections) TrackerConnection(ctx context.Context, id str
 	}
 	if row.Kind == "clickup" {
 		var account provider.ConnectionAccount
-		if json.Unmarshal(row.Account, &account) == nil && row.HandOverAgent && account.Login != "" {
+		if json.Unmarshal(row.Account, &account) == nil && account.Login != "" {
 			c.Agents = []string{account.Login}
 		}
 		c.Tracker = &clickup.Provider{Token: cred.Token, BaseURL: clickup.ConnectionBaseURL(r.svc.Instances[row.Instance])}
@@ -133,9 +133,7 @@ func (c clickupConnections) connection(ctx context.Context, row store.Connection
 	}
 	out := clickup.Connection{ID: row.ID, Token: cred.Token, BaseURL: clickup.ConnectionBaseURL(c.runtime.svc.Instances[row.Instance]),
 		ScopeStatuses: c.reg.ScopeStatuses(row.ID)}
-	if row.HandOverAgent {
-		out.Agent = row.AccountID
-	}
+	out.Agent = row.AccountID
 	return out, true
 }
 
@@ -146,7 +144,7 @@ func (c clickupConnections) HandOverAgents(ctx context.Context, userID string) [
 	}
 	var out []clickup.Connection
 	for _, row := range rows {
-		if !row.HandOverAgent || row.AccountID != userID {
+		if row.AccountID != userID {
 			continue
 		}
 		if conn, ok := c.connection(ctx, row); ok {

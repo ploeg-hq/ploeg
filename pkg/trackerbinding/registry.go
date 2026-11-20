@@ -44,8 +44,9 @@ type Connection struct {
 	// Agents are the tracker users whose assignment hands work over
 	// (trackers.clickup.agents).
 	Agents []string
-	// HandOverAgent makes the connection's own account a hand-over agent for
-	// the Scopes bound through it (ADR-0195 section 9).
+	// HandOverAgent reports that the connection's own account hands work over
+	// on the Scopes bound through it, which holds for every connection of a
+	// kind whose adapter recognises it (ADR-0207).
 	HandOverAgent bool
 	// WebhookEndpoint is the URL a webhook for this connection delivers to;
 	// empty accepts any on the tracker's webhook path.

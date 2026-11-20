@@ -292,8 +292,8 @@ type Connector struct {
 	TokenOnly bool
 	// HandOverAgent reports that the kind's tracker intake recognises an
 	// assignment to a connection's own account on a Scope bound through that
-	// connection (ADR-0195 section 9). Without it handOverAgent: true is
-	// refused with capability_missing.
+	// connection, so every connection of the kind hands work over that way
+	// (ADR-0207).
 	HandOverAgent bool
 }
 

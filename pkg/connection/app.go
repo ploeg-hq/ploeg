@@ -89,7 +89,7 @@ func (s *Service) completeInstallation(ctx context.Context, caller Caller, flow 
 		return Completed{}, storeError(err)
 	}
 	row := store.ConnectionRow{Tenant: s.tenant(), Port: start.Port, Kind: start.Kind, Instance: start.Instance, Method: MethodGitHubAppInstallation,
-		App: app.ID, InstallationID: installationID, HandOverAgent: start.HandOverAgent, Label: start.Label, CreatedBy: caller.Person, UpdatedBy: caller.Person,
+		App: app.ID, InstallationID: installationID, Label: start.Label, CreatedBy: caller.Person, UpdatedBy: caller.Person,
 		Secrets: mustJSON(secretsField{App: refs.App})}
 	installation, err := conn.Manifest.Installation(ctx, inst, app.AppID, values["private_key"], installationID)
 	switch {

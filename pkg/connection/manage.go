@@ -57,10 +57,7 @@ func (s *Service) view(ctx context.Context, row store.ConnectionRow) View {
 			}
 		}
 	}
-	if row.Port == PortTracker {
-		hand := row.HandOverAgent
-		v.HandOverAgent = &hand
-	} else if v.CanMint == nil {
+	if row.Port != PortTracker && v.CanMint == nil {
 		f := false
 		v.CanMint = &f
 	}
@@ -69,12 +66,7 @@ func (s *Service) view(ctx context.Context, row store.ConnectionRow) View {
 }
 
 func staticView(st Static) View {
-	v := View{ID: st.ID, Port: st.Port, Kind: st.Kind, Instance: st.Instance, Source: "static", State: StateActive, UsedBy: []Use{}}
-	if st.Port == PortTracker {
-		f := false
-		v.HandOverAgent = &f
-	}
-	return v
+	return View{ID: st.ID, Port: st.Port, Kind: st.Kind, Instance: st.Instance, Source: "static", State: StateActive, UsedBy: []Use{}}
 }
 
 // List answers the live connections of port, static first by id, paged
@@ -172,7 +164,7 @@ func (s *Service) Probe(ctx context.Context, caller Caller, port, id string) (Vi
 	return s.view(ctx, fresh), report, nil
 }
 
-// Patch changes label and handOverAgent at revision.
+// Patch changes the label at revision.
 func (s *Service) Patch(ctx context.Context, caller Caller, port, id string, revision int64, req PatchRequest) (View, *Error) {
 	if e := s.Accepting(); e != nil {
 		return View{}, e
@@ -183,24 +175,15 @@ func (s *Service) Patch(ctx context.Context, caller Caller, port, id string, rev
 	if req.Label != nil && len([]rune(*req.Label)) > MaxLabel {
 		return View{}, refuse(400, "invalid_request", "label is at most 200 characters.")
 	}
-	if req.HandOverAgent != nil && port != PortTracker {
-		return View{}, refuse(400, "invalid_request", "handOverAgent is for tracker connections only.")
-	}
 	row, e := s.live(ctx, port, id)
 	if e != nil {
 		return View{}, e
-	}
-	if req.HandOverAgent != nil && *req.HandOverAgent && !s.Connectors[row.Kind].HandOverAgent {
-		return View{}, refuse(422, "capability_missing", handOverMissing)
 	}
 	detail := map[string]any{"connection": id, "kind": row.Kind, "instance": row.Instance}
 	if req.Label != nil {
 		detail["label"] = *req.Label
 	}
-	if req.HandOverAgent != nil {
-		detail["handOverAgent"] = *req.HandOverAgent
-	}
-	saved, err := s.Store.PatchConnection(ctx, s.tenant(), id, revision, req.Label, req.HandOverAgent, caller.Person,
+	saved, err := s.Store.PatchConnection(ctx, s.tenant(), id, revision, req.Label, caller.Person,
 		[]store.ConnectionAudit{s.audit(caller.Person, "connection.updated", &caller, detail)})
 	if errors.Is(err, store.ErrRevisionStale) {
 		return View{}, refuse(412, "revision_stale", "The connection changed since that revision; read it again.")

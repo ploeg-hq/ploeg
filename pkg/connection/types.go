@@ -73,7 +73,6 @@ type View struct {
 	Source        string                      `json:"source"`
 	State         string                      `json:"state"`
 	InvalidReason *string                     `json:"invalidReason"`
-	HandOverAgent *bool                       `json:"handOverAgent,omitempty"`
 	CanMint       *bool                       `json:"canMint,omitempty"`
 	Label         string                      `json:"label"`
 	Revision      int64                       `json:"revision"`
@@ -179,17 +178,16 @@ type Left struct {
 
 // StartRequest is the body of POST /connection-flows.
 type StartRequest struct {
-	Port          string `json:"port"`
-	Kind          string `json:"kind"`
-	Instance      string `json:"instance"`
-	Method        string `json:"method"`
-	RedirectURI   string `json:"redirectUri,omitempty"`
-	App           string `json:"app,omitempty"`
-	Owner         string `json:"owner,omitempty"`
-	Connection    string `json:"connection,omitempty"`
-	ID            string `json:"id,omitempty"`
-	Label         string `json:"label,omitempty"`
-	HandOverAgent bool   `json:"handOverAgent,omitempty"`
+	Port        string `json:"port"`
+	Kind        string `json:"kind"`
+	Instance    string `json:"instance"`
+	Method      string `json:"method"`
+	RedirectURI string `json:"redirectUri,omitempty"`
+	App         string `json:"app,omitempty"`
+	Owner       string `json:"owner,omitempty"`
+	Connection  string `json:"connection,omitempty"`
+	ID          string `json:"id,omitempty"`
+	Label       string `json:"label,omitempty"`
 }
 
 // CompleteRequest is the body of POST /connection-flows/complete.
@@ -206,8 +204,7 @@ type CompleteRequest struct {
 
 // PatchRequest is the body of PATCH on a connection.
 type PatchRequest struct {
-	Label         *string `json:"label,omitempty"`
-	HandOverAgent *bool   `json:"handOverAgent,omitempty"`
+	Label *string `json:"label,omitempty"`
 }
 
 // Static is a connection configured through the environment or Helm.

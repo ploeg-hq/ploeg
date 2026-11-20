@@ -337,7 +337,7 @@ func TestConnectionFlowRefusals(t *testing.T) {
 		{"kind not allowed", rig.me(), with("kind", "vikunja"), 422, "kind_not_allowed"},
 		{"method not allowed", rig.me(), with("method", "github_app_manifest"), 422, "method_not_allowed"},
 		{"unknown field", rig.me(), with("secret", "x"), 400, "invalid_request"},
-		{"hand over agent", rig.me(), with("handOverAgent", true), 422, "capability_missing"},
+		{"hand over agent is no option", rig.me(), with("handOverAgent", true), 400, "invalid_request"},
 		{"asserted attribution", rig.token, base, 403, "person_token_required"},
 		{"static id", rig.me(), with("id", "clickup"), 409, "id_taken"},
 	}

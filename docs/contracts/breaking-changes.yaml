@@ -127,3 +127,15 @@ exceptions:
     surface: environment
     pointer: ploegd/PLOEG_GITLAB_COMMIT_EMAIL
     adr: "0206"
+  - base: v0.2.0-rc.137
+    surface: docs/contracts/operator-api.v1.schema.json
+    pointer: /$defs/connectionFlowStartRequest/properties/handOverAgent
+    adr: "0207"
+  - base: v0.2.0-rc.137
+    surface: docs/contracts/operator-api.v1.schema.json
+    pointer: /$defs/connectionPatchRequest/properties/handOverAgent
+    adr: "0207"
+  - base: v0.2.0-rc.137
+    surface: docs/contracts/operator-api.v1.schema.json
+    pointer: /$defs/managedConnection/properties/handOverAgent
+    adr: "0207"

@@ -8962,10 +8962,6 @@
             }
           ]
         },
-        "handOverAgent": {
-          "type": "boolean",
-          "description": "Tracker connections only (ADR-0195 section 9)."
-        },
         "canMint": {
           "type": "boolean",
           "description": "Forge connections only: whether per-Run credentials can be minted (ADR-0192)."
@@ -9331,10 +9327,6 @@
         "label": {
           "type": "string",
           "maxLength": 200
-        },
-        "handOverAgent": {
-          "type": "boolean",
-          "description": "Tracker connections only: the connection's own account, by the vendor user id its probe read, becomes a hand-over agent for the Scopes bound through this connection (ADR-0195 section 9). A kind whose adapter does not recognise such an assignment answers 422 capability_missing; ClickUp recognises it."
         }
       }
     },
@@ -9383,10 +9375,6 @@
         "label": {
           "type": "string",
           "maxLength": 200
-        },
-        "handOverAgent": {
-          "type": "boolean",
-          "description": "Tracker connections only: the connection's own account, by the vendor user id its probe read, becomes a hand-over agent for the Scopes bound through this connection (ADR-0195 section 9). A kind whose adapter does not recognise such an assignment answers 422 capability_missing; ClickUp recognises it."
         }
       }
     },

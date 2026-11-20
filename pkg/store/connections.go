@@ -43,7 +43,6 @@ type ConnectionRow struct {
 	InvalidReason  string
 	Secrets        json.RawMessage
 	ExpiresAt      *time.Time
-	HandOverAgent  bool
 	Label          string
 	Revision       int64
 	CreatedBy      string
@@ -59,13 +58,13 @@ type ConnectionRow struct {
 }
 
 const connectionColumns = `id, tenant, port, kind, instance, method, account_id, account, COALESCE(app, ''), COALESCE(installation_id, ''),
-	state, COALESCE(invalid_reason, ''), secrets, expires_at, hand_over_agent, label, revision, created_by, created_at, updated_by, updated_at,
+	state, COALESCE(invalid_reason, ''), secrets, expires_at, label, revision, created_by, created_at, updated_by, updated_at,
 	COALESCE(reconnected_by, ''), reconnected_at, last_probe, last_probe_at, removal, removed_at`
 
 func scanConnection(row pgx.Row) (ConnectionRow, error) {
 	var c ConnectionRow
 	err := row.Scan(&c.ID, &c.Tenant, &c.Port, &c.Kind, &c.Instance, &c.Method, &c.AccountID, &c.Account, &c.App, &c.InstallationID,
-		&c.State, &c.InvalidReason, &c.Secrets, &c.ExpiresAt, &c.HandOverAgent, &c.Label, &c.Revision, &c.CreatedBy, &c.CreatedAt, &c.UpdatedBy, &c.UpdatedAt,
+		&c.State, &c.InvalidReason, &c.Secrets, &c.ExpiresAt, &c.Label, &c.Revision, &c.CreatedBy, &c.CreatedAt, &c.UpdatedBy, &c.UpdatedAt,
 		&c.ReconnectedBy, &c.ReconnectedAt, &c.LastProbe, &c.LastProbeAt, &c.Removal, &c.RemovedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return c, ErrConnectionNotFound
@@ -170,10 +169,10 @@ type FlowOutcome struct {
 func (s *Store) CreateConnection(ctx context.Context, c ConnectionRow, flowID string, outcome FlowOutcome, audits []ConnectionAudit) error {
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		_, err := tx.Exec(ctx, `INSERT INTO connections (id, tenant, port, kind, instance, method, account_id, account, app, installation_id,
-			state, invalid_reason, secrets, expires_at, hand_over_agent, label, created_by, updated_by, last_probe, last_probe_at)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$17,$18,$19)`,
+			state, invalid_reason, secrets, expires_at, label, created_by, updated_by, last_probe, last_probe_at)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$16,$17,$18)`,
 			c.ID, c.Tenant, c.Port, c.Kind, c.Instance, c.Method, c.AccountID, c.Account, nullable(c.App), nullable(c.InstallationID),
-			c.State, nullable(c.InvalidReason), c.Secrets, c.ExpiresAt, c.HandOverAgent, c.Label, c.CreatedBy, c.LastProbe, c.LastProbeAt)
+			c.State, nullable(c.InvalidReason), c.Secrets, c.ExpiresAt, c.Label, c.CreatedBy, c.LastProbe, c.LastProbeAt)
 		if err != nil {
 			return err
 		}
@@ -235,13 +234,13 @@ func (s *Store) ClaimProbe(ctx context.Context, tenant, id string, interval time
 	return tag.RowsAffected() == 1, err
 }
 
-// PatchConnection changes label and hand-over at revision.
-func (s *Store) PatchConnection(ctx context.Context, tenant, id string, revision int64, label *string, handOver *bool, actor string, audits []ConnectionAudit) (ConnectionRow, error) {
+// PatchConnection changes the label at revision.
+func (s *Store) PatchConnection(ctx context.Context, tenant, id string, revision int64, label *string, actor string, audits []ConnectionAudit) (ConnectionRow, error) {
 	var out ConnectionRow
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
-		row, err := scanConnection(tx.QueryRow(ctx, `UPDATE connections SET label = COALESCE($4, label), hand_over_agent = COALESCE($5, hand_over_agent),
-			revision = revision + 1, updated_by = $6, updated_at = now()
-			WHERE tenant = $1 AND id = $2 AND removed_at IS NULL AND revision = $3 RETURNING `+connectionColumns, tenant, id, revision, label, handOver, actor))
+		row, err := scanConnection(tx.QueryRow(ctx, `UPDATE connections SET label = COALESCE($4, label),
+			revision = revision + 1, updated_by = $5, updated_at = now()
+			WHERE tenant = $1 AND id = $2 AND removed_at IS NULL AND revision = $3 RETURNING `+connectionColumns, tenant, id, revision, label, actor))
 		if errors.Is(err, ErrConnectionNotFound) {
 			return ErrRevisionStale
 		}

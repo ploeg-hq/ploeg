@@ -235,43 +235,29 @@ func TestAnAssignmentToTheConnectionsOwnAccountAdmitsTheTaskToTheBoundTeam(t *te
 	}
 }
 
-func TestTheConnectionsOwnAccountBecomesAHandOverAgentOnlyWhereTheAdapterRecognisesIt(t *testing.T) {
+func TestHandingOverIsNoOptionOfAConnection(t *testing.T) {
 	rig := newConnRig(t)
 	start := "/api/v1/operator/connection-flows"
 	body := map[string]any{"port": "tracker", "kind": "clickup", "instance": "clickup-cloud", "method": "oauth", "redirectUri": connRedirect, "handOverAgent": true}
-	if code, out := rig.call("POST", start, rig.me(), body); code != 422 || errCode(out) != "capability_missing" {
-		t.Fatalf("handOverAgent on a kind that does not declare it = %d %v; want 422 capability_missing", code, out)
+	if code, out := rig.call("POST", start, rig.me(), body); code != 400 || errCode(out) != "invalid_request" {
+		t.Fatalf("start with handOverAgent = %d %v; want 400 invalid_request, the field is gone", code, out)
 	}
 
-	cu := rig.svc.Connectors["clickup"]
-	cu.HandOverAgent = true
-	rig.svc.Connectors["clickup"] = cu
-	state, _ := rig.startClickUp(map[string]any{"id": "team-bot", "handOverAgent": true})
+	state, _ := rig.startClickUp(map[string]any{"id": "team-bot"})
 	code, out := rig.call("POST", start+"/complete", rig.me(), map[string]any{"state": state, "code": "c1"})
 	if code != 201 {
 		t.Fatalf("complete = %d %v", code, out)
 	}
 	conn := out["connection"].(map[string]any)
-	if conn["handOverAgent"] != true || conn["account"].(map[string]any)["id"] != "42" {
-		t.Fatalf("connection = %v; want handOverAgent true and the probed account id", conn)
+	if _, shown := conn["handOverAgent"]; shown || conn["account"].(map[string]any)["id"] != "42" {
+		t.Fatalf("connection = %v; want the probed account id and no handOverAgent", conn)
 	}
 	row, err := testStore.Connection(context.Background(), "default", "team-bot")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !row.HandOverAgent || row.AccountID != "42" {
-		t.Fatalf("row hand_over_agent %v account_id %q; want the probe's ClickUp user id as the hand-over agent", row.HandOverAgent, row.AccountID)
-	}
-
-	revision := fmt.Sprintf(`"%d"`, row.Revision)
-	if code, out := rig.call("PATCH", "/api/v1/operator/tracker-connections/team-bot", rig.me(), map[string]any{"handOverAgent": false}, "If-Match", revision); code != 200 || out["connection"].(map[string]any)["handOverAgent"] != false {
-		t.Fatalf("patch off = %d %v", code, out)
-	}
-	cu.HandOverAgent = false
-	rig.svc.Connectors["clickup"] = cu
-	row, _ = testStore.Connection(context.Background(), "default", "team-bot")
-	if code, out := rig.call("PATCH", "/api/v1/operator/tracker-connections/team-bot", rig.me(), map[string]any{"handOverAgent": true}, "If-Match", fmt.Sprintf(`"%d"`, row.Revision)); code != 422 || errCode(out) != "capability_missing" {
-		t.Fatalf("patch on without the capability = %d %v; want 422 capability_missing", code, out)
+	if code, out := rig.call("PATCH", "/api/v1/operator/tracker-connections/team-bot", rig.me(), map[string]any{"handOverAgent": false}, "If-Match", fmt.Sprintf(`"%d"`, row.Revision)); code != 400 || errCode(out) != "invalid_request" {
+		t.Fatalf("patch with handOverAgent = %d %v; want 400 invalid_request", code, out)
 	}
 	rig.assertNoSecrets(clickUpToken, clickUpSecret)
 }
