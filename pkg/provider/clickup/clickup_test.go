@@ -103,13 +103,17 @@ func TestParseWebhookAssignedRoutesToTeam(t *testing.T) {
 	}
 }
 
-func TestParseWebhookUnknownAssigneeGetsDefaultTeam(t *testing.T) {
-	p := &Provider{DefaultTeam: "default", TeamMap: map[string]string{"builder": "silver"}}
+func TestParseWebhookTokenAccountWithoutTeamGetsDefaultTeam(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, `{"user":{"id":42,"username":"ploeg"}}`)
+	}))
+	defer srv.Close()
+	p := &Provider{DefaultTeam: "default", TeamMap: map[string]string{"builder": "silver"}, BaseURL: srv.URL, Token: "pk_test"}
 	evs, err := post(t, p, map[string]any{
 		"event":   "taskAssigneeUpdated",
 		"task_id": "t1",
 		"history_items": []any{
-			map[string]any{"field": "assignee_add", "after": map[string]any{"username": "someone-else"}},
+			map[string]any{"field": "assignee_add", "after": map[string]any{"id": 42, "username": "ploeg"}},
 		},
 	})
 	if err != nil {
@@ -123,7 +127,7 @@ func TestParseWebhookUnknownAssigneeGetsDefaultTeam(t *testing.T) {
 // One ClickUp event covers assignment in both directions; only the history
 // item's field separates them.
 func TestParseWebhookUnassign(t *testing.T) {
-	p := &Provider{DefaultTeam: "default"}
+	p := &Provider{DefaultTeam: "default", TeamMap: map[string]string{"builder": "silver"}}
 	evs, err := post(t, p, map[string]any{
 		"event":   "taskAssigneeUpdated",
 		"task_id": "t1",

@@ -2,10 +2,81 @@ package clickup
 
 import (
 	"context"
+	"net/http"
+	"strings"
 
 	"github.com/ploeg-hq/ploeg/pkg/provider"
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
+
+// ownAssignment finds the assignee change of one of Ploeg's own accounts
+// (ADR-0205): an extra agent or team account by name, the account the static
+// Token belongs to by user id, else a hand-over connection's account on a
+// List bound through that connection. Any other member is not Ploeg, so its
+// assignment or removal is no hand-over.
+func (p *Provider) ownAssignment(ctx context.Context, pl hookPayload) (handedOver, bool) {
+	self, selfRead := "", false
+	for _, h := range pl.HistoryItems {
+		if !assigneeField(h.Field) {
+			continue
+		}
+		member := h.After
+		if member.ID == "" && member.Username == "" && member.Email == "" {
+			member = h.Before
+		}
+		removed := h.Field == "assignee_rem"
+		if p.isAgent(member.Username, member.Email) || p.isTeamAccount(member.Username, member.Email) {
+			return handedOver{who: firstNonEmpty(member.Username, member.Email), removed: removed}, true
+		}
+		if member.ID == "" {
+			continue
+		}
+		if !selfRead {
+			self, selfRead = p.ownID(ctx), true
+		}
+		if self != "" && member.ID == self {
+			return handedOver{who: firstNonEmpty(member.Username, member.Email, member.ID), removed: removed}, true
+		}
+	}
+	return p.handOver(ctx, pl)
+}
+
+func assigneeField(field string) bool {
+	return field == "assignee" || field == "assignee_add" || field == "assignee_rem"
+}
+
+func (p *Provider) isTeamAccount(identities ...string) bool {
+	for _, id := range identities {
+		if _, ok := p.TeamMap[strings.ToLower(strings.TrimSpace(id))]; ok && id != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// ownID returns the ClickUp user id of the account the static Token belongs
+// to, read once from GET /user. A failed read is not cached, so the next
+// assignment tries again; until then only the other own accounts count.
+func (p *Provider) ownID(ctx context.Context) string {
+	if id := p.self.Load(); id != nil {
+		return *id
+	}
+	if !p.configured() {
+		return ""
+	}
+	var me struct {
+		User struct {
+			ID flexID `json:"id"`
+		} `json:"user"`
+	}
+	if err := p.do(ctx, http.MethodGet, "/user", nil, &me); err != nil || me.User.ID == "" {
+		p.log().Warn("clickup token's own account not read; its assignments are ignored until it is", "err", err)
+		return ""
+	}
+	id := string(me.User.ID)
+	p.self.Store(&id)
+	return id
+}
 
 // Connection is a store-backed ClickUp connection (ADR-0195) as intake and
 // write-back reach it. Token is the connection's own credential from the

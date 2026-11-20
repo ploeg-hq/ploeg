@@ -219,7 +219,7 @@ func TestClickUpWebhook_RecordsStatusesCreationAndEstimate(t *testing.T) {
 	}
 	s := &Server{
 		Store: testStore, Log: slog.New(slog.DiscardHandler),
-		Trackers:       map[string]provider.TrackerProvider{"clickup": &clickup.Provider{Secret: testTrackerSecret, BaseURL: api.URL, Token: "fixture", DefaultTeam: "silver"}},
+		Trackers:       map[string]provider.TrackerProvider{"clickup": &clickup.Provider{Secret: testTrackerSecret, BaseURL: api.URL, Token: "fixture", DefaultTeam: "silver", Agents: []string{"silver"}}},
 		Gates:          gate.Boards{"clickup": {"901": gates}},
 		OperatorConfig: OperatorConfig{Consumers: consumers, Teams: map[string][]string{"silver": {"builder"}}},
 	}
