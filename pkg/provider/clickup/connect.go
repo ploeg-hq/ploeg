@@ -64,7 +64,7 @@ const maxVisibleWalk = 500
 // ProbeConnection reads GET /v2/user and walks workspaces, Spaces and
 // Folders for the Lists the token can see, stopping after 500.
 func (Connector) ProbeConnection(ctx context.Context, inst provider.ConnectionInstance, cred provider.ConnectionCredential) (provider.ConnectionProbe, error) {
-	auth := cred.Token
+	auth := probeAuthorization(cred)
 	base := apiURL(inst)
 	var user struct {
 		User struct {
@@ -146,4 +146,13 @@ func (c Connector) now() time.Time {
 		return c.Now()
 	}
 	return time.Now()
+}
+
+// probeAuthorization sends a pasted personal token bare, as ClickUp requires,
+// and an OAuth access token with the Bearer scheme.
+func probeAuthorization(cred provider.ConnectionCredential) string {
+	if cred.Method == "oauth" {
+		return "Bearer " + cred.Token
+	}
+	return cred.Token
 }
