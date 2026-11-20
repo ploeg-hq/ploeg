@@ -272,7 +272,7 @@ fails otherwise.
 | [0203](0203-a-gitlab-forge-connection-is-a-group-service-account-that-mints-a-project-token-per-run.md) | A GitLab forge connection is a group service account that mints a project token per Run | proposed | 2026-11-19 |
 | [0204](0204-a-person-pauses-a-tracker-binding-and-a-paused-binding-admits-no-new-work.md) | A person pauses a tracker binding, and a paused binding admits no new work | accepted | 2026-11-19 |
 | [0205](0205-only-an-assignment-of-ploegs-own-tracker-account-hands-work-over.md) | Only an assignment of Ploeg's own tracker account hands work over | accepted | 2026-11-20 |
-| [0206](0206-a-run-commits-as-its-forge-credentials-own-account-and-names-the-person-it-acts-for-in-trailers.md) | A Run commits as its forge credential's own account and names the person it acts for in trailers | proposed | 2026-11-20 |
+| [0206](0206-a-run-commits-as-its-forge-credentials-own-account-and-names-the-person-it-acts-for-in-trailers.md) | A Run commits as its forge credential's own account and names the person it acts for in trailers | accepted | 2026-11-20 |
 
 
 ## Review calendar

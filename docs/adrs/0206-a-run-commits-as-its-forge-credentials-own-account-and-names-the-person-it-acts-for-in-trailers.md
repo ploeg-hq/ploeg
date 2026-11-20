@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-11-20
 decision-makers: Ryan Grippeling
 supersedes: none
@@ -82,4 +82,5 @@ This amends ADR-0016's "git identity (name + email used for commits)" on the reg
 ## More Information
 
 * 2026-11-20 — The owner rejected a configured commit identity per forge: the identity is the forge connection's own, and the person is named in trailers.
+* 2026-11-20 — Accepted by the owner, with the breaking removal of the rc.136 commit identity settings.
 * Related: [ADR-0086](0086-github-is-a-forge-and-a-run-pushes-with-its-own-github-app-installation-token.md) (the GitHub App pushes), [ADR-0156](0156-each-run-carries-a-transaction-token-that-names-its-person-and-a-team-without-a-sponsor-runs-nothing.md) (the person), [ADR-0180](0180-a-call-without-a-live-person-is-attributed-to-its-run-or-a-proven-workload-and-an-administrator-overrides-as-themselves.md) (attribution without a live person), [ADR-0192](0192-a-runs-forge-is-resolved-from-its-work-target-and-the-claim-carries-the-forge-and-a-credential-minted-for-that-run.md) (the claim carries the forge).
