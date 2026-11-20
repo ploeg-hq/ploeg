@@ -22,6 +22,7 @@ const (
 	otherEnvToken     = "sk-ant-cc-other-environment-token-01"
 	settledToken      = "sk-ant-cc-settled-run-token-0123456"
 	unfiredToken      = "sk-ant-cc-unfired-session-token-0123"
+	gitlabToken       = "sk-ant-cc-gitlab-session-token-01234"
 	runnerUID         = "runner-uid-1"
 	runnerName        = "ploeg-claude-runner-abc"
 	sessionPodsSelect = "app.kubernetes.io/name=ploeg-claude-runner-session"
@@ -50,6 +51,10 @@ func newSessionFixture(t *testing.T) *sessionFixture {
 	forge := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		f.forge.add(r)
 		switch {
+		case r.Method == http.MethodGet && r.URL.EscapedPath() == "/api/v4/projects/acme%2Fwidgets/merge_requests/1":
+			_, _ = io.WriteString(w, `{"iid":1,"source_branch":"agent/vik-9"}`)
+		case r.Method == http.MethodGet && r.URL.EscapedPath() == "/api/v4/projects/acme%2Fwidgets/merge_requests/2":
+			_, _ = io.WriteString(w, `{"iid":2,"source_branch":"someone-elses-branch"}`)
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/repos/acme/widgets/pulls/1":
 			_, _ = io.WriteString(w, `{"number":1,"head":{"ref":"agent/vik-9"}}`)
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/repos/acme/widgets/pulls/2":
@@ -88,10 +93,14 @@ func newSessionFixture(t *testing.T) *sessionFixture {
 		f.asked = append(f.asked, req)
 		f.mu.Unlock()
 		switch req.SessionToken {
-		case routineToken:
+		case routineToken, gitlabToken:
+			dialect := "forgejo"
+			if req.SessionToken == gitlabToken {
+				dialect = "gitlab"
+			}
 			_ = json.NewEncoder(w).Encode(gatewaycontract.Grant{
 				Run: "run-9", WorkItem: "9", Team: "pewter", Role: "builder", Writes: true, Branch: "agent/vik-9",
-				ForgeDialect: "forgejo", ForgeURL: forge.URL, Owner: "acme", Repo: "widgets", BaseBranch: "main", ForgeToken: realForgeToken,
+				ForgeDialect: dialect, ForgeURL: forge.URL, Owner: "acme", Repo: "widgets", BaseBranch: "main", ForgeToken: realForgeToken,
 				Pin:           gatewaycontract.Pin{Namespace: "runs", PodName: runnerName, PodUID: runnerUID, PodIP: req.SourceIP},
 				ClaudeSession: "01ROUTINE", Title: "Add a health check", Reference: "VIK-9", Deadline: time.Now().Add(time.Hour),
 			})
@@ -267,5 +276,52 @@ func TestARoutineSessionWritesOnlyItsOwnRunBranchsPullRequest(t *testing.T) {
 	}
 	if w := writes(); len(w) != 3 {
 		t.Fatalf("the Run's own pull request writes reaching the forge = %v, want 3", w)
+	}
+}
+
+func TestARoutineSessionWritesOnlyItsOwnRunBranchsMergeRequestOnGitLab(t *testing.T) {
+	f := newSessionFixture(t)
+	writes := func() []string {
+		f.forge.mu.Lock()
+		defer f.forge.mu.Unlock()
+		var out []string
+		for _, r := range f.forge.requests {
+			if r.Method != http.MethodGet {
+				out = append(out, r.Method+" "+r.URL.EscapedPath())
+			}
+		}
+		return out
+	}
+	const project = "/api/v4/projects/acme%2Fwidgets"
+	for _, tc := range []struct{ name, method, path, body string }{
+		{"a merge request from another branch", http.MethodPost, project + "/merge_requests", `{"source_branch":"main","target_branch":"agent/vik-9","title":"x"}`},
+		{"a merge request onto another base", http.MethodPost, project + "/merge_requests", `{"source_branch":"agent/vik-9","target_branch":"release","title":"x"}`},
+		{"a merge request into another project", http.MethodPost, project + "/merge_requests", `{"source_branch":"agent/vik-9","target_branch":"main","target_project_id":42,"title":"x"}`},
+		{"another merge request edited", http.MethodPut, project + "/merge_requests/2", `{"state_event":"close"}`},
+		{"a note on another merge request", http.MethodPost, project + "/merge_requests/2/notes", `{"body":"x"}`},
+		{"a note on an issue", http.MethodPost, project + "/issues/1/notes", `{"body":"x"}`},
+	} {
+		got := do(t, tc.method, f.url+tc.path, strings.NewReader(tc.body), bearer(gitlabToken))
+		if got.StatusCode != http.StatusForbidden || got.Header.Get(gatewaycontract.RefusalHeader) != gatewaycontract.RefusedPullRequest {
+			t.Fatalf("%s = %d %q, want 403 %s", tc.name, got.StatusCode, got.Header.Get(gatewaycontract.RefusalHeader), gatewaycontract.RefusedPullRequest)
+		}
+	}
+	if w := writes(); len(w) != 0 {
+		t.Fatalf("refused writes reached the forge: %v", w)
+	}
+	for _, tc := range []struct{ method, path, body string }{
+		{http.MethodPost, project + "/merge_requests", `{"source_branch":"agent/vik-9","target_branch":"main","title":"x"}`},
+		{http.MethodPut, project + "/merge_requests/1", `{"description":"x"}`},
+		{http.MethodPost, project + "/merge_requests/1/notes", `{"body":"x"}`},
+	} {
+		if got := do(t, tc.method, f.url+tc.path, strings.NewReader(tc.body), bearer(gitlabToken)); got.StatusCode != http.StatusOK {
+			t.Fatalf("%s %s on the Run's own merge request = %d %q", tc.method, tc.path, got.StatusCode, got.Header.Get(gatewaycontract.RefusalHeader))
+		}
+	}
+	if w := writes(); len(w) != 3 {
+		t.Fatalf("the Run's own merge request writes reaching the forge = %v, want 3", w)
+	}
+	if last := f.forge.last(); last == nil || last.Header.Get("PRIVATE-TOKEN") != realForgeToken && last.Header.Get("Authorization") != "Bearer "+realForgeToken {
+		t.Fatalf("the forge saw %v, want the minted credential", last)
 	}
 }

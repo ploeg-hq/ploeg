@@ -13,6 +13,7 @@ import (
 
 	"github.com/ploeg-hq/ploeg/pkg/claudesession"
 	"github.com/ploeg-hq/ploeg/pkg/gatewaycontract"
+	"github.com/ploeg-hq/ploeg/pkg/harness"
 )
 
 const (
@@ -144,6 +145,9 @@ func (g *Gateway) routineWrite(r *http.Request, grant gatewaycontract.Grant) (st
 	case http.MethodGet, http.MethodHead, http.MethodOptions:
 		return "", true
 	}
+	if grant.ForgeDialect == harness.ForgeGitLab {
+		return g.routineWriteGitLab(r, grant)
+	}
 	rest, api := apiRoute(r.URL.EscapedPath(), grant.Owner, grant.Repo)
 	if !api {
 		return "", true
@@ -155,12 +159,9 @@ func (g *Gateway) routineWrite(r *http.Request, grant gatewaycontract.Grant) (st
 			Head string `json:"head"`
 			Base string `json:"base"`
 		}
-		raw, err := io.ReadAll(io.LimitReader(r.Body, maxRoutineWriteBody+1))
-		if err != nil || len(raw) > maxRoutineWriteBody || json.Unmarshal(raw, &body) != nil {
+		if !readRoutineBody(r, &body) {
 			return "the pull request body is unreadable", false
 		}
-		r.Body = io.NopCloser(bytes.NewReader(raw))
-		r.ContentLength = int64(len(raw))
 		head := body.Head
 		if _, branch, found := strings.Cut(head, ":"); found {
 			head = branch
@@ -184,6 +185,51 @@ func (g *Gateway) routineWrite(r *http.Request, grant gatewaycontract.Grant) (st
 	}
 }
 
+func (g *Gateway) routineWriteGitLab(r *http.Request, grant gatewaycontract.Grant) (string, bool) {
+	rest, api := gitlabAPIRoute(r.URL.EscapedPath(), grant.Owner, grant.Repo)
+	if !api {
+		if strings.HasPrefix(r.URL.EscapedPath(), "/api/") {
+			return "no other write", false
+		}
+		return "", true
+	}
+	parts := strings.Split(rest, "/")
+	switch {
+	case r.Method == http.MethodPost && rest == "merge_requests":
+		var body struct {
+			Source  string          `json:"source_branch"`
+			Target  string          `json:"target_branch"`
+			Project json.RawMessage `json:"target_project_id"`
+		}
+		if !readRoutineBody(r, &body) {
+			return "the merge request body is unreadable", false
+		}
+		if body.Source != grant.Branch || body.Target != grant.BaseBranch || len(body.Project) > 0 {
+			return "a merge request opens from the Run branch onto its base branch in the same project", false
+		}
+		return "", true
+	case r.Method == http.MethodPut && len(parts) == 2 && parts[0] == "merge_requests",
+		r.Method == http.MethodPost && len(parts) == 3 && parts[0] == "merge_requests" && parts[2] == "notes":
+		source, err := g.mergeRequestSource(r.Context(), grant, parts[1])
+		if err != nil || source != grant.Branch {
+			return "merge request " + parts[1] + " is not the Run branch's", false
+		}
+		return "", true
+	default:
+		return "no other write", false
+	}
+}
+
+func readRoutineBody(r *http.Request, into any) bool {
+	raw, err := io.ReadAll(io.LimitReader(r.Body, maxRoutineWriteBody+1))
+	if err != nil || len(raw) > maxRoutineWriteBody || json.Unmarshal(raw, into) != nil {
+		return false
+	}
+	r.Body = io.NopCloser(bytes.NewReader(raw))
+	r.ContentLength = int64(len(raw))
+	return true
+}
+
 const maxRoutineWriteBody = 1 << 20
 
 func apiRoute(path, owner, repo string) (string, bool) {
@@ -195,11 +241,60 @@ func apiRoute(path, owner, repo string) (string, bool) {
 	return strings.Trim(path[i+len(marker):], "/"), true
 }
 
-func (g *Gateway) pullRequestHead(ctx context.Context, grant gatewaycontract.Grant, number string) (string, error) {
-	for _, c := range number {
+func gitlabAPIRoute(escaped, owner, repo string) (string, bool) {
+	rest, ok := strings.CutPrefix(escaped, "/api/v4/projects/")
+	if !ok {
+		return "", false
+	}
+	id, rest, _ := strings.Cut(rest, "/")
+	project, err := url.PathUnescape(id)
+	if err != nil || !strings.EqualFold(project, owner+"/"+repo) {
+		return "", false
+	}
+	return strings.Trim(rest, "/"), true
+}
+
+func (g *Gateway) mergeRequestSource(ctx context.Context, grant gatewaycontract.Grant, number string) (string, error) {
+	if !digits(number) {
+		return "", errors.New("not a merge request number")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(grant.ForgeURL, "/")+"/api/v4/projects/"+url.PathEscape(grant.Owner+"/"+grant.Repo)+"/merge_requests/"+number, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("PRIVATE-TOKEN", grant.ForgeToken)
+	resp, err := g.cfg.HTTP.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", errors.New("the forge does not know the merge request")
+	}
+	var merge struct {
+		Source string `json:"source_branch"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxRoutineWriteBody)).Decode(&merge); err != nil {
+		return "", err
+	}
+	return merge.Source, nil
+}
+
+func digits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, c := range s {
 		if c < '0' || c > '9' {
-			return "", errors.New("not a pull request number")
+			return false
 		}
+	}
+	return true
+}
+
+func (g *Gateway) pullRequestHead(ctx context.Context, grant gatewaycontract.Grant, number string) (string, error) {
+	if !digits(number) {
+		return "", errors.New("not a pull request number")
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(grant.ForgeURL, "/")+"/api/v1/repos/"+url.PathEscape(grant.Owner)+"/"+url.PathEscape(grant.Repo)+"/pulls/"+number, nil)
 	if err != nil {
