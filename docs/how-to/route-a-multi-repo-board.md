@@ -22,11 +22,11 @@ Add a `targets:` map to the chart's `config:` value, next to `trackers:`. The ke
 config:
   targets:
     app:
-      repo: webgrip/app
+      repo: acme/app
       branch: development
       forge: forgejo
     homelab-cluster:
-      repo: webgrip/homelab-cluster
+      repo: acme/infra
       branch: main
       forge: forgejo
 ```
@@ -111,7 +111,7 @@ The Forgejo, GitLab and GitHub forges report readiness. On GitLab, a pull mirror
 ## Not implemented yet
 
 - An item whose board matches no rule and that carries no `repo/*` label still falls back to the worker's own repository, as before. Strict routing, which would refuse it (backlog #108), is a separate change.
-- The registry is kept by hand. Deriving it from the repository configuration in `webgrip/homelab-cluster` is ADR-0038's later step G1.
+- The registry is kept by hand. Deriving it from the repository configuration of the cluster that runs Ploeg is ADR-0038's later step G1.
 
 ## Symptoms
 

@@ -21,7 +21,7 @@ Use this when issues in one or more GitHub repositories should become Work Items
 | The issue is edited or reopened, or another label changes | Records an update; nothing is queued. To run a reopened issue again, remove and re-add the team label |
 | A team label is added to a closed issue | Nothing is queued |
 
-A Work Item's id is `<owner>:<repo>:<number>` in lower case, for example `webgrip:app:42`, and its branch is `agent/github-webgrip-app-42`. Ploeg comments on the issue when a Shift finishes, a route is refused, an operator cancels or restarts it, and when its pull request is merged or closed. With `PLOEG_TRACKER_DONE_ON_MERGE=true` a merge also closes the issue as completed. No other state changes the issue.
+A Work Item's id is `<owner>:<repo>:<number>` in lower case, for example `acme:app:42`, and its branch is `agent/github-acme-app-42`. Ploeg comments on the issue when a Shift finishes, a route is refused, an operator cancels or restarts it, and when its pull request is merged or closed. With `PLOEG_TRACKER_DONE_ON_MERGE=true` a merge also closes the issue as completed. No other state changes the issue.
 
 HTML comments (`<!-- … -->`) in the issue body are removed before a Run reads it, because GitHub does not show them to the person who added the label. The rest of the body is untrusted data in the Run's prompt and ranks below the delivery contract and the repository's own policy ([ADR-0030](../adrs/0030-target-repository-instructions-rank-below-the-delivery-contract.md)).
 
@@ -66,8 +66,8 @@ config:
   trackers:
     github:
       projects:
-        - name: webgrip/app        # the repository; no lookup runs
-          repo: webgrip/app
+        - name: acme/app           # the repository; no lookup runs
+          repo: acme/app
           branch: development
           # team: bronze           # pin: every issue runs as this Team
 ```

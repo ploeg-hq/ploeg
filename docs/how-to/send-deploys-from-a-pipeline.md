@@ -31,7 +31,7 @@ The token is a dedicated bearer credential. It can only report deploys. An opera
 
 ## 2. Give the pipeline the token and Ploeg's address
 
-Store the same value as a CI secret named `PLOEG_DEPLOY_TOKEN`, and Ploeg's base URL as a variable named `PLOEG_URL`. The pipeline must reach that URL. In the Webgrip estate, a CI secret comes from the Forgejo Actions bridge of the vault; see the [estate secrets model](https://forgejo.webgrip.dev/webgrip/homelab-cluster/src/branch/main/docs/techdocs/docs/adr/adr-0055-one-secrets-model-six-levels.md).
+Store the same value as a CI secret named `PLOEG_DEPLOY_TOKEN`, and Ploeg's base URL as a variable named `PLOEG_URL`. The pipeline must reach that URL.
 
 ## 3. Add one line after the deploy step
 
@@ -55,7 +55,7 @@ Run it after the deploy succeeded, once per environment. Report the commit that 
   run: >-
     curl -fsS --retry 3 -X POST "${{ vars.PLOEG_URL }}/api/v1/deploys"
     -H "Authorization: Bearer ${{ secrets.PLOEG_DEPLOY_TOKEN }}" -H "Content-Type: application/json"
-    -d "{\"environment\":\"production\",\"repo\":{\"forge\":\"forgejo\",\"owner\":\"webgrip\",\"name\":\"app\"},\"sha\":\"${GITHUB_SHA}\",\"url\":\"${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}\",\"source\":\"ci\"}"
+    -d "{\"environment\":\"production\",\"repo\":{\"forge\":\"forgejo\",\"owner\":\"acme\",\"name\":\"app\"},\"sha\":\"${GITHUB_SHA}\",\"url\":\"${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}\",\"source\":\"ci\"}"
     || echo "Ploeg did not record the deploy"
 ```
 
