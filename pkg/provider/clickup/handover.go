@@ -11,8 +11,8 @@ import (
 
 // ownAssignment finds the assignee change of one of Ploeg's own accounts
 // (ADR-0205): an extra agent or team account by name, the account the static
-// Token belongs to by user id, else a hand-over connection's account on a
-// List bound through that connection. Any other member is not Ploeg, so its
+// Token belongs to by user id, else a connection's own account on a List
+// bound through that connection (ADR-0207). Any other member is not Ploeg, so its
 // assignment or removal is no hand-over.
 func (p *Provider) ownAssignment(ctx context.Context, pl hookPayload) (handedOver, bool) {
 	self, selfRead := "", false
@@ -83,8 +83,8 @@ func (p *Provider) ownID(ctx context.Context) string {
 // secret store; it is never logged.
 type Connection struct {
 	ID string
-	// Agent is the ClickUp user id of the connection's own account when the
-	// connection has handOverAgent set (ADR-0195 section 9), else empty.
+	// Agent is the ClickUp user id of the connection's own account, which
+	// hands work over on the Lists bound through the connection (ADR-0207).
 	Agent   string
 	Token   string
 	BaseURL string

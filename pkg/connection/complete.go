@@ -273,7 +273,7 @@ func (s *Service) finishCredential(ctx context.Context, caller Caller, flow stor
 		return Completed{}, &Error{Status: 422, Code: "probe_failed", Message: "The credential failed its probe; nothing was stored.", Checks: report.Checks}
 	}
 	row := store.ConnectionRow{Tenant: s.tenant(), Port: start.Port, Kind: start.Kind, Instance: start.Instance, Method: flow.Method,
-		AccountID: report.Accounts.ID, State: StateActive, ExpiresAt: c.expires, HandOverAgent: start.HandOverAgent, Label: start.Label,
+		AccountID: report.Accounts.ID, State: StateActive, ExpiresAt: c.expires, Label: start.Label,
 		CreatedBy: caller.Person, UpdatedBy: caller.Person}
 	row.Account, _ = json.Marshal(report.Accounts)
 	row.LastProbe, _ = json.Marshal(report)

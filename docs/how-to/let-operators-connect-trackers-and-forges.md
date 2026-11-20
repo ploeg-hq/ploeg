@@ -82,9 +82,9 @@ Read connections with `GET /api/v1/operator/tracker-connections` and `/forge-con
 
 ## Hand work over by assigning the connection's own account
 
-A tracker connection made from a dedicated tracker member can be the hand-over agent itself ([ADR-0195 section 9](../adrs/0195-a-proven-operator-makes-and-manages-a-tracker-or-forge-connection-through-a-flow-ploeg-starts-and-the-consumer-only-relays-codes.md)). Send `handOverAgent: true` when you start the flow, or `PATCH .../tracker-connections/{id}` with it later. Only ClickUp recognises such an assignment today; every other kind answers `422 capability_missing`.
+A ClickUp connection's own account is how work is handed to Ploeg: there is nothing to switch on ([ADR-0207](../adrs/0207-a-tracker-connections-own-account-always-hands-work-over.md)). Connect it with a dedicated tracker member, never a person's own account, because assigning that account starts paid work. Other tracker kinds do not recognise such an assignment yet.
 
-For a ClickUp connection with `handOverAgent: true`:
+For a ClickUp connection:
 
 - The account is the one the probe read through `GET /user`, by its immutable user id (the connection's `account.id`). A reconnect to another account is refused, so the agent never changes under a connection.
 - Assigning that account to a task in a List bound ([ADR-0186](../adrs/0186-an-operator-consumer-binds-a-tracker-scope-to-a-team-at-runtime-and-static-routing-wins-on-conflict.md)) through this same connection admits the task to the binding's Team, through the same dedupe, routing, gates and budget as an assignment to a static agent. Removing the account withdraws it the same way.

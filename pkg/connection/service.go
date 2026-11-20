@@ -32,8 +32,6 @@ const (
 	DefaultTenant        = "default"
 )
 
-const handOverMissing = "The adapter of this kind does not recognise an assignment to a connection's own account, so handOverAgent cannot be true."
-
 // Service makes and manages runtime connections.
 type Service struct {
 	Store      *store.Store
@@ -257,9 +255,6 @@ func (s *Service) checkStart(ctx context.Context, caller Caller, req *StartReque
 	if len([]rune(req.Label)) > MaxLabel {
 		return refuse(400, "invalid_request", "label is at most 200 characters.")
 	}
-	if req.HandOverAgent && req.Port != PortTracker {
-		return refuse(400, "invalid_request", "handOverAgent is for tracker connections only.")
-	}
 	allow, ok := s.Config.allowed(req.Port, req.Kind, req.Instance)
 	if !ok {
 		return refuse(422, "kind_not_allowed", "This installation does not allow that port, kind and instance at runtime.")
@@ -271,9 +266,6 @@ func (s *Service) checkStart(ctx context.Context, caller Caller, req *StartReque
 	conn, ok := s.Connectors[req.Kind]
 	if !ok || conn.Prober == nil {
 		return refuse(422, "capability_missing", "The adapter of this kind cannot be connected at runtime (ConnectionProber).")
-	}
-	if req.HandOverAgent && !conn.HandOverAgent {
-		return refuse(422, "capability_missing", handOverMissing)
 	}
 	switch req.Method {
 	case MethodOAuth:

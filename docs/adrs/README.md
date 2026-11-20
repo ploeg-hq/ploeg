@@ -273,6 +273,7 @@ fails otherwise.
 | [0204](0204-a-person-pauses-a-tracker-binding-and-a-paused-binding-admits-no-new-work.md) | A person pauses a tracker binding, and a paused binding admits no new work | accepted | 2026-11-19 |
 | [0205](0205-only-an-assignment-of-ploegs-own-tracker-account-hands-work-over.md) | Only an assignment of Ploeg's own tracker account hands work over | accepted | 2026-11-20 |
 | [0206](0206-a-run-commits-as-its-forge-credentials-own-account-and-names-the-person-it-acts-for-in-trailers.md) | A Run commits as its forge credential's own account and names the person it acts for in trailers | accepted | 2026-11-20 |
+| [0207](0207-a-tracker-connections-own-account-always-hands-work-over.md) | A tracker connection's own account always hands work over | accepted | 2026-11-20 |
 
 
 ## Review calendar
@@ -420,3 +421,4 @@ triggers.
 | 2027-05-19 | [0204](0204-a-person-pauses-a-tracker-binding-and-a-paused-binding-admits-no-new-work.md) — or sooner, when a consumer asks for assignments refused during a pause to be admitted on resume, a pause per Team is asked for, Ploeg gains a board re-read for runtime bindings, or the deprecation window for the Team's `paused` closes |
 | 2027-05-20 | [0205](0205-only-an-assignment-of-ploegs-own-tracker-account-hands-work-over.md) — or sooner, when another tracker adapter that dispatches on assignment is brought under the same rule, a deployment needs a person's own assignment to start work, ClickUp changes `GET /user` or the assignee history shape, or `handOverAgent` is made implicit for every tracker connection |
 | 2027-05-20 | [0206](0206-a-run-commits-as-its-forge-credentials-own-account-and-names-the-person-it-acts-for-in-trailers.md) — or sooner, when Ploeg records a verified e-mail for a person, Forgejo Authorized Integrations replace the bot's token, a forge's user endpoint or noreply address scheme changes, or an installation needs commits attributed to an account other than the one that pushes |
+| 2027-05-20 | [0207](0207-a-tracker-connections-own-account-always-hands-work-over.md) — or sooner, when a tracker connection is needed that only reads and writes back, or another tracker kind's adapter learns to recognise an assignment to the connection's account |
