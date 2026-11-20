@@ -47,4 +47,4 @@ The worker needs `claude` and `git` in its agent image, and a Team member's logi
 
 Run one `claude-environment` worker at a time per login volume (`maxReplicaCount: 1`): the CLI rewrites the login file when it refreshes.
 
-Not built yet: the plan-paid cost status (these Runs still mint and settle an unused gateway key), and pull requests on GitLab.
+Not built yet: the plan-paid cost status (these Runs still mint and settle an unused gateway key), and merge requests on GitLab without the credential gateway. Through the gateway, `post-session` opens the Run branch's merge request on GitLab and its pull request on Forgejo.

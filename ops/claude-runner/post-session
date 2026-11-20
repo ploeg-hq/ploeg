@@ -10,7 +10,8 @@
 # pushurl the session wrote ever sees the token.
 #
 # Needs PLOEG_URL in the runner's environment, curl and jq. Pull requests
-# are opened through the Forgejo API.
+# are opened through the Forgejo API; through the credential gateway, merge
+# requests on GitLab through the GitLab API.
 set -u -o pipefail
 
 log() { printf 'ploeg post-session: %s\n' "$*" >&2; }
@@ -118,23 +119,44 @@ deliver_through_gateway() {
   pushed=$head
   log "pushed ${head:0:12} to $branch through the credential gateway"
 
-  [ "$dialect" = forgejo ] || { log "pull requests on $dialect are not opened by this hook"; return; }
-  api="${PLOEG_URL%/}/api/v1/repos/$repository"
+  case "$dialect" in
+  forgejo) open_forgejo_pull_request "${PLOEG_URL%/}/api/v1/repos/$repository" "$branch" "$base" "$title" "$(description "$reference")" ;;
+  gitlab) open_gitlab_merge_request "${PLOEG_URL%/}/api/v4/projects/$(jq -rn --arg r "$repository" '$r | @uri')" "$branch" "$base" "$title" "$(description "$reference")" ;;
+  *) log "pull requests on $dialect are not opened by this hook" ;;
+  esac
+}
+
+description() {
+  jq -rn --arg m "$final_message" --arg ref "$1" '
+    (first($m | capture("(?s)(?<j>\\{.*\\})").j | fromjson?) // null) as $o |
+    if ($o | type) == "object" and ($o.problem // "") != "" then
+      "## Problem\n\n\($o.problem)\n\n## Solution\n\n\($o.solution // "")\n\n\($ref)"
+    else $ref end'
+}
+
+open_forgejo_pull_request() {
+  local api=$1 branch=$2 base=$3 title=$4 body=$5
   pull_request=$(curl -fsS --max-time 20 -H @"$clean/session-auth" "$api/pulls?state=open&limit=50" |
     jq -r --arg b "$branch" '[.[] | select(.head.ref == $b)][0].html_url // empty') || pull_request=""
-  if [ -z "$pull_request" ]; then
-    local body
-    body=$(jq -rn --arg m "$final_message" --arg ref "$reference" '
-      (first($m | capture("(?s)(?<j>\\{.*\\})").j | fromjson?) // null) as $o |
-      if ($o | type) == "object" and ($o.problem // "") != "" then
-        "## Problem\n\n\($o.problem)\n\n## Solution\n\n\($o.solution // "")\n\n\($ref)"
-      else $ref end')
-    pull_request=$(jq -n --arg head "$branch" --arg base "$base" --arg title "$title" --arg body "$body" \
-      '{head: $head, base: $base, title: $title, body: $body}' |
-      curl -fsS --max-time 20 -X POST -H @"$clean/session-auth" -H 'Content-Type: application/json' \
-        --data-binary @- "$api/pulls" | jq -r '.html_url // empty') || pull_request=""
-    [ -n "$pull_request" ] && log "opened $pull_request" || log "could not open the pull request"
-  fi
+  [ -n "$pull_request" ] && return
+  pull_request=$(jq -n --arg head "$branch" --arg base "$base" --arg title "$title" --arg body "$body" \
+    '{head: $head, base: $base, title: $title, body: $body}' |
+    curl -fsS --max-time 20 -X POST -H @"$clean/session-auth" -H 'Content-Type: application/json' \
+      --data-binary @- "$api/pulls" | jq -r '.html_url // empty') || pull_request=""
+  [ -n "$pull_request" ] && log "opened $pull_request" || log "could not open the pull request"
+}
+
+open_gitlab_merge_request() {
+  local api=$1 branch=$2 base=$3 title=$4 body=$5
+  pull_request=$(curl -fsS --max-time 20 -G -H @"$clean/session-auth" --data-urlencode state=opened \
+    --data-urlencode "source_branch=$branch" "$api/merge_requests" |
+    jq -r --arg b "$branch" '[.[] | select(.source_branch == $b)][0].web_url // empty') || pull_request=""
+  [ -n "$pull_request" ] && return
+  pull_request=$(jq -n --arg source "$branch" --arg target "$base" --arg title "$title" --arg body "$body" \
+    '{source_branch: $source, target_branch: $target, title: $title, description: $body}' |
+    curl -fsS --max-time 20 -X POST -H @"$clean/session-auth" -H 'Content-Type: application/json' \
+      --data-binary @- "$api/merge_requests" | jq -r '.web_url // empty') || pull_request=""
+  [ -n "$pull_request" ] && log "opened $pull_request" || log "could not open the merge request"
 }
 
 if [ "${PLOEG_CREDENTIAL_GATEWAY:-}" = on ]; then
