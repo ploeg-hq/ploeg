@@ -29,7 +29,7 @@ jobs:
       - name: Mint an installation token that writes only this repository
         if: steps.configured.outputs.app == 'true'
         id: app
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
         with:
           app-id: ${{ secrets.RELEASE_CONSUMER_GITHUB_APP_ID }}
           private-key: ${{ secrets.RELEASE_CONSUMER_GITHUB_APP_PRIVATE_KEY }}
@@ -43,9 +43,9 @@ jobs:
           token: ${{ steps.app.outputs.token }}
           persist-credentials: true
       - if: steps.configured.outputs.app == 'true'
-        uses: jdx/mise-action@7a4e45a543138629540c9a1616d08632b893e492 # v5.0.1
+        uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
         with:
-          version: 2026.9.18
+          version: 2026.11.10
           install_args: uv
           cache: false
       - name: Raise OpenHands and goose to their newest releases
