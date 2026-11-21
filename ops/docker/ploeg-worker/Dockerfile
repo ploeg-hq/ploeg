@@ -1,8 +1,8 @@
-# syntax=docker/dockerfile:1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
+# syntax=docker/dockerfile:1@sha256:572cebbc2b15e6f84c077742952674889cb63cd5e9b80abdffcbe587b6f19183
 ARG REGISTRY_DOCKERHUB=docker.io
 ARG REGISTRY_CHAINGUARD=cgr.dev
 
-FROM --platform=$BUILDPLATFORM ${REGISTRY_DOCKERHUB}/golang:1.27.4-trixie@sha256:b54b2639de8c1bfe538ec5ffc45f29b1932235ac5f6d63c059853646677112d9 AS builder
+FROM --platform=$BUILDPLATFORM ${REGISTRY_DOCKERHUB}/golang:1.27.4-trixie@sha256:f18c3d73a184fb0582828510722e723b63a93f7188d11dd223d9be6f6880e65d AS builder
 ENV GOTOOLCHAIN=auto
 WORKDIR /src
 COPY go.* ./
@@ -21,7 +21,7 @@ RUN GOOS=$TARGETOS GOARCH=$TARGETARCH \
     go build -trimpath -ldflags "-s -w" \
     -o /out/ploeg-mcp-stdio-bridge ./cmd/ploeg-mcp-stdio-bridge
 
-FROM ${REGISTRY_CHAINGUARD}/chainguard/wolfi-base:latest@sha256:2c12da5496e21e99003b3db3b9246f025e53d533c4df334205391260f1e8f85b AS rootfs
+FROM ${REGISTRY_CHAINGUARD}/chainguard/wolfi-base:latest@sha256:be019c1c74fe69204a42c4e10bc4d886a49bf5403ffa74374ef7baa408fc9a26 AS rootfs
 RUN printf 'https://packages.wolfi.dev/os\n' > /etc/apk/repositories \
  && apk add --no-cache --no-scripts --root /rootfs --initdb --keys-dir /etc/apk/keys --repositories-file /etc/apk/repositories \
       wolfi-baselayout ca-certificates-bundle git \

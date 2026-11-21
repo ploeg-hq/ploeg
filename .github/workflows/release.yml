@@ -38,9 +38,9 @@ jobs:
           persist-credentials: false
       - name: Validate immutable release input
         run: bash scripts/release.sh validate "$RELEASE_TAG"
-      - uses: jdx/mise-action@7a4e45a543138629540c9a1616d08632b893e492 # v5.0.1
+      - uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
         with:
-          version: 2026.9.18
+          version: 2026.11.10
           cache: false
       - run: mise run setup
       - uses: ./.github/actions/embedded-postgres
