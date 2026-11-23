@@ -28,18 +28,20 @@ func scanInstructionFiles(root string) (instructionScan, error) {
 	if err != nil {
 		return instructionScan{}, err
 	}
-	s := &instructionScanner{root: resolved, visited: map[string]bool{resolved: true}}
+	s := &instructionScanner{root: resolved, walking: map[string]bool{}}
 	err = s.walk(resolved, "", false)
 	return s.scan, err
 }
 
 type instructionScanner struct {
 	root    string
-	visited map[string]bool
+	walking map[string]bool
 	scan    instructionScan
 }
 
 func (s *instructionScanner) walk(dir, rel string, inside bool) error {
+	s.walking[dir] = true
+	defer delete(s.walking, dir)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return err
@@ -95,10 +97,9 @@ func (s *instructionScanner) followLink(link, rel string, inside bool) error {
 	}
 	switch {
 	case info.IsDir():
-		if s.visited[target] {
+		if s.walking[target] {
 			return fmt.Errorf("instruction path %s is a symlink loop", rel)
 		}
-		s.visited[target] = true
 		return s.walk(target, rel, inside)
 	case info.Mode().IsRegular():
 		return s.file(target, rel)

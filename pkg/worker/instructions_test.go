@@ -187,6 +187,45 @@ func TestScanInstructionFilesFollowsSymlinksOnlyInsideTheRepository(t *testing.T
 	}
 }
 
+func TestScanInstructionFilesFollowsTwoLinksToOneDirectory(t *testing.T) {
+	root := t.TempDir()
+	writeTree(t, root, map[string]string{"AGENTS.md": "rules\n", ".ai/skills/backend/SKILL.md": "skill\n"})
+	if err := os.MkdirAll(filepath.Join(root, ".agents", "skills"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("../../.ai/skills/backend", filepath.Join(root, ".agents", "skills", "backend")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("../.agents/skills", filepath.Join(root, ".claude", "skills")); err != nil {
+		t.Fatal(err)
+	}
+	scan, err := scanInstructionFiles(root)
+	if err != nil {
+		t.Fatalf("two links that reach one directory are not a loop: %v", err)
+	}
+	got := map[string]string{}
+	for _, f := range scan.Files {
+		got[f.Path] = f.SHA256
+	}
+	for _, want := range []string{".agents/skills/backend/SKILL.md", ".claude/skills/backend/SKILL.md"} {
+		if got[want] != digest("skill\n") {
+			t.Errorf("%s must be scanned through each link: %v", want, got)
+		}
+	}
+
+	nested := t.TempDir()
+	writeTree(t, nested, map[string]string{".claude/rules/a.md": "a\n"})
+	if err := os.Symlink("..", filepath.Join(nested, ".claude", "rules", "up")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := scanInstructionFiles(nested); err == nil || !strings.Contains(err.Error(), "loop") {
+		t.Errorf("a link back to a directory being scanned is still a loop: %v", err)
+	}
+}
+
 func TestHiddenUnicodeReportNamesFileAndPosition(t *testing.T) {
 	hidden := hiddenCharacters{Total: 25}
 	for i := 0; i < maxReportedHiddenCharacters; i++ {
