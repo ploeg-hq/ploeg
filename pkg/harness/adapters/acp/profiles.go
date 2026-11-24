@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/ploeg-hq/ploeg/pkg/harness"
 	"github.com/ploeg-hq/ploeg/pkg/harness/adapters/openhands"
@@ -499,6 +500,12 @@ func openhandsProfile() Profile {
 	}
 }
 
+// openhandsCallTimeout is how long OpenHands waits for one model call. Its own
+// default is 300 seconds, which a long completion of a self-hosted model passes;
+// OpenHands then drops the call and sends it again. The adapter's idle watchdog
+// looks twice per idle limit, so it can end a silent agent after half of it.
+const openhandsCallTimeout = 10 * time.Minute
+
 func openhandsModel(model string) string {
 	return "litellm_proxy/" + model
 }
@@ -507,6 +514,7 @@ func openhandsAgentSettingsDoc(l harness.LLMEnv) (string, error) {
 	llm := map[string]any{
 		"model":    openhandsModel(l.Model),
 		"usage_id": "agent",
+		"timeout":  int(openhandsCallTimeout.Seconds()),
 	}
 	if l.BaseURL != "" {
 		llm["base_url"] = l.BaseURL

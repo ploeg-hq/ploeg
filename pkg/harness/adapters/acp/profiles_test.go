@@ -370,6 +370,9 @@ func TestProfile_OpenHandsWritesKeylessAgentSettingsSoSessionNewIsAuthorized(t *
 			t.Errorf("llm.%s = %v, want %q", key, got, want)
 		}
 	}
+	if got := doc.LLM["timeout"]; got != float64(600) {
+		t.Errorf("llm.timeout = %v, want 600: OpenHands drops a model call after 300 seconds by default", got)
+	}
 	if got := envValue(t, extra, "LITELLM_PROXY_API_KEY"); got != env.LLM.APIKey {
 		t.Errorf("LITELLM_PROXY_API_KEY = %q, want the Run's key %q", got, env.LLM.APIKey)
 	}
