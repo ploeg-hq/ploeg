@@ -114,14 +114,14 @@ func (n *Notes) Write(ctx context.Context, note notes.Note, d notes.Decision, ba
 		"tags":            nilIfNone(note.Tags),
 		"suggested_scope": suggested(note),
 		"written_by":      note.WrittenBy(),
-		"written_at":      note.WrittenAt.UTC().Format(time.RFC3339Nano),
+		"written_at":      dateTime(note.WrittenAt),
 		"level":           string(note.Level),
 		"subject":         nilIfEmpty(note.Subject),
 		"author_kind":     string(note.AuthorKind),
 		"author":          note.Author,
 		"source_refs":     nilIfNone(note.SourceRefs),
 		"trust":           string(note.Trust),
-		"observed_at":     note.ObservedAt.UTC().Format(time.RFC3339Nano),
+		"observed_at":     dateTime(note.ObservedAt),
 		"expires_at":      nilIfZero(note.ExpiresAt),
 		"contradicts":     nilIfNone(note.Contradicts),
 		"promoted_from":   nilIfEmpty(note.PromotedFrom),
@@ -238,6 +238,12 @@ func strs(v any) []string {
 	return out
 }
 
+// dateTime writes a time as an Omnigraph DateTime, which holds milliseconds and
+// refuses a literal that names more.
+func dateTime(t time.Time) string {
+	return t.UTC().Format("2006-01-02T15:04:05.000Z07:00")
+}
+
 func timestamp(v any) time.Time {
 	s, _ := v.(string)
 	for _, layout := range []string{time.RFC3339Nano, "2006-01-02T15:04:05.999999999"} {
@@ -266,5 +272,5 @@ func nilIfZero(t time.Time) any {
 	if t.IsZero() {
 		return nil
 	}
-	return t.UTC().Format(time.RFC3339Nano)
+	return dateTime(t)
 }

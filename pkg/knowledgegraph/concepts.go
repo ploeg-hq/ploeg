@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/ploeg-hq/ploeg/pkg/harness"
 	"github.com/ploeg-hq/ploeg/pkg/notes"
@@ -69,7 +68,7 @@ func (k *Knowledge) PutConcept(ctx context.Context, p store.ConceptPromotion) (s
 		"client": nilIfEmpty(owner), "repository": nil, "type": p.Note.Type, "title": p.Note.Title,
 		"description": nilIfEmpty(p.Note.Description), "resource": nilIfEmpty(p.Note.Resource),
 		"tags": nilIfNone(p.Note.Tags), "body": string(doc), "from_note": p.Note.Key,
-		"accepted_by": p.ApprovedBy, "accepted_at": p.DecidedAt.UTC().Format(time.RFC3339Nano),
+		"accepted_by": p.ApprovedBy, "accepted_at": dateTime(p.DecidedAt),
 	})
 }
 
