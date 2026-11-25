@@ -72,6 +72,12 @@ RUN AGENT_STORE="$(find /opt/uv/tools/openhands -name agent_store.py -path '*/op
  && openhands --version | head -1 > /etc/openhands-version \
  && test -s /etc/openhands-version
 
+RUN MODEL_FEATURES="$(find /opt/uv/tools/openhands -name model_features.py -path '*/openhands/sdk/llm/utils/*')" \
+ && test -n "${MODEL_FEATURES}" \
+ && grep -q '^SEND_REASONING_CONTENT_MODELS: list\[str\] = \[$' "${MODEL_FEATURES}" \
+ && sed -i 's/^SEND_REASONING_CONTENT_MODELS: list\[str\] = \[$/& "qwen3.6", "qwen3.7", "qwen3.8",/' "${MODEL_FEATURES}" \
+ && /opt/uv/tools/openhands/bin/python -c "from openhands.sdk.llm import Message, TextContent; from openhands.sdk.llm.utils.model_features import get_features; sent = lambda model: Message(role='assistant', content=[TextContent(text='ok')], reasoning_content='kept').to_chat_dict(cache_enabled=False, vision_enabled=False, function_calling_enabled=True, force_string_serializer=False, send_reasoning_content=get_features(model).send_reasoning_content).get('reasoning_content'); assert sent('litellm_proxy/qwen3.8-27b') == 'kept', 'OpenHands drops the reasoning of Qwen 3.8 between steps'; assert sent('litellm_proxy/qwen3-32b') is None, 'OpenHands sends the reasoning of a Qwen that does not keep it'"
+
 ENV LITELLM_LOCAL_MODEL_COST_MAP=True
 
 COPY --from=node /opt/moon /opt/moon
