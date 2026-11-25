@@ -937,6 +937,7 @@ func closeShiftTx(ctx context.Context, tx pgx.Tx, shiftID int64, reason string) 
 // what, in which Round. Serves both consumers ADR-0011 names — the PR comment
 // and the next Round's prompt.
 type RunReport struct {
+	RunID  int64
 	Role   string
 	Round  int
 	Writes bool
@@ -992,7 +993,7 @@ func (s *Store) RoundReports(ctx context.Context, shiftID int64) ([]RunReport, e
 	return collectRunReports(rows)
 }
 
-const runReportColumns = `role, round, writes, shadow, COALESCE(outcome, ''), summary, findings, links, verdict, verification,
+const runReportColumns = `id, role, round, writes, shadow, COALESCE(outcome, ''), summary, findings, links, verdict, verification,
 		       COALESCE(failure_reason, ''), COALESCE(evidence_version, 0), delivery, finding_items, finding_answers`
 
 func collectRunReports(rows pgx.Rows) ([]RunReport, error) {
@@ -1001,7 +1002,7 @@ func collectRunReports(rows pgx.Rows) ([]RunReport, error) {
 	for rows.Next() {
 		var r RunReport
 		var verification, delivery, items, answers []byte
-		if err := rows.Scan(&r.Role, &r.Round, &r.Writes, &r.Shadow, &r.Outcome, &r.Summary, &r.Findings, &r.Links, &r.Verdict, &verification,
+		if err := rows.Scan(&r.RunID, &r.Role, &r.Round, &r.Writes, &r.Shadow, &r.Outcome, &r.Summary, &r.Findings, &r.Links, &r.Verdict, &verification,
 			&r.FailureReason, &r.EvidenceVersion, &delivery, &items, &answers); err != nil {
 			return nil, err
 		}

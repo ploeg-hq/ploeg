@@ -33,6 +33,12 @@ never inside an agent process).
 - **WHEN** a person opens the PR
 - **THEN** each Role's findings are visible as comments, without a Ploeg UI
 
+#### Scenario: Two evaluators publish one comment
+
+- **WHEN** two evaluators see the same completed Round
+- **THEN** each Run's findings are on the PR once
+- **AND** findings that cannot be checked against the PR are posted anyway
+
 ### Requirement: Readers cannot write the branch they review
 
 A reading Run SHALL receive a read-only forge credential or none at all
