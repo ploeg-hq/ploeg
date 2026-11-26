@@ -71,7 +71,7 @@ type toolRig struct {
 	accepted bool
 }
 
-func newToolRig(t *testing.T, mode AttributionMode) *toolRig {
+func newToolRig(t *testing.T, mode AttributionMode, configure ...func(*Server)) *toolRig {
 	t.Helper()
 	fake := &mcpServerFake{tools: []map[string]any{
 		{"name": "search_logs", "inputSchema": map[string]any{"type": "object"}, "annotations": map[string]any{"readOnlyHint": true}},
@@ -107,6 +107,9 @@ func newToolRig(t *testing.T, mode AttributionMode) *toolRig {
 		OperatorConfig: OperatorConfig{Consumers: consumers, PersonTokens: personTokens, Attribution: mode,
 			Teams: map[string][]string{"bronze": {"builder", "reviewer"}, "gold": {"writer"}}},
 		ToolRegistry: &ToolRegistry{Service: svc}}
+	for _, c := range configure {
+		c(server)
+	}
 	return &toolRig{t: t, handler: server.operatorHandler(), svc: svc, secrets: secrets, mcp: fake, mcpURL: srv.URL + "/mcp", issuer: is,
 		manager: tokens["T_ONE"], reader: tokens["T_TWO"], tenant: tenant}
 }

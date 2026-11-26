@@ -11029,7 +11029,7 @@
       }
     },
     "mcpServer": {
-      "description": "A registered MCP server (ADR-0199 section 1). A consumer without manageTools sees only servers attached to Teams it may read, without the URL's query.",
+      "description": "A registered MCP server (ADR-0199 section 1), or a static Team's ADR-0078 grant reported as a static server of kind gateway-access-groups (section 8). A consumer without manageTools sees only servers attached to Teams it may read, without the URL's query, and the reported grants of Teams it may read.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -11094,6 +11094,51 @@
         },
         "adapter": {
           "const": "gateway-access-groups"
+        },
+        "gatewayAccess": {
+          "description": "Set only on the static server a static Team's ADR-0078 grant is reported as (ADR-0199 section 8): key <team>.gateway-access-groups, adapter gateway-access-groups, auth none, no tools of Ploeg's own and no URL, because the Run's model key reaches the model gateway's MCP endpoint and the gateway's team and access groups bound it. Per Role, the gateway team its Runs' model keys are minted in and the access groups those keys carry.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "team",
+            "roles"
+          ],
+          "properties": {
+            "team": {
+              "type": "string"
+            },
+            "teamId": {
+              "type": "string"
+            },
+            "roles": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "role",
+                  "gatewayTeamId",
+                  "accessGroups"
+                ],
+                "properties": {
+                  "role": {
+                    "type": "string"
+                  },
+                  "gatewayTeamId": {
+                    "type": "string"
+                  },
+                  "accessGroups": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },

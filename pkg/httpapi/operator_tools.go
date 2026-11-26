@@ -16,6 +16,7 @@ import (
 	"github.com/ploeg-hq/ploeg/pkg/connection"
 	"github.com/ploeg-hq/ploeg/pkg/secretstore"
 	"github.com/ploeg-hq/ploeg/pkg/store"
+	"github.com/ploeg-hq/ploeg/pkg/team"
 	"github.com/ploeg-hq/ploeg/pkg/toolregistry"
 )
 
@@ -244,11 +245,14 @@ type serverView struct {
 	Credential credentialView      `json:"credential"`
 	Tools      []toolregistry.Tool `json:"tools"`
 	Adapter    string              `json:"adapter,omitempty"`
+	// GatewayAccess is the static Team's ADR-0078 grant this server
+	// reports (ADR-0199 section 8).
+	GatewayAccess *toolregistry.GatewayAccess `json:"gatewayAccess,omitempty"`
 }
 
 func viewServer(s toolregistry.Server, full bool) serverView {
 	v := serverView{ID: s.ID, Key: s.Key, Name: s.Name, Source: s.Source, State: stateOr(s.State), Revision: s.Revision, Transport: s.Transport,
-		Auth: s.Auth, Tools: s.Tools, Adapter: s.Adapter, Credential: credentialView{Set: s.HasCredential()}}
+		Auth: s.Auth, Tools: s.Tools, Adapter: s.Adapter, Credential: credentialView{Set: s.HasCredential()}, GatewayAccess: s.GatewayAccess}
 	if v.Tools == nil {
 		v.Tools = []toolregistry.Tool{}
 	}
@@ -307,23 +311,73 @@ func (s *Server) visibleToolIDs(ctx context.Context, p OperatorPrincipal) map[st
 	return ids
 }
 
+// gatewayAccessServers are the static Teams' ADR-0078 grants, read from
+// ploegd's managed inference policies, as static servers of kind
+// gateway-access-groups (ADR-0199 section 8). They are reported whether or
+// not the installation configures a tool registry, because the grant they
+// describe works without one.
+func (s *Server) gatewayAccessServers() []toolregistry.Server {
+	if s.LLMControl == nil {
+		return nil
+	}
+	policies := make([]toolregistry.GatewayAccessPolicy, 0, len(s.LLMControl.Policies))
+	for _, p := range s.LLMControl.Policies {
+		policies = append(policies, toolregistry.GatewayAccessPolicy{Team: p.Team, Role: p.Role, GatewayTeamID: p.LiteLLMTeamID, AccessGroups: p.MCPAccessGroups})
+	}
+	tenant := toolregistry.DefaultTenant
+	if svc := s.toolService(); svc != nil && svc.Tenant != "" {
+		tenant = svc.Tenant
+	}
+	return toolregistry.GatewayAccessServers(tenant, policies, func(key string) string {
+		if s.Teams == nil {
+			return ""
+		}
+		if t, _, ok := s.Teams.Resolve(key); ok && t.Source == team.SourceStatic {
+			return t.ID
+		}
+		return ""
+	})
+}
+
+// listedServers are the registry's servers followed by the reported
+// gateway-access-groups grants.
+func (s *Server) listedServers(ctx context.Context) ([]toolregistry.Server, *toolregistry.Error) {
+	var servers []toolregistry.Server
+	if svc := s.toolService(); svc != nil {
+		registered, e := svc.Servers(ctx)
+		if e != nil {
+			return nil, e
+		}
+		servers = registered
+	}
+	return append(servers, s.gatewayAccessServers()...), nil
+}
+
+// mayReadServer reports whether a consumer reads srv: every server with
+// manageTools, else one attached to a Team it may read, or the reported
+// grant of such a Team.
+func mayReadServer(p OperatorPrincipal, visible map[string]bool, srv toolregistry.Server) bool {
+	if visible == nil || visible[srv.ID] {
+		return true
+	}
+	return srv.GatewayAccess != nil && p.AllowsTeam(srv.GatewayAccess.Team)
+}
+
 func (s *Server) handleListMCPServers(w http.ResponseWriter, r *http.Request) {
 	if !noQuery(w, r) {
 		return
 	}
 	p, _ := OperatorPrincipalFromContext(r.Context())
+	servers, e := s.listedServers(r.Context())
+	if e != nil {
+		toolError(w, e)
+		return
+	}
 	views := []serverView{}
-	if svc := s.toolService(); svc != nil {
-		servers, e := svc.Servers(r.Context())
-		if e != nil {
-			toolError(w, e)
-			return
-		}
-		visible := s.visibleToolIDs(r.Context(), p)
-		for _, srv := range servers {
-			if visible == nil || visible[srv.ID] {
-				views = append(views, viewServer(srv, visible == nil))
-			}
+	visible := s.visibleToolIDs(r.Context(), p)
+	for _, srv := range servers {
+		if mayReadServer(p, visible, srv) {
+			views = append(views, viewServer(srv, visible == nil))
 		}
 	}
 	operatorJSON(w, 200, map[string]any{"schemaVersion": "1.0", "mcpServers": views})
@@ -334,16 +388,17 @@ func (s *Server) handleGetMCPServer(w http.ResponseWriter, r *http.Request) {
 	if !ok || !noQuery(w, r) {
 		return
 	}
-	svc := s.toolService()
-	if svc == nil {
-		operatorError(w, 404, "unknown_server", "No live server has this id or key.")
-		return
+	unknown := &toolregistry.Error{Status: 404, Code: "unknown_server", Message: "No live server has this id or key."}
+	srv, e := toolregistry.Server{}, unknown
+	if reported, found := toolregistry.FindServer(s.gatewayAccessServers(), ref); found {
+		srv, e = reported, nil
+	} else if svc := s.toolService(); svc != nil {
+		srv, e = svc.Server(r.Context(), ref)
 	}
-	srv, e := svc.Server(r.Context(), ref)
 	p, _ := OperatorPrincipalFromContext(r.Context())
 	visible := s.visibleToolIDs(r.Context(), p)
-	if e == nil && visible != nil && !visible[srv.ID] {
-		e = &toolregistry.Error{Status: 404, Code: "unknown_server", Message: "No live server has this id or key."}
+	if e == nil && !mayReadServer(p, visible, srv) {
+		e = unknown
 	}
 	if e != nil {
 		toolError(w, e)
