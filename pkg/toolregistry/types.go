@@ -91,6 +91,9 @@ type Server struct {
 	Source        string
 	State         string
 	Revision      int64
+	// GatewayAccess is set on the server a static Team's ADR-0078 grant
+	// is reported as, and nil on every registered server.
+	GatewayAccess *GatewayAccess
 }
 
 // HasCredential reports whether a credential is stored or configured.
