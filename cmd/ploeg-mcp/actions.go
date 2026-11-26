@@ -88,7 +88,10 @@ type actionOut struct {
 	Summary     string `json:"summary"`
 	WorkItemID  string `json:"workItemId,omitempty"`
 	ExecutionID string `json:"executionId,omitempty"`
-	State       string `json:"state,omitempty" jsonschema:"the Work Item's or execution's state after the change"`
+	Team        string `json:"team,omitempty" jsonschema:"the Team's key after the change"`
+	TeamID      string `json:"teamId,omitempty"`
+	Revision    string `json:"revision,omitempty" jsonschema:"the Team's revision after the change"`
+	State       string `json:"state,omitempty" jsonschema:"the Work Item's, execution's or Team's state after the change"`
 	CommandID   string `json:"commandId,omitempty" jsonschema:"pass it back as commandId to repeat this call without acting twice"`
 	Replayed    bool   `json:"replayed,omitempty" jsonschema:"true when this commandId had already acted; nothing changed now"`
 }
@@ -107,6 +110,10 @@ type action[In any] struct {
 	act       func(ctx context.Context, who operatorclient.Attribution, commandID string, in In) (actionOut, error)
 	prove     func(ctx context.Context, p person) (context.Context, error)
 	confirm   *confirmations
+	// dryRun marks an action whose effect is ploegd's own dry run of it,
+	// which only a proven person may ask for: describe then runs with the
+	// person's proof, and the dry run writes nothing (ADR-0198).
+	dryRun bool
 }
 
 type writerKey struct{}
@@ -201,7 +208,7 @@ func (a action[In]) step(ctx context.Context, req *mcp.CallToolRequest, in In) (
 		return nil, out, errors.New(cannotOpenPage)
 	}
 	args, _ := json.Marshal(in)
-	effect, err := a.describe(ctx, who, in)
+	effect, err := a.effect(ctx, p, who, in)
 	if err != nil {
 		return nil, out, err
 	}
@@ -278,6 +285,17 @@ func (a action[In]) step(ctx context.Context, req *mcp.CallToolRequest, in In) (
 		out.CommandID = state.CommandID
 	}
 	return nil, out, nil
+}
+
+func (a action[In]) effect(ctx context.Context, p person, who operatorclient.Attribution, in In) (string, error) {
+	if a.dryRun && a.prove != nil {
+		proven, err := a.prove(ctx, p)
+		if err != nil {
+			return "", err
+		}
+		ctx = proven
+	}
+	return a.describe(ctx, who, in)
 }
 
 // askAgain answers a retry whose inputResponses lack this confirmation with
@@ -369,6 +387,7 @@ func registerActions(srv *mcp.Server, s *server) {
 	addAction(srv, s, &mcp.Tool{Name: "ploeg_steer_execution", Title: "Steer an attended execution", Annotations: destructive(true),
 		Description: "Send a message to, pause, resume or cancel an attended execution you own, whichever application started it, when its Team is in your access. Find its executionId in ploeg_get_work, which lists a Work Item's executions and marks yours. Asks the person to confirm first."},
 		action[steerIn]{commandID: func(in steerIn) string { return in.CommandID }, describe: s.describeSteer, act: s.steer})
+	registerTeamActions(srv, s)
 }
 
 type submitIn struct {
