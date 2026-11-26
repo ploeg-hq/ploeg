@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-11-18
+status: accepted
+date: 2026-11-26
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-03-31
@@ -322,3 +322,4 @@ Proposed, none of these exist yet:
 * 2026-11-18 — the owner answered the open questions. A released alias, and a removed runtime Team's key, stays reserved for 90 days (section 4). A drain lasts at most 14 days, after which open Work Items move to `needs_human` with `team_drain_expired` and the Team is removed (section 5). The configuration file is the only source of a static Team's name: every read says so with `nameSource` and the file key, and a `PATCH` of a static Team's name is refused with `409 name_set_by_configuration` (sections 1 and 3). MCP groups and skills catalogues for runtime Teams stay open while the owner decides, as a follow-up record (section 14).
 * 2026-11-18 — the owner accepted two choices of the first implementation (#440). In operator API schema version 1.0 a Team's existing `id` stays its key and the generated id is served as `teamId`; `id` moves to the generated id only in a next schema version. The `team` label of Team metrics keeps the key a row was written with, beside `team_id`, instead of the current key, so a rename never yields two series with the same labels (section 10).
 * 2026-11-18 — Section 14's open question is answered by the proposed [ADR-0199](0199-mcp-servers-and-skill-sources-are-registered-per-tenant-attached-to-a-teams-roles-by-id-and-reached-only-through-the-credential-gateway.md): a runtime Team gets MCP servers and skills through an attachment by registry id, never through `tools` or `skills` fields in its manifest, which stay `422 field_not_allowed`.
+* 2026-11-26 — Accepted by the owner, built: the three identifiers, the boot reconciler and the `team_id` backfill (#440, #449); runtime Teams with section 8's gates, the dry run, states, rename and aliases with their reservation, removal and the bounded drain, on a generic worker pool per Tenant and Harness (#448, #456); a runtime Team's work run end to end through Shifts and its pool (#452); and section 3's ploeg-mcp tools `ploeg_list_teams`, `ploeg_create_team`, `ploeg_change_team` and `ploeg_remove_team` (#482). Their confirmation shows the dry run with the spend headroom. The operator API's dry run of a replace does not compare `If-Match`, so `ploeg_change_team` refuses a stale revision itself before it asks, and ploegd checks it again when it acts.
