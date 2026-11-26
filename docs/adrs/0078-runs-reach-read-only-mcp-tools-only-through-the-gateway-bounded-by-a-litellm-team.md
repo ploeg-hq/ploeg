@@ -153,5 +153,10 @@ in". Everything else in ADR-0030 stands, including `--strict-mcp-config`.
 
 * 2026-10-08 — Proposed with the policy, mint, worker and chart change. The
   gateway facts above were verified against the live LiteLLM that day.
+* 2026-11-26 — [ADR-0199](0199-mcp-servers-and-skill-sources-are-registered-per-tenant-attached-to-a-teams-roles-by-id-and-reached-only-through-the-credential-gateway.md),
+  accepted, re-reads this record as one adapter of its registry,
+  `gateway-access-groups` (section 8). A static Team's `litellmTeamId` and
+  `mcpAccessGroups` keep working as recorded here, and `GET
+  /api/v1/operator/mcp-servers` reports them as a static server of that kind.
 * Related: [0008](0008-litellm-is-the-credential-and-metering-seam.md),
   [0030](0030-target-repository-instructions-rank-below-the-delivery-contract.md).
