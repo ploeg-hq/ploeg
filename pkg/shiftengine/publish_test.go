@@ -137,6 +137,18 @@ func (f *fakeForge) commentsMatching(marker string) []string {
 	return out
 }
 
+func (f *fakeForge) commentsContaining(text string) []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []string
+	for _, c := range f.comments {
+		if strings.Contains(c.Body, text) {
+			out = append(out, c.Body)
+		}
+	}
+	return out
+}
+
 type fakeTracker struct {
 	mu       sync.Mutex
 	comments []string

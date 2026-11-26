@@ -272,7 +272,7 @@ func TestPendingForgeCIHoldsTheShiftUntilTheTimeout(t *testing.T) {
 	e.EvaluateAll(ctx)
 	e.EvaluateAll(ctx)
 
-	if n := len(forge.commentsMatching("### reviewer")); n != 1 {
+	if n := len(forge.commentsContaining("### reviewer")); n != 1 {
 		t.Errorf("the reviewer's findings were published %d times while the shift waited, want once", n)
 	}
 	if shiftClosed(t, id) {

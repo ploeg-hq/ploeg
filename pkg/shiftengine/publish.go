@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -41,8 +42,10 @@ func pullRequest(reports []store.RunReport, repository string) (link string, num
 // publishRound posts one comment per reading Run of the round that just
 // finished, attributed to its Role.
 //
-// At-least-once: two evaluators can both observe the same completed Round and
-// both publish before one wins the round-advance CAS. A duplicated comment is
+// Two evaluators can both observe the same completed Round before one wins the
+// round-advance CAS. They take turns under the pull request's findings lease,
+// and the later one finds each Run's marker and posts nothing. When the lease
+// or the list fails the findings are posted anyway: a duplicated comment is
 // visible and harmless; a missing one loses the review a human is waiting for.
 func (e *Engine) publishRound(ctx context.Context, si store.ShiftInfo, reports []store.RunReport, round int) {
 	if len(e.Forges) == 0 {
@@ -58,14 +61,31 @@ func (e *Engine) publishRound(ctx context.Context, si store.ShiftInfo, reports [
 		return
 	}
 
-	fp, repo, pr, skip := e.pullRequestThread(ctx, si, reports)
+	t, skip := e.thread(ctx, si, reports)
 	if skip != "" {
 		e.Log.Info("findings not published: "+skip,
 			"shift", si.ID, "work_item", si.WorkItemID, "round", round, "findings", len(pending))
 		return
 	}
+	fp, repo, pr := t.forge, t.repo, t.pr
+	release, err := e.awaitCommentLease(ctx, t, findingsSlotKey)
+	if err != nil {
+		e.Log.Warn("findings published without their lease: "+err.Error(), "shift", si.ID, "repo", repo, "pr", pr)
+	} else {
+		defer release()
+	}
+	published, err := fp.Comments(ctx, repo, pr)
+	if err != nil {
+		e.Log.Warn("findings published without a look for earlier ones: comments list failed",
+			"shift", si.ID, "repo", repo, "pr", pr, "err", err)
+	}
 
 	for _, r := range pending {
+		if hasComment(published, findingsMarker(r.RunID)) {
+			e.Log.Info("findings already published", "shift", si.ID, "role", r.Role,
+				"round", r.Round, "repo", repo, "pr", pr)
+			continue
+		}
 		if err := fp.Comment(ctx, repo, pr, findingsComment(r)); err != nil {
 			e.Log.Error("findings comment failed", "shift", si.ID, "role", r.Role,
 				"repo", repo, "pr", pr, "err", err)
@@ -74,6 +94,12 @@ func (e *Engine) publishRound(ctx context.Context, si store.ShiftInfo, reports [
 		e.Log.Info("findings published", "shift", si.ID, "role", r.Role,
 			"round", r.Round, "repo", repo, "pr", pr)
 	}
+}
+
+func hasComment(comments []provider.Comment, marker string) bool {
+	return slices.ContainsFunc(comments, func(c provider.Comment) bool {
+		return strings.HasPrefix(strings.TrimSpace(c.Body), marker)
+	})
 }
 
 // prThread is where the Shift's pull request conversation lives.
@@ -189,10 +215,11 @@ func (e *Engine) publishBudgetExhausted(ctx context.Context, si store.ShiftInfo,
 
 const (
 	usageReportSlotKey   = "usage-report"
+	findingsSlotKey      = "findings"
 	usageReportWriteTime = 30 * time.Second
-	usageReportLease     = 2 * usageReportWriteTime
-	usageReportLeaseWait = 10 * time.Second
-	usageReportLeasePoll = 200 * time.Millisecond
+	commentLease         = 2 * usageReportWriteTime
+	commentLeaseWait     = 10 * time.Second
+	commentLeasePoll     = 200 * time.Millisecond
 )
 
 // publishUsageReport maintains the one usage report comment on the Shift's
@@ -220,7 +247,7 @@ func (e *Engine) publishUsageReport(ctx context.Context, si store.ShiftInfo) {
 		e.Log.Info("usage report not published: "+skip, "shift", si.ID, "work_item", si.WorkItemID)
 		return
 	}
-	release, err := e.awaitUsageReportLease(ctx, t)
+	release, err := e.awaitCommentLease(ctx, t, usageReportSlotKey)
 	if err != nil {
 		e.Log.Warn("usage report not published: "+err.Error(), "shift", si.ID, "repo", t.repo, "pr", t.pr)
 		return
@@ -231,11 +258,11 @@ func (e *Engine) publishUsageReport(ctx context.Context, si store.ShiftInfo) {
 	e.writeUsageReport(ctx, si, t)
 }
 
-func (e *Engine) awaitUsageReportLease(ctx context.Context, t prThread) (release func(), err error) {
-	slot := store.CommentSlot{Forge: t.forgeID, Repo: t.repo, Number: t.pr, Key: usageReportSlotKey}
-	deadline := time.Now().Add(usageReportLeaseWait)
+func (e *Engine) awaitCommentLease(ctx context.Context, t prThread, key string) (release func(), err error) {
+	slot := store.CommentSlot{Forge: t.forgeID, Repo: t.repo, Number: t.pr, Key: key}
+	deadline := time.Now().Add(commentLeaseWait)
 	for {
-		release, held, err := e.Store.ClaimPullRequestComment(ctx, slot, usageReportLease)
+		release, held, err := e.Store.ClaimPullRequestComment(ctx, slot, commentLease)
 		if err != nil {
 			return nil, fmt.Errorf("lease claim failed: %w", err)
 		}
@@ -243,12 +270,12 @@ func (e *Engine) awaitUsageReportLease(ctx context.Context, t prThread) (release
 			return release, nil
 		}
 		if time.Now().After(deadline) {
-			return nil, errors.New("another writer still holds the report")
+			return nil, errors.New("another writer still holds the comment")
 		}
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		case <-time.After(usageReportLeasePoll):
+		case <-time.After(commentLeasePoll):
 		}
 	}
 }
@@ -314,11 +341,18 @@ func (e *Engine) RefreshUsageReport(ctx context.Context, shiftID int64) error {
 	return nil
 }
 
+// findingsMarker identifies the comment of one Run's findings. The comment
+// starts with it, so findings that quote another Run's marker match nothing.
+func findingsMarker(runID int64) string {
+	return fmt.Sprintf("<!-- ploeg:findings run=%d -->", runID)
+}
+
 // findingsComment renders one Role's findings for the pull request thread.
 // Attribution first: a human scanning the thread needs to know which
 // specialist said what before they read the prose.
 func findingsComment(r store.RunReport) string {
 	var b strings.Builder
+	b.WriteString(findingsMarker(r.RunID) + "\n\n")
 	fmt.Fprintf(&b, "### %s — round %d\n\n", r.Role, r.Round)
 	if r.Summary != "" {
 		fmt.Fprintf(&b, "_%s_\n\n", r.Summary)
