@@ -58,6 +58,7 @@ func newExchangingServer(c *operatorclient.Client, confirm *confirmations, excha
 		Description: "One Run's accounting: its authorization, the Hold it keeps, its inference account's state, observed, settled and corrected amounts with their evidence, an operator settlement if one was made, and its llm audit events in order. Use it to see why a Shift's budget is held or what a failed Run cost. runId comes from ploeg_get_work or ploeg_recent_runs."}, s.runSpend)
 	mcp.AddTool(srv, &mcp.Tool{Name: "ploeg_changes_since", Title: "Changes since", Annotations: readOnly("Changes since"),
 		Description: "Audit events in the order they happened. Without a cursor it returns the newest events; pass the returned cursor next time to get only what happened since."}, s.changesSince)
+	registerTeamTools(srv, s, readOnly)
 	if confirm != nil {
 		registerActions(srv, s)
 	}

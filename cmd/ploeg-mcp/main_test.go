@@ -22,7 +22,10 @@ import (
 	"github.com/ploeg-hq/ploeg/pkg/work"
 )
 
-var testStore *store.Store
+var (
+	testStore *store.Store
+	testDSN   string
+)
 
 func TestMain(m *testing.M) {
 	l, err := net.Listen("tcp", "127.0.0.1:0")
@@ -45,7 +48,8 @@ func TestMain(m *testing.M) {
 	code := func() int {
 		defer func() { _ = epg.Stop(); _ = os.RemoveAll(dir) }()
 		ctx := context.Background()
-		s, err := store.New(ctx, fmt.Sprintf("postgresql://postgres:postgres@localhost:%d/postgres?sslmode=disable", port), store.PoolConfig{})
+		testDSN = fmt.Sprintf("postgresql://postgres:postgres@localhost:%d/postgres?sslmode=disable", port)
+		s, err := store.New(ctx, testDSN, store.PoolConfig{})
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			return 1
@@ -147,7 +151,7 @@ func TestToolsAnswerWhatWaitsAndWhy(t *testing.T) {
 			t.Fatalf("%s is not a titled read-only tool with an output schema", tool.Name)
 		}
 	}
-	if strings.Join(names, ",") != "ploeg_changes_since,ploeg_find_work,ploeg_get_work,ploeg_overview,ploeg_recent_runs,ploeg_run_spend" {
+	if strings.Join(names, ",") != "ploeg_changes_since,ploeg_find_work,ploeg_get_work,ploeg_list_teams,ploeg_overview,ploeg_recent_runs,ploeg_run_spend" {
 		t.Fatalf("tools = %v", names)
 	}
 

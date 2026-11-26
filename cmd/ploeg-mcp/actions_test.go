@@ -35,7 +35,10 @@ const (
 	signedInPerson  = "oidc-6435b71f32dd50c4582f6f3f1c0e55bf"
 )
 
-var actionTools = []string{"ploeg_submit_work", "ploeg_approve_work", "ploeg_reject_work", "ploeg_retry_work", "ploeg_stop_work", "ploeg_add_note", "ploeg_steer_execution"}
+var actionTools = []string{"ploeg_submit_work", "ploeg_approve_work", "ploeg_reject_work", "ploeg_retry_work", "ploeg_stop_work", "ploeg_add_note", "ploeg_steer_execution",
+	"ploeg_create_team", "ploeg_change_team", "ploeg_remove_team"}
+
+const readTools = 7
 
 type readyForge struct{}
 
@@ -63,6 +66,8 @@ type actingOptions struct {
 	personTokens     func([]httpapi.OperatorConsumer) *httpapi.PersonTokens
 	env              map[string]string
 	configure        func(*httpConfig)
+	steward          map[string]any
+	server           func(*httpapi.Server)
 }
 
 func newActingRemoteWith(t *testing.T, o actingOptions) acting {
@@ -71,6 +76,9 @@ func newActingRemoteWith(t *testing.T, o actingOptions) acting {
 	steward := map[string]any{"name": "mcp-steward", "tokenEnv": "STEWARD", "teams": []string{"pewter", "brass"}, "execute": true}
 	if o.stewardClientIDs != nil {
 		steward["clientIds"] = o.stewardClientIDs
+	}
+	for k, v := range o.steward {
+		steward[k] = v
 	}
 	raw, _ := json.Marshal([]map[string]any{
 		steward,
@@ -95,11 +103,15 @@ func newActingRemoteWith(t *testing.T, o actingOptions) acting {
 	}
 	log := slog.New(slog.DiscardHandler)
 	app := work.Target{Forge: "forgejo", Owner: "webgrip", Repo: "app", BaseBranch: "development"}
-	ploegd := (&httpapi.Server{Store: testStore, Log: log, LeaseTTL: time.Minute, RoleCaps: plans,
+	server := &httpapi.Server{Store: testStore, Log: log, LeaseTTL: time.Minute, RoleCaps: plans,
 		Engine:         &shiftengine.Engine{Store: testStore, Plans: plans, Log: log},
 		Readiness:      target.NewGate(map[string]work.Target{"app": app}, map[string]provider.RepositoryInspector{"forgejo": readyForge{}}),
 		WorkerSecurity: &httpapi.WorkerSecurity{AllowLegacy: true},
-		OperatorConfig: httpapi.OperatorConfig{Consumers: consumers, PersonTokens: personTokens, Teams: map[string][]string{"pewter": {"builder"}, "brass": {}, "tin": {}}}}).Handler()
+		OperatorConfig: httpapi.OperatorConfig{Consumers: consumers, PersonTokens: personTokens, Teams: map[string][]string{"pewter": {"builder"}, "brass": {}, "tin": {}}}}
+	if o.server != nil {
+		o.server(server)
+	}
+	ploegd := server.Handler()
 	env := map[string]string{"PLOEG_MCP_SUBJECT_NAMESPACE": personNamespace}
 	for k, v := range o.env {
 		env[k] = v
@@ -262,7 +274,7 @@ func TestAReadOnlyCallerSeesAndCallsNoActionTools(t *testing.T) {
 	a := newActingRemote(t)
 	cs := a.client(t, []string{"ploeg-readers"}, accept())
 	tools := toolNames(t, cs)
-	if len(tools) != 6 {
+	if len(tools) != readTools {
 		t.Fatalf("a reader sees %d tools", len(tools))
 	}
 	for _, name := range actionTools {
@@ -283,7 +295,7 @@ func TestAReadOnlyCallerSeesAndCallsNoActionTools(t *testing.T) {
 func TestAnExecuteCallerSeesEveryActionToolAsAWrite(t *testing.T) {
 	a := newActingRemote(t)
 	tools := toolNames(t, a.client(t, []string{"ploeg-stewards"}, accept()))
-	if len(tools) != 6+len(actionTools) {
+	if len(tools) != readTools+len(actionTools) {
 		t.Fatalf("tools = %d", len(tools))
 	}
 	for _, name := range actionTools {

@@ -273,28 +273,45 @@ func (c *Client) get(ctx context.Context, path string, q url.Values, into any) e
 }
 
 func (c *Client) do(ctx context.Context, method, path string, q url.Values, who *Attribution, payload any, into any) error {
+	return c.send(ctx, request{method: method, path: path, query: q, who: who, payload: payload, into: into})
+}
+
+type request struct {
+	method  string
+	path    string
+	query   url.Values
+	who     *Attribution
+	header  http.Header
+	payload any
+	into    any
+}
+
+func (c *Client) send(ctx context.Context, r request) error {
 	u := *c.base
-	u.Path = strings.TrimRight(u.Path, "/") + "/api/v1/operator/" + path
-	u.RawQuery = q.Encode()
+	u.Path = strings.TrimRight(u.Path, "/") + "/api/v1/operator/" + r.path
+	u.RawQuery = r.query.Encode()
 	var reader io.Reader
-	if payload != nil {
-		data, err := json.Marshal(payload)
+	if r.payload != nil {
+		data, err := json.Marshal(r.payload)
 		if err != nil {
 			return errors.New("could not encode the operator request")
 		}
 		reader = bytes.NewReader(data)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, u.String(), reader)
+	req, err := http.NewRequestWithContext(ctx, r.method, u.String(), reader)
 	if err != nil {
 		return errors.New("could not build the operator request")
 	}
+	for k, v := range r.header {
+		req.Header[k] = v
+	}
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	req.Header.Set("Accept", "application/json")
-	if payload != nil {
+	if r.payload != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	if who != nil {
-		who.apply(req.Header)
+	if r.who != nil {
+		r.who.apply(req.Header)
 	}
 	if c.proven {
 		req.Header.Del("X-Ploeg-Actor")
@@ -322,7 +339,10 @@ func (c *Client) do(ctx context.Context, method, path string, q url.Values, who 
 		_ = json.Unmarshal(body, &envelope)
 		return &Error{Status: resp.StatusCode, Code: c.redact(envelope.Error.Code), Message: c.redact(envelope.Error.Message)}
 	}
-	if err := json.Unmarshal(body, into); err != nil {
+	if r.into == nil || (resp.StatusCode == http.StatusNoContent && len(body) == 0) {
+		return nil
+	}
+	if err := json.Unmarshal(body, r.into); err != nil {
 		return &Error{Status: resp.StatusCode, Code: "invalid_response", Message: "Operator response did not match the contract."}
 	}
 	return nil

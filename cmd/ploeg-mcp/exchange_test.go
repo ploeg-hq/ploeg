@@ -79,7 +79,14 @@ func (f *fakeExchange) issuer() string { return f.srv.URL + "/application/o/ploe
 
 func exchangingRemote(t *testing.T, f *fakeExchange) acting {
 	t.Helper()
-	return newActingRemoteWith(t, actingOptions{
+	return newActingRemoteWith(t, exchangeOptions(t, f))
+}
+
+// exchangeOptions make mcp-steward accept the person tokens f issues and
+// ploeg-mcp exchange each person's token at f.
+func exchangeOptions(t *testing.T, f *fakeExchange) actingOptions {
+	t.Helper()
+	return actingOptions{
 		stewardClientIDs: []string{"ploeg-mcp"},
 		personTokens: func(consumers []httpapi.OperatorConsumer) *httpapi.PersonTokens {
 			tokens, err := httpapi.NewPersonTokens(httpapi.PersonTokenConfig{Issuer: f.issuer(), AllowLoopbackHTTP: true, Audience: "ploeg", JWKSURL: f.srv.URL + "/jwks", SubjectNamespace: personNamespace}, consumers)
@@ -94,7 +101,7 @@ func exchangingRemote(t *testing.T, f *fakeExchange) acting {
 			"PLOEG_MCP_EXCHANGE_CLIENT_SECRET": "exchange-secret",
 			"PLOEG_MCP_EXCHANGE_AUDIENCE":      "ploeg",
 		},
-	})
+	}
 }
 
 func TestAnActionCallsPloegWithThePersonsExchangedToken(t *testing.T) {
