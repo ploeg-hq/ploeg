@@ -10,13 +10,15 @@ verified_by: "Every bullet checked against reference/features.md at 9c70ae5 for 
 
 For platform engineers who want to run AI coding agents on their own Kubernetes, with budgets, isolation and an audit trail.
 
-Ploeg is a self-hosted service that takes a ticket from your tracker, runs a coding agent on it inside your cluster, and hands back a pull request for a person to review. It decides whether the work may run, pays for it from a budget you set, and keeps a record of everything that happened.
+Ploeg is the open-source governance plane for coding agents you run yourself: a ticket starts only within its budget and you see what each ticket really cost, the agent process never sees your credentials, and every claim we make is checked against published evidence, including what is not done yet.
+
+It takes a ticket from your tracker, runs a coding agent on it inside your cluster, and hands back a pull request for a person to review.
 
 Ploeg is experimental: it is at 0.x, has no stable release yet, and the [support matrix](reference/support-matrix.md) names exactly which paths are supported and tested.
 
-- **Spend you authorize up front.** Every Run gets a budget before it starts, and its cost settles afterwards from the model gateway's own records.
-- **Agents that never hold your keys.** Model and push credentials are minted per Run and kept outside the agent's container.
-- **Your cluster, your tracker, your forge.** It installs with Helm on Kubernetes and works from the tracker and the code host you already use.
+- **A ticket starts only within its budget.** Ploeg checks the ticket's budget before any agent starts and settles what each ticket really cost from the model gateway's own records. The gateway enforces the limit on each request.
+- **The agent process never sees your credentials.** Model and push credentials are minted per Run and kept outside the agent's container. The Run's pod still holds two long-lived tokens, and some writing Runs push with a shared one: the [threat model](security/threat-model.md#findings) publishes both as F-03 and F-30 until [ADR-0197](adrs/0197-no-credential-enters-a-run-pod-and-a-credential-gateway-outside-it-attaches-each-one-a-run-uses.md) is on by default.
+- **Claims checked against evidence.** The support matrix fails the docs check when a claim exceeds its evidence, and the threat model names an owner for each open finding.
 
 A few words used below, in Ploeg's own terms ([glossary](domain/glossary.md)): a **Work Item** is one unit of work, usually a ticket. A **Run** is one agent working on it once. A **Role** is what that Run does (write code, review, plan). A **Shift** is the whole attempt at a Work Item, made of one or more **Rounds** of Runs. A **Team** is a configured group of Roles with its own budget and limits. A **Harness** is the agent tool a Run drives, such as OpenHands or OpenCode.
 
