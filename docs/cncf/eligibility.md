@@ -17,7 +17,7 @@ Ploeg files only when both conditions hold:
 | Condition | Earliest date | Status on 2026-10-25 |
 | --- | --- | --- |
 | The repository is six months old | 2027-04-03 | Not met |
-| A second maintainer is active | When one joins | Not met: blocker, tracked in [issue #7](https://github.com/ploeg-hq/ploeg/issues/7) |
+| A second maintainer, from a second organisation, is active | When one joins | Not met: blocker, tracked in [issue #7](https://github.com/ploeg-hq/ploeg/issues/7) |
 
 ## Repository age
 
@@ -27,10 +27,11 @@ History from before the repository existed is not counted. The maintainer decide
 
 ## Maintainers
 
-Ploeg has one maintainer ([MAINTAINERS.md](../../MAINTAINERS.md)). The maintainer decided on 2026-10-25 that a single maintainer is an explicit application blocker. Ploeg files only once a second maintainer is active: listed in the roster with their consent, and doing sustained review and operational work as the [charter](charter.md) describes. Recruiting and adding that person is the work of [issue #7](https://github.com/ploeg-hq/ploeg/issues/7).
+Ploeg has one maintainer ([MAINTAINERS.md](../../MAINTAINERS.md)). The maintainer decided on 2026-10-25 that a single maintainer is an explicit application blocker. Ploeg files only once a second maintainer is active: listed in the roster with their consent, and doing sustained review and operational work as the [charter](charter.md) describes. Recruiting and adding that person is the work of [issue #7](https://github.com/ploeg-hq/ploeg/issues/7). Since 2026-11-27 the blocker is narrower: the application waits until a maintainer from a second organisation exists, and that maintainer is sought through an organisation that depends on Ploeg, the design partner of [ADR-0210](../adrs/0210-scope-is-frozen-until-an-outside-design-partner-runs-real-tickets.md), not through open calls alone.
 
 CNCF's pages differ on how many maintainers a Sandbox project needs. Ploeg carries that difference as this blocker: it waits for a second active maintainer whichever page applies.
 
 ## Decision history
 
 * 2026-10-25: no CNCF inquiry about repository age; file no earlier than 2027-04-03; a single maintainer blocks the application until a second maintainer is active. Decided by the maintainer and sole rights holder.
+* 2026-11-27: owner decision: the second maintainer is sought through an organisation that depends on Ploeg (the design partner), not through open calls alone, and the Sandbox application waits until a maintainer from a second organisation exists.
