@@ -36,3 +36,28 @@ Status: research record, 2026-10-04. It qualifies harnesses for both credential 
 ## Qualifying another harness
 
 Run one team on the harness with `harness.credentialIsolation: proxy` and `dind: false`. When a Run reaches its normal outcome, add a row here citing the Run and its pull request, and add the harness name to `ploeg.isolationQualifiedHarnesses` in the same change.
+
+A cluster now refuses a Run on a harness outside the set (ADR-0034, amendment of 2026-11-18), so a harness that is not qualified yet cannot get the cluster Run this procedure asks for. For `claude-code` the owner chose on 2026-11-27 to qualify it with a live opt-in test instead.
+
+## 2026-11-27: the `claude-code` qualification test
+
+[`TestLiveClaudeCodeCredentialIsolation`](../../pkg/worker/live_isolation_qualification_test.go) runs one writer Run through the worker's own execute path with both proxies on, the real `claude` binary, a model gateway test key and a test forge repository. Only ploegd is faked. It fails unless:
+
+* `claude`'s argv and environment carry neither the real model key nor the real forge token, and `ANTHROPIC_API_KEY`, `LLM_API_KEY` and `AGENT_BUILDER_TOKEN` hold the Run's placeholders;
+* `ANTHROPIC_BASE_URL` and `LLM_BASE_URL` point at the worker's model proxy and `claude`'s git is rewritten to the worker's forge proxy;
+* no file under the worker's work directory (the clone, the Run's home with Claude Code's own session files, the scratch directory), `claude`'s raw output, or the transcript sent to ploegd carries either credential, plain, base64 or URL-encoded;
+* every model call reached the gateway with the real key the worker's proxy swapped in, at least one did, and no proxy refused a request for a missing or wrong placeholder;
+* the Run ended with a pull request the worker observed on the forge.
+
+Run it with:
+
+```sh
+PLOEG_HARNESS_CONFORMANCE=1 \
+PLOEG_CONFORMANCE_LLM_BASE_URL=... PLOEG_CONFORMANCE_LLM_API_KEY=... PLOEG_CONFORMANCE_LLM_MODEL=... \
+PLOEG_CONFORMANCE_FORGE_URL=... PLOEG_CONFORMANCE_FORGE_TOKEN=... PLOEG_CONFORMANCE_FORGE_REPO=owner/name \
+mise exec -- go test ./pkg/worker/ -run TestLiveClaudeCodeCredentialIsolation -v -timeout 30m
+```
+
+`PLOEG_CONFORMANCE_FORGE` (default `forgejo`) and `PLOEG_CONFORMANCE_FORGE_BASE_BRANCH` (default `main`) are optional. The base URL is the gateway's OpenAI-compatible `/v1` URL, the key a LiteLLM key limited to the cheapest model, and the forge token one that may push a branch and open a pull request in a throwaway repository. The test leaves the pull request open as the evidence to cite.
+
+**Result.** Not run yet: no model gateway test key or test forge was reachable from the machine that wrote the test. The `claude-code` row above stays `no` and `claude-code` stays out of both qualified lists until a passing run is recorded here.
