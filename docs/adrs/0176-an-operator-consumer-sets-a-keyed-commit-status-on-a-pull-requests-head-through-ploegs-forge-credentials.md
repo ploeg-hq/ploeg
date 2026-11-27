@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-29
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -90,6 +90,8 @@ Statuses are often set by a program, such as a pipeline that finished a check or
 
 The answer belongs in a record that answers ADR-0171's trigger for every change route, not only this one.
 
+**Answered (2026-11-27).** [ADR-0180](0180-a-call-without-a-live-person-is-attributed-to-its-run-or-a-proven-workload-and-an-administrator-overrides-as-themselves.md) is that record, accepted together with this one: a machine caller sets a status as a `workload` principal whose consumer names the machine scope `commit-status`, which ADR-0180 reserves for this route. A person still sets one with a person token.
+
 ### Consequences
 
 * Good, because branch protection, merge queues and forge dashboards can require a consumer's decision, and the consumer holds no forge credentials.
@@ -145,3 +147,4 @@ Every response is validated against `operator-api.v1.schema.json`. `go test ./pk
 * Attribution: [ADR-0150](0150-an-operator-consumer-proves-the-person-it-acts-for-with-a-token-exchanged-for-ploegs-audience.md) and [ADR-0171](0171-an-operator-change-needs-a-proven-person-and-the-chart-refuses-asserted-attribution-from-0-3-0.md), including its first re-evaluation trigger, and [threat model](../security/threat-model.md) F-07.
 * Sibling record: [ADR-0175](0175-a-proposed-work-item-starts-a-shift-only-when-every-named-approval-was-given-at-its-revision.md), which gates admission on named approvals.
 * Forge APIs: [GitHub commit statuses](https://docs.github.com/en/rest/commits/statuses), [Forgejo `CreateCommitStatus`](https://forgejo.org/docs/latest/user/api-usage/), [GitLab commit status API](https://docs.gitlab.com/api/commits/#set-the-pipeline-status-of-a-commit).
+* 2026-11-27: owner decision: accepted together with [0180](0180-a-call-without-a-live-person-is-attributed-to-its-run-or-a-proven-workload-and-an-administrator-overrides-as-themselves.md); machine callers attribute through 0180 as `workload` principals with the machine scope `commit-status`. Nothing is built yet.

@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-30
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -19,7 +19,7 @@ Under `PLOEG_OPERATOR_ATTRIBUTION=proven` ([ADR-0171](0171-an-operator-change-ne
 
 ADR-0171 names two re-evaluation triggers for this: "decide how a machine caller is attributed" and "a deployment needs a change route that asserted attribution may reach under `proven`". Until this is decided, a deployment that needs any of (a) to (d) has to stay on `asserted`, which keeps [threat model](../security/threat-model.md) F-07 open on every route. How is a call without a live person attributed, proven and recorded, without reopening F-07?
 
-This record is a proposal. The owner has not chosen between the options below; the proposed option is the research recommendation.
+The owner accepted part of the proposed option on 2026-11-27: (a) lease renewal as a `run` call, and (b) and (c) as `workload` calls with machine scopes. (d), the administrator override, and disabling a person are deferred to a later record; until then they are direction, not decisions, and the machine scope `person.disable` is not part of the accepted vocabulary.
 
 ## Decision Drivers
 
@@ -85,7 +85,7 @@ A consumer may prove its own workload, apart from any person:
 * **No person on a workload call.** A workload request that names anyone in `X-Ploeg-Actor` or `X-Ploeg-Acting-User` answers 403 `actor_conflict`. A route finds its record by id inside the consumer's Teams and reads the person from the Work Item, never from the request.
 * **The record.** `principal: consumer:<name>`, `proof: workload`, with the Work Item's person as `context.person`, never as `sub` or `actor`.
 
-### (d) An administrator overrides as themselves
+### (d) An administrator overrides as themselves (deferred)
 
 * A Team may grant `override` on its sessions (`teams.<name>.override`): the claims a person token must carry to hold it (`requireClaims`, matched as ADR-0150 matches them) and the step-up it needs (`acrValues`, `amr`, `maxAge`).
 * The administrator sends their own proven person token and names the session's owner in `X-Ploeg-Override-For: <person id>`. `X-Ploeg-Actor` may still name only the proven person, so ADR-0150's rule is unchanged. The owner lookup uses the named owner instead of answering `actor_conflict`.
@@ -93,7 +93,7 @@ A consumer may prove its own workload, apart from any person:
 * `override` covers stopping and steering: the person commands on a session (`message`, `pause`, `resume`, `cancel`, `take-control`, `handback`), and cancel, requeue, notes and take-over on its Work Item. It never answers an approval, a question or a confirmation in the owner's name. Those stay the owner's, so nobody gives a required approval by override.
 * The record: `sub` is the administrator, `target` the owner, and `override` holds `{acr, amr, authTime}`. The operator event feed tells the owner (`operator.override`).
 
-### Disabling a person
+### Disabling a person (deferred)
 
 * `POST /api/v1/operator/people/{person}/disable`, sent by a workload principal with machine scope `person.disable` (typically the installation's identity lifecycle job), records the person as disabled. ploegd then cancels the person's running Runs (`cancel_requested`, as a cancel does), revokes their capability grants ([ADR-0143](0143-a-persons-machine-is-a-personal-cell-and-a-run-gets-a-capability-only-when-its-person-grants-it.md)) and any later `grant`, refuses new admissions in their name (409 `person_disabled`), and stops signing transaction tokens with them as `sub`, so a Run that missed the cancel stops at its next renewal. A Team whose sponsor is disabled runs nothing until it names another, as a Team without a sponsor does (ADR-0156).
 * `/enable` lets new work in again and restarts nothing.
@@ -164,7 +164,7 @@ A refusal stays `operator.attribution_refused` (ADR-0171), with `reason` one of 
 
 ### Confirmation
 
-The record stays proposed until these tests exist and pass; each is named so the implementing change can be checked against it.
+None of these tests exists yet; each is named so the implementing change can be checked against it. The override and disable cases (the third and fourth items, and `person.disable` and `override` in the configuration checks) belong to the deferred record.
 
 * `go test ./pkg/httpapi/ -run 'TestARunRenewsItsLeaseAfterItsPersonSignedOut|TestARunTokenForAnotherWorkerCannotRenew|TestAnExecutionStartAnswersATransactionTokenForItsConsumer|TestTheOperatorHeartbeatIsRefusedUnderProven'`
 * `go test ./pkg/httpapi/ -run 'TestAWorkloadTokenWritesAKeyedCommentUnderProven|TestAWorkloadVerifiesADeliveryUnderProven|TestAWorkloadOutsideItsMachineScopesIsRefused|TestAWorkloadNamingAPersonIsRefused|TestAWorkloadTokenLongerThanAnHourIsRefused|TestTokenReviewRefusesATokenWhosePodIsGone|TestAClientCredentialsTokenIsAWorkloadNeverAPerson'`, with TokenReview, the JWKS and the token endpoint faked by `httptest`.
@@ -235,3 +235,4 @@ The record stays proposed until these tests exist and pass; each is named so the
   * authentik [client credentials](https://docs.goauthentik.io/add-secure-apps/providers/oauth2/client_credentials/) with a federated JWT, including projected Kubernetes service account tokens.
   * [OpenID CIBA Core 1.0](https://openid.net/specs/openid-client-initiated-backchannel-authentication-core-1_0.html) and the [Shared Signals Framework](https://openid.net/specs/openid-sharedsignals-framework-1_0.html).
   * GitHub Apps' [installation access token and user access token](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/about-authentication-with-a-github-app): an app authenticates as an installation "when you want to attribute app activity to the app", and on behalf of a user when the activity is the user's. The `workload` and `person` kinds draw the same line.
+* 2026-11-27: owner decision: split. Accepted now: (a) Run lease renewal on the Run route under the transaction token, and (b) and (c) workload identity with machine scopes. Deferred to a later record: (d) the administrator override, and disabling a person (with the `person.disable` scope). Nothing is built yet.

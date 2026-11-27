@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-18
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -36,6 +36,8 @@ How does a writing Run show what it made, and give a person steps to check it th
 
 Chosen option: "**the writing Run walks its own test path, screenshots each step, and reports both; ploegd stores them, and the reviewing Run checks each picture**". The steps a person follows and the screenshots that show them are one record, so a picture is always the outcome of a step the agent actually took.
 
+**Accepted without screenshots (2026-11-27).** The owner accepted the walkthrough's steps and `noVisibleChange`: clauses 1, 2, 5 and 6 without `screenshot`, and the `commit` and `stale` check of clause 3. A step is `{do, expect}`. Everything about images (the `screenshot` field, the worker's file checks, the image table of clause 4, the image route of clause 5 and the reviewer's look at each picture in clause 6) is deferred until Ploeg stores files in object storage instead of the database; a later record adds them. The reviewing Run still reviews the steps as text and raises a finding when a walkthrough is stale or a step cannot be followed. Nothing of this record is built yet.
+
 1. **Contract.** [outcomereport.v1](../contracts/outcomereport.v1.schema.json) gains an optional `walkthrough`:
    * `commit`: the commit the agent walked.
    * `steps[]`, at most 8: `{do, expect, screenshot?}`. `do` and `expect` are one plain sentence each, written for a person who does not read code, at most 280 characters. `screenshot` is a path relative to the workspace.
@@ -59,7 +61,7 @@ Chosen option: "**the writing Run walks its own test path, screenshots each step
 
 ### Confirmation
 
-`mise exec -- go test ./...`, run in CI and locally through `mise run verify`:
+`mise exec -- go test ./...`, run in CI and locally through `mise run verify`, once built. For the accepted scope the screenshot cases below (dropped files, the image route, the reviewer's pictures) wait for the record that adds images:
 
 * A `harnesstest` property, `WritingRunWalkthroughSurvivesTheAdapter`, for every adapter.
 * Worker tests: a path outside the workspace, a symlink, a file that is not an image by its bytes, a file over 1 MiB and a ninth file are each dropped with a reason; a commit other than the pushed one marks the walkthrough stale; the walkthrough survives every outcome branch.
@@ -100,3 +102,4 @@ Chosen option: "**the writing Run walks its own test path, screenshots each step
 
 * Ticket VIK-2228 (this record) and VIK-2229 (the review half), under epic VIK-2226.
 * 2026-10-18: proposed, from the owner's request and answers the same day.
+* 2026-11-27: owner decision: accepted without screenshots: a walkthrough is steps and `noVisibleChange`. Images are deferred until object storage exists. Nothing is built yet.

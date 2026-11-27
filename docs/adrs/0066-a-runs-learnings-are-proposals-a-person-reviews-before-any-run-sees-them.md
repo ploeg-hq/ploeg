@@ -69,3 +69,4 @@ Chosen option: "Learnings in the OutcomeReport, stored as proposed OKF concepts,
 * Evidence: [OKF knowledge pack proof of concept](../research/2026-10-04-okf-knowledge-pack-poc.md).
 * Unfold system ADR-0020; OpenSpec change `add-knowledge-and-context-bundles`.
 * 2026-10-11 — The owner chose direct Work Item Notes with review only for a wider scope: [0088](0088-a-run-writes-work-item-notes-without-review-and-a-wider-scope-is-a-promotion-a-person-accepts.md) (proposed) replaces this record once accepted.
+* 2026-11-27: owner reopened the direction: the knowledge layer is to be built on Omnigraph with proper scope partitions; agents draw on it during work through tools/MCP and get context staged before a Work Item is picked up; a follow-up record will state this: [ADR-0209](0209-a-run-draws-on-the-scoped-omnigraph-knowledge-layer-before-and-during-its-work.md) (proposed). Status stays proposed; this record is not superseded.

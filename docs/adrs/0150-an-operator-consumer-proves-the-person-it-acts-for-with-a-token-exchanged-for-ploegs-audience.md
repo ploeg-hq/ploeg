@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-24
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -129,3 +129,4 @@ In HTTP mode, when `PLOEG_MCP_EXCHANGE_TOKEN_URL` is set, an action exchanges th
 * Standards: RFC 8693 (token exchange, `act`), RFC 6750 (bearer tokens), RFC 9068 (JWT access tokens, `client_id`), RFC 7519 (JWT).
 * 2026-10-24 — Amended: consumers may declare `audiences`. authentik 2026.8.5 issues an RFC 8693 exchanged token on the `audience` target's provider, so `aud` and `azp` are both the target's client id and `iss` is the target's issuer, or the global issuer in global issuer mode; the token never names the requesting client (`create_token_exchange_response` in `authentik/providers/oauth2/views/token.py` and `IDToken.new` and `to_access_token` in `id_token.py`, tag `version/2026.8.5`). Choosing the consumer by `azp` in `clientIds` cannot work there, and one shared Ploeg audience would let any consumer replay a person token issued for another. A per-consumer audience names the consumer in `aud`, stops that replay, and needs no change from an identity provider that names the client; the `clientIds` path stays for those.
 * 2026-10-28 — Amended: a consumer may name `requireClaims` (threat model F-47, [#357](https://github.com/ploeg-hq/ploeg/issues/357)). The 2026-10-27 security review found that a person token alone carried its consumer's whole principal, and that only the identity provider's policy for the audience or client decided who could obtain one; the verifier reads no group or role. A token without a required claim value now answers 403 `person_claim_required`. Profile P1 requires `requireClaims` on a consumer with `execute` that accepts person tokens as the bearer from chart 0.3.0, and ploegd and the install notes warn before then, so an installer has the 0.2 line to add the claim.
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: [person_token.go](../../pkg/httpapi/person_token.go) (verifier, five-minute default and one-hour maximum lifetime, 30 s leeway, start refusals), `X-Ploeg-Person-Token` and `person_claim_required` in [operator.go](../../pkg/httpapi/operator.go), `actor_conflict` and `proof` in [attribution.go](../../pkg/httpapi/attribution.go), `PersonID` in [person.go](../../pkg/operatorclient/person.go), the `PLOEG_OPERATOR_PERSON_*` settings in [operator.go](../../cmd/ploegd/operator.go), `PLOEG_MCP_EXCHANGE_TOKEN_URL` in [actions.go](../../cmd/ploeg-mcp/actions.go), and the named tests in [person_token_test.go](../../pkg/httpapi/person_token_test.go).

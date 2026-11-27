@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-26
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: none
@@ -53,3 +53,7 @@ Chosen option: "**No `teams` reads no Team, `["*"]` reads every Team; `readConte
 
 * Good, because the two kinds of consumer could not be confused.
 * Bad, because it duplicates token, person-token and scope handling for no gain over one capability.
+
+## More Information
+
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: `consumerTeamScope` and `contentReader` (`content_forbidden`, `readContent` defaulting to `execute`) in [operator.go](../../pkg/httpapi/operator.go), the gated reads in [transcript.go](../../pkg/httpapi/transcript.go), [board.go](../../pkg/httpapi/board.go), [context.go](../../pkg/httpapi/context.go) and [operator_knowledge.go](../../pkg/httpapi/operator_knowledge.go), `teams` required per consumer in the chart's `values.schema.json`, and the tests in [operator_content_test.go](../../pkg/httpapi/operator_content_test.go).

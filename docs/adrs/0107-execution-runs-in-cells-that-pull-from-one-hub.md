@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-17
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-04-01
@@ -60,6 +60,13 @@ rather than a new system: workers already claim over HTTP, ploegd already needs 
 Kubernetes API, and ADR-0072 already moves the scale signal to HTTP and the launch
 decision to a reservation. A cell is that design pointed at a hub URL.
 
+**Accepted scope (2026-11-27).** The owner accepted the principle only: execution capacity
+pulls work from the hub over HTTP, a cell holds nothing durable, and no cell needs an
+inbound port. The bullets below that design the mechanism, the separate `ploeg-cell`
+chart, cell registration and its capability strings, per-cell identity and the two
+credential modes, are deferred to a later record, written when a second cluster exists.
+Until then they are direction, not decisions.
+
 * **Hub.** ploegd, PostgreSQL, the signing key, the bootstrap registry, the LiteLLM admin
   authority and Unfold. One, highly available, the only place with durable state or
   minting authority.
@@ -118,6 +125,11 @@ decision to a reservation. A cell is that design pointed at a hub URL.
   Unfold compatibility contract already solve for ploegd and its consumers.
 
 ### Confirmation
+
+For the accepted principle: a change that makes ploegd dial into an executor, gives an
+executor durable state, or requires an inbound port on an executor is refused in review
+against this record; workers claim over HTTP (`POST /api/v1/claim`) today. The checks
+below belong to the deferred mechanism and apply to the record that decides it:
 
 * `scripts/helm-golden.sh check` renders the `ploeg-cell` chart with no database
   credential, no LiteLLM master key and no signing key in any object, and refuses a
@@ -185,3 +197,4 @@ decision to a reservation. A cell is that design pointed at a hub URL.
   production's only `isolated` capacity.
 * 2026-10-24 — [ADR-0106](0106-a-run-declares-an-isolation-floor-and-a-cell-runs-it-at-the-strictest-class-it-can-honour.md) amended: a cell advertises the set of isolation classes it can honour, not a maximum, and `hardened` and `isolated` are alternatives. Read "declared above that cell's maximum" in the Confirmation as "declared at a class the cell does not advertise".
 * 2026-10-25 — Amended by [ADR-0156](0156-each-run-carries-a-transaction-token-that-names-its-person-and-a-team-without-a-sponsor-runs-nothing.md): a cell's bootstrap token is exchanged for the Run's ES256 transaction token, not an HMAC capability; the HMAC capability stays issued for one minor and is deprecated. Federation through projected ServiceAccount tokens is still the second step.
+* 2026-11-27: owner decision: accepted for the principle only: cells pull work, hold nothing durable and need no inbound port. The `ploeg-cell` chart split, the cell registry and the two credential modes are deferred to a later record, written when a second cluster exists; the Decision Outcome and Confirmation say which parts that record decides.
