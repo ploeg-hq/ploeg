@@ -392,7 +392,7 @@ func TestFailedReader_RepeatedAndConcurrentEvaluationsRetryOnce(t *testing.T) {
 
 func TestReviewFailedWordingNeverClaimsAReview(t *testing.T) {
 	message := absentReview{role: "reviewer", failureReason: "agent_error", attempts: 3}.message()
-	body := trackerMessage(work.StateAwaitingReview, message, prLink, 4, 2, nil, true)
+	body := trackerMessage(work.StateAwaitingReview, message, prLink, 4, 2, nil, true, nil)
 	for _, want := range []string{"an agent review of its pull request is missing", "not reviewed by an agent: reviewer Run failed (agent_error) after 3 attempt(s)", "Agent review unavailable", prLink} {
 		if !strings.Contains(body, want) {
 			t.Errorf("tracker comment does not say %q:\n%s", want, body)

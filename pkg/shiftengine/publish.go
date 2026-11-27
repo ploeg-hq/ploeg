@@ -404,7 +404,7 @@ func (e *Engine) notifyTracker(ctx context.Context, si store.ShiftInfo, settled 
 	}
 	link, _ := pullRequest(reports, repository)
 
-	body := trackerMessage(settled, reason, link, len(reports), si.Round, budget, closeReason == reasonReviewFailed)
+	body := trackerMessage(settled, reason, link, len(reports), si.Round, budget, closeReason == reasonReviewFailed, stuckRun(reports))
 
 	// Write-back failure is logged, never propagated: the Work Item state and
 	// the audit rows are already correct, and losing them to a tracker outage
@@ -437,7 +437,7 @@ func (e *Engine) notifyTracker(ctx context.Context, si store.ShiftInfo, settled 
 // trackerMessage is what the board is told, per terminal state. Pure so the
 // wording is table-testable without an embedded Postgres.
 // A non-nil budget adds the budget-exhaustion notice with the pool's amounts.
-func trackerMessage(settled work.State, reason, link string, runs, rounds int, budget *store.ShiftLedger, reviewMissing bool) string {
+func trackerMessage(settled work.State, reason, link string, runs, rounds int, budget *store.ShiftLedger, reviewMissing bool, stuck *store.RunReport) string {
 	var b strings.Builder
 	switch {
 	case settled == work.StateStale:
@@ -446,6 +446,8 @@ func trackerMessage(settled work.State, reason, link string, runs, rounds int, b
 		b.WriteString("Ploeg finished this item, but an agent review of its pull request is missing. Please review it yourself.\n\n")
 	case settled == work.StateAwaitingReview:
 		b.WriteString("Ploeg finished this item. Its pull request is ready for review.\n\n")
+	case stuck != nil:
+		fmt.Fprintf(&b, "Ploeg is stuck on this item: %s could not finish it in round %d.\n\n", stuck.Role, stuck.Round)
 	case link != "":
 		// A pull request exists, so the Shift produced work — say so, whatever
 		// state the item settled in.
@@ -466,10 +468,17 @@ func trackerMessage(settled work.State, reason, link string, runs, rounds int, b
 	if budget != nil {
 		fmt.Fprintf(&b, "**Budget exhausted:** %s\n", budgetSummary(*budget))
 	}
-	if link != "" {
+	if stuck != nil && strings.TrimSpace(stuck.StuckReason) != "" {
+		fmt.Fprintf(&b, "**Could not be done:** %s\n", clipped(oneLine(stuck.StuckReason), maxStuckReasonRunes))
+	}
+	switch {
+	case link != "" && stuck != nil:
+		fmt.Fprintf(&b, "**Pull request (partial work):** %s\n", link)
+		b.WriteString("\nThe pull request holds partial work and does not complete this item. Decide what happens to the rest before anyone merges it.\n")
+	case link != "":
 		fmt.Fprintf(&b, "**Pull request:** %s\n", link)
 		b.WriteString("\nPlease review and merge — the agents never merge their own work.\n")
-	} else {
+	default:
 		b.WriteString("\nNo pull request was opened.\n")
 	}
 	// Left open on purpose: Ploeg's part is done, the item's is not. See the
@@ -479,6 +488,26 @@ func trackerMessage(settled work.State, reason, link string, runs, rounds int, b
 		fmt.Fprintf(&b, "\n<sub>%d agent run(s) across %d round(s).</sub>", runs, rounds)
 	}
 	return b.String()
+}
+
+const maxStuckReasonRunes = 500
+
+func clipped(s string, limit int) string {
+	runes := []rune(s)
+	if len(runes) <= limit {
+		return s
+	}
+	return string(runes[:limit]) + "…"
+}
+
+func stuckRun(reports []store.RunReport) *store.RunReport {
+	var stuck *store.RunReport
+	for i := range reports {
+		if reports[i].Outcome == string(work.OutcomeStuck) && !reports[i].Shadow {
+			stuck = &reports[i]
+		}
+	}
+	return stuck
 }
 
 // writeFindingItems lists a reader's findings by id (ADR-0121), so the
