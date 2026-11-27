@@ -944,11 +944,12 @@ type RunReport struct {
 	// Shadow is a reading Run whose verdict and findings are recorded and
 	// never act (ADR-0096). Every rule that reads a report for what to do
 	// next skips it.
-	Shadow   bool
-	Outcome  string // empty for a cancelled Run that never ran
-	Summary  string
-	Findings string
-	Links    []string
+	Shadow      bool
+	Outcome     string // empty for a cancelled Run that never ran
+	Summary     string
+	StuckReason string
+	Findings    string
+	Links       []string
 	// Verdict is a reading Run's approve/request_changes (ADR-0017). Stored
 	// blank for writers by ReportOutcome, so a writer cannot grade its own
 	// work even if its adapter sends one.
@@ -994,7 +995,8 @@ func (s *Store) RoundReports(ctx context.Context, shiftID int64) ([]RunReport, e
 }
 
 const runReportColumns = `id, role, round, writes, shadow, COALESCE(outcome, ''), summary, findings, links, verdict, verification,
-		       COALESCE(failure_reason, ''), COALESCE(evidence_version, 0), delivery, finding_items, finding_answers`
+		       COALESCE(failure_reason, ''), COALESCE(evidence_version, 0), delivery, finding_items, finding_answers,
+		       COALESCE(stuck_reason, '')`
 
 func collectRunReports(rows pgx.Rows) ([]RunReport, error) {
 	defer rows.Close()
@@ -1003,7 +1005,7 @@ func collectRunReports(rows pgx.Rows) ([]RunReport, error) {
 		var r RunReport
 		var verification, delivery, items, answers []byte
 		if err := rows.Scan(&r.RunID, &r.Role, &r.Round, &r.Writes, &r.Shadow, &r.Outcome, &r.Summary, &r.Findings, &r.Links, &r.Verdict, &verification,
-			&r.FailureReason, &r.EvidenceVersion, &delivery, &items, &answers); err != nil {
+			&r.FailureReason, &r.EvidenceVersion, &delivery, &items, &answers, &r.StuckReason); err != nil {
 			return nil, err
 		}
 		if items != nil {
