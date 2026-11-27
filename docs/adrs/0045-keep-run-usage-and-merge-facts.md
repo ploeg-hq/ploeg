@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-01
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -103,3 +103,4 @@ In `.forgejo/workflows/on_pull_request.yml`, `go test ./...` in `apps/ploeg` cov
 * [ADR-0017](0017-the-review-loop-is-verdict-driven-and-capped.md): why `work_item_reviews` holds only requests for changes.
 * [ADR-0018](0018-the-outcome-drop-box-is-every-harnesss-return-path.md): the harness return path that carries usage.
 * [ADR-0011](0011-the-pull-request-is-the-blackboard.md): the pull request stays the forge's record; Ploeg only notes what the forge said.
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: migration `0023_pull_request_facts.sql`, the full envelope fixture `pkg/harness/adapters/claudecode/testdata/result_full.json`, and `pkg/httpapi/pull_request_facts.go`. The card that read these facts left Ploeg with ADR-0080; the facts stay.

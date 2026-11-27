@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-28
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-04-30
@@ -85,3 +85,4 @@ Chosen option: "**`executor.namespace`, empty by default, warned and then refuse
 * Code: `ops/helm/ploeg/templates/_executor_namespace.tpl`, the worker templates, `networkpolicy.yaml`, `_networkpolicy.tpl` `ploeg.netpol.ploegdRule`, `agent-admission.yaml`, `NOTES.txt`; tests in `scripts/helm-golden.sh`, `scripts/check-executor-namespace.py`, `scripts/test-quickstart.sh`.
 * Related: [ADR 0154](0154-the-chart-refuses-values-that-leave-profile-p1-unless-they-declare-the-deployment-unsupported.md) (the P1 guard), [ADR 0137](0137-the-chart-renders-a-default-deny-networkpolicy-for-every-pod-with-an-allowlist-derived-from-its-urls.md) (the NetworkPolicies).
 * 2026-10-28: proposed.
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: `executor.namespace`, empty by default, in `ops/helm/ploeg/values.yaml`, and `scripts/check-executor-namespace.py`.

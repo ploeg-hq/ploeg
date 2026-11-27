@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-28
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -83,3 +83,4 @@ In the existing `go test ./...` CI step:
 ## More Information
 
 [Threat model](../security/threat-model.md) F-09 and T-HN-2; issue [#297](https://github.com/ploeg-hq/ploeg/issues/297).
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: the frame in `pkg/untrusted` with `TestTextThatClosesItsOwnFrameIsEscapedAndCannotGuessTheBoundary` in `pkg/untrusted/frame_test.go`, and the hostile golden prompts in `pkg/taskprompt/testdata`.

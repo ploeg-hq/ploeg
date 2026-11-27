@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-11-01
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-02-28
@@ -228,3 +228,4 @@ Proposed, none of these exist yet. Once built, `mise exec -- go test ./...` in `
 * Related: [ADR-0016](0016-forge-registry-and-per-run-repo-scoped-credentials.md), [ADR-0059](0059-delivery-facts-come-from-the-forge-never-from-the-agents-outcome.md), [ADR-0069](0069-ploeg-names-none-of-its-consumers.md), [ADR-0105](0105-a-credential-leak-parks-the-work-item-and-closes-its-pull-request.md), [ADR-0108](0108-every-operator-action-names-its-person-and-channel-and-an-mcp-action-needs-the-persons-confirmation.md), [ADR-0119](0119-a-pull-request-is-ready-for-review-only-when-the-forges-ci-passed-on-its-head.md), [ADR-0129](0129-ploeg-reports-how-each-board-and-repository-it-routes-to-is-wired.md), [ADR-0150](0150-an-operator-consumer-proves-the-person-it-acts-for-with-a-token-exchanged-for-ploegs-audience.md), [ADR-0160](0160-an-operator-consumer-reads-only-the-teams-it-names-and-run-content-only-when-granted.md), [ADR-0171](0171-an-operator-change-needs-a-proven-person-and-the-chart-refuses-asserted-attribution-from-0-3-0.md), [ADR-0172](0172-the-forgejo-broker-runs-only-on-forgejo-15-and-refuses-a-token-the-forge-did-not-restrict-to-the-runs-repository.md), [ADR-0183](0183-ploegs-core-reaches-trackers-and-forges-only-through-ports-and-every-adapter-passes-its-ports-conformance-suite.md), [ADR-0184](0184-tracker-and-forge-connection-secrets-live-in-a-secret-store-ploeg-writes-itself-and-no-person-handles-them.md).
 * Forge APIs: [Forgejo API reference](https://forgejo.org/docs/latest/user/api-usage/) (`MergePullRequestOption`), [GitHub `enablePullRequestAutoMerge`](https://docs.github.com/en/graphql/reference/mutations#enablepullrequestautomerge), [GitHub merge a pull request](https://docs.github.com/en/rest/pulls/pulls#merge-a-pull-request), [GitLab merge a merge request](https://docs.gitlab.com/api/merge_requests/#merge-a-merge-request).
 * Open questions: whether Ploeg should reproduce each forge's default merge message exactly instead of the pull request's title and description; whether `whenChecksPass` should also be allowed while ADR-0119 still holds the Shift on pending CI, which today keeps the Work Item out of `awaiting_review`.
+* 2026-11-27: owner decision: accepted, Forgejo first, as a pair with the operator consumer's matching record. As this record's Consequences say, it amends [ADR-0086](0086-github-is-a-forge-and-a-run-pushes-with-its-own-github-app-installation-token.md)'s "Ploeg never merges"; 0086 itself is not edited. Nothing is built yet.

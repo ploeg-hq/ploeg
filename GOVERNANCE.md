@@ -170,7 +170,7 @@ Ploeg's maintainer is today the only owner of the `ploeg-hq` GitHub organisation
 
 ### What happens and when
 
-1. **While there is one maintainer**, the maintainer keeps their own account recoverable. Gaining a second organisation owner is the work of issue #7.
+1. **While there is one maintainer**, the maintainer keeps their own account recoverable. Gaining a second organisation owner is the work of issue #7. Since 2026-11-27 (owner decision, [ADR-0159](docs/adrs/0159-governance-scales-its-votes-with-the-maintainer-count-adopts-the-cncf-code-of-conduct-and-limits-any-one-organisation.md)), the second maintainer is sought through an organisation that depends on Ploeg, the design partner of [ADR-0210](docs/adrs/0210-scope-is-frozen-until-an-outside-design-partner-runs-real-tickets.md), not through open calls alone.
 2. **Within 30 days of a second maintainer joining**, they become an owner of the `ploeg-hq` organisation, the organisation turns on required two-factor authentication, and both maintainers check this table together and record the result in the next decision issue.
 3. **Every January**, the maintainers check this table against the live settings and record the result in that month's decision issue.
 4. **When the maintainers are unavailable**, meaning no public activity from any of them and no answer to an issue that mentions them for 60 days, the project is stalled. Contributors may say so in an issue. Apache-2.0 lets anyone continue the code in a fork under another name, with its own signing identity. Ploeg under its own name cannot continue without someone who can administer `ploeg-hq`. That gap is the main reason Ploeg needs a second maintainer.

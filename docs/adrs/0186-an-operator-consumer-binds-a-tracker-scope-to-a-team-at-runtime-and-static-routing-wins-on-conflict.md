@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-31
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -217,3 +217,4 @@ Proposed, none of these exist yet:
 * 2026-11-17 — Amended after an independent review, before anything was built: `default` and `allow` (section 1) and the static-rules check (section 3) now name the effective registry, static `targets` plus active runtime targets, because [ADR-0193](0193-a-proven-operator-registers-a-work-target-at-runtime-only-for-a-repository-ploegs-forge-connection-was-granted.md) lets a binding name a runtime key. Section 4 defines what a binding becomes when its runtime target turns invalid: `invalid` with a reason, never deleted, and restored when the target is. One Confirmation test added.
 * 2026-11-18 — Amended by [ADR-0198](0198-a-team-has-an-immutable-id-a-renameable-key-and-a-free-name-and-a-proven-person-creates-one-at-runtime.md), before anything was built: section 9 no longer excludes runtime Teams. A binding's `team` is resolved to and stored as the Team's immutable id, so a Team rename leaves bindings untouched, and the `invalid` state gains the reason `team_unavailable` for a Team that is shadowed or invalid.
 * 2026-11-19 — Extended by [ADR-0204](0204-a-person-pauses-a-tracker-binding-and-a-paused-binding-admits-no-new-work.md): a person may pause and resume a runtime binding. A paused binding keeps its state and stays routed for work it admitted, refuses new assignments as `binding_paused`, and is reported with `paused` by the list routes; section 8 gains `tracker_binding.paused` and `tracker_binding.resumed`.
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: `pkg/trackerbinding` (`registry.go`, and `probe.go` with `conflicts_with_static`), and `TestTrackerBindingCreateRepeatConflictReplaceAndRemove` and `TestTrackerBindingStaticConflictNamesTheEntry` in `pkg/httpapi/operator_tracker_bindings_test.go`. The Confirmation's "none of these exist yet" is out of date.

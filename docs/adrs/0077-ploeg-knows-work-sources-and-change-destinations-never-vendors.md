@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-06
+status: rejected
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-04-01
@@ -143,3 +143,4 @@ The card-only provider capabilities are deleted, not ported ([ADR-0074](0074-plo
 * Evidence: [KEDA, plug-and-play integrations, and card collection](../research/2026-10-06-keda-integrations-and-card-collection.md), §2.
 * Related: ADR-0005, ADR-0013, ADR-0015, ADR-0016, ADR-0023, ADR-0059, ADR-0060, ADR-0069, ADR-0070, ADR-0074.
 * 2026-10-06: proposed after the owner asked that Ploeg have zero knowledge of its integrations.
+* 2026-11-27: owner decision: rejected, overtaken by [ADR-0183](0183-ploegs-core-reaches-trackers-and-forges-only-through-ports-and-every-adapter-passes-its-ports-conformance-suite.md), whose in-process ports and conformance suites are how Ploeg reaches trackers and forges. Out-of-process adapters, CloudEvents intake and extraction (this record's steps 4 to 6) need a new record if they return. 0183 does not carry `supersedes: 0077`, because its text builds on this record rather than replacing it.

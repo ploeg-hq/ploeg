@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-05
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -118,3 +118,4 @@ ploegd emits one trace per Run, with the alias as an attribute and spans for cla
 * Related: [ADR-0072](0072-keda-stays-and-ploegd-reserves-a-run-for-each-launcher.md), [ADR-0074](0074-ploeg-exposes-its-execution-facts-and-consumers-collect-everything-else.md), [ADR-0075](0075-a-stopped-writing-run-leaves-a-checkpoint-its-retry-starts-from.md), and the [alerts guide](../ops/alerts.md).
 * Homelab follow-up, outside this repository: map `trace_id` from `trace` in the log shipper, and add LiteLLM, agent-sandbox and KEDA rules.
 * 2026-10-05: proposed.
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: the metric families in `pkg/httpapi/metrics.go` and `pkg/store/metrics.go` (`ploeg_runs_finished_total`, `ploeg_shift_runs_without_pr_max`), `PloegRunsIdleKilled` in `ops/helm/ploeg/templates/prometheusrule.yaml`, and `TestRunContext_EveryLineAfterClaimCarriesTheRunKeys` in `pkg/worker/runlog_test.go`.

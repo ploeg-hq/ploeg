@@ -228,3 +228,4 @@ The Run stays in a pod; the laptop opens a connection and serves Docker, MCP ser
   5. **Offline fallback.** A Run that does not need the machine goes to the cluster after `fallbackAfter` by default; a Team may choose to wait.
   6. **Lease grace.** 15 minutes.
   7. **First operating systems.** Linux and macOS; Windows through WSL later.
+* 2026-11-27: owner decision: stays proposed until the cell registry that ADR-0107 deferred exists and ADR-0072 and ADR-0100 are built.

@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-08-08
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -164,3 +164,4 @@ links it supplied itself.
   and the ACP naming hazard.
 * `docs/contracts/outcomereport.v1.schema.json` — `findings` and `verdict` were
   already specified; only the transport was missing.
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: `DropBoxEnv` (`PLOEG_OUTCOME_FILE`) in `pkg/harness/dropbox.go`, and the `ReadingRunFindingsSurviveTheAdapter` property in `pkg/harness/harnesstest/conformance.go`, run by the `acp`, `claudecode`, `execbin` and `openhands` adapter tests.

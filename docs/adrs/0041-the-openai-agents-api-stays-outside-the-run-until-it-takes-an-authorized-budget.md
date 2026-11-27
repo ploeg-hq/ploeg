@@ -1,12 +1,12 @@
 ---
-status: proposed
-date: 2026-09-30
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2026-10-31
 ---
 
-# The OpenAI Agents API stays outside the Run until it can take an authorized budget; Unfold meets it over MCP and runs Codex itself
+# The OpenAI Agents API stays outside the Run until it can take an authorized budget
 
 ## Context and Problem Statement
 
@@ -26,7 +26,7 @@ way, or ignore it.
 * **Admission before spend.** A Run's budget is authorized before it starts
   and enforced at a gateway the agent cannot bypass
   ([0012](0012-two-level-budgets-authorized-and-settled.md),
-  [0008](0008-litellm-is-the-credential-and-metering-seam.md)).
+  [0177](0177-ploeg-reaches-models-through-a-gateway-contract-with-litellm-and-envoy-ai-gateway-as-implementations.md)).
 * **The owner's stack stays self-hosted, EU-resident and model-neutral.**
 * **Thin glue.** Consume the layers above and below Ploeg rather than rebuild
   them ([0032](0032-keep-the-dispatch-plane-and-compete-on-authorized-spend.md)).
@@ -35,19 +35,19 @@ way, or ignore it.
 
 * Add an `openai-agents` harness adapter that drives hosted sessions now
 * Reach OpenAI's harness through the open-source Codex under Ploeg's own
-  gateway, and let Agents API sessions reach Unfold over MCP
+  gateway
 * Ignore it
 
 ## Decision Outcome
 
-Chosen option: **reach OpenAI's harness through the open-source Codex, and meet
-the Agents API from above over MCP**, because the hosted API takes the
-inference and credential seam with it.
+Chosen option: **reach OpenAI's harness through the open-source Codex**,
+because the hosted API takes the inference and credential seam with it.
 
 The hosted API fails the drivers on three points:
 
-* **Inference cannot be routed through LiteLLM**, so no per-Run key exists and
-  the gateway cannot hard-stop a Run.
+* **Inference cannot be routed through Ploeg's model gateway**
+  ([0177](0177-ploeg-reaches-models-through-a-gateway-contract-with-litellm-and-envoy-ai-gateway-as-implementations.md)),
+  so no per-Run key exists and the gateway cannot hard-stop a Run.
 * **No budget can be set per session.** The only hard caps are monthly
   organization and project limits, which are "not instantaneous". Usage is
   "best-effort… not a final bill".
@@ -57,15 +57,8 @@ The hosted API fails the drivers on three points:
 Concretely:
 
 * **Codex.** Backlog #64's Codex profile, through `codex-acp` with inference
-  through LiteLLM's `/v1/responses`, remains the path to OpenAI's harness. It
-  keeps the per-Run key, the budget and the model choice.
-* **MCP.** The north-facing MCP server being drafted on branch
-  `docs/mcp-access` names the Agents API as a target client. The Agents API
-  reaches HTTP MCP servers from OpenAI's side with Vault-held credentials, so
-  an OpenAI-built assistant can read Unfold's state and propose work. Proposed
-  work is held for approval
-  ([0031](0031-runs-create-work-items-held-for-approval-within-limits.md)), and
-  admission and budget stay in Ploeg.
+  through the model gateway (ADR-0177), remains the path to OpenAI's harness.
+  It keeps the per-Run key, the budget and the model choice.
 * **No adapter yet.** No `openai-agents` harness adapter is built until a
   re-evaluation trigger fires.
 
@@ -73,9 +66,7 @@ Concretely:
 
 * Good, because every Run keeps an authorized, gateway-enforced budget, and the
   review can point to a missing API field rather than to a judgement.
-* Good, because Unfold gains an OpenAI-facing surface for the cost of an MCP
-  server it was already designing.
-* Bad, because Unfold gives up the managed harness's compaction, in-session
+* Bad, because Ploeg gives up the managed harness's compaction, in-session
   recovery, subagents, hosted browser and web search until Codex, run by
   Ploeg, provides whichever of them the open-source harness carries.
 * Bad, because once OpenAI documents a settable session budget, a GitHub-only
@@ -88,7 +79,7 @@ Concretely:
 ### Confirmation
 
 * `go test ./internal/ledger/` validates this record and its Records row.
-* No `github.com/openai/openai-go` import appears under `apps/ploeg/`, and no
+* No `github.com/openai/openai-go` import appears in this repository, and no
   `case "openai-agents"` appears in `pkg/worker/adapters.go`. A reviewer checks
   any proposal that adds either against this record's triggers.
 
@@ -138,3 +129,4 @@ Any one of these reopens this record:
   (OpenAI's Vaults use the same placeholder design and leave self-hosted
   sandboxes to "a trusted proxy… you provide").
 * Backlog #64 (Codex via codex-acp), #82 (OTel).
+* 2026-11-27: owner decision: accepted, amended. The title and body no longer name a consumer ([ADR-0069](0069-ploeg-names-none-of-its-consumers.md)): the clause about meeting the Agents API over MCP is removed, and so are the consequences that named the consumer. The gateway driver rests on [ADR-0177](0177-ploeg-reaches-models-through-a-gateway-contract-with-litellm-and-envoy-ai-gateway-as-implementations.md) instead of 0008, which 0177 superseded. The re-evaluation triggers stay. The filename never named the consumer, so it is unchanged.

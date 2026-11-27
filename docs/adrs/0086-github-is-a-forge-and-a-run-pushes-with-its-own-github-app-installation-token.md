@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-11
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -82,3 +82,4 @@ What is decided:
 
 * Issue [#44](https://github.com/ploeg-hq/ploeg/issues/44); the tracker half is ADR-0085.
 * [Connect GitHub as a forge](../how-to/connect-github-as-a-forge.md) lists the App's permissions, the webhook and the chart values.
+* 2026-11-27: owner decision: accepted as built today; the code on `development` matches the text: `GitHubApp` mint, `Revoke` and `RevokeByID` in `pkg/forgebroker/github.go`, `pkg/githubapp/mint.go`, and `pkg/provider/github` with `TestQualificationAGitHubRunDeliversAPullRequest`. Whether Ploeg merges is ADR-0188's question and is not decided here.

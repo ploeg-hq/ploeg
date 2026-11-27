@@ -83,3 +83,4 @@ Proposed, none of these exist yet:
 
 * Open questions: whether to scan pull request bodies too; whether merge should move an item that several open pull requests reference.
 * Related: [ADR-0051](0051-delivery-gates-are-mapped-per-board-from-tracker-statuses.md) maps statuses per board; [ADR-0016](0016-forge-registry-and-per-run-repo-scoped-credentials.md) resolves forges through a registry; [read pull requests others open](../how-to/read-pull-requests-others-open.md) already brings pull requests people open into Ploeg.
+* 2026-11-27: owner decision: stays proposed until ADR-0183 and the outbox of ADR-0060 are accepted and a Forgejo installation asks for it.

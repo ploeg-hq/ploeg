@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-09-12
+status: rejected
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: none
@@ -51,3 +51,4 @@ Run the imported Go, chart, ledger and release-policy gates, plus the Vloer qual
 * 2026-09-12 — Recorded before import. The owner approved Unfold and the local migration; this distribution sequencing remains proposed and does not ratify earlier proposed decisions.
 * 2026-09-27 — [Unfold ADR-0004](https://github.com/webgrip/unfold/blob/9c1d53f01fbfb65733800aa75e288341734dc23f/docs/adr/adr-0004-unfold-releases-one-version.md) replaces the `ploeg-v…` prefix with one `unfold-v…` tag for both applications. The Go module export still pushes ordinary `v<version>` tags.
 * Related: [0004](0004-forgejo-leading-home-github-mirror-module-path.md), [0020](0020-published-artifacts-name-the-mirror-as-source.md), [0028](0028-automatic-releases-stay-zero-major-candidates.md).
+* 2026-11-27: owner decision: rejected, overtaken. Ploeg became its own project with its own releases ([ADR-0062](0062-github-is-the-independent-project-home.md), [ADR-0115](0115-candidates-are-calculated-from-conventional-commits-and-a-stable-release-stays-a-reviewed-tag.md), [ADR-0117](0117-every-release-publishes-a-contract-bundle-for-consumers.md)), so the distribution sequence this record proposed will not run.

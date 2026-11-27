@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-20
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -143,3 +143,4 @@ Decisions 2 and 3 are proposed and unbuilt. The change that builds them publishe
 * Amends [ADR-0096](0096-a-shadow-reader-records-its-verdict-and-never-acts.md) for the status-line channel only.
 * Code: `pkg/taskprompt/limits.go`, `harness.RunLimits` and `harness.PromptLimiter`, `pkg/worker/prompt.go` (`runLimits`), `plan.Plans.MaxRounds`.
 * 2026-10-20: proposed. Decisions 1 and 4 built; decisions 2 and 3 recorded as the decided design.
+* 2026-11-27: owner decision: accepted for decisions 1 and 4, which are built: `pkg/taskprompt/limits.go`, `pkg/worker/run_limits_test.go` and `maxRounds` on the claim. Decisions 2 and 3, the gateway status line and the operator advisory, are not built and stay proposed.

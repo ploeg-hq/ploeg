@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-11-19
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-05-19
@@ -108,3 +108,4 @@ Chosen option: "**(c) a group service account whose token mints a project access
 * How-tos: [let operators connect trackers and forges](../how-to/let-operators-connect-trackers-and-forges.md), [register Work Targets at runtime](../how-to/register-work-targets-at-runtime.md).
 * 2026-11-19: proposed with its implementation in one pull request. The brief asked for `expires_at` tomorrow; the source shows a token dated tomorrow may live seconds when minted just before midnight UTC, so the record dates it two days ahead.
 * 2026-11-19: section 8 amended. In a release with no static GitLab, every GitLab instance `connections.allow` names on the forge port becomes a forge provider under its instance id that acts on each project with the credential of the connection its active runtime target was granted through, read from the secret store per request; a project no active target names, or a target on an OAuth connection, is refused before any request. With exactly one such instance it also serves `/webhooks/forge/gitlab`, so a runtime project's deliveries, verified with the connection's secret, are acted on as a static GitLab's are (pull request facts, review settlement, follow-ups), and the Run's card is posted through the connection. With several such instances their deliveries are still only verified and acknowledged. A release with a static GitLab behaves as before.
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: `TestAGitLabMintIsAProjectTokenOfTheRunsProjectByIdWithTheRunsRole` in `pkg/forgebroker/gitlab_test.go`, `TestTwoForgesRefuseToStartWhenOneCannotMint` in `cmd/ploegd/forges_test.go`, `pkg/connection/service_account.go`, and migration `0099_gitlab_service_account_connections.sql`.

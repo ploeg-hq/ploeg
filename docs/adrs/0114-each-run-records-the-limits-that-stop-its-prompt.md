@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-18
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -79,3 +79,4 @@ What is decided:
 * Extends [ADR-0091](0091-each-run-records-the-model-harness-plan-and-ploegd-version-it-was-configured-with.md); the same write-once, unknown-stays-unknown rules apply.
 * Migration `pkg/store/migrations/0059_run_limits.sql`.
 * 2026-10-18: proposed.
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: `ReportPromptStart` in `pkg/harness/adapter.go`, `prompt_started` in `docs/contracts/checkpoint.v1.schema.json`, and the recorded limits in `pkg/store/run_limits.go`.

@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-31
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-04-30
@@ -92,3 +92,4 @@ Proposed, none of these exist yet:
 * 2026-10-31: the owner accepted this direction as decision D2; the record stays proposed until he signs it.
 * 2026-11-17 — Amended after an independent review, before anything was built: rule 1 also allows a pasted token where the vendor offers OAuth but the installation has no OAuth application registered with it, under the same store rules; *More Information* lists the connection contract this record does not define, with a recommendation that Ploeg issues the OAuth `state` and binds it to the proven person.
 * 2026-11-17 — Amended when the owner decided ADR-0195's open questions: vendors whose OAuth tokens expire (GitLab, Forgejo) are in scope now. Rule 2 also writes the refresh token to the store, Ploeg refreshes before expiry as [ADR-0195](0195-a-proven-operator-makes-and-manages-a-tracker-or-forge-connection-through-a-flow-ploeg-starts-and-the-consumer-only-relays-codes.md) section 5 defines, and the first re-evaluation trigger no longer fires on expiring tokens alone.
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: `pkg/secretstore` (the `kubernetes` and `openbao` adapters and `secretstoretest/conformance.go`), OAuth connect and refresh in `pkg/connection`, and `TestAClickUpConnectionIsMadeFromARelayedCodeAndTheTokenStaysInTheStore` and `TestAnExpiringGitLabTokenIsRefreshedOnceAndARefusedRefreshInvalidates` in `pkg/httpapi/operator_connections_test.go`. The Confirmation's "none of these exist yet" is out of date.

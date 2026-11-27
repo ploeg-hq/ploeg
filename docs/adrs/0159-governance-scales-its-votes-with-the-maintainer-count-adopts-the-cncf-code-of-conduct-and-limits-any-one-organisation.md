@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-26
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-04-03
@@ -92,3 +92,5 @@ Chosen option: "**Adapt the CNCF Maintainer Council template**", because it is t
 * [CNCF Sandbox application form](https://github.com/cncf/sandbox/blob/main/.github/ISSUE_TEMPLATE/application.yml), read at `8d0a6b9e`: the MAINTAINERS file needs Name, GitHub ID and Company/Organization columns, and organisation diversity is considered but not required.
 * [CNCF governance guidance](https://contribute.cncf.io/projects/best-practices/governance/) and the [Maintainer Council template notes](https://contribute.cncf.io/projects/best-practices/governance/templates/governance-maintainer) from TAG Contributor Strategy.
 * 2026-10-26: proposed in the pull request that adds it, open for at least seven days under the governance change rule.
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: `GOVERNANCE.md`, `MAINTAINERS.md`, `CONTRIBUTOR_LADDER.md` and the CNCF `CODE_OF_CONDUCT.md`, checked by `TestMaintainerTableProblems` and `TestReadmeLinksEveryGovernanceFile` in `internal/ledger/governance_test.go`.
+* 2026-11-27: owner decision: a second maintainer is sought through an organisation that depends on Ploeg, the design partner of [ADR-0210](0210-scope-is-frozen-until-an-outside-design-partner-runs-real-tickets.md), not through open calls alone; the CNCF Sandbox application waits until a maintainer from a second organisation exists.

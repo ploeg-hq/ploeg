@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-27
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-04-30
@@ -95,3 +95,4 @@ The P1 default is 20 USD per UTC day per Team. The chart's own examples give a S
 * Finding: threat model F-42; issue [#352](https://github.com/ploeg-hq/ploeg/issues/352). Related: AT3, F-05 ([#294](https://github.com/ploeg-hq/ploeg/issues/294)), F-09.
 * Code: `pkg/spendcap`, `pkg/store/team_spend_cap.go`, the claim paths in `pkg/store/shift.go`, `pkg/store/store.go` and `pkg/store/client_carried.go`, `pkg/httpapi/metrics.go`, `ops/helm/ploeg/templates/_helpers.tpl` (`ploeg.teamSpendCap`) and `_support_profile.tpl`.
 * 2026-10-27: proposed.
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: `pkg/spendcap/spendcap.go` (UTC periods, `PLOEG_TEAM_SPEND_CAPS`) and the claim refusal with its `team.spend_capped` audit row in `pkg/store/team_spend_cap.go`.

@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-30
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -69,3 +69,4 @@ Chosen option: "**an empty list accepts any client under the `resource` audience
 
 * How-to: [Serve Ploeg's MCP tools over HTTPS](../how-to/serve-ploeg-mcp-over-https.md#audience-the-resource-or-the-client-id).
 * Builds on [ADR-0174](0174-ploeg-mcp-accepts-a-token-only-for-its-own-resource-from-an-https-issuer.md), whose resource audience it relies on.
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: `TestAResourceWithoutClientIDsAcceptsAnyClientButTheRefusedOnes` in `pkg/mcpauth/mcpauth_test.go` and `TestWithoutClientIDsAnyClientIssuedATokenForTheResourceIsAccepted` in `cmd/ploeg-mcp/audience_test.go`.

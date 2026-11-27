@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-24
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -104,3 +104,4 @@ In production, the worker logs `brought the pull request up to date with its bas
 * [ADR-0040](0040-a-conflicted-pull-request-becomes-a-priority-ticket-ploeg-resolves.md) supplies the two-poll conflict rule this reuses; its Detect, File and Resolve parts are unchanged.
 * [ADR-0119](0119-a-pull-request-is-ready-for-review-only-when-the-forges-ci-passed-on-its-head.md) and ADR-0070 gate the commit this record produces.
 * Board: VIK-2397.
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: `pkg/worker/basesync.go` with `TestAWriterRebasesOntoAConflictingBaseAndPassesTheFastCheckBeforeReview`, `TestReviewWatch_AConfirmedConflictAsksForARebaseOncePerConflict` in `pkg/shiftengine/review_merge_test.go`, and `RebaseConflicted` in `pkg/httpapi/forge_followup.go`.

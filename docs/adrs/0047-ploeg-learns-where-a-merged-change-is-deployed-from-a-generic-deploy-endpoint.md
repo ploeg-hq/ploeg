@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-01
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -107,3 +107,4 @@ In `.forgejo/workflows/on_pull_request.yml`, `go test ./...` in `apps/ploeg` cov
 * [ADR-0038](0038-a-repo-label-selects-among-registered-targets-and-the-board-default-is-the-fallback.md): registered targets, where `release.environment` is set.
 * [Send deploys from a pipeline to Ploeg](../how-to/send-deploys-from-a-pipeline.md): the pipeline line for Forgejo Actions, GitHub Actions and GitLab CI.
 * Vloer computes days live and the finish from `release`; Ploeg keeps sending `finish: "matte"`.
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: `POST /api/v1/deploys` (`handleDeploy`, `PLOEG_DEPLOY_TOKEN`) in `pkg/httpapi/deploys.go`, `ErrNoAncestry` in `pkg/provider/provider.go`, migration `0025_deployments.sql` and `docs/contracts/deploy-api.v1.schema.json`. A consumer reads the deployments through the delivery facts (`pkg/httpapi/facts.go`), not a card (ADR-0080).

@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-24
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -78,3 +78,4 @@ Chosen option: "A named list, plus everyone the forge reports with write access,
 * Threat model: [F-36 and T-PD-12](../security/threat-model.md)
 * [ADR-0017](0017-the-review-loop-is-verdict-driven-and-capped.md): the review loop and its caps
 * Issue: [#227](https://github.com/ploeg-hq/ploeg/issues/227)
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: `TestChangesRequestedByAReviewerWithoutWriteAccessIsRefusedAndAudited`, `TestChangesRequestedIsRefusedWhenTheForgeCannotSayWhoMayWrite` and `TestChangesRequestedByAListedReviewerRequeuesWithoutAForgeRead` in `pkg/httpapi/forge_rework_test.go`, and `TestHumanReview_AShiftClosingAtTheReworkCapQueuesNothing` in `pkg/shiftengine/humanreview_test.go`.

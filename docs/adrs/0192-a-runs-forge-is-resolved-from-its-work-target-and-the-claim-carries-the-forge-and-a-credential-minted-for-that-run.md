@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-11-17
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: 0023
 review-by: 2027-03-31
@@ -137,3 +137,4 @@ Proposed, none of these exist yet. Once built, `mise run verify` (which runs `go
 * Open: how an operator consumer learns that an installation serves several forges. The version route reports contract majors only ([ADR-0147](0147-ploeg-serves-the-major-of-each-contract-and-keeps-its-consumers-two-newest-lines-working.md)), and a consumer must not infer forges from target keys. Recommendation: `GET /api/v1/operator/connections` ([ADR-0129](0129-ploeg-reports-how-each-board-and-repository-it-routes-to-is-wired.md)) reports each active forge instance (id, dialect, base URL) and whether it mints a credential per Run or falls back to the shared token (section 3), so a consumer can offer a repository on that forge and say what credential its Runs will hold. Recorded 2026-11-17 after an independent review.
 * 2026-11-17: built on branch `feat/multi-forge-claim`, with every check in the Confirmation list; the status stays proposed until the owner accepts it. Two details the record left open were settled there. A reading Run's credential lives on its Run row (`agent_runs.forge_token_id`), because a reader holds no Lease; settlement, `ExpireRuns`, a withdrawal and the orphan sweep revoke it, and a reader refreshes an expiring GitHub token through the same `forge-credential` route as a writer. ploegd hands workers each forge's `url` through `PLOEG_<DIALECT>_WORKER_URL`, which the chart renders only in a multi-forge release, so a single-forge release keeps its `FORGE_URL` and renders byte for byte as before. The chart also refuses a multi-forge release whose GitHub block has no `tracker.github.appId`.
 * 2026-11-19: amended by [ADR-0203](0203-a-gitlab-forge-connection-is-a-group-service-account-that-mints-a-project-token-per-run.md), proposed: GitLab mints a project access token per Run when `executor.gitlab.mintPerRun` is set (`PLOEG_GITLAB_MINT_PER_RUN`) or through a `gitlab_service_account` connection, so a GitLab that mints may be one of several active forges. Without it GitLab stays the sole forge of its release, as section 4 says.
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: `ops/helm/ploeg/ci/golden/executor-two-forges.yaml`, migration `0082_reader_forge_tokens.sql` (`agent_runs.forge_token_id`), and the claim's forge and per-Run credential through `pkg/forgebroker`. The Confirmation's "none of these exist yet" is out of date.

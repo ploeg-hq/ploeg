@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-28
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-04-30
@@ -81,3 +81,4 @@ Chosen option: "**Read the restriction from the mint answer, revoke and refuse a
 * Finding F-10 in the [threat model](../security/threat-model.md#findings); issue [#298](https://github.com/ploeg-hq/ploeg/issues/298).
 * [Credential flow](../security/credential-flow.md) for the mint, the claim and the live qualification.
 * [ADR-0013](0013-push-rights-are-minted-per-run.md), [ADR-0016](0016-forge-registry-and-per-run-repo-scoped-credentials.md).
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: `ErrUnrestrictedToken` in `pkg/forgebroker/forgejo.go`, the Forgejo 15 start check in `cmd/ploegd`, and `TestClaim_ATokenTheForgeDidNotRestrictIsRevokedAndTheRunReleased` in `pkg/httpapi/forge_credential_test.go`.

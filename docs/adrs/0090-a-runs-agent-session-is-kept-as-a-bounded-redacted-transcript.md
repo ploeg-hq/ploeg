@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-11
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -90,3 +90,4 @@ What is decided:
 
 * [Run API](../contracts/run-api.v1.schema.json) `transcriptRequest`, `transcriptEntry`, `transcriptAppendResponse`; [operator API](../contracts/operator-api.v1.schema.json) `transcriptResponse`, `transcriptEntry`.
 * Migration `pkg/store/migrations/0049_run_transcripts.sql`.
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: `pkg/transcript` (`recorder.go`, `redact.go`, `entry.go`) and the `session/update` mapping in `pkg/harness/adapters/acp`.

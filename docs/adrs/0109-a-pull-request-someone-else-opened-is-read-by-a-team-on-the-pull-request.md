@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-17
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -110,3 +110,4 @@ Chosen option: "**a registered target routes the open pull requests of listed au
 * Migration `pkg/store/migrations/0058_pull_request_title.sql`. Configuration in [the configuration reference](../reference/configuration.md) (`config`); operating it, with a dependency-update Team as the worked example, in [Read pull requests others open](../how-to/read-pull-requests-others-open.md).
 * `taskspec.v1` gains the origin value `pull_request`.
 * Related: [ADR-0010](0010-shift-owns-the-item-lease-owns-the-branch.md), [ADR-0011](0011-the-pull-request-is-the-blackboard.md), [ADR-0017](0017-the-review-loop-is-verdict-driven-and-capped.md), [ADR-0031](0031-runs-create-work-items-held-for-approval-within-limits.md), [ADR-0040](0040-a-conflicted-pull-request-becomes-a-priority-ticket-ploeg-resolves.md), [ADR-0069](0069-ploeg-names-none-of-its-consumers.md), [ADR-0077](0077-ploeg-knows-work-sources-and-change-destinations-never-vendors.md), [ADR-0083](0083-a-run-is-told-which-skills-bear-on-its-work-item.md), [ADR-0092](0092-a-team-pins-its-skills-in-a-catalogue-that-ploegd-fetches-once-and-serves-by-digest.md), [ADR-0096](0096-a-shadow-reader-records-its-verdict-and-never-acts.md).
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: `TestReviewOnly_KeepsTheReadersOfTheLastReviewRoundAndNoWriter` in `pkg/plan/review_only_test.go`, `TestEnsurePullRequestReading_CreatesOneQueuedItemBoundToThePullRequest` in `pkg/store/pull_request_readings_test.go`, and `TestForgeWebhook_OpenedAndPushedPullRequestsReachTheReader` in `pkg/httpapi/pull_request_reads_test.go`.

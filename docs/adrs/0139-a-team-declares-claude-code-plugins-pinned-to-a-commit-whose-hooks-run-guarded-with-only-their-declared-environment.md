@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-24
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -90,3 +90,4 @@ Chosen option: "**a per-Team plugin list, fetched by the worker at a pinned comm
 * Probe (2026-10-24, Claude Code 2.1.302, fake model endpoint, no spend): with `disableAllHooks` neither the project's nor a plugin's hooks ran; with `--setting-sources user` the plugin's hooks ran and the project's did not, but `CLAUDE.md` was not sent until `--add-dir` with `CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1` was added; an unguarded plugin's `SessionStart` hook saw `ANTHROPIC_API_KEY`, and its `UserPromptSubmit` hook exiting 2 stopped the prompt (0 model requests); under the guard the same plugin saw only its declared variable and the prompt reached the endpoint (1 request).
 * Related: [ADR-0030](0030-target-repository-instructions-rank-below-the-delivery-contract.md), [ADR-0034](0034-the-harness-gets-placeholders-the-worker-keeps-credentials.md), [ADR-0078](0078-runs-reach-read-only-mcp-tools-only-through-the-gateway-bounded-by-a-litellm-team.md), [ADR-0083](0083-a-run-is-told-which-skills-bear-on-its-work-item.md), [ADR-0092](0092-a-team-pins-its-skills-in-a-catalogue-that-ploegd-fetches-once-and-serves-by-digest.md), [ADR-0110](0110-a-team-is-ploegs-own-manifest-of-charter-crew-permissions-intake-and-skills.md), [ADR-0113](0113-a-runs-harness-exports-opentelemetry-to-a-collector-set-per-team-and-role.md), [ADR-0137](0137-the-chart-renders-a-default-deny-networkpolicy-for-every-pod-with-an-allowlist-derived-from-its-urls.md).
 * Claude Code documentation: [plugins](https://code.claude.com/docs/en/plugins), [plugin marketplaces](https://code.claude.com/docs/en/plugin-marketplaces).
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: `pkg/harness/claudeplugins` (`config.go`, and `fetch.go` at the pinned commit with guarded hooks), the `--plugin-dir` invocation in `pkg/harness/adapters/claudecode`, and `PLOEG_CLAUDE_PLUGINS` in the chart.

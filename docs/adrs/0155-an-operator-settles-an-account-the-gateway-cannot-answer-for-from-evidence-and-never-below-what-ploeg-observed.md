@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-25
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-04-30
@@ -65,3 +65,4 @@ Chosen option: "An operator API command", because every other operator write alr
 ## More Information
 
 [Investigate a Run's spend](../how-to/investigate-a-runs-spend.md), [Reconcile uncertainty](../ops/managed-workers.md#reconcile-uncertainty), [live gateway accounting, 2026-10-25](../research/2026-10-25-live-gateway-accounting.md).
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: `TestOperatorSettlesAnUnsettledAccountFromEvidenceAndReleasesItsHold` in `pkg/store/llm_operator_settlement_test.go` and `TestOperatorSettleFromEvidenceEndpoint` in `pkg/httpapi/operator_settlement_test.go`.

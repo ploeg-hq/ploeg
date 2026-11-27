@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-13
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -82,3 +82,4 @@ Chosen option: "relay through ploegd with policy fallback", because it is the on
   * What a refusal does: adopted per request. A refusal answers that request; where the agent offers "reject always", it lasts for the Run. A refusal that blocks for the rest of the Shift is rejected: later Rounds would then act differently from what the Team's policy says, with no person present to lift it.
   * Guidance in plain words: rejected for now, because no model reviews permission requests in Ploeg; the Team's permission mode decides. Reopen when Ploeg adds an advisory permission judge, which a Team's guidance could only make ask more.
   * An unattended Run is unchanged: nobody answers, and the Team's permission mode decides every request.
+* 2026-11-27: owner decision: accepted as written.

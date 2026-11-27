@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-24
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-04-01
@@ -89,3 +89,4 @@ Chosen option: "Wolfi packages" for `claude-runner` and `ploeg-worker`, and dist
 * Evidence: [docs/research/2026-10-24-hardened-image-bases.md](../research/2026-10-24-hardened-image-bases.md), with each scan and source.
 * Related: [ADR 0138](0138-a-harness-runs-in-its-own-container-and-no-credential-enters-it.md), [ADR 0141](0141-the-claude-runner-image-carries-no-claude-code-and-installs-anthropics-signed-release-at-start.md), [ADR 0134](0134-ploeg-keeps-each-release-compatible-with-the-one-before-and-removes-only-after-a-deprecated-minor.md), [licence inventory](../cncf/license-inventory.md).
 * 2026-10-24: proposed with the change.
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: `wolfi-base` under `ops/claude-runner/Dockerfile` and `ops/docker/ploeg-worker/Dockerfile`, `distroless/static-debian13:nonroot` under `ops/docker/ploegd/Dockerfile`, `ops/security/images.yaml` and `cve-budgets.yaml`, and `internal/licenses`.

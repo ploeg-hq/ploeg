@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-25
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-04-01
@@ -88,3 +88,4 @@ Chosen option: "**One top-level `supportProfile` value**", because one value sta
 * 2026-10-25: amended. The maintainer admitted the sandbox executor to P1 under a VM runtime class, since the F-04 requalification ran on sandbox under Kata. Clause 2 refuses a sandbox workload only when it resolves no `runtimeClassName`, where it used to refuse the sandbox executor outright.
 * 2026-10-27: amended. The owner decided that profile P1 requires every image a worker pod runs to be pinned by digest ([#299](https://github.com/ploeg-hq/ploeg/issues/299)). Clause 2 gains the image row, clause 7 says which digests the release stamps, and the break is recorded against `v0.2.0-rc.82`.
 * 2026-10-28: amended. Finding F-45 ([#355](https://github.com/ploeg-hq/ploeg/issues/355)): clause 8 makes naming ploegd's callers part of P1, warned before chart 0.3.0 and refused from it, recorded against `v0.2.0-rc.83`.
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: `supportProfile: P1` in `ops/helm/ploeg/values.yaml` with its refusal cases in `scripts/helm-golden.sh`, and `scripts/test-chart-network-policies.sh`.

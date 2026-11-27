@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-09-27
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2026-12-31
@@ -190,3 +190,4 @@ small, and produces evidence the author of the change cannot edit.
   [0017](0017-the-review-loop-is-verdict-driven-and-capped.md),
   [0030](0030-target-repository-instructions-rank-below-the-delivery-contract.md),
   [0034](0034-the-harness-gets-placeholders-the-worker-keeps-credentials.md).
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: the embedded skills in `pkg/harness/skills/skills.go`, `ParseVerifyCommands` (`PLOEG_VERIFY_COMMANDS`) in `pkg/worker/verify.go`, and `pkg/worker/toolchain.go`, with `verify_test.go` and `toolchain_test.go`.

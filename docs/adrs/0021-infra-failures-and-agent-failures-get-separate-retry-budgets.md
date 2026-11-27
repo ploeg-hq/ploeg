@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-08-26
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -211,3 +211,4 @@ Go/SQL agreement the split rests on.
   readers or one writer, which is what makes "the Round's writer" well defined.
 * `store.ExpireLeases` / `store.MaxInfraFailures` — the pre-Shift path whose
   answer to this question the Shift path now shares.
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: `MaxInfraFailures` in `pkg/store/store.go`, `TestFailedWriter_InfraKillsDoNotSpendTheAgentBudget` and `TestFailedWriter_ParksAtTheInfraCapAndSaysSo` in `pkg/shiftengine/failedwriter_test.go`, and `TestFailureReason_IsInfra` in `pkg/work/types_test.go`.

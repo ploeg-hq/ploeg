@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-30
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-04-30
@@ -209,3 +209,4 @@ Once built, `mise exec -- go test ./...` in `.forgejo/workflows/on_pull_request.
 * Related: [ADR-0079](0079-run-cards-belong-to-the-consumer-and-ploeg-supplies-delivery-facts.md) (keyed comment), ADR-0176 (keyed commit status, proposed), [ADR-0106](0106-a-run-declares-an-isolation-floor-and-a-cell-runs-it-at-the-strictest-class-it-can-honour.md) (isolation classes), [ADR-0137](0137-the-chart-renders-a-default-deny-networkpolicy-for-every-pod-with-an-allowlist-derived-from-its-urls.md) (network policy), [ADR-0169](0169-worker-workloads-render-into-a-namespace-of-their-own-and-profile-p1-refuses-a-shared-one-from-chart-0-3-0.md) (namespaces), [ADR-0047](0047-ploeg-learns-where-a-merged-change-is-deployed-from-a-generic-deploy-endpoint.md) (deploys; a preview is not a deploy of a merged change and is not recorded as one).
 * Host features read on 2026-10-30: [Upsun GitHub integration](https://developer.upsun.com/docs/integrations/source/github), [Upsun database sanitizing](https://developer.upsun.com/docs/development/sanitize-db), [Laravel Cloud preview environments](https://laravel.com/cloud/docs/preview-environments), [Ploi roadmap item 1362](https://roadmap.ploi.io/items/1362-preview-environments), [forge-previewer](https://github.com/ryangjchandler/forge-previewer), [Laravel Harbor](https://github.com/mehrancodes/laravel-harbor).
 * Signing: [Standard Webhooks specification](https://github.com/standard-webhooks/standard-webhooks/blob/main/spec/standard-webhooks.md).
+* 2026-11-27: owner decision: accepted, narrowed to the provision, status and teardown contract of section 1 and the external signed hook of section 2. The in-cluster preview controller is deferred until an installation without a preview-capable host asks for it. Nothing is built yet.

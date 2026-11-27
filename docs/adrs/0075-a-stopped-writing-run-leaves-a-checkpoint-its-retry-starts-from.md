@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-05
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -51,8 +51,7 @@ When a writing Run ends without a pull request (timeout, idle kill, harness fail
 
 The retry is briefed from the previous attempt's checkpoint through the context path of [ADR-0068](0068-context-added-while-a-shift-runs-reaches-the-next-run.md):
 * it fetches the WIP ref;
-* it receives the diff and the last messages as part of its briefing;
-* when the harness and image match, it may also receive the harness session archive for a native resume.
+* it receives the diff and the last messages as part of its briefing.
 
 WIP refs are deleted when the Shift closes.
 
@@ -106,3 +105,4 @@ WIP refs are deleted when the Shift closes.
 * Evidence: [Substrate, language and Run bottlenecks](../research/2026-10-05-substrate-language-and-run-bottlenecks.md), §1 and §8. Also the [incident record](../research/2026-09-29-incident-work-item-138.md), tickets 5 and 6.
 * Related: [ADR-0010](0010-shift-owns-the-item-lease-owns-the-branch.md), [ADR-0013](0013-push-rights-are-minted-per-run.md), [ADR-0019](0019-a-failed-writing-run-reopens-its-round.md), [ADR-0068](0068-context-added-while-a-shift-runs-reaches-the-next-run.md), and the [checkpoint contract](../contracts/checkpoint.v1.schema.json).
 * 2026-10-05: proposed from the bottleneck spike.
+* 2026-11-27: owner decision: accepted, narrowed: the WIP ref, the bounded last messages and the cleanup when the Shift closes. The harness session archive for a native resume is dropped. Nothing is built yet.

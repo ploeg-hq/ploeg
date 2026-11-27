@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-09-22
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2026-10-22
@@ -171,3 +171,4 @@ useful while closing the two paths above at the cheapest point for each.
   [0013](0013-push-rights-are-minted-per-run.md),
   [0017](0017-the-review-loop-is-verdict-driven-and-capped.md),
   [0018](0018-the-outcome-drop-box-is-every-harnesss-return-path.md).
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: `writeWriterRepositoryInstructions` in `pkg/taskprompt/prompt.go`, and `TargetHooksDisabled` (`{"disableAllHooks":true}`) and `--strict-mcp-config` in `pkg/harness/adapters/claudecode/claudecode.go`.

@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-13
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -101,3 +101,4 @@ The one way a shadow can still touch the Shift is money: its Holds and spend com
 * [Metrics and alerts: reading shadow reviews](../ops/alerts.md#reading-shadow-reviews).
 * 2026-10-13: proposed.
 * 2026-10-20 — Amended by [0133](0133-a-run-is-told-its-limits-at-the-start-and-its-own-status-on-every-model-call.md) for one channel: an advisory reading, such as a shadow judge's health verdict, that an authenticated operator consumer posts may reach the running agent's status line as quoted text. It still never acts.
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: the plan's `shadow` Role, `shadow_test.go` in `pkg/shiftengine`, `pkg/store` and `pkg/httpapi`, and `ploeg_shadow_reviews_total` in `pkg/httpapi/metrics.go`.
