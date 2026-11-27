@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-28
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -77,3 +77,4 @@ Chosen option: "**a ploegd mode that the chart sets to `proven` from chart 0.3.0
 * Completes [ADR-0150](0150-an-operator-consumer-proves-the-person-it-acts-for-with-a-token-exchanged-for-ploegs-audience.md)'s "Headers stay asserted for one release"; [ADR-0156](0156-each-run-carries-a-transaction-token-that-names-its-person-and-a-team-without-a-sponsor-runs-nothing.md)'s Run tokens then carry only proven persons from operator admissions under `proven`.
 * Closes [threat model](../security/threat-model.md) F-07 for a deployment under `proven`, and so for every chart install from 0.3.0 that keeps the default; [#296](https://github.com/ploeg-hq/ploeg/issues/296).
 * Compatibility ([policy](../ops/compatibility.md)): `go test ./internal/compat/` against `v0.2.0-rc.89` finds no break, because every surface change is an addition (`operator.attribution`, `PLOEG_OPERATOR_ATTRIBUTION`, the `person_token_required` code and the `operator.attribution_refused` audit action), so [breaking-changes.yaml](../contracts/breaking-changes.yaml) gains no entry. The chart default is a behaviour change: the 0.2 line announces it through ploegd's start warning, the `Warning` header and the install notes, and it takes effect in minor 0.3.0, as the policy's behaviour row asks. Like ADR-0154 clause 8, the change carries no `BREAKING CHANGE` footer, which would list the break in the 0.2.0 candidates' notes where nothing breaks.
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: `ParseAttributionMode`, `refuseUnprovenChange` and the `Warning` header in [attribution.go](../../pkg/httpapi/attribution.go), the non-`GET`/`HEAD` gate in the operator middleware in [operator.go](../../pkg/httpapi/operator.go), the start refusal and warning in [operator.go](../../cmd/ploegd/operator.go), the `operator.attribution_refused` row in [attribution.go](../../pkg/store/attribution.go), the chart's `ploeg.operatorAttribution` (proven from 0.3.0) in `_operator.tpl`, and [attribution_mode_test.go](../../pkg/httpapi/attribution_mode_test.go).

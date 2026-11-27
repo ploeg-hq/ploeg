@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-11
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-11
@@ -85,3 +85,4 @@ Proposed checks, in the existing `go test ./...` CI step once built:
 * Tenant and Client in Ploeg's store arrive with the tenancy work of Unfold system ADR-0017. Until then every Work Item belongs to the default Tenant and has no Client, so Runs read Tenant, repository and root scopes only.
 * 2026-10-11 — Proposed after the owner chose two graphs per Tenant, direct Work Item Notes, sessions through Unfold and Omnigraph for hosted Tenants. Kept proposed until the measurement spike (VIK-1859) reports.
 * 2026-10-18 — Amended by [0122](0122-every-note-carries-its-provenance-untrusted-text-is-quoted-and-a-wider-level-needs-evidence-or-a-person.md): a Run reads its repository's notes as well as its root's, only its own Client's at every level, through one filter (`notes.ForRun`); the review actor also writes accepted Client and Tenant promotions straight to `main` in one keyed write, and purges a Client's concepts.
+* 2026-11-27: owner decision: accepted as amended by [0122](0122-every-note-carries-its-provenance-untrusted-text-is-quoted-and-a-wider-level-needs-evidence-or-a-person.md). Graphs per Tenant are left to [0178](0178-work-items-shifts-and-runs-take-their-tenant-from-configuration-and-a-consumer-reads-only-its-own.md): the configured graphs belong to the default Tenant, and a Run of another Tenant is briefed without knowledge until a later record maps graphs per Tenant. Built: `GET /api/v1/runs/{token}/knowledge` ([knowledge.go](../../pkg/httpapi/knowledge.go)), `KnowledgeScopeFor` ([work_item_notes.go](../../pkg/store/work_item_notes.go)), `pkg/knowledgegraph` and `pkg/omnigraph`.

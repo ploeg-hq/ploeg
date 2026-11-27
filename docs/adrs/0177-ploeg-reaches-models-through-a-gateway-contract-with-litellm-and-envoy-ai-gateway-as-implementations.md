@@ -1,8 +1,8 @@
 ---
-status: proposed
-date: 2026-10-30
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
-supersedes: none
+supersedes: 0008
 review-by: 2027-01-31
 ---
 
@@ -53,7 +53,9 @@ Which operations must any gateway provide, how do LiteLLM and Envoy AI Gateway e
 
 Chosen option: "**a gateway contract with six operations, LiteLLM and Envoy AI Gateway as implementations, and a contract suite every implementation passes**". It keeps ADR-0008's properties: per-Run credentials, metering the agent cannot bypass, and errs-high settlement. It also gives an installer a second, independently built gateway behind the same guarantees. Today's LiteLLM behaviour stays the reference implementation, unchanged.
 
-When this record is accepted, it supersedes ADR-0008. The accepting commit sets `supersedes: 0008` and changes ADR-0008's Records row. ADR-0078's rule ("the gateway's MCP endpoint, bounded by a gateway team") stays as it is, and its LiteLLM wording becomes the LiteLLM column below.
+When this record is accepted, it supersedes ADR-0008. The accepting commit sets `supersedes: 0008` and changes ADR-0008's Records row.
+
+**Accepted scope (2026-11-27).** The owner accepted migration steps 1 to 4 of §6: the contract in `pkg/gateway` with LiteLLM behind it, the provider and region fields, the contract suite with the byte-identical LiteLLM recording test of §5, and `gateway.kind`. Envoy AI Gateway (step 5, and its column in §2 and §4) is not accepted here: it becomes a separate decision after the spike step 5 describes. Until that decision, `envoy-ai-gateway` is not an allowed `gateway.kind` value. Nothing of this record is built yet. ADR-0078's rule ("the gateway's MCP endpoint, bounded by a gateway team") stays as it is, and its LiteLLM wording becomes the LiteLLM column below.
 
 ### 1. The contract
 
@@ -265,3 +267,4 @@ This record is proposed and none of this is built yet. Once it is implemented, c
 * Evidence: [2026-10-30 model gateway contract](../research/2026-10-30-model-gateway-contract.md). It covers the code survey, Envoy AI Gateway's and Agent Router's documentation, and the LiteLLM incident as its maintainers described it.
 * Related: ADR-0008 (this record answers its 2026-10-31 review), ADR-0012, ADR-0039, ADR-0049, ADR-0071, ADR-0077, ADR-0078, ADR-0111, ADR-0123, ADR-0134, ADR-0154, ADR-0155, ADR-0162; [accounting invariants](../reference/accounting-invariants.md); [managed workers](../ops/managed-workers.md#configure-the-controller); [support matrix](../reference/support-matrix.md#model-gateway).
 * 2026-10-30: proposed, after the owner's decision that day.
+* 2026-11-27: owner decision: accepted for migration steps 1 to 4 of §6 (the contract with LiteLLM behind it, provider and region, the contract suite with the byte-identical recording test, `gateway.kind`). Envoy AI Gateway becomes a separate decision after its spike. As this record's Decision Outcome says, acceptance supersedes [0008](0008-litellm-is-the-credential-and-metering-seam.md): `supersedes: 0008` is set and 0008's Records row reads "superseded by 0177". Nothing is built yet.

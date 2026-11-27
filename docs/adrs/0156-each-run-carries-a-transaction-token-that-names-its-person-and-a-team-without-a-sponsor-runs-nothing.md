@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-25
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -137,3 +137,4 @@ The draft says a transaction token must not be used to authenticate a workload (
 * Contract: [run-api.v1.schema.json](../contracts/run-api.v1.schema.json) (`claimResponse.transactionToken`, `renewResponse.transactionToken`, `transactionTokenClaims`, `transactionTokenActor`, `transactionTokenKeySet`), [operator-api.v1.schema.json](../contracts/operator-api.v1.schema.json) (the client claim's `credential.transactionToken`) and [worker control](../contracts/worker-control.md).
 * Threat model: [AS2, AS8, AS16, EP4 and F-07](../security/threat-model.md).
 * Standards: draft-ietf-oauth-transaction-tokens-11, RFC 8693 §4.1 (`act`), RFC 7515, RFC 7517, RFC 7519, RFC 7638, RFC 8725.
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: [txntoken.go](../../pkg/txntoken/txntoken.go) (`txntoken+jwt`, the claims, `req_wl`, `tctx`, `subjectProof`), [transaction_token.go](../../pkg/httpapi/transaction_token.go) (key set route), [transaction_token.go](../../cmd/ploegd/transaction_token.go) (`PLOEG_TRANSACTION_TOKEN_*` and `PLOEG_WORKER_HMAC_CAPABILITY`, default `issue`), [signingkeys.go](../../pkg/signingkeys/signingkeys.go), migration `0076_work_item_acts_for_proof.sql`, `team_without_sponsor` in [operator_work_admission.go](../../pkg/httpapi/operator_work_admission.go), `detail.runActor` in [transaction_token.go](../../pkg/store/transaction_token.go) and the chart's sponsor refusal in `deployment.yaml`. `tctx.isolation` stays absent, as the record says.

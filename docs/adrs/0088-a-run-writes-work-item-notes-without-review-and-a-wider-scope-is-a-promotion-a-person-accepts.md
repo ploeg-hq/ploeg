@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-11
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-11
@@ -91,3 +91,4 @@ Proposed checks, in the existing `go test ./...` CI step once built:
 * 2026-10-17 — Amended after Run 305 (Work Item 190) was stopped by the idle watchdog and lost two measured findings that would only have been kept with its outcome. The owner asked for knowledge to be pushed right away: notes are now sent while the Run works, and a stopped Run leaves a note of its own.
 * 2026-10-11 — Owner answers: a person's session note reaches Runs at once, like a Run's; only a Tenant admin promotes; an accepted repository Promotion opens a pull request to the repository's `knowledge/` now, not later. Kept proposed until the measurement spike (VIK-1859) reports.
 * 2026-10-18 — Amended by [0122](0122-every-note-carries-its-provenance-untrusted-text-is-quoted-and-a-wider-level-needs-evidence-or-a-person.md): every note carries its provenance and an untrusted note is briefed as quoted data; notes are appended, never edited, with conditional writes; a merged pull request is evidence that promotes a Work Item's repository-scoped notes without a person, while Client and Tenant promotions still need one; disagreeing notes are flagged for a person; how each pull request ended becomes a repository note; people write notes and decide promotions through operator routes; and a Client's notes can be purged.
+* 2026-11-27: owner decision: accepted as amended by [0122](0122-every-note-carries-its-provenance-untrusted-text-is-quoted-and-a-wider-level-needs-evidence-or-a-person.md). It does not supersede 0066 for now, against the first line of this section, because the owner reopened 0066's direction on the same day ([0209](0209-a-run-draws-on-the-scoped-omnigraph-knowledge-layer-before-and-during-its-work.md)); 0066 stays proposed and `supersedes` stays `none`.

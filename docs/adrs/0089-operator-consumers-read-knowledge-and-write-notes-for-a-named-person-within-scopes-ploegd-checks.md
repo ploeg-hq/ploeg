@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-11
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-11
@@ -30,29 +30,28 @@ People also work with agents outside Ploeg's Runs: an interactive Claude Code or
 
 Chosen option: "Operator routes for knowledge, where the consumer names the acting person's Client and role and ploegd checks them against the consumer's Tenant", because it keeps the tokens in ploegd, reuses the same scope filter as Runs and gives client users exactly their Client's view.
 
-* **Routes.** `GET /api/v1/operator/knowledge` (search and read concepts and notes), `POST /api/v1/operator/work-items/{id}/notes` (write a Work Item Note), `GET /api/v1/operator/promotions` and `POST /api/v1/operator/promotions/{id}/accept|reject`, and `POST /api/v1/operator/promotions` to request one.
-* **Acting person.** Every request names the person, their role in the Tenant (`viewer`, `member`, `admin`) and, for a client user, their Client. The consumer is bound to one Tenant (Unfold system ADR-0017); ploegd refuses a person outside it, and audits each write with the consumer and the person.
-* **Read scopes.** A Tenant member reads every concept and note of the Tenant. A client user reads concepts scoped to their Client and to their Client's repositories, and notes of their Client's Work Items; not Tenant-wide concepts, which may describe the agency's other work.
-* **Writes.** A member or admin may write a Work Item Note on a Work Item they can see; it is attributed to them and behaves like a Run's note. A wider scope is a Promotion request. A Tenant admin's request is accepted at once and recorded as their own acceptance. Only a Tenant admin accepts or rejects. A client user may read and may request a Promotion about their own repositories, and nothing else.
-* **Absent.** A concept, note, Work Item or Promotion outside the person's scope returns 404.
-* **ploeg-mcp** stays read-only on its existing tools and gains no knowledge tool: its operator token names no person.
+Amended on 2026-11-27 to the routes that were built and to proven-person attribution; the bullets below state what ploegd does.
+
+* **Routes** ([operator_knowledge.go](../../pkg/httpapi/operator_knowledge.go), [operator.go](../../pkg/httpapi/operator.go)). `POST /api/v1/operator/work-items/{id}/knowledge-notes` keeps a person's trusted note at the `work-item` or `repository` level ([0122](0122-every-note-carries-its-provenance-untrusted-text-is-quoted-and-a-wider-level-needs-evidence-or-a-person.md)), idempotent on its `commandId`. `GET /api/v1/operator/knowledge/reviews` lists open (or all) promotion and contradiction reviews, and `POST /api/v1/operator/knowledge/reviews/{id}/decision` decides one. `POST /api/v1/operator/work-items/{id}/notes` is the steering note: it briefs the next Run of the Work Item once and is not knowledge (0122).
+* **Acting person.** A write names its person through the attribution of [0150](0150-an-operator-consumer-proves-the-person-it-acts-for-with-a-token-exchanged-for-ploegs-audience.md): a verified person token makes the person `proven`, and under `PLOEG_OPERATOR_ATTRIBUTION=proven` ([0171](0171-an-operator-change-needs-a-proven-person-and-the-chart-refuses-asserted-attribution-from-0-3-0.md)) a write without one is refused before the route. The consumer no longer states the person's role or Client; ploegd records the person it proved, or the asserted actor where the deployment still allows it.
+* **Scope.** Every route acts only on Work Items whose Team the consumer names ([0160](0160-an-operator-consumer-reads-only-the-teams-it-names-and-run-content-only-when-granted.md)); the Tenant scope of [0178](0178-work-items-shifts-and-runs-take-their-tenant-from-configuration-and-a-consumer-reads-only-its-own.md) applies to these routes once it is built. Reading reviews needs `readContent`; writing a note or deciding a review needs `execute`.
+* **Not built.** Search and read of concepts and notes for a person, a client user's narrower view, and Tenant roles (`viewer`, `member`, `admin`) deciding who may accept: none of these exists. A later record decides them once Ploeg records Clients (0178).
+* **Absent.** A Work Item or review outside the consumer's scope returns 404.
+* **ploeg-mcp** stays read-only on its existing tools and gains no knowledge tool.
 
 ### Consequences
 
 * Good, because sessions and Runs share one store, one filter and one review line.
 * Good, because a session's machine holds only its consumer credential, never a graph token.
-* Bad, because ploegd trusts the consumer's statement of the person's Client and role within the consumer's Tenant; a compromised consumer can act as any person of that Tenant, not beyond it.
+* Bad, because a deployment that stays on asserted attribution (0171) still trusts the consumer to name the person; under `proven` the identity provider proves the person instead.
 * Bad, because the operator API grows a write surface with its own idempotency and audit.
 
 ### Confirmation
 
-Proposed checks, in the existing `go test ./...` CI step once built:
+In the existing `go test ./...` CI step:
 
-* `TestOperatorKnowledge_ClientUserSeesOnlyTheirClient`: a client user of Client A gets Client A's concepts and repositories' concepts and their Work Items' notes, a 404 for Client B's concept and no Tenant-scoped concept.
-* `TestOperatorKnowledge_PersonOutsideTheConsumersTenantIsRefused`.
-* `TestOperatorNotes_WriteIsIdempotentAndAudited`: the same request key twice writes one note, and the audit names consumer and person.
-* `TestOperatorPromotions_OnlyATenantAdminAccepts`.
-* `operator-api.v1.schema.json` carries the new bodies, checked by `pkg/harness/contract_test.go`'s schema cases.
+* `pkg/httpapi`: `TestOperatorKnowledge_APersonWritesAndDecides` (a person's note through `knowledge-notes` and a review decision), `TestOperatorNoteIsIdempotentPerCommand` and `TestOperatorNoteIsInjectedIntoTheNextClaimedRunExactlyOnce` (the steering note), `TestOnlyAConsumerGrantedContentReadsIt` (reviews need `readContent`), and `TestAProvenNoteRecordsTheProvenPersonInTheAudit` (the proven person in the audit row).
+* `go test ./pkg/httpapi/ -run 'Attribution|ProvenMode|PersonTokenRequired'` for the refusal of an unproven write under `proven` (0171).
 
 ## Pros and Cons of the Options
 
@@ -77,3 +76,4 @@ Proposed checks, in the existing `go test ./...` CI step once built:
 * Unfold system ADR-0035 (proposed): interactive sessions reach Tenant knowledge only through Unfold's MCP server.
 * 2026-10-11 — Proposed after the owner chose sessions through Unfold's MCP server.
 * 2026-10-11 — Owner answers: a session note reaches Runs at once; a Tenant member's Promotion request always waits for an admin. Kept proposed until the measurement spike (VIK-1859) reports.
+* 2026-11-27: owner decision: amended to the routes that were built ([operator_knowledge.go](../../pkg/httpapi/operator_knowledge.go): `…/work-items/{id}/knowledge-notes`, `…/knowledge/reviews` and `…/reviews/{id}/decision`; [operator.go](../../pkg/httpapi/operator.go): the steering route `…/work-items/{id}/notes`) and to proven-person attribution ([0150](0150-an-operator-consumer-proves-the-person-it-acts-for-with-a-token-exchanged-for-ploegs-audience.md), [0171](0171-an-operator-change-needs-a-proven-person-and-the-chart-refuses-asserted-attribution-from-0-3-0.md)) instead of a consumer stating the person's role and Client, then accepted. The Confirmation names the tests that exist; search, client-user views and Tenant roles are marked not built.

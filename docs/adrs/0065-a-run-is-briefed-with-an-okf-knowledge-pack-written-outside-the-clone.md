@@ -1,9 +1,9 @@
 ---
-status: proposed
-date: 2026-10-04
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
-review-by: 2027-01-04
+review-by: 2027-02-26
 ---
 
 # A Run is briefed with an OKF knowledge pack written outside the clone
@@ -35,6 +35,7 @@ Chosen option: "Select concepts per Work Item, write them as an OKF directory in
 * Selection: concepts matching the Work Item's title, description and labels, plus the concepts they link to, best first within `PLOEG_KNOWLEDGE_BUDGET_BYTES` (default 24,000). A weak match is not included.
 * Delivery: an OKF directory in `scratch/knowledge` with an `index.md` naming why each concept is there, and `PLOEG_KNOWLEDGE_DIR`. The prompt section "Knowledge pack" carries the index, framed as evidence below the delivery contract.
 * Provenance: `TaskSpec.knowledge` carries the index, concept paths and a content digest per source.
+* Accepted together with [0087](0087-ploegd-holds-a-tenants-knowledge-graphs-and-serves-a-run-only-its-work-items-scopes.md) (the Tenant graph source, served through the Run API) as amended by [0122](0122-every-note-carries-its-provenance-untrusted-text-is-quoted-and-a-wider-level-needs-evidence-or-a-person.md) (provenance and quoting of the notes in the pack): the three are one decision about what a Run is briefed with.
 
 ### Consequences
 
@@ -66,7 +67,7 @@ Chosen option: "Select concepts per Work Item, write them as an OKF directory in
 
 ## Re-evaluation triggers
 
-* The measurement spike shows packs do not reduce cost, rounds or stuck rate on two repositories.
+* On 2027-02-26, measure on the two repositories with the most Runs since 2026-11-27: Runs briefed with a pack (a non-empty `TaskSpec.knowledge`) against Runs without one, by model cost per delivered pull request, Rounds per Shift and the share of Shifts that end stuck. Reopen this record if packs reduce none of the three on either repository.
 * Selection moves to an Omnigraph hybrid query, which changes the provenance to a graph commit.
 * A harness gains a native knowledge or retrieval channel Ploeg could feed instead of files.
 * OKF publishes a version that changes the reserved fields.
@@ -78,3 +79,4 @@ Chosen option: "Select concepts per Work Item, write them as an OKF directory in
 * Unfold system ADR-0020 and the RFC "agents learn from a knowledge base exchanged as OKF" (Unfold `docs/research/2026-10-04-rfc-agent-knowledge.md`).
 * OpenSpec change `add-knowledge-and-context-bundles`.
 * 2026-10-11 — The Tenant graph source is designed in [0087](0087-ploegd-holds-a-tenants-knowledge-graphs-and-serves-a-run-only-its-work-items-scopes.md) (proposed): ploegd serves a Run its scoped concepts and notes through the Run API, and the worker selects them like any other source.
+* 2026-11-27: owner decision: accepted, amended. [0087](0087-ploegd-holds-a-tenants-knowledge-graphs-and-serves-a-run-only-its-work-items-scopes.md) and [0122](0122-every-note-carries-its-provenance-untrusted-text-is-quoted-and-a-wider-level-needs-evidence-or-a-person.md) are part of this decision. The VIK-1859 spike gate is replaced by a dated measurement trigger: on 2027-02-26, packs against no packs on two repositories, by model cost per delivered pull request, Rounds per Shift and stuck rate; `review-by` moves to that date. Built: `pkg/knowledge`, `pkg/okf` and the pack in `pkg/worker` ([knowledge_test.go](../../pkg/worker/knowledge_test.go)).

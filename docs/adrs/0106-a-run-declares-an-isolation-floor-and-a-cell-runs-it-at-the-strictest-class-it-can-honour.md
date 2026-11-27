@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-17
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-04-01
@@ -70,18 +70,24 @@ between gVisor and Kata, and keeps "never silently weaker" through the floor wit
 
   | Class | Runtime | Credentials | Egress | Forge authority |
   | --- | --- | --- | --- | --- |
-  | `standard` | runc, PSA `restricted`, user namespaces (`hostUsers: false`) | placeholders, proxies that check the placeholder | DNS, ploegd, the model gateway and the forge only | per-Run token, branch-fenced, route-allowlisted |
-  | `hardened` | gVisor RuntimeClass | credentials outside the Run's pod | the egress gateway is the only peer | as `standard` |
+  | `standard` | runc, PSA `restricted`, user namespaces (`hostUsers: false`) | none in the Run's pod: the credential gateway outside it attaches each one ([0197](0197-no-credential-enters-a-run-pod-and-a-credential-gateway-outside-it-attaches-each-one-a-run-uses.md)); where the gateway is not yet enabled, none in the harness's container ([0138](0138-a-harness-runs-in-its-own-container-and-no-credential-enters-it.md)) | DNS, ploegd, the model gateway and the forge only | per-Run token, branch-fenced, route-allowlisted |
+  | `hardened` | gVisor RuntimeClass | as `standard` | the egress gateway is the only peer | as `standard` |
   | `isolated` | Kata RuntimeClass | as `hardened` | as `hardened` | as `standard` |
   | `confidential` | Kata on a confidential VM | as `hardened` | as `hardened` | as `standard`, plus server-side protection required on the target |
+
+  The credential column is the same for every class: the requirement of 2026-11-18
+  (0197) is that no credential enters a Run's pod at any class, so the classes differ in
+  runtime and egress, not in where credentials live.
 
   The classes are not a ladder. `hardened` and `isolated` are two alternatives above
   `standard`: each puts a kernel boundary between the Run and the host, and neither ranks
   above the other. `confidential` extends `isolated`. For a floor the order is
   `standard` < `hardened`, and `standard` < `isolated` < `confidential`.
 
-  A workload with `dind: true`, or with either credential proxy off, is `legacy`. The chart
-  renders `legacy` only when `executor.allowLegacy` is `true`, and never by default.
+  A workload with `dind: true`, or with either credential proxy off, has no class: the chart
+  and ploegd refuse it with `credential_isolation_required` under every support profile
+  (amended 2026-11-27; the `legacy` class and `executor.allowLegacy` of the first version
+  are dropped).
 * **Declared class.** A team or Role sets `isolationClass`, the class its Runs execute at.
   Unset means the installation's default class, and an installation that sets none defaults
   to `standard`. An installation with Kata nodes that wants every team in a micro-VM says so
@@ -145,8 +151,8 @@ Kata with its default hypervisor.
 * Good, because a team picks the sandbox its workload fits: gVisor where nodes lack
   hardware virtualization or host monitoring must see the Run, Kata where builds need a
   real kernel and file I/O must stay fast.
-* Good, because a new installation is strict without configuration, and a weaker shape
-  needs a value that names itself `legacy`.
+* Good, because a new installation is strict without configuration, and a weaker
+  credential shape is refused rather than named.
 * Good, because a Run's runtime never changes without a values change: what a team tested
   is what it gets.
 * Bad, because better hardware no longer improves a Run by itself. An installation that adds
@@ -163,7 +169,9 @@ Kata with its default hypervisor.
 
 * `scripts/helm-golden.sh check` carries one golden per class and the refusals: `hardened`
   or `isolated` without a `runtimeClassName` fails to render; a floor above its declared
-  class fails to render; `legacy` without `allowLegacy` fails to render; every rendered Run
+  class fails to render; DinD or a credential proxy off fails to render (the
+  `reject-dind`, `reject-forge-token-isolation-off` and `reject-llm-key-isolation-off`
+  fixtures); every rendered Run
   pod carries the class label; no rendered pod carries an `io.katacontainers.` annotation.
 * `go test ./pkg/isolation/` pins the class order (`hardened` and `isolated` incomparable),
   the floor check, and that a Role cannot lower its team's floor.
@@ -248,3 +256,4 @@ Kata with its default hypervisor.
   Firecracker note and the refusal of `io.katacontainers.*` pod annotations
   (GHSA-37rf-pj8c-g5g3). The file name keeps the 2026-10-17 title, because files are never
   renamed. Status stays proposed.
+* 2026-11-27: owner decision: amended, then accepted. The credential column is rebased on [0138](0138-a-harness-runs-in-its-own-container-and-no-credential-enters-it.md) (accepted) and [0197](0197-no-credential-enters-a-run-pod-and-a-credential-gateway-outside-it-attaches-each-one-a-run-uses.md): no credential enters a Run's pod at any class, so every class has the same credential column. A workload with DinD or a credential proxy off is refused, not rendered as `legacy` (ADR-0034 as amended on 2026-11-18). The classes, floor and offer are not built yet.

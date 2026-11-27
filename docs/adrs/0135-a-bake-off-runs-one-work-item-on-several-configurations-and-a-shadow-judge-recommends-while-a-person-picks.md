@@ -83,3 +83,7 @@ Chosen option: "**A bake-off Shift**", because it is the only option that reserv
 * A judge's reading costs more than a writing attempt on the same Work Item.
 * A person asks for the unchosen attempts' diffs to be merged rather than described.
 * An editor or protocol lets an outside host supply attempts or a judge to its own comparison with cost shown.
+
+## More Information
+
+* 2026-11-27: owner decision: stays proposed until a consumer asks for a bake-off; its judge depends on [0096](0096-a-shadow-reader-records-its-verdict-and-never-acts.md), which is proposed.

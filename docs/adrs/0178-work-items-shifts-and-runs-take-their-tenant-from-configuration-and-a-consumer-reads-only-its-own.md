@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-30
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-04-30
@@ -150,3 +150,4 @@ The implementing change adds these tests, each run by `go test ./...` in `mise r
 * Extends ADR-0160's Team scope with a Tenant scope, and keeps ADR-0102's admission, ADR-0171's attribution and [ADR-0069](0069-ploeg-names-none-of-its-consumers.md)'s rule that Ploeg names none of its consumers. The need came from an operator consumer that serves several Tenants and today enforces the boundary only on its own side.
 * The bulk export per Tenant is a separate decision, [ADR-0179](0179-a-consumer-exports-its-tenant-as-one-consistent-jsonl-archive-with-a-checksummed-manifest.md), because it can be accepted or rejected without reopening this boundary.
 * Compatibility ([policy](../ops/compatibility.md)): every surface change is an addition (response fields, two optional headers, error and route-refusal codes, the `target` parameter, the `tenants:` key and the consumer fields). The start refusals apply only to configuration that names Tenants, which no existing deployment does.
+* 2026-11-27: owner decision: accepted as written, with no row-level security now; row-level security stays the option its re-evaluation trigger names. Nothing is built yet.
