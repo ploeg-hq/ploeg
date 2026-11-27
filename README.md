@@ -2,7 +2,11 @@
 
 Developed independently at [ploeg-hq/ploeg](https://github.com/ploeg-hq/ploeg). See [provenance](PROVENANCE.md).
 
-Ploeg is a self-hosted service for authorizing and coordinating agent work. Tracker assignments can start unattended workers; an operator consumer can run interactive sessions under the same execution authority. PostgreSQL retains the work, leases, outcomes, evidence and accounting.
+Ploeg is the open-source governance plane for coding agents you run yourself: a ticket starts only within its budget and you see what each ticket really cost, the agent process never sees your credentials, and every claim we make is checked against published evidence, including what is not done yet.
+
+In practice: Ploeg checks a ticket's budget before any agent starts and settles each ticket's real cost from the model gateway's records; the gateway enforces the limit on each request. The agent runs in a container that holds no credential, but the Run's pod still holds two long-lived tokens and some writing Runs push with a shared one; the [threat model](docs/security/threat-model.md#findings) publishes these as F-03 and F-30 until [ADR-0197](docs/adrs/0197-no-credential-enters-a-run-pod-and-a-credential-gateway-outside-it-attaches-each-one-a-run-uses.md) is on by default. The [support matrix](docs/reference/support-matrix.md) fails the docs check when a claim exceeds its evidence ([ADR-0032](docs/adrs/0032-keep-the-dispatch-plane-and-compete-on-authorized-spend.md)).
+
+Tracker assignments can start unattended workers; an operator consumer can run interactive sessions under the same execution authority. PostgreSQL retains the work, leases, outcomes, evidence and accounting.
 
 *Ploeg* is Dutch for a work crew or shift. The software is experimental and starts its independent release line at **0.1.0**. Qualification applies to specific tested paths, not every provider or deployment; the [support matrix](docs/reference/support-matrix.md) names them for each release line.
 
