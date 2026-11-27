@@ -72,16 +72,14 @@ The freeze ends when an outside organisation has run real tickets on Ploeg for
 the maintainer's own business; "real tickets" means work from its own tracker
 on its own repositories, not a demo.
 
-### Open question
+### The supported pair
 
-* **Which tracker and forge pair is the supported profile for the design
-  partner?** Owner: Ryan Grippeling. Recommendation: GitHub Issues and GitHub,
-  the only pair qualified live
-  ([support matrix](../reference/support-matrix.md)); Forgejo stays tested in
-  CI. The trade-off: GitHub is where an outside organisation most likely
-  already works and the only pair with live evidence, while the self-hosted
-  Forgejo path, which Ploeg was built for, keeps only CI evidence until a
-  partner needs it.
+The design partner works in ClickUp and GitLab, so the supported profile for the
+freeze is **ClickUp as the tracker and GitLab as the forge**. Neither is
+qualified live today ([support matrix](../reference/support-matrix.md)): ClickUp
+is covered by fixtures and GitLab by fakes. Qualifying that pair live is
+therefore the first piece of qualification work the freeze allows. GitHub
+Issues and GitHub stay qualified as they are; Forgejo stays tested in CI.
 
 ### Consequences
 
@@ -143,4 +141,6 @@ on its own repositories, not a demo.
   is qualified on.
 * 2026-11-27: owner decision: scope freeze until one outside design partner
   runs real tickets on Ploeg; v0.2.0 stable with #400 and #487 as release
-  blockers; the tracker and forge pair left open with the recommendation above.
+  blockers; the tracker and forge pair left open, decided the same day (below).
+* 2026-11-27: owner decision: the supported pair is ClickUp and GitLab, the
+  tools the design partner works in; qualifying them live comes first.
