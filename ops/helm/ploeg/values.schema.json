@@ -2518,6 +2518,19 @@
               }
             }
           }
+        },
+        "permissionMode": {
+          "enum": ["", "bypassPermissions", "dontAsk"],
+          "description": "Claude Code's --permission-mode for every Run (PLOEG_CLAUDE_PERMISSION_MODE, ADR-0208). The most specific non-empty value wins; empty is bypassPermissions. dontAsk refuses every tool call outside the permission rules instead of asking."
+        },
+        "permissions": {
+          "type": "object",
+          "description": "The Team's own Claude Code permission rules (PLOEG_CLAUDE_PERMISSIONS, ADR-0208), in Claude Code's rule syntax. The most specific block wins whole. Under dontAsk, allow adds to the rules the delivery contract needs; deny applies in every mode and wins over allow.",
+          "additionalProperties": false,
+          "properties": {
+            "allow": { "type": "array", "items": { "type": "string", "minLength": 1, "pattern": "^[^\\n\\r]+$" } },
+            "deny": { "type": "array", "items": { "type": "string", "minLength": 1, "pattern": "^[^\\n\\r]+$" } }
+          }
         }
       }
     },

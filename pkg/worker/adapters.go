@@ -1,6 +1,8 @@
 package worker
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -22,7 +24,10 @@ type HarnessConfig struct {
 	Args           []string // PLOEG_HARNESS_ARGS (JSON array): exec adapter argv template
 	OutcomeFile    string   // PLOEG_OUTCOME_FILE: exec adapter outcome path override
 	PermissionMode string   // PLOEG_CLAUDE_PERMISSION_MODE: claude-code only
-	ACP            ACPConfig
+	// ClaudePermissions are the Team's own Claude Code permission rules
+	// (PLOEG_CLAUDE_PERMISSIONS, claude-code only, ADR-0208).
+	ClaudePermissions claudecode.Rules
+	ACP               ACPConfig
 	// ClaudeEnvironment configures claude-environment (ADR-0084).
 	ClaudeEnvironment ClaudeEnvironmentConfig
 }
@@ -127,7 +132,13 @@ func NewAdapter(hc HarnessConfig) (harness.Adapter, error) {
 		}
 		return harness.RunCommand(a), nil
 	case "claude-code":
-		return harness.RunCommand(claudecode.New(hc.Entrypoint, hc.PermissionMode)), nil
+		if !claudecode.ValidPermissionMode(hc.PermissionMode) {
+			return nil, fmt.Errorf("unknown claude-code permission mode %q (known: %s)", hc.PermissionMode, strings.Join(claudecode.PermissionModes, ", "))
+		}
+		if err := claudecode.ValidateRules(hc.ClaudePermissions); err != nil {
+			return nil, err
+		}
+		return harness.RunCommand(&claudecode.Adapter{Bin: hc.Entrypoint, PermissionMode: hc.PermissionMode, Rules: hc.ClaudePermissions}), nil
 	case claudeenv.Name:
 		c := hc.ClaudeEnvironment
 		if !strings.HasPrefix(c.EnvironmentID, "ccpool_") {
@@ -159,6 +170,24 @@ func NewAdapter(hc HarnessConfig) (harness.Adapter, error) {
 	default:
 		return nil, fmt.Errorf("unknown harness %q (known: openhands, exec, claude-code, acp, claude-environment)", hc.Name)
 	}
+}
+
+// ParseClaudePermissions decodes PLOEG_CLAUDE_PERMISSIONS: a JSON object
+// with "allow" and "deny" arrays of Claude Code permission rules.
+func ParseClaudePermissions(raw string) (claudecode.Rules, error) {
+	var r claudecode.Rules
+	if strings.TrimSpace(raw) == "" {
+		return r, nil
+	}
+	dec := json.NewDecoder(bytes.NewReader([]byte(raw)))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&r); err != nil {
+		return claudecode.Rules{}, fmt.Errorf("PLOEG_CLAUDE_PERMISSIONS must be a JSON object with allow and deny string arrays: %w", err)
+	}
+	if err := claudecode.ValidateRules(r); err != nil {
+		return claudecode.Rules{}, fmt.Errorf("PLOEG_CLAUDE_PERMISSIONS: %w", err)
+	}
+	return r, nil
 }
 
 // SkillDirectories names where the configured harness discovers user-level

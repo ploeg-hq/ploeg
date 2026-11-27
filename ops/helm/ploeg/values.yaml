@@ -770,6 +770,20 @@ executor:
       #   hookTimeout: 10s  # one hook's bound; at most 60s
       #   runIdentity:      # ADR-0149: hand every hook a Run identity in AGENT_RUN_IDENTITY_TOKEN
       #     audience: https://link.example.com  # the one service that accepts it; needs runIdentity.signingKeySecret
+      # Claude Code's --permission-mode (PLOEG_CLAUDE_PERMISSION_MODE, ADR-0208).
+      # "" = bypassPermissions. dontAsk refuses every tool call outside the
+      # permission rules instead of asking: Ploeg allows what the delivery
+      # contract needs (the scratch directory, the scripts the prompt names,
+      # the MCP servers it configured and, for a writer, the clone, git and
+      # curl), and permissions.allow adds the Team's own. The most specific
+      # non-empty value wins.
+      permissionMode: ""
+      # The Team's own Claude Code permission rules (PLOEG_CLAUDE_PERMISSIONS),
+      # in Claude Code's rule syntax; the most specific block wins whole. deny
+      # applies in every mode and wins over allow.
+      permissions: {}
+      #   allow: ["Bash(go test *)", "Bash(go vet *)"]
+      #   deny: ["Bash(curl *)"]
     # acp harness only. One adapter speaks Zed's Agent CLIENT Protocol (stdio
     # JSON-RPC, wire version 1) to any ACP-capable agent. Unrelated to IBM's
     # former Agent COMMUNICATION Protocol, which merged into A2A — see ADR-0007.

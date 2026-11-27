@@ -71,8 +71,7 @@ func TestPrepare_TargetRepositoryHooksAndMCPServersNeverRun(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		i := slices.Index(inv.Argv, "--settings")
-		if i < 0 || i+1 >= len(inv.Argv) || inv.Argv[i+1] != `{"disableAllHooks":true}` {
+		if s, ok := settingsOf(t, inv.Argv); !ok || s.DisableAllHooks == nil || !*s.DisableAllHooks {
 			t.Errorf("argv does not disable hooks with one --settings JSON element: %q", inv.Argv)
 		}
 		if !slices.Contains(inv.Argv, "--strict-mcp-config") {

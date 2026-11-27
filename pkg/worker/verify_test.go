@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -384,5 +385,31 @@ func TestAPlannerGetsNoSkillsAndNoVerification(t *testing.T) {
 	}
 	if strings.Contains(adapter.env.Prompt, "What Ploeg provides") {
 		t.Error("planner prompt carries the sandbox section")
+	}
+}
+
+func TestTheHarnessIsToldWhetherTheRunWritesAndWhichScriptsItsPromptNames(t *testing.T) {
+	item := work.WorkItem{ID: "1", ExternalID: "7", Title: "t"}
+	for _, tc := range []struct {
+		name    string
+		claimed *ClaimResponse
+		cfg     Config
+		writes  bool
+	}{
+		{"writer", &ClaimResponse{RunToken: "rt", Role: "builder", Writes: true, WorkItem: item}, Config{VerifyCommands: []string{"true"}}, true},
+		{"reader", &ClaimResponse{RunToken: "rt", Role: "reviewer", PreAuthor: true, WorkItem: item}, Config{ForgeTokenAccess: ForgeTokenReadOnly, VerifyCommands: []string{"true"}}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			adapter := &verifyingAdapter{t: t, outcome: work.OutcomePROpened, delivers: tc.writes}
+			runWithSandbox(t, tc.claimed, adapter, tc.cfg)
+
+			if adapter.env.Writes != tc.writes {
+				t.Errorf("RunEnv.Writes = %v, want %v", adapter.env.Writes, tc.writes)
+			}
+			script, _ := lookupEnv(adapter.env.BaseEnv, verifyScriptEnv)
+			if want := []harness.Script{{Env: verifyScriptEnv, Path: script}}; script == "" || !slices.Equal(adapter.env.Scripts, want) {
+				t.Errorf("RunEnv.Scripts = %+v, want %+v", adapter.env.Scripts, want)
+			}
+		})
 	}
 }
