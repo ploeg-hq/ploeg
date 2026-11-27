@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-13
+status: rejected
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -119,3 +119,4 @@ egress from a Run, and the same file installs the same skills for a person.
 * OpenSpec change `pin-skill-catalogues` carries the requirements and tasks.
 * Refines [ADR-0083](0083-a-run-is-told-which-skills-bear-on-its-work-item.md) (sources) and [ADR-0035](0035-runs-get-ploeg-owned-skills-mounted-toolchains-and-worker-verification.md) (installation); records per Run like [ADR-0091](0091-each-run-records-the-model-harness-plan-and-ploegd-version-it-was-configured-with.md); measures opening from [ADR-0090](0090-a-runs-agent-session-is-kept-as-a-bounded-redacted-transcript.md) transcripts.
 * 2026-10-17 — Re-confirmed by the [team-manifest sweep](../research/2026-10-17-team-manifest-standards.md): AGNTCY OASF 1.1.0 carries an `agentskills` module beside its `agentspec` and `mcp` integrations, and Agent Skills lists about 45 clients, so the skill unit the catalogue pins is the one the registries agree on; the catalogue becomes the `skills` part of the Team manifest ([ADR-0110](0110-a-team-is-ploegs-own-manifest-of-charter-crew-permissions-intake-and-skills.md)).
+* 2026-11-27: owner decision: rejected, overtaken by accepted [ADR-0199](0199-mcp-servers-and-skill-sources-are-registered-per-tenant-attached-to-a-teams-roles-by-id-and-reached-only-through-the-credential-gateway.md), which registers skill sources per Tenant and attaches them to a Team's Roles by id. 0199 does not carry `supersedes: 0092`, because an accepted record's front matter is not rewritten after the fact.

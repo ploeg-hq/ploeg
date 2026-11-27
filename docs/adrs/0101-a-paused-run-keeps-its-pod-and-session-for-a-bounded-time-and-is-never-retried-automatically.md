@@ -67,3 +67,4 @@ Chosen option: "cancel the turn, keep the session for a bounded time", because i
 
 * OpenSpec change `interactive-runs`. Builds on [ADR-0100](0100-an-attended-run-relays-its-harnesss-requests-through-ploegd-and-falls-back-to-its-teams-policy.md).
 * 2026-10-13: the owner decided that interactive sessions, including pause and resume, are supported in Ploeg, diverging from Unfold ADR-0023's "no pause in v1". Proposed.
+* 2026-11-27: owner decision: stays proposed until ADR-0100 is built and people ask for pause; cancelling and requeueing covers it meanwhile.

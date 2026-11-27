@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-18
+status: rejected
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -109,3 +109,4 @@ Chosen option: "**Support three maintained ACP agents, OpenCode, Qwen Code and G
 
 * Upstream facts checked on 2026-10-18: [OpenHands-CLI](https://github.com/OpenHands/OpenHands-CLI) README, releases and MIT licence; [software-agent-sdk](https://github.com/OpenHands/software-agent-sdk) MIT licence; PyPI `openhands`, `openhands-sdk` and `lmnr`; npm `opencode-ai` 1.19.3.
 * Licence facts are not legal advice.
+* 2026-11-27: owner decision: rejected, overtaken by the 2026-11-18 credential-isolation amendment of [ADR-0034](0034-the-harness-gets-placeholders-the-worker-keeps-credentials.md) ([#451](https://github.com/ploeg-hq/ploeg/pull/451)), under which `openhands` and `acp` profile `openhands` are the qualified harnesses behind both proxies. The OpenHands CLI is not retired.

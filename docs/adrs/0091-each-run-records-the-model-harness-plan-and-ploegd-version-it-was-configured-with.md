@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-11
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -86,3 +86,4 @@ What is decided:
 * Migration `pkg/store/migrations/0050_run_config.sql`.
 * Ticket VIK-2027, part of the cost per merged pull request epic VIK-2026.
 * 2026-10-11: proposed.
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: the configured model, harness, plan and version with `modelMismatch` in `pkg/store/run_config.go`, and `Plans.Hash` in `pkg/plan/plan.go`.

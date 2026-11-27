@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-07-29
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -162,3 +162,4 @@ contract field is pinned to its schema by `pkg/harness/contract_test.go`, and
 * [ADR-0012](0012-two-level-budgets-authorized-and-settled.md) — the pool that
   bounds the loop before the cap does.
 * `openspec/changes/close-the-review-loop/` — the change that implements this.
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: `MaxFixRounds` and its refusal without a writing Round in `pkg/plan/plan.go`, and `TestLoop_CapStopsANeverApprovingReviewer`, `TestLoop_BudgetStopsItBeforeTheCap` and `TestLoop_WriterVerdictIsIgnored` in `pkg/shiftengine/reviewloop_test.go`. The default of 2 is the chart's example (`values.yaml`); a plan that sets no `maxFixRounds` runs no fix round.

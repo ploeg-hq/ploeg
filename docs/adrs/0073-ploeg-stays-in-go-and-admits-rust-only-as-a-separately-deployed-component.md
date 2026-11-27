@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-05
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-04-01
@@ -110,3 +110,4 @@ Any two of these reopen the language question for a superseding record:
 * Evidence: [Substrate, language and Run bottlenecks](../research/2026-10-05-substrate-language-and-run-bottlenecks.md), §4.
 * Related: [ADR-0002](0002-go-as-the-implementation-language.md) (still in force), [ADR-0072](0072-keda-stays-and-ploegd-reserves-a-run-for-each-launcher.md).
 * 2026-10-05: proposed after a research spike sized the port and compared crate maturity.
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: `go.mod` is the one module and the repository holds no `Cargo.toml`. The `exhaustive` analyser and the static-query schema test the Confirmation names are not in the repository yet.

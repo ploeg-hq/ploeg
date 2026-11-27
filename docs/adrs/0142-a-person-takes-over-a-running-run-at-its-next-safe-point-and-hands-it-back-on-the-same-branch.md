@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-24
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -106,3 +106,4 @@ A Harness that cannot yield answers 409 `yield_unsupported`; a cancel is the way
 * Code: `pkg/store/take_over.go`, `pkg/store/migrations/0073_run_take_overs.sql`, `pkg/shiftengine/take_over.go`, `pkg/httpapi/take_over.go`, `pkg/worker/yield.go`, the ACP adapter's `awaitPrompt`.
 * Related: [ADR-0024](0024-operator-work-uses-one-execution-authority.md) (Operator Executions and their `take-control`), [ADR-0044](0044-an-operator-restarts-stopped-work-from-a-round-they-choose.md) (requeue), [ADR-0108](0108-every-operator-action-names-its-person-and-channel-and-an-mcp-action-needs-the-persons-confirmation.md) (attribution), [ADR-0112](0112-a-claude-environment-run-uses-the-claude-login-of-the-person-it-acts-for.md) (client-carried Runs), [ADR-0121](0121-findings-carry-ids-writers-answer-them-and-a-run-asks-instead-of-guessing.md) (park and resume).
 * Not built: a take-over between Rounds, when nothing runs; the person's own notes on the take-over itself (the hand back's `note` carries them); a take-over that waits for a Harness that cannot yield to finish.
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: the yield in `pkg/harness/adapters/acp` (`yield_test.go`), the marked work-in-progress push in `pkg/worker` (`yield_test.go`), take-over and hand-back in `pkg/httpapi/take_over_test.go`, and `TakeOver` in `pkg/operatorclient`.

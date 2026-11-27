@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-25
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -88,3 +88,4 @@ On 2026-10-25 every new test except the refusal failed on the code before this c
 * Evidence, 2026-10-25: a logging go-sdk v1.8.0 server (stateless, JSON responses, as deployed) received from Claude Code 2.1.310 `server/discover` and `tools/call` on 2026-07-28 with `elicitation: {form: {}, url: {}}` in each request's `_meta`, and Claude Code answered an `input_required` result by calling again with `inputResponses`. A logging server that answered `server/discover` with an error got `initialize` on 2025-11-25 with the same capabilities, a session, and answered `elicitation/create` (form and URL) on the call's SSE stream. In `claude -p` both kinds were answered `cancel` without asking. The reference deployment's gateway log showed Claude Code 2.1.302's first authenticated `server/discover` disconnected after 4,999 ms, then `initialize`, then `GET` (405) for the session stream, then the refused action.
 * Builds on ADR-0108, ADR-0152 and ADR-0153; narrows ADR-0081's "stateless" and ADR-0108's refusal of older clients.
 * 2026-10-25: proposed with the implementation (`cmd/ploeg-mcp/http.go`, `cmd/ploeg-mcp/actions.go`).
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: the session for 2025-11-25 clients in `cmd/ploeg-mcp/http.go`, with `TestAClientOnThePreviousProtocolConfirmsInItsSession` in `cmd/ploeg-mcp/session_test.go`.

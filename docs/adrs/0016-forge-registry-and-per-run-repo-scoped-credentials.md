@@ -162,3 +162,4 @@ ServiceAccount token (#76), which is compatible with the pod keeping
   `ForgeProvider` still has zero implementations, and no broker exists.
 * Supports [ADR-0014](0014-work-target-is-a-work-item-attribute.md) — it
   resolves the forge id a Work Target carries.
+* 2026-11-27: owner decision: accept once built; checked against `development` and left proposed, because the text and the code disagree: the broker mints, revokes and sweeps per-Run credentials (`pkg/forgebroker`), but a single-forge release still renders the shared `AGENT_BUILDER_TOKEN` into the worker as its boot credential and, without a GitHub App, as the credential writing Runs push with (`tokenSecret` in `ops/helm/ploeg/values.schema.json`, `pkg/worker/worker.go`). The Confirmation's first check fails.

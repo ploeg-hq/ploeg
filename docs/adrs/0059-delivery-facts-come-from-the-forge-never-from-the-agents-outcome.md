@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-03
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -128,3 +128,4 @@ When this is implemented, `go test ./...` in `apps/ploeg`, run by `.forgejo/work
 * Refines [ADR-0018](0018-the-outcome-drop-box-is-every-harnesss-return-path.md): the drop box carries narrative only, and its rule "Outcome and Summary fill only a gap the adapter left" no longer applies to `pr_opened` and `pr_updated`.
 * Precedent: PR #152 (`7bfd8a3`, VIK-1733) made `verification` worker-owned.
 * Related: [ADR-0011](0011-the-pull-request-is-the-blackboard.md), [ADR-0017](0017-the-review-loop-is-verdict-driven-and-capped.md), [ADR-0021](0021-infra-failures-and-agent-failures-get-separate-retry-budgets.md), [ADR-0045](0045-keep-run-usage-and-merge-facts.md).
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: `Delivery` and its observations in `pkg/harness/contract.go` and `pkg/harness/delivery.go`, `observedDelivery` and `forgeUnreadableBeforeRun` in `pkg/worker/delivery.go`, and `resolveOutcome` in `pkg/worker/worker.go`. One name differs: a failed read before the Run ends it with failure reason `infra_node`, not the `infra_forge` section 4 names; both count against the infrastructure budget of ADR-0021.

@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-11-18
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-03-31
@@ -143,3 +143,4 @@ In the `go test ./...` CI step:
 
 * Owner decision, 2026-11-18: Ploeg owns every tracker and forge connection; an operator consumer holds no tracker credential.
 * Related: [ADR-0015](0015-routing-is-core-policy-over-provider-opaque-scopes.md) (opaque Scopes), ADR-0129, ADR-0170, ADR-0183, ADR-0184, ADR-0186, ADR-0195.
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: `pkg/httpapi/operator_tracker_reads_test.go`, `scopes.go` in `pkg/provider/clickup`, `pkg/provider/vikunja` and `pkg/provider/githubissues`, and `TestClickUpDeclaresItsTrackerCapabilities` in `pkg/provider/clickup/conformance_test.go`.

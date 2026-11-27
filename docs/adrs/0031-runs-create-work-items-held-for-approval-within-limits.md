@@ -173,3 +173,4 @@ when the Work Item is already Ready.
   written back to the tracker? (2) Does a person approve them before they are
   dispatched?
 * Backlog items #41 to #44, #47 and #49.
+* 2026-11-27: owner decision: acceptance is tied to ADR-0175; this record stays proposed until 0175 is decided.

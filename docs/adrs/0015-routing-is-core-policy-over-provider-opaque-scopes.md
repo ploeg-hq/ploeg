@@ -166,3 +166,4 @@ the twin of the `PLOEG_DEFAULT_TEAM` footgun recorded in #103.
   the live mechanism, and no rule table exists.
 * Refines [ADR-0014](0014-work-target-is-a-work-item-attribute.md) — it
   supplies the resolution ADR-0014 pins on the row.
+* 2026-11-27: owner decision: accept once built; checked against `development` and left proposed, because the text and the code disagree: `TrackerEvent.Team` is still a field in `pkg/provider/provider.go`, no code reads `PLOEG_TARGET_STRICT`, and the ordered `(provider, scope, actor, hint)` rule table is not built.

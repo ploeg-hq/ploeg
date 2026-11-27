@@ -1,12 +1,12 @@
 ---
-status: proposed
-date: 2026-10-03
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
 ---
 
-# Authenticated webhooks go through a durable inbox, and required publications through an outbox
+# Required publications go through an outbox
 
 ## Context and Problem Statement
 
@@ -50,7 +50,9 @@ How does Ploeg make sure every authenticated delivery has its effects exactly on
 
 Chosen option: "**Inbox and outbox tables in PostgreSQL**", because it fixes both directions with the database Ploeg already runs, puts the effect record in the same transaction as the effect, and needs no new deployable. A broker would still need an outbox to get a message out of a PostgreSQL transaction, and an inbox to dedup what it redelivers.
 
-### 1. The inbox
+**Struck on 2026-11-27.** The inbox is overtaken by [ADR-0173](0173-a-webhook-delivery-is-claimed-under-a-lease-and-marked-seen-only-after-its-effects-commit.md), which claims each delivery under a lease and marks it seen only after its effects commit. Sections 1 and 2, and the inbox parts of sections 5 and 6, of the Consequences and of the Confirmation, are kept as the record of what was considered and are not part of the decision. What is decided is the publication outbox of sections 3 and 4, for the five required kinds, with the owner's answers at the end of this record.
+
+### 1. The inbox (struck, see above)
 
 A new table, `webhook_inbox`, in the next migration:
 
@@ -92,7 +94,7 @@ The handler no longer parses events, audits, ingests or touches a Shift. The old
 * Retry: an error sets `status = 'pending'`, `last_error`, and `next_attempt_at = now() + min(2^attempts × 5 s, 15 min)` with ±20 % jitter. An unknown Work Item, an unrouted repository or an event Ploeg does not act on is `done`, not an error: the event was handled by deciding to do nothing.
 * Dead letter: after 10 attempts (about two hours at the cap) the row becomes `dead` and keeps its `last_error`. An operator can set a `dead` row back to `pending` through the operator API; nothing else revives it.
 
-### 2. Idempotent effects per event kind
+### 2. Idempotent effects per event kind (struck, see above)
 
 Dedup by key does not cover a redelivery with a new key (Forgejo's "redeliver" button may mint one) or a crash between two effects of one row. Each effect therefore carries its own natural key, and a repeat is a no-op:
 
@@ -138,6 +140,8 @@ A new table, `publication_outbox`:
 | Usage report | Any change that moves its figures | `usage:shift:<shift_id>`; a newer intent marks older pending ones `superseded` |
 | Run card comment | As in [ADR-0055](0055-ploeg-keeps-one-card-comment-with-a-static-card-image-on-the-pull-request.md) | `card:work-item:<work_item_id>`; same superseding |
 
+As accepted on 2026-11-27, the outbox carries the five `required` kinds of section 4. `usage_report` stays a direct edit of its marked comment, and `run_card` left Ploeg with [ADR-0080](0080-ploeg-keeps-no-run-card-code-and-removes-it-in-one-release.md). Without the inbox, `<inbox_id>` in the routing refusal's logical id reads as the delivery key that ADR-0173 claims.
+
 Findings are written per Run, not per Round, so the evaluator race disappears: two evaluators no longer publish anything, they only advance the Round. A findings intent becomes eligible when its Round is complete or its Shift is closed, which keeps today's rule that findings reach the pull request when their Round finishes. The cancellation path (`close` without notifying) writes no tracker intents, as today.
 
 **Delivery worker.** A loop inside ploegd, claimed like the inbox (`FOR UPDATE SKIP LOCKED`, a lease in `claimed_until`, no transaction across the network call). Per intent:
@@ -150,7 +154,7 @@ Findings are written per Run, not per Round, so the evaluator race disappears: t
 
 **The marker.** Every forge comment body starts with `<!-- ploeg:intent <logical_id> -->`. Forgejo and GitLab render Markdown and hide the comment. On trackers the marker depends on what the tracker keeps: Vikunja comments are HTML and may be sanitized, ClickUp comments are plain text where an HTML comment shows as text. The implementation tests each tracker. Where a hidden marker does not survive, the comment ends with a short visible line `ref: <logical_id>`.
 
-**Dead letter.** After 12 attempts (about three hours at a 15-minute cap) a `required` intent becomes `dead`. A `cosmetic` intent becomes `dead` after 5. An operator can reset a `dead` intent to `pending`.
+**Dead letter.** A `required` intent is retried for about a day (owner decision 2026-11-27, question 6) and then becomes `dead`. A `cosmetic` intent becomes `dead` after 5. An operator can reset a `dead` intent to `pending`.
 
 ### 4. Required evidence and cosmetic publications
 
@@ -166,7 +170,7 @@ A `required` publication is one a person acts on or must be told; it is retried 
 | `usage_report` | cosmetic | A view of stored figures; the next refresh replaces it |
 | `run_card` | cosmetic | A view of the card ([ADR-0055](0055-ploeg-keeps-one-card-comment-with-a-static-card-image-on-the-pull-request.md)); the sweep re-renders it |
 
-This classification is an owner question (see below).
+The owner accepted this classification on 2026-11-27.
 
 ### 5. Operator visibility
 
@@ -252,3 +256,4 @@ When this is implemented, `go test ./...` in `apps/ploeg`, run by `.forgejo/work
 4. **Retention of payloads.** Raw bodies are kept 7 days and key rows 30 days. Shorter, given the bodies carry tracker and review text?
 5. **Visible tracker marker.** Where a tracker strips hidden markers, is a visible `ref: …` line on Ploeg's tracker comments acceptable?
 6. **Caps.** 10 inbox attempts and 12 required-publication attempts, with a 15-minute backoff cap, give up after two to three hours. Should a required publication instead retry for a day, since a forge outage over a weekend is the case this is for?
+* 2026-11-27: owner decision: accepted for the publication outbox only, for the five required kinds: review findings, the budget-stop notice, the tracker close comment, the tracker status and the routing refusal comment. The inbox sections are struck as overtaken by [ADR-0173](0173-a-webhook-delivery-is-claimed-under-a-lease-and-marked-seen-only-after-its-effects-commit.md). The owner questions are answered: the classification as listed; a visible `ref:` line where a tracker strips the hidden marker; and a required publication retries for about a day before it is `dead`. Questions 2 to 4 concerned the inbox and lapse with it. Nothing is built yet.

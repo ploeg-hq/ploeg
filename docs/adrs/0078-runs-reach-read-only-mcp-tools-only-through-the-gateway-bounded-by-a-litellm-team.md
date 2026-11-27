@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-08
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -160,3 +160,4 @@ in". Everything else in ADR-0030 stands, including `--strict-mcp-config`.
   /api/v1/operator/mcp-servers` reports them as a static server of that kind.
 * Related: [0008](0008-litellm-is-the-credential-and-metering-seam.md),
   [0030](0030-target-repository-instructions-rank-below-the-delivery-contract.md).
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: `litellmTeamId` and `mcpAccessGroups` reach the team-bounded mint in `pkg/llmbroker/litellm.go` and `pkg/litellm/client.go`, `pkg/httpapi/llm_mcp_test.go`, `--strict-mcp-config` with the one `litellm` server in `pkg/harness/adapters/claudecode`, and `pkg/worker/llmproxy_test.go`. Accepted ADR-0199 reads it as its `gateway-access-groups` adapter.

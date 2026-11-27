@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-11
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -112,3 +112,4 @@ Chosen option: "**A team label, or a listed assignee, on an issue in a configure
 * Issue [#44](https://github.com/ploeg-hq/ploeg/issues/44); configuration and limits in [Connect GitHub Issues](../how-to/connect-github-issues.md).
 * GitHub documentation: [validating webhook deliveries](https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries), [handling failed deliveries](https://docs.github.com/en/webhooks/using-webhooks/handling-failed-webhook-deliveries), [installation access tokens](https://docs.github.com/en/rest/apps/apps#create-an-installation-access-token-for-an-app), [rate limits](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api).
 * [ADR-0016](0016-forge-registry-and-per-run-repo-scoped-credentials.md) (repository-scoped credentials), [ADR-0077](0077-ploeg-knows-work-sources-and-change-destinations-never-vendors.md) (work sources).
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: `pkg/provider/githubissues` (signature, mapping, write-backs, `TestQualificationGitHubIssuesReadAndWriteBack`) and the repository-scoped installation token in `pkg/githubapp/mint.go`.

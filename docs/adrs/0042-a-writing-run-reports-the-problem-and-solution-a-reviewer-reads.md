@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-09-30
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -95,3 +95,4 @@ Chosen option: "**the writing Run reports `problem` and `solution` in the drop b
 * Related: [ADR-0011](0011-the-pull-request-is-the-blackboard.md) for findings, which stay a reading Run's contribution, and [ADR-0017](0017-the-review-loop-is-verdict-driven-and-capped.md) for the verdict, which stays the only field an agent can use to influence what runs next.
 * Contracts: [outcomereport.v1](../contracts/outcomereport.v1.schema.json) and the Run in [operator-api.v1](../contracts/operator-api.v1.schema.json).
 * The Vloer card: [browser UI](https://github.com/webgrip/unfold/blob/9c1d53f01fbfb65733800aa75e288341734dc23f/apps/vloer/docs/browser-ui.md).
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: the `WritingRunProblemAndSolutionSurviveTheAdapter` property in `pkg/harness/harnesstest/conformance.go`, `TestMergeDropBox_ProblemAndSolutionSurviveTheAdapter` in `pkg/harness/created_test.go`, and `TestOutcome_WriterProblemAndSolutionReachTheOperatorDetail` in `pkg/httpapi/problem_solution_test.go`.

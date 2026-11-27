@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-28
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -85,3 +85,4 @@ Chosen option: "**Claim under a lease, complete after the effects**", because it
 
 * Threat model: [F-05 and T-PD-2](../security/threat-model.md#findings).
 * Migration `0081_webhook_delivery_claims_and_review_keys.sql`; `pkg/store/deliveries.go`; `pkg/httpapi/webhook_delivery.go`; `provider.SyntheticDeliveryID` in `pkg/provider/delivery.go`.
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: migration `0081_webhook_delivery_claims_and_review_keys.sql`, `TestClaimDelivery_ConcurrentDuplicatesClaimOnce` and `TestClaimDelivery_ACrashBeforeCompletionLetsTheRedeliveryAct` in `pkg/store/deliveries_test.go`, and `TestForgeWebhook_ConcurrentDuplicateDeliveriesActOnce` in `pkg/httpapi/webhook_delivery_test.go`.

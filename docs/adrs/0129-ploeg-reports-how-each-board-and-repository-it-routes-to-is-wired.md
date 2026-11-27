@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-19
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -89,3 +89,4 @@ Chosen option: "An operator read built from the configuration and the checks plo
 * 2026-10-19 — The owner agreed to make connection health visible first, before reshaping how connections are declared. Prompted by a task refused because its `repo/` label named no target.
 * Contract: `docs/contracts/operator-api.v1.schema.json`, definitions `connectionsResponse`, `connectionRepository`, `connectionBoard`.
 * Related: [ADR-0038](0038-a-repo-label-selects-among-registered-targets-and-the-board-default-is-the-fallback.md), [ADR-0069](0069-ploeg-names-none-of-its-consumers.md), [ADR-0095](0095-work-is-handed-to-ploeg-by-assigning-one-ploeg-user-and-a-team-label-picks-the-team.md).
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: `GET /api/v1/operator/connections` in `pkg/httpapi/server.go`, answering `connectionsResponse` in `docs/contracts/operator-api.v1.schema.json`.

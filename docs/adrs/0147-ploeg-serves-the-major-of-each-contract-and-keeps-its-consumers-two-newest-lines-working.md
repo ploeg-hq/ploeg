@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-24
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-04-01
@@ -89,3 +89,4 @@ Chosen option: "**A version route that lists each contract's served majors, plus
 * Prior art: [Kubernetes version skew policy](https://kubernetes.io/releases/version-skew-policy/), consumer-driven contracts as in [Pact](https://docs.pact.io/) (expectations recorded by the consumer, verified by the provider), read 2026-10-24.
 * Code: `pkg/contracts`, `pkg/consumers`, `pkg/httpapi/operator_version.go`, `docs/contracts/consumers/`.
 * 2026-10-24: proposed with the version route, the served-contract list and the expectation check (VIK-2398).
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: `Served` with `TestServedMatchesThePublishedSchemas` in `pkg/contracts`, and the expectation rules in `pkg/consumers/consumers.go`.

@@ -1,8 +1,8 @@
 ---
-status: proposed
-date: 2026-09-26
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
-supersedes: none
+supersedes: 0009
 review-by: 2027-01-31
 ---
 
@@ -142,3 +142,4 @@ is answered in [0032](0032-keep-the-dispatch-plane-and-compete-on-authorized-spe
   §4; July trail:
   [research/2026-07-28-paperclip-fit.md](../research/2026-07-28-paperclip-fit.md).
 * Re-states [0009](0009-paperclip-mine-for-design-never-integrate.md).
+* 2026-11-27: owner decision: accepted. It supersedes [0009](0009-paperclip-mine-for-design-never-integrate.md), which it re-states for every board control plane: `supersedes: 0009` is set and 0009's Records row reads "superseded by 0033".

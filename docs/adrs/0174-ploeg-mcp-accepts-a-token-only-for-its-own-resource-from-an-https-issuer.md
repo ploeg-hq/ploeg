@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-28
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -76,3 +76,4 @@ Chosen option: "**resource by default with an explicit `client-id` setting, and 
 * Finding F-14 and threat T-OC-1 in the [threat model](../security/threat-model.md#findings); issue [#301](https://github.com/ploeg-hq/ploeg/issues/301).
 * How-to: [Serve Ploeg's MCP tools over HTTPS](../how-to/serve-ploeg-mcp-over-https.md#audience-the-resource-or-the-client-id).
 * Narrows the token check of [ADR-0081](0081-ploeg-serves-its-operator-reads-as-mcp-tools-through-ploeg-mcp.md)'s amendment of 2026-10-13, whose trigger "the identity provider supports RFC 8707 resource indicators" this record answers for providers that do.
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: `TestAnHTTPIdentityProviderIsRefusedWithoutTheLoopbackSetting` in `pkg/mcpauth/transport_test.go`, the resource audience check in `pkg/mcpauth`, and `cmd/ploeg-mcp/audience_test.go`.

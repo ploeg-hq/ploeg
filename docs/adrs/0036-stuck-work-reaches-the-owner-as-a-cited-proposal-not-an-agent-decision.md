@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-09-28
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -337,3 +337,4 @@ This record is proposed, and nothing has been built yet. When the slices land,
   [ADR-0035](0035-runs-get-ploeg-owned-skills-mounted-toolchains-and-worker-verification.md)
   for its reference to homelab-cluster ADR-0053.
 * Board: epic VIK-1276 in Vikunja project Ploeg.
+* 2026-11-27: owner decision: accepted, narrowed to T1: the writer contract's partial-infeasibility rule, and a stuck close's tracker headline that never says "please merge" (`trackerMessage` in `pkg/shiftengine/publish.go` still does, so T1 is not built yet). T2, the lead, its escalation brief and the decisions route, is deferred until there are more than 10 `needs_human` settles in a month, the trigger this record already names. T0 stays as ADR-0123 decided it.

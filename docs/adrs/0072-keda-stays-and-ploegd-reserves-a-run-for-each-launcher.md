@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-06
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -130,3 +130,4 @@ The `cronjob` executor keeps working. It reserves and binds through the same API
 * Homelab follow-up, after the release: replace the KEDA-to-database NetworkPolicy opening with KEDA-to-ploegd, and narrow `ploeg_scaler` to the exporter's tables.
 * 2026-10-05: proposed as "ploegd launches each Run's sandbox, and KEDA leaves the sandbox path".
 * 2026-10-06: rewritten after research into KEDA. Push launch is withdrawn, and KEDA stays with a demand endpoint and Run reservations.
+* 2026-11-27: owner decision: accepted as written.

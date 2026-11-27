@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-09-10
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2026-10-31
@@ -54,3 +54,4 @@ Run worker environment regression tests, broker HTTP authorization tests and Pos
 * Technical story: [OpenSpec worker authority spec](../../openspec/changes/archive/2026-09-23-unified-operator-execution/specs/worker-authority/spec.md).
 * 2026-09-10 — Recorded before implementing worker isolation and accounting corrections; remains proposed for human ratification.
 * Related decisions: [0008](0008-litellm-is-the-credential-and-metering-seam.md), [0012](0012-two-level-budgets-authorized-and-settled.md).
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: `LITELLM_MASTER_KEY` is rendered only on ploegd (`ops/helm/ploeg/templates/deployment.yaml`) and `_helpers.tpl` keeps Ploeg's Secrets off worker workloads, `BlockKey` in `pkg/litellm/client.go`, `TestHarnessEnvironmentExposesOnlyAssignedCapabilities` in `pkg/worker/environment_test.go`, and `TestOperatorProjectionKeepsUnresolvedManagedSpendReserved` in `pkg/store/operator_test.go`.

@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-09-11
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2026-10-31
@@ -64,3 +64,4 @@ Run `mise exec -- go test ./pkg/httpapi ./pkg/store ./pkg/shiftengine ./pkg/prov
 * Technical story: [binding design](../../openspec/changes/archive/2026-09-23-bind-tracker-execution/design.md).
 * Related decisions: [0010](0010-shift-owns-the-item-lease-owns-the-branch.md), [0014](0014-work-target-is-a-work-item-attribute.md), [0024](0024-operator-work-uses-one-execution-authority.md).
 * 2026-09-11 — Recorded before implementation under the owner's instruction to continue the unified baseline. Human ratification remains pending.
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: the `operator_owned` fence (migration `0014_operator_tracker_source.sql`), `freshOperatorSource` and `validateOperatorSource` in `pkg/httpapi/operator_source.go`, and `TestOperatorExecutionHTTPAdmissionScopeAndCommandReplay` in `pkg/httpapi/operator_execution_test.go`.

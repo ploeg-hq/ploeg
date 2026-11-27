@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-11-18
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-05-18
@@ -100,3 +100,4 @@ Chosen option: "Publish `ghcr.io/ploeg-hq/agent-runner` from the release, as a c
 * [ops/docker/agent-runner/README.md](../../ops/docker/agent-runner/README.md) — what the image carries and how to bump each pin.
 * [ADR 0035](0035-runs-get-ploeg-owned-skills-mounted-toolchains-and-worker-verification.md) — skills and toolchains are mounted, not baked, which is why removing the baked skills changes no Ploeg Run.
 * [ADR 0138](0138-a-harness-runs-in-its-own-container-and-no-credential-enters-it.md) — the harness container the image becomes.
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: `ops/docker/agent-runner/Dockerfile` on Wolfi, and `ghcr.io/ploeg-hq/agent-runner` catalogued in `ops/security/images.yaml` and gated by `internal/cvegate`.

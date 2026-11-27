@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-11-01
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -72,3 +72,4 @@ Chosen option: "Wait for a re-run in the forge, and let the review watch follow 
 
 * Amends rule 5 and the "a provider that cannot re-run" consequence of [ADR-0119](0119-a-pull-request-is-ready-for-review-only-when-the-forges-ci-passed-on-its-head.md); its other rules stand.
 * The gate is `gateOnForgeCI` in `pkg/shiftengine/forge_ci_gate.go`; the review watch is in `pkg/shiftengine/review.go`, and the items it follows are `reviewWatchedWhere` in `pkg/store/review.go`.
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: `TestCancelledForgeCINobodyReRanParksAfterTheTimeout` and the other cancelled-CI tests in `pkg/shiftengine/forge_ci_gate_test.go`, and `pkg/shiftengine/review_ci_parked_test.go`.

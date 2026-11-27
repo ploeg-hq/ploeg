@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-17
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -93,3 +93,4 @@ What is decided now is the shape; the parts land in this order: charter and inta
 * Related: [ADR-0007](0007-a2a-adopt-nothing-watchlist-a-facade.md), [ADR-0009](0009-paperclip-mine-for-design-never-integrate.md), [ADR-0035](0035-runs-get-ploeg-owned-skills-mounted-toolchains-and-worker-verification.md), [ADR-0092](0092-a-team-pins-its-skills-in-a-catalogue-that-ploegd-fetches-once-and-serves-by-digest.md), [ADR-0098](0098-an-operator-admission-may-choose-each-runs-harness-from-its-teams-allowlist.md), [ADR-0109](0109-a-pull-request-someone-else-opened-is-read-by-a-team-on-the-pull-request.md).
 * 2026-10-25 — Amended by [ADR-0156](0156-each-run-carries-a-transaction-token-that-names-its-person-and-a-team-without-a-sponsor-runs-nothing.md): a Team names its `sponsor`, the person its Runs act for when nobody handed the work over (`teams.<name>.sponsor`). While ploegd signs transaction tokens, a Team without one runs nothing.
 * 2026-11-18 — [ADR-0198](0198-a-team-has-an-immutable-id-a-renameable-key-and-a-free-name-and-a-proven-person-creates-one-at-runtime.md) proposes the last step for Teams people create at runtime: a Team gains an immutable id, a renameable key and a free display name, and a proven person creates and changes a runtime Team's manifest through the operator API, restricted to fields that change no pod and no credential.
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: `Manifest` in `pkg/team/manifest.go` carries the charter (`MaxCharterLength`), the crew as its plan, `may`, `spend` (`spend_required`) and `intake`. Skills reach a Team's Roles through the registry of accepted ADR-0199, not through the manifest.

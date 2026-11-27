@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-31
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -169,3 +169,4 @@ ADR-0077's steps 4 to 6 (CloudEvents intake, extraction, removal) follow on top.
 ## More Information
 
 * Related: [ADR-0015](0015-routing-is-core-policy-over-provider-opaque-scopes.md) (opaque scopes), [ADR-0016](0016-forge-registry-and-per-run-repo-scoped-credentials.md) (forge registry), [ADR-0051](0051-delivery-gates-are-mapped-per-board-from-tracker-statuses.md) (statuses read per board), [ADR-0123](0123-dispatch-waits-for-tracker-dependencies-and-an-opt-in-free-premise-check.md) (dependencies), [ADR-0177](0177-ploeg-reaches-models-through-a-gateway-contract-with-litellm-and-envoy-ai-gateway-as-implementations.md) (gateway contract).
+* 2026-11-27: owner decision: accepted for the decision and migration step 1, which is built: `pkg/provider/trackertest/trackertest.go`, `TrackerCapabilities` in `pkg/provider/capabilities.go`, `MappableStates` and `ParseStatusMap` in `pkg/provider/statusmap.go`, and ClickUp passing the suite in `pkg/provider/clickup/conformance_test.go`. `MappableStates` also carries `active`. Steps 2 to 8 are not built and stay proposed: no Vikunja or GitHub Issues fixture, no import check in `internal/boundary`, no `cmd/ploegd/adapters.go`, no `forgetest`, no port package split.

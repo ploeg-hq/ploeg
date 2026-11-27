@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-25
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -115,3 +115,4 @@ Not verified: no real authentik and no real MCP client (Claude Code, VS Code, Cu
 * authentik (source at `7ff197b`): `prompt=login` forces re-authentication and `max_age` is honoured (`authentik/providers/oauth2/views/authorize.py`); the ID token's `auth_time` is the login event's time, `amr` holds `pwd`, `mfa` (after an authenticator validation stage), `user` (passwordless WebAuthn) or `sc`, and `acr` is always `goauthentik.io/providers/oauth2/default` (`authentik/providers/oauth2/id_token.py`, `authentik/common/oauth/constants.py`); the WebAuthn validation stage's user verification is configurable (`webauthn_user_verification`, default `preferred`).
 * Builds on ADR-0108 and ADR-0152; closes the T-OC-2 residual for `login` deployments. Whether `execute` groups join the supported profile P1 once this ships and is configured is the owner's decision in the threat model.
 * 2026-10-25: proposed with the implementation (`cmd/ploeg-mcp/pages.go`, `pkg/mcpauth/login.go`).
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: `cmd/ploeg-mcp/pages.go` and `pkg/mcpauth/login.go`, with `TestAPersonWhoSignsInAfreshAtThePageConfirmsTheAction` in `cmd/ploeg-mcp/pages_test.go`.

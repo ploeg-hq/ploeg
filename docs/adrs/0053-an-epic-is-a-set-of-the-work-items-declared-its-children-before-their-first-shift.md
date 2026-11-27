@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-10
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -77,6 +77,7 @@ In `.forgejo/workflows/on_pull_request.yml`, `go test ./...` in `apps/ploeg` cov
 * The Run cards game-theory research (`docs/research/2026-10-01-run-cards-game-theory.md` at the repository root), sections 3.7 and table row 20, gives the declared-before rule.
 * 2026-10-10 — [ADR-0079](0079-run-cards-belong-to-the-consumer-and-ploeg-supplies-delivery-facts.md) moves the Run card to the operator consumer. The facts this record keeps stay and are exposed raw through the delivery facts endpoints; the card figures built on them are removed in the next minor release.
 * 2026-10-10 — Narrowed by [ADR-0080](0080-ploeg-keeps-no-run-card-code-and-removes-it-in-one-release.md) to the facts it records.
+* 2026-11-27: owner decision: accepted as narrowed by ADR-0080 to the facts it records; the code on `development` matches: `pkg/store/epics.go` with `epics_test.go`, and the parent reads in `pkg/provider/vikunja` and `pkg/provider/clickup`.
 
 ## Re-evaluation triggers
 

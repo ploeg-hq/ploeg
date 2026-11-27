@@ -322,3 +322,4 @@ This record is proposed, and nothing has been built yet. When the tickets land,
   fix loop that a conflict Work Item's plan may run, and
   [ADR-0030](0030-target-repository-instructions-rank-below-the-delivery-contract.md)
   ranks the pull request's text below the brief.
+* 2026-11-27: owner decision: accept once built; checked against `development` and left proposed, because only the detection is built (`MergeConflicted` and `ConflictConfirmPolls` in `pkg/store/merge_state.go`). No route takes a `conflicts` block, Ploeg files no conflict ticket, and `maxOpen`, `maxPerPullRequest` and `ignoreAuthors` do not exist. Conflict repair went to ADR-0146's rebase Follow-Up (`RebaseConflicted` in `pkg/httpapi/forge_followup.go`).

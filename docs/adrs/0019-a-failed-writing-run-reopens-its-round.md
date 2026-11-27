@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-08-08
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -183,3 +183,4 @@ Shift stops). Both are red against the unfixed code.
   bounded loop; this one is its crash-side twin.
 * `openspec/specs/shift-orchestration/spec.md` — the swept-Run requirement this
   narrows, and the new writer requirement.
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: `ReopenRound` and `MaxRunAttempts` in `pkg/store/shift.go`, and `TestFailedWriter_ReopensItsOwnRound` and `TestFailedWriter_ParksTheShiftAtTheAttemptCap` in `pkg/shiftengine/failedwriter_test.go`. The reader half is as refined by ADR-0043, so `TestFailedReader_StillAdvancesTheRound` no longer exists.

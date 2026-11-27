@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-17
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -72,3 +72,4 @@ Chosen option: "**A typed `telemetry` block on the harness settings, translated 
 * Related: [ADR-0034](0034-the-harness-gets-placeholders-the-worker-keeps-credentials.md), [ADR-0035](0035-runs-get-ploeg-owned-skills-mounted-toolchains-and-worker-verification.md), [ADR-0076](0076-run-health-is-observable-by-team-and-role-through-one-correlation-key.md), [ADR-0084](0084-a-claude-code-run-can-execute-in-a-teams-self-hosted-claude-environment.md).
 * 2026-10-18 — First live Run (bronze, VIK-2200) failed every prompt: with `OTEL_EXPORTER_OTLP_ENDPOINT` set, OpenHands initialises Laminar, and openhands-sdk 1.21.0 (pinned exactly by the OpenHands CLI 1.16.0) calls `lmnr.observe(rollout_entrypoint=…)`, which no lmnr release up to 0.8.0 accepts. openhands-sdk 1.55.1 no longer passes it. The setting now reaches only claude-code; the assumption that a Harness that does not read `OTEL_*` ignores it was wrong.
 * 2026-10-18 — agent-runner 1.4.0 installs OpenHands under its release lockfile (lmnr 0.7.49), and its tracing then starts without failing (homelab 402fbefd). Ploeg cannot see the image's lmnr from the worker, so OpenHands telemetry became an explicit opt-in, `allowHarnesses: [openhands]`, rather than a default: an image change cannot silently turn it back into a failed prompt for every Run.
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: the typed `telemetry` settings and their per-Harness translation in `pkg/worker/telemetry.go`, and `PLOEG_TELEMETRY` rendered by `ops/helm/ploeg/templates/_helpers.tpl`.

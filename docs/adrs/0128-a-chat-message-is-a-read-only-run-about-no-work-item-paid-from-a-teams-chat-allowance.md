@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-18
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -89,3 +89,4 @@ Chosen option: "A chat Run with no Work Item, paid from a separate Chat Allowanc
 * 2026-10-18 — The owner decided that a chat message is paid from a separate Chat Allowance (purpose `chat`, scope `team`, one UTC calendar month), that it uses the Team's ask policy, and that Ploeg keeps only the message's SHA-256.
 * Contract: `docs/contracts/operator-api.v1.schema.json`, definitions `chatAdmitRequest`, `chatAdmitResponse`, `chatResponse`, `chat`, `chatCredential` and `chatAllowance`, and the widened `allowanceResponse`, `allowanceRefusalResponse` and `unsettledAccount`.
 * Related: [ADR-0082](0082-an-ask-is-a-read-only-run-outside-the-shift-paid-from-a-periodic-allowance.md), [ADR-0012](0012-two-level-budgets-authorized-and-settled.md), [ADR-0008](0008-litellm-is-the-credential-and-metering-seam.md), [ADR-0069](0069-ploeg-names-none-of-its-consumers.md), [ADR-0093](0093-the-working-state-is-active-and-budget-kept-back-is-a-hold.md).
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: `pkg/store/chat.go` (the Chat Allowance and `chatId` replay) and `pkg/httpapi/operator_chat.go` (`invalid_chat`, 402, 409 without an ask policy).

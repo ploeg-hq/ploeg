@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-24
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -100,3 +100,4 @@ Chosen option: "**a short-lived ES256 JWT that ploegd signs per Run and audience
 * Contract: [run-api.v1.schema.json](../contracts/run-api.v1.schema.json) (`runIdentityRequest`, `runIdentityResponse`, `runIdentityClaims`, `runIdentityKeySet`) and [A Run identity for a declared plugin](../contracts/README.md#a-run-identity-for-a-declared-plugin).
 * Standards: RFC 7515 (JWS), RFC 7517 (JWK Set), RFC 7519 (JWT), RFC 7638 (JWK thumbprint), RFC 8725 (JWT best current practice, explicit typing).
 * 2026-10-28 — Amended: ploegd signs only audiences configured for the Run's Team and Role (threat model F-48, [#358](https://github.com/ploeg-hq/ploeg/issues/358)). The 2026-10-27 security review found that the route checked audiences for format only, so a compromised worker could obtain a Run identity for any service that trusts ploegd's issuer. `PLOEG_RUN_IDENTITY_AUDIENCES` names each Team's and Role's audiences, the chart derives it from the plugins the Role's workers load, any other audience answers 403 and is logged, and the worker stops asking after a 403.
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: `pkg/runidentity` (`runidentity.go`, `audiences.go`), `pkg/httpapi/run_identity_test.go`, and the `runIdentity` opt-in in `pkg/harness/claudeplugins`.

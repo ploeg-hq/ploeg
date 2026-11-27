@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-10
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -79,6 +79,7 @@ In `.forgejo/workflows/on_pull_request.yml`, `go test ./...` in `apps/ploeg` cov
 * [ADR-0050](0050-a-run-cards-grade-is-a-versioned-formula-over-stored-facts.md): the grade that counts bounces.
 * 2026-10-10 — [ADR-0079](0079-run-cards-belong-to-the-consumer-and-ploeg-supplies-delivery-facts.md) moves the Run card to the operator consumer. The facts this record keeps stay and are exposed raw through the delivery facts endpoints; the card figures built on them are removed in the next minor release.
 * 2026-10-10 — Narrowed by [ADR-0080](0080-ploeg-keeps-no-run-card-code-and-removes-it-in-one-release.md) to the facts it records.
+* 2026-11-27: owner decision: accepted as narrowed by ADR-0080 to the facts it records; the code on `development` matches: the mapping and `bounce:` reasons in `pkg/gate/gate.go`, the board reads in `pkg/provider/vikunja` and `pkg/provider/clickup` (`board_test.go`), and `pkg/httpapi/gates_test.go`.
 
 ## Re-evaluation triggers
 

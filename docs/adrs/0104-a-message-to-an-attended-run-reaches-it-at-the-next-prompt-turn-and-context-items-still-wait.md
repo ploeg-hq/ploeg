@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-13
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -72,3 +72,4 @@ Chosen option: "narrow 0068 for messages to attended Runs", because it gives the
 * OpenSpec change `interactive-runs`, design Decision 11 and the resolved Open Question 8.
 * Narrows [ADR-0068](0068-context-added-while-a-shift-runs-reaches-the-next-run.md) (accepted); a dated note is added to it when this record is accepted. 0068's own trigger ("steering between turns works on every shipped harness") has not fired; the owner's decision, not the spike, is the reason.
 * 2026-10-13 — The owner decided to keep interactivity for sessions `ploeg-worker` executes, which implies messages reach a running attended Run. Proposed.
+* 2026-11-27: owner decision: accepted with ADR-0100. It narrows accepted [ADR-0068](0068-context-added-while-a-shift-runs-reaches-the-next-run.md) for attended Runs: a message reaches a running attended Run at its next prompt turn, while context items still wait for the next Run. 0068 itself is not edited; this line is the dated note.

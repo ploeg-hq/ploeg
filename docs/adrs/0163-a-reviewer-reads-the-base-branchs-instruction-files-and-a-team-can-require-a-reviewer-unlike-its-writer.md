@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-28
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -74,3 +74,4 @@ Chosen option: "**Restore the base branch's instruction files, name them in the 
 
 * Source issue: [#353](https://github.com/ploeg-hq/ploeg/issues/353) (F-43). Related: F-26 ([#309](https://github.com/ploeg-hq/ploeg/issues/309)), F-28 ([#311](https://github.com/ploeg-hq/ploeg/issues/311)).
 * 2026-10-28: proposed by the maintainer. It takes effect when the owner merges it into `development`.
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: `TestReviewerReadsTheBaseBranchsInstructionFilesAndIsToldTheWriterChangedThem` and `TestPinBaseInstructionFiles` in `pkg/worker/review_instructions_test.go`, and `IndependentReview` in `pkg/plan/plan.go`.

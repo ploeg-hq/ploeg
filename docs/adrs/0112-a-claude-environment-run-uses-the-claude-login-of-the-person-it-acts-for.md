@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-18
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-01-31
@@ -133,3 +133,4 @@ The 2026-10-18 spike showed that every refresh replaces the refresh token, so a 
   * [ADR-0100](0100-an-attended-run-relays-its-harnesss-requests-through-ploegd-and-falls-back-to-its-teams-policy.md)
   * [ADR-0108](0108-every-operator-action-names-its-person-and-channel-and-an-mcp-action-needs-the-persons-confirmation.md)
   * [ADR-0008](0008-litellm-is-the-credential-and-metering-seam.md)
+* 2026-11-27: owner decision: accepted for what is built: client-carried Runs only and no stored claude.ai login (`carrier: client` in `pkg/store/client_carried.go`, the `start_from_claude_code` wait, `PLOEG_CLAUDE_SESSION_TIMEOUT` in `cmd/ploegd/claudesessions.go`, `pkg/httpapi/operator_harness.go`). The API-key fallback for work nobody starts (`unattended: api`) is not built and stays proposed.

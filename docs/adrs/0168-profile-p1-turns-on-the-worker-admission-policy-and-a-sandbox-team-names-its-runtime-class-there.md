@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-28
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-04-30
@@ -73,3 +73,4 @@ Chosen option: "`enabled` unset follows `supportProfile`", because it turns the 
 
 * Finding F-49 in the [threat model](../security/threat-model.md#findings); issue [#359](https://github.com/ploeg-hq/ploeg/issues/359). Related: [#15](https://github.com/ploeg-hq/ploeg/issues/15), [#16](https://github.com/ploeg-hq/ploeg/issues/16), [#34](https://github.com/ploeg-hq/ploeg/issues/34).
 * [Self-hosting security contract](../ops/self-hosting-security.md), [ADR 0154](0154-the-chart-refuses-values-that-leave-profile-p1-unless-they-declare-the-deployment-unsupported.md).
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: `security.workerAdmission` following `supportProfile` in `ops/helm/ploeg/values.yaml`, `scripts/check-security-profile.py`, and the `leaves_p1` and `renders_p1` cases in `scripts/helm-golden.sh`.

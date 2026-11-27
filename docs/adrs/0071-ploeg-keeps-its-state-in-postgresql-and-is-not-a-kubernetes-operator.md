@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-05
+status: accepted
+date: 2026-11-27
 decision-makers: Ryan Grippeling
 supersedes: none
 review-by: 2027-04-01
@@ -80,3 +80,4 @@ Configuration CRDs stay a later option. They would only mirror Team, Target and 
 * Evidence: [Substrate, language and Run bottlenecks](../research/2026-10-05-substrate-language-and-run-bottlenecks.md), §2.
 * Related: [ADR-0005](0005-build-a-dedicated-dispatch-plane.md) and [ADR-0032](0032-keep-the-dispatch-plane-and-compete-on-authorized-spend.md) rejected Argo, Temporal and Conductor for the same reason: each would replace the store and the Leases.
 * 2026-10-05: proposed after a five-spike review requested by the owner.
+* 2026-11-27: owner decision: accepted; the code on `development` matches the text: `go.mod` requires no `sigs.k8s.io/controller-runtime`, and Work Item, Shift, Run, Lease and budget state live in PostgreSQL through `pkg/store` and `pkg/store/migrations`; Kubernetes is only the executor.
