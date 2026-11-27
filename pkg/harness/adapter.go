@@ -88,6 +88,22 @@ type RunEnv struct {
 	// adapter that implements Yielder stops the agent at its next safe point
 	// and returns ErrYielded; any other adapter ignores it. Nil never closes.
 	Yield <-chan struct{}
+	// Writes is true for a Run that delivers a change: it edits its clone,
+	// commits, pushes and opens or updates the pull request. An adapter that
+	// writes the harness's own permission rules allows that only to a writer
+	// (ADR-0208).
+	Writes bool
+	// Scripts are the scripts the Run's prompt tells the agent to run, such
+	// as the verification and the fast check. An adapter that writes the
+	// harness's own permission rules allows each (ADR-0208).
+	Scripts []Script
+}
+
+// Script is a script the worker wrote for the Run: the environment variable
+// that names it and its path.
+type Script struct {
+	Env  string
+	Path string
 }
 
 // Yielder is implemented by an Adapter that can stop its agent at a safe

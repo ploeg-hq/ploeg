@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/ploeg-hq/ploeg/pkg/harness/adapters/claudecode"
 )
 
 // The registry's one safety property: a misconfigured harness fails HERE, at
@@ -22,6 +24,9 @@ func TestNewAdapter_RejectsMisconfiguration(t *testing.T) {
 		{"goose with a config document", HarnessConfig{Name: "acp", ACP: ACPConfig{Profile: "goose", ConfigJSON: "{}"}}, "takes no config JSON"},
 		{"custom profile without argv", HarnessConfig{Name: "acp", ACP: ACPConfig{Profile: "custom"}}, "requires an explicit argv"},
 		{"unknown permission mode", HarnessConfig{Name: "acp", ACP: ACPConfig{PermissionMode: "yolo"}}, "unknown acp permission mode"},
+		{"unknown claude-code permission mode", HarnessConfig{Name: "claude-code", PermissionMode: "dontask"}, "unknown claude-code permission mode"},
+		{"empty claude-code permission rule", HarnessConfig{Name: "claude-code", PermissionMode: "dontAsk",
+			ClaudePermissions: claudecode.Rules{Allow: []string{""}}}, "is empty"},
 		{"exec without argv", HarnessConfig{Name: "exec"}, ""},
 		{"claude-environment without an environment", HarnessConfig{Name: "claude-environment",
 			ClaudeEnvironment: ClaudeEnvironmentConfig{ConfigDir: "/login"}}, "PLOEG_CLAUDE_ENVIRONMENT_ID"},
@@ -49,6 +54,8 @@ func TestNewAdapter_AcceptsValidConfigurations(t *testing.T) {
 		{"default is openhands", HarnessConfig{}, "openhands"},
 		{"openhands explicit", HarnessConfig{Name: "openhands"}, "openhands"},
 		{"claude-code", HarnessConfig{Name: "claude-code"}, "claude-code"},
+		{"claude-code under dontAsk with the Team's rules", HarnessConfig{Name: "claude-code", PermissionMode: "dontAsk",
+			ClaudePermissions: claudecode.Rules{Allow: []string{"Bash(go test *)"}, Deny: []string{"WebFetch"}}}, "claude-code"},
 		{"claude-environment with a refresh token", HarnessConfig{Name: "claude-environment",
 			ClaudeEnvironment: ClaudeEnvironmentConfig{EnvironmentID: "ccpool_x", RefreshToken: "rt", Scopes: "user:sessions:claude_code"}}, "claude-environment"},
 		{"claude-environment with a config directory", HarnessConfig{Name: "claude-environment",
@@ -92,6 +99,24 @@ func TestSkillDirectoriesFollowEachHarness(t *testing.T) {
 		got := strings.Join(SkillDirectories(HarnessConfig{Name: name}), ",")
 		if got != want {
 			t.Errorf("harness %q: skill directories = %q, want %q", name, got, want)
+		}
+	}
+}
+
+func TestParseClaudePermissions(t *testing.T) {
+	got, err := ParseClaudePermissions(`{"allow":["Bash(go test *)"],"deny":["WebFetch"]}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Allow) != 1 || got.Allow[0] != "Bash(go test *)" || len(got.Deny) != 1 || got.Deny[0] != "WebFetch" {
+		t.Errorf("ParseClaudePermissions = %+v", got)
+	}
+	if got, err := ParseClaudePermissions(""); err != nil || len(got.Allow)+len(got.Deny) > 0 {
+		t.Errorf("unset = %+v, %v; want no rules", got, err)
+	}
+	for _, raw := range []string{`["Bash"]`, `{"allow":"Bash"}`, `{"ask":["Bash"]}`, `{"allow":["Bash(a)\nBash(b)"]}`} {
+		if _, err := ParseClaudePermissions(raw); err == nil {
+			t.Errorf("ParseClaudePermissions(%s) accepted it", raw)
 		}
 	}
 }

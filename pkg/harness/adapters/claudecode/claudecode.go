@@ -21,8 +21,12 @@ const (
 	DefaultBin = "claude"
 	// DefaultPermissionMode: the worker pod is a disposable, credential-
 	// scoped sandbox (design §6) — prompting is impossible in headless mode,
-	// so permissions are bypassed. Backlog #62 tracks a policy-driven mode.
+	// so permissions are bypassed unless the Team chooses another mode
+	// (ADR-0208).
 	DefaultPermissionMode = "bypassPermissions"
+	// DontAsk is Claude Code's mode that refuses every tool call its
+	// permission rules do not allow, instead of prompting (ADR-0208).
+	DontAsk = "dontAsk"
 	// TargetHooksDisabled is the --settings value that stops a target
 	// repository's hooks from running. Command-line settings outrank the
 	// repository's .claude/settings.json (Ploeg ADR-0030).
@@ -52,9 +56,20 @@ var ModelAliasEnv = []string{
 	"ANTHROPIC_DEFAULT_FABLE_MODEL",
 }
 
+// PermissionModes are the modes Claude Code's --permission-mode accepts.
+var PermissionModes = []string{"default", "acceptEdits", "plan", "auto", DontAsk, DefaultPermissionMode}
+
+// Rules are a Team's own Claude Code permission rules (ADR-0208), in Claude
+// Code's rule syntax. Deny wins over allow in every mode.
+type Rules struct {
+	Allow []string `json:"allow,omitempty"`
+	Deny  []string `json:"deny,omitempty"`
+}
+
 type Adapter struct {
 	Bin            string // empty = DefaultBin
 	PermissionMode string // empty = DefaultPermissionMode
+	Rules          Rules
 }
 
 func New(bin, permissionMode string) *Adapter {
@@ -97,17 +112,39 @@ func (a *Adapter) Prepare(spec harness.TaskSpec, env harness.RunEnv) (harness.In
 	outcomePath := harness.DropBoxPath(env.ScratchDir, spec.TraceID)
 	_ = os.Remove(outcomePath) // never inherit a previous run's report
 
-	argv := []string{bin, "-p", env.Prompt,
+	prompt := env.Prompt
+	if asks(mode) {
+		prompt += pathsNote(mode, env, outcomePath)
+	}
+	argv := []string{bin, "-p", prompt,
 		"--output-format", "json",
 		"--permission-mode", mode,
 	}
-	if len(env.PluginDirs) == 0 {
-		argv = append(argv, "--settings", TargetHooksDisabled)
-	} else {
-		argv = append(argv, "--setting-sources", UserSettingsOnly, "--add-dir", env.RepoDir)
-		for _, dir := range env.PluginDirs {
-			argv = append(argv, "--plugin-dir", dir)
-		}
+	var addDirs []string
+	if len(env.PluginDirs) > 0 {
+		addDirs = append(addDirs, env.RepoDir)
+	}
+	if asks(mode) && env.ScratchDir != "" {
+		addDirs = append(addDirs, env.ScratchDir)
+	}
+	settings, err := settingsFor(mode, a.Rules, env, len(env.PluginDirs) == 0)
+	if err != nil {
+		return harness.Invocation{}, err
+	}
+	if settings != "" {
+		argv = append(argv, "--settings", settings)
+	}
+	if len(env.PluginDirs) > 0 {
+		argv = append(argv, "--setting-sources", UserSettingsOnly)
+	}
+	if len(addDirs) > 0 {
+		argv = append(argv, "--add-dir")
+		argv = append(argv, addDirs...)
+	}
+	for _, dir := range env.PluginDirs {
+		argv = append(argv, "--plugin-dir", dir)
+	}
+	if len(env.PluginDirs) > 0 {
 		extraEnv = append(extraEnv, RepositoryInstructions)
 	}
 	argv = append(argv, "--strict-mcp-config")

@@ -191,6 +191,9 @@ func run(log *slog.Logger) error {
 			return fmt.Errorf("PLOEG_HARNESS_ARGS must be a JSON string array: %w", err)
 		}
 	}
+	if hc.ClaudePermissions, err = worker.ParseClaudePermissions(os.Getenv("PLOEG_CLAUDE_PERMISSIONS")); err != nil {
+		return err
+	}
 	if raw := os.Getenv("PLOEG_ACP_ARGV"); raw != "" {
 		if err := json.Unmarshal([]byte(raw), &hc.ACP.Argv); err != nil {
 			return fmt.Errorf("PLOEG_ACP_ARGV must be a JSON string array: %w", err)

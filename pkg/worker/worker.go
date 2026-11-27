@@ -561,6 +561,7 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 	}
 	var verifyCommands []string
 	var runEnv []string
+	var scripts []harness.Script
 	if !planner {
 		verifyCommands = w.Cfg.VerifyCommands
 	}
@@ -570,6 +571,7 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 			return stuckReport("could not write the verification script", err.Error())
 		}
 		runEnv = append(runEnv, verifyScriptEnv+"="+script)
+		scripts = append(scripts, harness.Script{Env: verifyScriptEnv, Path: script})
 	}
 	var fastCheck []string
 	if writes {
@@ -581,6 +583,7 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 			return stuckReport("could not write the fast check script", err.Error())
 		}
 		runEnv = append(runEnv, fastCheckScriptEnv+"="+script)
+		scripts = append(scripts, harness.Script{Env: fastCheckScriptEnv, Path: script})
 	}
 	runEnv = append(runEnv, skillsDirectoryEnv+"="+filepath.Join(home, skills.CanonicalDir))
 	runEnv = append(runEnv, contextEnv...)
@@ -728,6 +731,8 @@ func (w *Worker) execute(ctx context.Context, claimed *ClaimResponse, branch, tr
 		PluginDirs: pluginDirs,
 		Spawner:    w.side().spawner,
 		Yield:      w.yield.channel(),
+		Writes:     writes,
+		Scripts:    scripts,
 	}
 
 	env.BaseEnv = append(env.BaseEnv, gitEnv...)

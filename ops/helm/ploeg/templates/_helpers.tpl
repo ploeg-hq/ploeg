@@ -538,7 +538,7 @@ PLOEG_HARNESS and PLOEG_ACP_PROFILE (ADR-0097). Context: (dict "root" $
 {{- $gcc := (.root.Values.executor.harness | default dict).claudeCode | default dict }}
 {{- $tcc := (.team.harness | default dict).claudeCode | default dict }}
 {{- $rcc := ((.role | default dict).harness | default dict).claudeCode | default dict }}
-{{- dict "plugins" ($rcc.plugins | default ($tcc.plugins | default ($gcc.plugins | default list))) | toJson }}
+{{- dict "plugins" ($rcc.plugins | default ($tcc.plugins | default ($gcc.plugins | default list))) "permissionMode" ($rcc.permissionMode | default ($tcc.permissionMode | default ($gcc.permissionMode | default ""))) "permissions" ($rcc.permissions | default ($tcc.permissions | default ($gcc.permissions | default dict))) | toJson }}
 {{- end -}}
 
 {{- define "ploeg.runIdentityAudiences" -}}
@@ -644,7 +644,8 @@ global executor.harness defaults field-by-field (explicit hasKey checks, so
      rendered only into a claude-code pod. A Secret-backed variable becomes a
      PLOEG_CLAUDE_PLUGIN_ENV_<plugin>_<var> secretKeyRef, the only variables
      the worker lets a plugin declaration read. */}}
-{{- $ccPlugins := (include "ploeg.roleClaudePlugins" (dict "root" $root "team" $team "role" $role) | fromJson).plugins }}
+{{- $ccSettings := include "ploeg.roleClaudePlugins" (dict "root" $root "team" $team "role" $role) | fromJson }}
+{{- $ccPlugins := $ccSettings.plugins }}
 {{- $ccPluginJson := list }}
 {{- $ccPluginSecrets := list }}
 {{- if eq $hName "claude-code" }}
@@ -933,6 +934,16 @@ spec:
         - name: {{ .var }}
           valueFrom:
             secretKeyRef: {name: {{ .secret.name | quote }}, key: {{ .secret.key | quote }}}
+        {{- end }}
+        {{- end }}
+        {{- if eq $hName "claude-code" }}
+        {{- with $ccSettings.permissionMode }}
+        - name: PLOEG_CLAUDE_PERMISSION_MODE
+          value: {{ . | quote }}
+        {{- end }}
+        {{- with $ccSettings.permissions }}
+        - name: PLOEG_CLAUDE_PERMISSIONS
+          value: {{ toJson . | replace "$(" "$$(" | quote }}
         {{- end }}
         {{- end }}
         {{- if eq $hName "acp" }}

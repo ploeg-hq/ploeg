@@ -274,6 +274,7 @@ fails otherwise.
 | [0205](0205-only-an-assignment-of-ploegs-own-tracker-account-hands-work-over.md) | Only an assignment of Ploeg's own tracker account hands work over | accepted | 2026-11-20 |
 | [0206](0206-a-run-commits-as-its-forge-credentials-own-account-and-names-the-person-it-acts-for-in-trailers.md) | A Run commits as its forge credential's own account and names the person it acts for in trailers | accepted | 2026-11-20 |
 | [0207](0207-a-tracker-connections-own-account-always-hands-work-over.md) | A tracker connection's own account always hands work over | accepted | 2026-11-20 |
+| [0208](0208-a-claude-code-run-under-dont-ask-is-allowed-what-its-delivery-contract-needs-and-the-teams-own-rules.md) | A claude-code Run under `dontAsk` is allowed what its delivery contract needs and the Team's own rules | proposed | 2026-11-27 |
 
 
 ## Review calendar
@@ -422,3 +423,4 @@ triggers.
 | 2027-05-20 | [0205](0205-only-an-assignment-of-ploegs-own-tracker-account-hands-work-over.md) — or sooner, when another tracker adapter that dispatches on assignment is brought under the same rule, a deployment needs a person's own assignment to start work, ClickUp changes `GET /user` or the assignee history shape, or `handOverAgent` is made implicit for every tracker connection |
 | 2027-05-20 | [0206](0206-a-run-commits-as-its-forge-credentials-own-account-and-names-the-person-it-acts-for-in-trailers.md) — or sooner, when Ploeg records a verified e-mail for a person, Forgejo Authorized Integrations replace the bot's token, a forge's user endpoint or noreply address scheme changes, or an installation needs commits attributed to an account other than the one that pushes |
 | 2027-05-20 | [0207](0207-a-tracker-connections-own-account-always-hands-work-over.md) — or sooner, when a tracker connection is needed that only reads and writes back, or another tracker kind's adapter learns to recognise an assignment to the connection's account |
+| 2027-05-27 | [0208](0208-a-claude-code-run-under-dont-ask-is-allowed-what-its-delivery-contract-needs-and-the-teams-own-rules.md) — or sooner, when Claude Code documents how rules that differ only in quoting combine, adds a mode that asks a permission prompt tool without prompting, or `claude-code` is qualified for credential isolation |

@@ -370,3 +370,63 @@ func TestLiveClaudeCodeIgnoresTargetHooksAndMCPServers(t *testing.T) {
 		}
 	})
 }
+
+func gitIn(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", append([]string{"-c", "user.name=conformance", "-c", "user.email=conformance@invalid"}, args...)...)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+	return string(out)
+}
+
+func TestLiveClaudeCodeDeliversUnderDontAskAndIsRefusedOutsideItsRules(t *testing.T) {
+	requireLiveOptIn(t)
+	var claude liveHarness
+	for _, h := range liveHarnessTable {
+		if h.name == "claude-code" {
+			claude = h
+		}
+	}
+	bin := lookHarness(t, claude)
+	repo := t.TempDir()
+	gitIn(t, repo, "init", "-q")
+	gitIn(t, repo, "commit", "-q", "--allow-empty", "-m", "base")
+	marker := filepath.Join(t.TempDir(), "outside-the-rules")
+	prompt := "Do these steps in order, each as its own tool call. If a step is refused, do not retry it or work around it; go on with the next.\n" +
+		"1. Create the file hello.txt containing hi.\n" +
+		"2. Run: git add hello.txt && git -c user.name=conformance -c user.email=conformance@invalid commit -m hello\n" +
+		"3. Run: \"$PLOEG_VERIFY_SCRIPT\"\n" +
+		"4. Run: python3 -c \"open('" + marker + "', 'w')\"\n" +
+		"5. Write {\"findings\": \"dont-ask-canary\"} to the file named by the PLOEG_OUTCOME_FILE environment variable.\n"
+	var out lockedBuffer
+	env := liveEnv(t, repo, prompt, &out)
+	verify := filepath.Join(env.ScratchDir, "ploeg-verify")
+	if err := os.WriteFile(verify, []byte("#!/bin/sh\ntouch '"+filepath.Join(env.ScratchDir, "verified")+"'\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	env.BaseEnv = append(env.BaseEnv, "PLOEG_VERIFY_SCRIPT="+verify)
+	env.Writes = true
+	env.Scripts = []harness.Script{{Env: "PLOEG_VERIFY_SCRIPT", Path: verify}}
+
+	ctx, cancel := context.WithTimeout(context.Background(), liveRunDeadline)
+	defer cancel()
+	report, err := harness.RunCommand(claudecode.New(bin, claudecode.DontAsk)).Run(ctx, liveSpec(env.LLM.TraceID), env)
+	if err != nil {
+		t.Fatalf("the dontAsk Run did not finish: %v\noutput tail:\n%s", err, tail(out.String(), 4000))
+	}
+	if !strings.Contains(gitIn(t, repo, "log", "--oneline"), "hello") {
+		t.Errorf("the writer could not edit and commit under dontAsk\noutput tail:\n%s", tail(out.String(), 4000))
+	}
+	if _, err := os.Stat(filepath.Join(env.ScratchDir, "verified")); err != nil {
+		t.Errorf("the verification script its prompt names did not run under dontAsk")
+	}
+	if !strings.Contains(report.Findings, "dont-ask-canary") {
+		t.Errorf("the drop box was not written under dontAsk: findings %q", report.Findings)
+	}
+	if _, err := os.Stat(marker); err == nil {
+		t.Errorf("a command outside the allow rules ran under dontAsk")
+	}
+}
