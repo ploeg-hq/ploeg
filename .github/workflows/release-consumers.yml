@@ -39,9 +39,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: jdx/mise-action@7a4e45a543138629540c9a1616d08632b893e492 # v5.0.1
+      - uses: jdx/mise-action@924e7c586e33d7d4bae9c14e26c5d22e2beb6e78 # v5.3.0
         with:
-          version: 2026.9.18
+          version: 2026.11.14
           install: false
           cache: false
       - name: Split the GitHub consumer repository into owner and name
@@ -56,7 +56,7 @@ jobs:
       - name: Mint an installation token that writes only the consumer repository
         id: github-app
         if: matrix.consumer.forge == 'github'
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
         with:
           app-id: ${{ secrets.RELEASE_CONSUMER_GITHUB_APP_ID }}
           private-key: ${{ secrets.RELEASE_CONSUMER_GITHUB_APP_PRIVATE_KEY }}

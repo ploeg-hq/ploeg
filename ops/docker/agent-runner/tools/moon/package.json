@@ -2,6 +2,6 @@
   "name": "agent-runner-moon",
   "private": true,
   "dependencies": {
-    "@moonrepo/cli": "2.6.5"
+    "@moonrepo/cli": "2.6.6"
   }
 }
