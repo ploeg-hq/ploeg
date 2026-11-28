@@ -1,13 +1,13 @@
-# syntax=docker/dockerfile:1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
+# syntax=docker/dockerfile:1@sha256:572cebbc2b15e6f84c077742952674889cb63cd5e9b80abdffcbe587b6f19183
 ARG REGISTRY_CHAINGUARD=cgr.dev
 ARG REGISTRY_GHCR=ghcr.io
 ARG GOOSE_VERSION=1.60.1
 ARG GOOSE_SHA256_AMD64=15478c207e7ad9196d3671b158c6c8559833ab5712fcea24f972773fbbf05cd5
 ARG GOOSE_SHA256_ARM64=9cf89d2f549631021b9faac6ef2cc464d60e20516ee40a4077b47b759743ad94
 
-FROM ${REGISTRY_GHCR}/astral-sh/uv:0.13.9@sha256:d3b601f0c7b118bc1753febf7c41cc80981df678445e0254284eecf84db79a7d AS uv
+FROM ${REGISTRY_GHCR}/astral-sh/uv:0.13.10@sha256:a3ea1357342c1a4bf9a0c53a3deb1b55379aefa037338d8113d5771efa01774f AS uv
 
-FROM ${REGISTRY_CHAINGUARD}/chainguard/wolfi-base:latest@sha256:580c9ae79c0229cc381475fbfbed0d91fab5d6606e57cd78732f9836de109e90 AS node
+FROM ${REGISTRY_CHAINGUARD}/chainguard/wolfi-base:latest@sha256:5172a213d2bba8b1c9ca11957db65562b52b0f9844583a0347318ea5fd8e3aa5 AS node
 RUN printf 'https://packages.wolfi.dev/os\n' > /etc/apk/repositories \
  && apk add --no-cache nodejs-24 npm
 COPY ops/docker/agent-runner/tools/moon/package.json ops/docker/agent-runner/tools/moon/package-lock.json /opt/moon/
@@ -27,7 +27,7 @@ ARG GOOSE_SHA256_ARM64
 ADD --checksum=sha256:${GOOSE_SHA256_AMD64} https://github.com/aaif-goose/goose/releases/download/v${GOOSE_VERSION}/goose-x86_64-unknown-linux-musl.tar.gz /amd64.tar.gz
 ADD --checksum=sha256:${GOOSE_SHA256_ARM64} https://github.com/aaif-goose/goose/releases/download/v${GOOSE_VERSION}/goose-aarch64-unknown-linux-musl.tar.gz /arm64.tar.gz
 
-FROM ${REGISTRY_CHAINGUARD}/chainguard/wolfi-base:latest@sha256:580c9ae79c0229cc381475fbfbed0d91fab5d6606e57cd78732f9836de109e90
+FROM ${REGISTRY_CHAINGUARD}/chainguard/wolfi-base:latest@sha256:5172a213d2bba8b1c9ca11957db65562b52b0f9844583a0347318ea5fd8e3aa5
 
 ARG TARGETARCH
 ARG IMAGE_CREATED=1970-01-01T00:00:00Z
@@ -36,7 +36,7 @@ ARG IMAGE_REVISION=unknown
 ARG GOOSE_VERSION
 ARG OPENHANDS_VERSION=1.16.0
 # renovate: datasource=pypi depName=pyyaml
-ARG PYYAML_VERSION=6.0.3
+ARG PYYAML_VERSION=6.0.4
 
 ENV PYTHONUNBUFFERED=1 \
     OPENHANDS_SUPPRESS_BANNER=1 \
